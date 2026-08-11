@@ -46,13 +46,5 @@ export const getClusterPlacementRegions = (cluster: ClusterSpec | null) => {
   if (!cluster) {
     return [];
   }
-  const fromPlacement =
-    cluster.placement_spec?.cloud_list?.flatMap((cloud) => cloud.region_list ?? []) ?? [];
-  if (fromPlacement.length) {
-    return fromPlacement;
-  }
-  const defaultPartition =
-    cluster.partitions_spec?.find((p) => p.default_partition) ?? cluster.partitions_spec?.[0];
-  const partitionClouds = defaultPartition?.placement?.cloud_list ?? [];
-  return partitionClouds.flatMap((cloud) => cloud.region_list ?? []);
+  return cluster.placement_spec?.cloud_list?.flatMap((cloud) => cloud.region_list ?? []) ?? [];
 };

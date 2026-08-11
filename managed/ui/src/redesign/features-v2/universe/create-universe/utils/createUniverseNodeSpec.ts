@@ -9,7 +9,7 @@ import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-
  * Builds API storage_spec from form device info. Omits storage_type when unset (e.g. Kubernetes).
  * Matches legacy fillNodeSpec: num_volumes fixed to 1, volume_size = numVolumes * volumeSize from deviceInfo.
  */
-export const buildStorageSpecFromDeviceInfo = (
+const buildStorageSpecFromDeviceInfo = (
   deviceInfo: DeviceInfo,
   enableEbsVolumeEncryption?: boolean,
   ebsKmsConfigUUID?: string | null
@@ -28,8 +28,7 @@ export const buildStorageSpecFromDeviceInfo = (
     ...(deviceInfo.throughput !== undefined && deviceInfo.throughput !== null
       ? { throughput: deviceInfo.throughput }
       : {}),
-    ...(deviceInfo.storageType ? { storage_type: deviceInfo.storageType } : {}),
-    ...(deviceInfo.mountPoints ? { mount_points: deviceInfo.mountPoints } : {})
+    ...(deviceInfo.storageType ? { storage_type: deviceInfo.storageType } : {})
   };
 
   if (enableEbsVolumeEncryption) {
@@ -119,14 +118,6 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
       if (instanceSettings.instanceType) {
         k8sSpec.instance_type = instanceSettings.instanceType;
       }
-    }
-    const masterDeviceInfo = instanceSettings.keepMasterTserverSame
-      ? instanceSettings.deviceInfo
-      : instanceSettings.masterDeviceInfo ?? instanceSettings.deviceInfo;
-    if (masterDeviceInfo) {
-      k8sSpec.master = {
-        storage_spec: buildStorageSpecFromDeviceInfo(masterDeviceInfo, ebsEnc, ebsKms)
-      };
     }
     return k8sSpec;
   }

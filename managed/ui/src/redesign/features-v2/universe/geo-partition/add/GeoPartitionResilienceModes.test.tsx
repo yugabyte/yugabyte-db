@@ -34,20 +34,6 @@ vi.mock('@app/redesign/assets/map.svg', () => ({ default: () => null }));
 vi.mock('@app/redesign/assets/map_selected.svg', () => ({ default: () => null }));
 vi.mock('@app/redesign/assets/flash_transparent.svg', () => ({ default: () => null }));
 
-// Onboarding tip auto-opens and needs YB theme (palette.purple); out of scope for these unit tests.
-vi.mock(
-  '@app/redesign/features-v2/onboarding/universe-revamp/popovers/GuidedExpertModePopover',
-  () => ({
-    GuidedExpertModePopover: () => null,
-    useGuidedExpertModePopover: () => ({
-      open: false,
-      anchorRef: { current: null },
-      handleGuidedExpertModeClick: () => undefined,
-      handleClose: () => undefined
-    })
-  })
-);
-
 vi.mock('../../create-universe/steps/resilence-regions/ResilienceRequirementCard', () => ({
   ResilienceRequirementCard: () => <div data-testid="guided-resilience-card" />
 }));

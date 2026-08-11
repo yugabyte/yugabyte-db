@@ -12,7 +12,7 @@ import { CloudType } from '../../../../../features/universe/universe-form/utils/
 
 //icons
 import Return from '../../../../../assets/tree.svg';
-import InfoIcon from '../../../../../assets/approved/info-new.svg';
+import InfoIcon from '../../../../../assets/info-new.svg';
 
 const { styled, Link } = mui;
 
@@ -49,10 +49,11 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.dedicatedNodes'
   });
   const { control, watch } = useFormContext<NodeAvailabilityProps>();
-  const [{ resilienceAndRegionsSettings, generalSettings }] = useContext(
+  const [{ resilienceAndRegionsSettings, generalSettings }] = (useContext(
     CreateUniverseContext
-  ) as unknown as CreateUniverseContextMethods;
-  const isK8sUniverse = generalSettings?.cloud === CloudType.kubernetes;
+  ) as unknown) as CreateUniverseContextMethods;
+  const isK8sUniverse =
+    generalSettings?.cloud === CloudType.kubernetes;
 
   const availabilityZones = watch('availabilityZones');
   const useDedicatedNodes = watch('useDedicatedNodes');
@@ -141,11 +142,7 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
   }
 
   return (
-    <YBAccordion
-      titleContent={t('title')}
-      sx={{ width: '100%' }}
-      defaultExpanded={!!useDedicatedNodes}
-    >
+    <YBAccordion titleContent={t('title')} sx={{ width: '100%' }}>
       <StyledPanel>{getStyledToggleArea()}</StyledPanel>
     </YBAccordion>
   );

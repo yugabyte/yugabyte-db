@@ -1,19 +1,11 @@
 import { ReactNode, useContext } from 'react';
 import { mui } from '@yugabyte-ui-library/core';
 import { NodeInstanceDetails } from '../../../geo-partition/add/NodeInstanceDetails';
-import { getClusterByType } from '../../../edit-universe/EditUniverseUtils';
+import { getClusterByType, useEditUniverseContext } from '../../../edit-universe/EditUniverseUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { AddGeoPartitionContext } from '../../../geo-partition/add/AddGeoPartitionContext';
-import { EditUniverseContext } from '../../../edit-universe/EditUniverseContext';
+import { AddGeoPartitionContext, AddGeoPartitionContextMethods } from '../../../geo-partition/add/AddGeoPartitionContext';
 
 const { Box } = mui;
-
-const getGeoUniverseData = (contextValue: unknown) => {
-  if (Array.isArray(contextValue)) {
-    return (contextValue[0] as { universeData?: unknown })?.universeData;
-  }
-  return (contextValue as { universeData?: unknown })?.universeData;
-};
 
 export type GuidedNodesAvailabilityLayoutSlots = {
   map: ReactNode;
@@ -49,14 +41,13 @@ export function GuidedNodesAvailabilityGeoLayout({
   availabilityZones,
   lesserNodesAlert
 }: Omit<GuidedNodesAvailabilityLayoutSlots, 'dedicatedNode'>) {
-  const addGeoPartitionContext = useContext(AddGeoPartitionContext);
-  const universeData = getGeoUniverseData(addGeoPartitionContext);
-  const { universeData: editUniverseData } = useContext(EditUniverseContext);
-  const resolvedUniverseData = universeData ?? editUniverseData;
+  const [{ universeData }] = (useContext(
+    AddGeoPartitionContext
+  ) as unknown) as AddGeoPartitionContextMethods;
 
-  if (!resolvedUniverseData) return null;
+  if (!universeData) return null;
 
-  const cluster = getClusterByType(resolvedUniverseData, ClusterSpecClusterType.PRIMARY);
+  const cluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   
   return (
     <Box

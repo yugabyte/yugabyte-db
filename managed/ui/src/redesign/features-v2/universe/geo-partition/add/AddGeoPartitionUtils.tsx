@@ -1,5 +1,4 @@
 import { useCallback, useContext, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
   AddGeoPartitionContext,
   AddGeoPartitionContextMethods,
@@ -17,20 +16,18 @@ import {
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
-import { CloudType, Region } from '@app/redesign/helpers/dtos';
+import { Region } from '@app/redesign/helpers/dtos';
 import {
   getEffectiveReplicationFactorForResilience,
   getPlacementRegions
 } from '../../create-universe/CreateUniverseUtils';
-import { sanitizeClusters } from '../../read-replica/add/buildUniverseSpecForReadReplicaPricing';
-import { getEditUniverseSettingsRoute } from '../../edit-universe/editUniverseTabUtils';
 
 export function navigateToUniverseSettingsFromWizard(
   universeData?: UniverseRespResponse
 ): void {
   const uuid = universeData?.info?.universe_uuid;
   if (uuid) {
-    window.location.href = getEditUniverseSettingsRoute(uuid);
+    window.location.href = `/universes/${uuid}/settings`;
   }
 }
 
@@ -85,35 +82,30 @@ export function useGeoPartitionNavigation() {
 }
 
 export function useGetSteps(context: AddGeoPartitionContextProps): Step[] {
-  const { geoPartitions, activeGeoPartitionIndex, isNewGeoPartition, universeData } = context;
-  const { t } = useTranslation('translation', { keyPrefix: 'geoPartition.steps' });
-  const isK8s =
-    universeData?.spec?.clusters?.[0]?.placement_spec?.cloud_list?.[0]?.code ===
-    CloudType.kubernetes;
-  const azStepTitle = t(isK8s ? 'podsAndAvailabilityZone' : 'nodesAndAvailabilityZone');
+  const { geoPartitions, activeGeoPartitionIndex, isNewGeoPartition } = context;
 
   return useMemo(() => {
     const steps: Step[] = geoPartitions.map((geoPartition, index) => ({
       groupTitle: geoPartition.name,
       subSteps: [
         {
-          title: t('generalSettings')
+          title: 'General Settings'
         },
         ...(index !== 0 || !isNewGeoPartition
           ? [
               {
-                title: t('regions')
+                title: 'Regions'
               },
               {
-                title: azStepTitle
+                title: 'Availability Zones and Nodes'
               }
             ]
           : [])
       ]
     }));
 
-    return [...steps, { groupTitle: t('review'), subSteps: [{ title: t('summaryAndCost') }] }];
-  }, [geoPartitions, activeGeoPartitionIndex, isNewGeoPartition, azStepTitle, t]);
+    return [...steps, { groupTitle: 'Review', subSteps: [{ title: 'Summary and Cost' }] }];
+  }, [geoPartitions, activeGeoPartitionIndex, isNewGeoPartition]);
 }
 
 export type RegionsAndNodesFormType = {
@@ -203,12 +195,9 @@ export const extractRegionsAndNodeDataFromUniverse = (
   providerRegions: Region[]
 ): RegionsAndNodesFormType => {
   const regions: RegionsAndNodesFormType['regions'] = [];
-  const isGeoPartioned = getExistingGeoPartitions(universeData).length > 0;
 
   universeData.spec?.clusters.forEach((cluster) => {
-
-    const cloudList = isGeoPartioned ? cluster.partitions_spec?.[0].placement?.cloud_list : cluster.placement_spec?.cloud_list;
-    cloudList?.[0].region_list?.forEach((region) => {
+    cluster.placement_spec?.cloud_list[0].region_list?.forEach((region) => {
       const regionData = providerRegions.find((r) => r.uuid === region.uuid);
       if (!regionData) return;
       const azs = region?.az_list;
@@ -285,7 +274,7 @@ export function buildUniverseSpecForGeoPartitionPricing(
   return {
     spec: {
       ...universeData.spec,
-      clusters: sanitizeClusters(universeData.spec.clusters).map((cluster) =>
+      clusters: universeData.spec.clusters.map((cluster) =>
         cluster.cluster_type === ClusterSpecClusterType.PRIMARY
           ? {
               ...cluster,
@@ -361,10 +350,6 @@ export const prepareAddGeoPartitionPayload = (
     throw new Error('Primary cluster placement cloud is missing in universe data');
   }
 
-  // Preserve the existing default partition's uuid when the wizard is converting a
-  // non-geo-partitioned universe (payload[0] replaces the existing default rather than appends).
-  const existingDefaultPartition = getDefaultPrimaryPartitionSpec(universeData);
-
   if (geoPartitions.length) {
     return geoPartitions.map((gp, index) => {
       if (!gp.resilience) {
@@ -377,23 +362,20 @@ export const prepareAddGeoPartitionPayload = (
 
       const base: Pick<
         ClusterPartitionSpec,
-        'uuid' | 'name' | 'tablespace_name' | 'default_partition' | 'replication_factor'
+        'name' | 'tablespace_name' | 'default_partition' | 'replication_factor'
       > = {
-        ...(isDefaultNewPartition && existingDefaultPartition?.uuid
-          ? { uuid: existingDefaultPartition.uuid }
-          : {}),
         name: gp.name,
         tablespace_name: gp.tablespaceName,
         default_partition: isDefaultNewPartition,
         replication_factor: isDefaultNewPartition
           ? primaryCluster.replication_factor!
-          : getEffectiveReplicationFactorForResilience(gp.resilience, gp.nodesAndAvailability)
+          : getEffectiveReplicationFactorForResilience(gp.resilience)
       };
 
       // New default partition mirrors primary cluster placement unless AZs were configured in the wizard.
       if (isDefaultNewPartition) {
         if (hasConfiguredAvailabilityZones(azs)) {
-          const regionList = getPlacementRegions(gp.resilience, azs, gp.nodesAndAvailability);
+          const regionList = getPlacementRegions(gp.resilience, azs);
           return {
             ...base,
             placement: {
@@ -416,7 +398,7 @@ export const prepareAddGeoPartitionPayload = (
 
       // Match create-universe: per-AZ replication_factor sums to partition RF, drop 0-node AZs,
       // and map leader_preference from preffered.
-      const regionList = getPlacementRegions(gp.resilience, azs, gp.nodesAndAvailability);
+      const regionList = getPlacementRegions(gp.resilience, azs);
 
       return {
         ...base,

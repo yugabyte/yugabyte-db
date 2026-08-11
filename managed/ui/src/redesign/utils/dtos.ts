@@ -1,5 +1,3 @@
-import { OnPremNodeState } from '../helpers/dtos';
-
 export interface RunTimeConfigData {
   configID: number;
   configKey: string;
@@ -279,10 +277,8 @@ export interface ProviderNode {
   inUse: boolean;
   instanceName: string;
   instanceTypeCode: string;
-  manuallyDecommissioned?: boolean;
   nodeName: string;
   nodeUuid: string;
-  state?: OnPremNodeState;
   zoneUuid: string;
 }
 

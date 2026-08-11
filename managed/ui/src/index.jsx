@@ -9,7 +9,6 @@ import { initReactI18next } from 'react-i18next';
 import { Provider } from 'react-redux';
 import { Router, browserHistory } from 'react-router';
 import { QueryClient, QueryClientProvider } from 'react-query';
-import { YBToastProvider } from './redesign/features-v2/universe/create-universe/helpers/ToastUtils';
 import fetchRoutes from './routes';
 import configureStore from './store/configureStore.js';
 import en from './translations/en.json';
@@ -18,7 +17,6 @@ import 'intl';
 import 'intl/locale-data/jsonp/en.js';
 import { YBCssBaseline, YBThemeProvider, yba } from '@yugabyte-ui-library/core';
 import Leaflet from 'leaflet';
-
 
 window.L = Leaflet.noConflict();
 
@@ -46,15 +44,13 @@ const AppWrapper = () => (
   <Provider store={store}>
     <QueryClientProvider client={queryClient}>
       <YBThemeProvider theme={ybaTheme}>
-        <YBToastProvider>
-          <ThemeProvider theme={mainTheme}>
-            <Router history={browserHistory}>
-              <CssBaseline />
-              <YBCssBaseline />
-              {fetchRoutes(store)}
-            </Router>
-          </ThemeProvider>
-        </YBToastProvider>
+        <ThemeProvider theme={mainTheme}>
+          <Router history={browserHistory}>
+            <CssBaseline />
+            <YBCssBaseline />
+            {fetchRoutes(store)}
+          </Router>
+        </ThemeProvider>
       </YBThemeProvider>
     </QueryClientProvider>
   </Provider>

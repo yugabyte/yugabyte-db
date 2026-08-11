@@ -8,8 +8,6 @@ import { RegionsAndNodesFormType } from '../../geo-partition/add/AddGeoPartition
 import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import { ClusterSpecClusterType, PlacementAZ } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import './MapTooltip.css';
-import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
-import { isKubernetesUniverse, useEditUniverseContext } from '../EditUniverseUtils';
 
 const { styled, Typography, Divider } = mui;
 
@@ -50,13 +48,13 @@ const ZoneItem = styled('li')<{ preferredRank?: number }>(({ preferredRank }) =>
   fontWeight: 600,
   height: '16px',
   padding: '14px 0px',
-  color: preferredRank === AZ_PREFFERED_HIGHEST_RANK ? '#BB42BC' : '#735AF5',
+  color: preferredRank === 0 ? '#BB42BC' : '#735AF5',
   '&::before': {
     content: '""',
     display: 'block',
     width: '4px',
     height: '4px',
-    backgroundColor: preferredRank === AZ_PREFFERED_HIGHEST_RANK ? '#BB42BC' : '#735AF5',
+    backgroundColor: preferredRank === 0 ? '#BB42BC' : '#735AF5',
     borderRadius: '50%'
   }
 }));
@@ -68,22 +66,21 @@ const StyledDivider = styled(Divider)(({ theme }) => ({
   height: '1px'
 }));
 
-const RegionList: FC<{
-  regions: RegionsAndNodesFormType['regions'];
-  t: TFunction;
-  isK8s: boolean;
-}> = ({ regions, t, isK8s }) => {
+const RegionList: FC<{ regions: RegionsAndNodesFormType['regions']; t: TFunction }> = ({
+  regions,
+  t
+}) => {
   return (
     <>
       {regions?.map((region) => {
         const sortedZones = [...(region?.zones ?? [])].sort((a, b) => {
           const prefA = isDefinedNotNull(a.leader_preference)
-            ? a.leader_preference! !== AZ_NOT_PREFERRED
+            ? a.leader_preference! !== -1
               ? a.leader_preference!
               : Number.MAX_VALUE
             : Number.MAX_VALUE;
           const prefB = isDefinedNotNull(b.leader_preference)
-            ? b.leader_preference! !== AZ_NOT_PREFERRED
+            ? b.leader_preference! !== -1
               ? b.leader_preference!
               : Number.MAX_VALUE
             : Number.MAX_VALUE;
@@ -97,14 +94,12 @@ const RegionList: FC<{
                   {zone.name}
                 </Typography>
                 <StyledNodeCount>
-                  {t(isK8s ? 'totalPods' : 'totalNodes', {
-                    total: (zone as PlacementAZ).num_nodes_in_az ?? 0
-                  })}
+                  {t('totalNodes', { total: (zone as PlacementAZ).num_nodes_in_az ?? 0 })}
                 </StyledNodeCount>
-                {isDefinedNotNull(zone.leader_preference) && zone.leader_preference! > AZ_NOT_PREFERRED && (
+                {isDefinedNotNull(zone.leader_preference) && zone.leader_preference! >= 0 && (
                   <YBSmartStatus
                     type={StatusType.OTHER}
-                    label={t('preferredRank', { rank: zone.leader_preference! })}
+                    label={t('preferredRank', { rank: zone.leader_preference! + 1 })}
                     iconPosition={IconPosition.NONE}
                   />
                 )}
@@ -128,8 +123,6 @@ export const MapRegionTooltip: FC<MapRegionTooltipProps> = ({ regions, partition
   const regionsByType = groupBy(regions, 'clusterType');
 
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse' });
-  const { universeData } = useEditUniverseContext();
-  const isK8s = isKubernetesUniverse(universeData!);
   return (
     <StyledTooltipContainer>
       {partitionName && (
@@ -141,17 +134,9 @@ export const MapRegionTooltip: FC<MapRegionTooltipProps> = ({ regions, partition
       <StyledHeader>
         {regions[0]?.name} ({regions[0]?.code})
       </StyledHeader>
-      <RegionList
-        regions={regionsByType[ClusterSpecClusterType.PRIMARY] ?? []}
-        t={t}
-        isK8s={isK8s}
-      />
+      <RegionList regions={regionsByType[ClusterSpecClusterType.PRIMARY] ?? []} t={t} />
       {regionsByType[ClusterSpecClusterType.ASYNC] && <StyledDivider />}
-      <RegionList
-        regions={regionsByType[ClusterSpecClusterType.ASYNC] ?? []}
-        t={t}
-        isK8s={isK8s}
-      />
+      <RegionList regions={regionsByType[ClusterSpecClusterType.ASYNC] ?? []} t={t} />
     </StyledTooltipContainer>
   );
 };

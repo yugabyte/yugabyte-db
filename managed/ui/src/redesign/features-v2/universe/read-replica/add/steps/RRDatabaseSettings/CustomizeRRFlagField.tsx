@@ -29,25 +29,31 @@ export const CustomizeRRFlagField = () => {
         border: '1px solid #D7DEE4',
         borderRadius: '8px',
         padding: '16px 24px',
-        alignItems: 'start',
-        flexDirection: 'column'
+        alignItems: 'start'
       }}
       data-testid="InheritFlag-Container"
     >
       <YBToggleField
         name={CUSTOMIZE_RR_FLAG_FIELD}
         inputProps={{
-          'data-testid': 'inheritFlag-Toggle'
+          'data-testid': 'PGCompatibiltyField-Toggle'
         }}
-        label={t('advancedFlagLabel')}
         control={control}
         dataTestId="inheritFlag-field"
       />
-      <Box sx={{ ml: '40px' }}>
-        <StyledSubText>
-          {t('advancedFlagSubText')} <br />
-          <Trans t={t} i18nKey={'advancedFlagNote'}></Trans>
-        </StyledSubText>
+      <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+          <Typography variant="body2" sx={{ color: '#0B1117', ml: 1, mr: 1 }}>
+            {t('advancedFlagLabel')}
+          </Typography>
+        </Box>
+
+        <Box sx={{ gap: '8px' }}>
+          <StyledSubText>
+            {t('advancedFlagSubText')} <br />
+            <Trans t={t} i18nKey={'advancedFlagNote'}></Trans>
+          </StyledSubText>
+        </Box>
       </Box>
     </Box>
   );

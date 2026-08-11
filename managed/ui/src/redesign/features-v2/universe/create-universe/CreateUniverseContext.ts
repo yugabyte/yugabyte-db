@@ -30,12 +30,6 @@ import {
 } from './fields/FieldNames';
 import { ArchitectureType } from '@app/components/configRedesign/providerRedesign/constants';
 import { CloudType } from '@app/redesign/helpers/dtos';
-import { DEFAULT_COMMUNICATION_PORTS } from './helpers/constants';
-import {
-  applyConnectionPoolingPortsToAdvanced,
-  applyConnectionPoolingPortsToDatabase,
-  DEFAULT_CONNECTION_POOLING_PORTS
-} from './helpers/syncConnectionPoolingPorts';
 
 export enum CreateUniverseSteps {
   GENERAL_SETTINGS = 1,
@@ -89,14 +83,12 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     },
     gFlags: [],
     enableConnectionPooling: false,
-    overrideCPPorts: false,
-    ...DEFAULT_CONNECTION_POOLING_PORTS,
     enablePGCompatibitilty: false
   },
   instanceSettings: {
     arch: ArchitectureType.X86_64,
     imageBundleUUID: '',
-    useSpotInstance: false,
+    useSpotInstance: true,
     instanceType: null,
     masterInstanceType: null,
     deviceInfo: null,
@@ -108,11 +100,9 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     ebsKmsConfigUUID: null
   },
   securitySettings: {
-    enableClientToNodeEncryption: true,
-    enableNodeToNodeEncryption: true,
-    enableIPV6: false,
-    enableExposingService: false,
-    assignPublicIP: false
+    enableClientToNodeEncryption: false,
+    enableNodeToNodeEncryption: false,
+    enableIPV6: false
   },
   resilienceType: ResilienceType.REGULAR,
   proxySettings: {
@@ -125,15 +115,6 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     webProxyPort: undefined,
     byPassProxyList: false,
     byPassProxyListValues: []
-  },
-  otherAdvancedSettings: {
-    ...DEFAULT_COMMUNICATION_PORTS as any,
-    instanceTags: [],
-    awsArnString: '',
-    useSystemd: true,
-    accessKeyCode: '',
-    universeOverrides: '',
-    azOverrides: {}
   }
 };
 
@@ -170,30 +151,10 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
     ...context,
     instanceSettings: data
   }),
-  saveDatabaseSettings: (data: DatabaseSettingsProps) => {
-    const shouldApplyCpPorts = !!(data.enableConnectionPooling && data.overrideCPPorts);
-    let otherAdvancedSettings = context.otherAdvancedSettings;
-
-    if (shouldApplyCpPorts) {
-      // Sync CP ports into Advanced deployment ports only when CP + override are enabled.
-      otherAdvancedSettings = applyConnectionPoolingPortsToAdvanced(otherAdvancedSettings, {
-        ysqlServerRpcPort: data.ysqlServerRpcPort,
-        internalYsqlServerRpcPort: data.internalYsqlServerRpcPort
-      });
-    } else if (otherAdvancedSettings) {
-      // When CP or override is off, Internal YSQL Port must stay at the default.
-      otherAdvancedSettings = {
-        ...otherAdvancedSettings,
-        internalYsqlServerRpcPort: DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
-      };
-    }
-
-    return {
-      ...context,
-      databaseSettings: data,
-      otherAdvancedSettings
-    };
-  },
+  saveDatabaseSettings: (data: DatabaseSettingsProps) => ({
+    ...context,
+    databaseSettings: data
+  }),
   saveSecuritySettings: (data: SecuritySettingsProps) => ({
     ...context,
     securitySettings: data
@@ -202,30 +163,10 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
     ...context,
     proxySettings: data
   }),
-  saveOtherAdvancedSettings: (data: OtherAdvancedProps) => {
-    const shouldApplyCpPorts = !!(
-      context.databaseSettings?.enableConnectionPooling &&
-      context.databaseSettings?.overrideCPPorts
-    );
-    const otherAdvancedSettings = shouldApplyCpPorts
-      ? data
-      : {
-          ...data,
-          internalYsqlServerRpcPort: DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
-        };
-
-    return {
-      ...context,
-      otherAdvancedSettings,
-      // Sync Advanced deployment ports back to Database CP fields only when CP + override are enabled.
-      databaseSettings: shouldApplyCpPorts
-        ? applyConnectionPoolingPortsToDatabase(context.databaseSettings, {
-            ysqlServerRpcPort: data.ysqlServerRpcPort,
-            internalYsqlServerRpcPort: data.internalYsqlServerRpcPort
-          })
-        : context.databaseSettings
-    };
-  },
+  saveOtherAdvancedSettings: (data: OtherAdvancedProps) => ({
+    ...context,
+    otherAdvancedSettings: data
+  }),
   setResilienceType: (resilienceType: ResilienceType) => ({
     ...context,
     resilienceType

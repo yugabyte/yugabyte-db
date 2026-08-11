@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
@@ -123,20 +122,16 @@ export const LinuxVersionField = ({
     [QUERY_KEY.getLinuxVersions, provider?.uuid, cpuArch],
     () => api.getLinuxVersions(provider?.uuid ?? '', cpuArch),
     {
-      enabled: !!provider?.uuid && !!cpuArch
+      enabled: !!provider?.uuid && !!cpuArch,
+      onSuccess(data) {
+        const selected = data.find((item) => item.uuid === fieldValue);
+        if (!selected && data.length) {
+          const defaultImg = data.find((item) => item.useAsDefault);
+          setValue(LINUX_VERSION_FIELD, defaultImg?.uuid ?? data[0].uuid, { shouldValidate: true });
+        }
+      }
     }
   );
-
-  useEffect(() => {
-    if (!linuxVersions?.length) return;
-    const selected = linuxVersions.find((item) => item.uuid === fieldValue);
-    if (!selected) {
-      const defaultImg = linuxVersions.find((item) => item.useAsDefault);
-      setValue(LINUX_VERSION_FIELD, defaultImg?.uuid ?? linuxVersions[0].uuid, {
-        shouldValidate: true
-      });
-    }
-  }, [linuxVersions, fieldValue, setValue]);
 
   return (
     <Box display="flex" width="100%" data-testid="linuxVersion-Container">

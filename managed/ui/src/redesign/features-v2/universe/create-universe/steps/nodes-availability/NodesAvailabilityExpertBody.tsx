@@ -30,7 +30,6 @@ type Props = Pick<
   | 'resilienceAndRegionsSettings'
 > & {
   isGeoPartition?: boolean;
-  hideDedicatedNodes?: boolean;
 };
 
 export function NodesAvailabilityExpertBody({
@@ -43,8 +42,7 @@ export function NodesAvailabilityExpertBody({
   inferredResilience,
   effectiveReplicationFactor,
   resilienceAndRegionsSettings,
-  isGeoPartition = false,
-  hideDedicatedNodes = false
+  isGeoPartition = false
 }: Props) {
   const { watch } = useFormContext<NodeAvailabilityProps>();
   const availabilityZonesForm = watch('availabilityZones');
@@ -111,7 +109,7 @@ export function NodesAvailabilityExpertBody({
     />
   ) : null;
 
-  const dedicatedNode = hideDedicatedNodes ? null : <DedicatedNode />;
+  const dedicatedNode = <DedicatedNode />;
 
   const slots = {
     map,

@@ -44,5 +44,5 @@ export interface CommunicationPorts {
   ysqlServerRpcPort: number;
   nodeExporterPort: number;
   internalYsqlServerRpcPort?: number;
-  ybControllerRpcPort: number;
+  ybControllerrRpcPort: number;
 }

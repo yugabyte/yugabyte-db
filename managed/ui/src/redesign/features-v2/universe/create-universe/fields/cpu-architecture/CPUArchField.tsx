@@ -29,22 +29,22 @@ export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled, supportedArchs }
     {
       value: ArchitectureType.X86_64,
       label: t(ArchitectureType.X86_64),
-      disabled: !supportedArchs.includes(ArchitectureType.X86_64) || disabled,
+      disabled: !supportedArchs.includes(ArchitectureType.X86_64),
       tooltip: !supportedArchs.includes(ArchitectureType.X86_64) ? t('cpuArchNotSupported') : ''
     },
     {
       value: ArchitectureType.ARM64,
       label: t(ArchitectureType.ARM64),
-      disabled: !supportedArchs.includes(ArchitectureType.ARM64) || disabled,
+      disabled: !supportedArchs.includes(ArchitectureType.ARM64),
       tooltip: !supportedArchs.includes(ArchitectureType.ARM64) ? t('cpuArchNotSupported') : ''
     }
   ];
 
   useEffect(() => {
-    if (supportedArchs.length && fieldValue && !supportedArchs.includes(fieldValue)) {
+    if (!supportedArchs.includes(fieldValue) && fieldValue) {
       setValue(CPU_ARCH_FIELD, supportedArchs[0]);
     }
-  }, [fieldValue, supportedArchs, setValue]);
+  }, [fieldValue, supportedArchs]);
 
   return (
     <Box sx={{ display: 'flex', width: '100%', flexDirection: 'column' }}>

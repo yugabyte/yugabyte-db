@@ -32,5 +32,3 @@ export const SwitchRRSteps = forwardRef((_props, forwardRef) => {
 
   return getCurrentComponent() ?? null;
 });
-
-SwitchRRSteps.displayName = 'SwitchRRSteps';

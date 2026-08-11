@@ -1,4 +1,4 @@
-import { useContext, useState } from 'react';
+import { useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 import pluralize from 'pluralize';
@@ -8,8 +8,6 @@ import { ResilienceTooltip } from './index';
 import { FaultToleranceType, ResilienceAndRegionsProps } from './dtos';
 import { FAULT_TOLERANCE_TYPE, RESILIENCE_FACTOR } from '../../fields/FieldNames';
 import { ResilienceRequirementCard } from './ResilienceRequirementCard';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { CloudType } from '@app/redesign/helpers/dtos';
 
 const { Box, styled, Typography } = mui;
 
@@ -60,12 +58,6 @@ export const GuidedMode = () => {
   });
   const [showResilienceTooltip, setShowResilienceTooltip] = useState(false);
   const { watch, getValues } = useFormContext<ResilienceAndRegionsProps>();
-  const [{ generalSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
-  const isK8s =
-    generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
   const resilienceFactor = watch(RESILIENCE_FACTOR);
   const faultToleranceType = watch(FAULT_TOLERANCE_TYPE);
   const isNone = faultToleranceType === FaultToleranceType.NONE;
@@ -118,7 +110,6 @@ export const GuidedMode = () => {
             name={FAULT_TOLERANCE_TYPE}
             label=""
             t={t}
-            isK8s={isK8s}
             sx={{ width: '160px', minWidth: '160px' }}
           />
           {!isNone && (

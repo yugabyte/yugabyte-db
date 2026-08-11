@@ -32,11 +32,10 @@ export const InstanceARNField: FC<InstanceARNProps> = ({ disabled }) => {
         dataTestId="instance-arn-field"
         control={control}
         name={INSTANCE_ARN_FIELD}
-        sx={{ width: '560px' }}
+        fullWidth
         disabled={disabled}
-        placeholder={t('createUniverseV2.otherAdvancedSettings.arnPlaceholder')}
         label={t('createUniverseV2.otherAdvancedSettings.arnField')}
-        helperText={t('createUniverseV2.otherAdvancedSettings.arnHelper')}
+        sx={{ width: '734px' }}
       />
     </Box>
   );

@@ -17,7 +17,7 @@ import { YSQL_AUTH_FIELD, YSQL_FIELD, YSQL_CONFIRM_PWD, YSQL_PASSWORD_FIELD } fr
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/approved/info-new.svg';
+import InfoIcon from '../../../../../assets/info-new.svg';
 
 const { Box } = mui;
 interface YSQLProps {
@@ -49,11 +49,9 @@ export const YSQLField: FC<YSQLProps> = ({ disabled }) => {
               dataTestId="ysql-settings-field"
               disabled={disabled}
             />
-            <YBTooltip title={t('ysqlSettings.enableYSQLHelper')}>
-              <span>
-                <InfoIcon />
-              </span>
-            </YBTooltip>
+            <span>
+              <InfoIcon />
+            </span>
           </div>
         </Box>
       </Box>

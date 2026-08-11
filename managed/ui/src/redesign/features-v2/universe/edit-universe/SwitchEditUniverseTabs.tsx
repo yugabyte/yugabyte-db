@@ -1,13 +1,11 @@
 import { useContext } from 'react';
-import { GeneralTab } from './settings/GeneralTab';
-import { PlacementTab } from './settings/PlacementTab';
-import { HardwareTab } from './settings/HardwareTab';
+import { GeneralTab } from './steps/GeneralTab';
+import { PlacementTab } from './steps/PlacementTab';
+import { HardwareTab } from './steps/HardwareTab';
 import { EditUniverseContext, EditUniverseTabs } from './EditUniverseContext';
-import { SecurityTab } from './settings/SecurityTab';
-import { DatabaseTab } from './settings/DatabaseTab';
-import { AdvancedTab } from './settings/AdvancedTab';
-import { LogsTab } from './settings/logs-tab/LogsTab';
-import { TelemetryExportTab } from './settings/telemetry-export-tab/TelemetryExportTab';
+import { SecurityTab } from './steps/SecurityTab';
+import { DatabaseTab } from './steps/DatabaseTab';
+import { AdvancedTab } from './steps/AdvancedTab';
 
 export const SwitchEditUniverseTabs = () => {
   const { activeTab } = useContext(EditUniverseContext);
@@ -24,10 +22,6 @@ export const SwitchEditUniverseTabs = () => {
       return <DatabaseTab />;
     case EditUniverseTabs.ADVANCED:
       return <AdvancedTab />;
-    case EditUniverseTabs.LOGS:
-      return <LogsTab />;
-    case EditUniverseTabs.TELEMETRY_EXPORT:
-      return <TelemetryExportTab />;
     default:
       return null;
   }

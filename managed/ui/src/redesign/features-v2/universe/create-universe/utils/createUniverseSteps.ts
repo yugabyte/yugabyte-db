@@ -1,15 +1,7 @@
 import { TFunction } from 'i18next';
 import { ResilienceType } from '../steps/resilence-regions/dtos';
 
-export function getCreateUniverseSteps(
-  t: TFunction,
-  resilienceType?: ResilienceType,
-  isK8s = false,
-  showOptional = true
-) {
-  const withOptional = (key: string) =>
-    showOptional ? `${t(key)} ${t('optional')}` : t(key);
-
+export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {
   return [
     {
       groupTitle: t('general'),
@@ -28,7 +20,7 @@ export function getCreateUniverseSteps(
         ...(resilienceType === ResilienceType.REGULAR
           ? [
               {
-                title: t(isK8s ? 'podsAndAvailabilityZone' : 'nodesAndAvailabilityZone')
+                title: t('nodesAndAvailabilityZone')
               }
             ]
           : [])
@@ -62,10 +54,10 @@ export function getCreateUniverseSteps(
       groupTitle: t('advanced'),
       subSteps: [
         {
-          title: withOptional('proxySettings')
+          title: t('proxySettings')
         },
         {
-          title: withOptional('otherAdvancedSettings')
+          title: t('otherAdvancedSettings')
         }
       ]
     },

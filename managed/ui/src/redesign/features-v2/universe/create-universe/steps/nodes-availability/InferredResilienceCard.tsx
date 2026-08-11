@@ -1,12 +1,10 @@
-import { FC, useContext, useMemo } from 'react';
+import { FC, useMemo } from 'react';
 import pluralize from 'pluralize';
 import { Trans, useTranslation } from 'react-i18next';
 import { NodeAvailabilityProps } from './dtos';
 import { FaultToleranceType } from '../resilence-regions/dtos';
 import { mui } from '@yugabyte-ui-library/core';
 import { getInferredOutageCount, inferResilience } from '../../CreateUniverseUtils';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { CloudType } from '@app/redesign/helpers/dtos';
 
 import CheckBlueIcon from '../../../../../assets/check_blue.svg';
 import CautionIcon from '../../../../../assets/caution.svg';
@@ -52,14 +50,14 @@ const textSx = {
   fontWeight: 400
 } as const;
 
-function getOutageLevelKey(inferredResilience: InferredResilience, isK8s: boolean) {
+function getOutageLevelKey(inferredResilience: InferredResilience) {
   switch (inferredResilience) {
     case FaultToleranceType.REGION_LEVEL:
       return 'regionOutage';
     case FaultToleranceType.AZ_LEVEL:
       return 'availabilityZoneOutage';
     default:
-      return isK8s ? 'podOutage' : 'nodeOutage';
+      return 'nodeOutage';
   }
 }
 
@@ -71,30 +69,23 @@ export const InferredResilienceCard: FC<InferredResilienceCardProps> = ({
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.inferredResilienceCard'
   });
-  const [{ generalSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
-  const isK8s =
-    generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
   const outageCount = getInferredOutageCount(
     inferredResilience,
     replicationFactor,
     availabilityZones
   );
   const notResilient = replicationFactor <= 1;
-  const cardVisible = notResilient || (inferredResilience !== null && outageCount > 0);
 
   const outageLevelLabel = useMemo(() => {
     if (!inferredResilience) {
       return '';
     }
-    return pluralize(t(getOutageLevelKey(inferredResilience, isK8s)), outageCount);
-  }, [inferredResilience, outageCount, isK8s, t]);
+    return pluralize(t(getOutageLevelKey(inferredResilience)), outageCount);
+  }, [inferredResilience, outageCount, t]);
 
   // For RF=1, explicitly show the not-resilient message.
   // Otherwise hide when resilience cannot be inferred or outage tolerance is zero.
-  if (!cardVisible) {
+  if (!notResilient && (inferredResilience === null || outageCount <= 0)) {
     return null;
   }
 

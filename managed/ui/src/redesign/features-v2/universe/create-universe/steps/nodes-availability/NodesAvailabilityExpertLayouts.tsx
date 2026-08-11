@@ -3,23 +3,15 @@ import { mui } from '@yugabyte-ui-library/core';
 import { NodeInstanceDetails } from '../../../geo-partition/add/NodeInstanceDetails';
 import { getClusterByType } from '../../../edit-universe/EditUniverseUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { AddGeoPartitionContext } from '../../../geo-partition/add/AddGeoPartitionContext';
-import { EditUniverseContext } from '../../../edit-universe/EditUniverseContext';
+import { AddGeoPartitionContext, AddGeoPartitionContextMethods } from '../../../geo-partition/add/AddGeoPartitionContext';
 
 const { Box } = mui;
-
-const getGeoUniverseData = (contextValue: unknown) => {
-  if (Array.isArray(contextValue)) {
-    return (contextValue[0] as { universeData?: unknown })?.universeData;
-  }
-  return (contextValue as { universeData?: unknown })?.universeData;
-};
 
 export type ExpertNodesAvailabilityLayoutSlots = {
   map: ReactNode;
   availabilityZones: ReactNode;
   lesserNodesAlert: ReactNode;
-  dedicatedNode?: ReactNode;
+  dedicatedNode: ReactNode;
 };
 
 /** Create-universe expert nodes: map first, then form stack (current behavior). */
@@ -39,21 +31,20 @@ export function ExpertNodesAvailabilityDefaultLayout({
   );
 }
 
-/** Add geo partition / edit-placement expert nodes: main column left, map + instance details right. */
+/** Add geo partition expert nodes: main column left, map + instance details right (aligned with guided geo). */
 export function ExpertNodesAvailabilityGeoLayout({
   map,
   availabilityZones,
   lesserNodesAlert,
   dedicatedNode
 }: ExpertNodesAvailabilityLayoutSlots) {
-  const addGeoPartitionContext = useContext(AddGeoPartitionContext);
-  const universeData = getGeoUniverseData(addGeoPartitionContext);
-  const { universeData: editUniverseData } = useContext(EditUniverseContext);
-  const resolvedUniverseData = universeData ?? editUniverseData;
+  const [{ universeData }] = (useContext(
+    AddGeoPartitionContext
+  ) as unknown) as AddGeoPartitionContextMethods;
 
-  if (!resolvedUniverseData) return null;
+  if (!universeData) return null;
 
-  const cluster = getClusterByType(resolvedUniverseData, ClusterSpecClusterType.PRIMARY);
+  const cluster = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
 
   return (
     <Box

@@ -8,7 +8,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { forwardRef, useContext, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -24,34 +24,31 @@ import {
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
-import {
-  resetProviderDependentSettings,
-  usePersistStepFormValues
-} from '../../helpers/persistStepFormValues';
 import { GeneralSettingsValidationSchema } from './ValidationSchema';
 import { GeneralSettingsProps } from './dtos';
+import { ResilienceType, ResilienceFormMode, FaultToleranceType } from '../resilence-regions/dtos';
 import {
   CLOUD,
   DATABASE_VERSION,
   PROVIDER_CONFIGURATION,
-  UNIVERSE_NAME
+  UNIVERSE_NAME,
+  REGIONS_FIELD,
+  RESILIENCE_TYPE,
+  RESILIENCE_FORM_MODE,
+  RESILIENCE_FACTOR,
+  FAULT_TOLERANCE_TYPE,
+  NODE_COUNT,
+  SINGLE_AVAILABILITY_ZONE
 } from '../../fields/FieldNames';
 import ShuffleIcon from '../../../../../assets/shuffle.svg';
 import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
-import { Box } from '@material-ui/core';
 
 const CONTROL_WIDTH = '480px';
 
 export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { generalSettings },
-    {
-      moveToNextPage,
-      saveGeneralSettings,
-      saveResilienceAndRegionsSettings,
-      saveNodesAvailabilitySettings,
-      saveInstanceSettings
-    }
+    { generalSettings, resilienceAndRegionsSettings },
+    { moveToNextPage, saveGeneralSettings, saveResilienceAndRegionsSettings }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.generalSettings' });
@@ -61,13 +58,12 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
     mode: 'onChange'
   });
 
-  usePersistStepFormValues(methods.watch, methods.getValues, saveGeneralSettings);
-
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
-        return methods.handleSubmit(() => {
+        return methods.handleSubmit((data) => {
+          saveGeneralSettings(data);
           moveToNextPage();
         })();
       },
@@ -78,24 +74,20 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   const { errors } = methods.formState;
   const cloud = methods.watch('cloud');
-  const providerConfiguration = methods.watch(PROVIDER_CONFIGURATION);
-  const previousProviderUuidRef = useRef(providerConfiguration?.uuid);
 
   useEffect(() => {
-    const providerUuid = providerConfiguration?.uuid;
-    const previousProviderUuid = previousProviderUuidRef.current;
-    previousProviderUuidRef.current = providerUuid;
-
-    // Selecting the initial provider is not a provider change. This also prevents
-    // returning to this step from clearing the previously configured placement.
-    if (!previousProviderUuid || previousProviderUuid === providerUuid) return;
-
-    resetProviderDependentSettings({
-      saveResilienceAndRegionsSettings,
-      saveNodesAvailabilitySettings,
-      saveInstanceSettings
+    saveResilienceAndRegionsSettings({
+      [REGIONS_FIELD]: [],
+      [SINGLE_AVAILABILITY_ZONE]: '',
+      [RESILIENCE_TYPE]: resilienceAndRegionsSettings?.[RESILIENCE_TYPE] ?? ResilienceType.REGULAR,
+      [RESILIENCE_FORM_MODE]:
+        resilienceAndRegionsSettings?.[RESILIENCE_FORM_MODE] ?? ResilienceFormMode.GUIDED,
+      [RESILIENCE_FACTOR]: resilienceAndRegionsSettings?.[RESILIENCE_FACTOR] ?? 3,
+      [FAULT_TOLERANCE_TYPE]:
+        resilienceAndRegionsSettings?.[FAULT_TOLERANCE_TYPE] ?? FaultToleranceType.AZ_LEVEL,
+      [NODE_COUNT]: resilienceAndRegionsSettings?.[NODE_COUNT] ?? 1
     });
-  }, [providerConfiguration?.uuid]);
+  }, [cloud]);
 
   return (
     <FormProvider {...methods}>
@@ -122,9 +114,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
               }}
             />
           </div>
-          <Box maxWidth={740}>
           <CloudField<GeneralSettingsProps> name={CLOUD} label={t('cloudProvider')} />
-          </Box>
           {cloud && (
             <ProviderConfigurationField<GeneralSettingsProps>
               name={PROVIDER_CONFIGURATION}

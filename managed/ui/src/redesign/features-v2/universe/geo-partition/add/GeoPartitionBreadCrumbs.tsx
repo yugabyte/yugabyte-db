@@ -10,8 +10,7 @@ export const GeoPartitionBreadCrumb = ({ groupTitle, subTitle }: GeoPartitionBre
         alignItems: 'center',
         fontSize: '18px',
         fontWeight: '600',
-        gap: '12px',
-        padding: '40px 24px 40px 0px'
+        gap: '12px'
       }}
     >
       <span style={{ color: '#97A5B0' }}>{groupTitle}</span>

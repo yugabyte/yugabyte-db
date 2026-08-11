@@ -12,21 +12,13 @@ import { useContext, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CreateUniverseContext, CreateUniverseContextMethods } from './CreateUniverseContext';
 import { getCreateUniverseSteps } from './CreateUniverseUtils';
-import { CloudType } from '@app/redesign/helpers/dtos';
 
 export const CreateUniverseBreadCrumb = () => {
-  const [{ activeStep, resilienceType, generalSettings }] = (useContext(
+  const [{ activeStep, resilienceType }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
-  const isK8s =
-    generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
-  const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType, isK8s), [
-    t,
-    resilienceType,
-    isK8s
-  ]);
+  const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType), [t, resilienceType]);
   let totalStepCount = 0;
   let groupTitle = '';
   let subTitle = '';

@@ -2,14 +2,6 @@ import * as Yup from 'yup';
 import { TFunction } from 'i18next';
 import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
 import { CloudType, StorageType } from '@app/redesign/features/universe/universe-form/utils/dto';
-import {
-  getDiskIopsRange,
-  getThroughputRange
-} from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
-
-type InstanceSettingsValidationContext = {
-  earKmsConfig?: string | null;
-};
 
 export const InstanceSettingsValidationSchema = (
   t: TFunction,
@@ -17,28 +9,20 @@ export const InstanceSettingsValidationSchema = (
   provider: CloudType | undefined,
   useDedicatedNodes: boolean
 ) => {
-  const isK8s = provider === 'kubernetes';
-  const requireTserverK8Spec = isK8s && useK8CustomResources;
-  const volumeInfoSchema = requireTserverK8Spec
-    ? K8VolumeInfoValidationSchema(t)
-    : DeviceInfoValidationSchema(t);
-  const masterHardwareShown = !!useDedicatedNodes || (isK8s && useK8CustomResources);
-  const requiresSeparateMasterHardware = (keepSame: unknown) => {
-    const same = Array.isArray(keepSame) ? keepSame[0] : keepSame;
-    return masterHardwareShown && !same;
-  };
-
   return Yup.object().shape({
+    // CPU Architecture validation
     arch: Yup.string()
       .oneOf(Object.values(ArchitectureType), t('validation.invalidArchitecture'))
       .required(t('validation.required', { field: 'CPU Architecture' })),
 
+    // Image Bundle UUID validation
     imageBundleUUID: Yup.string()
       .nullable()
       .test(
         'image-bundle-required',
         t('validation.required', { field: 'Linux Version' }),
         function (value) {
+          // Image bundle is required when OS patching is enabled
           const { parent } = this;
           const osPatchingEnabled = parent?.osPatchingEnabled;
 
@@ -49,14 +33,19 @@ export const InstanceSettingsValidationSchema = (
         }
       ),
 
+    // Spot Instance validation
     useSpotInstance: Yup.boolean().required(t('validation.required', { field: 'Spot Instance' })),
 
+    // Instance Type validation
     instanceType: Yup.string()
       .nullable()
       .test(
         'instance-type-required',
         t('validation.required', { field: 'Instance Type' }),
         function (value) {
+          const isK8s = provider === 'kubernetes';
+
+          // Instance type is required for non-K8s or K8s without custom resources
           if (!isK8s || (isK8s && !useK8CustomResources)) {
             return value !== null && value !== undefined && value !== '';
           }
@@ -64,6 +53,7 @@ export const InstanceSettingsValidationSchema = (
         }
       ),
 
+    // Master Instance Type validation
     masterInstanceType: Yup.string()
       .nullable()
       .test(
@@ -73,38 +63,132 @@ export const InstanceSettingsValidationSchema = (
         }),
         function (value) {
           const { parent } = this;
-          if (!requiresSeparateMasterHardware(parent?.keepMasterTserverSame)) {
-            return true;
-          }
-          if (!isK8s || (isK8s && !useK8CustomResources)) {
-            return value !== null && value !== undefined && value !== '';
+          const keepMasterTserverSame = parent?.keepMasterTserverSame;
+          const isK8s = provider === 'kubernetes';
+
+          // Master instance type is required when using dedicated nodes and not keeping master/tserver same
+          if (useDedicatedNodes && !keepMasterTserverSame) {
+            if (!isK8s || (isK8s && !useK8CustomResources)) {
+              return value !== null && value !== undefined && value !== '';
+            }
           }
           return true;
         }
       ),
 
-    deviceInfo: volumeInfoSchema,
+    // Device Info validation
+    deviceInfo: Yup.object()
+      .nullable()
+      .test('device-info-required', t('validation.required', { field: 'Device Info' }), function (
+        value
+      ) {
+        const isK8s = provider === 'kubernetes';
 
-    masterDeviceInfo: Yup.mixed().when('keepMasterTserverSame', {
-      is: (keepSame: unknown) => requiresSeparateMasterHardware(keepSame),
-      then: volumeInfoSchema,
-      otherwise: Yup.mixed().nullable()
-    }),
+        // Device info is required for non-K8s or K8s without custom resources
+        if (!isK8s || (isK8s && !useK8CustomResources)) {
+          return value !== null && value !== undefined;
+        }
+        return true;
+      })
+      .test('device-info-shape', t('validation.required', { field: 'Device Info' }), function (
+        value
+      ) {
+        if (value == null) return true;
+        try {
+          DeviceInfoValidationSchema(t).validateSync(value, { abortEarly: false });
+          return true;
+        } catch (err: any) {
+          const message =
+            err?.errors?.[0] ?? err?.message ?? t('validation.required', { field: 'Device Info' });
+          return this.createError({ message });
+        }
+      }),
 
-    tserverK8SNodeResourceSpec: requireTserverK8Spec
-      ? K8NodeSpecValidationSchema(t)
-      : Yup.mixed().nullable(),
+    // Master Device Info validation - required + shape (same as deviceInfo)
+    masterDeviceInfo: Yup.object()
+      .nullable()
+      .test(
+        'master-device-info-required',
+        t('validation.required', { field: 'Master Device Info' }),
+        function (value) {
+          const { parent } = this;
+          const keepMasterTserverSame = parent?.keepMasterTserverSame;
+          const isK8s = provider === 'kubernetes';
 
-    masterK8SNodeResourceSpec: Yup.mixed().when('keepMasterTserverSame', {
-      is: (keepSame: unknown) => requireTserverK8Spec && requiresSeparateMasterHardware(keepSame),
-      then: K8NodeSpecValidationSchema(t),
-      otherwise: Yup.mixed().nullable()
-    }),
+          // Master device info is required when using dedicated nodes and not keeping master/tserver same
+          if (useDedicatedNodes && !keepMasterTserverSame) {
+            if (!isK8s || (isK8s && !useK8CustomResources)) {
+              return value !== null && value !== undefined;
+            }
+          }
+          return true;
+        }
+      )
+      .test(
+        'device-info-shape',
+        t('validation.required', { field: 'Master Device Info' }),
+        function (value) {
+          if (value == null) return true;
+          try {
+            DeviceInfoValidationSchema(t).validateSync(value, { abortEarly: false });
+            return true;
+          } catch (err: any) {
+            const message =
+              err?.errors?.[0] ??
+              err?.message ??
+              t('validation.required', { field: 'Master Device Info' });
+            return this.createError({ message });
+          }
+        }
+      ),
 
+    // K8S Node Resource Spec validation for TServer
+    tserverK8SNodeResourceSpec: Yup.object()
+      .nullable()
+      .test(
+        'tserver-k8s-node-spec-required',
+        t('validation.required', {
+          field: 'TServer K8S Node Resource Spec'
+        }),
+        function (value) {
+          const isK8s = provider === 'kubernetes';
+
+          // K8S node spec is required for K8s with custom resources
+          if (isK8s && useK8CustomResources) {
+            return value !== null && value !== undefined;
+          }
+          return true;
+        }
+      ),
+
+    // K8S Node Resource Spec validation for Master
+    masterK8SNodeResourceSpec: Yup.object()
+      .nullable()
+      .test(
+        'master-k8s-node-spec-required',
+        t('validation.required', {
+          field: 'Master K8S Node Resource Spec'
+        }),
+        function (value) {
+          const { parent } = this;
+          const keepMasterTserverSame = parent?.keepMasterTserverSame;
+          const isK8s = provider === 'kubernetes';
+
+          // Master K8S node spec is required when using dedicated nodes and not keeping master/tserver same
+          if (useDedicatedNodes && !keepMasterTserverSame && isK8s && useK8CustomResources) {
+            return value !== null && value !== undefined;
+          }
+          return true;
+        }
+      ),
+
+    // Keep Master TServer Same validation
     keepMasterTserverSame: Yup.boolean().nullable().default(false),
 
+    // EBS Volume Encryption toggle (optional)
     enableEbsVolumeEncryption: Yup.boolean().nullable().default(false),
 
+    // EBS KMS Config - required when EBS volume encryption is enabled
     ebsKmsConfigUUID: Yup.string()
       .nullable()
       .test(
@@ -122,173 +206,87 @@ export const InstanceSettingsValidationSchema = (
           return true;
         }
       )
-      .test('ebs-kms-config-duplicate', t('kmsValidationMsg'), function (value) {
-        const earKmsConfig = (this.options.context as InstanceSettingsValidationContext | undefined)
-          ?.earKmsConfig;
-        if (!value || !earKmsConfig) return true;
-        return value !== earKmsConfig;
-      })
   });
 };
 
-const isEmptyNumberInput = (value: unknown) =>
-  value === null || value === undefined || value === '';
-
-const toFiniteNumber = (value: unknown): number | null => {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'string' && value.trim() !== '') {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-};
-
-// yup number().nullable().required() can let null through
-const requiredPositiveNumber = (t: TFunction, field: string, min = 1) =>
-  Yup.mixed()
-    .test('required', t('validation.required', { field }), (value) => {
-      return !isEmptyNumberInput(value);
-    })
-    .test('positive', t('validation.positiveNumber', { field }), (value) => {
-      if (isEmptyNumberInput(value)) return true;
-      const n = toFiniteNumber(value);
-      return n != null && n > 0;
-    })
-    .test('min', t('validation.minValue', { field, min }), (value) => {
-      if (isEmptyNumberInput(value)) return true;
-      const n = toFiniteNumber(value);
-      if (n == null || n <= 0) return true;
-      return n >= min;
-    });
-
+// Additional validation schemas for nested objects
 export const DeviceInfoValidationSchema = (t: TFunction) => {
   return Yup.object().shape({
-    volumeSize: requiredPositiveNumber(t, 'Volume Size', 1),
-    numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1),
+    volumeSize: Yup.number()
+      .positive(t('validation.positiveNumber', { field: 'Volume Size' }))
+      .required(t('validation.required', { field: 'Volume Size' }))
+      .min(1, t('validation.minValue', { field: 'Volume Size', min: 1 })),
 
-    diskIops: Yup.mixed()
-      .nullable()
-      .test(
-        'disk-iops-required',
-        t('validation.required', { field: 'Disk IOPS' }),
-        function (value) {
-          if (!getDiskIopsRange(this.parent?.storageType)) return true;
-          return !isEmptyNumberInput(value);
-        }
+    numVolumes: Yup.number()
+      .positive(
+        t('validation.positiveNumber', {
+          field: 'Number of Volumes'
+        })
       )
-      .test('disk-iops-range', function (value) {
-        const range = getDiskIopsRange(this.parent?.storageType);
-        if (!range || isEmptyNumberInput(value)) return true;
-        const n = toFiniteNumber(value);
-        if (n == null) {
-          return this.createError({
-            message: t('validation.required', { field: 'Disk IOPS' })
-          });
-        }
-        if (n <= 0) {
-          return this.createError({
-            message: t('validation.positiveNumber', { field: 'Disk IOPS' })
-          });
-        }
-        if (n < range.min) {
-          return this.createError({
-            message: t('validation.minValue', { field: 'Disk IOPS', min: range.min })
-          });
-        }
-        if (n > range.max) {
-          return this.createError({
-            message: t('validation.maxValue', { field: 'Disk IOPS', max: range.max })
-          });
-        }
-        return true;
+      .required(t('validation.required', { field: 'Number of Volumes' }))
+      .min(
+        1,
+        t('validation.minValue', {
+          field: 'Number of Volumes',
+          min: 1
+        })
+      ),
+
+    diskIops: Yup.number()
+      .nullable()
+      .when('storageType', {
+        is: StorageType.IO1,
+        then: Yup.number()
+          .positive(t('validation.positiveNumber', { field: 'Disk IOPS' }))
+          .required(t('validation.required', { field: 'Disk IOPS' }))
+          .min(
+            100,
+            t('validation.minValue', {
+              field: 'Disk IOPS',
+              min: 100
+            })
+          )
       }),
 
-    throughput: Yup.mixed()
+    throughput: Yup.number()
       .nullable()
-      .test(
-        'throughput-required',
-        t('validation.required', { field: 'Throughput' }),
-        function (value) {
-          if (!getThroughputRange(this.parent?.storageType)) return true;
-          return !isEmptyNumberInput(value);
-        }
-      )
-      .test('throughput-range', function (value) {
-        const range = getThroughputRange(this.parent?.storageType);
-        if (!range || isEmptyNumberInput(value)) return true;
-        const n = toFiniteNumber(value);
-        if (n == null) {
-          return this.createError({
-            message: t('validation.required', { field: 'Throughput' })
-          });
-        }
-        if (n <= 0) {
-          return this.createError({
-            message: t('validation.positiveNumber', { field: 'Throughput' })
-          });
-        }
-        if (n < range.min) {
-          return this.createError({
-            message: t('validation.minValue', { field: 'Throughput', min: range.min })
-          });
-        }
-        if (n > range.max) {
-          return this.createError({
-            message: t('validation.maxValue', { field: 'Throughput', max: range.max })
-          });
-        }
-        return true;
+      .when('storageType', {
+        is: StorageType.GP3,
+        then: Yup.number()
+          .positive(
+            t('validation.positiveNumber', {
+              field: 'Throughput'
+            })
+          )
+          .required(t('validation.required', { field: 'Throughput' }))
       }),
 
     storageClass: Yup.string()
-      .nullable()
-      .test(
-        'storage-class-required',
-        t('validation.required', { field: 'Storage Class' }),
-        (value) => value !== null && value !== undefined && String(value).trim() !== ''
-      ),
+      .oneOf(['standard'], t('validation.invalidStorageClass'))
+      .required(t('validation.required', { field: 'Storage Class' })),
 
     mountPoints: Yup.string()
       .nullable()
-      .test(
-        'mount-point',
-        t('validation.invalidMountPoint'),
-        (value) =>
-          value === null || value === undefined || value === '' || /^\/[a-zA-Z0-9/_-]+$/.test(value)
-      ),
+      .matches(/^\/[a-zA-Z0-9/_-]+$/, t('validation.invalidMountPoint')),
 
-    // null ok for k8 / ephemeral
     storageType: Yup.string()
       .nullable()
-      .test(
-        'storage-type',
-        t('validation.invalidStorageType'),
-        (value) =>
-          value === null ||
-          value === undefined ||
-          value === '' ||
-          Object.values(StorageType).includes(value as StorageType)
-      )
-  });
-};
-
-export const K8VolumeInfoValidationSchema = (t: TFunction) => {
-  return Yup.object().shape({
-    volumeSize: requiredPositiveNumber(t, 'Volume Size', 1),
-    numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1),
-    storageClass: Yup.string()
-      .nullable()
-      .test(
-        'storage-class-required',
-        t('validation.required', { field: 'Storage Class' }),
-        (value) => value !== null && value !== undefined && String(value).trim() !== ''
-      )
+      .oneOf(Object.values(StorageType), t('validation.invalidStorageType'))
   });
 };
 
 export const K8NodeSpecValidationSchema = (t: TFunction) => {
   return Yup.object().shape({
-    memoryGib: requiredPositiveNumber(t, 'Memory (GiB)', 0.01),
-    cpuCoreCount: requiredPositiveNumber(t, 'CPU Core Count', 0.01)
+    memoryGib: Yup.number()
+      .positive(t('validation.positiveNumber', { field: 'Memory (GiB)' }))
+      .required(t('validation.required', { field: 'Memory (GiB)' })),
+
+    cpuCoreCount: Yup.number()
+      .positive(
+        t('validation.positiveNumber', {
+          field: 'CPU Core Count'
+        })
+      )
+      .required(t('validation.required', { field: 'CPU Core Count' }))
   });
 };

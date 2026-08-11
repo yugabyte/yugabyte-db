@@ -1,10 +1,7 @@
 import * as Yup from 'yup';
 import { TFunction } from 'i18next';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
-import {
-  DeviceInfoValidationSchema,
-  K8VolumeInfoValidationSchema
-} from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/ValidationSchema';
+import { DeviceInfoValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/ValidationSchema';
 
 export const RRInstanceSettingsValidationSchema = (
   t: TFunction,
@@ -13,28 +10,9 @@ export const RRInstanceSettingsValidationSchema = (
 ) => {
   const isK8s = provider === 'kubernetes';
   const requireInstanceFields = !isK8s || (isK8s && !useK8CustomResources);
-  const volumeInfoSchema =
-    isK8s && useK8CustomResources
-      ? K8VolumeInfoValidationSchema(t)
-      : DeviceInfoValidationSchema(t);
 
   return Yup.object().shape({
-    imageBundleUUID: Yup.string()
-      .nullable()
-      .test(
-        'image-bundle-required',
-        t('validation.required', { field: 'Linux Version' }),
-        function (value) {
-          const osPatchingEnabled = Boolean(
-            (this.options.context as { osPatchingEnabled?: boolean } | undefined)?.osPatchingEnabled
-          );
-          if (osPatchingEnabled && provider && ['aws', 'gcp', 'azu'].includes(provider)) {
-            return value !== null && value !== undefined && value !== '';
-          }
-          return true;
-        }
-      ),
-
+    // Instance Type
     instanceType: Yup.string()
       .nullable()
       .test(
@@ -48,15 +26,35 @@ export const RRInstanceSettingsValidationSchema = (
         }
       ),
 
-    deviceInfo: Yup.mixed().when('inheritPrimaryInstance', (inherit: boolean, schema) => {
-      if (inherit) {
-        return schema.nullable();
-      }
-      return volumeInfoSchema;
-    }),
+    // Device Info
+    deviceInfo: Yup.object()
+      .nullable()
+      .test('device-info-required', t('validation.required', { field: 'Device Info' }), function (
+        value
+      ) {
+        const { parent } = this;
+        if (parent?.inheritPrimaryInstance) return true;
+        if (!requireInstanceFields) return true;
+        return value !== null && value !== undefined;
+      })
+      .test('device-info-shape', t('validation.required', { field: 'Device Info' }), function (
+        value
+      ) {
+        if (value == null) return true;
+        try {
+          DeviceInfoValidationSchema(t).validateSync(value, { abortEarly: false });
+          return true;
+        } catch (err: any) {
+          const message =
+            err?.errors?.[0] ?? err?.message ?? t('validation.required', { field: 'Device Info' });
+          return this.createError({ message });
+        }
+      }),
 
+    // EBS Volume Encryption toggle
     enableEbsVolumeEncryption: Yup.boolean().nullable().default(false),
 
+    // EBS KMS Config
     ebsKmsConfigUUID: Yup.string()
       .nullable()
       .test(

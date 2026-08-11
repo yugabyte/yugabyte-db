@@ -2,7 +2,6 @@ import * as Yup from 'yup';
 import { values } from 'lodash';
 import { FaultToleranceType, ResilienceType } from '../../resilence-regions/dtos';
 import { ValidationArgs, ValidationMetrics } from './common';
-import { validateOnPremFreeNodesPerAz } from './onPrem';
 
 type GuidedValidationArgs = ValidationArgs & {
   metrics: ValidationMetrics;
@@ -13,7 +12,6 @@ export function validateGuidedRules({
   availabilityZones,
   path,
   createError,
-  onPremContext,
   resilienceAndRegionsProps,
   metrics,
   useDedicatedNodes
@@ -75,16 +73,6 @@ export function validateGuidedRules({
       })
     );
   }
-
-  fieldErrors.push(
-    ...validateOnPremFreeNodesPerAz({
-      availabilityZones,
-      path,
-      createError,
-      onPremContext,
-      resilienceAndRegionsProps
-    })
-  );
 
   return fieldErrors;
 }

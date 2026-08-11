@@ -21,11 +21,10 @@ import { api, QUERY_KEY } from '../../../../../features/universe/universe-form/u
 import { canSelectMultipleRegions } from '../../CreateUniverseUtils';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
-import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceFormMode, ResilienceType } from './dtos';
+import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceType } from './dtos';
 import {
   NODE_COUNT,
   REGIONS_FIELD,
-  RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE,
   SINGLE_AVAILABILITY_ZONE
 } from '../../fields/FieldNames';
@@ -80,11 +79,10 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
   const regions = watch(REGIONS_FIELD);
   const resilienceType = watch(RESILIENCE_TYPE);
   const faultToleranceType = watch('faultToleranceType');
-  const formMode = watch(RESILIENCE_FORM_MODE);
-  
+
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const allowmultipleRegionsSelection =
-    canSelectMultipleRegions(resilienceType) && (faultToleranceType !== FaultToleranceType.NONE || formMode === ResilienceFormMode.EXPERT_MODE);
+    canSelectMultipleRegions(resilienceType) && faultToleranceType !== FaultToleranceType.NONE;
 
   const mapCoordinates = useCallback(() => {
     const coordinates = regions?.map((region) => [region.latitude ?? [0], region.longitude ?? [0]]);
@@ -126,8 +124,6 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
             dataTestId="region-selection-autocomplete-parent"
             options={((regionsList as unknown) as Record<string, string>[]) ?? []}
             getOptionLabel={(r) => (typeof r === 'string' ? r : r.name ?? '')}
-            filterSelectedOptions={true}
-            isOptionEqualToValue={(option, value) => option.code === value.code}
             renderOption={(props, row) => {
               return (
                 <StyledMenu {...props}>

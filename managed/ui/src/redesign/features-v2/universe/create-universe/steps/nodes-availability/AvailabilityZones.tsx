@@ -1,9 +1,7 @@
-import { ReactNode, useContext } from 'react';
+import { ReactNode } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { mui } from '@yugabyte-ui-library/core';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { CloudType } from '@app/redesign/helpers/dtos';
 
 import ErrorCircle from '@app/redesign/assets/error-circle.svg?img';
 
@@ -49,16 +47,10 @@ export const AvailabilityZones = ({
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
   });
-  const [{ generalSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
-  const isK8s =
-    generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
 
   return (
     <StyledPanel>
-      <StyledHeader>{t(isK8s ? 'titlePods' : 'title')}</StyledHeader>
+      <StyledHeader>{t('title')}</StyledHeader>
       {showErrorsAfterSubmit && showAvailabilityZonesError && (
         <StyledError>
           <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center' }}>

@@ -7,12 +7,8 @@ import {
 import { getValidationMetrics, validateCommonRules } from './validation/common';
 import { validateExpertRules } from './validation/expert';
 import { validateGuidedRules } from './validation/guided';
-import { OnPremValidationContext } from './validation/onPrem';
 
-export const NodesAvailabilitySchema = (
-  resilienceAndRegionsProps?: ResilienceAndRegionsProps,
-  onPremContext?: OnPremValidationContext
-) => {
+export const NodesAvailabilitySchema = (resilienceAndRegionsProps?: ResilienceAndRegionsProps) => {
   return Yup.object<NodeAvailabilityProps>({
     lesserNodes: Yup.number().test('availabilityZones', 'Error', function () {
       const { path, createError } = this;
@@ -25,7 +21,6 @@ export const NodesAvailabilitySchema = (
           availabilityZones,
           path,
           createError,
-          onPremContext,
           resilienceAndRegionsProps
         })
       );
@@ -36,7 +31,6 @@ export const NodesAvailabilitySchema = (
             availabilityZones,
             path,
             createError,
-            onPremContext,
             resilienceAndRegionsProps,
             metrics,
             replicationFactor:
@@ -51,7 +45,6 @@ export const NodesAvailabilitySchema = (
             availabilityZones,
             path,
             createError,
-            onPremContext,
             resilienceAndRegionsProps,
             metrics,
             useDedicatedNodes

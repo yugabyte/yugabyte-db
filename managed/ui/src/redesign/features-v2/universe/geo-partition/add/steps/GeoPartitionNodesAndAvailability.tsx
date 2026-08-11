@@ -1,5 +1,4 @@
 import { useContext, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 import { UniverseActionButtons } from '../../../create-universe/components/UniverseActionButtons';
 import {
   CreateUniverseContext,
@@ -23,7 +22,6 @@ import {
   useGeoPartitionNavigation
 } from '../AddGeoPartitionUtils';
 import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
-import { CloudType } from '@app/redesign/helpers/dtos';
 
 const { Box } = mui;
 
@@ -32,11 +30,6 @@ export const GeoPartitionNodesAndAvailability = () => {
     AddGeoPartitionContext
   ) as unknown) as AddGeoPartitionContextMethods;
   const { geoPartitions, activeGeoPartitionIndex, isNewGeoPartition } = addGeoPartitionContext;
-  const { t } = useTranslation('translation', { keyPrefix: 'geoPartition.steps' });
-  const { t: tc } = useTranslation('translation', { keyPrefix: 'common' });
-  const isK8s =
-    addGeoPartitionContext.universeData?.spec?.clusters?.[0]?.placement_spec?.cloud_list?.[0]
-      ?.code === CloudType.kubernetes;
   const { addGeoPartition, updateGeoPartition } = addGeoPartitionMethods;
   const nodesAndAvailabilityRef = useRef<StepsRef>(null);
   const { moveToNextPage, moveToPreviousPage } = useGeoPartitionNavigation();
@@ -93,21 +86,21 @@ export const GeoPartitionNodesAndAvailability = () => {
       <Box sx={{ display: 'flex', gap: '24px', flexDirection: 'column' }}>
         <GeoPartitionBreadCrumb
           groupTitle={<>{geoPartitions[activeGeoPartitionIndex].name}</>}
-          subTitle={<>{t(isK8s ? 'podsAndAvailabilityZone' : 'nodesAndAvailabilityZone')}</>}
+          subTitle={<>Availability Zones and Nodes</>}
         />
         <NodesAvailability ref={nodesAndAvailabilityRef} isGeoPartition />
         <UniverseActionButtons
           prevButton={{
-            text: tc('back'),
+            text: 'Back',
             onClick: moveToPreviousPage
           }}
           cancelButton={{
-            text: tc('cancel'),
+            text: 'Cancel',
             onClick: () =>
               navigateToUniverseSettingsFromWizard(addGeoPartitionContext.universeData)
           }}
           nextButton={{
-            text: tc('next'),
+            text: 'Next',
             onClick: () => {
               nodesAndAvailabilityRef.current?.onNext();
             }

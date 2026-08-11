@@ -16,11 +16,8 @@ import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import {
   countRegionsAzsAndNodes,
   getClusterByType,
-  isKubernetesUniverse,
   useEditUniverseContext
 } from '../EditUniverseUtils';
-import { PlacementAZ } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
 
 type ZoneType = RegionsAndNodesFormType['regions'][number]['zones'][number];
 
@@ -29,10 +26,9 @@ interface MapRegionsViewProps {
 }
 export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
   const { universeData } = useEditUniverseContext();
-  const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.general' });
-  const unit = t(isKubernetesUniverse(universeData!) ? 'pod' : 'node');
 
   const regionsByName = groupBy(regions, 'code');
+  const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.general' });
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const readReplicaIcon = useGetMapIcons({ type: MarkerType.READ_REPLICA });
   const preferedIcon = useGetMapIcons({ type: MarkerType.REGION_PREFERRED });
@@ -46,7 +42,7 @@ export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
 
   const hasPrefferedRegions = regions.some((region) =>
     region.zones.some(
-      (zone: PlacementAZ) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference! > AZ_NOT_PREFERRED
+      (zone: ZoneType) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference! >= 0
     )
   );
 
@@ -54,9 +50,8 @@ export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
     <>
       {regions?.map((region) => {
         const hasHighestPreferedRank = region?.zones?.some(
-          (zone: PlacementAZ) =>
-            isDefinedNotNull(zone.leader_preference) &&
-            zone.leader_preference === AZ_PREFFERED_HIGHEST_RANK
+          (zone: ZoneType) =>
+            isDefinedNotNull(zone.leader_preference) && zone.leader_preference === 0
         );
         return (
           <YBMapMarker
@@ -67,7 +62,7 @@ export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
                 ? MarkerType.READ_REPLICA
                 : hasHighestPreferedRank
                 ? MarkerType.REGION_PREFERRED
-                : MarkerType.REGION_SELECTED
+                : MarkerType.READ_REPLICA
             }
             tooltip={<MapRegionTooltip regions={regionsByName[region.code]} />}
           />
@@ -81,23 +76,22 @@ export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
             subText={`${primaryRegionStats.totalRegions} ${pluralize(
               t('region'),
               primaryRegionStats.totalRegions
-            )}, ${primaryRegionStats.totalAzs} ${pluralize(
-              t('az'),
-              primaryRegionStats.totalAzs
-            )}, ${primaryRegionStats.totalNodes} ${pluralize(unit, primaryRegionStats.totalNodes)}`}
+            )}, ${primaryRegionStats.totalAzs} ${pluralize('AZ', primaryRegionStats.totalAzs)}, ${
+              primaryRegionStats.totalNodes
+            } ${pluralize('node', primaryRegionStats.totalNodes)}`}
           />,
           asyncCluster ? (
             <MapLegendItem
               icon={<>{readReplicaIcon.normal}</>}
               label={t('readReplica')}
               subText={`${readReplicaRegionStats?.totalRegions} ${pluralize(
-                t('region'),
+                'region',
                 readReplicaRegionStats?.totalRegions
               )}, ${readReplicaRegionStats?.totalAzs} ${pluralize(
-                t('az'),
+                'AZ',
                 readReplicaRegionStats?.totalAzs
-              )}, ${readReplicaRegionStats?.totalNodes} ${pluralize(
-                unit,
+              )}s, ${readReplicaRegionStats?.totalNodes} ${pluralize(
+                'node',
                 readReplicaRegionStats?.totalNodes
               )}`}
             />

@@ -1,33 +1,22 @@
-import { forwardRef, useContext, useEffect, useImperativeHandle, useMemo } from 'react';
+import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
 import { RRBreadCrumbs } from '../../ReadReplicaBreadCrumbs';
-import {
-  StepsRef,
-  AddRRContext,
-  AddRRContextMethods,
-  AddReadReplicaSteps
-} from '../../AddReadReplicaContext';
+import { StepsRef, AddRRContext, AddRRContextMethods } from '../../AddReadReplicaContext';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import {
   StyledPanel,
   StyledHeader,
   StyledContent
 } from '@app/redesign/features-v2/universe/create-universe/components/DefaultComponents';
-import { TotalNodesBadge } from '@app/redesign/features-v2/universe/create-universe/components/TotalNodesBadge';
 import { InstanceBox } from '@app/redesign/features-v2/universe/create-universe/steps';
 import {
-  CPUArchField,
   InstanceTypeField,
   VolumeInfoField,
-  K8NodeSpecField,
-  K8VolumeInfoField,
   EBSVolumeField,
-  EBSKmsConfigField,
-  LinuxVersionField
+  EBSKmsConfigField
 } from '@app/redesign/features-v2/universe/create-universe/fields';
 import { ENABLE_EBS_CONFIG_FIELD } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 import { RRInstanceSettingsValidationSchema } from './ValidationSchema';
@@ -36,12 +25,7 @@ import { getClusterByType } from '@app/redesign/features-v2/universe/edit-univer
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
-import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { buildRRInstanceSettingsFromCluster } from '../../../readReplicaUtils';
-import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
-import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
-import { isImgBundleSupportedByProvider } from '@app/components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
-import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
+import { StorageType } from '@app/redesign/helpers/dtos';
 
 const { Box, styled, CircularProgress } = mui;
 
@@ -63,117 +47,66 @@ export type RRInstanceSettingsProps = Partial<InstanceSettingProps> & {
 
 export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { instanceSettings, universeData, regionsAndAZ },
-    { moveToNextPage, moveToPreviousPage, saveInstanceSettings, setActiveStep }
-  ] = useContext(AddRRContext) as unknown as AddRRContextMethods;
+    { instanceSettings, universeData },
+    { moveToNextPage, moveToPreviousPage, saveInstanceSettings }
+  ] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
 
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
-  const useDedicatedNodes = Boolean(primaryCluster?.node_spec?.dedicated_nodes);
-  const totalNodes = regionsAndAZ ? sumReadReplicaNodeCounts(regionsAndAZ) : 0;
-  const goToPlacementRegions = () => setActiveStep(AddReadReplicaSteps.REGIONS_AND_AZ);
 
-  const providerUuid = primaryCluster?.provider_spec.provider ?? '';
-  const providerCode = (primaryCluster?.placement_spec?.cloud_list[0].code ?? '') as CloudType;
-
-  const { data: providers, isLoading: isProvidersLoading } = useQuery(
-    QUERY_KEY.getProvidersList,
-    api.getProvidersList,
-    {
-      enabled: !!providerUuid
-    }
-  );
-
-  const provider = useMemo((): ProviderType | undefined => {
-    const matched = providers?.find((p) => p.uuid === providerUuid);
-    if (!matched) {
-      return {
-        uuid: providerUuid,
-        code: providerCode
-      } as ProviderType;
-    }
-    return {
-      ...matched,
-      uuid: matched.uuid,
-      code: matched.code as CloudType
-    } as ProviderType;
-  }, [providers, providerUuid, providerCode]);
-
-  const supportedArchs = useMemo((): ArchitectureType[] => {
-    if (!provider) return [];
-    if (provider.code === CloudType.onprem) {
-      return [ArchitectureType.X86_64, ArchitectureType.ARM64];
-    }
-    const fromBundles = provider.imageBundles?.map((img) => img.details.arch).filter(Boolean) ?? [];
-    if (fromBundles.length) {
-      return [...new Set(fromBundles)] as ArchitectureType[];
-    }
-    // fallback while bundles load
-    const universeArch = universeData?.info?.arch;
-    return universeArch ? [universeArch as ArchitectureType] : [];
-  }, [provider, universeData?.info?.arch]);
+  const provider: Partial<ProviderType> = {
+    uuid: primaryCluster?.provider_spec.provider ?? '',
+    code: (primaryCluster?.placement_spec?.cloud_list[0].code ?? '') as CloudType
+  };
 
   const {
     maxVolumeCount,
     isRuntimeConfigLoading,
     isProviderRuntimeConfigLoading,
     ebsVolumeEnabled,
-    useK8CustomResources,
-    osPatchingEnabled
-  } = useRuntimeConfigValues(provider?.uuid);
+    useK8CustomResources
+  } = useRuntimeConfigValues(provider.uuid);
 
   const { t } = useTranslation('translation', { keyPrefix: 'readReplica.addRR' });
 
   const methods = useForm<RRInstanceSettingsProps>({
     defaultValues: instanceSettings,
-    mode: 'onSubmit',
-    reValidateMode: 'onChange',
-    context: { osPatchingEnabled },
+    mode: 'onChange',
     resolver: yupResolver(
       RRInstanceSettingsValidationSchema(t, useK8CustomResources, provider?.code)
     )
   });
 
-  const { control, watch, reset, getValues } = methods;
+  const { control, watch, reset } = methods;
 
-  const regionsForHardwareFields = useMemo((): Region[] | undefined => {
-    const formRegions = regionsAndAZ?.regions;
-    if (!formRegions?.length) return undefined;
-    const uuids = [
-      ...new Set(
-        formRegions.map((r) => r.regionUuid).filter((uuid): uuid is string => Boolean(uuid))
-      )
-    ];
-    if (!uuids.length) return undefined;
-    return uuids.map((uuid) => ({ uuid }) as Region);
-  }, [regionsAndAZ]);
-
-  const isK8s = provider?.code === CloudType.kubernetes;
   const sameAsPrimary = watch(SAME_AS_PRIMARY_INST_FIELD);
   const ebsEnabled = watch(ENABLE_EBS_CONFIG_FIELD);
-
-  const showOsPatchingFields =
-    osPatchingEnabled &&
-    !!provider &&
-    !isProvidersLoading &&
-    (isImgBundleSupportedByProvider(provider) || provider.code === CloudType.onprem);
 
   // Reset form to initial values from primary cluster when sameAsPrimary is true
   useEffect(() => {
     if (sameAsPrimary && primaryCluster && universeData) {
-      const initialInstanceSettings: RRInstanceSettingsProps = buildRRInstanceSettingsFromCluster(
-        primaryCluster,
-        universeData!.info!.arch,
-        true
-      );
-      const currentInstanceType = getValues('instanceType');
-      // k8 custom resources may not have instance_type on primary
-      const resolvedInstanceType =
-        provider?.code === CloudType.kubernetes && !initialInstanceSettings.instanceType
-          ? (currentInstanceType ?? null)
-          : initialInstanceSettings.instanceType;
-      reset({ ...initialInstanceSettings, instanceType: resolvedInstanceType });
+      const storageSpec = primaryCluster?.node_spec.storage_spec;
+      const cloudVolumeEncryption = storageSpec?.cloud_volume_encryption;
+      const initialInstanceSettings: RRInstanceSettingsProps = {
+        inheritPrimaryInstance: true,
+        arch: universeData?.info?.arch,
+        instanceType: primaryCluster?.node_spec.instance_type ?? null,
+        useSpotInstance: primaryCluster?.use_spot_instance ?? false,
+        deviceInfo: storageSpec
+          ? {
+              volumeSize: storageSpec?.volume_size,
+              numVolumes: storageSpec?.num_volumes,
+              diskIops: storageSpec?.disk_iops ?? null,
+              throughput: storageSpec?.throughput ?? null,
+              storageClass: 'standard',
+              storageType: (storageSpec?.storage_type as StorageType) ?? null
+            }
+          : null,
+        enableEbsVolumeEncryption: cloudVolumeEncryption?.enable_volume_encryption ?? false,
+        ebsKmsConfigUUID: cloudVolumeEncryption?.kms_config_uuid ?? null
+      };
+      reset(initialInstanceSettings);
     }
-  }, [sameAsPrimary, primaryCluster, universeData, reset, getValues, provider?.code]);
+  }, [sameAsPrimary, primaryCluster, universeData, reset]);
 
   useImperativeHandle(
     forwardRef,
@@ -199,21 +132,7 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <RRBreadCrumbs groupTitle={t('hardware')} subTitle={t('instanceOptional')} />
         <StyledPanel>
-          <Box>
-            <StyledHeader>{t('rrInstance')}</StyledHeader>
-            <Box sx={{ px: '24px', pb: '16px' }}>
-              <TotalNodesBadge
-                label={
-                  useDedicatedNodes
-                    ? t(isK8s ? 'totalTServerPods' : 'totalTServerNodes')
-                    : t(isK8s ? 'totalPods' : 'totalNodes')
-                }
-                count={totalNodes}
-                onEdit={goToPlacementRegions}
-                dataTestId="rr-instance-settings-total-nodes"
-              />
-            </Box>
-          </Box>
+          <StyledHeader>{t('rrInstance')}</StyledHeader>
           <StyledContent>
             <Box>
               <Box mb={2}>
@@ -226,53 +145,29 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                 />
               </Box>
               <StyledPanelWrapper>
-                {isRuntimeConfigLoading || isProviderRuntimeConfigLoading || isProvidersLoading ? (
+                {isRuntimeConfigLoading || isProviderRuntimeConfigLoading ? (
                   <Box display="flex" alignItems="center" justifyContent="center" width="100%">
                     <CircularProgress />
                   </Box>
                 ) : (
                   <InstanceBox>
-                    {showOsPatchingFields && (
-                      <>
-                        <CPUArchField supportedArchs={supportedArchs} disabled />
-                        {provider.code !== CloudType.onprem && (
-                          <LinuxVersionField disabled={!!sameAsPrimary} provider={provider} />
-                        )}
-                      </>
+                    {provider && (
+                      <InstanceTypeField
+                        isMaster={false}
+                        disabled={!!sameAsPrimary}
+                        provider={provider}
+                        //pass regions selected in first step
+                        // regions={}
+                      />
                     )}
-                    {provider &&
-                      (isK8s && useK8CustomResources ? (
-                        <>
-                          <K8NodeSpecField
-                            isMaster={false}
-                            disabled={!!sameAsPrimary}
-                            provider={provider}
-                          />
-                          <K8VolumeInfoField
-                            isMaster={false}
-                            maxVolumeCount={maxVolumeCount}
-                            disableVolumeSize={false}
-                            disabled={!!sameAsPrimary}
-                            provider={provider}
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <InstanceTypeField
-                            isMaster={false}
-                            disabled={!!sameAsPrimary}
-                            provider={provider}
-                            regions={regionsForHardwareFields}
-                          />
-                          <VolumeInfoField
-                            isMaster={false}
-                            maxVolumeCount={maxVolumeCount}
-                            disabled={!!sameAsPrimary}
-                            provider={provider}
-                            regions={regionsForHardwareFields}
-                          />
-                        </>
-                      ))}
+                    <VolumeInfoField
+                      isMaster={false}
+                      maxVolumeCount={maxVolumeCount}
+                      disabled={!!sameAsPrimary}
+                      provider={provider}
+                      //pass regions selected in first step
+                      // regions={}
+                    />
                     {ebsVolumeEnabled && provider?.code === CloudType.aws && (
                       <EBSVolumeField disabled={!!sameAsPrimary} />
                     )}
@@ -289,5 +184,3 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
     </FormProvider>
   );
 });
-
-RRInstanceSettings.displayName = 'RRInstanceSettings';

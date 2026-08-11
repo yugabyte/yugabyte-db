@@ -11,25 +11,24 @@ import { KmsConfig } from '../../../../../features/universe/universe-form/utils/
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-// import InfoIcon from '../../../../../assets/approved/info-new.svg';
+import InfoIcon from '../../../../../assets/info-new.svg';
 
 const { Box } = mui;
 
 //TODO : Disable option for customCertPathOption
 interface EARProps {
   disabled: boolean;
-  ebsKMSConfig?: string | null;
 }
 
 const getOptionLabel = (op: any): string => {
-  const option = op as unknown as KmsConfig;
+  const option = (op as unknown) as KmsConfig;
   return option?.metadata?.name ?? '';
 };
 
 const EAR_FIELD = 'enableEncryptionAtRest';
 const KMS_FIELD = 'kmsConfig';
 
-export const EARField: FC<EARProps> = ({ disabled, ebsKMSConfig }) => {
+export const EARField: FC<EARProps> = ({ disabled }) => {
   const { control, setValue } = useFormContext<SecuritySettingsProps>();
   const { t } = useTranslation();
 
@@ -64,7 +63,7 @@ export const EARField: FC<EARProps> = ({ disabled, ebsKMSConfig }) => {
             dataTestId="enable-encryption-at-rest-field"
           />
         </Box>
-        {/* <InfoIcon /> */}
+        <InfoIcon />
       </Box>
       {encryptionEnabled && (
         <Box
@@ -76,12 +75,7 @@ export const EARField: FC<EARProps> = ({ disabled, ebsKMSConfig }) => {
               name={KMS_FIELD}
               control={control}
               rules={{
-                required: !disabled && encryptionEnabled ? 'This field is required' : '',
-                validate: (value) => {
-                  return ebsKMSConfig && ebsKMSConfig === value
-                    ? t('createUniverseV2.securitySettings.earField.kmsValidationMsg')
-                    : undefined;
-                }
+                required: !disabled && encryptionEnabled ? 'This field is required' : ''
               }}
               render={({ field, fieldState }) => {
                 const value = kmsConfigs.find((i) => i.metadata.configUUID === field.value) ?? '';
@@ -99,7 +93,7 @@ export const EARField: FC<EARProps> = ({ disabled, ebsKMSConfig }) => {
                       <YBAutoComplete
                         disabled={disabled}
                         loading={isLoading}
-                        options={kmsConfigs as unknown as Record<string, string>[]}
+                        options={(kmsConfigs as unknown) as Record<string, string>[]}
                         groupBy={(option: Record<string, any>) => option?.metadata?.provider} //group by provider
                         ybInputProps={{
                           placeholder: t(
@@ -114,7 +108,7 @@ export const EARField: FC<EARProps> = ({ disabled, ebsKMSConfig }) => {
                         ref={field.ref}
                         getOptionLabel={getOptionLabel}
                         onChange={handleChange}
-                        value={value as unknown as never}
+                        value={(value as unknown) as never}
                         size="large"
                       />
                     </Box>
