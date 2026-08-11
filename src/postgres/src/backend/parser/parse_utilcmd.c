@@ -558,6 +558,41 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	transformCheckConstraints(&cxt, !cxt.isforeign);
 
 	/*
+	 * YB: system relations created during YSQL upgrade must end up identical
+	 * to initdb-created catalogs. genbki/initdb only set
+	 * pg_attribute.attnotnull on catalog columns; they do not create the
+	 * corresponding pg_constraint not-null rows (contype 'n'). The only such
+	 * rows initdb produces come from system_constraints.sql's ADD PRIMARY KEY,
+	 * i.e. for primary key columns. Keep only the PK columns' not-null
+	 * constraints here; the other columns still get attnotnull set via
+	 * ColumnDef->is_not_null.
+	 */
+	if (IsYugaByteEnabled() && IsYsqlUpgrade && cxt.isSystem)
+	{
+		List	   *yb_pk_nnconstraints = NIL;
+
+		if (cxt.pkey != NULL)
+		{
+			foreach_node(Constraint, nn, cxt.nnconstraints)
+			{
+				char	   *colname = strVal(linitial(nn->keys));
+
+				foreach_node(IndexElem, ielem, cxt.pkey->indexParams)
+				{
+					if (ielem->name != NULL &&
+						strcmp(ielem->name, colname) == 0)
+					{
+						yb_pk_nnconstraints =
+							lappend(yb_pk_nnconstraints, nn);
+						break;
+					}
+				}
+			}
+		}
+		cxt.nnconstraints = yb_pk_nnconstraints;
+	}
+
+	/*
 	 * Output results.
 	 */
 	stmt->tableElts = cxt.columns;
@@ -3363,7 +3398,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 			if (constraint->contype == CONSTR_PRIMARY && !forced_not_null)
 			{
 				AlterTableCmd *notnullcmd = makeNode(AlterTableCmd);
-			
+
 				notnullcmd->subtype = AT_SetNotNull;
 				notnullcmd->name = pstrdup(key);
 				notnullcmd->yb_is_add_primary_key = true;

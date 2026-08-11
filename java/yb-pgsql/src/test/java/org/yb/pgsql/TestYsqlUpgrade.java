@@ -182,11 +182,11 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
 
     // reltuples column is filtered out, so column index is one less than normal.
-    static final int RELHASOIDS_COL_IDX = 32;
+    static final int RELHASOIDS_COL_IDX = 33;
 
     // Used to ignore the collversion for some rows in pg_collation.
     public static final int COLLNAME_COL_IDX = 1;
-    public static final int COLLVERSION_COL_IDX = 10;
+    public static final int COLLVERSION_COL_IDX = 11;
   }
 
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlUpgrade.class);
@@ -380,13 +380,15 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + ", datlocprovider \"char\"  NOT NULL"
           + ", datistemplate  boolean   NOT NULL"
           + ", datallowconn   boolean   NOT NULL"
+          + ", dathasloginevt boolean   NOT NULL"
           + ", datconnlimit   integer   NOT NULL"
           + ", datfrozenxid   xid       NOT NULL"
           + ", datminmxid     xid       NOT NULL"
           + ", dattablespace  oid       NOT NULL"
           + ", datcollate     text      NOT NULL COLLATE \"C\""
           + ", datctype       text      NOT NULL COLLATE \"C\""
-          + ", daticulocale   text COLLATE \"C\""
+          + ", datlocale      text COLLATE \"C\""
+          + ", daticurules    text COLLATE \"C\""
           + ", datcollversion text COLLATE \"C\""
           + ", datacl         aclitem[]"
           + ", CONSTRAINT " + newTi.indexes.get(1).getLeft() + " PRIMARY KEY (oid ASC)"
@@ -445,6 +447,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + ", relpages            integer   NOT NULL"
           + ", reltuples           real      NOT NULL"
           + ", relallvisible       integer   NOT NULL"
+          + ", relallfrozen        integer   NOT NULL"
           + ", reltoastrelid       oid       NOT NULL"
           + ", relhasindex         boolean   NOT NULL"
           + ", relisshared         boolean   NOT NULL"
@@ -675,7 +678,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + " SELECT"
           + "     nspname AS schemaname,"
           + "     relname AS tablename,"
+          + "     attrelid AS tableid,"
           + "     attname AS attname,"
+          + "     attnum,"
           + "     stainherit AS inherited,"
           + "     stanullfrac AS null_frac,"
           + "     stawidth AS avg_width,"

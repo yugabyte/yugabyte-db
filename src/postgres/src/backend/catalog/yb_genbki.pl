@@ -781,9 +781,8 @@ sub gen_pg_attribute
 			{
 				$attnum--;
 				my %row;
-				$row{attnum}        = $attnum;
-				$row{attrelid}      = $table->{relation_oid};
-				$row{attstattarget} = '0';
+				$row{attnum}   = $attnum;
+				$row{attrelid} = $table->{relation_oid};
 
 				morph_row_for_pgattr(\%row, $schema, $attr, 1);
 				print_bki_insert(\%row, $schema);
