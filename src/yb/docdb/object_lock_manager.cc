@@ -437,7 +437,7 @@ class ObjectLockManagerImpl {
       REQUIRES(global_mutex_);
   void ConsumePendingSharedLockRequestUnlocked(
       ObjectSharedLockRequest& request) REQUIRES(global_mutex_);
-  void AcquireExclusiveLockIntents(const LockData& data) EXCLUDES(global_mutex_);
+  Status AcquireExclusiveLockIntents(const LockData& data) EXCLUDES(global_mutex_);
   void ReleaseExclusiveLockIntents(const LockStateMap& lockstates_map);
   void ReleaseExclusiveLockIntents(
       std::span<const LockBatchEntry<ObjectLockManager>> key_to_intent_type);
@@ -685,9 +685,9 @@ void ObjectLockManagerImpl::ConsumePendingSharedLockRequestUnlocked(
   DoLockSingleEntryWithoutConflictCheck(lock_entry, transaction_entry, request.owner);
 }
 
-void ObjectLockManagerImpl::AcquireExclusiveLockIntents(const LockData& data) {
+Status ObjectLockManagerImpl::AcquireExclusiveLockIntents(const LockData& data) {
   if (!shared_manager_) {
-    return;
+    return Status::OK();
   }
   // Single lock type maps to 1-2 entries.
   boost::container::small_vector<const LockBatchEntry<ObjectLockManager>*, 2> exclusive_locks;
@@ -697,7 +697,7 @@ void ObjectLockManagerImpl::AcquireExclusiveLockIntents(const LockData& data) {
     }
   }
   std::lock_guard lock(global_mutex_);
-  shared_manager_->ConsumeAndAcquireExclusiveLockIntents(
+  return shared_manager_->ConsumeAndAcquireExclusiveLockIntents(
       make_lw_function([this](ObjectSharedLockRequest request) NO_THREAD_SAFETY_ANALYSIS {
         ConsumePendingSharedLockRequestUnlocked(request);
       }),
@@ -784,7 +784,10 @@ void ObjectLockManagerImpl::Lock(LockData&& data) {
     return;
   }
   if (shared_manager_) {
-    AcquireExclusiveLockIntents(data);
+    if (auto status = AcquireExclusiveLockIntents(data); !status.ok()) {
+      data.callback(status);
+      return;
+    }
     shared_manager_->MarkTServerLoaded(data.object_lock_owner.txn_id);
   }
   DoLock(transaction_entry, std::move(data), IsLockRetry::kFalse);

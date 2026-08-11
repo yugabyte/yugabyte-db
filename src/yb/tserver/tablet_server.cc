@@ -658,7 +658,7 @@ Status TabletServer::Init() {
 
   shared_mem_manager_->SetReadyCallback([this] {
     if (ObjectLockFastpathEnabled()) {
-      object_lock_shared_state_manager_->SetupShared(shared_mem_manager_->allocator());
+      CHECK_OK(object_lock_shared_state_manager_->SetupShared(shared_mem_manager_->allocator()));
     }
   });
 

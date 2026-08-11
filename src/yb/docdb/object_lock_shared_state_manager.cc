@@ -15,7 +15,6 @@
 
 #include <atomic>
 #include <mutex>
-#include <unordered_map>
 
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
@@ -187,22 +186,24 @@ ObjectLockSharedStateManager::ObjectLockSharedStateManager(
   }
 }
 
-void ObjectLockSharedStateManager::SetupShared(SharedMemoryBackingAllocator& allocator) {
+Status ObjectLockSharedStateManager::SetupShared(SharedMemoryBackingAllocator& allocator) {
   {
     std::lock_guard lock(mutex_);
     DCHECK(!allocator_);
     allocator_ = &allocator;
     stopped_ = false;
+    exclusive_intents_ = VERIFY_RESULT(ObjectLockExclusiveIntents::Make(*allocator_, write_locks_));
     VLOG(1) << "Set up ObjectLockSharedStateManager";
   }
   start_cond_.notify_all();
+  return Status::OK();
 }
 
 Result<ObjectLockSharedStateHolder> ObjectLockSharedStateManager::AllocateShared() {
   UniqueLock lock(mutex_);
   WaitOnConditionVariable(&start_cond_, &lock, [this] REQUIRES(mutex_) { return !stopped_; });
   auto state = VERIFY_RESULT(DCHECK_NOTNULL(allocator_)->MakeUnique<ObjectLockSharedState>(
-      *allocator_, write_locks_));
+      *allocator_, exclusive_intents_));
   auto* ptr = state.get();
   shared_states_.insert(std::move(state));
   return ObjectLockSharedStateHolder{*this, *ptr};
@@ -275,7 +276,7 @@ void ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
   }
 }
 
-void ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
+Status ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
     const LockRequestConsumer& consume,
     std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) {
   std::lock_guard lock(mutex_);
@@ -284,15 +285,24 @@ void ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
         LockStateToSharedWriteLockState(IntentTypeSetAdd(key_and_intent->intent_types));
   }
 
+  if (!allocator_) {
+    return Status::OK();
+  }
+
   ParentProcessGuard g;
+  // Old array must be kept alive until all shared states have switched to the new one.
+  ObjectLockExclusiveIntents old_intents = std::exchange(
+      exclusive_intents_,
+      VERIFY_RESULT(ObjectLockExclusiveIntents::Make(*allocator_, write_locks_)));
   for (auto& state : shared_states_) {
     CallWithRequestConsumer(
         *state,
-        [&state, lock_entries](auto&& c) PARENT_PROCESS_ONLY {
-          state->ConsumeAndAcquireExclusiveLockIntents(c, lock_entries);
+        [this, &state](auto&& c) PARENT_PROCESS_ONLY REQUIRES(mutex_) {
+          state->ConsumeAndResetExclusiveLockIntentsTo(c, exclusive_intents_);
         },
         consume);
   }
+  return Status::OK();
 }
 
 void ObjectLockSharedStateManager::DropPendingSharedLockRequests(TransactionId txn_id) {
@@ -313,9 +323,22 @@ void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
     write_locks_.erase(iter);
   }
 
+  if (!allocator_) {
+    return;
+  }
+
   ParentProcessGuard g;
+  auto new_intents = ObjectLockExclusiveIntents::Make(*allocator_, write_locks_);
+  if (!new_intents.ok()) {
+    LOG(DFATAL) << "Failed to make exclusive intents array: " << new_intents.status();
+    return;
+  }
+
+  // Old array must be kept alive until all shared states have switched to the new one.
+  ObjectLockExclusiveIntents old_intents = std::exchange(
+      exclusive_intents_, std::move(*new_intents));
   for (auto& state : shared_states_) {
-    state->ReleaseExclusiveLockIntent(object_id, lock_state);
+    state->ResetExclusiveLockIntentsTo(exclusive_intents_);
   }
 }
 
