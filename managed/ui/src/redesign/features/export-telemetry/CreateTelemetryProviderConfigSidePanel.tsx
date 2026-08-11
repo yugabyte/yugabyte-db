@@ -82,7 +82,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
     reValidateMode: 'onChange'
   });
 
-  const { control, handleSubmit, watch, setValue, getValues } = formMethods;
+  const { control, handleSubmit, watch, setValue, getValues, unregister, clearErrors } = formMethods;
   const {
     fields: headerFields,
     append: appendHeader,
@@ -110,6 +110,12 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
   const providerTypeValue = watch('config.type');
   const dataDogSiteValue = watch('config.site');
   const authTypeValue = watch('config.authType');
+
+  // Shared config.endpoint keeps prior RHF rules across provider switches unless cleared.
+  const handleProviderTypeChange = () => {
+    unregister('config.endpoint');
+    clearErrors('config.endpoint');
+  };
 
   const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
     api.fetchRuntimeConfigs()
@@ -313,6 +319,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             placeholder={t('splunkURLPlaceholder')}
             fullWidth
             disabled={isViewMode}
+            shouldUnregister
             inputProps={{
               'data-testid': 'SplunkForm-EndPoint'
             }}
@@ -376,6 +383,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             placeholder={t('lokiEndpointPlaceholder')}
             fullWidth
             disabled={isViewMode}
+            shouldUnregister
             inputProps={{
               'data-testid': 'LokiForm-EndPoint'
             }}
@@ -544,6 +552,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             placeholder="https://"
             fullWidth
             disabled={isViewMode}
+            shouldUnregister
             inputProps={{
               'data-testid': 'AWSWatchForm-EndPoint'
             }}
@@ -618,6 +627,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             name="config.endpoint"
             fullWidth
             disabled={isViewMode}
+            shouldUnregister
             inputProps={{
               'data-testid': 'DynatraceForm-EndpointUrl'
             }}
@@ -705,6 +715,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             fullWidth
             placeholder="https://"
             disabled={isViewMode}
+            shouldUnregister
             inputProps={{ 'data-testid': 'OtlpForm-Endpoint' }}
             required={true}
             rules={{ required: t('otlp.validationEndpointRequired') }}
@@ -1052,6 +1063,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
               options={TELEMETRY_PROVIDER_OPTIONS}
               orientation={RadioGroupOrientation.VERTICAL}
               isDisabled={isViewMode}
+              onRadioChange={handleProviderTypeChange}
             />
             {providerTypeValue === TelemetryProviderType.DATA_DOG && renderDatadogForm()}
             {providerTypeValue === TelemetryProviderType.SPLUNK && renderSplunkForm()}
