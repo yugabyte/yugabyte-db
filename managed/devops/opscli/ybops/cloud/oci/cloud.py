@@ -133,7 +133,8 @@ class OciCloud(AbstractCloud):
                         "isShared": info["isShared"],
                         "prices": {}
                     }
-                result[name]["prices"][region] = [{"os": "Linux", "price": 0.0}]
+                # Prices come from bundled oci_pricing/pricelist.json via OCIInitializer.
+                result[name]["prices"][region] = 0.0
         return result
 
     def create_instance(self, args, server_type, ssh_keys):
