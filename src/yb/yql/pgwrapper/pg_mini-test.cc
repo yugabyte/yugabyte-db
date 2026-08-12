@@ -117,6 +117,7 @@ DECLARE_double(TEST_transaction_ignore_applying_probability);
 
 DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(gzip_stream_compression_level);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
@@ -3590,11 +3591,14 @@ TEST_F(PgMiniTest, TabletMetadataStateColumn) {
   ASSERT_EQ(peers.size(), 1);
   auto deleted_tablet_id = peers[0]->tablet_id();
 
+  // CleanUpDeletedTables marks the table DELETED on one cycle and erases it from tablet_map_ on
+  // the next, so DELETED is observable for a single cycle only. Stretch the cycle so that window
+  // outlives DROP, whose PG-side commit work is slow under sanitizers.
+  const auto bg_task_wait_ms = FLAGS_catalog_manager_bg_task_wait_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 5000 * kTimeMultiplier;
+
   ASSERT_OK(pg_conn.Execute("DROP TABLE delete_test"));
 
-  // DROP returns once the tablets are deleted, but the master keeps the tablet in
-  // tablet_map_ in DELETED state until the background CleanUpDeletedTables task erases
-  // it on its next cycle. Poll within that window to observe the DELETED state.
   ASSERT_OK(LoggedWaitFor(
       [&pg_conn, &deleted_tablet_id]() -> Result<bool> {
         auto count = VERIFY_RESULT(pg_conn.FetchRow<int64_t>(Format(
@@ -3604,6 +3608,8 @@ TEST_F(PgMiniTest, TabletMetadataStateColumn) {
       },
       30s * kTimeMultiplier, "Wait for DELETED tablet state after DROP TABLE"));
   LOG(INFO) << "DELETED state verified for tablet " << deleted_tablet_id;
+  // The REPLACED phase below needs the background task back at its normal cadence.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = bg_task_wait_ms;
 
   // ======== REPLACED via creation timeout ========
   // Set a very low creation timeout, shut down 2 of 3 tservers so new tablets can't
