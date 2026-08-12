@@ -2424,6 +2424,19 @@ If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_
 After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
 
+##### --ysql_yb_enable_pg_duckdb
+
+{{% tags/wrap %}}
+{{<tags/feature/tp>}}
+{{<tags/feature/restart-needed>}}
+{{% tags/feature/t-server %}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables the [pg_duckdb](../../../additional-features/pg-extensions/extension-pgduckdb/) extension for data-lake I/O (Parquet, CSV, and JSON import and export). Available in v2026.1.1.0 and later (also v2025.2.6.0 and later).
+
+This is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list. Not available on sanitizer (ASAN/TSAN) builds.
+
 ##### --ysql_enable_write_pipelining
 
 {{% tags/wrap %}}
