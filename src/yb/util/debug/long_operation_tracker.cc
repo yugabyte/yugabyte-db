@@ -67,7 +67,7 @@ constexpr std::chrono::milliseconds kMaxWaitTime(100);
 
 // Deadlines below this threshold cannot rely on the periodic scan alone: the operation could
 // expire and complete entirely within one kMaxWaitTime sleep, losing the stack trace warning.
-// Registration of such operations additionally wakes the checker thread.
+// Registration of such operations additionally records a wakeup for the checker thread.
 constexpr auto kShortDeadlineThreshold = 2 * kMaxWaitTime;
 
 // Upper bound on the number of registrations adopted from the intake queue in one iteration of
@@ -79,10 +79,11 @@ constexpr size_t kMaxDrainPerIteration = 1000;
 // operations.
 //
 // Synchronization strategy: operations are registered through the lock-free intake_ queue, so
-// registration does not contend on any mutex. The checker thread is the only consumer of
-// intake_ and exclusively owns the priority queue of pending operations (local to Execute).
-// mutex_ and cond_ protect only stop_ and are used only by the checker thread and the
-// destructor.
+// typical registrations do not contend on any mutex. The checker thread is the only consumer
+// of intake_ and exclusively owns the priority queue of pending operations (local to Execute).
+// mutex_ and cond_ are used to sleep in and wake up the checker thread: the destructor and
+// registrations with unusually short deadlines record their wakeup condition under the mutex
+// before notifying, so wakeups cannot be lost.
 class LongOperationTrackerHelper {
  public:
   LongOperationTrackerHelper() {
@@ -127,9 +128,13 @@ class LongOperationTrackerHelper {
     result->AddRef();
     intake_.Push(result.get());
     if (deadline - start < kShortDeadlineThreshold) {
-      // The periodic scan is not frequent enough for this deadline, wake the checker thread.
-      // This is best effort: a wakeup that races with the start of a scan could be missed, in
-      // which case the periodic scan is still the backstop.
+      // The periodic scan is not frequent enough for this deadline. Record the wakeup under
+      // the mutex so that it cannot be lost, then wake the checker thread. Only these unusually
+      // short deadlines pay for the mutex.
+      {
+        std::lock_guard lock(mutex_);
+        short_deadline_pending_ = true;
+      }
       cond_.notify_one();
     }
     return result;
@@ -204,7 +209,10 @@ class LongOperationTrackerHelper {
         if (stop_.load(std::memory_order_acquire)) {
           break;
         }
-        cond_.wait_for(lock, wait_time);
+        cond_.wait_for(lock, wait_time, [this] {
+          return stop_.load(std::memory_order_acquire) || short_deadline_pending_;
+        });
+        short_deadline_pending_ = false;
       }
     }
 
@@ -214,11 +222,13 @@ class LongOperationTrackerHelper {
 
   MPSCQueue<LongOperationTracker::TrackedOperation> intake_;
 
-  // Used only to sleep in and wake up the checker thread, see the synchronization strategy in
-  // the class comment. stop_ is atomic so that the checker loops can poll it without the mutex.
+  // Used to sleep in and wake up the checker thread, see the synchronization strategy in the
+  // class comment. stop_ is atomic so that the checker loops can poll it without the mutex.
+  // short_deadline_pending_ is guarded by mutex_ so that short deadline wakeups cannot be lost.
   std::mutex mutex_;
   std::condition_variable cond_;
   std::atomic<bool> stop_{false};
+  bool short_deadline_pending_ = false;
   scoped_refptr<Thread> thread_;
 };
 
