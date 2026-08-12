@@ -14,4 +14,4 @@ jobs:
     runs-on: ybdbghr
     steps:
       - name: Build Trigger
-        run: ybbld ${{ github.event.pull_request.number }} DOCS
+        run: ybbld ${{ github.event.pull_request.number }} ${{ github.event.pull_request.head.sha }} DOCS
