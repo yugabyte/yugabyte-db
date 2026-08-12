@@ -486,15 +486,21 @@ public class TestYsqlDumpSplitOptions extends BasePgSQLTest {
         sentinelCount >= 2);
     assertFalse("Dump should not emit ALTER TABLE RESET (yb_presplit)",
         dumpContent.contains("RESET (yb_presplit)"));
+    // Scope the ordering assertions to the partial index's own CREATE INDEX
+    // statement so matches elsewhere in the dump cannot satisfy them.
     int partialIndexPos = dumpContent.indexOf(
         "CREATE INDEX NONCONCURRENTLY partial_presplit_idx ");
-    int partialIndexPresplitPos = dumpContent.indexOf(
-        " WITH (yb_presplit='1')", partialIndexPos);
-    int partialIndexPredicatePos = dumpContent.indexOf(" WHERE ", partialIndexPos);
-    assertTrue("Dump should place yb_presplit before the partial-index predicate; dump=\n"
-            + dumpContent,
-        partialIndexPos >= 0
-            && partialIndexPresplitPos > partialIndexPos
+    assertTrue("Dump should contain the partial-index CREATE INDEX; dump=\n" + dumpContent,
+        partialIndexPos >= 0);
+    int partialIndexEnd = dumpContent.indexOf(';', partialIndexPos);
+    assertTrue("Partial-index CREATE INDEX should be terminated; dump=\n" + dumpContent,
+        partialIndexEnd >= 0);
+    String partialIndexStmt = dumpContent.substring(partialIndexPos, partialIndexEnd);
+    int partialIndexPresplitPos = partialIndexStmt.indexOf(" WITH (yb_presplit='1')");
+    int partialIndexPredicatePos = partialIndexStmt.indexOf(" WHERE ");
+    assertTrue("Partial index should place yb_presplit before its predicate; statement=\n"
+            + partialIndexStmt,
+        partialIndexPresplitPos >= 0
             && partialIndexPredicatePos > partialIndexPresplitPos);
 
     // Restore the dump into the target database.
