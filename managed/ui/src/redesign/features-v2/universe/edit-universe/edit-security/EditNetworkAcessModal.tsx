@@ -10,6 +10,7 @@ import { createErrorMessage } from '../../../../../utils/ObjectUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
+import { FullMoveWarning } from '../components';
 
 const { YBModal } = yba;
 const { styled, Box, boxClasses } = mui;
@@ -45,9 +46,10 @@ export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalPr
   const k8sPublicIPValue = Boolean(
     primaryCluster?.networking_spec?.enable_exposing_service === 'EXPOSED'
   );
+  const isK8s = providerCode === CloudType.kubernetes;
 
   const defaultValues =
-    providerCode === CloudType.kubernetes
+    isK8s
       ? {
           enableIPV6: ipv6Value,
           enableExposingService: k8sPublicIPValue
@@ -55,8 +57,10 @@ export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalPr
       : { assignPublicIP: assignPublicIPValue };
 
   const methods = useForm<NetworkAcessFormProps>({ defaultValues });
-
-  const { handleSubmit } = methods;
+  const {
+    handleSubmit,
+    formState: { isDirty }
+  } = methods;
 
   const handleFormSubmit = handleSubmit(async (values) => {
     if (!universeUUID || !primaryCluster?.uuid) {
@@ -75,7 +79,7 @@ export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalPr
           ],
           networking_spec: {
             ...networkingSpec,
-            ...(providerCode === CloudType.kubernetes
+            ...(isK8s
               ? {
                   enable_ipv6: values.enableIPV6
                 }
@@ -115,13 +119,14 @@ export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalPr
           {isCloudVendorCloudType(providerCode) && (
             <AssignPublicIPField disabled={false} providerCode={providerCode} />
           )}
-          {providerCode === CloudType.kubernetes && (
+          {isK8s && (
             <>
               <IPV6Field disabled={false} />
               <br />
               <NetworkAcessField disabled={false} />
             </>
           )}
+          {isDirty && <FullMoveWarning setting="publicIp" />}
         </ModalContent>
       </FormProvider>
     </YBModal>

@@ -4592,6 +4592,12 @@
         "proxyHelper": "Configure web proxies as gateways for traffic from your database nodes. <a>Learn more</a>",
         "unableToApplyChanges": "Unable to apply changes."
       },
+      "fullMoveWarning": {
+        "message": "<bold>Changes to \"{{setting}} settings\" require a full move.</bold><br />Database performance may be temporarily affected while data is being moved. Consider making the change during lower-traffic period.",
+        "publicIp": "Public IP",
+        "networkPorts": "Network port",
+        "instanceProfileArn": "Instance Profile ARN"
+      },
       "logs": {
         "troubleshootingLogs": "Troubleshooting Logs",
         "complianceLogs": "Compliance Logs",
