@@ -267,6 +267,8 @@ DEFINE_RUNTIME_int32(min_invalidation_message_retention_time_secs, 60,
     "Minimal time at which a catalog version with invalidation message is retained.");
 TAG_FLAG(min_invalidation_message_retention_time_secs, advanced);
 
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_qos);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_bool(enable_update_local_peer_min_index);
@@ -381,6 +383,10 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
 
 bool MinimalRetentionTimePassed(CoarseTimePoint message_time, CoarseTimePoint now) {
   return message_time + FLAGS_min_invalidation_message_retention_time_secs * 1s < now;
+}
+
+bool ObjectLockFastpathEnabled() {
+  return FLAGS_enable_object_lock_fastpath && FLAGS_enable_object_locking_for_table_locks;
 }
 
 }  // namespace
@@ -627,8 +633,8 @@ Status TabletServer::Init() {
   shared->SetTserverUuid(fs_manager()->uuid());
 
   shared_mem_manager_->SetReadyCallback([this] {
-    if (auto* object_lock_state = shared_mem_manager_->SharedData()->object_lock_state()) {
-      object_lock_shared_state_manager_->SetupShared(*object_lock_state);
+    if (ObjectLockFastpathEnabled()) {
+      object_lock_shared_state_manager_->SetupShared(shared_mem_manager_->allocator());
     }
   });
 
@@ -2795,6 +2801,18 @@ PgClientServiceImpl* TabletServer::TEST_GetPgClientService() {
 PgClientServiceMockImpl* TabletServer::TEST_GetPgClientServiceMock() {
   auto holder = pg_client_service_.lock();
   return holder && holder->mock.has_value() ? &holder->mock.value() : nullptr;
+}
+
+std::optional<docdb::ObjectLockSharedStateHolder>
+TabletServer::AllocateObjectLockSharedState() const {
+  if (ObjectLockFastpathEnabled()) {
+    auto result = object_lock_shared_state_manager_->AllocateShared();
+    if (result.ok()) {
+      return std::move(*result);
+    }
+    LOG(DFATAL) << "Failed to allocate new object lock shared state: " << result.status();
+  }
+  return std::nullopt;
 }
 
 ConnectivityStateResponsePB TabletServer::ConnectivityState() {

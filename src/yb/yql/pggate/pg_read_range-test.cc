@@ -874,6 +874,71 @@ TEST_F(PgReadRangeTest, ApplyBoundsToRequest) {
     EXPECT_TRUE(range3.IsEmpty());
     EXPECT_FALSE(range3.ApplyBounds(req));
   }
+
+  // Apply bounds where only inclusivity changes.
+  {
+    ThreadSafeArena arena;
+    LWPgsqlReadRequestPB req(&arena);
+
+    auto k0 = MakeRangeDocKey(0, 10, 20);
+    auto k1 = MakeRangeDocKey(10, 20, 30);
+
+    PgReadRange range1(range_table_);
+    range1.SetDocKeyBound(k0, true, true);
+    range1.SetDocKeyBound(k1, true, false);
+    PgReadRange range2(range_table_);
+    range2.SetDocKeyBound(k0, false, true);
+    range2.SetDocKeyBound(k1, false, false);
+
+    EXPECT_TRUE(range1.ApplyBounds(req));
+    PgReadRange result1(range_table_);
+    result1.SetRequestBounds(req);
+    EXPECT_EQ(result1, range1);
+
+    // Exclusive to inclusive gives exclusive
+    EXPECT_TRUE(range2.ApplyBounds(req));
+    PgReadRange result2(range_table_);
+    result2.SetRequestBounds(req);
+    EXPECT_EQ(result2, range2);
+
+    // Inclusive to exclusive gives exclusive
+    EXPECT_TRUE(range1.ApplyBounds(req));
+    PgReadRange result3(range_table_);
+    result3.SetRequestBounds(req);
+    EXPECT_EQ(result3, range2);
+  }
+
+  {
+    ThreadSafeArena arena;
+    LWPgsqlReadRequestPB req(&arena);
+
+    auto k0 = MakeHashDocKey(0, 0, 0, 0, 0);
+    auto k1 = MakeHashDocKey(100, 10, 0, 10, 0);
+
+    PgReadRange range1(hash_table_);
+    range1.SetDocKeyBound(k0, true, true);
+    range1.SetDocKeyBound(k1, true, false);
+    PgReadRange range2(hash_table_);
+    range2.SetDocKeyBound(k0, false, true);
+    range2.SetDocKeyBound(k1, false, false);
+
+    EXPECT_TRUE(range1.ApplyBounds(req));
+    PgReadRange result1(hash_table_);
+    result1.SetRequestBounds(req);
+    EXPECT_EQ(result1, range1);
+
+    // Exclusive to inclusive gives exclusive
+    EXPECT_TRUE(range2.ApplyBounds(req));
+    PgReadRange result2(hash_table_);
+    result2.SetRequestBounds(req);
+    EXPECT_EQ(result2, range2);
+
+    // Inclusive to exclusive gives exclusive
+    EXPECT_TRUE(range1.ApplyBounds(req));
+    PgReadRange result3(hash_table_);
+    result3.SetRequestBounds(req);
+    EXPECT_EQ(result3, range2);
+  }
 }
 
 TEST_F(PgReadRangeTest, SetPartitionBoundsHash) {

@@ -53,7 +53,6 @@ std::optional<ObjectLockFastpathLockType> MakeObjectLockFastpathLockType(TableLo
     ObjectLockFastpathLockType lock_type);
 
 struct ObjectLockFastpathRequest {
-  SessionLockOwnerTag owner;
   SubTransactionId subtxn_id;
   uint32_t database_oid;
   uint32_t relation_oid;
@@ -63,7 +62,7 @@ struct ObjectLockFastpathRequest {
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
-        owner, subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
+        subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
   }
 };
 
@@ -75,28 +74,18 @@ class ObjectLockSharedState {
   class Impl;
 
  public:
-  class ActivationGuard {
-   public:
-    ActivationGuard() = default;
-    explicit ActivationGuard(Impl* impl);
-    ActivationGuard(ActivationGuard&& other);
-    ~ActivationGuard();
-    ActivationGuard& operator=(ActivationGuard&& other) PARENT_PROCESS_ONLY;
-   private:
-    Impl* impl_ = nullptr;
-  };
-
-  explicit ObjectLockSharedState(SharedMemoryBackingAllocator& allocator);
+  ObjectLockSharedState(
+      SharedMemoryBackingAllocator& allocator,
+      const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents);
   ~ObjectLockSharedState();
 
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
 
-  ActivationGuard Activate(
-      const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents)
-      PARENT_PROCESS_ONLY;
+  void Enable() PARENT_PROCESS_ONLY;
 
-  void PauseAndReset() PARENT_PROCESS_ONLY;
-  void Resume() PARENT_PROCESS_ONLY;
+  void Disable() PARENT_PROCESS_ONLY;
+
+  void Shutdown() PARENT_PROCESS_ONLY;
 
   size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
 
@@ -106,8 +95,6 @@ class ObjectLockSharedState {
 
   void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
       PARENT_PROCESS_ONLY;
-
-  [[nodiscard]] SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY;
 
   [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY;
 

@@ -51,6 +51,7 @@
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_ysql_lease.fwd.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
 

@@ -862,6 +862,7 @@ Result<FlushFuture> PgSession::FlushOperations(
 NonTransactionalWrites PgSession::OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const {
   return NonTransactionalWrites(
       pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL &&
+      !pg_txn_manager_->IsDdlMode() &&
       std::ranges::any_of(operations, [](const auto& op) { return !IsReadOnly(*op); }));
 }
 
@@ -929,7 +930,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   } else {
     RETURN_NOT_OK(SetupPerformOptions(
         {}, options, OpsHaveNonTransactionalWrites(ops.operations()),
-        ops_options.read_time_action));
+        ops_options.read_time_action, SkipReadTimeOptions::kFalse,
+        IsCatalogSnapshot(!YBCIsLegacyModeForCatalogOps() && ops_options.has_catalog_ops)));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -1088,7 +1090,16 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
     false /* read_only */,
     pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
 
-  return SetupPerformOptions(*options, NonTransactionalWrites::kFalse);
+  return SetupPerformOptions(
+      *options, NonTransactionalWrites::kFalse, /* read_time_action= */ std::nullopt,
+      SkipReadTimeOptions::kTrue);
+}
+
+void PgSession::SetupDeferReadPointOptionForSeparateDdlTxn(
+    tserver::PgPerformOptionsPB* options) const {
+  if (pg_txn_manager_->ShouldDeferReadPoint()) {
+    options->mutable_read_time_options()->set_defer_read_point(true);
+  }
 }
 
 void PgSession::SetTransactionHasWrites() {
@@ -1170,27 +1181,6 @@ Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table
   RETURN_NOT_OK(FlushBufferedEntities(
       PgFlushDebugContext::SwitchToCatalogSnapshot(catalog_read_time_serial_no)));
   RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(catalog_read_time_serial_no));
-  // Clamp the uncertainty window for catalog reads.
-  //
-  // User table reads need an uncertainty window to guarantee read-after-commit-visibility because
-  // clock skew can cause a write's commit timestamp to exceed the reader's chosen read time.
-  //
-  // Catalog reads do not need this. Catalog operations use object locks (shared for reads,
-  // exclusive for writes) instead of relying solely on MVCC. A concurrent DDL writer must hold
-  // an exclusive lock, and the catalog reader can only acquire its shared lock after that
-  // exclusive lock is released. The lock release happens strictly after the DDL transaction
-  // commits, so it propagates the commit hybrid time. By the time the reader picks its catalog
-  // snapshot read time, that time is guaranteed to be >= the commit time of any concurrent DDL.
-  //
-  // The guarantee is also maintained when postgres uses AcceptInvalidationMessages instead of
-  // share locks: the exclusive lock release still propagates the commit time before invalidation
-  // messages are applied and a new catalog read time is chosen. The object lock release
-  // happens before postgres acknowledges the catalog write, maintaining the same guarantee.
-  //
-  // Without clamping, the uncertainty window causes spurious read restart errors on catalog
-  // tables that are unnecessary given the object-lock / invalidation-messages protocol.
-  pg_txn_manager_->SetClampUncertaintyWindow(true);
-  pg_txn_manager_->ResetFollowerReadTime();
   return original_read_point;
 }
 

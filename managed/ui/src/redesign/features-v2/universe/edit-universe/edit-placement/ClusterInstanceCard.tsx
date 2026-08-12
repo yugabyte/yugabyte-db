@@ -197,6 +197,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
         </Typography>
         <YBDropdown
           dataTestId="edit-placement-actions"
+          disableScrollLock
           slotProps={{
             paper: {
               sx: editMenuItems

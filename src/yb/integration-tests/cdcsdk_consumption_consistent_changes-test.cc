@@ -2988,7 +2988,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetryableErrorsNotSentToWalse
       TestSimulateErrorCode::PeerNotLeader,
       TestSimulateErrorCode::PeerNotReadyToServe,
       TestSimulateErrorCode::LogSegmentFooterNotFound,
-      TestSimulateErrorCode::LogIndexCacheEntryNotFound,
       TestSimulateErrorCode::LogReaderNotInitialized};
 
   for (auto error_code : error_codes) {

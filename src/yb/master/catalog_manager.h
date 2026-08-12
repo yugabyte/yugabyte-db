@@ -435,7 +435,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Gets the backfilling status of the specified index tables. The result is provided via
   // the callback for every index from the indexes argument. If the indexes argument is empty,
   // the result is provided for every index of the specified indexed table. The callback must have
-  // the following signature: void (const Status&, const TableId&, IndexStatusPB::BackfillStatus).
+  // the following signature:
+  // void (const Status&, const TableId&, IndexStatusPB::BackfillStatus, uint64_t birth_time).
+  // birth_time is the value persisted on the index table's IndexInfo (0 if unset).
   void GetBackfillStatus(const TableId& indexed_table_id, TableIdSet&& indexes, auto&& callback);
 
   // Backfill the indexes for the specified table.

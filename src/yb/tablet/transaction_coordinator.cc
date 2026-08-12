@@ -1585,7 +1585,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     if (!managed_transactions_.empty()) {
       auto& txn = *managed_transactions_.get<FirstEntryIndexTag>().begin();
       if (details) {
-        *details += Format("Transaction coordinator: $0\n", txn);
+        *details += Format("Transaction coordinator: $0", txn);
       }
       return txn.first_entry_raft_index();
     }

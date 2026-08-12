@@ -52,6 +52,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_ysql_lease.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/master_xcluster_util.h"

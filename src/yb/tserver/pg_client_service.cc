@@ -1050,7 +1050,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, messenger_, client(),
         session_context_, session_id, req.pid(), lease_epoch(),
-        tablet_server_.ts_local_lock_manager());
+        tablet_server_.ts_local_lock_manager(), tablet_server_.AllocateObjectLockSharedState());
     resp->set_session_id(session_id);
     if (const auto v = tablet_server_.cluster_config_version(); req.cluster_config_version() < v) {
       auto &cluster_config_pb = *resp->mutable_cluster_config();

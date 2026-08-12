@@ -173,6 +173,13 @@ public class NodeAgentRpcPayload {
     return null;
   }
 
+  /**
+   * Name of the otel collector archive as it lands in the third-party package directory. The
+   * dependency list is fetched with {@code wget -i}, which saves each file under its URL basename,
+   * so this must track the archive names published to ybm-package-store. The executable inside is
+   * named {@code otelcol-unified}; node-agent renames it to {@code otelcol-contrib} on extract to
+   * keep the running process name stable.
+   */
   private String getOtelCollectorPackagePath(Architecture arch) {
     String architecture = "";
     if (arch.equals(Architecture.x86_64)) {
@@ -181,7 +188,7 @@ public class NodeAgentRpcPayload {
       architecture = "arm64";
     }
     return String.format(
-        "otelcol-contrib_%s_%s_%s.tar.gz",
+        "otelcol-unified_%s_%s_%s.tar.gz",
         ManageOtelCollector.OtelCollectorVersion,
         ManageOtelCollector.OtelCollectorPlatform,
         architecture);

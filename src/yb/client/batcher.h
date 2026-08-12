@@ -367,7 +367,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void HandleAsyncWriteResponse(
       const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
-      const std::shared_ptr<const YBTable>& table);
+      const std::shared_ptr<const YBTable>& table, const ash::WaitStateInfoPtr& wait_state);
 
   // Returns true if the operations in this batcher are configured to skip the intents DB.
   // Because all operations within a single batch must share the exact same skip_intents

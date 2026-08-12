@@ -94,6 +94,8 @@ DECLARE_bool(TEST_fail_batcher_rpc);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_no_schedule_remove_intents);
 DECLARE_bool(TEST_request_unknown_tables_during_perform);
+DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_tablet_pause_apply_write_ops);
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_tracing);
@@ -118,6 +120,7 @@ DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_int32(gzip_stream_compression_level);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(sampled_trace_1_in_n);
 DECLARE_int32(stream_compression_algo);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
@@ -575,6 +578,9 @@ class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterfac
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
+    // Disable probabilistic tracing. Otherwise a sampled trace of an unrelated background RPC
+    // (e.g. a slow remote bootstrap) is dumped into the log and counted by the test's log sink.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sampled_trace_1_in_n) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = GetParam();
     // Disable auto analyze because it introduces flakiness for query plans and metrics.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
@@ -588,7 +594,12 @@ TEST_P(PgMiniTestTracing, Tracing) {
     void send(
         google::LogSeverity severity, const char* full_filename, const char* base_filename,
         int line, const struct ::tm* tm_time, const char* message, size_t message_len) {
-      if (strcmp(base_filename, "trace.cc") == 0) {
+      // Count only traces of PG session RPCs. Traces of unrelated background RPCs (e.g. a slow
+      // remote bootstrap of a system tablet) are dumped to the same log and would otherwise be
+      // attributed to the queries below.
+      if (strcmp(base_filename, "trace.cc") == 0 &&
+          std::string_view(message, message_len).find("pg_client_session.cc") !=
+              std::string_view::npos) {
         last_logged_bytes_ = message_len;
       }
     }
@@ -862,6 +873,73 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSerializableDefer
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSnapshot),
           PgMiniLargeClockSkewTest) {
   TestReadRestart(false /* deferrable */);
+}
+
+class PgMiniSingleTserverTest : public PgMiniTest {
+ public:
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+// Reproduces https://github.com/yugabyte/yugabyte-db/issues/33107.
+// When the read time is picked on the tserver and the read is restarted in place because of an
+// intent of a transaction committed above the picked read time, the retried read must not be
+// performed until the tablet safe time reaches the restart read time.
+// Otherwise it can miss a write that is replicated but not yet applied, even though this write
+// has a hybrid time below the restart read time. The restart read time is returned as
+// used_read_time and becomes the transaction read point, so the next statement of the same
+// transaction sees this write appear at the same read point - a repeatable read violation.
+TEST_F_EX(PgMiniTest, ReadRestartWaitsForSafeTime, PgMiniSingleTserverTest) {
+  auto txn_conn = ASSERT_RESULT(Connect());
+  auto write_conn = ASSERT_RESULT(Connect());
+  auto read_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  // Warm up catalog caches, so the read below does not need any writes.
+  ASSERT_RESULT((read_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t")));
+
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(txn_conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+  // Keep intents of the committed transaction in intents db, so the read below resolves its
+  // commit time via the transaction status path and gets restarted.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = true;
+  // Pause write apply after replication, pinning the tablet safe time below the write hybrid
+  // time.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_pause_apply_write_ops) = true;
+
+  TestThreadHolder thread_holder;
+  StringWaiterLogSink pause_log_sink("Pausing due to flag TEST_tablet_pause_apply_write_ops");
+  thread_holder.AddThreadFunctor([&write_conn] {
+    ASSERT_OK(write_conn.Execute("INSERT INTO t VALUES (2, 2)"));
+  });
+  ASSERT_OK(pause_log_sink.WaitFor(60s * kTimeMultiplier));
+
+  // The paused write already has a hybrid time, so the transaction commit time is above it.
+  ASSERT_OK(txn_conn.CommitTransaction());
+
+  // Keep the apply paused long enough for the read below to pick its read time and restart
+  // while the safe time is still pinned below the paused write.
+  thread_holder.AddThreadFunctor([] {
+    SleepFor(3s * kTimeMultiplier);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_pause_apply_write_ops) = false;
+  });
+
+  // The read picks read time = safe time, which is below the hybrid time of the paused write,
+  // then hits the intent committed above it and restarts in place at the commit time.
+  // Run it as the first statement of a repeatable read transaction, so the restart read time
+  // becomes the transaction read point.
+  ASSERT_OK(read_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  const auto rows = ASSERT_RESULT(
+      (read_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t ORDER BY k")));
+  // Wait for the paused write to complete.
+  thread_holder.JoinAll();
+  // Re-read at the same read point, the result must be the same.
+  const auto reread_rows = ASSERT_RESULT(
+      (read_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t ORDER BY k")));
+  ASSERT_OK(read_conn.CommitTransaction());
+
+  ASSERT_EQ(rows, reread_rows);
 }
 
 TEST_F_EX(PgMiniTest, SerializableReadOnly, PgMiniTestFailOnConflict) {

@@ -274,7 +274,10 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
     if (!tablet) {
       return Status::OK();
     }
-    return tablet->ForceManualRocksDBCompact(skip_flush);
+    const auto status = tablet->ForceManualRocksDBCompact(skip_flush);
+    // A tablet whose RocksDB shutdown has already started, e.g. because it is being deleted
+    // concurrently, has nothing left to compact.
+    return status.IsShutdownInProgress() ? Status::OK() : status;
   });
 }
 

@@ -279,7 +279,7 @@ export const InstanceSettings = forwardRef<
   if (isRuntimeConfigLoading || isProviderRuntimeConfigLoading || showInstanceTypesLoader) {
     return (
       <Panel>
-        <StyledHeader />
+        {!editMode && <StyledHeader />}
         <Content>
           <PanelWrapper editMode={editMode}>
             <Box display="flex" alignItems="center" justifyContent="center" width="100%">

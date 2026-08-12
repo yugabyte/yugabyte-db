@@ -73,7 +73,7 @@ export const clearCredentials = () => {
   localStorage.removeItem('customerId');
   localStorage.removeItem('userId');
   localStorage.removeItem(testFeatureFlagsLocalStorageKey);
-  resetUniverseRevampOnboardingStorage();
+  // resetUniverseRevampOnboardingStorage();
   clearRbacCreds();
 
   /*

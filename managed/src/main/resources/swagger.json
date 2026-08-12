@@ -22551,6 +22551,11 @@
           ],
           "type" : "string"
         },
+        "isKubernetesOperatorControlled" : {
+          "description" : "True if this schedule is controlled by the Kubernetes operator",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "nextExpectedTask" : {
           "description" : "Next expected task time",
           "example" : "2022-12-12T13:07:18Z",
@@ -45133,6 +45138,15 @@
             "name" : "uniUUID",
             "required" : true,
             "type" : "string"
+          },
+          {
+            "default" : 10,
+            "description" : "Maximum number of most recent health check entries to return. Defaults to 10.",
+            "format" : "int32",
+            "in" : "query",
+            "name" : "limit",
+            "required" : false,
+            "type" : "integer"
           }
         ],
         "responses" : {

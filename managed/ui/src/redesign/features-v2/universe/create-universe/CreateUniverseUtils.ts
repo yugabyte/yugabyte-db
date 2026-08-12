@@ -36,3 +36,8 @@ export {
   getNodeSpec
 } from './utils/createUniverseNodeSpec';
 export { isV2CreateEditUniverseEnabled } from './utils/createUniverseRuntime';
+export {
+  canOverrideCommunicationPorts,
+  shouldApplyConnectionPoolingPortOverrides,
+  DEFAULT_CONNECTION_POOLING_PORTS
+} from './helpers/syncConnectionPoolingPorts';

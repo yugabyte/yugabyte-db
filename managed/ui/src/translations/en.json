@@ -165,6 +165,7 @@
       }
     },
     "universeActions": {
+      "blockedByKubernetesOperator": "This universe is controlled by the Kubernetes operator and cannot be modified from YugabyteDB Anywhere.",
       "precheckInitiatedMsg": "Running Prechecks...",
       "runPrecheckOnlyButton": "Run Pre-check Only",
       "lbState": {
@@ -701,18 +702,24 @@
         }
       },
       "reprovisionNodesWithYnpModal": {
-        "title": "Reprovision Nodes with YNP",
-        "instructions": "Nodes will be provisioned in a rolling manner.",
+        "title": "Reprovision Universe Nodes",
+        "description": "This re-applies host setup on the selected nodes, including OS configuration, required packages, and Node Agent installation.",
+        "learnMoreAboutOperationalConsiderations": "Learn more about operational considerations",
+        "rollingRestartNoteRF3": "<bold>Note!</bold> Reprovisioning nodes will require a <bold>rolling restart</bold> of <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+        "rollingRestartNoteRF3SelectedNode": "<bold>Note!</bold> Reprovisioning will require a <bold>restart</bold> of <bold>{{nodeName}}</bold>. The universe will remain online and available throughout.",
+        "rollingRestartNoteLowRF": "<bold>Note!</bold> Reprovisioning nodes will require a <bold>restart</bold> of <bold>{{universeName}}</bold>. The universe won't be available for reads and writes during the restart.",
+        "rollingRestartNoteLowRFSelectedNode": "<bold>Note!</bold> Reprovisioning will require a <bold>restart</bold> of <bold>{{nodeName}}</bold>. The universe won't be available for reads and writes during the restart.",
         "reprovisionNodesFor": "Reprovision nodes for:",
         "allNodeInUniverse": "All nodes in this Universe",
         "selectedNode": "Selected node",
-        "confirmButton": "Reprovision Nodes with YNP",
+        "selectedNodeDisabledSingleNodeUniverse": "This universe only has one node.",
+        "confirmButton": "Reprovision Universe Nodes",
         "error": {
-          "requestFailureLabel": "Reprovision nodes with YNP request failed",
-          "taskFailure": "Failed to reprovision nodes with YNP."
+          "requestFailureLabel": "Reprovision Universe Nodes request failed",
+          "taskFailure": "Failed to Reprovision Universe Nodes."
         },
         "success": {
-          "requestSuccess": "Reprovision nodes with YNP started.",
+          "requestSuccess": "Reprovision Universe Nodes started.",
           "taskSuccess": "Reprovisioned nodes with YNP."
         }
       }
@@ -3695,6 +3702,7 @@
           "enabled": "Enabled",
           "disabled": "Disabled",
           "creating": "Policy creation is in progress...",
+          "operatorControlledPolicy": "This backup schedule is controlled by the Kubernetes operator and cannot be changed from YugabyteDB Anywhere.",
           "deleteMsg": "scheduled backup policy is being deleted",
           "editModal": {
             "title": "Edit Scheduled Backup Policy",
@@ -3845,8 +3853,13 @@
           "quickSetup": "Quick Setup"
         },
         "formType": {
-          "guidedMode": "Guided Mode",
-          "expertMode": "Expert Mode"
+          "guidedMode": "Guided",
+          "expertMode": "Expert"
+        },
+        "setupMode": {
+          "title": "Setup Mode",
+          "description": "Choose how to configure cluster resilience and placement.",
+          "learnMore": "Learn more"
         },
         "singleNode": {
           "availabilityZone": "Availability Zone",
@@ -3867,6 +3880,7 @@
           "cancel": "Cancel"
         },
         "regions": "Regions",
+        "expertRegionIntro": "Start by selecting one or more regions.",
         "replicationFactor": "Replication Factor",
         "availabilityZonesCount": "{{count}} Availability Zone",
         "errMsg": {
@@ -3885,7 +3899,8 @@
           "moreNodesNone": "Fault tolerance <b>None</b> supports only single node deployments."
         },
         "guidedMode": {
-          "helpText": "Select the cluster’s <a>resilience</a> level to guide the setup.",
+          "header": "Resilience",
+          "helpText": "Start by Selecting the cluster’s <a>resilience</a> level to guide the setup.",
           "selectedResilienceRequires": "Selected resilience level requires:",
           "automaticReplicationFactor": "Replication factor {{replication_factor}} will be applied automatically.",
           "wordRegion": "region",
@@ -3901,20 +3916,20 @@
           "cautionLabel": "Caution!",
           "resilienceOutageWord": "outage",
           "REGION_LEVEL": {
-            "title": "Region",
+            "title": "Region Level",
             "subText": "Resilient to region outages.",
             "name": "region"
           },
           "NODE_LEVEL": {
-            "title": "Node",
+            "title": "Node Level",
             "subText": "Resilient to node outages but not availability zone outages.",
             "name": "node",
-            "titlePod": "Pod",
+            "titlePod": "Pod Level",
             "subTextPod": "Resilient to pod outages but not availability zone outages.",
             "namePod": "pod"
           },
           "AZ_LEVEL": {
-            "title": "Availability",
+            "title": "Availability Zone Level",
             "subText": "Resilient to availability zone outages.",
             "name": "availability zone"
           },
@@ -3973,6 +3988,7 @@
           "tServerPods": "Pods (TServer)",
           "nodes": "Nodes",
           "pods": "Pods",
+          "rankingAcrossRegions": "Ranking is applied across regions.",
           "tooltips": {
             "regionTag": "You can add or remove regions in the previous step (Regions).",
             "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.<br/><br/><a>Learn more</a>",
@@ -4431,6 +4447,7 @@
         "noOfNodes": "No. of Nodes",
         "noOfPods": "No. of Pods",
         "reviewChanges": "Review Changes",
+        "noPlacementChanges": "Nothing to update - no placement fields changed.",
         "editPlacementConfirmModal": {
           "title": "Review Changes",
           "summary": "Summary of instance configuration changes:",
@@ -4683,7 +4700,9 @@
             "logParameter": "pgaudit.log_parameter",
             "logRelation": "pgaudit.log_relation",
             "logStatement": "pgaudit.log_statement",
-            "logStatementOnce": "pgaudit.log_statement_once"
+            "logStatementOnce": "pgaudit.log_statement_once",
+            "retainAuditLogArchive": "Retain audit log archive on database nodes",
+            "logRetentionDays": "Retention period (days)"
           },
           "tooltips": {
             "read": "Log SELECT and COPY when the source is a relation or a query.",
@@ -4699,7 +4718,12 @@
             "logParameter": "Include parameters passed with the statement. Parameters are provided in .csv format after the statement text.",
             "logRelation": "Create separate log entries for each relation (TABLE, VIEW, etc.) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging.",
             "logStatement": "Include statement text with every log entry.",
-            "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry."
+            "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry.",
+            "retainAuditLogArchive": "Saves audit records in separate compressed archives on each database node so they can be retained independently of regular PostgreSQL logs.",
+            "logRetentionDays": "Number of days to keep the compressed audit log archives on each database node."
+          },
+          "validation": {
+            "logRetentionDaysMin": "Enter an integer of at least 1"
           },
           "confirmation": {
             "title": "Confirm Configuration Change",
@@ -4742,7 +4766,7 @@
           "auditLogExport": "audit log export"
         }
       },
-        "telemetryExport": {
+      "telemetryExport": {
         "title": "Telemetry Export",
         "subtitle": "Export metrics and logs to external observability tools.",
         "k8sUnsupportedAuditExportVersion": "Requires database version {{stableVersion}} (stable) or {{previewVersion}} (preview) or later.",
@@ -4983,7 +5007,8 @@
         },
         "toast": {
           "addRRFailed": "Failed to add read replica",
-          "updateRRFailed": "Failed to update read replica"
+          "updateRRFailed": "Failed to update read replica",
+          "noPlacementChanges": "Nothing to update - no placement fields changed."
         },
         "validation": {
           "invalidArchitecture": "Invalid CPU Architecture",
@@ -5065,10 +5090,10 @@
         "findOutMore": "Find Out More"
       },
       "beforeProceedWithNewModal": {
-        "title": "Before you proceed...",
-        "note": "Note that database audit log is now available under  “<settings>Settings</settings>”.",
-        "databaseAuditLogs": "Database audit logs",
-        "databaseAuditLogExport": "Database audit log export",
+        "title": "“Database Audit Log ” has moved",
+        "note": "Database audit log is now available under  “<settings>Settings</settings>” tab.",
+        "databaseAuditLogs": "Database audit logs settings",
+        "databaseAuditLogExport": "Database audit log export settings",
         "settings": "Settings",
         "nowLogs": "Logs",
         "nowTelemetryExport": "Telemetry Export",

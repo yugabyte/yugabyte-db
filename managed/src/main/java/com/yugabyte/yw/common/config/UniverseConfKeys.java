@@ -427,6 +427,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If enabled, slow queries data will be stored for universe, once per hour.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> slowQueryDisableCommandLogging =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.disable_command_logging",
+          ScopeType.UNIVERSE,
+          "Disable Slow queries logs in yugabyte anywhere logging",
+          "Disable Slow queries command logging in the Yugabyte Anywhere Logs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
       new ConfKeyInfo<>(
           "yb.perf_advisor.enabled",

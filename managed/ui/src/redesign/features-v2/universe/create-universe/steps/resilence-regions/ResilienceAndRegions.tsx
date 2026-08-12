@@ -51,14 +51,17 @@ import {
   GuidedExpertModePopover,
   useGuidedExpertModePopover
 } from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/GuidedExpertModePopover';
+import { DEFAULT_RELEASE_NOTES_URL } from '@app/redesign/features-v2/onboarding/universe-revamp/modals/HelperComponent';
 
 //icons
 import MapIcon from '@app/redesign/assets/map.svg';
 import MapIconSelected from '@app/redesign/assets/map_selected.svg';
 import MapDisabled from '@app/redesign/assets/map_disabled.svg';
+import CommandIcon from '@app/redesign/assets/guided-expert-mode/command.svg';
+import CommandIconSelected from '@app/redesign/assets/guided-expert-mode/command-selected.svg';
 import Flash from '@app/redesign/assets/flash_transparent.svg';
 
-const { Grid2: Grid, Collapse, styled, Box } = mui;
+const { Collapse, styled, Box, Link, Typography } = mui;
 
 const StyledHelpText = styled('div')(({ theme }) => ({
   padding: '16px 24px',
@@ -74,6 +77,59 @@ const StyledHelpText = styled('div')(({ theme }) => ({
     color: theme.palette.grey[700],
     textDecoration: 'underline',
     cursor: 'pointer'
+  }
+}));
+
+const SetupModeCard = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '16px',
+  width: '100%',
+  padding: '24px 16px',
+  borderRadius: '8px',
+  border: `1px solid ${theme.palette.grey[300]}`,
+  backgroundColor: '#FBFCFD',
+  boxSizing: 'border-box'
+}));
+
+const SetupModeCopy = styled(Box)(() => ({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '8px',
+  minWidth: 0,
+  flex: 1
+}));
+
+const SetupModeTitle = styled(Typography)(({ theme }) => ({
+  fontSize: 15,
+  fontWeight: 600,
+  lineHeight: '16px',
+  color: theme.palette.grey[900]
+}));
+
+const SetupModeDescription = styled(Typography)(({ theme }) => ({
+  fontSize: 13,
+  fontWeight: 400,
+  lineHeight: '16px',
+  color: theme.palette.grey[900],
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'flex-start',
+  gap: '4px'
+}));
+
+const SetupModeLearnMore = styled(Link)(({ theme }) => ({
+  fontSize: 13,
+  fontWeight: 400,
+  lineHeight: '16px',
+  color: theme.palette.grey[900],
+  textDecoration: 'underline',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  '&:hover': {
+    color: theme.palette.grey[900],
+    textDecoration: 'underline'
   }
 }));
 
@@ -398,10 +454,24 @@ export const ResilienceAndRegions = forwardRef<
       )}
       {resilienceType === ResilienceType.REGULAR && (
         <>
-          <Grid alignItems={'center'} justifyContent={'flex-end'} container width="100%">
+          <SetupModeCard data-testid="setup-mode-card">
+            <SetupModeCopy>
+              <SetupModeTitle>{t('setupMode.title')}</SetupModeTitle>
+              <SetupModeDescription>
+                <span>{t('setupMode.description')}</span>
+                <SetupModeLearnMore
+                  href={DEFAULT_RELEASE_NOTES_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t('setupMode.learnMore')}
+                </SetupModeLearnMore>
+              </SetupModeDescription>
+            </SetupModeCopy>
             <span
               ref={guidedExpertModeAnchorRef}
               onClickCapture={handleGuidedExpertModeClick}
+              style={{ display: 'inline-flex', flexShrink: 0 }}
             >
               <YBButtonGroup
                 key={modeButtonGroupKey}
@@ -412,7 +482,13 @@ export const ResilienceAndRegions = forwardRef<
                   {
                     value: ResilienceFormMode.GUIDED,
                     label: t('formType.guidedMode'),
-                    icon: disableGuidedMode ? <MapDisabled /> : formMode === ResilienceFormMode.GUIDED ? <MapIconSelected /> : <MapIcon />,
+                    icon: disableGuidedMode ? (
+                      <MapDisabled />
+                    ) : formMode === ResilienceFormMode.GUIDED ? (
+                      <MapIconSelected />
+                    ) : (
+                      <MapIcon />
+                    ),
                     onClick: handleGuidedModeClick,
                     buttonProps: {
                       dataTestId: 'guided-mode-button',
@@ -423,6 +499,12 @@ export const ResilienceAndRegions = forwardRef<
                   {
                     value: ResilienceFormMode.EXPERT_MODE,
                     label: t('formType.expertMode'),
+                    icon:
+                      formMode === ResilienceFormMode.EXPERT_MODE ? (
+                        <CommandIconSelected />
+                      ) : (
+                        <CommandIcon />
+                      ),
                     onClick: () => {
                       methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.EXPERT_MODE, {
                         shouldValidate: true
@@ -440,7 +522,7 @@ export const ResilienceAndRegions = forwardRef<
               anchorRef={guidedExpertModeAnchorRef}
               onClose={handleGuidedExpertModePopoverClose}
             />
-          </Grid>
+          </SetupModeCard>
           {formMode === ResilienceFormMode.GUIDED ? <GuidedMode /> : <ExpertMode />}
         </>
       )}

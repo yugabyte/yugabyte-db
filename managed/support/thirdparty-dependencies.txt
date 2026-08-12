@@ -9,8 +9,8 @@ https://github.com/prometheus/prometheus/releases/download/v3.13.1/prometheus-3.
 https://github.com/prometheus/alertmanager/releases/download/v0.5.1/alertmanager-0.5.1.linux-amd64.tar.gz
 https://files.pythonhosted.org/packages/6a/fa/5ec0fa9095c9b72cb1c31a8175c4c6745bf5927d1045d7a70df35d54944f/setuptools-59.6.0.tar.gz
 https://downloads.yugabyte.com/docker/thirdparty-deps/x86_64/xxhash.tar.gz
-https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.0/otelcol-contrib_0.90.0_linux_amd64.tar.gz
-https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.0/otelcol-contrib_0.90.0_linux_arm64.tar.gz
+https://ybm-package-store.s3.amazonaws.com/unified-otelcol/0.145.0/otelcol-unified_0.145.0_linux_amd64.tar.gz
+https://ybm-package-store.s3.amazonaws.com/unified-otelcol/0.145.0/otelcol-unified_0.145.0_linux_arm64.tar.gz
 https://downloads.yugabyte.com/docker/thirdparty-deps/x86_64/tectia-ssh.tar.gz
 https://downloads.yugabyte.com/docker/thirdparty-deps/clockbound-linux-x86_64.tar.gz
 https://downloads.yugabyte.com/docker/thirdparty-deps/clockbound-linux-aarch64.tar.gz

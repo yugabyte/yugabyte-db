@@ -149,13 +149,14 @@ class PgClientSession final {
       TransactionBuilder&& transaction_builder, client::YBClient& client,
       std::reference_wrapper<const PgClientSessionContext> context,
       uint64_t id, pid_t pid, uint64_t lease_epoch,
-      tserver::TSLocalLockManagerPtr ts_local_lock_manager);
+      tserver::TSLocalLockManagerPtr ts_local_lock_manager,
+      std::optional<docdb::ObjectLockSharedStateHolder> object_lock_shared_state);
   ~PgClientSession();
 
   uint64_t id() const;
 
   struct SharedDataDescriptor {
-    PgSessionLockOwnerTagShared& object_lock;
+    PgSessionObjectLockData& object_lock;
     std::atomic<uint64_t>& oldest_read_point_serial_no;
   };
 

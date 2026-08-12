@@ -951,7 +951,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   const int kNumOpsPerSegment = 5;
   OpIdPB op_id = MakeOpId(1, entries_per_chunk - 10);
   ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
-                                              &op_id, /* anchors = */ nullptr));
+                                              &op_id, /*anchors=*/ nullptr));
 
   // Run a GC on an op in the second index chunk. We should remove only the
   // earliest segment, because we are set to retain 4.
@@ -974,6 +974,53 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
 
   auto result = log_reader->LookupOpId(entries_per_chunk - 5);
   ASSERT_TRUE(!result.ok() && result.status().IsNotFound()) << "unexpected result: " << result;
+}
+
+TEST_F(LogTest, TestRetentionDiagnostics) {
+  BuildLog();
+  const int kNumTotalSegments = 4;
+  const int kNumOpsPerSegment = 5;
+  OpIdPB op_id = MakeOpId(1, 1);
+  ASSERT_OK(AppendMultiSegmentSequence(
+      kNumTotalSegments, kNumOpsPerSegment, &op_id, /*anchors=*/ nullptr));
+
+  auto GetWalDiagnostics =
+      [this](const MinRetainLogIndexInfo& info) -> Result<WalRetentionDiagnostics> {
+    int64_t gcable_bytes = 0;
+    WalRetentionDiagnostics diagnostics;
+    RETURN_NOT_OK(log_->GetGCableDataSize(info, &gcable_bytes, &diagnostics));
+    return diagnostics;
+  };
+
+  // Verify the index-retention reason is printed.
+  auto diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ 3}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "Idx retention: start retain at");
+  ASSERT_STR_CONTAINS(diagnostics.details, ">= earliest needed op ID idx (3)");
+  ASSERT_STR_NOT_CONTAINS(diagnostics.details, ">= cdc_min_replicated_index (");
+  ASSERT_GE(diagnostics.first_retained_segment_age_secs, 0);
+
+  // Verify the xrepl reason is printed.
+  diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ op_id.index(),
+                            /*log_index_needed_by_cdc=*/ 3}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "cdc_min_replicated_index = min of");
+  ASSERT_STR_CONTAINS(diagnostics.details, ">= cdc_min_replicated_index (3)");
+  ASSERT_STR_CONTAINS(diagnostics.details, "<max_int>");
+  ASSERT_STR_NOT_CONTAINS(diagnostics.details, "9223372036854775807");
+
+  // Verify the min-segments cap reason is printed
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 10;
+  diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ op_id.index()}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "capped GC at");
+
+  // Verify the time-retention reason is printed
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 500;
+  diagnostics = ASSERT_RESULT(GetWalDiagnostics(
+      MinRetainLogIndexInfo{/*earliest_needed_log_index=*/ op_id.index()}));
+  ASSERT_STR_CONTAINS(diagnostics.details, "Time retention: retain start at");
 }
 
 // Tests that we can append FLUSH_MARKER messages to the log queue to make sure
