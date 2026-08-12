@@ -475,3 +475,32 @@ func IsDeviceInfoEmpty(deviceInfo ybaclient.DeviceInfo) bool {
 	return deviceInfo.NumVolumes == nil && deviceInfo.VolumeSize == nil &&
 		deviceInfo.StorageType == nil
 }
+
+// AddRollMaxBatchSizeFlags registers CLI flags for k8s/VM rolling batch size.
+func AddRollMaxBatchSizeFlags(cmd *cobra.Command) {
+	cmd.Flags().Int32("primary-batch-size", 1,
+		"[Optional] Number of primary-cluster tservers to restart in each rolling batch. "+
+			"Only applied when --upgrade-option is Rolling.")
+	cmd.Flags().Int32("read-replica-batch-size", 1,
+		"[Optional] Number of read-replica tservers to restart in each rolling batch. "+
+			"Only applied when --upgrade-option is Rolling.")
+}
+
+// RollMaxBatchSizeFromFlags builds RollMaxBatchSize from CLI flags when the upgrade is rolling.
+func RollMaxBatchSizeFromFlags(cmd *cobra.Command, upgradeOption string) *ybaclient.RollMaxBatchSize {
+	if !strings.EqualFold(upgradeOption, "Rolling") {
+		return nil
+	}
+	primaryBatchSize, err := cmd.Flags().GetInt32("primary-batch-size")
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+	readReplicaBatchSize, err := cmd.Flags().GetInt32("read-replica-batch-size")
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+	return &ybaclient.RollMaxBatchSize{
+		PrimaryBatchSize:     &primaryBatchSize,
+		ReadReplicaBatchSize: &readReplicaBatchSize,
+	}
+}

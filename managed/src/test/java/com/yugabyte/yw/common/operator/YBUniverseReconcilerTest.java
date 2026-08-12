@@ -42,6 +42,7 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
@@ -548,6 +549,84 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         .upgradeKubernetesOverrides(uDTCaptor.capture(), any(Customer.class), any(Universe.class));
     assertTrue(uDTCaptor.getValue().universeOverrides.contains("bar"));
     // Verify upgrade handler is not called
+    Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
+  public void testOverridesUpgradeHonorsRollMaxBatchSize() throws Exception {
+    String universeName = "test-overrides-roll-batch";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    io.yugabyte.operator.v1alpha1.ybuniversespec.RollMaxBatchSize specBatchSize =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.RollMaxBatchSize();
+    specBatchSize.setPrimaryBatchSize(2L);
+    specBatchSize.setReadReplicaBatchSize(2L);
+    ybUniverse.getSpec().setRollMaxBatchSize(specBatchSize);
+
+    KubernetesOverrides ko = new KubernetesOverrides();
+    Map<String, String> nodeSelectorMap = new HashMap<>();
+    nodeSelectorMap.put("foo", "bar");
+    ko.setNodeSelector(nodeSelectorMap);
+    ybUniverse.getSpec().setKubernetesOverrides(ko);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> uDTCaptor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .upgradeKubernetesOverrides(uDTCaptor.capture(), any(Customer.class), any(Universe.class));
+    KubernetesOverridesUpgradeParams captured = uDTCaptor.getValue();
+    assertTrue(captured.universeOverrides.contains("bar"));
+    assertNotNull(captured.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), captured.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), captured.rollMaxBatchSize.getReadReplicaBatchSize());
+    Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
+  public void testGflagsUpgradeHonorsRollMaxBatchSize() throws Exception {
+    String universeName = "test-gflags-roll-batch";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    // checkIfGFlagsChanged diffs per-node gflags, so the universe must have nodes.
+    oldUniverse = ModelFactory.addNodesToUniverse(oldUniverse.getUniverseUUID(), 3);
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    io.yugabyte.operator.v1alpha1.ybuniversespec.RollMaxBatchSize specBatchSize =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.RollMaxBatchSize();
+    specBatchSize.setPrimaryBatchSize(3L);
+    specBatchSize.setReadReplicaBatchSize(2L);
+    ybUniverse.getSpec().setRollMaxBatchSize(specBatchSize);
+
+    io.yugabyte.operator.v1alpha1.ybuniversespec.GFlags gflags =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.GFlags();
+    Map<String, String> tserverGFlags = new HashMap<>();
+    tserverGFlags.put("ysql_enable_packed_row", "true");
+    gflags.setTserverGFlags(tserverGFlags);
+    ybUniverse.getSpec().setGFlags(gflags);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+    ArgumentCaptor<GFlagsUpgradeParams> gflagsCaptor =
+        ArgumentCaptor.forClass(GFlagsUpgradeParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .upgradeGFlags(gflagsCaptor.capture(), any(Customer.class), any(Universe.class));
+    GFlagsUpgradeParams captured = gflagsCaptor.getValue();
+    assertNotNull(captured.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(3), captured.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), captured.rollMaxBatchSize.getReadReplicaBatchSize());
     Mockito.verifyNoInteractions(universeCRUDHandler);
   }
 

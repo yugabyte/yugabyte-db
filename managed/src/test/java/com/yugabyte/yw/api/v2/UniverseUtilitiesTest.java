@@ -1,6 +1,7 @@
 package com.yugabyte.yw.api.v2;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -11,18 +12,23 @@ import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
+import com.yugabyte.yba.v2.client.models.RollMaxBatchSize;
 import com.yugabyte.yba.v2.client.models.UniverseRestart;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.controllers.UniverseControllerTestBase;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import play.inject.guice.GuiceApplicationBuilder;
 
@@ -128,5 +134,46 @@ public class UniverseUtilitiesTest extends UniverseControllerTestBase {
         apiClient.restartUniverse(customer.getUuid(), k8sUniverse.getUniverseUUID(), payload);
     assertEquals(taskUUID, resp.getTaskUuid());
     verify(mockUpgradeUniverseHandler).restartUniverse(any(), eq(customer), eq(k8sUniverse));
+  }
+
+  @Test
+  public void testV2RestartRollingWithBatchSize() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.restartUniverse(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseRestart payload = new UniverseRestart();
+    payload.setRollingRestart(true);
+    RollMaxBatchSize batchSize = new RollMaxBatchSize();
+    batchSize.setPrimaryBatchSize(new BigDecimal(2));
+    batchSize.setReadReplicaBatchSize(new BigDecimal(2));
+    payload.setRollMaxBatchSize(batchSize);
+    YBATask resp =
+        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), payload);
+    assertEquals(taskUUID, resp.getTaskUuid());
+    ArgumentCaptor<RestartTaskParams> captor = ArgumentCaptor.forClass(RestartTaskParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .restartUniverse(captor.capture(), eq(customer), eq(universe));
+    RestartTaskParams params = captor.getValue();
+    assertEquals(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, params.upgradeOption);
+    assertNotNull(params.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), params.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), params.rollMaxBatchSize.getReadReplicaBatchSize());
+  }
+
+  @Test
+  public void testV2RestartNonRolling() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.restartUniverse(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseRestart payload = new UniverseRestart();
+    payload.setRollingRestart(false);
+    YBATask resp =
+        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), payload);
+    assertEquals(taskUUID, resp.getTaskUuid());
+    ArgumentCaptor<RestartTaskParams> captor = ArgumentCaptor.forClass(RestartTaskParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .restartUniverse(captor.capture(), eq(customer), eq(universe));
+    assertEquals(
+        UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE, captor.getValue().upgradeOption);
   }
 }

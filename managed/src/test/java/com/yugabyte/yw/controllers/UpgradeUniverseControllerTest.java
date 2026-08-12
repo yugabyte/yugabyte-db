@@ -71,8 +71,10 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
@@ -351,6 +353,88 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RestartUniverse)));
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testRestartUniverseRollingWithBatchSize() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverse);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/restart";
+    ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Rolling");
+    bodyJson.set(
+        "rollMaxBatchSize",
+        Json.newObject().put("primaryBatchSize", 2).put("readReplicaBatchSize", 2));
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    ArgumentCaptor<UpgradeTaskParams> argCaptor = ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.RestartUniverse), argCaptor.capture());
+
+    UpgradeTaskParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testRestartK8sUniverseRollingWithBatchSize() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverse);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    k8sUniverse.updateConfig(Map.of(Universe.HELM2_LEGACY, "true"));
+    k8sUniverse.save();
+
+    Result result =
+        runUpgrade(
+            k8sUniverse,
+            p -> p.rollMaxBatchSize = RollMaxBatchSize.of(2, 2),
+            RestartTaskParams.class,
+            "restart");
+    assertOk(result);
+
+    ArgumentCaptor<RestartTaskParams> argCaptor = ArgumentCaptor.forClass(RestartTaskParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.RestartUniverse), argCaptor.capture());
+    RestartTaskParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeWithBatchSize() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.KubernetesOverridesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    k8sUniverse.updateConfig(Map.of(Universe.HELM2_LEGACY, "true"));
+    k8sUniverse.save();
+
+    Result result =
+        runUpgrade(
+            k8sUniverse,
+            p -> {
+              p.universeOverrides = "tserver:\n  podLabels:\n    env: test";
+              p.rollMaxBatchSize = RollMaxBatchSize.of(2, 2);
+            },
+            KubernetesOverridesUpgradeParams.class,
+            "kubernetes_overrides");
+    assertOk(result);
+
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.KubernetesOverridesUpgrade), argCaptor.capture());
+    KubernetesOverridesUpgradeParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertEquals("tserver:\n  podLabels:\n    env: test", taskParams.universeOverrides);
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
     assertAuditEntry(1, customer.getUuid());
   }
 
@@ -1371,6 +1455,43 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.GFlagsUpgrade)));
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testGFlagsUpgradeKubernetesWithBatchSize() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsKubernetesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe =
+        createUniverse("GFlags Batch Universe", customer.getId(), CloudType.kubernetes);
+    Map<String, String> universeConfig = new HashMap<>();
+    universeConfig.put(Universe.HELM2_LEGACY, "helm");
+    universe.setConfig(universeConfig);
+    universe.save();
+
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/upgrade/gflags";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("masterGFlags", Json.parse("{ \"master-flag\": \"123\"}"));
+    bodyJson.set("tserverGFlags", Json.parse("{ \"tserver-flag\": \"456\"}"));
+    bodyJson.set(
+        "rollMaxBatchSize",
+        Json.newObject().put("primaryBatchSize", 2).put("readReplicaBatchSize", 2));
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(GFlagsUpgradeParams.class);
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.GFlagsKubernetesUpgrade), argCaptor.capture());
+    GFlagsUpgradeParams taskParams = argCaptor.getValue();
+    assertNotNull(taskParams.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), taskParams.rollMaxBatchSize.getReadReplicaBatchSize());
     assertAuditEntry(1, customer.getUuid());
   }
 

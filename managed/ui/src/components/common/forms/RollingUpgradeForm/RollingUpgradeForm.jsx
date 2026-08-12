@@ -74,7 +74,8 @@ export default class RollingUpgradeForm extends Component {
         currentUniverse: {
           data: {
             universeDetails: { currentClusterType, clusters, nodePrefix, rootAndClientRootCASame },
-            universeUUID
+            universeUUID,
+            rollMaxBatchSize
           }
         }
       },
@@ -138,6 +139,11 @@ export default class RollingUpgradeForm extends Component {
       case 'rollingRestart': {
         payload.taskType = 'Restart';
         payload.upgradeOption = 'Rolling';
+        payload.rollMaxBatchSize = {
+          primaryBatchSize: values.numNodesToUpgradePrimary ?? rollMaxBatchSize?.primaryBatchSize,
+          readReplicaBatchSize:
+            values.numNodesToUpgradePrimary ?? rollMaxBatchSize?.readReplicaBatchSize
+        };
         //send read replica clsuter details in payload only for k8s universe
         if (
           getIsKubernetesUniverse(this.props.universe.currentUniverse.data) &&
@@ -162,6 +168,13 @@ export default class RollingUpgradeForm extends Component {
         payload.azOverrides = values.azOverrides;
         payload.upgradeOption = values.rollingUpgrade ? 'Rolling' : 'Non-Rolling';
         payload.runOnlyPrechecks = values.runOnlyPrechecks;
+        if (values.rollingUpgrade) {
+          payload.rollMaxBatchSize = {
+            primaryBatchSize: values.numNodesToUpgradePrimary ?? rollMaxBatchSize?.primaryBatchSize,
+            readReplicaBatchSize:
+              values.numNodesToUpgradePrimary ?? rollMaxBatchSize?.readReplicaBatchSize
+          };
+        }
         break;
       default:
         return;
@@ -444,11 +457,13 @@ export default class RollingUpgradeForm extends Component {
               this.props.change('rollingUpgrade', formValues.rollingUpgrade);
               this.props.change('timeDelay', formValues.timeDelay);
               this.props.change('runOnlyPrechecks', formValues.runOnlyPrechecks);
+              this.props.change('numNodesToUpgradePrimary', formValues.numNodesToUpgradePrimary);
               submitAction();
             }}
             editValues={editValues}
             editMode={true}
             forceUpdate={true}
+            rollMaxBatchSize={this.props.universe.currentUniverse.data.rollMaxBatchSize}
           />
         );
       }
@@ -661,6 +676,14 @@ export default class RollingUpgradeForm extends Component {
                 component={YBInputField}
                 label="Rolling Restart Delay Between Servers (secs)"
               />
+              {universe.currentUniverse?.data?.rollMaxBatchSize?.primaryBatchSize > 1 && (
+                <Field
+                  name="numNodesToUpgradePrimary"
+                  type="number"
+                  component={YBInputField}
+                  label="Max batch size"
+                />
+              )}
             </div>
             {errorAlert}
           </YBModal>

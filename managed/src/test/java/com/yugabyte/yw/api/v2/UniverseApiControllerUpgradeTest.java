@@ -8,6 +8,7 @@ import static org.hamcrest.Matchers.emptyCollectionOf;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -29,6 +30,7 @@ import com.yugabyte.yba.v2.client.models.PerProviderResizeNodesSpec;
 import com.yugabyte.yba.v2.client.models.PerProviderUpdateProxyConfigSpec;
 import com.yugabyte.yba.v2.client.models.ResizeProviderNodeSpec;
 import com.yugabyte.yba.v2.client.models.ResizeProviderRootNodesSpec;
+import com.yugabyte.yba.v2.client.models.RollMaxBatchSize;
 import com.yugabyte.yba.v2.client.models.UniverseCertRotateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseEditEncryptionInTransit;
 import com.yugabyte.yba.v2.client.models.UniverseEditKubernetesOverrides;
@@ -74,6 +76,7 @@ import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -519,6 +522,11 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     Map<String, String> azOverrides = new HashMap<String, String>();
     azOverrides.put("az1", "az1_overrides");
     req.setAzOverrides(azOverrides);
+    req.setRollingUpgrade(true);
+    RollMaxBatchSize batchSize = new RollMaxBatchSize();
+    batchSize.setPrimaryBatchSize(new BigDecimal(2));
+    batchSize.setReadReplicaBatchSize(new BigDecimal(2));
+    req.setRollMaxBatchSize(batchSize);
     YBATask resp =
         apiClient.editKubernetesOverrides(customer.getUuid(), universe.getUniverseUUID(), req);
     ArgumentCaptor<KubernetesOverridesUpgradeParams> captor =
@@ -530,6 +538,10 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     assertEquals("my_overrides", params.universeOverrides);
     assertTrue(params.azOverrides.containsKey("az1"));
     assertEquals("az1_overrides", params.azOverrides.get("az1"));
+    assertEquals(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, params.upgradeOption);
+    assertNotNull(params.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), params.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), params.rollMaxBatchSize.getReadReplicaBatchSize());
   }
 
   @Test

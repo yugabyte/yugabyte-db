@@ -22,7 +22,10 @@ import {
   EditNodeAcessModal,
   EditUserTagsModal
 } from '../edit-advanced';
-import { K8sHelmOverridesModal } from '../../create-universe/fields/k8s-helmoverrides/K8sHelmOverridesModal';
+import {
+  K8sHelmOverridesModal,
+  HelmOverridesSubmitOptions
+} from '../../create-universe/fields/k8s-helmoverrides/K8sHelmOverridesModal';
 import { useYBToast } from '../../create-universe/helpers/ToastUtils';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
@@ -161,11 +164,22 @@ const EditK8sHelmOverrides = () => {
     setHelmOverridesModal(false);
   };
 
-  const handleSubmit = (universeOverrides: string, azOverrides: Record<string, string>) => {
+  const handleSubmit = (
+    universeOverrides: string,
+    azOverrides: Record<string, string>,
+    options?: HelmOverridesSubmitOptions
+  ) => {
     editOverrides.mutate(
       {
         uniUUID,
-        data: { overrides: universeOverrides, az_overrides: azOverrides }
+        data: {
+          overrides: universeOverrides,
+          az_overrides: azOverrides,
+          rolling_upgrade: options?.rollingUpgrade,
+          roll_max_batch_size: options?.rollMaxBatchSize,
+          sleep_after_master_restart_millis: options?.sleepAfterMasterRestartMillis,
+          sleep_after_tserver_restart_millis: options?.sleepAfterTserverRestartMillis
+        }
       },
       {
         onSuccess: (resp) => {
@@ -245,6 +259,8 @@ const EditK8sHelmOverrides = () => {
           onSubmit={handleSubmit}
           dbVersion={dbVersion}
           open={openHelmOverridesModal}
+          showRollingUpgradeOptions
+          maxBatchSize={universeData?.info?.roll_max_batch_size}
         />
       )}
     </StyledPanel>

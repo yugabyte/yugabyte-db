@@ -13,7 +13,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { Alert, Col, Row } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
-import { Box, Typography } from '@material-ui/core';
+import { Box, Tooltip, Typography } from '@material-ui/core';
 import { isEmpty } from 'lodash';
 import { Field, FieldArray, FormikProps } from 'formik';
 import { YBModalForm } from '../../common/forms';
@@ -36,6 +36,7 @@ import {
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { useIsTaskNewUIEnabled } from '../../../redesign/features/tasks/TaskUtils';
 import Close from '../../universes/images/close.svg?img';
+import InfoMessageIcon from '../../../redesign/assets/info-message.svg?img';
 import './HelmOverrides.scss';
 
 interface HelmOverridesType {
@@ -43,6 +44,7 @@ interface HelmOverridesType {
   azOverrides: string[];
   rollingUpgrade: boolean;
   timeDelay: number;
+  numNodesToUpgradePrimary: number;
 }
 
 interface HelmOverridesUniversePage {
@@ -109,6 +111,7 @@ interface HelmOverridesModalProps {
   editValues?: Record<string, any>;
   editMode?: boolean;
   forceUpdate?: boolean;
+  rollMaxBatchSize?: { primaryBatchSize?: number; readReplicaBatchSize?: number };
 }
 
 interface NodeOverridesModalProps {
@@ -151,12 +154,14 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
   getConfiguretaskParams,
   editValues,
   editMode,
-  forceUpdate
+  forceUpdate,
+  rollMaxBatchSize
 }) => {
   const { t } = useTranslation();
   const [forceConfirm, setForceConfirm] = useState<boolean>(false);
   const [rollingUpgrade, setRollingUpgrade] = useState<boolean>(true);
   const [timeDelay, setTimeDelay] = useState<number>(180);
+  const [numNodesToUpgradePrimary, setNumNodesToUpgradePrimary] = useState<number>(1);
 
   const formik = useRef({} as FormikProps<HelmOverridesType>);
 
@@ -164,7 +169,8 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
     universeOverrides: '',
     azOverrides: [],
     rollingUpgrade: true,
-    timeDelay: 180
+    timeDelay: 180,
+    numNodesToUpgradePrimary: 1
   };
 
   if (editValues) {
@@ -194,6 +200,7 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
             azOverrides: reqValues.values.azOverrides,
             rollingUpgrade: rollingUpgrade,
             timeDelay: timeDelay,
+            numNodesToUpgradePrimary: numNodesToUpgradePrimary,
             runOnlyPrechecks: reqValues.values.runOnlyPrechecks
           });
           setValidationError(validation_errors_initial_state);
@@ -218,6 +225,7 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
             azOverrides: reqValues.values.azOverrides,
             rollingUpgrade: rollingUpgrade,
             timeDelay: timeDelay,
+            numNodesToUpgradePrimary: numNodesToUpgradePrimary,
             runOnlyPrechecks: reqValues.values.runOnlyPrechecks
           });
         } else {
@@ -284,6 +292,14 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
   const handleRollingUpgrade = (event: ChangeEvent<HTMLInputElement>) => {
     const isChecked = event.target.checked;
     setRollingUpgrade(isChecked);
+  };
+
+  const handleNumNodeChangePrimary = (event: ChangeEvent<HTMLInputElement>) => {
+    const fieldValue = Number(event.target.value);
+    const maxBatch = rollMaxBatchSize?.primaryBatchSize ?? 1;
+    if (fieldValue > maxBatch) setNumNodesToUpgradePrimary(maxBatch);
+    else if (fieldValue < 1) setNumNodesToUpgradePrimary(1);
+    else setNumNodesToUpgradePrimary(fieldValue);
   };
 
   const showAlert = validationError?.overridesErrors.length !== 0;
@@ -466,6 +482,40 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
                 </Box>
                 <Typography variant="body2">{t('common.seconds')}</Typography>
               </Box>
+              {rollingUpgrade && (rollMaxBatchSize?.primaryBatchSize ?? 0) > 1 && (
+                <Box
+                  display={'flex'}
+                  flexDirection={'row'}
+                  width="100%"
+                  alignItems={'center'}
+                  ml={1}
+                  mt={1}
+                >
+                  <YBLabel width="210px">
+                    {t('universeActions.helmOverrides.numNodesToRollingUpgrade')}
+                  </YBLabel>
+                  <Box width="160px" mr={1}>
+                    <YBInput
+                      type="number"
+                      value={numNodesToUpgradePrimary}
+                      onChange={handleNumNodeChangePrimary}
+                      fullWidth
+                      inputProps={{
+                        min: 1,
+                        max: rollMaxBatchSize?.primaryBatchSize,
+                        'data-testid': 'HelmOverrides-NumNodesToRollingUpgrade'
+                      }}
+                    />
+                  </Box>
+                  <Tooltip
+                    title={t('universeActions.helmOverrides.rollingUpgradeMsg')}
+                    arrow
+                    placement="top"
+                  >
+                    <img src={InfoMessageIcon} alt="info" />
+                  </Tooltip>
+                </Box>
+              )}
             </Box>
           </>
         );

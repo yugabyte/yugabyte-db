@@ -13,6 +13,10 @@ allOf:
         description: 'Perform a rolling restart of the universe. Otherwise, all nodes will be restarted at the same time.'
         type: boolean
         default: true
+      roll_max_batch_size:
+        description: Suggested number of tservers to roll during restart if available.
+        $ref: "./RollMaxBatchSize.yaml"
+        x-yba-api-visibility: internal
       restart_type:
         description: |
           The method to reboot the node. This is not required for kubernetes universes, as the pods 

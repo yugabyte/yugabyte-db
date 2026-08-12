@@ -5,6 +5,7 @@ import { Box, Grid, IconButton, InputAdornment } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import {
   YBInputField,
+  YBInput,
   YBCheckbox,
   YBAlert,
   AlertVariant,
@@ -19,6 +20,7 @@ import {
 import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import {
   ClusterPlacementSpec,
+  RollMaxBatchSize,
   UniverseValidateKubernetesOverridesReqBody
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { useValidateKubernetesOverrides } from '@app/v2/api/universe/universe';
@@ -30,13 +32,26 @@ import CircleAddIcon from '@app/redesign/assets/circle-add-v2.svg';
 const { YBModal } = yba;
 const { Typography } = mui;
 
+export interface HelmOverridesSubmitOptions {
+  rollingUpgrade?: boolean;
+  rollMaxBatchSize?: RollMaxBatchSize;
+  sleepAfterMasterRestartMillis?: number;
+  sleepAfterTserverRestartMillis?: number;
+}
+
 interface HelmOverridesModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (universeOverrides: string, azOverrides: Record<string, string>) => void;
+  onSubmit: (
+    universeOverrides: string,
+    azOverrides: Record<string, string>,
+    options?: HelmOverridesSubmitOptions
+  ) => void;
   initialValues: OverridesForm;
   placementSpec?: ClusterPlacementSpec;
   dbVersion?: string;
+  showRollingUpgradeOptions?: boolean;
+  maxBatchSize?: RollMaxBatchSize;
 }
 
 interface OverridesForm {
@@ -65,7 +80,9 @@ export const K8sHelmOverridesModal = ({
   onClose,
   onSubmit,
   placementSpec,
-  dbVersion
+  dbVersion,
+  showRollingUpgradeOptions = false,
+  maxBatchSize
 }: HelmOverridesModalProps): ReactElement => {
   const { t } = useTranslation();
   const validateOverrides = useValidateKubernetesOverrides();
@@ -74,9 +91,30 @@ export const K8sHelmOverridesModal = ({
     useState<K8sHelmOverridesError>(INITIAL_VAIDATION_ERRORS);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [forceConfirm, setForceConfirm] = useState(false);
+  const [rollingUpgrade, setRollingUpgrade] = useState(true);
+  const [timeDelay, setTimeDelay] = useState(180);
+  const [numNodesToUpgradePrimary, setNumNodesToUpgradePrimary] = useState(1);
+
+  const buildSubmitOptions = (): HelmOverridesSubmitOptions | undefined => {
+    if (!showRollingUpgradeOptions) {
+      return undefined;
+    }
+    const options: HelmOverridesSubmitOptions = {
+      rollingUpgrade,
+      sleepAfterMasterRestartMillis: timeDelay * 1000,
+      sleepAfterTserverRestartMillis: timeDelay * 1000
+    };
+    if (rollingUpgrade) {
+      options.rollMaxBatchSize = {
+        primary_batch_size: numNodesToUpgradePrimary,
+        read_replica_batch_size: numNodesToUpgradePrimary
+      };
+    }
+    return options;
+  };
 
   const setOverides = (universeOverrides: string, azOverrides: Record<string, string>) => {
-    onSubmit(universeOverrides, azOverrides);
+    onSubmit(universeOverrides, azOverrides, buildSubmitOptions());
     setValidationError(INITIAL_VAIDATION_ERRORS);
     onClose();
   };
@@ -307,6 +345,57 @@ export const K8sHelmOverridesModal = ({
           </Box>
         </Box>
       </Grid>
+      {showRollingUpgradeOptions && (
+        <Box mt={2} display="flex" flexDirection="column" gap={1}>
+          <YBCheckbox
+            checked={rollingUpgrade}
+            onChange={() => setRollingUpgrade(!rollingUpgrade)}
+            label={t('universeForm.helmOverrides.rollingUpgradeLabel')}
+            dataTestId="HelmOverridesModal-RollingUpgrade"
+          />
+          <Box display="flex" flexDirection="row" alignItems="center" ml={1} gap={1}>
+            <Typography variant="body2">
+              {t('universeForm.helmOverrides.upgradeDelayLabel')}
+            </Typography>
+            <YBInput
+              type="number"
+              value={timeDelay}
+              onChange={(event) => setTimeDelay(Number(event.target.value))}
+              disabled={!rollingUpgrade}
+              sx={{ width: '120px' }}
+              inputProps={{
+                min: 1,
+                'data-testid': 'HelmOverridesModal-TimeDelay'
+              }}
+            />
+            <Typography variant="body2">{t('common.seconds')}</Typography>
+          </Box>
+          {rollingUpgrade && (maxBatchSize?.primary_batch_size ?? 0) > 1 && (
+            <Box display="flex" flexDirection="row" alignItems="center" ml={1} gap={1}>
+              <Typography variant="body2">
+                {t('universeForm.helmOverrides.numNodesToRollingUpgrade')}
+              </Typography>
+              <YBInput
+                type="number"
+                value={numNodesToUpgradePrimary}
+                onChange={(event) => {
+                  const fieldValue = Number(event.target.value);
+                  const maxBatch = maxBatchSize?.primary_batch_size ?? 1;
+                  if (fieldValue > maxBatch) setNumNodesToUpgradePrimary(maxBatch);
+                  else if (fieldValue < 1) setNumNodesToUpgradePrimary(1);
+                  else setNumNodesToUpgradePrimary(fieldValue);
+                }}
+                sx={{ width: '120px' }}
+                inputProps={{
+                  min: 1,
+                  max: maxBatchSize?.primary_batch_size,
+                  'data-testid': 'HelmOverridesModal-NumNodesToRollingUpgrade'
+                }}
+              />
+            </Box>
+          )}
+        </Box>
+      )}
     </YBModal>
   );
 };

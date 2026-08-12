@@ -86,6 +86,7 @@ var RestartCmd = &cobra.Command{
 			UpgradeOption:                  upgradeOption,
 			SleepAfterTServerRestartMillis: tserverDelay,
 			SleepAfterMasterRestartMillis:  masterDelay,
+			RollMaxBatchSize:               universeutil.RollMaxBatchSizeFromFlags(cmd, upgradeOption),
 		}
 
 		rUpgrade, response, err := authAPI.RestartUniverse(universeUUID).
@@ -123,4 +124,5 @@ func init() {
 		"[Optional] Upgrade Options, defaults to Rolling. "+
 			"Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime). "+
 			"Only a \"Rolling\" type of restart is allowed on a Kubernetes universe.")
+	universeutil.AddRollMaxBatchSizeFlags(RestartCmd)
 }
