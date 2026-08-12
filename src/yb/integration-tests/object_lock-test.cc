@@ -31,7 +31,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_ddl_client.h"
+#include "yb/master/master_ysql_lease_client.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
@@ -1450,13 +1450,14 @@ TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
       &master_proxy, tablet_server(1)->uuid(), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch,
       nullptr, std::nullopt, kTimeout));
 
-  master::MasterDDLClient ddl_client{cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>()};
+  master::MasterYsqlLeaseClient lease_client{
+      cluster_->GetLeaderMasterProxy<master::MasterYsqlLeaseProxy>()};
 
   auto lease_refresh_time_ms = MonoTime::Now().GetDeltaSinceMin().ToMilliseconds();
 
   // Request a lease refresh on behalf of ts with the correct lease epoch in the request.
   // Expect the master to omit most information and set new_lease to false.
-  auto info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto info = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       ts->uuid(), ts->instance_id().instance_seqno(), lease_refresh_time_ms, kLeaseEpoch));
   ASSERT_FALSE(info.new_lease());
   ASSERT_FALSE(info.has_ddl_lock_entries());
@@ -1464,7 +1465,7 @@ TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
   // Request a lease refresh on behalf of ts with no lease epoch in the request.
   // Master should give us a new lease epoch, the acquired lock entries, and
   // new_lease.
-  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  info = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       ts->uuid(), ts->instance_id().instance_seqno(),
       lease_refresh_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
@@ -1474,7 +1475,7 @@ TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
 
   // Request a lease refresh on behalf of ts with the incorrect lease epoch in the request.
   // Master should give us a new lease epoch, the acquired lock entries, and set new_lease.
-  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  info = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       ts->uuid(), ts->instance_id().instance_seqno(), lease_refresh_time_ms, 0));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), kLeaseEpoch + 2);
@@ -1960,8 +1961,9 @@ TEST_P(ExternalObjectLockTestLeaseLost, TSRejectsLockRequestsAfterLeaseExpiry) {
   ASSERT_OK(DisableLease(ts_to_lose_lease));
   ASSERT_OK(WaitForTServerLeaseToExpire(
       ts_to_lose_lease->uuid(), MonoDelta::FromMilliseconds(ysql_lease_ttl_ms() * 3)));
-  master::MasterDDLClient ddl_client{cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>()};
-  auto lease_refresh_info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  master::MasterYsqlLeaseClient lease_client{
+      cluster_->GetLeaderMasterProxy<master::MasterYsqlLeaseProxy>()};
+  auto lease_refresh_info = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       ts_to_lose_lease->uuid(), ts_to_lose_lease->instance_id().instance_seqno(),
       MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), std::nullopt));
   auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
