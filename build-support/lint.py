@@ -87,42 +87,16 @@ def _git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=REPO_ROOT, text=True).strip()
 
 
-def _upstream_not_configured() -> Message:
-    """Build the warning for a branch with no upstream tracking branch."""
-    try:
-        branch = _git("symbolic-ref", "--short", "HEAD")
-        subject = f"Branch '{branch}'"
-        fix = f"git branch --set-upstream-to=origin/<target-branch> {branch}"
-    except subprocess.CalledProcessError:
-        subject = "Detached HEAD"
-        fix = "git checkout <branch>"
-    return Message(
-        ".",
-        None,
-        "warning",
-        "upstream_not_configured",
-        f"{subject} has no upstream tracking branch, so committed changes were not "
-        f"linted -- only uncommitted and untracked files were. Fix by running "
-        f"`{fix}`, or pass --rev <base> to lint against an explicit base.",
-        "lint",
-    )
-
-
-def _changed_files(base: str | None = None) -> tuple[list[str], list[Message]]:
+def _changed_files(base: str | None = None) -> list[str]:
     """Files modified in the working copy plus files changed on this branch vs its base.
 
-    ``base`` is used directly when given, otherwise ``@{upstream}``. With no
-    ``@{upstream}`` set there is no reliable way to tell which commits belong to this
-    branch, so committed changes are left unlinted and a warning asks the user to
-    configure upstream tracking; uncommitted and untracked files are still linted.
-    Guessing a base such as ``<remote>/master`` is deliberately not done -- on a release
-    branch, or any branch that forked long ago, it silently drags in a large unrelated
-    fileset. ``set_merge_base`` in ``src/lint/common.sh`` takes the same position for the
-    shell rules.
-
-    Returns the files to lint along with any warnings raised while resolving the base.
+    ``base`` is used directly when given, otherwise ``@{upstream}``. With neither, only
+    uncommitted and untracked files are linted. This driver deliberately has no baseline
+    policy of its own: ``arc lint`` reads the same ``.arclint`` and runs the same rules, and
+    the rules own the policy -- ``set_merge_base`` in ``src/lint/common.sh`` derives the
+    baseline and emits ``upstream_not_configured`` where it matters. Picking a base here
+    (``<remote>/master``, say) would both diverge from arc and duplicate that warning.
     """
-    warnings: list[Message] = []
     if base is not None:
         try:
             _git("rev-parse", "--verify", "--quiet", base)
@@ -133,7 +107,7 @@ def _changed_files(base: str | None = None) -> tuple[list[str], list[Message]]:
             _git("rev-parse", "--verify", "--quiet", "@{upstream}")
             base = "@{upstream}"
         except subprocess.CalledProcessError:
-            warnings.append(_upstream_not_configured())
+            pass  # No baseline; the working copy alone is linted. See the docstring.
 
     committed: set[str] = set()
     if base is not None:
@@ -143,7 +117,7 @@ def _changed_files(base: str | None = None) -> tuple[list[str], list[Message]]:
             _git("diff", "--name-only", "--diff-filter=d", f"{base}...HEAD").splitlines())
     uncommitted = set(_git("diff", "--name-only", "--diff-filter=d", "HEAD").splitlines())
     untracked = set(_git("ls-files", "--others", "--exclude-standard").splitlines())
-    return sorted(p for p in (committed | uncommitted | untracked) if p), warnings
+    return sorted(p for p in (committed | uncommitted | untracked) if p)
 
 
 def _load_config() -> dict:
@@ -337,13 +311,12 @@ RUNNERS = {
 # --- Main ------------------------------------------------------------------------------------
 
 
-def _resolve_files(args: argparse.Namespace) -> tuple[list[str], list[Message]]:
-    """Return the files to lint, plus any warnings raised while selecting them."""
+def _resolve_files(args: argparse.Namespace) -> list[str]:
     if args.everything:
         return subprocess.check_output(
-            ["git", "ls-files"], cwd=REPO_ROOT, text=True).splitlines(), []
+            ["git", "ls-files"], cwd=REPO_ROOT, text=True).splitlines()
     if args.paths:
-        return [_normalize_path(p) for p in args.paths], []
+        return [_normalize_path(p) for p in args.paths]
     return _changed_files(args.rev)
 
 
@@ -372,10 +345,12 @@ def main() -> int:
             print(f"{linter.name}\t{linter.config.get('type')}")
         return 0
 
-    files, all_msgs = _resolve_files(args)
+    files = _resolve_files(args)
     if not files:
         print("No files to lint.")
+        return 0
 
+    all_msgs: list[Message] = []
     for linter in linters:
         if args.only and not any(flt in linter.name for flt in args.only):
             continue
