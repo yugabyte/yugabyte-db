@@ -1,11 +1,10 @@
-name: "bld-db"
+name: "bld-none"
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review ]
-    # All files should be covered by one of the bld-* workflows.
-    # If you add ignored paths here, make sure they are covered by one of the other bld-* workflows.
-    paths-ignore:
+    # Need to catch the case of PRs that have only non-build, non-docs files
+    paths:
       - '.arc*'
       - '.claude/**'
       - '.cursor/**'
@@ -18,11 +17,8 @@ on:
       - code_style
       - 'community/**'
       - java/yb-client
-      - 'docs/**'
       - LICENSE.md
       - 'license/**'
-      - 'managed/**'
-      - !managed/src/main/resources/ybc_version.conf
       - NOTICE.txt
       - '**/README*'
       - 'sample/**'
@@ -30,9 +26,9 @@ on:
 
 # Can be skipped if PR is draft or the commit message contains [skip ci] or [ci skip]
 jobs:
-  bld-db:
+  bld-none:
     if: github.event.pull_request.draft == false
     runs-on: ybdbghr
     steps:
       - name: Build Trigger
-        run: ybbld ${{ github.event.pull_request.number }} DB
+        run: ybbld ${{ github.event.pull_request.number }} NO-BLD
