@@ -9,6 +9,7 @@ on:
       - '.claude/**'
       - '.cursor/**'
       - '.git/**'
+      - '.github/**'
       - '.gitignore'
       - 'architecture/**'
       - 'arcanist/**'

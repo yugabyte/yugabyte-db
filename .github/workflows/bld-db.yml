@@ -10,6 +10,7 @@ on:
       - '.claude/**'
       - '.cursor/**'
       - '.git/**'
+      - '.github/**'
       - '.gitignore'
       - 'architecture/**'
       - 'arcanist/**'
@@ -22,7 +23,7 @@ on:
       - LICENSE.md
       - 'license/**'
       - 'managed/**'
-      - !managed/src/main/resources/ybc_version.conf
+      - '!managed/src/main/resources/ybc_version.conf'
       - NOTICE.txt
       - '**/README*'
       - 'sample/**'
