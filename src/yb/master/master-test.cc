@@ -57,7 +57,7 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_ddl_client.h"
+#include "yb/master/master_ysql_lease_client.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
@@ -2770,8 +2770,8 @@ TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = true;
 
   const char* kTsUUID = "my-ts-uuid";
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto result = ddl_client.RefreshYsqlLease(
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
+  auto result = lease_client.RefreshYsqlLease(
       kTsUUID, 1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {});
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsNotFound());
@@ -2785,10 +2785,10 @@ TEST_F(MasterTest, RefreshYsqlLease) {
   auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno));
   ASSERT_FALSE(reg_resp1.needs_reregister());
 
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
   auto lease_refresh_send_time_ms = MonoTime::Now().GetDeltaSinceMin().ToMilliseconds();
   auto info =
-      ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
+      ASSERT_RESULT(lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 1);
   ASSERT_GT(
@@ -2799,20 +2799,22 @@ TEST_F(MasterTest, RefreshYsqlLease) {
   // Refresh lease again. Since we omitted current lease epoch, master leader should still say this
   // is a new lease.
   info =
-      ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
+      ASSERT_RESULT(lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 2);
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 
   // Refresh lease again. We included current lease epoch but it's incorrect.
-  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 0));
+  info = ASSERT_RESULT(
+      lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 0));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 3);
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 
   // Refresh lease again. Current lease epoch is correct so master leader should not set new lease
   // bit.
-  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 3));
+  info = ASSERT_RESULT(
+      lease_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 3));
   ASSERT_FALSE(info.new_lease());
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 }
@@ -2824,13 +2826,13 @@ TEST_F(MasterTest, RelinquishLease) {
   auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno1));
   ASSERT_FALSE(reg_resp1.needs_reregister());
 
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto info1 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
+  auto info1 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info1.new_lease());
   ASSERT_EQ(info1.lease_epoch(), 1);
 
-  ASSERT_OK(ddl_client.RelinquishYsqlLease(kTsUUID, kSeqno1));
+  ASSERT_OK(lease_client.RelinquishYsqlLease(kTsUUID, kSeqno1));
   auto list_ts = ASSERT_RESULT(cluster_client_->ListTabletServers());
   ASSERT_EQ(list_ts.servers_size(), 1);
   ASSERT_FALSE(list_ts.servers(0).lease_info().is_live());
@@ -2839,7 +2841,7 @@ TEST_F(MasterTest, RelinquishLease) {
   constexpr uint64_t kSeqno2 = 2;
   auto reg_resp2 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno2));
   ASSERT_FALSE(reg_resp2.needs_reregister());
-  auto info2 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto info2 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno2, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info2.new_lease());
   ASSERT_EQ(info2.lease_epoch(), 2);
@@ -2852,8 +2854,8 @@ TEST_F(MasterTest, RelinquishLeaseOfReplacedTS) {
   auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno1));
   ASSERT_FALSE(reg_resp1.needs_reregister());
 
-  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto info1 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto lease_client = MasterYsqlLeaseClient{std::move(*proxy_ysql_lease_)};
+  auto info1 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info1.new_lease());
   ASSERT_EQ(info1.lease_epoch(), 1);
@@ -2862,13 +2864,13 @@ TEST_F(MasterTest, RelinquishLeaseOfReplacedTS) {
   constexpr uint64_t kSeqno2 = 2;
   auto reg_resp2 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno2));
   ASSERT_FALSE(reg_resp2.needs_reregister());
-  auto info2 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+  auto info2 = ASSERT_RESULT(lease_client.RefreshYsqlLease(
       kTsUUID, kSeqno2, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
   ASSERT_TRUE(info2.new_lease());
   ASSERT_EQ(info2.lease_epoch(), 2);
 
   // Send relinquish lease request from the first ts instance.
-  auto status = ddl_client.RelinquishYsqlLease(kTsUUID, kSeqno1);
+  auto status = lease_client.RelinquishYsqlLease(kTsUUID, kSeqno1);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(
       status.ToString(), "Relinquish lease request for a replaced tserver instance");

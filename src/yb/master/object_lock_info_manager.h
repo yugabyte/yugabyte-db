@@ -22,6 +22,7 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_ysql_lease.fwd.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status_callback.h"
