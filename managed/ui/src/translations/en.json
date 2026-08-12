@@ -3847,8 +3847,13 @@
           "quickSetup": "Quick Setup"
         },
         "formType": {
-          "guidedMode": "Guided Mode",
-          "expertMode": "Expert Mode"
+          "guidedMode": "Guided",
+          "expertMode": "Expert"
+        },
+        "setupMode": {
+          "title": "Setup Mode",
+          "description": "Choose how to configure cluster resilience and placement.",
+          "learnMore": "Learn more"
         },
         "singleNode": {
           "availabilityZone": "Availability Zone",
@@ -3869,6 +3874,7 @@
           "cancel": "Cancel"
         },
         "regions": "Regions",
+        "expertRegionIntro": "Start by selecting one or more regions.",
         "replicationFactor": "Replication Factor",
         "availabilityZonesCount": "{{count}} Availability Zone",
         "errMsg": {
@@ -3887,7 +3893,8 @@
           "moreNodesNone": "Fault tolerance <b>None</b> supports only single node deployments."
         },
         "guidedMode": {
-          "helpText": "Select the cluster’s <a>resilience</a> level to guide the setup.",
+          "header": "Resilience",
+          "helpText": "Start by Selecting the cluster’s <a>resilience</a> level to guide the setup.",
           "selectedResilienceRequires": "Selected resilience level requires:",
           "automaticReplicationFactor": "Replication factor {{replication_factor}} will be applied automatically.",
           "wordRegion": "region",
@@ -3903,20 +3910,20 @@
           "cautionLabel": "Caution!",
           "resilienceOutageWord": "outage",
           "REGION_LEVEL": {
-            "title": "Region",
+            "title": "Region Level",
             "subText": "Resilient to region outages.",
             "name": "region"
           },
           "NODE_LEVEL": {
-            "title": "Node",
+            "title": "Node Level",
             "subText": "Resilient to node outages but not availability zone outages.",
             "name": "node",
-            "titlePod": "Pod",
+            "titlePod": "Pod Level",
             "subTextPod": "Resilient to pod outages but not availability zone outages.",
             "namePod": "pod"
           },
           "AZ_LEVEL": {
-            "title": "Availability",
+            "title": "Availability Zone Level",
             "subText": "Resilient to availability zone outages.",
             "name": "availability zone"
           },
@@ -5076,10 +5083,10 @@
         "findOutMore": "Find Out More"
       },
       "beforeProceedWithNewModal": {
-        "title": "Before you proceed...",
-        "note": "Note that database audit log is now available under  “<settings>Settings</settings>”.",
-        "databaseAuditLogs": "Database audit logs",
-        "databaseAuditLogExport": "Database audit log export",
+        "title": "“Database Audit Log ” has moved",
+        "note": "Database audit log is now available under  “<settings>Settings</settings>” tab.",
+        "databaseAuditLogs": "Database audit logs settings",
+        "databaseAuditLogExport": "Database audit log export settings",
         "settings": "Settings",
         "nowLogs": "Logs",
         "nowTelemetryExport": "Telemetry Export",

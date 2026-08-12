@@ -31,6 +31,7 @@ export const getCreateEITPayload = (
     securitySettings;
   if (cloudType === CloudType.kubernetes) {
     return {
+      root_and_client_root_ca_same: true,
       enable_node_to_node_encrypt: securitySettings?.enableNodeToNodeEncryption ? true : false,
       enable_client_to_node_encrypt: securitySettings?.enableClientToNodeEncryption ? true : false,
       root_ca: securitySettings?.enableNodeToNodeEncryption
@@ -55,6 +56,7 @@ export const getCreateEITPayload = (
       certTypeNtoN
     } = securitySettings;
     return {
+      root_and_client_root_ca_same: useSameCertificate,
       enable_node_to_node_encrypt: useSameCertificate
         ? enableBothEncryption
           ? true

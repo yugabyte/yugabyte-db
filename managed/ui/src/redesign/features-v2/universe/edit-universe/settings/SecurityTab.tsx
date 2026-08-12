@@ -18,6 +18,7 @@ import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.sch
 import { CloudType } from '@app/redesign/helpers/dtos';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { EditNetworkAcessModal } from '../edit-security/EditNetworkAcessModal';
+import { getPrimaryCluster } from '@app/utils/universeUtilsTyped';
 
 import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
@@ -25,7 +26,7 @@ import Disabled from '@app/redesign/assets/revoke.svg';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
-const { styled, Box, CircularProgress, Typography } = mui;
+const { styled, Box, CircularProgress } = mui;
 
 const CheckedIcon = styled(Checked)({
   width: '24px',
@@ -62,12 +63,13 @@ export const SecurityTab = () => {
     earConfig?.encryptionAtRestEnabled ?? earConfig?.kmsConfigUUID
   );
 
-  const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
-  const nodeToNodeEnabled =
-    !!universeData?.spec?.encryption_in_transit_spec?.enable_node_to_node_encrypt;
-  const clientToNodeEnabled =
-    !!universeData?.spec?.encryption_in_transit_spec?.enable_client_to_node_encrypt;
+  const legacyPrimaryCluster = legacyUniverse?.universeDetails?.clusters
+    ? getPrimaryCluster(legacyUniverse.universeDetails.clusters)
+    : undefined;
+  const nodeToNodeEnabled = !!legacyPrimaryCluster?.userIntent?.enableNodeToNodeEncrypt;
+  const clientToNodeEnabled = !!legacyPrimaryCluster?.userIntent?.enableClientToNodeEncrypt;
 
+  const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
   const isPublicIPAssigned = !!universeData?.spec?.networking_spec?.assign_public_ip;
   const isIPV6Enabled = !!universeData?.spec?.networking_spec?.enable_ipv6;
   const isK8sPublicIPAssigned =
@@ -141,7 +143,9 @@ export const SecurityTab = () => {
                 variant="ghost"
                 startIcon={<EditIcon />}
                 onClick={() => setEitModalOpen(true)}
-                disabled={eitModalOpen || !isUniverseReady}
+                disabled={
+                  eitModalOpen || isLegacyUniverseLoading || !universeUUID || !isUniverseReady
+                }
               >
                 {t('edit', { keyPrefix: 'common' })}
               </YBButton>
@@ -152,15 +156,27 @@ export const SecurityTab = () => {
               <div>
                 <span className="header">{t('nodeToNode')}</span>
                 <span className="value sameline gap4">
-                  {t(nodeToNodeEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
-                  {nodeToNodeEnabled ? <CheckedIcon /> : <DisabledIcon />}
+                  {isLegacyUniverseLoading ? (
+                    <CircularProgress size={18} />
+                  ) : (
+                    <>
+                      {t(nodeToNodeEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
+                      {nodeToNodeEnabled ? <CheckedIcon /> : <DisabledIcon />}
+                    </>
+                  )}
                 </span>
               </div>
               <div>
                 <span className="header">{t('clientToNode')}</span>
                 <span className="value sameline gap4">
-                  {t(clientToNodeEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
-                  {clientToNodeEnabled ? <CheckedIcon /> : <DisabledIcon />}
+                  {isLegacyUniverseLoading ? (
+                    <CircularProgress size={18} />
+                  ) : (
+                    <>
+                      {t(clientToNodeEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
+                      {clientToNodeEnabled ? <CheckedIcon /> : <DisabledIcon />}
+                    </>
+                  )}
                 </span>
               </div>
             </StyledInfoRow>
@@ -202,17 +218,15 @@ export const SecurityTab = () => {
           </StyledContent>
         </StyledPanel>
       </Box>
-      {universeData?.spec?.encryption_in_transit_spec && (
+      {legacyUniverse && universeUUID && (
         <EncryptionInTransit
           open={eitModalOpen}
           onClose={() => {
             setEitModalOpen(false);
+            void queryClient.invalidateQueries([QUERY_KEY.fetchUniverse, universeUUID]);
           }}
+          universe={legacyUniverse}
           isItKubernetesUniverse={isItKubernetesUniverse}
-          v2Spec={{
-            universeUUID: universeUUID || '',
-            eitSpec: universeData?.spec?.encryption_in_transit_spec
-          }}
         />
       )}
       {legacyUniverse && universeUUID && (

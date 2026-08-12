@@ -19,7 +19,6 @@ const faultToleranceTitleKey = (value: string, isK8s: boolean) =>
 const faultToleranceSubTextKey = (value: string, isK8s: boolean) =>
   isK8s && value === FaultToleranceType.NODE_LEVEL ? `${value}.subTextPod` : `${value}.subText`;
 
-
 const StyledMenuItem = styled(MenuItem)(({ theme }) => ({
   padding: '8px 16px !important',
   display: 'flex',

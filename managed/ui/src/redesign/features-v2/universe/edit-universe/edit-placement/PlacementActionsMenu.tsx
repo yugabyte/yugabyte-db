@@ -84,6 +84,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
       >
         <YBDropdown
           dataTestId="edit-placement-actions"
+          disableScrollLock
           slotProps={{
             paper: {
               sx: { width: '340px' }

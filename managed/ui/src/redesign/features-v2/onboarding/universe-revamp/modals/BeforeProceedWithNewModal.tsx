@@ -94,7 +94,7 @@ export const BeforeProceedWithNewModal: FC<BeforeProceedWithNewModalProps> = ({
       <Typography
         sx={{
           fontSize: '13px',
-          fontWeight: 600,
+          fontWeight: 400,
           lineHeight: '26px',
           color: 'grey.900'
         }}
@@ -103,7 +103,7 @@ export const BeforeProceedWithNewModal: FC<BeforeProceedWithNewModalProps> = ({
           t={t}
           i18nKey="note"
           components={{
-            settings: <Box component="span" sx={{ color: '#735AF5', fontWeight: 600 }} />
+            settings: <Box component="span" sx={{ color: 'grey.900', fontWeight: 600 }} />
           }}
         />
       </Typography>
@@ -139,11 +139,16 @@ export const BeforeProceedWithNewModal: FC<BeforeProceedWithNewModalProps> = ({
                 whiteSpace: 'nowrap'
               }}
             >
-              {t('settings')}
+              <Box component="span" sx={{ fontWeight: 600 }}>
+                {t('settings')}
+              </Box>
               <Box component="span" sx={{ color: 'grey.700' }}>
                 {'  '}
               </Box>
-              {`/  ${t(row.nowPathKey)}`}
+              {'/  '}
+              <Box component="span" sx={{ color: '#735AF5', fontWeight: 600 }}>
+                {t(row.nowPathKey)}
+              </Box>
             </Typography>
           </PathMappingRow>
         ))}
