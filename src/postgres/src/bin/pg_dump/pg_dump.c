@@ -20555,6 +20555,14 @@ ybFindIndexdefClause(const char *indexdef, const char *clause)
 			continue;
 		}
 
+		/*
+		 * Check for the clause before consuming *p as a quote or
+		 * parenthesis so a clause that begins with one of those
+		 * characters can still match at top level.
+		 */
+		if (paren_depth == 0 && strncmp(p, clause, clause_len) == 0)
+			return p;
+
 		if (*p == '\'' || *p == '"')
 		{
 			quote = *p;
@@ -20571,9 +20579,6 @@ ybFindIndexdefClause(const char *indexdef, const char *clause)
 				paren_depth--;
 			continue;
 		}
-
-		if (paren_depth == 0 && strncmp(p, clause, clause_len) == 0)
-			return p;
 	}
 
 	return NULL;
