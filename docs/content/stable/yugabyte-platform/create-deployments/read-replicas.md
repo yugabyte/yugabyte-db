@@ -1,14 +1,14 @@
 ---
 title: Create a read replica cluster in YugabyteDB Anywhere
 headerTitle: Create a read replica cluster
-linkTitle: Read replica cluster
+linkTitle: Add read replica
 description: Use YugabyteDB Anywhere to create a read replica cluster.
 headcontent: Reduce read latencies in remote regions
 menu:
   stable_yugabyte-platform:
     identifier: create-read-replica-cluster
     parent: create-deployments
-    weight: 40
+    weight: 20
 type: docs
 ---
 
@@ -33,21 +33,85 @@ You can delete, modify, and scale read replica clusters. Adding or removing node
 
 ## Limitations
 
-- Currently, YugabyteDB Anywhere supports one only one read replica cluster per universe.
+- Currently, YugabyteDB Anywhere supports only one read replica cluster per universe.
 - You can add up to 15 read replicas to the read replica cluster.
 
-## Create a universe with a read replica cluster
+## Add a read replica
 
-To create a universe with a read replica cluster, do the following:
+{{< tip title="Tip" >}}
+
+When creating a geographically distributed universe, add the `leader_failure_max_missed_heartbeat_periods` configuration flag for YB-Master and YB-TServer with a value of 10. As the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.
+
+{{< /tip >}}
+
+{{< tabpane text=true >}}
+
+{{% tab header="New UI" lang="new" %}}
+
+In the New UI, you add a read replica after the primary universe exists. Create the primary universe first (see [Create universes](../create-universes-wizard/)), then use the **Add Read Replica** wizard.
+
+To add a read replica cluster:
+
+1. Navigate to the universe, then open **Settings > Placement**.
+
+1. Click **Advanced Placement options > Add Read Replica**.
+
+1. Follow the **Add Read Replica** wizard.
+
+The wizard has the following pages:
+
+1. [Regions and Availability Zones](#regions-and-availability-zones)
+1. [Instance Settings](#instance-settings)
+1. [Database Settings](#database-settings)
+1. [Summary and Cost](#summary-and-cost)
+
+### Regions and Availability Zones
+
+Specify the placement of read replica nodes:
+
+1. For each region, select the region and one or more availability zones.
+
+1. For each availability zone, set the following:
+
+    - **Nodes** (or **Pods** for Kubernetes) — Number of nodes to place in the zone.
+    - **Replication Factor** — Number of copies of primary cluster data to maintain in this availability zone. This determines fault tolerance within the read replica; it does not change the primary cluster replication factor.
+
+1. Optionally click **Add Availability Zone** to place nodes in additional zones in the region, or **Add Region** to place replicas in additional regions.
+
+The total node count for the read replica is shown below the region cards.
+
+### Instance Settings
+
+Configure the instance used for read replica nodes (YB-TServers only):
+
+- Select **Keep read replica instance settings same as primary cluster instance settings** to use the same instance type and storage as the primary cluster.
+
+- To customize, clear that option and set CPU architecture, Linux version, instance type, and volume info as needed. For Kubernetes, you can set cores, memory, and volume info. For AWS, you can also configure EBS volume encryption when that feature is enabled.
+
+For field details that match primary-cluster hardware settings, refer to [Hardware](../create-universes-wizard/#hardware) in Create universes.
+
+### Database Settings
+
+By default, YB-TServer flags from the primary cluster are applied to the read replica. Read replicas do not include YB-Master servers.
+
+To set different flags for the read replica, enable **Customize Database Config Flags for Read Replica** and add or edit YB-TServer flags. You can also change flags later; refer to [Edit configuration flags](../../scale-deployments/edit-config-flags/).
+
+### Summary and Cost
+
+Review the read replica placement, hardware, and cost summary, then click **Create**.
+
+After the task completes, open **Nodes** (or **Pods** for Kubernetes). Nodes are grouped into the primary cluster and read replicas; read replica nodes have a `readonly1` identifier appended to their name.
+
+{{% /tab %}}
+
+{{% tab header="Legacy UI" lang="legacy" %}}
+
+### Create a universe with a read replica cluster
+
+To create a universe with a read replica cluster:
 
 1. Navigate to **Dashboard** and click **Create Universe**.
 1. Use the **Primary Cluster** tab to enter the values to create a primary cluster. Refer to [Create a multi-zone universe](../create-universe-multi-zone/).
-
-    {{< tip title="Tip" >}}
-
-Add the `leader_failure_max_missed_heartbeat_periods` configuration flag for YB-Master and YB-TServer with a value of 10. As the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.
-
-    {{< /tip >}}
 
 1. Click **Configure Read Replica**.
 1. Specify the following on the **Read Replica** tab to create a read replica cluster:
@@ -57,29 +121,80 @@ Add the `leader_failure_max_missed_heartbeat_periods` configuration flag for YB-
     - Customize the availability zones if desired.
     - Choose the Linux version to be provisioned on the nodes of the replica cluster.
     - Configure the instance type to use for your read replica cluster.
-    - You can choose to use the same flags as the primary cluster, or set custom flags for the read replica cluster. Read replicas only have YB-TServers. You can also set flags after universe creation. Refer to [Edit configuration flags](../../manage-deployments/edit-config-flags/).
+    - You can choose to use the same flags as the primary cluster, or set custom flags for the read replica cluster. Read replicas only have YB-TServers. You can also set flags after universe creation. Refer to [Edit configuration flags](../../scale-deployments/edit-config-flags/).
 
 1. To finish the process, click **Create**.
 
 To see a list of nodes, navigate to **Nodes**. Notice that the nodes are grouped into primary cluster and read replicas, and read replica nodes have a `readonly1` identifier appended to their name.
 
-## Add, remove, edit a read replica cluster
-
-YugabyteDB Anywhere allows you to dynamically add, modify, and remove a read replica cluster from an existing universe.
-
-To add a read replica to a universe, do the following:
+### Add a read replica to an existing universe
 
 1. Navigate to the universe and click **Actions > Add Read Replica**.
 1. Use the **Configure read replica** page to enter the read replica details.
 1. Click **Add Read Replica**.
 
-To edit a read replica, do the following:
+{{% /tab %}}
+
+{{< /tabpane >}}
+
+## Edit a read replica
+
+{{< tabpane text=true >}}
+
+{{% tab header="New UI" lang="new" %}}
+
+You can change placement, instance settings, and flags independently.
+
+### Edit placement
+
+1. Navigate to the universe, then open **Settings > Placement**.
+1. On the **Read Replica** card, open the menu and choose **Edit Placement**.
+1. Update regions, availability zones, node counts, and replication factor as needed.
+1. Click **Apply Changes**.
+
+### Edit instance settings
+
+1. Navigate to the universe, then open **Settings > Hardware**.
+1. On the **Read Replica Instance** card, click **Edit**.
+1. Keep settings the same as the primary cluster, or customize the instance and storage.
+1. Confirm and apply the changes.
+
+### Edit configuration flags
+
+1. Navigate to the universe, then open **Settings > Database**.
+1. Under **Advanced Config Flags**, select **Read Replica**, then click **Edit** to update YB-TServer flags.
+
+You can also edit flags as described in [Edit configuration flags](../../scale-deployments/edit-config-flags/).
+
+{{% /tab %}}
+
+{{% tab header="Legacy UI" lang="legacy" %}}
 
 1. Navigate to the universe and click **Actions > Edit Read Replica**.
 1. Use the **Configure read replica** page to enter the read replica details.
 1. Click **Save**.
 
-To delete a read replica cluster, do the following:
+{{% /tab %}}
+
+{{< /tabpane >}}
+
+## Delete a read replica
+
+{{< tabpane text=true >}}
+
+{{% tab header="New UI" lang="new" %}}
+
+1. Navigate to the universe, then open **Settings > Placement**.
+1. On the **Read Replica** card, open the menu and choose **Delete Read Replica**.
+1. Confirm by entering the universe name, then click **Yes**.
+
+{{% /tab %}}
+
+{{% tab header="Legacy UI" lang="legacy" %}}
 
 1. Navigate to the universe and click **Actions > Edit Read Replica**.
 1. Click **Delete this configuration**.
+
+{{% /tab %}}
+
+{{< /tabpane >}}

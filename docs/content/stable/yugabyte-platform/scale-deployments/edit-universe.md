@@ -1,21 +1,23 @@
 ---
 title: Use YugabyteDB Anywhere to modify a universe
-headerTitle: Modify universe
-linkTitle: Modify universe
-description: Use YugabyteDB Anywhere to modify a universe.
+headerTitle: Scale universes
+linkTitle: Scale universes
+description: Use YugabyteDB Anywhere to scale a universe.
 headcontent: Scale universes horizontally and vertically
 aliases:
   - /stable/manage/enterprise-edition/edit-universe/
+  - /stable/yugabyte-platform/manage-deployments/edit-universe/
 menu:
   stable_yugabyte-platform:
     identifier: edit-universe
-    parent: manage-deployments
-    weight: 30
+    parent: scale-deployments
+    weight: 10
 type: docs
 ---
 
 YugabyteDB Anywhere supports both horizontal and vertical scaling of your universe. If your workloads have increased, you can change to more powerful instance types or add nodes to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
 
+<!--
 -> For information on changing configuration flags, refer to [Edit configuration flags](../edit-config-flags/).
 
 -> For information on changing user tags, refer to [Create and edit instance tags](../instance-tags/).
@@ -25,6 +27,7 @@ YugabyteDB Anywhere supports both horizontal and vertical scaling of your univer
 -> For information on changing storage class and volume count on Kubernetes universes, refer to [Full move for Kubernetes universes](../kubernetes-full-move/).
 
 -> For information on managing Kubernetes universes using the YugabyteDB Kubernetes Operator, refer to [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/).
+-->
 
 ## Edit a universe
 

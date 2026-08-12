@@ -7,11 +7,12 @@ headcontent: Customize the database server configuration
 aliases:
   - /stable/manage/enterprise-edition/edit-flags/
   - /stable/manage/enterprise-edition/edit-config-flags/
+  - /stable/yugabyte-platform/manage-deployments/edit-config-flags/
 menu:
   stable_yugabyte-platform:
     identifier: edit-config-flags
-    parent: edit-universe
-    weight: 10
+    parent: scale-deployments
+    weight: 20
 type: docs
 ---
 
@@ -22,9 +23,18 @@ For more information about the available configuration flags, see the following:
 - [YB-TServer configuration reference](../../../reference/configuration/yb-tserver/)
 - [YB-Master configuration reference](../../../reference/configuration/yb-master/)
 
+You can add configuration flags when you are creating a new universe. Refer to [Create universes](../../create-deployments/create-universes-wizard/).
+
 ## Enhanced Postgres Compatibility
 
-If your cluster database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility by navigating to the universe and clicking **Actions > More > Edit Postgres Compatibility**. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
+If your cluster database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility.
+
+Navigate to the universe and do the following:
+
+- New UI: Click **Settings > Database** and under **Features** click **Edit>Edit Enhanced Postgres Compatibility**.
+- Legacy UI: Click **Actions > More > Edit Postgres Compatibility**.
+
+For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
 
 {{<warning title="Flag settings">}}
 Enabling Enhanced Postgres Compatibility sets several flags, and overrides any settings you may have set for the same flags on the **G-Flags** tab. The **G-Flags** tab will however continue to display the setting that you customized.
@@ -32,7 +42,14 @@ Enabling Enhanced Postgres Compatibility sets several flags, and overrides any s
 
 ## Connection Pooling
 
-On universes with [built-in connection pooling](../../../additional-features/connection-manager-ysql/) enabled, you can customize YSQL Connection Manager settings using **Actions > Edit Flags**.
+You can enable [built-in connection pooling](../../../additional-features/connection-manager-ysql/) on universes.
+
+Navigate to the universe and do the following:
+
+- New UI: Click **Settings > Database** and under **Features** click **Edit>Edit Connection Pooling**.
+- Legacy UI: Click **Actions > More > Edit Connection Pooling**.
+
+On universes with built-in connection pooling enabled, you can customize YSQL Connection Manager settings using **Actions > Edit Flags**.
 
 Do not set `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, or `pgsql_proxy_bind_address` through **Edit Flags** when YugabyteDB Anywhere manages connection pooling for the universe.
 
@@ -40,9 +57,10 @@ For information on Connection Manager settings and defaults, refer to [Set up YS
 
 ## Modify configuration flags
 
-You can add and edit configuration flags by navigating to the universe and clicking **Actions > Edit Flags** to open the **G-Flags** dialog shown in the following illustration:
+You can add and edit configuration flags by navigating to the universe and doing the following:
 
-![Modify configuration flags](/images/ee/edit-config-2.png)
+- New UI: Click **Settings > Database** and under **Advanced Config Flags** click **Edit**.
+- Legacy UI: Click **Actions > Edit Flags**.
 
 To customize flags of the read replica of a universe that has a read replica cluster, deselect the **Apply the same Flags to primary cluster and Read Replica** option. (This option is only available for universes with a read replica.) This displays the **Read Replica** tab. [Add](#add-flags) and [modify](#edit-flags) flags as you would for the primary cluster. Note that read replicas only have YB-TServers.
 
@@ -87,11 +105,3 @@ To edit a flag:
 1. Change the value in the **Flag Value** field and then click **Confirm**.
 
 To delete the flag's value, click the **Remove Flag** icon for either **MASTER VALUE** or **T-SERVER VALUE** or both.
-
-## Add configuration flags
-
-You can add configuration flags when you are creating a new universe, as follows:
-
-- Navigate to either **Dashboard** or **Universes** and click **Create Universe**.
-- Complete the required sections of the **Create Universe** page.
-- When you reach **G-Flags**, perform steps described in [Modify configuration flags](#modify-configuration-flags).

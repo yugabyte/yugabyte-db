@@ -5,11 +5,12 @@ linkTitle: Configure instance tags
 description: Use YugabyteDB Anywhere to create and edit instance tags.
 aliases:
   - /stable/manage/enterprise-edition/instance-tags/
+  - /stable/yugabyte-platform/manage-deployments/instance-tags/
 menu:
   stable_yugabyte-platform:
     identifier: instance-tags
-    parent: edit-universe
-    weight: 20
+    parent: scale-deployments
+    weight: 50
 type: docs
 ---
 

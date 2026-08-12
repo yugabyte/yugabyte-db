@@ -7,7 +7,7 @@ menu:
   stable_yugabyte-platform:
     identifier: dedicated-master
     parent: create-deployments
-    weight: 60
+    weight: 30
 type: docs
 rightNav:
   hideH3: true
