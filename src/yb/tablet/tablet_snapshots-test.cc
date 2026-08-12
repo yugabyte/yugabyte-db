@@ -183,6 +183,8 @@ class SnapshotCleanupTestEnv : public EnvWrapper {
 
 class TabletSnapshotsTest : public YBTest {
  public:
+  static constexpr int kCleanupThreadPoolSize = 2;
+
   void SetUp() override {
     YBTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = true;
@@ -199,7 +201,9 @@ class TabletSnapshotsTest : public YBTest {
     ASSERT_OK(harness_->Open());
 
     messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("snapshot-cleanup-test").Build());
-    ASSERT_OK(ThreadPoolBuilder("snapshot-cleanup-test").set_max_threads(2).Build(&cleanup_pool_));
+    ASSERT_OK(ThreadPoolBuilder("snapshot-cleanup-test")
+                  .set_max_threads(kCleanupThreadPoolSize)
+                  .Build(&cleanup_pool_));
   }
 
   void TearDown() override {
@@ -341,7 +345,9 @@ TEST_F(TabletSnapshotsTest, RetriesDirectoryCheckAndRenameFailures) {
   test_env_->ReleaseDeletes();
   ASSERT_OK(WaitForRemoved(paths));
   ASSERT_GE(MetricValue<Counter>(METRIC_snapshot_tombstone_failures), 4);
-  ASSERT_GE(MetricValue<Counter>(METRIC_snapshot_cleanup_retries), 1);
+  // Three failing cleanup passes (the fourth injected failure is consumed by the tombstone
+  // attempt inside Delete, which does not schedule a retry).
+  ASSERT_GE(MetricValue<Counter>(METRIC_snapshot_cleanup_retries), 3);
   ASSERT_EQ(MetricValue<Counter>(METRIC_snapshot_tombstone_successes), 1);
 }
 
@@ -387,6 +393,9 @@ TEST_F(TabletSnapshotsTest, CoalescesDuplicateDeletionRequests) {
       },
       10s, "Wait for duplicate snapshot deletion to complete"));
   ASSERT_EQ(test_env_->delete_calls(), 1);
+  // The duplicate request bumped the pending entry's epoch, so the first pass's completion was
+  // discarded and exactly one retry pass was scheduled to finish the deletion.
+  ASSERT_EQ(MetricValue<Counter>(METRIC_snapshot_cleanup_retries), 1);
 }
 
 TEST_F(TabletSnapshotsTest, RetriesFinalParentSyncFailure) {
@@ -460,9 +469,9 @@ TEST_F(TabletSnapshotsTest, SharedPoolBoundsCleanupConcurrency) {
   }
 
   ASSERT_OK(WaitFor(
-      [this] { return test_env_->active_deletes() == 2; }, 10s,
+      [this] { return test_env_->active_deletes() == kCleanupThreadPoolSize; }, 10s,
       "Wait for snapshot cleanup pool saturation"));
-  ASSERT_EQ(test_env_->max_active_deletes(), 2);
+  ASSERT_EQ(test_env_->max_active_deletes(), kCleanupThreadPoolSize);
   test_env_->ReleaseDeletes();
   for (const auto& path : paths) {
     ASSERT_OK(WaitFor(
