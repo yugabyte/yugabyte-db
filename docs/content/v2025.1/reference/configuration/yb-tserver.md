@@ -2262,6 +2262,23 @@ Default: `5000`
 
 Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto Analyze service.
 
+### Explicit row locking flags
+
+To learn about explicit row locking, see [Row-level locks](../../../explore/transactions/explicit-locking/#row-level-locks) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
+
+##### --ysql_yb_explicit_row_locking_batch_size
+
+{{% tags/wrap %}}
+Default: `1024`
+{{% /tags/wrap %}}
+
+Controls the batch size of explicit row locking operations. When YugabyteDB processes SELECT FOR UPDATE/SHARE statements, it batches lock requests to optimize performance. A larger batch size can improve throughput by reducing round-trips, but may consume more memory.
+
+This flag can be set dynamically using:
+```sql
+SET yb_explicit_row_locking_batch_size = 512;
+```
+
 ### Advisory lock flags
 
 To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).

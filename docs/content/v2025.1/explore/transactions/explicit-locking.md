@@ -86,6 +86,50 @@ This operation fails because it conflicts with the row-level lock and as per Fai
 
 Note that the error message appears after all [best-effort statement retries](../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction) have been exhausted.
 
+### Explicit row locking modes
+
+YugabyteDB's YSQL supports PostgreSQL's explicit locking clauses that provide advanced control over lock acquisition behavior:
+
+#### NOWAIT clause
+
+The `NOWAIT` clause prevents a transaction from waiting if a row lock conflict is detected. Instead, the operation fails immediately with an error.
+
+- **Supported in:** Wait-on-Conflict policy with Read Committed isolation
+- **Not supported in:** Fail-on-Conflict policy (which never waits), Serializable isolation (as of v2025.1; support is tracked in [#12166](https://github.com/yugabyte/yugabyte-db/issues/12166))
+
+Example:
+```sql
+SELECT * FROM account WHERE id = 100 FOR UPDATE NOWAIT;
+```
+
+If the row is already locked, this returns immediately with an error instead of waiting.
+
+#### SKIP LOCKED clause
+
+The `SKIP LOCKED` clause allows a transaction to skip rows that are already locked by other transactions, instead of blocking or aborting. This is useful for workloads that can process any available rows without needing specific ones.
+
+- **Supported in:** Both Fail-on-Conflict and Wait-on-Conflict concurrency control policies
+- **Not supported in:** Serializable isolation (as of v2025.1; support is tracked in [#5683](https://github.com/yugabyte/yugabyte-db/issues/5683))
+
+Example:
+```sql
+SELECT * FROM orders WHERE status = 'pending' FOR UPDATE SKIP LOCKED LIMIT 10;
+```
+
+This query locks and returns up to 10 rows that are not already locked by other transactions, skipping any locked rows.
+
+##### Performance tuning for SKIP LOCKED
+
+When using `SKIP LOCKED`, the `yb_explicit_row_locking_batch_size` configuration parameter controls how many lock requests are batched together. The default is 1024 rows per batch.
+
+- Larger batches reduce round-trips to the server (better throughput)
+- Smaller batches reduce memory usage and latency for small result sets
+
+Example:
+```sql
+SET yb_explicit_row_locking_batch_size = 512;
+```
+
 Finally, in the first session, update the row and commit the transaction, as follows:
 
 ```sql

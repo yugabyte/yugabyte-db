@@ -2313,6 +2313,43 @@ Default: `false`
 
 Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
 
+### Explicit row locking flags
+
+To learn about explicit row locking, see [Row-level locks](../../../explore/transactions/explicit-locking/#row-level-locks) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
+
+##### --ysql_yb_explicit_row_locking_batch_size
+
+{{% tags/wrap %}}
+Default: `1024`
+{{% /tags/wrap %}}
+
+Controls the batch size of explicit row locking operations. When YugabyteDB processes SELECT FOR UPDATE/SHARE statements, it batches lock requests to optimize performance. A larger batch size can improve throughput by reducing round-trips, but may consume more memory.
+
+This flag can be set dynamically using:
+```sql
+SET yb_explicit_row_locking_batch_size = 512;
+```
+
+##### --ysql_yb_explicit_row_lock_skip_locked_max_read_ahead
+
+{{% tags/wrap %}}
+Default: `1` (disabled)
+{{% /tags/wrap %}}
+
+Controls the maximum number of rows that can be locked in parallel when the `SKIP LOCKED` clause is used. This flag enables read-ahead optimization for SKIP LOCKED operations, allowing YugabyteDB to prefetch and attempt to lock multiple rows concurrently rather than processing them sequentially.
+
+- **Default value `1`**: Disables read-ahead; SKIP LOCKED operations process rows one at a time sequentially
+- **Values > 1**: Enables read-ahead; YugabyteDB will attempt to lock up to this many rows in parallel
+
+Enabling read-ahead (setting a value > 1) can significantly improve performance for SKIP LOCKED queries by reducing latency when multiple rows are available for locking.
+
+Example to enable read-ahead with up to 10 rows:
+```sql
+SET yb_explicit_row_lock_skip_locked_max_read_ahead = 10;
+```
+
+Available from YugabyteDB 2026.1.1.0 and later.
+
 ### Advisory lock flags
 
 To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).

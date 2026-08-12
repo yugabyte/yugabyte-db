@@ -86,6 +86,79 @@ This operation fails because it conflicts with the row-level lock and as per Fai
 
 Note that the error message appears after all [best-effort statement retries](../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction) have been exhausted.
 
+### Explicit row locking modes
+
+YugabyteDB's YSQL supports PostgreSQL's explicit locking clauses that provide advanced control over lock acquisition behavior:
+
+#### NOWAIT clause
+
+The `NOWAIT` clause prevents a transaction from waiting if a row lock conflict is detected. Instead, the operation fails immediately with an error.
+
+- **Supported in:** Wait-on-Conflict policy with Read Committed isolation
+- **Not supported in:** Fail-on-Conflict policy (which never waits), Serializable isolation (as of v2026.1; support is tracked in [#12166](https://github.com/yugabyte/yugabyte-db/issues/12166))
+
+Example:
+```sql
+SELECT * FROM account WHERE id = 100 FOR UPDATE NOWAIT;
+```
+
+If the row is already locked, this returns immediately with an error instead of waiting.
+
+#### SKIP LOCKED clause
+
+The `SKIP LOCKED` clause allows a transaction to skip rows that are already locked by other transactions, instead of blocking or aborting. This is useful for workloads that can process any available rows without needing specific ones.
+
+- **Supported in:** Both Fail-on-Conflict and Wait-on-Conflict concurrency control policies
+- **Not supported in:** Serializable isolation (as of v2026.1; support is tracked in [#5683](https://github.com/yugabyte/yugabyte-db/issues/5683))
+
+Example:
+```sql
+SELECT * FROM orders WHERE status = 'pending' FOR UPDATE SKIP LOCKED LIMIT 10;
+```
+
+This query locks and returns up to 10 rows that are not already locked by other transactions, skipping any locked rows.
+
+##### Performance tuning for SKIP LOCKED
+
+When using `SKIP LOCKED`, YugabyteDB provides two configuration parameters to optimize performance:
+
+**1. Batch size** (`yb_explicit_row_locking_batch_size`)
+
+Controls how many lock requests are batched together. The default is 1024 rows per batch.
+
+- Larger batches reduce round-trips to the server (better throughput)
+- Smaller batches reduce memory usage and latency for small result sets
+
+Example:
+```sql
+SET yb_explicit_row_locking_batch_size = 512;
+```
+
+**2. Read-ahead optimization** (`yb_explicit_row_lock_skip_locked_max_read_ahead`)
+
+Controls how many rows can be locked in parallel when processing `SKIP LOCKED` queries. By default, this is disabled (value = 1), meaning rows are processed sequentially. Enabling read-ahead (setting a value > 1) allows YugabyteDB to attempt locking multiple rows concurrently, significantly improving performance.
+
+Example:
+```sql
+-- Disable read-ahead (sequential processing)
+SET yb_explicit_row_lock_skip_locked_max_read_ahead = 1;
+
+-- Enable read-ahead with up to 10 parallel lock attempts
+SET yb_explicit_row_lock_skip_locked_max_read_ahead = 10;
+```
+
+**How they interact:**
+
+- `yb_explicit_row_locking_batch_size` determines the size of lock request batches sent to the server
+- `yb_explicit_row_lock_skip_locked_max_read_ahead` determines parallelism within `SKIP LOCKED` operations
+
+For example, with `batch_size=1024` and `read_ahead=10`:
+- YugabyteDB reads 1024 rows in a batch
+- It attempts to lock up to 10 rows in parallel
+- Locked rows are returned; conflicted rows are skipped
+
+This combination allows you to balance throughput (larger batches) with low latency (parallel read-ahead).
+
 Finally, in the first session, update the row and commit the transaction, as follows:
 
 ```sql
