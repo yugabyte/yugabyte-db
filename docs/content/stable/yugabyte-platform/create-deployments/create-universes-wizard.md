@@ -6,34 +6,37 @@ description: Use YugabyteDB Anywhere to create YugabyteDB universes.
 headcontent: Deploy universes on VMs in YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
-    identifier: create-universes-wizard
+    identifier: create-universes-1-wizard
     parent: create-deployments
-    weight: 5
+    weight: 10
 rightNav:
   hideH4: true
 type: docs
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../create-universes-wizard/" class="nav-link active">
+      New UI
+    </a>
+  </li>
+
+  <li>
+    <a href="../create-universe-multi-zone/" class="nav-link">
+      Legacy UI
+    </a>
+  </li>
+</ul>
 
 YugabyteDB Anywhere allows you to create a universe in one geographic region across multiple availability zones using a provider configuration.
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
 
-For information on modifying or scaling an existing universe, refer to [Modify universe](../../manage-deployments/edit-universe/).
+For information on modifying or scaling an existing universe, refer to [Modify universe](../../scale-deployments/edit-universe/).
 
 ## Prerequisites
 
 Before you start creating a universe, ensure that you have created a provider configuration as described in [Create provider configurations](../../configure-yugabyte-platform/).
-
-
-## Resilience
-
-| Fault tolerance | Description | Scaling |
-| :--- | :--- | :--- |
-| **Zone** | Resilient to a single zone outage. Minimum of 3 nodes spread across 3 availability zones. This configuration provides the maximum protection for a data center outage. Recommended for production deployments. | Nodes are scaled in increments of 3 (each zone has the same number of nodes). |
-| **Node** | Resilient to 1, 2, or 3 node outages, with a minimum of 3, 5, or 7 nodes respectively, deployed in a single availability zone. Not resilient to zone outages. | Nodes are scaled in increments of 1. |
-| **None** | Minimum of 1 node, with no replication or resiliency. [Operations requiring a restart](../../../cloud-clusters/#locking-operations) result in downtime (no rolling restart is possible). Recommended for development and testing only. | Nodes are scaled in increments of 1. |
-
 
 ## Create a universe
 
@@ -201,9 +204,9 @@ Complete the **Instance Configuration** section for **TServer** and **Master** a
 - **Memory(GiB)** - specify the memory allocation of the TServer and Master.
 - **Volume Info** - specify the number of volumes multiplied by size for the TServer and Master. The default is 1 x 100GB.
 
-  After the universe is created, you can change storage class and volume count on universes running YugabyteDB v2026.1.0.0 or later. Refer to [Full move for Kubernetes universes](../../manage-deployments/kubernetes-full-move/).
+  After the universe is created, you can change storage class and volume count on universes running YugabyteDB v2026.1.0.0 or later. Refer to [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/).
 
-YugabyteDB supports ARM instances, which are specified using Helm overrides. See [Helm Overrides](#helm-overrides).
+YugabyteDB supports ARM instances, which are specified using Helm overrides. Refer to [Kubernetes overrides](../../scale-deployments/edit-helm-overrides/#arm-vms).
 
 ### Database
 
@@ -233,7 +236,7 @@ Enhanced Postgres Compatibility
 
 **Advanced Flags**
 
-Optionally, add configuration flags for your YB-Master and YB-TServer nodes. You can also set flags after universe creation. Refer to [Edit configuration flags](../../manage-deployments/edit-config-flags/).
+Optionally, add configuration flags for your YB-Master and YB-TServer nodes. You can also set flags after universe creation. Refer to [Edit configuration flags](../../scale-deployments/edit-config-flags/).
 
 ### Security
 
@@ -288,7 +291,7 @@ Instance Profile ARN
 
 **User Tags**
 
-The instances created on a cloud provider can be assigned special metadata to help manage, bill, or audit the resources. You can define these tags when you create a new universe, as well as modify or delete tags of an existing universe. Refer to [Create and edit instance tags](../../manage-deployments/instance-tags/). (AWS, GCP, or Azure only.)
+The instances created on a cloud provider can be assigned special metadata to help manage, bill, or audit the resources. You can define these tags when you create a new universe, as well as modify or delete tags of an existing universe. Refer to [Create and edit instance tags](../../scale-deployments/instance-tags/). (AWS, GCP, or Azure only.)
 
 **Deployment Port Override**
 
@@ -296,38 +299,7 @@ To customize the [ports used for the universe](../../prepare/networking/), enter
 
 **Kubernetes overrides**
 
-Optionally, use the **Kubernetes Overrides** section, as follows:
-
-1. Click **Add Helm Overrides** to open the **Kubernetes Overrides** dialog.
-
-    ![Kubernetes Overrides](/images/yb-platform/kubernetes-config66.png)
-
-1. Using the YAML format (which is sensitive to spacing and indentation), specify the universe-level overrides for YB-Master and YB-TServer, as per the following example:
-
-    ```yaml
-    master:
-      podLabels:
-        service-type: 'database'
-    ```
-
-1. Optionally, click **Add Availability Zone** to add availability zone overrides, which only apply to pods that are deployed in that specific availability zone.
-
-    For example, to define overrides for the availability zone us-west-2a, you would click **Add Availability Zone** and use the text area to insert YAML in the following form:
-
-    ```yaml
-    us-west-2a:
-      master:
-        podLabels:
-          service-type: 'database'
-    ```
-
-    If you specify conflicting overrides, YugabyteDB Anywhere would use the following order of precedence: universe availability zone-level overrides, universe-level overrides, provider overrides.
-
-1. Select **Force Apply** if you want to override any previous overrides.
-
-1. Click **Validate and Save**.
-
-If there are any errors in your overrides definitions, a detailed error message is displayed. You can correct the errors and try to save again. To save your Kubernetes overrides regardless of any validation errors, select **Force Apply**.
+For Kubernetes universes, you can optionally set Helm chart overrides when creating the universe. Refer to [Configure Kubernetes overrides](../../scale-deployments/edit-helm-overrides/).
 
 ## Examine the universe
 
@@ -335,15 +307,20 @@ After the universe is ready, its **Overview** tab should appear similar to the f
 
 ![Multi-zone universe ready](/images/yp/multi-zone-universe-ready-1-220.png)
 
-The **Universes** view allows you to examine various aspects of the universe:
+The universe page includes the following tabs:
 
-- **Overview** provides the information on the current YugabyteDB Anywhere version, the number of nodes included in the primary cluster, the cost associated with running the universe, the CPU and disk usage, the geographical location of the nodes, the operations per second and average latency, the number of different types of tables, as well as the health monitor.
-- **Tables** provides details about YSQL and YCQL tables included in the universe. Table sizes are calculated across all the nodes in the cluster.
-- **Nodes** provide details on nodes included in the universe and allows you to perform actions on a specific node (connect, stop, remove, display live and slow queries, download logs). You can also use **Nodes** to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain the name of your universe in the instances name, you should see a list of instances.
-- **Metrics** displays graphs representing information on operations, latency, and other parameters for each type of node and server.
-- **Queries** displays details about live and slow queries that you can filter by column and text.
-- **xCluster Disaster Recovery** provides information about any [disaster recovery](../../back-up-restore-universes/disaster-recovery/) configured for the universe.
-- **xCluster Replication** provides information about any [asynchronous replication](../../manage-deployments/xcluster-replication/) in the universe.
-- **Tasks** provides details about the state of tasks running on the universe, as well as the tasks that have run in the past against this universe.
-- **Backups** displays information about scheduled backups, if any, and allows you to create, restore, and delete backups.
-- **Health** displays the detailed performance status of the nodes and components involved in their operation. **Health** also allows you to pause health check alerts.
+- **Overview** — Cost, database version, primary cluster details (nodes, instance type, Linux version, and replication factor), CPU and disk usage, health check status, node geography and data placement, operations per second, average latency, and table counts.
+- **Tables** — Details about YSQL and YCQL tables in the universe. Table sizes are calculated across all nodes in the cluster.
+- **Nodes** (or **Pods** for Kubernetes) — Details on nodes or pods in the universe, and actions on a specific node (connect, stop, remove, display live and slow queries, download logs). You can also use **Nodes** to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain the name of your universe, you should see a list of instances.
+- **Metrics** — Graphs representing operations, latency, and other parameters for each type of node and server.
+- **Queries** — Live and slow queries that you can filter by column and text.
+- **xCluster Disaster Recovery** — Information about any [disaster recovery](../../back-up-restore-universes/disaster-recovery/) configured for the universe.
+- **xCluster Replication** — Information about any [asynchronous replication](../xcluster-replication/) in the universe.
+- **Tasks** — Details about the state of tasks running on the universe, as well as tasks that have run in the past against this universe.
+- **Performance** — Performance Advisor recommendations for the universe (when enabled).
+- **Backups** — Scheduled backups, if any, and options to create, restore, and delete backups.
+- **CDC** — Replication slots for change data capture (when enabled).
+- **Health** — Detailed health check status of the nodes and components involved in their operation. **Health** also allows you to pause health check alerts.
+- **Settings** — Centralized universe configuration, including placement, hardware, and related settings.
+
+For information on connecting to nodes and database endpoints, refer to [Connect to a universe](../connect-to-universe/).

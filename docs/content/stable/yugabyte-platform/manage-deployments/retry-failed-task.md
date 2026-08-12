@@ -73,5 +73,5 @@ For some failures, a retry of the task might continue to fail indefinitely. For 
 
 - [Flag updates](../edit-config-flags/)
 - [Upgrade Linux Version](../upgrade-nodes/)
-- [Update Kubernetes overrides](../edit-helm-overrides/)
+- [Update Kubernetes overrides](../../scale-deployments/edit-helm-overrides/)
 - [Changing the instance configuration](../edit-universe/) of a Kubernetes universe

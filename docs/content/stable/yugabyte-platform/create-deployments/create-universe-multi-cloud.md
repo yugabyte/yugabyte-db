@@ -7,7 +7,7 @@ menu:
   stable_yugabyte-platform:
     identifier: create-multi-cloud-universe
     parent: create-deployments
-    weight: 35
+    weight: 50
 type: docs
 ---
 

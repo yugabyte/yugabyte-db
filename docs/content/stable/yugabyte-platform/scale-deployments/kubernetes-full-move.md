@@ -6,11 +6,13 @@ description: Modify storage class, volume count, and volume size on running Yuga
 tags:
   feature: early-access
 headcontent: Change volume attributes on operator and non-operator Kubernetes universes
+aliases:
+  - /stable/yugabyte-platform/manage-deployments/kubernetes-full-move/
 menu:
   stable_yugabyte-platform:
     identifier: kubernetes-full-move
-    parent: edit-universe
-    weight: 85
+    parent: scale-deployments
+    weight: 40
 type: docs
 ---
 
@@ -23,12 +25,12 @@ Full move for Kubernetes universes requires YugabyteDB v2026.1.0.0 or later on t
 {{< /note >}}
 Use this page based on how your universe is managed:
 
-- [Non-operator universes](#non-operator-universes): Universes created and managed through the YugabyteDB Anywhere UI or API using [Helm charts](../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides). Change volumes using [Edit Universe](../edit-universe/).
+- [Non-operator universes](#non-operator-universes): Universes created and managed through the YugabyteDB Anywhere UI or API using [Helm charts](../edit-helm-overrides/). Change volumes using [Edit Universe](../edit-universe/).
 - [Operator universes](#operator-universes): Universes managed with the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/). Change volumes by updating the `YBUniverse` CRD. If you [imported a Helm-managed universe](../../anywhere-automation/yb-kubernetes-operator/#import-universe) to the Operator, use the Operator workflow going forward.
 
 ## Non-operator universes
 
-Full move applies to universes that YugabyteDB Anywhere manages via Helm charts. For information on creating these universes and setting initial volume configuration, refer to [Create a multi-zone universe](../../create-deployments/create-universe-multi-zone-kubernetes/) and [Configure a Kubernetes provider](../../configure-yugabyte-platform/kubernetes/).
+Full move applies to universes that YugabyteDB Anywhere manages via Helm charts. For information on creating these universes and setting initial volume configuration, refer to [Create a multi-zone universe](../../create-deployments/create-universe-multi-zone/) and [Configure a Kubernetes provider](../../configure-yugabyte-platform/kubernetes/).
 
 ### Modify volume attributes
 

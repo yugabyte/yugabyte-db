@@ -104,7 +104,7 @@ FIELDS:
  kubernetesOverrides  <Object>
   Kubernetes overrides for the universe. Please refer to yugabyteDB
   documentation for more details.
-  https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides
+  https://docs.yugabyte.com/stable/yugabyte-platform/scale-deployments/edit-helm-overrides/
 
  masterDeviceInfo   <Object>
   Device information for the masters in universe to refer to storage
@@ -475,7 +475,7 @@ operator-universe-demo   Ready   {{< yb-version version="stable" format="build">
 
 To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
 
-To change storage class or volume count on a running universe, use the `tserverVolume` and `masterVolume` fields (including optional `perAZ` overrides). Refer to [Full move for Kubernetes universes](../../manage-deployments/kubernetes-full-move/#operator-universes).
+To change storage class or volume count on a running universe, use the `tserverVolume` and `masterVolume` fields (including optional `perAZ` overrides). Refer to [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
 
 ### Create a universe with placement information
 
@@ -1281,7 +1281,7 @@ spec:
 
 Available in YugabyteDB Anywhere v2025.2.2 and later.
 
-Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator. After import, change storage class or volume count using the Operator CRD fields described in [Full move for Kubernetes universes](../../manage-deployments/kubernetes-full-move/#operator-universes).
+Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator. After import, change storage class or volume count using the Operator CRD fields described in [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
 
 Currently, universes with any of the following configurations are not supported for import:
 
