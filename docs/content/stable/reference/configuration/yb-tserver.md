@@ -2693,7 +2693,20 @@ Deprecated. Use `--ysql_pg_conf_csv` instead.
 
 Comma-separated list of PostgreSQL server configuration parameters that is appended to the `postgresql.conf` file. If internal quotation marks are required, surround each configuration pair having single quotation marks with double quotation marks.
 
-This flag can be updated at runtime without restarting the server. Changes take effect immediately.
+This flag can be updated at runtime without restarting the YugabyteDB server. However, whether an individual PostgreSQL parameter takes effect depends on its configuration context:
+
+- **Reloadable parameters** (context: `sighup`): Take effect immediately when the configuration is reloaded
+- **Startup-only parameters** (context: `postmaster`): Require a PostgreSQL server restart to take effect
+
+For example, `shared_buffers` is a postmaster parameter; changing it via `ysql_pg_conf_csv` will update the configuration file, but the new value won't become active until PostgreSQL restarts.
+
+To check if a parameter can be reloaded dynamically, query the `pg_settings` table:
+
+```sql
+SELECT name, context, pending_restart FROM pg_settings WHERE name = 'parameter_name';
+```
+
+Refer to the [PostgreSQL Server Configuration](https://www.postgresql.org/docs/current/runtime-config.html) documentation to determine each parameter's context.
 
 For example:
 
