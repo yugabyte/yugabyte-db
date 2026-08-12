@@ -87,45 +87,42 @@ def _git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=REPO_ROOT, text=True).strip()
 
 
-_CANONICAL_REPO_HINT = "yugabyte/yugabyte-db"
-
-# 2.x preview/stable (e.g. 2.13, 2.20, 2.30) and YYYY.N stable releases.
-_RELEASE_BRANCH_RE = re.compile(r"^(2\.[0-9]+|[0-9]{4}\.[0-9]+)$")
-
-
-def _looks_like_release_branch(name: str) -> bool:
-    return bool(_RELEASE_BRANCH_RE.match(name))
-
-
-def _find_canonical_remote() -> str | None:
-    """Return the name of the remote whose URL points at the canonical repo, or None."""
+def _upstream_not_configured() -> Message:
+    """Build the warning for a branch with no upstream tracking branch."""
     try:
-        for remote in _git("remote").splitlines():
-            if not remote:
-                continue
-            try:
-                url = _git("remote", "get-url", remote)
-            except subprocess.CalledProcessError:
-                continue
-            if _CANONICAL_REPO_HINT in url:
-                return remote
+        branch = _git("symbolic-ref", "--short", "HEAD")
+        subject = f"Branch '{branch}'"
+        fix = f"git branch --set-upstream-to=origin/<target-branch> {branch}"
     except subprocess.CalledProcessError:
-        return None
-    return None
+        subject = "Detached HEAD"
+        fix = "git checkout <branch>"
+    return Message(
+        ".",
+        None,
+        "warning",
+        "upstream_not_configured",
+        f"{subject} has no upstream tracking branch, so committed changes were not "
+        f"linted -- only uncommitted and untracked files were. Fix by running "
+        f"`{fix}`, or pass --rev <base> to lint against an explicit base.",
+        "lint",
+    )
 
 
-def _changed_files(base: str | None = None) -> list[str]:
+def _changed_files(base: str | None = None) -> tuple[list[str], list[Message]]:
     """Files modified in the working copy plus files changed on this branch vs its base.
 
-    If ``base`` is provided, it is used directly. Otherwise ``@{upstream}`` is used. If
-    ``@{upstream}`` isn't set (e.g. a fresh branch that hasn't been pushed yet), fall back
-    to ``<canonical-remote>/master`` -- where ``<canonical-remote>`` is the git remote whose
-    URL points at the canonical ``yugabyte/yugabyte-db`` repo (commonly named ``upstream``
-    in fork-based contributor setups, or ``origin`` in non-fork-based checkouts). We do not
-    fall back to *any* remote's master indiscriminately: on a stable release branch
-    (e.g. 2024.2) with no ``@{upstream}``, that would include a huge unrelated fileset;
-    pass ``--rev <remote>/<release-branch>`` explicitly in that case.
+    ``base`` is used directly when given, otherwise ``@{upstream}``. With no
+    ``@{upstream}`` set there is no reliable way to tell which commits belong to this
+    branch, so committed changes are left unlinted and a warning asks the user to
+    configure upstream tracking; uncommitted and untracked files are still linted.
+    Guessing a base such as ``<remote>/master`` is deliberately not done -- on a release
+    branch, or any branch that forked long ago, it silently drags in a large unrelated
+    fileset. ``set_merge_base`` in ``src/lint/common.sh`` takes the same position for the
+    shell rules.
+
+    Returns the files to lint along with any warnings raised while resolving the base.
     """
+    warnings: list[Message] = []
     if base is not None:
         try:
             _git("rev-parse", "--verify", "--quiet", base)
@@ -136,54 +133,17 @@ def _changed_files(base: str | None = None) -> list[str]:
             _git("rev-parse", "--verify", "--quiet", "@{upstream}")
             base = "@{upstream}"
         except subprocess.CalledProcessError:
-            canonical = _find_canonical_remote()
-            fallback = None
-            if canonical:
-                # Try <canonical>/<current-branch> first. If the user is on a
-                # release branch (2024.2, 2.20, etc.), this resolves to the
-                # release branch's upstream tip and the diff stays scoped.
-                # Falling back blindly to master here would surface a huge
-                # unrelated fileset on release branches.
-                try:
-                    current_branch = _git("symbolic-ref", "--short", "HEAD")
-                except subprocess.CalledProcessError:
-                    current_branch = ""
-                candidates: list[str] = []
-                if current_branch:
-                    candidates.append(f"{canonical}/{current_branch}")
-                candidates.append(f"{canonical}/master")
-                # Dedup so we don't probe <canonical>/master twice when
-                # we're on the master branch.
-                for candidate in dict.fromkeys(candidates):
-                    try:
-                        _git("rev-parse", "--verify", "--quiet", candidate)
-                        fallback = candidate
-                        print(f"[lint] @{{upstream}} not set; using '{fallback}' as base "
-                              "(pass --rev to override)", file=sys.stderr)
-                        break
-                    except subprocess.CalledProcessError:
-                        continue
-                # Refuse a master fallback when the current branch *name*
-                # looks like a release branch but no matching upstream ref
-                # exists -- comparing such a branch against master would be
-                # the "huge unrelated fileset" foot-gun the docstring warns
-                # about.
-                if (fallback == f"{canonical}/master"
-                        and current_branch
-                        and _looks_like_release_branch(current_branch)):
-                    sys.exit(f"[lint] on release branch '{current_branch}' but no "
-                             f"matching '{canonical}/{current_branch}' ref; pass "
-                             f"--rev {canonical}/{current_branch} explicitly")
-            if not fallback:
-                sys.exit("[lint] no @{upstream} configured for current branch and no remote "
-                         f"pointing at {_CANONICAL_REPO_HINT}; pass --rev <base> explicitly")
-            base = fallback
-    resolved = _git("rev-parse", "--symbolic-full-name", base)
-    print(f"[lint] comparing against {base} ({resolved})", file=sys.stderr)
-    committed = set(_git("diff", "--name-only", "--diff-filter=d", f"{base}...HEAD").splitlines())
+            warnings.append(_upstream_not_configured())
+
+    committed: set[str] = set()
+    if base is not None:
+        resolved = _git("rev-parse", "--symbolic-full-name", base)
+        print(f"[lint] comparing against {base} ({resolved})", file=sys.stderr)
+        committed = set(
+            _git("diff", "--name-only", "--diff-filter=d", f"{base}...HEAD").splitlines())
     uncommitted = set(_git("diff", "--name-only", "--diff-filter=d", "HEAD").splitlines())
     untracked = set(_git("ls-files", "--others", "--exclude-standard").splitlines())
-    return sorted(p for p in (committed | uncommitted | untracked) if p)
+    return sorted(p for p in (committed | uncommitted | untracked) if p), warnings
 
 
 def _load_config() -> dict:
@@ -377,12 +337,13 @@ RUNNERS = {
 # --- Main ------------------------------------------------------------------------------------
 
 
-def _resolve_files(args: argparse.Namespace) -> list[str]:
+def _resolve_files(args: argparse.Namespace) -> tuple[list[str], list[Message]]:
+    """Return the files to lint, plus any warnings raised while selecting them."""
     if args.everything:
         return subprocess.check_output(
-            ["git", "ls-files"], cwd=REPO_ROOT, text=True).splitlines()
+            ["git", "ls-files"], cwd=REPO_ROOT, text=True).splitlines(), []
     if args.paths:
-        return [_normalize_path(p) for p in args.paths]
+        return [_normalize_path(p) for p in args.paths], []
     return _changed_files(args.rev)
 
 
@@ -411,12 +372,10 @@ def main() -> int:
             print(f"{linter.name}\t{linter.config.get('type')}")
         return 0
 
-    files = _resolve_files(args)
+    files, all_msgs = _resolve_files(args)
     if not files:
         print("No files to lint.")
-        return 0
 
-    all_msgs: list[Message] = []
     for linter in linters:
         if args.only and not any(flt in linter.name for flt in args.only):
             continue
