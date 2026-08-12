@@ -354,8 +354,8 @@ def main() -> int:
     ap.add_argument("--everything", action="store_true",
                     help="Lint all tracked files (ignores paths).")
     ap.add_argument("--rev", default=None,
-                    help="Git ref to diff against when selecting changed files "
-                         "(default: @{upstream}; required if @{upstream} is not set).")
+                    help="Git ref to diff against when selecting changed files (default: "
+                         "@{upstream}; with neither, committed changes are not linted).")
     ap.add_argument("--only", action="append", default=[],
                     help="Only run linters whose name matches (repeatable).")
     ap.add_argument("--list-linters", action="store_true",
