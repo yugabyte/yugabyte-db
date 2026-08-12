@@ -1397,6 +1397,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     origin_id_ = origin_id;
   }
 
+  void RemoteAbortCallback(std::function<void(void)> callback) {
+    std::lock_guard lock(mutex_);
+    remote_abort_callback_ = std::move(callback);
+  }
+
  private:
   void CompleteConstruction() {
     LOG_IF(FATAL, !IsAcceptableAtomicImpl(log_prefix_.tag));
@@ -2308,6 +2313,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // If state is committed, then we should not cleanup.
         if (status.IsExpired() &&
             (state == TransactionState::kRunning || state == TransactionState::kPromoting)) {
+           std::function<void(void)> remote_abort_callback;
+          {
+            std::lock_guard lock(mutex_);
+            std::swap(remote_abort_callback_, remote_abort_callback);
+          }
+          if (remote_abort_callback) {
+            remote_abort_callback();
+          }
           DoAbortCleanup(transaction, CleanupType::kImmediate);
         }
         return;
@@ -2725,6 +2738,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   Status async_write_status_ GUARDED_BY(async_write_query_mutex_);
 
   uint32_t origin_id_ GUARDED_BY(mutex_) = 0;
+
+  std::function<void(void)> remote_abort_callback_ GUARDED_BY(mutex_);
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -2967,6 +2982,10 @@ void YBTransaction::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallb
 }
 
 void YBTransaction::SetOriginId(uint32_t origin_id) { impl_->SetOriginId(origin_id); }
+
+void YBTransaction::RemoteAbortCallback(std::function<void(void)> callback) {
+  impl_->RemoteAbortCallback(std::move(callback));
+}
 
 } // namespace client
 } // namespace yb

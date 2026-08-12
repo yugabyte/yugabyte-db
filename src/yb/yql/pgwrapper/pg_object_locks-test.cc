@@ -1692,13 +1692,57 @@ TEST_F(PgObjectLocksTestRF1, TestDisableReuseOfFailedTxn) {
 
   auto conn2 = ASSERT_RESULT(Connect());
   auto log_waiter1 = RegexWaiterLogSink(Format(".*$0.*Heartbeat failed.*", txn_id));
+  auto log_waiter2 = StringWaiterLogSink("Clearing lock owner registration for remote aborted txn");
   ASSERT_TRUE(ASSERT_RESULT(
       conn2.FetchRow<bool>(Format("SELECT yb_cancel_transaction('$0')", txn_id))));
   ASSERT_OK(log_waiter1.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
-  auto log_waiter2 = StringWaiterLogSink("Consuming re-usable kPlain txn");
   ASSERT_OK(conn1.Execute("COMMIT"));
+
   ASSERT_OK(log_waiter2.WaitFor(MonoDelta::FromSeconds(2 * kTimeMultiplier)));
   ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(AssertNumLocks(0, 0));
+}
+
+TEST_F(PgObjectLocksTestRF1, TestDisableReuseOfFailedTxnImplicit) {
+  google::SetVLOGLevel("pg_client_session*", 1);
+  google::SetVLOGLevel("transaction*", 1);
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  TransactionId txn_id = TransactionId::Nil();
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "TransactionProvider::NextTxnMetaForPlain",
+      [&](void* arg) { txn_id = *(static_cast<TransactionId*>(arg)); });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Fetch("SELECT * FROM test"));
+  ASSERT_TRUE(!txn_id.Nil());
+  SyncPoint::GetInstance()->DisableProcessing();
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto log_waiter1 = RegexWaiterLogSink(Format(".*$0.*Heartbeat failed.*", txn_id));
+  auto log_waiter2 = StringWaiterLogSink("Clearing lock owner registration for remote aborted txn");
+  ASSERT_TRUE(ASSERT_RESULT(
+      conn2.FetchRow<bool>(Format("SELECT yb_cancel_transaction('$0')", txn_id))));
+  ASSERT_OK(log_waiter1.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+  ASSERT_OK(log_waiter2.WaitFor(MonoDelta::FromSeconds(2 * kTimeMultiplier)));
+
+  TransactionId old_txn_id = txn_id;
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto log_waiter3 = StringWaiterLogSink("Consuming re-usable kPlain txn");
+  // TODO(#33274): This query will fail, because we try to use the aborted transaction, and do not
+  // transparently retry.
+  (void) conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test");
+  ASSERT_OK(log_waiter3.WaitFor(-10s));
+  ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_NE(old_txn_id, txn_id);
   ASSERT_OK(AssertNumLocks(0, 0));
 }
 #endif

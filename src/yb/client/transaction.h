@@ -236,6 +236,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
   void SetOriginId(uint32_t origin_id);
 
+  // Set callback for when the transaction is aborted remotely (as opposed to being aborted during
+  // a method call on this YBTransaction).
+  void RemoteAbortCallback(std::function<void(void)> callback);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

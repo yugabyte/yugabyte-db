@@ -1393,6 +1393,11 @@ class ReadPointHistory {
   std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
 };
 
+struct ObjectLockRegistration {
+  std::mutex mutex;
+  std::optional<docdb::ObjectLockOwnerRegistry::RegistrationGuard> guard GUARDED_BY(mutex);
+};
+
 class TransactionProvider {
  public:
   YB_STRONGLY_TYPED_BOOL(EnsureGlobal);
@@ -1402,7 +1407,8 @@ class TransactionProvider {
       docdb::ObjectLockOwnerRegistry* lock_owner_registry,
       docdb::ObjectLockSharedState* object_lock_shared_state)
       : builder_(std::move(builder)), lock_owner_registry_(lock_owner_registry),
-        object_lock_shared_state_(object_lock_shared_state) {}
+        object_lock_shared_state_(object_lock_shared_state),
+        object_lock_registration_(std::make_shared<ObjectLockRegistration>()) {}
 
   template<PgClientSessionKind kind, class... Args>
   requires(
@@ -1449,7 +1455,8 @@ class TransactionProvider {
   }
 
   void ResetObjectLockRegistration() {
-    object_lock_registration_.reset();
+    std::lock_guard lock(object_lock_registration_->mutex);
+    object_lock_registration_->guard.reset();
   }
 
   Result<TransactionMetadata> NextTxnMetaForPlain(
@@ -1474,13 +1481,30 @@ class TransactionProvider {
     // next_plain_ would be ready at this point i.e status tablet picked.
     auto metadata = VERIFY_RESULT(next_plain_->metadata());
     next_plain_->SetStartTimeIfNecessary();
+
+    std::lock_guard lock(object_lock_registration_->mutex);
     if (object_lock_shared_state_ &&
-        (!object_lock_registration_ ||
-         object_lock_registration_->txn_id() != metadata.transaction_id)) {
-      object_lock_registration_.reset();
-      object_lock_registration_.emplace(DCHECK_NOTNULL(lock_owner_registry_)->Register(
+        (!object_lock_registration_->guard ||
+         object_lock_registration_->guard->txn_id() != metadata.transaction_id)) {
+      object_lock_registration_->guard.reset();
+      object_lock_registration_->guard.emplace(DCHECK_NOTNULL(lock_owner_registry_)->Register(
           *object_lock_shared_state_, metadata.transaction_id, metadata.status_tablet));
+
+      next_plain_->RemoteAbortCallback([
+          registration_ptr = std::weak_ptr{object_lock_registration_},
+          transaction_id = metadata.transaction_id] {
+        if (auto registration = registration_ptr.lock()) {
+          std::lock_guard lock(registration->mutex);
+          if (registration->guard && registration->guard->txn_id() == transaction_id) {
+            VLOG_WITH_FUNC(1) << "Clearing lock owner registration for remote aborted txn "
+                              << transaction_id;
+            registration->guard.reset();
+          }
+        }
+      });
     }
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+        "TransactionProvider::NextTxnMetaForPlain", &metadata.transaction_id);
     return metadata;
   }
 
@@ -1524,7 +1548,7 @@ class TransactionProvider {
   const PgClientSession::TransactionBuilder builder_;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry_ = nullptr;
   docdb::ObjectLockSharedState* object_lock_shared_state_;
-  std::optional<docdb::ObjectLockOwnerRegistry::RegistrationGuard> object_lock_registration_;
+  std::shared_ptr<ObjectLockRegistration> object_lock_registration_;
   client::YBTransactionPtr next_plain_;
 };
 
