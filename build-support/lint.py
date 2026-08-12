@@ -177,6 +177,7 @@ def _changed_files(base: str | None = None) -> list[str]:
             if not fallback:
                 sys.exit("[lint] no @{upstream} configured for current branch and no remote "
                          f"pointing at {_CANONICAL_REPO_HINT}; pass --rev <base> explicitly")
+            base = fallback
     resolved = _git("rev-parse", "--symbolic-full-name", base)
     print(f"[lint] comparing against {base} ({resolved})", file=sys.stderr)
     committed = set(_git("diff", "--name-only", "--diff-filter=d", f"{base}...HEAD").splitlines())
