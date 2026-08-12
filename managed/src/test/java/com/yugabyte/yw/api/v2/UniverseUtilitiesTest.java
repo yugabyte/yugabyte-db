@@ -8,11 +8,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
-import com.yugabyte.yba.v2.client.models.RollMaxBatchSize;
 import com.yugabyte.yba.v2.client.models.UniverseRestart;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.commissioner.Common;
@@ -24,13 +24,14 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.libs.Json;
+import play.mvc.Result;
 
 public class UniverseUtilitiesTest extends UniverseControllerTestBase {
 
@@ -137,19 +138,21 @@ public class UniverseUtilitiesTest extends UniverseControllerTestBase {
   }
 
   @Test
-  public void testV2RestartRollingWithBatchSize() throws ApiException {
+  public void testV2RestartRollingWithBatchSize() {
     UUID taskUUID = UUID.randomUUID();
     when(mockUpgradeUniverseHandler.restartUniverse(any(), eq(customer), eq(universe)))
         .thenReturn(taskUUID);
-    UniverseRestart payload = new UniverseRestart();
-    payload.setRollingRestart(true);
-    RollMaxBatchSize batchSize = new RollMaxBatchSize();
-    batchSize.setPrimaryBatchSize(new BigDecimal(2));
-    batchSize.setReadReplicaBatchSize(new BigDecimal(2));
-    payload.setRollMaxBatchSize(batchSize);
-    YBATask resp =
-        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), payload);
-    assertEquals(taskUUID, resp.getTaskUuid());
+    String path =
+        String.format(
+            "/api/v2/customers/%s/universes/%s/restart",
+            customer.getUuid(), universe.getUniverseUUID());
+    ObjectNode body = Json.newObject();
+    body.put("rolling_restart", true);
+    body.set(
+        "roll_max_batch_size",
+        Json.newObject().put("primary_batch_size", 2).put("read_replica_batch_size", 2));
+    Result result = doRequestWithAuthTokenAndBody("POST", path, authToken, body);
+    assertEquals(200, result.status());
     ArgumentCaptor<RestartTaskParams> captor = ArgumentCaptor.forClass(RestartTaskParams.class);
     verify(mockUpgradeUniverseHandler)
         .restartUniverse(captor.capture(), eq(customer), eq(universe));

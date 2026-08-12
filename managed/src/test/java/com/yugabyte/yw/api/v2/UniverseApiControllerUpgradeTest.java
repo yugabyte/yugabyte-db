@@ -30,7 +30,6 @@ import com.yugabyte.yba.v2.client.models.PerProviderResizeNodesSpec;
 import com.yugabyte.yba.v2.client.models.PerProviderUpdateProxyConfigSpec;
 import com.yugabyte.yba.v2.client.models.ResizeProviderNodeSpec;
 import com.yugabyte.yba.v2.client.models.ResizeProviderRootNodesSpec;
-import com.yugabyte.yba.v2.client.models.RollMaxBatchSize;
 import com.yugabyte.yba.v2.client.models.UniverseCertRotateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseEditEncryptionInTransit;
 import com.yugabyte.yba.v2.client.models.UniverseEditKubernetesOverrides;
@@ -76,7 +75,6 @@ import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -522,11 +520,6 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     Map<String, String> azOverrides = new HashMap<String, String>();
     azOverrides.put("az1", "az1_overrides");
     req.setAzOverrides(azOverrides);
-    req.setRollingUpgrade(true);
-    RollMaxBatchSize batchSize = new RollMaxBatchSize();
-    batchSize.setPrimaryBatchSize(new BigDecimal(2));
-    batchSize.setReadReplicaBatchSize(new BigDecimal(2));
-    req.setRollMaxBatchSize(batchSize);
     YBATask resp =
         apiClient.editKubernetesOverrides(customer.getUuid(), universe.getUniverseUUID(), req);
     ArgumentCaptor<KubernetesOverridesUpgradeParams> captor =
@@ -538,6 +531,32 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     assertEquals("my_overrides", params.universeOverrides);
     assertTrue(params.azOverrides.containsKey("az1"));
     assertEquals("az1_overrides", params.azOverrides.get("az1"));
+  }
+
+  @Test
+  public void testV2KubernetesOverridesWithBatchSize() {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.upgradeKubernetesOverrides(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    String path =
+        String.format(
+            "/api/v2/customers/%s/universes/%s/kubernetes-overrides",
+            customer.getUuid(), universe.getUniverseUUID());
+    ObjectNode body = Json.newObject();
+    body.put("overrides", "my_overrides");
+    body.put("rolling_upgrade", true);
+    body.set(
+        "roll_max_batch_size",
+        Json.newObject().put("primary_batch_size", 2).put("read_replica_batch_size", 2));
+    Result result = doRequestWithAuthTokenAndBody("POST", path, authToken, body);
+    assertEquals(200, result.status());
+
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> captor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .upgradeKubernetesOverrides(captor.capture(), eq(customer), eq(universe));
+    KubernetesOverridesUpgradeParams params = captor.getValue();
+    assertEquals("my_overrides", params.universeOverrides);
     assertEquals(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, params.upgradeOption);
     assertNotNull(params.rollMaxBatchSize);
     assertEquals(Integer.valueOf(2), params.rollMaxBatchSize.getPrimaryBatchSize());
