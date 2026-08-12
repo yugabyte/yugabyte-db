@@ -14,6 +14,7 @@
 #include "yb/util/debug/long_operation_tracker.h"
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <queue>
@@ -60,9 +61,19 @@ struct TrackedOperationComparer {
 
 // Upper bound on how long the checker thread sleeps between scans of the intake queue. A newly
 // registered operation is noticed within this interval, so a warning could be logged at most
-// this much later than the operation deadline. Since tracked durations are much larger than
-// this bound, the delay is not observable in practice.
+// this much later than the operation deadline. Since tracked durations are typically much
+// larger than this bound, the delay is not observable in practice.
 constexpr std::chrono::milliseconds kMaxWaitTime(100);
+
+// Deadlines below this threshold cannot rely on the periodic scan alone: the operation could
+// expire and complete entirely within one kMaxWaitTime sleep, losing the stack trace warning.
+// Registration of such operations additionally wakes the checker thread.
+constexpr auto kShortDeadlineThreshold = 2 * kMaxWaitTime;
+
+// Upper bound on the number of registrations adopted from the intake queue in one iteration of
+// the checker loop, so that expired operations and stop_ are still checked periodically while
+// producers are registering at a high rate.
+constexpr size_t kMaxDrainPerIteration = 1000;
 
 // Singleton that maintains queue of tracked operation and runs thread that checks for expired
 // operations.
@@ -84,8 +95,10 @@ class LongOperationTrackerHelper {
 
   ~LongOperationTrackerHelper() {
     {
+      // The lock prevents a lost wakeup: the checker thread cannot be between its stop_ check
+      // and cond_.wait_for while we hold the mutex.
       std::lock_guard lock(mutex_);
-      stop_ = true;
+      stop_.store(true, std::memory_order_release);
     }
     cond_.notify_one();
     if (thread_) {
@@ -106,12 +119,19 @@ class LongOperationTrackerHelper {
       return TrackedOperationPtr();
     }
     auto start = CoarseMonoClock::now();
+    const CoarseTimePoint deadline = start + duration * kTimeMultiplier;
     TrackedOperationPtr result(new LongOperationTracker::TrackedOperation(
-        Thread::CurrentThreadIdForStack(), message, start, start + duration * kTimeMultiplier));
+        Thread::CurrentThreadIdForStack(), message, start, deadline));
     // Transfer one reference through the intake queue as a raw pointer, keeping registration
     // lock-free. The checker thread adopts it back into a TrackedOperationPtr.
     result->AddRef();
     intake_.Push(result.get());
+    if (deadline - start < kShortDeadlineThreshold) {
+      // The periodic scan is not frequent enough for this deadline, wake the checker thread.
+      // This is best effort: a wakeup that races with the start of a scan could be missed, in
+      // which case the periodic scan is still the backstop.
+      cond_.notify_one();
+    }
     return result;
   }
 
@@ -135,12 +155,20 @@ class LongOperationTrackerHelper {
     std::priority_queue<
         TrackedOperationPtr, std::vector<TrackedOperationPtr>, TrackedOperationComparer> queue;
 
-    for (;;) {
-      while (auto* operation = intake_.Pop()) {
+    while (!stop_.load(std::memory_order_acquire)) {
+      // Adopt a bounded number of registrations, so that this loop terminates even when
+      // producers are registering operations faster than we drain them.
+      size_t drained = 0;
+      while (drained < kMaxDrainPerIteration) {
+        auto* operation = intake_.Pop();
+        if (!operation) {
+          break;
+        }
         queue.push(AdoptIntakeRef(operation));
+        ++drained;
       }
 
-      for (;;) {
+      while (!stop_.load(std::memory_order_acquire)) {
         auto now = CoarseMonoClock::now();
         if (queue.empty() || queue.top()->time > now) {
           break;
@@ -160,6 +188,11 @@ class LongOperationTrackerHelper {
         }
       }
 
+      if (drained == kMaxDrainPerIteration) {
+        // The intake queue could have more pending registrations, process them before sleeping.
+        continue;
+      }
+
       CoarseDuration wait_time = kMaxWaitTime;
       if (!queue.empty()) {
         wait_time = std::min<CoarseDuration>(
@@ -168,13 +201,10 @@ class LongOperationTrackerHelper {
 
       {
         std::unique_lock<std::mutex> lock(mutex_);
-        if (stop_) {
+        if (stop_.load(std::memory_order_acquire)) {
           break;
         }
         cond_.wait_for(lock, wait_time);
-        if (stop_) {
-          break;
-        }
       }
     }
 
@@ -184,10 +214,11 @@ class LongOperationTrackerHelper {
 
   MPSCQueue<LongOperationTracker::TrackedOperation> intake_;
 
-  // Protects only stop_, see the synchronization strategy in the class comment.
+  // Used only to sleep in and wake up the checker thread, see the synchronization strategy in
+  // the class comment. stop_ is atomic so that the checker loops can poll it without the mutex.
   std::mutex mutex_;
   std::condition_variable cond_;
-  bool stop_ = false;
+  std::atomic<bool> stop_{false};
   scoped_refptr<Thread> thread_;
 };
 
