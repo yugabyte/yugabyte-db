@@ -13,8 +13,9 @@
 
 #pragma once
 
-#include <memory>
 #include <mutex>
+
+#include "yb/gutil/ref_counted.h"
 
 #include "yb/util/monotime.h"
 
@@ -25,22 +26,23 @@ namespace yb {
 // Warning contains stack trace of thread that created this tracker.
 class LongOperationTracker {
  public:
-  LongOperationTracker() = default;
   LongOperationTracker(const char* message, MonoDelta duration);
-  ~LongOperationTracker();
 
   LongOperationTracker(const LongOperationTracker&) = delete;
   void operator=(const LongOperationTracker&) = delete;
 
-  LongOperationTracker(LongOperationTracker&&) = default;
-  LongOperationTracker& operator=(LongOperationTracker&&) = default;
+  // Defined out-of-line because they require a complete TrackedOperation type.
+  LongOperationTracker();
+  ~LongOperationTracker();
+  LongOperationTracker(LongOperationTracker&& rhs);
+  LongOperationTracker& operator=(LongOperationTracker&& rhs);
 
   void Swap(LongOperationTracker* rhs);
 
   struct TrackedOperation;
 
  private:
-  std::shared_ptr<TrackedOperation> tracked_operation_;
+  scoped_refptr<TrackedOperation> tracked_operation_;
 };
 
 

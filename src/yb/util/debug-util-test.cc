@@ -506,6 +506,31 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
   }
 }
 
+// Stress concurrent registration and completion of tracked operations to exercise the
+// lock-free intake path of LongOperationTrackerHelper and reference transfer to the checker
+// thread.
+TEST_F(DebugUtilTest, LongOperationTrackerStress) {
+  constexpr int kNumThreads = 8;
+  const auto kRunTime = 3s;
+  // Deadline long enough that operations normally complete in time, short enough that the
+  // checker thread pops expired entries while the test is running.
+  const auto kDeadline = 500ms;
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i != kNumThreads; ++i) {
+    thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag(), kDeadline] {
+      while (!stop.load(std::memory_order_acquire)) {
+        LongOperationTracker tracker("StressOp", kDeadline);
+        // Cover move construction and move assignment while the operation is registered.
+        LongOperationTracker moved(std::move(tracker));
+        tracker = std::move(moved);
+        std::this_thread::sleep_for(100us);
+      }
+    });
+  }
+  thread_holder.WaitAndStop(kRunTime);
+}
+
 TEST_F(DebugUtilTest, YB_DISABLE_TEST_ON_MACOS(TestGetStackTraceWhileCreatingThreads)) {
   // This test makes sure we can collect stack traces while threads are being created.
   // We create 10 threads that create threads in a loop. Then we create 100 threads that collect
