@@ -967,11 +967,8 @@ bool TabletSnapshots::CleanupTombstonedSnapshot(PendingSnapshotDeletion* deletio
   TEST_PAUSE_IF_FLAG(TEST_pause_after_tombstoning_snapshot);
   {
     SCOPED_WAIT_STATUS(Snapshot_CleanupSnapshotDir);
-    // NotFound means the tombstone is already gone (e.g. a previous pass removed it but its
-    // completion was discarded due to an epoch bump); treat it as removed and continue to the
-    // parent sync.
     const Status deletion_status = env().DeleteRecursively(deletion->tombstone_dir);
-    if (PREDICT_FALSE(!deletion_status.ok() && !deletion_status.IsNotFound())) {
+    if (PREDICT_FALSE(!deletion_status.ok())) {
       deletion->physical_pending = true;
       if (metrics_) {
         metrics_->cleanup_failures->Increment();
