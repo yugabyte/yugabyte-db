@@ -3982,6 +3982,7 @@
           "tServerPods": "Pods (TServer)",
           "nodes": "Nodes",
           "pods": "Pods",
+          "rankingAcrossRegions": "Ranking is applied across regions.",
           "tooltips": {
             "regionTag": "You can add or remove regions in the previous step (Regions).",
             "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.<br/><br/><a>Learn more</a>",
