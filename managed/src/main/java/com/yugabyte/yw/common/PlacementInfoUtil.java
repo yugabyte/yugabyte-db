@@ -1134,9 +1134,7 @@ public class PlacementInfoUtil {
       ClusterOperationType clusterOpType,
       Universe universe) {
     Cluster oldCluster;
-
     validatePartitions(cluster);
-    Util.fillIntentFromProviderSpecifications(cluster.userIntent);
     if (clusterOpType == ClusterOperationType.EDIT) {
       if (universe == null) {
         throw new IllegalArgumentException(

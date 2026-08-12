@@ -2496,4 +2496,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node agent checker offloaded to run asynchronously on its own schedule",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> multicloudEnabled =
+      new ConfKeyInfo<>(
+          "yb.multicloud.enabled",
+          ScopeType.GLOBAL,
+          "Enable multi-cloud schema (non-k8s)",
+          "When enabled, all internal logic will use multicloud schema."
+              + "V1 API still pretend to use old schema.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
