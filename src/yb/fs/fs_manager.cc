@@ -55,6 +55,7 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -100,6 +101,12 @@ METRIC_DEFINE_counter(drive, drive_fault,
                       "Drive Fault. Tablet Server isn't able to read/write on this drive.",
                       yb::MetricUnit::kUnits,
                       "Drive Fault. Tablet Server isn't able to read/write on this drive.");
+
+DEFINE_NON_RUNTIME_bool(export_drive_io_metrics, true,
+    "Whether to export per-drive write throughput and sync latency metrics on the 'drive' "
+    "metric entity. When disabled, the instrumentation in the writable-file layer sees no "
+    "registered drive for any path and does no work at all.");
+TAG_FLAG(export_drive_io_metrics, advanced);
 
 using google::protobuf::Message;
 using yb::env_util::ScopedFileDeleter;
@@ -506,6 +513,10 @@ Status FsManager::CheckAndOpenFileSystemRoots() {
     }
   }
 
+  // Deliberately after the per-root write check above, so the startup check's own writes stay
+  // out of the drive counters. Do not move this earlier.
+  SetUpDriveIoMetrics();
+
   LOG(INFO) << "Opened local filesystem: " << JoinStrings(canonicalized_all_fs_roots_, ",")
             << std::endl << metadata_->DebugString();
   return Status::OK();
@@ -631,12 +642,9 @@ Status FsManager::CreateFileSystemRoots(const InstanceMetadataPB& metadata,
   std::deque<ScopedFileDeleter> delete_on_failure;
   unordered_set<string> to_sync;
 
-  std::set<std::string> roots = canonicalized_data_fs_roots_;
-  roots.insert(canonicalized_wal_fs_roots_.begin(), canonicalized_wal_fs_roots_.end());
-
   // All roots are either empty or non-existent. Create missing roots and all
   // subdirectories.
-  for (const auto& root : roots) {
+  for (const auto& root : UsableFsRoots()) {
     bool created;
     std::string out_dir;
     RETURN_NOT_OK(SetupRootDir(env_, root, server_type_, &out_dir, &created));
@@ -773,15 +781,36 @@ Status FsManager::CheckWrite(const std::string& root) {
   return Status::OK();
 }
 
-void FsManager::CreateAndSetFaultDriveMetric(const std::string& path) {
+scoped_refptr<MetricEntity> FsManager::GetOrCreateDriveMetricEntity(const std::string& path) {
   MetricEntity::AttributeMap attrs;
   attrs["drive_path"] = path;
-  auto metric_entity = METRIC_ENTITY_drive.Instantiate(metric_registry_,
-                                                       kPrefixMetricId + path,
-                                                       attrs);
-  auto counter = METRIC_drive_fault.Instantiate(metric_entity);
+  return METRIC_ENTITY_drive.Instantiate(metric_registry_, kPrefixMetricId + path, attrs);
+}
+
+void FsManager::CreateAndSetFaultDriveMetric(const std::string& path) {
+  if (metric_registry_ == nullptr) {
+    return;
+  }
+  auto counter = METRIC_drive_fault.Instantiate(GetOrCreateDriveMetricEntity(path));
   counter->Increment();
   counters_.emplace_back(std::move(counter));
+}
+
+std::set<string> FsManager::UsableFsRoots() const {
+  // The exclusion this promises is not done here: the write-check failure path above erases the
+  // faulted root from both of these sets, so it simply is not found. See the declaration.
+  std::set<string> roots = canonicalized_wal_fs_roots_;
+  roots.insert(canonicalized_data_fs_roots_.begin(), canonicalized_data_fs_roots_.end());
+  return roots;
+}
+
+void FsManager::SetUpDriveIoMetrics() {
+  if (!FLAGS_export_drive_io_metrics || metric_registry_ == nullptr) {
+    return;
+  }
+  for (const auto& root : UsableFsRoots()) {
+    yb::RegisterDriveIoMetrics(GetOrCreateDriveMetricEntity(root), root);
+  }
 }
 
 Status FsManager::CreateDirIfMissing(const string& path, bool* created) {

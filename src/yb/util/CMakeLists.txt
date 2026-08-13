@@ -138,6 +138,7 @@ set(UTIL_SRCS
   decimal.cc
   delayer.cc
   dist_trace.cc
+  drive_io_stats.cc
   enums.cc
   env.cc
   env_posix.cc
@@ -388,6 +389,7 @@ ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(debug-util-test)
 ADD_YB_TEST(decimal-test)
+ADD_YB_TEST(drive_io_stats-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)
