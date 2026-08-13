@@ -16,6 +16,7 @@
     "build-and-copy": "npm run build:ci && ncp build ../src/main/public",
     "analyze": "source-map-explorer 'build/static/js/*.js'",
     "start": "vite",
+    "start:remote": "vite --mode remote",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build -s public",

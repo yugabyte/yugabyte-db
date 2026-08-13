@@ -4,15 +4,21 @@ import Cookies from 'js-cookie';
 
 export const IN_DEVELOPMENT_MODE = import.meta.env.DEV;
 
-// NOTE: when using VITE_YUGAWARE_API_URL at local development - after login with SSO it will
-// set auth cookies for API host domain and redirect to API host root instead of localhost:3000/
-// Need to manually set "userId", "customerId" and "PLAY_SESSION" cookies for localhost:3000
-export const ROOT_URL =
-  import.meta.env.VITE_YUGAWARE_API_URL ??
-  (IN_DEVELOPMENT_MODE ? 'http://localhost:9000/api/v1' : '/api/v1');
+// In dev, all API calls go through the Vite dev-server proxy (see vite.config.js): use a relative
+// /api root so requests stay same-origin (localhost:3000). Vite forwards them to a local backend on
+// :9000 (plain `npm start`) or to a remote YBA (VITE_YUGAWARE_API_URL, `npm run start:remote`).
+//
+// Staying same-origin is what makes auth work: the backend's auth/CSRF cookies (authToken,
+// csrfCookie, PLAY_SESSION) are stored for localhost:3000, so every axios instance - including the
+// one `@yugabytedb/perf-advisor-ui` bundles for the embedded PA UI - sends them. Talking to :9000
+// directly (an absolute URL) is cross-origin: it needs BE allowedOrigins, and the PA UI's own axios
+// (no withCredentials, no injected token) would send no cookie/token at all.
+export const ROOT_URL = '/api/v1';
 
-// Allow requests made to endpoints in 'routes' file.
-export const BASE_URL = IN_DEVELOPMENT_MODE ? 'http://localhost:9000' : '';
+// BASE_URL only builds node web-UI proxy links (see UniverseUtils); those are not proxied through
+// Vite, so keep it pointing at the backend host in local dev.
+export const BASE_URL =
+  IN_DEVELOPMENT_MODE && !import.meta.env.VITE_YUGAWARE_API_URL ? 'http://localhost:9000' : '';
 
 export const REACT_TROUBLESHOOT_API_DEV_URL =
   import.meta.env.VITE_TROUBLESHOOT_API_DEV_URL ?? `http://localhost:8080`;

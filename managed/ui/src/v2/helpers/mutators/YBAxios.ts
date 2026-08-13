@@ -3,10 +3,10 @@ import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 export const IN_DEVELOPMENT_MODE = import.meta.env.DEV;
 
 // if we export the ROOT_URL from the config.js file, orval is trying to parse it and throwing an error.
-// so we are copy pasting it here
-export const ROOT_URL =
-  import.meta.env.VITE_YUGAWARE_API_URL ??
-  (IN_DEVELOPMENT_MODE ? 'http://localhost:9000/api/v2' : '/api/v2');
+// so we are copy pasting it here. See config.js: in dev we always use a relative /api root so requests
+// go through the Vite dev-server proxy (-> local :9000 or remote YBA) and stay same-origin, which
+// keeps auth/CSRF cookies on localhost:3000 so every axios instance sends them.
+export const ROOT_URL = '/api/v2';
 
 export const URLWithRemovedSubPath = ROOT_URL.replace('/api/v1', '/api/v2');
 

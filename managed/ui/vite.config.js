@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import svgr from 'vite-plugin-svgr';
 import dynamicImport from 'vite-plugin-dynamic-import';
@@ -93,6 +93,80 @@ const createEsbuildTransformPlugin = (name, filter, transform) => ({
   }
 });
 
+// =============================================================================
+// Dev-server API proxy
+// =============================================================================
+
+// Fail loudly on a malformed URL. new URL('htt://host').origin silently returns the string
+// "null", which makes http-proxy fall back to "base.invalid" (getaddrinfo ENOTFOUND base.invalid).
+const toOrigin = (value, varName) => {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${varName} is not a valid URL: "${value}". Expected e.g. http://10.152.0.78`);
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`${varName} must start with http:// or https:// (got "${value}").`);
+  }
+  return url.origin;
+};
+
+// When VITE_YUGAWARE_API_URL is set, run in "remote backend" dev mode (see `npm run start:remote`):
+// the browser only talks to the Vite dev server (same origin, so no browser CORS) and Vite proxies
+// /api to the remote YBA. Only the origin of VITE_YUGAWARE_API_URL is used (any /api path is
+// ignored); the client uses relative API roots (see src/config.js and YBAxios.ts) and we rewrite
+// request/response headers below. Without VITE_YUGAWARE_API_URL, /api is proxied to a local backend
+// on :9000.
+const buildApiProxy = (mode) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const apiUrl = env.VITE_YUGAWARE_API_URL;
+  const apiTarget = apiUrl ? toOrigin(apiUrl, 'VITE_YUGAWARE_API_URL') : 'http://localhost:9000';
+  return {
+    target: apiTarget,
+    changeOrigin: true,
+    // Allow proxying to remote backends with self-signed TLS certs (remote dev only).
+    ...(apiUrl ? { secure: false } : {}),
+    // Applied for both local (:9000) and remote targets: in both cases the browser talks to the Vite
+    // dev server (localhost:3000) and Vite forwards to a different origin, so Origin/cookies need the
+    // same fix-ups for Play to accept proxied POSTs and for the app to read csrfCookie.
+    configure: (proxy) => {
+      proxy.on('proxyReq', (proxyReq) => {
+        // Play's CSRF filter rejects POSTs whose Origin (http://localhost:3000) doesn't match the
+        // upstream Host (the backend). Strip Origin so requests look same-origin.
+        proxyReq.removeHeader('origin');
+        // Play uses a double-submit CSRF token: the value in the `csrfCookie` cookie must also be
+        // echoed in the Csrf-Token header on state-changing requests. The SPA sets this header
+        // itself, but on first load (index.html is served by Vite, not the backend) the cookie may
+        // not have existed when the app captured it. Derive it here on every request so proxied
+        // POSTs always carry a valid token.
+        const cookieHeader = proxyReq.getHeader('cookie');
+        if (typeof cookieHeader === 'string' && !proxyReq.getHeader('csrf-token')) {
+          const match = cookieHeader.match(/(?:^|;\s*)csrfCookie=([^;]+)/);
+          if (match) {
+            proxyReq.setHeader('Csrf-Token', decodeURIComponent(match[1]));
+          }
+        }
+      });
+      proxy.on('proxyRes', (proxyRes) => {
+        // The backend sets its auth/CSRF cookies (e.g. csrfCookie, PLAY_SESSION) with Domain= and/or
+        // Secure attributes. Over http://localhost:3000 the browser would drop those, so the app
+        // can't read csrfCookie and Play then rejects POSTs with "No CSRF token found". Rewrite
+        // Set-Cookie so the cookies are stored on localhost.
+        const setCookie = proxyRes.headers['set-cookie'];
+        if (setCookie) {
+          proxyRes.headers['set-cookie'] = setCookie.map((cookie) =>
+            cookie
+              .replace(/;\s*Domain=[^;]*/i, '')
+              .replace(/;\s*Secure/i, '')
+              .replace(/;\s*SameSite=None/i, '; SameSite=Lax')
+          );
+        }
+      });
+    }
+  };
+};
+
 export default defineConfig(({ mode }) => ({
   plugins: [
     momentPreciseRangePlugin(),
@@ -182,10 +256,7 @@ export default defineConfig(({ mode }) => ({
     port: 3000,
     host: '0.0.0.0',
     proxy: {
-      '/api': {
-        target: 'http://localhost:9000',
-        changeOrigin: true
-      }
+      '/api': buildApiProxy(mode)
     }
   },
   preview: {
