@@ -2323,12 +2323,14 @@ To learn about explicit row locking, see [Row-level locks](../../../explore/tran
 Default: `1024`
 {{% /tags/wrap %}}
 
-Controls the batch size of explicit row locking operations. When YugabyteDB processes SELECT FOR UPDATE/SHARE statements, it batches lock requests to optimize performance. A larger batch size can improve throughput by reducing round-trips, but may consume more memory.
+Controls the batch size of explicit row locking operations. When YugabyteDB processes SELECT FOR UPDATE/SHARE statements, it batches lock requests to optimize performance. Larger batches improve throughput by reducing server round-trips but consume more memory. Smaller batches reduce memory usage and latency for small result sets.
 
-This flag can be set dynamically using:
+This flag can be set dynamically:
 ```sql
 SET yb_explicit_row_locking_batch_size = 512;
 ```
+
+Works together with `yb_explicit_row_lock_skip_locked_max_read_ahead` for SKIP LOCKED query optimization. For tuning guidance, refer to [Row-level explicit locking clauses](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses).
 
 ##### --ysql_yb_explicit_row_lock_skip_locked_max_read_ahead
 
@@ -2338,38 +2340,17 @@ Default: `1` (disabled)
 
 Controls the maximum number of rows that can be locked in parallel when the `SKIP LOCKED` clause is used. This flag enables read-ahead optimization for SKIP LOCKED operations, allowing YugabyteDB to prefetch and attempt to lock multiple rows concurrently rather than processing them sequentially.
 
-- **Default value `1`**: Disables read-ahead; SKIP LOCKED operations process rows one at a time sequentially
-- **Values > 1**: Enables read-ahead; YugabyteDB will attempt to lock up to this many rows in parallel
+- **Value `1` (default):** Disables read-ahead; rows are processed sequentially
+- **Values greater than 1:** Enables read-ahead; YugabyteDB attempts to lock up to this many rows in parallel
 
-Enabling read-ahead (setting a value > 1) can significantly improve performance for SKIP LOCKED queries by reducing latency when multiple rows are available for locking.
+Setting a value greater than 1 can significantly improve performance for SKIP LOCKED queries by reducing latency when multiple rows are available for locking.
 
-Example to enable read-ahead with up to 10 rows:
+Example:
 ```sql
 SET yb_explicit_row_lock_skip_locked_max_read_ahead = 10;
 ```
 
-Available from YugabyteDB 2026.1.1.0 and later.
-
-#### Performance tuning for SKIP LOCKED
-
-The `yb_explicit_row_locking_batch_size` and `yb_explicit_row_lock_skip_locked_max_read_ahead` flags work together to optimize SKIP LOCKED query performance:
-
-- **Batch size** determines how many rows are read from storage in one batch
-- **Read-ahead** determines how many rows within that batch are locked in parallel
-
-**Example interaction:**
-
-With `yb_explicit_row_locking_batch_size=1024` and `yb_explicit_row_lock_skip_locked_max_read_ahead=10`:
-1. YugabyteDB reads 1024 rows in a batch
-2. It attempts to lock up to 10 rows in parallel
-3. Successfully locked rows are returned; conflicted rows are skipped
-4. The process continues with the next batch
-
-**Tuning recommendations:**
-
-- **High throughput workloads:** Increase batch size (e.g., 2048) to reduce server round-trips
-- **Low latency workloads:** Decrease batch size and enable read-ahead (e.g., `batch_size=512, read_ahead=5`)
-- **Mixed workloads:** Use moderate values (e.g., `batch_size=1024, read_ahead=10`)
+Available from YugabyteDB 2026.1.1.0 and later. For performance tuning guidance, refer to [Row-level explicit locking clauses](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses).
 
 ### Advisory lock flags
 
