@@ -1,8 +1,11 @@
+import { useMemo } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
+import { yupResolver } from '@hookform/resolvers/yup';
 import { mui, yba } from '@yugabyte-ui-library/core';
 import { InstanceARNField } from '../../create-universe/fields';
+import { awsArnFormSchema } from '../../create-universe/fields/arn-field/awsArnValidation';
 import { useEditUniverse } from '../../../../../v2/api/universe/universe';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
@@ -41,7 +44,13 @@ export const EditNodeAcessModal = ({ open, onClose }: EditNodeAcessModalProps) =
   const defaultValues = {
     awsArnString
   };
-  const methods = useForm<NodeAcessFormProps>({ defaultValues });
+  const validationSchema = useMemo(() => awsArnFormSchema(t), [t]);
+  const methods = useForm<NodeAcessFormProps>({
+    defaultValues,
+    resolver: yupResolver(validationSchema),
+    mode: 'onSubmit',
+    reValidateMode: 'onChange'
+  });
   const {
     handleSubmit,
     formState: { isDirty }
