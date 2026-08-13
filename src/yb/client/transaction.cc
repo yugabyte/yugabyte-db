@@ -677,7 +677,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         RequestStatusTablet(deadline);
         return;
       }
-      DropPendingStatusMovesWithoutCompletedBatches();
+      DropPendingStatusMovesWithoutMetadata();
       if (!transaction_status_move_handles_.empty()) {
         DCHECK(!commit_waiter_);
         VLOG_WITH_PREFIX(1) << "Waiting for transaction move RPCs to finish";
@@ -2336,18 +2336,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   //
   // Only safe at commit time: CheckCouldCommitUnlocked() rejects a commit with running requests, so
   // no further batch can complete. Such a participant is not part of the commit either, since
-  // DoCommit() drops tablets without metadata, which is recorded in the same place as a completed
-  // batch.
-  void DropPendingStatusMovesWithoutCompletedBatches() REQUIRES(mutex_) {
+  // DoCommit() drops tablets without metadata.
+  void DropPendingStatusMovesWithoutMetadata() REQUIRES(mutex_) {
     for (auto it = transaction_status_move_tablets_.begin();
          it != transaction_status_move_tablets_.end();) {
       const auto tablet_state = tablets_.find(*it);
       CHECK(tablet_state != tablets_.end());
-      if (tablet_state->second.num_completed_batches != 0) {
+      if (tablet_state->second.has_metadata) {
         ++it;
         continue;
       }
-      VLOG_WITH_PREFIX(1) << "Tablet " << *it << " has no completed batches, dropping its"
+      VLOG_WITH_PREFIX(1) << "Tablet " << *it << " has no metadata, dropping its"
                           << " UpdateTransaction(PROMOTING) rpc";
       transaction_status_move_handles_.erase(*it);
       it = transaction_status_move_tablets_.erase(it);
