@@ -54,8 +54,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   // Prefer Advanced ports when remounting only if CP + override ports are enabled
   // and the provider allows port customization (not K8s).
-  const providerCode =
-    generalSettings?.providerConfiguration?.code ?? generalSettings?.cloud;
+  const providerCode = generalSettings?.providerConfiguration?.code ?? generalSettings?.cloud;
   const hideOverridePorts = !canOverrideCommunicationPorts(providerCode);
   const shouldSyncCpPorts = shouldApplyConnectionPoolingPortOverrides(
     databaseSettings,
@@ -89,6 +88,9 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const ysqlConfirmPwd = watch(YSQL_CONFIRM_PWD);
   const ycqlConfirmPwd = watch(YCQL_CONFIRM_PWD);
   const gflagVal = watch(GFLAGS_FIELD);
+  const overrideCPPorts = watch('overrideCPPorts');
+  const ysqlServerRpcPort = watch('ysqlServerRpcPort');
+  const internalYsqlServerRpcPort = watch('internalYsqlServerRpcPort');
 
   useUpdateEffect(() => {
     if (!enableYCQLVal && !enableYSQLVal) {
@@ -112,6 +114,9 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     ycqlConfirmPwd,
     enableYSQLAuth,
     enableYCQLAuth,
+    overrideCPPorts,
+    ysqlServerRpcPort,
+    internalYsqlServerRpcPort,
     trigger
   ]);
 

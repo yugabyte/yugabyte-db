@@ -56,7 +56,11 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({
   dbVersion,
   hideOverridePorts = false
 }) => {
-  const { control, setValue } = useFormContext<DatabaseSettingsProps>();
+  const {
+    control,
+    setValue,
+    formState: { errors, isSubmitted }
+  } = useFormContext<DatabaseSettingsProps>();
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.databaseSettings.conPool'
@@ -217,8 +221,11 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({
             >
               {CON_POOL_PORTS.map((item) => (
                 <Controller
-                  name={item.id}
+                  name={item.id as 'ysqlServerRpcPort' | 'internalYsqlServerRpcPort'}
                   render={({ field: { value, onChange } }) => {
+                    const fieldError =
+                      errors[item.id as 'ysqlServerRpcPort' | 'internalYsqlServerRpcPort'];
+                    const showError = isSubmitted && !!fieldError;
                     return (
                       <YBInput
                         value={value}
@@ -229,7 +236,8 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({
                             {/* <InfoIcon /> */}
                           </StyledLabelIcon>
                         }
-                        helperText={item.helperText}
+                        error={showError}
+                        helperText={showError ? fieldError?.message : item.helperText}
                         dataTestId={`override-CP-ports-field-${item.id}`}
                         onBlur={(event) => {
                           let port =
@@ -238,7 +246,6 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({
                           port = port > MAX_PORT ? MAX_PORT : port;
                           onChange(port);
                         }}
-                        // trimWhitespace={false}
                       />
                     );
                   }}
