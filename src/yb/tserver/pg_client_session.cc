@@ -1537,6 +1537,14 @@ class TransactionProvider {
 };
 
 YB_STRONGLY_TYPED_BOOL(IsTxnUsingTableLocks);
+YB_STRONGLY_TYPED_BOOL(DeferReadPoint);
+
+// Whether the autonomous DDL transaction, if created by this request, should pick a deferred read
+// point. Only meaningful for the first request of the DDL that creates the transaction.
+template <class Req>
+DeferReadPoint GetDeferReadPoint(const Req& req) {
+  return DeferReadPoint(req.options().defer_read_point());
+}
 
 Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperations(
     PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
@@ -1812,7 +1820,7 @@ class PgClientSession::Impl {
         req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline(),
-        IsTxnUsingTableLocks(req.options().is_using_table_locks())));
+        IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req)));
     RETURN_NOT_OK(helper.Exec(
         &client_, metadata, req.options().active_sub_transaction_id(),
         context->GetClientDeadline()));
@@ -1852,7 +1860,7 @@ class PgClientSession::Impl {
         VERIFY_RESULT(GetDdlTransactionMetadata(
             req.use_transaction(), req.use_regular_transaction_block(),
             context->GetClientDeadline(),
-            IsTxnUsingTableLocks(req.options().is_using_table_locks()))),
+            IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req))),
         req.colocated(), context->GetClientDeadline(), yb_clone_info);
   }
 
@@ -1873,7 +1881,8 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks())));
+        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
+        GetDeferReadPoint(req)));
     // If ddl rollback is enabled, the table will not be deleted now, so we cannot wait for the
     // table/index deletion to complete. The table will be deleted in the background only after the
     // transaction has been determined to be a success.
@@ -1914,7 +1923,7 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline(),
-        IsTxnUsingTableLocks(req.options().is_using_table_locks())));
+        IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req)));
     if (txn) {
       alterer->part_of_transaction(txn);
     }
@@ -2114,7 +2123,8 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks())));
+        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
+        GetDeferReadPoint(req)));
     const auto s = client_.CreateTablegroup(
         req.database_name(), GetPgsqlNamespaceId(id.database_oid), id.GetYbTablegroupId(),
         tablespace_id.IsValid() ? tablespace_id.GetYbTablespaceId() : "", metadata,
@@ -2139,7 +2149,8 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks())));
+        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
+        GetDeferReadPoint(req)));
     const auto status =
         client_.DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid), metadata,
         req.options().active_sub_transaction_id());
@@ -3554,7 +3565,8 @@ class PgClientSession::Impl {
       EnsureSession(kind, deadline);
       RETURN_NOT_OK(GetDdlTransactionMetadata(
           true /* use_transaction */, false /* use_regular_transaction_block */, deadline,
-          IsTxnUsingTableLocks(options.is_using_table_locks()), options.priority(),
+          IsTxnUsingTableLocks(options.is_using_table_locks()),
+          DeferReadPoint(options.defer_read_point()), options.priority(),
           options.pg_txn_start_us()));
     } else {
       DCHECK(kind == PgClientSessionKind::kPlain);
@@ -3861,7 +3873,9 @@ class PgClientSession::Impl {
   // All DDLs use kHighestPriority unless specified otherwise.
   Result<const TransactionMetadata*> GetDdlTransactionMetadata(
       bool use_transaction, bool use_regular_transaction_block, CoarseTimePoint deadline,
-      IsTxnUsingTableLocks is_txn_using_table_locks, uint64_t priority = kHighPriTxnUpperBound,
+      IsTxnUsingTableLocks is_txn_using_table_locks,
+      DeferReadPoint defer_read_point = DeferReadPoint::kFalse,
+      uint64_t priority = kHighPriTxnUpperBound,
       uint64_t pg_txn_start_us = 0) {
     if (!use_transaction) {
       return nullptr;
@@ -3898,10 +3912,16 @@ class PgClientSession::Impl {
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
       ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
       EnsureSession(kSessionKind, deadline)->SetTransaction(txn);
-      auto& read_point = txn->read_point();
-      read_point.SetCurrentReadTime(ClampUncertaintyWindow::kFalse);
-      VLOG(1) << "For autonomous DDL txn, setting current ht as read point "
-          << read_point.GetReadTime();
+      if (isolation != IsolationLevel::SERIALIZABLE_ISOLATION) {
+        auto& read_point = txn->read_point();
+        if (defer_read_point) {
+          RETURN_NOT_OK(read_point.TrySetDeferredCurrentReadTime());
+        } else {
+          read_point.SetCurrentReadTime(ClampUncertaintyWindow::kFalse);
+        }
+        VLOG(1) << "For autonomous DDL txn, setting current ht as read point "
+            << read_point.GetReadTime();
+      }
     }
 
     return &ddl_txn_metadata_;

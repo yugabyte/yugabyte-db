@@ -968,7 +968,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
     options.set_use_catalog_session(true);
   } else {
-    RETURN_NOT_OK(SetupPerformOptions({}, &options, ops_options.read_time_action));
+    RETURN_NOT_OK(SetupPerformOptions(
+        {}, &options, OpsHaveNonTransactionalWrites(ops.operations()),
+        ops_options.read_time_action));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -1189,11 +1191,27 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
     false /* read_only */,
     pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
 
-  return SetupPerformOptions(options);
+  return SetupPerformOptions(options, NonTransactionalWrites::kFalse);
+}
+
+void PgSession::SetupDeferReadPointOptionForSeparateDdlTxn(
+    tserver::PgPerformOptionsPB* options) const {
+  if (pg_txn_manager_->ShouldDeferReadPoint()) {
+    options->set_defer_read_point(true);
+  }
 }
 
 void PgSession::SetTransactionHasWrites() {
   pg_txn_manager_->SetTransactionHasWrites();
+}
+
+NonTransactionalWrites PgSession::OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const {
+  // Autonomous DDLs stay at NON_TRANSACTIONAL in pggate since their isolation is picked in
+  // PgClientSession, so their writes are not fast-path writes.
+  return NonTransactionalWrites(
+      pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL &&
+      !pg_txn_manager_->IsDdlMode() &&
+      std::ranges::any_of(operations, [](const auto& op) { return !IsReadOnly(*op); }));
 }
 
 Result<bool> PgSession::CurrentTransactionUsesFastPath() const {
@@ -1481,7 +1499,7 @@ Status PgSession::AcquireAdvisoryLock(
   RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
     false /* read_only */,
     pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
-  RETURN_NOT_OK(SetupPerformOptions(&options));
+  RETURN_NOT_OK(SetupPerformOptions(&options, NonTransactionalWrites::kFalse));
   // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
   // then it should be safe to skip set_force_global_transaction.
   options.set_force_global_transaction(true);

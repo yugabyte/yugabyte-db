@@ -258,7 +258,10 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   Status SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options);
 
+  void SetupDeferReadPointOptionForSeparateDdlTxn(tserver::PgPerformOptionsPB* options) const;
+
   void SetTransactionHasWrites();
+  NonTransactionalWrites OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const;
   Result<bool> CurrentTransactionUsesFastPath() const;
 
   void ResetHasCatalogWriteOperationsInDdlMode();
@@ -393,8 +396,11 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
 template<class PB>
 Status SetupPerformOptionsForDdlIfNeeded(PgSession& session, PB& req) {
-  return req.use_regular_transaction_block() ?
-    session.SetupPerformOptionsForDdl(req.mutable_options()) : Status::OK();
+  if (req.use_regular_transaction_block()) {
+    return session.SetupPerformOptionsForDdl(req.mutable_options());
+  }
+  session.SetupDeferReadPointOptionForSeparateDdlTxn(req.mutable_options());
+  return Status::OK();
 }
 
 }  // namespace yb::pggate

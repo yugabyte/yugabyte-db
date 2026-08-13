@@ -437,23 +437,6 @@ Status PgTxnManager::CalculateIsolation(
           : (pg_isolation_level_ == PgIsolationLevel::READ_COMMITTED
               ? IsolationLevel::READ_COMMITTED
               : IsolationLevel::SNAPSHOT_ISOLATION);
-  // Users can use the deferrable mode via:
-  // (1) DEFERRABLE READ ONLY setting in transaction blocks
-  // (2) SET yb_read_after_commit_visibility = 'deferred';
-  //
-  // The feature doesn't take affect for non-read only serializable isolation txns
-  // and fast-path transactions because they don't face read restart errors in the first place.
-  //
-  // (1) Serializable isolation txns don't face read restart errors because
-  //    they use the latest timestamp for reading.
-  // (2) Fast-path txns don't face read restart errors because
-  //    they pick a read time after conflict resolution.
-  // We already skip (2) because CalculateIsolation is not called for fast-path
-  //    (i.e., NON_TRANSACTIONAL).
-  need_defer_read_point_ =
-      ((read_only_ && deferrable_)
-        || yb_read_after_commit_visibility == YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY)
-      && docdb_isolation != IsolationLevel::SERIALIZABLE_ISOLATION;
 
   VLOG_TXN_STATE(2) << "DocDB isolation level: " << IsolationLevel_Name(docdb_isolation);
 
@@ -628,7 +611,6 @@ void PgTxnManager::ResetTxnAndSession() {
   snapshot_read_time_is_used_ = false;
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   read_only_stmt_ = false;
-  need_defer_read_point_ = false;
   clamp_uncertainty_window_ = false;
 
   // GH #22353 - Ideally the reset of the ddl_state_ should happen without the if condition, but
@@ -737,6 +719,7 @@ std::string PgTxnManager::TxnStateDebugStr() const {
 
 Status PgTxnManager::SetupPerformOptions(
     SetupPerformOptionsAccessorTag, tserver::PgPerformOptionsPB* options,
+    NonTransactionalWrites ops_has_non_transactional_writes,
     std::optional<ReadTimeAction> read_time_action) {
   if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
     IncTxnSerialNo();
@@ -775,25 +758,27 @@ Status PgTxnManager::SetupPerformOptions(
 
   // Do not clamp or defer read point when the read time is being reset
   // because RESET => read time needs to be empty.
-  if (!(read_time_action && *read_time_action == ReadTimeAction::RESET)) {
-    // Do not clamp in the serializable case (or fast path write) since
-    // - SERIALIZABLE (and fast path) reads do not pick read time until they reach storage layer.
-    // - SERIALIZABLE (and fast path) reads do not observe read restarts anyways.
-    // Fast path writes are also referred to as NonTransactional writes.
-    if ((yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY
-         || clamp_uncertainty_window_)
-        && isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION
-        && !VERIFY_RESULT(TransactionHasNonTransactionalWrites())) {
+  //
+  // Do not clamp or defer in the serializable case (or fast path write) since
+  // - SERIALIZABLE (and fast path) reads do not pick read time until they reach storage layer.
+  // - SERIALIZABLE (and fast path) reads do not observe read restarts anyways.
+  // Fast path writes are also referred to as NonTransactional writes.
+  if (!(read_time_action && *read_time_action == ReadTimeAction::RESET)
+      && isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION
+      && !ops_has_non_transactional_writes) {
+    if (yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY
+        || clamp_uncertainty_window_) {
       // Can remove this check in the future since catalog session also clamps catalog_read_time.
       RSTATUS_DCHECK(!options->use_catalog_session(), IllegalState,
         "SetupPerformOptions cannot be called with use_catalog_session set.");
       options->set_clamp_uncertainty_window(true);
       read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
       read_time_action.reset();
-    } else if (need_defer_read_point_) {
-      // Two ways to defer read point:
-      // 1. SET TRANSACTION READ ONLY DEFERRABLE
-      // 2. SET yb_read_after_commit_visibility = 'deferred'
+    } else if (ShouldDeferReadPoint()) {
+      // Note that for an autonomous DDL transaction, isolation_level_ is NON_TRANSACTIONAL since
+      // CalculateIsolation bails out early in ddl mode. The isolation of the DDL transaction is
+      // picked in PgClientSession instead, and the deferral is applied there (the flag set below
+      // is passed along to it).
       options->set_defer_read_point(true);
       // Setting read point at pg client. Reset other time manipulations.
       read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
@@ -936,7 +921,8 @@ Result<std::string> PgTxnManager::ExportSnapshot(
     read_time_action.reset();
   }
   auto& options = *req.mutable_options();
-  RETURN_NOT_OK(SetupPerformOptions(tag, &options, read_time_action));
+  RETURN_NOT_OK(
+      SetupPerformOptions(tag, &options, NonTransactionalWrites::kFalse, read_time_action));
 
   if (explicit_read_time_value) {
     ReadHybridTime::FromUint64(*explicit_read_time_value).ToPB(options.mutable_read_time());
@@ -952,7 +938,7 @@ Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(
     SetupPerformOptionsAccessorTag tag, std::string_view snapshot_id) {
   RETURN_NOT_OK(CheckSnapshotTimeConflict());
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(tag, &options));
+  RETURN_NOT_OK(SetupPerformOptions(tag, &options, NonTransactionalWrites::kFalse));
   const auto snapshot = VERIFY_RESULT(client_->ImportTxnSnapshot(snapshot_id, std::move(options)));
   snapshot_read_time_is_used_ = true;
 
@@ -1002,7 +988,7 @@ Status PgTxnManager::RollbackToSubTransaction(
     return Status::OK();
   }
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(tag, &options));
+  RETURN_NOT_OK(SetupPerformOptions(tag, &options, NonTransactionalWrites::kFalse));
   return client_->RollbackToSubTransaction(id, &options);
 }
 
@@ -1032,7 +1018,7 @@ Status PgTxnManager::AcquireObjectLock(
       GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
       IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(tag, &options));
+  RETURN_NOT_OK(SetupPerformOptions(tag, &options, NonTransactionalWrites::kFalse));
   RETURN_NOT_OK(client_->AcquireObjectLock(&options, lock_id, mode, is_session_lock));
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
   return Status::OK();

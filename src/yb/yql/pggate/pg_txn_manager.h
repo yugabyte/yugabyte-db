@@ -54,6 +54,7 @@ YB_DEFINE_ENUM(
 
 YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 YB_STRONGLY_TYPED_BOOL(IsLocalObjectLockOp);
+YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
 
 struct TxnReadPoint {
   uint64_t txn; // Transaction serial number
@@ -118,8 +119,24 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   }
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
+  // Users can request the deferrable mode via:
+  // (1) DEFERRABLE READ ONLY setting in transaction blocks
+  // (2) SET yb_read_after_commit_visibility = 'deferred';
+  //
+  // The feature doesn't apply for non read-only serializable isolation txns and fast-path
+  // transactions because:
+  // (1) Serializable isolation txns don't face read restart errors because
+  //    they use the latest timestamp for reading.
+  // (2) Fast-path txns don't face read restart errors because
+  //    they pick a read time after conflict resolution.
+  bool ShouldDeferReadPoint() const {
+    return (read_only_ && deferrable_) ||
+           yb_read_after_commit_visibility == YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY;
+  }
+
   Status SetupPerformOptions(SetupPerformOptionsAccessorTag tag,
-      tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action = {});
+      tserver::PgPerformOptionsPB* options, NonTransactionalWrites ops_has_non_transactional_writes,
+      std::optional<ReadTimeAction> read_time_action = {});
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
@@ -237,7 +254,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   SerialNo serial_no_;
   SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
   bool need_restart_ = false;
-  bool need_defer_read_point_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   bool in_txn_blk_ = false;
   bool read_only_stmt_ = false;
