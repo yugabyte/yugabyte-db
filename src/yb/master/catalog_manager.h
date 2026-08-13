@@ -3286,6 +3286,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void SchedulePostTabletCreationTasksForPendingTables(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
+  // Queues every table that has a backfill job recorded but no backfill running for resumption by
+  // CatalogManagerBgTasks.
+  void EnqueuePendingBackfillsAfterLoad() EXCLUDES(mutex_);
+
   Status BumpVersionAndStoreClusterConfig(
       ClusterConfigInfo* cluster_config, ClusterConfigInfo::WriteLock* l);
 
