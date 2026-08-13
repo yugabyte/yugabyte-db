@@ -15,7 +15,9 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere supports both horizontal and vertical scaling of your universe. If your workloads have increased, you can change to more powerful instance types or add nodes to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
+YugabyteDB Anywhere supports both horizontal and vertical scaling of your universe. If your workloads have increased, you can add nodes or change to more powerful instance types to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes or use smaller instances to reduce costs.
+
+YugabyteDB automatically ensures that new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
 
 <!--
 -> For information on changing configuration flags, refer to [Edit configuration flags](../edit-config-flags/).
@@ -29,52 +31,112 @@ YugabyteDB Anywhere supports both horizontal and vertical scaling of your univer
 -> For information on managing Kubernetes universes using the YugabyteDB Kubernetes Operator, refer to [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/).
 -->
 
-## Edit a universe
+To scale a universe, change its [placement](#horizontal-scaling) (nodes, availability zones, and regions) or its [hardware](#vertical-scaling) (instance type and storage).
 
-To change the configuration of a universe, do the following:
+You can also change [user tags](../instance-tags/), [configuration flags](../edit-config-flags/), and [Kubernetes overrides](../edit-helm-overrides/). To place YB-Master processes on dedicated nodes, refer to [Dedicated YB-Masters](../../create-deployments/dedicated-master/).
 
-1. Navigate to your universe and choose **Actions > Edit Universe** to display the **Edit universe** page.
+## Horizontal scaling
 
-    ![Edit universe](/images/ee/edit-univ-220.png)
-
-1. Update the configuration.
-
-    Using the **Edit Universe** page, you can modify the following:
-
-    - **Cloud Configuration**
-        - **Regions** - Select any region configured in the provider used to deploy the universe.
-        - [Master Placement](../../create-deployments/dedicated-master/).
-        - **Total Nodes** and **Availability Zones** - As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
-        - {{<tags/feature/ea idea="56">}}**Replication Factor** - Currently, you can only _increase_ the replication factor. Note that this change may also require you to increase the number of nodes or availability zones. Contact {{% support-platform %}} before modifying this field, for assistance on capacity planning and sizing appropriately.
-    - **Instance Configuration**
-        - **Instance Type** and **Volume Info Size** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
-        - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS. For Kubernetes universes on YugabyteDB v2026.1.0.0 or later, you can change storage class and volume count using [full move](../kubernetes-full-move/).
-    - **Advanced Configuration**
-        - **Override Deployment Ports** - You can change the Master and TServer HTTP and RPC ports, and the Prometheus Node Exporter port.
-
-    - [User Tags](../instance-tags/). Changing tags doesn't require any node restarts or data migration.
-
-1. Click **Save**.
-
-YugabyteDB automatically ensures that new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
+Horizontal scaling adds or removes nodes (or pods, for Kubernetes) and can include changing availability zones or regions.
 
 To change the number of nodes of universes created with an on-premises provider and secured with third-party certificates obtained from external certification authorities, you must first add the certificates to the nodes you will add to the universe. Refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-ca/). Ensure that the certificates are signed by the same external CA and have the same root certificate. In addition, ensure that you copy the certificates to the same locations that you originally used when creating the universe.
 
-### Edit connection pooling
+{{< tabpane text=true >}}
 
-{{<tags/feature/ea idea="1368">}}If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
+{{% tab header="New UI" lang="new" %}}
 
-While in Early Access, the feature is not available by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+To scale a universe horizontally:
 
-To enable or disable connection pooling on a universe:
+1. Navigate to the universe, then open **Settings > Placement**.
 
-1. Navigate to your universe.
-1. Click **Actions > More > Edit Connection Pooling** to open the **Edit Connection Pooling** dialog.
-1. Enable or disable the **Built-In Connection Pooling** option.
-1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
-1. Click **Apply Changes**.
+1. On the **Primary Cluster** card, click **Edit** and choose one of the following:
 
-To customize other Connection Manager settings, use [Edit configuration flags](../edit-config-flags/). For information on Connection Manager settings and defaults, refer to [Set up YSQL Connection Manager](../../../additional-features/connection-manager-ysql/ycm-setup/#configure).
+    - **Edit AZ and Node Placement** (or **Edit AZ and Pod Placement** for Kubernetes) to add or remove nodes and availability zones.
+    - **Edit Regions** to add or remove regions, or to change resilience or replication factor. After you update regions, continue to the nodes and availability zones step.
+
+1. Update the placement.
+
+    - Change the number of nodes (or pods) per availability zone. As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
+    - {{<tags/feature/ea idea="56">}}**Replication Factor** - Currently, you can only _increase_ the replication factor. Note that this change may also require you to increase the number of nodes or availability zones. Contact {{% support-platform %}} before modifying this field, for assistance on capacity planning and sizing appropriately.
+
+1. Click **Review Changes**, confirm the summary, then click **Confirm and Apply**.
+
+{{% /tab %}}
+
+{{% tab header="Classic UI" lang="classic" %}}
+
+To scale a universe horizontally:
+
+1. Navigate to your universe and choose **Actions > Edit Universe**.
+
+    ![Edit universe](/images/ee/edit-univ-220.png)
+
+1. Under **Cloud Configuration**, update the following as needed:
+
+    - **Regions** - Select any region configured in the provider used to deploy the universe.
+    - [Master Placement](../../create-deployments/dedicated-master/).
+    - **Total Nodes** and **Availability Zones** - As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
+    - {{<tags/feature/ea idea="56">}}**Replication Factor** - Currently, you can only _increase_ the replication factor. Note that this change may also require you to increase the number of nodes or availability zones. Contact {{% support-platform %}} before modifying this field, for assistance on capacity planning and sizing appropriately.
+
+1. Click **Save**.
+
+{{% /tab %}}
+
+{{< /tabpane >}}
+
+## Vertical scaling
+
+Vertical scaling changes the instance type or storage used by universe nodes. In some cases, these operations are available as a [smart resize](#smart-resize).
+
+{{< tabpane text=true >}}
+
+{{% tab header="New UI" lang="new" %}}
+
+To scale a universe vertically:
+
+1. Navigate to the universe, then open **Settings > Hardware**.
+
+1. On the **Cluster Instance** card, click **Edit**.
+
+    If the universe uses [dedicated master nodes](../../create-deployments/dedicated-master/), edit the **T-Server Instance** and **Master Server Instance** cards separately.
+
+1. Update the instance configuration as needed:
+
+    - **Instance Type** and volume size - Change instance type and storage volume size as configured in the provider.
+    - Storage type and volume count - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS. For Kubernetes universes on YugabyteDB v2026.1.0.0 or later, you can change storage class and volume count using [full move](../kubernetes-full-move/).
+    - For Kubernetes, you can also change cores and memory.
+
+1. Click **Review Changes**.
+
+1. Confirm the summary of current and new values. If more than one update option is available, choose how to apply the change:
+
+    - **Rolling restart the current nodes** - Resizes the existing nodes (smart resize). No data migration is required. This option is faster and recommended when available.
+    - **Migrate to a new set of nodes** - Moves data to new nodes with new IP addresses. The universe remains online.
+
+    For details on when each option is available, refer to [Smart resize](#smart-resize).
+
+1. Click **Confirm and Apply**.
+
+{{% /tab %}}
+
+{{% tab header="Classic UI" lang="classic" %}}
+
+To scale a universe vertically:
+
+1. Navigate to your universe and choose **Actions > Edit Universe**.
+
+1. Under **Instance Configuration**, update the following as needed:
+
+    - **Instance Type** and **Volume Info Size** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
+    - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS. For Kubernetes universes on YugabyteDB v2026.1.0.0 or later, you can change storage class and volume count using [full move](../kubernetes-full-move/).
+
+1. Click **Save**.
+
+When smart resize is available, YugabyteDB Anywhere prompts you to either migrate the universe and its data to new nodes, or do a smart resize. Refer to [Smart resize](#smart-resize).
+
+{{% /tab %}}
+
+{{< /tabpane >}}
 
 ## Smart resize
 
@@ -92,10 +154,42 @@ Smart resize is available for the following operations:
 
 - Both together.
 
-In addition, smart resize isn't available if you change any options on the **Edit Universe** page in addition to the **Instance Type** and the size portion of the **Volume Info** field.
+In addition, smart resize isn't available if you change other universe settings in the same operation, such as node count, regions, or storage type, in addition to the instance type and volume size.
 
-When available, if you change the **Instance Type**, or both the **Instance Type** and **Volume Info** size, and then click **Save**, YugabyteDB Anywhere gives you the option to either migrate the universe and its data to new nodes, or do a smart resize.
+When smart resize is available, YugabyteDB Anywhere gives you the option to either migrate the universe and its data to new nodes, or do a smart resize.
 
 ![Smart resize dialog](/images/ee/edit-univ-2.png)
 
-If you change only the **Volume Info** size and click **Save**, YugabyteDB Anywhere automatically performs a smart resize.
+If you change only the volume size, YugabyteDB Anywhere automatically performs a smart resize.
+
+## Edit connection pooling
+
+{{<tags/feature/ea idea="1368">}}If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
+
+While in Early Access, the feature is not available by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+
+{{< tabpane text=true >}}
+
+{{% tab header="New UI" lang="new" %}}
+
+1. Navigate to the universe, then open **Settings > Database**.
+1. Under **Features**, click **Edit** and choose **Edit Connection Pooling Settings**.
+1. Enable or disable the **Built-In Connection Pooling** option.
+1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
+1. Click **Apply Changes**.
+
+{{% /tab %}}
+
+{{% tab header="Classic UI" lang="classic" %}}
+
+1. Navigate to your universe.
+1. Click **Actions > More > Edit Connection Pooling** to open the **Edit Connection Pooling** dialog.
+1. Enable or disable the **Built-In Connection Pooling** option.
+1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
+1. Click **Apply Changes**.
+
+{{% /tab %}}
+
+{{< /tabpane >}}
+
+To customize other Connection Manager settings, use [Edit configuration flags](../edit-config-flags/). For information on Connection Manager settings and defaults, refer to [Set up YSQL Connection Manager](../../../additional-features/connection-manager-ysql/ycm-setup/#configure).

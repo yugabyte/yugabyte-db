@@ -104,7 +104,7 @@ After the task completes, open **Nodes** (or **Pods** for Kubernetes). Nodes are
 
 {{% /tab %}}
 
-{{% tab header="Legacy UI" lang="legacy" %}}
+{{% tab header="Classic UI" lang="classic" %}}
 
 ### Create a universe with a read replica cluster
 
@@ -168,7 +168,7 @@ You can also edit flags as described in [Edit configuration flags](../../scale-d
 
 {{% /tab %}}
 
-{{% tab header="Legacy UI" lang="legacy" %}}
+{{% tab header="Classic UI" lang="classic" %}}
 
 1. Navigate to the universe and click **Actions > Edit Read Replica**.
 1. Use the **Configure read replica** page to enter the read replica details.
@@ -190,7 +190,7 @@ You can also edit flags as described in [Edit configuration flags](../../scale-d
 
 {{% /tab %}}
 
-{{% tab header="Legacy UI" lang="legacy" %}}
+{{% tab header="Classic UI" lang="classic" %}}
 
 1. Navigate to the universe and click **Actions > Edit Read Replica**.
 1. Click **Delete this configuration**.

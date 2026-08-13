@@ -23,7 +23,7 @@ type: docs
 
   <li>
     <a href="../create-universe-multi-zone/" class="nav-link">
-      Legacy UI
+      Classic UI
     </a>
   </li>
 </ul>

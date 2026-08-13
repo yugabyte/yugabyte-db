@@ -32,7 +32,7 @@ If your cluster database version is v2024.2 or later, you can enable early acces
 Navigate to the universe and do the following:
 
 - New UI: Click **Settings > Database** and under **Features** click **Edit>Edit Enhanced Postgres Compatibility**.
-- Legacy UI: Click **Actions > More > Edit Postgres Compatibility**.
+- Classic UI: Click **Actions > More > Edit Postgres Compatibility**.
 
 For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
 
@@ -47,7 +47,7 @@ You can enable [built-in connection pooling](../../../additional-features/connec
 Navigate to the universe and do the following:
 
 - New UI: Click **Settings > Database** and under **Features** click **Edit>Edit Connection Pooling**.
-- Legacy UI: Click **Actions > More > Edit Connection Pooling**.
+- Classic UI: Click **Actions > More > Edit Connection Pooling**.
 
 On universes with built-in connection pooling enabled, you can customize YSQL Connection Manager settings using **Actions > Edit Flags**.
 
@@ -60,7 +60,7 @@ For information on Connection Manager settings and defaults, refer to [Set up YS
 You can add and edit configuration flags by navigating to the universe and doing the following:
 
 - New UI: Click **Settings > Database** and under **Advanced Config Flags** click **Edit**.
-- Legacy UI: Click **Actions > Edit Flags**.
+- Classic UI: Click **Actions > Edit Flags**.
 
 To customize flags of the read replica of a universe that has a read replica cluster, deselect the **Apply the same Flags to primary cluster and Read Replica** option. (This option is only available for universes with a read replica.) This displays the **Read Replica** tab. [Add](#add-flags) and [modify](#edit-flags) flags as you would for the primary cluster. Note that read replicas only have YB-TServers.
 
