@@ -1854,7 +1854,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " is registered with Perf Advisor Service",
           "Enables new Performance Monitoring UI via Performance Tab",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   // Node Script API configs (Internal)
   public static final ConfKeyInfo<Boolean> nodeScriptEnabled =
       new ConfKeyInfo<>(
