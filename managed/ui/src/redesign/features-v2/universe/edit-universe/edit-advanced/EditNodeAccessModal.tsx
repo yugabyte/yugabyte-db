@@ -8,6 +8,7 @@ import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler'
 import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
 import { createErrorMessage } from '../../../../../utils/ObjectUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { FullMoveWarning } from '../components';
 
 const { YBModal } = yba;
 const { styled, Box, boxClasses } = mui;
@@ -35,15 +36,16 @@ export const EditNodeAcessModal = ({ open, onClose }: EditNodeAcessModalProps) =
   const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const providerSpec = primaryCluster?.provider_spec;
-  const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
   const awsArnString = primaryCluster?.provider_spec?.aws_instance_profile;
 
   const defaultValues = {
     awsArnString
   };
   const methods = useForm<NodeAcessFormProps>({ defaultValues });
-
-  const { handleSubmit } = methods;
+  const {
+    handleSubmit,
+    formState: { isDirty }
+  } = methods;
 
   const handleFormSubmit = handleSubmit(async (values) => {
     if (!universeUUID || !primaryCluster?.uuid) {
@@ -95,6 +97,7 @@ export const EditNodeAcessModal = ({ open, onClose }: EditNodeAcessModalProps) =
       <FormProvider {...methods}>
         <ModalContent>
           <InstanceARNField disabled={false} />
+          {isDirty && <FullMoveWarning setting="instanceProfileArn" />}
         </ModalContent>
       </FormProvider>
     </YBModal>

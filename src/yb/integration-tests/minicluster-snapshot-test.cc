@@ -91,10 +91,15 @@ DECLARE_int32(data_size_metric_updater_interval_sec);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enforce_tablet_replica_limits);
+DECLARE_int32(ht_lease_duration_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
+DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(metrics_snapshotter_interval_ms);
 DECLARE_int32(num_cpus);
+DECLARE_int32(num_reactor_threads);
+DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -1696,6 +1701,17 @@ TEST_P(PgCloneTestWithColocatedDBTabletLimitsCheck, TabletLimitsCheck) {
 class PgCloneColocationTestWithTabletLimitsCheck : public PgCloneColocationTest {
  public:
   void SetUp() override {
+    // num_cpus is only meant to affect the tablet replica limit computation. Keep it from also
+    // sizing the process wide rocksdb priority thread pool and the RPC reactors for one core,
+    // which serializes the sys catalog snapshot flushes of all three masters.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_reactor_threads) = 4;
+    // Cloning writes ~200k sys catalog entries, so the snapshot creation flush stalls each master
+    // for seconds. Relax the consensus timeouts so the leader keeps its lease and the followers do
+    // not start an election, which would abort the in-progress clone.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 15000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 15000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 30;
     // Simulate a single core cluster.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 1;
     PgCloneColocationTest::SetUp();

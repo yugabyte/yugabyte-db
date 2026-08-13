@@ -111,13 +111,29 @@ class PgWaitQueuesTest : public PgMiniTestBase {
 
   Result<std::future<Status>> ExpectBlockedAsync(
       pgwrapper::PGConn* conn, const std::string& query) {
-    auto status = std::async(std::launch::async, [&conn, query]() {
+    // libpq's PGconn is not thread safe, so conn belongs to the async thread alone once it is
+    // handed over. Submission is observed on a separate connection instead.
+    const auto pid = VERIFY_RESULT(conn->FetchRow<int32_t>("SELECT pg_backend_pid()"));
+    auto observer = VERIFY_RESULT(Connect());
+    const auto is_active = Format(
+        "SELECT COUNT(*) FROM pg_stat_activity WHERE pid = $0 AND state = 'active'", pid);
+    // Warm up the observer's catalog caches, so that the first poll below is not slow enough to
+    // miss a query that the query layer rejects right away.
+    RETURN_NOT_OK(observer.FetchRow<int64_t>(is_active));
+
+    auto status = std::async(std::launch::async, [conn, query]() {
       return conn->Execute(query);
     });
 
-    RETURN_NOT_OK(WaitFor([&conn] () {
-      return conn->IsBusy();
-    }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
+    // A finished future also proves the query reached the query layer. Some callers expect it to be
+    // rejected right away, e.g. by the deadlock detector, so it need not still be running.
+    RETURN_NOT_OK(WaitFor([&observer, &status, &is_active] {
+      if (status.wait_for(0s) == std::future_status::ready) {
+        return true;
+      }
+      auto active = observer.FetchRow<int64_t>(is_active);
+      return active.ok() && *active == 1;
+    }, 10s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
     return status;
   }
 

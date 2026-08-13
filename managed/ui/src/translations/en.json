@@ -4295,7 +4295,11 @@
         "addHelmOverrides": "Add Helm Overrides",
         "overrideConfigured": "Helm Override Configured",
         "editHelmOverrides": "Edit Helm Overrides",
-        "helmOverrides": "HELM OVERRIDES"
+        "helmOverrides": "HELM OVERRIDES",
+        "validation": {
+          "duplicatePorts": "Port numbers must be unique.",
+          "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
+        }
       },
       "reviewAndSummary": {
         "daily": "Daily",
@@ -4314,7 +4318,8 @@
         "passwordStrength": "Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.",
         "required": "{{field}} is required",
         "universeNameValidation": "{{cloudType}} Universe name cannot contain capital letters or special characters except dashes",
-        "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
+        "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding.",
+        "duplicatePorts": "Port numbers must be unique."
       }
     },
     "geoPartition": {
@@ -4591,6 +4596,12 @@
         "enableProxyServer": "Enable Proxy Server",
         "proxyHelper": "Configure web proxies as gateways for traffic from your database nodes. <a>Learn more</a>",
         "unableToApplyChanges": "Unable to apply changes."
+      },
+      "fullMoveWarning": {
+        "message": "<bold>Changes to \"{{setting}} settings\" require a full move.</bold><br />Database performance may be temporarily affected while data is being moved. Consider making the change during lower-traffic period.",
+        "publicIp": "Public IP",
+        "networkPorts": "Network port",
+        "instanceProfileArn": "Instance Profile ARN"
       },
       "logs": {
         "troubleshootingLogs": "Troubleshooting Logs",

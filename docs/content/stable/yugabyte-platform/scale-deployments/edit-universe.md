@@ -164,9 +164,7 @@ If you change only the volume size, YugabyteDB Anywhere automatically performs a
 
 ## Edit connection pooling
 
-{{<tags/feature/ea idea="1368">}}If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
-
-While in Early Access, the feature is not available by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
 
 {{< tabpane text=true >}}
 

@@ -11,16 +11,21 @@ import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.models.helpers.exporters.UniverseExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.SimpleServerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -108,16 +113,60 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
               universe.getUniverseUUID()));
     }
 
-    // Validate that every referenced telemetry exporter exists up front, so a missing/deleted
-    // provider fails synchronously with a 400 here instead of deep inside the task at config
-    // render time. Only the active exporters are checked (the ones the task will resolve), so
-    // disabling export with a since-deleted provider still works. Uses the aggregate helper so a
-    // new export type is covered without touching this validation.
-    Set<UUID> exporterUuids = OtelCollectorUtil.getActiveExporterUuids(telemetryConfig);
+    // Group the active exporters by signal. Two sets, not a uuid -> signal map, since the same
+    // sink can be wired to both.
+    Set<UUID> metricsSinks = new HashSet<>();
+    Set<UUID> logSinks = new HashSet<>();
+    if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(getMetricsExportConfig())) {
+      addExporterUuids(getMetricsExportConfig().getUniverseMetricsExporterConfig(), metricsSinks);
+    }
+    if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)) {
+      addExporterUuids(auditLogConfig.getUniverseLogsExporterConfig(), logSinks);
+    }
+    if (OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)) {
+      addExporterUuids(queryLogConfig.getUniverseLogsExporterConfig(), logSinks);
+    }
+    if (OtelCollectorUtil.isMasterLogExportEnabledInUniverse(getMasterLogConfig())) {
+      addExporterUuids(getMasterLogConfig().getUniverseLogsExporterConfig(), logSinks);
+    }
+    if (OtelCollectorUtil.isTserverLogExportEnabledInUniverse(getTserverLogConfig())) {
+      addExporterUuids(getTserverLogConfig().getUniverseLogsExporterConfig(), logSinks);
+    }
+    for (SimpleServerLogConfig serverLogConfig :
+        OtelCollectorUtil.simpleServerLogConfigs(telemetryConfig)) {
+      if (OtelCollectorUtil.isSimpleServerLogExportEnabledInUniverse(serverLogConfig)) {
+        addExporterUuids(serverLogConfig.getUniverseLogsExporterConfig(), logSinks);
+      }
+    }
+
+    // Resolve each referenced provider once, failing a missing/deleted one or an incompatible sink
+    // with a 400 here instead of an unstartable collector config later. Only actively exporting
+    // sections were collected, so disabling export with a since-deleted provider still works.
+    Set<UUID> exporterUuids = new HashSet<>(logSinks);
+    exporterUuids.addAll(metricsSinks);
     if (!exporterUuids.isEmpty()) {
       TelemetryProviderService telemetryProviderService =
           StaticInjectorHolder.injector().instanceOf(TelemetryProviderService.class);
-      exporterUuids.forEach(telemetryProviderService::getOrBadRequest);
+      for (UUID exporterUuid : exporterUuids) {
+        TelemetryProvider provider = telemetryProviderService.getOrBadRequest(exporterUuid);
+        // Config and type are nullable columns, and @NotNull is only enforced on the save path.
+        ProviderType providerType =
+            provider.getConfig() != null ? provider.getConfig().getType() : null;
+        if (providerType == null) {
+          throw new PlatformServiceException(
+              play.mvc.Http.Status.BAD_REQUEST,
+              String.format(
+                  "Exporter '%s' (%s) has no provider type configured and cannot be used for export"
+                      + " on universe '%s'.",
+                  provider.getName(), exporterUuid, universe.getUniverseUUID()));
+        }
+        if (metricsSinks.contains(exporterUuid) && !providerType.isAllowedForMetrics) {
+          throw exporterNotAllowed(provider, providerType, "metrics", universe);
+        }
+        if (logSinks.contains(exporterUuid) && !providerType.isAllowedForLogs) {
+          throw exporterNotAllowed(provider, providerType, "logs", universe);
+        }
+      }
     }
 
     if (!Util.isKubernetesBasedUniverse(universe)) {
@@ -238,6 +287,20 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
                 OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS));
       }
     }
+  }
+
+  private static void addExporterUuids(
+      List<? extends UniverseExporterConfig> exporters, Set<UUID> uuids) {
+    exporters.forEach(exporter -> uuids.add(exporter.getExporterUuid()));
+  }
+
+  private static PlatformServiceException exporterNotAllowed(
+      TelemetryProvider provider, ProviderType providerType, String signal, Universe universe) {
+    return new PlatformServiceException(
+        play.mvc.Http.Status.BAD_REQUEST,
+        String.format(
+            "Exporter '%s' of provider type '%s' is not allowed for %s export on universe '%s'.",
+            provider.getName(), providerType, signal, universe.getUniverseUUID()));
   }
 
   /**

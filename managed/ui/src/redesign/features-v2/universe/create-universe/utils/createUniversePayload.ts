@@ -475,3 +475,22 @@ export const getAccessiblePorts = (
 
   return PORT_GROUPS;
 };
+
+/** Port field names currently shown in Deployment Ports (same set the UI renders). */
+export const getCommunicationPortFieldIds = (
+  enableYSQL: boolean | undefined,
+  enableYCQL: boolean | undefined,
+  providerCode: string,
+  enableCP: boolean | undefined,
+  isEditMode = false
+): string[] => {
+  const identityT = ((key: string) => key) as TFunction;
+  return getAccessiblePorts(
+    enableYSQL,
+    enableYCQL,
+    providerCode,
+    enableCP,
+    identityT,
+    isEditMode
+  ).flatMap((pg) => pg.PORTS_LIST.map((port: { id: string }) => port.id));
+};

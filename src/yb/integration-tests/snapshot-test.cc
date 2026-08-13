@@ -298,13 +298,16 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
   }
 
   TxnSnapshotId CreateSnapshot(
+      const vector<YBTableName>& table_names,
       std::optional<int32_t> retention_duration_hours = std::nullopt,
       std::optional<bool> imported = std::nullopt) {
     CreateSnapshotRequestPB req;
     CreateSnapshotResponsePB resp;
-    TableIdentifierPB* const table = req.mutable_tables()->Add();
-    table->set_table_name(kTableName.table_name());
-    table->mutable_namespace_()->set_name(kTableName.namespace_name());
+    for (const auto& table_name : table_names) {
+      TableIdentifierPB* const table = req.mutable_tables()->Add();
+      table->set_table_name(table_name.table_name());
+      table->mutable_namespace_()->set_name(table_name.namespace_name());
+    }
     if (retention_duration_hours) {
       req.set_retention_duration_hours(*retention_duration_hours);
     }
@@ -329,6 +332,12 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
     EXPECT_OK(CheckAllSnapshots({{ snapshot_id, SysSnapshotEntryPB::COMPLETE }}));
 
     return snapshot_id;
+  }
+
+  TxnSnapshotId CreateSnapshot(
+      std::optional<int32_t> retention_duration_hours = std::nullopt,
+      std::optional<bool> imported = std::nullopt) {
+    return CreateSnapshot({kTableName}, retention_duration_hours, imported);
   }
 
   Status DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
@@ -596,6 +605,56 @@ TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
   ASSERT_NOK(SnapshotCoversTablets(snapshot_id, table->id()));
   ASSERT_OK(WaitFor(
       std::bind(&SnapshotTest::IsTableDropped, this, table->id()), 120s, "IsTableDropped"));
+}
+
+TEST_F(SnapshotTest, CleanupHiddenTabletsInTabletIdOrder) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
+  const vector<YBTableName> table_names = {
+      kTableName,
+      YBTableName(YQL_DATABASE_CQL, kTableName.namespace_name(), "snapshot_test_table_2"),
+  };
+  for (const auto& table_name : table_names) {
+    auto workload = CreateDefaultWorkload();
+    workload.set_table_name(table_name);
+    workload.set_num_tablets(1);
+    workload.Setup();
+  }
+
+  struct TableData {
+    YBTableName name;
+    TableId id;
+    TabletId tablet_id;
+  };
+  vector<TableData> tables;
+  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  for (const auto& table_name : table_names) {
+    auto table = master_leader->catalog_manager_impl().GetTableInfoFromNamespaceNameAndTableName(
+        table_name.namespace_type(), table_name.namespace_name(), table_name.table_name());
+    ASSERT_NE(table, nullptr);
+    auto tablets = ASSERT_RESULT(table->GetTabletsIncludeInactive());
+    ASSERT_EQ(tablets.size(), 1);
+    tables.push_back({table_name, table->id(), tablets.front()->tablet_id()});
+  }
+
+  const auto snapshot_id = CreateSnapshot(table_names);
+  for (const auto& table : tables) {
+    ASSERT_OK(SnapshotCoversTablets(snapshot_id, table.id));
+  }
+
+  std::sort(tables.begin(), tables.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.tablet_id > rhs.tablet_id;
+  });
+  for (const auto& table : tables) {
+    ASSERT_OK(client_->DeleteTable(table.name, true));
+    ASSERT_OK(TableHidden(table.id));
+  }
+
+  ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
+  for (const auto& table : tables) {
+    ASSERT_OK(WaitFor(
+        std::bind(&SnapshotTest::IsTableDropped, this, table.id), 120s,
+        Format("IsTableDropped: $0", table.id)));
+  }
 }
 
 TEST_F(SnapshotTest, ImportedSnapshotsDoNotBlockCleanup) {

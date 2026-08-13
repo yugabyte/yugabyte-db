@@ -13,6 +13,7 @@ import {
 } from '../../create-universe/utils/createUniversePayload';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { OtherAdvancedProps } from '../../create-universe/steps/advanced-settings/dtos';
+import { FullMoveWarning } from '../components';
 
 const { YBModal } = yba;
 const { styled, Box, boxClasses } = mui;
@@ -43,11 +44,13 @@ export const EditNetworkPortsModal = ({ open, onClose }: EditNetworkPortsModalPr
   const enableCP = universeData?.spec?.ysql?.enable_connection_pooling;
   const networkingSpec = universeData?.spec?.networking_spec;
   const communicationPorts = universeData?.spec?.networking_spec?.communication_ports;
-  const defaultValues = mapAPIPortValues(communicationPorts);
+  const defaultValues = mapAPIPortValues(communicationPorts ?? {});
 
   const methods = useForm<Partial<OtherAdvancedProps>>({ defaultValues });
-
-  const { handleSubmit } = methods;
+  const {
+    handleSubmit,
+    formState: { isDirty }
+  } = methods;
 
   const handleFormSubmit = handleSubmit(async (values) => {
     if (!universeUUID || !primaryCluster?.uuid) {
@@ -92,7 +95,8 @@ export const EditNetworkPortsModal = ({ open, onClose }: EditNetworkPortsModalPr
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       titleSeparator
       size="md"
-      dialogContentProps={{ sx: { padding: '16px !important' } }}
+      scroll="body"
+      dialogContentProps={{ sx: { padding: '16px !important', overflow: 'visible' } }}
       overrideHeight={'fit-content'}
       onSubmit={handleFormSubmit}
     >
@@ -105,6 +109,7 @@ export const EditNetworkPortsModal = ({ open, onClose }: EditNetworkPortsModalPr
             providerCode={providerCode ?? ''}
             isEditMode={true}
           />
+          {isDirty && <FullMoveWarning setting="networkPorts" />}
         </ModalContent>
       </FormProvider>
     </YBModal>

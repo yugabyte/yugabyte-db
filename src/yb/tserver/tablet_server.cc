@@ -2563,6 +2563,8 @@ Status TabletServer::StartYSQLLeaseRefresher() {
   return ysql_lease_manager_->StartYSQLLeaseRefresher();
 }
 
+void TabletServer::ShutdownYSQLLeaseManager() { ysql_lease_manager_->Shutdown(); }
+
 Status TabletServer::SetCDCServiceEnabled() {
   if (!cdc_service_) {
     LOG(WARNING) << "CDC Service Not Registered";
