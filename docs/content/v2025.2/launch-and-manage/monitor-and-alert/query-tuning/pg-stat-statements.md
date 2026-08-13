@@ -483,7 +483,7 @@ FROM
 ```
 
 ```caddyfile{.nocopy}
--[ RECORD 1 ]----------+-------------------------------------------------------
+-[ RECORD 1 ]---------------+-------
 rows                        | 12
 docdb_read_rpcs             | 1
 docdb_write_rpcs            | 1
