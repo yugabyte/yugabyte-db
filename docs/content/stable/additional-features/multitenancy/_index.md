@@ -59,7 +59,7 @@ Keep the following in mind when planning a multitenant deployment:
 
 - **YSQL only.** A cluster using multitenancy must not have any YCQL databases.
 - **CPU only.** The feature limits CPU usage. It does not limit memory, disk I/O, or network.
-- **Per node.** Limits apply to CPU usage on a single node (a single YB-TServer process), not to CPU aggregated across the cluster.
+- **Per node.** Limits apply to CPU usage on a single node (a single YB-TServer process), CPU is not aggregated across the cluster.
 - **Linux only.** The feature relies on Linux cgroups and is not available on macOS.
 - **Shared configuration.** All tenants share the same cluster, and therefore the same flag values. You cannot, for example, enable packed rows for one tenant and disable it for another.
 - **No security isolation.** Multitenancy provides performance isolation only. It does not add any security or privacy isolation beyond the existing PostgreSQL security model.
