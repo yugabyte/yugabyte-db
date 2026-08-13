@@ -34,13 +34,16 @@ set(YB_PCH_PREFIX client)
 
 set(CLIENT_SRCS
   async_rpc.cc
+  atomic_request_id_allocator.cc
   batcher.cc
+  bitmap_request_id_allocator.cc
   client.cc
   client_builder-internal.cc
   client_error.cc
   client_master_rpc.cc
   client-internal.cc
   client_utils.cc
+  counter_request_id_allocator.cc
   error.cc
   error_collector.cc
   in_flight_op.cc
@@ -48,7 +51,9 @@ set(CLIENT_SRCS
   meta_data_cache.cc
   namespace_alterer.cc
   permissions.cc
+  request_id_allocator.cc
   session.cc
+  sharded_request_id_allocator.cc
   schema.cc
   stateful_services/stateful_service_client_base.cc
   table.cc
@@ -142,6 +147,7 @@ ADD_YB_TEST(ql-map-test)
 ADD_YB_TEST(ql-tablet-test)
 ADD_YB_TEST(ql-transaction-test)
 ADD_YB_TEST(ql-stress-test)
+ADD_YB_TEST(request_id_allocator-test)
 ADD_YB_TEST(seal-txn-test)
 ADD_YB_TEST(snapshot-txn-test)
 ADD_YB_TEST(snapshot_schedule-test)
@@ -149,3 +155,4 @@ ADD_YB_TEST(serializable-txn-test)
 ADD_YB_TEST(tablet_rpc-test)
 ADD_YB_TEST(transaction_promotion-test)
 ADD_YB_TEST(advisory_lock-test)
+ADD_YB_TEST(atomic_request_id_allocator-test)

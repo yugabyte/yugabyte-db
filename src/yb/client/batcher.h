@@ -38,6 +38,7 @@
 
 #include "yb/client/async_rpc.h"
 #include "yb/client/error_collector.h"
+#include "yb/client/sharded_request_id_allocator.h"
 #include "yb/client/transaction.h"
 
 #include "yb/common/consistent_read_point.h"
@@ -90,10 +91,13 @@ struct InFlightOpsGroupsWithMetadata {
 };
 
 struct RequestDetails {
+  // Finishes the request and provides the client id that was sent with it, which the server needs
+  // together with the id to recognize a retry.
+  AtomicRequestIdAllocator* shard;
   RetryableRequestId min_running_request_id;
 
-  explicit RequestDetails(RetryableRequestId min_running_request_id_) :
-      min_running_request_id(min_running_request_id_) {}
+  explicit RequestDetails(const ShardedAtomicRequestIdAllocation& allocation)
+      : shard(allocation.shard), min_running_request_id(allocation.min_running) {}
 };
 
 using BatcherRequestsMap = std::unordered_map<RetryableRequestId, RequestDetails>;
@@ -256,13 +260,12 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   server::Clock* Clock() const;
 
-  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
+  internal::ShardedAtomicRequestIdAllocation NextRequestIdAndMinRunningRequestId();
 
   void RequestsFinished();
 
-  void RegisterRequest(
-      RetryableRequestId id, RetryableRequestId min_running_id) {
-    retryable_requests_.emplace(id, RequestDetails(min_running_id));
+  void RegisterRequest(const internal::ShardedAtomicRequestIdAllocation& allocation) {
+    retryable_requests_.emplace(allocation.id, RequestDetails(allocation));
   }
 
   void MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id);
