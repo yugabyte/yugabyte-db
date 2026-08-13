@@ -127,9 +127,6 @@ func (ne NodeExporter) Install() error {
 	if err := ne.createSymlinks(); err != nil {
 		return err
 	}
-	if err := ne.syncCerts(); err != nil {
-		return err
-	}
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
 		if err := common.Chown(ne.BinDir, userName, userName, true); err != nil {
@@ -142,6 +139,9 @@ func (ne NodeExporter) Install() error {
 
 func (ne NodeExporter) Initialize() error {
 	log.Info("Starting node-exporter initialize")
+	if err := ne.syncCerts(); err != nil {
+		return err
+	}
 	if err := ne.Start(); err != nil {
 		return err
 	}
