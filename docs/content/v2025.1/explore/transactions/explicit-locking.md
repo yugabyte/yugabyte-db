@@ -106,6 +106,32 @@ COMMIT
 
 This should succeed.
 
+### Explicit row locking modes
+
+YSQL supports PostgreSQL's explicit locking clauses that provide advanced control over lock acquisition behavior when conflicts occur.
+
+#### NOWAIT clause
+
+The `NOWAIT` clause causes a SELECT FOR UPDATE/SHARE to fail immediately if a row is locked, rather than waiting or aborting.
+
+Example:
+```sql
+SELECT * FROM account WHERE id = 100 FOR UPDATE NOWAIT;
+```
+
+For support details and limitations, see [Row-level explicit locking clauses](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses).
+
+#### SKIP LOCKED clause
+
+The `SKIP LOCKED` clause allows a SELECT FOR UPDATE/SHARE to skip rows that are locked, returning only the unlocked rows. This is useful for applications that can process any available rows.
+
+Example:
+```sql
+SELECT * FROM orders WHERE status = 'pending' FOR UPDATE SKIP LOCKED LIMIT 10;
+```
+
+For support details, limitations, and performance tuning options, see [Row-level explicit locking clauses](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses) and [Explicit row locking flags](../../../reference/configuration/yb-tserver/#explicit-row-locking-flags).
+
 ## Advisory locks
 
 YSQL also supports advisory locks, where the application manages concurrent access to resources through a cooperative locking mechanism. Advisory locks can be less resource-intensive than table or row locks for certain use cases because they don't involve scanning tables or indexes for lock conflicts. They are session-specific and managed by the client application.
