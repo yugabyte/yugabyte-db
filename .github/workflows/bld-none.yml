@@ -32,4 +32,7 @@ jobs:
     runs-on: ybdbghr
     steps:
       - name: Build Trigger
-        run: ybbld ${{ github.event.pull_request.number }} ${{ github.event.pull_request.head.sha }} NO-BLD
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ybbld "$PR_NUMBER" "$PR_SHA" NO-BLD
