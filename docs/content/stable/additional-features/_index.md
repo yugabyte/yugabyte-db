@@ -33,6 +33,12 @@ type: indexpage
     icon="fa-thin fa-people-roof">}}
 
   {{<index/item
+    title="Multitenancy"
+    body="Isolate CPU usage across databases (tenants)."
+    href="multitenancy/"
+    icon="fa-thin fa-people-group">}}
+
+  {{<index/item
     title="Parallel queries"
     body="Leverage multiple CPUs to answer queries faster."
     href="parallel-query/"
