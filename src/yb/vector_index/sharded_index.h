@@ -36,11 +36,12 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
 
   // Reserve capacity across all shards (each shard gets an equal portion, rounded up).
   Status Reserve(
-      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) override {
+      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads,
+      rocksdb::Cache::ReservationMode reservation_mode) override {
     size_t capacity_per_shard = (num_vectors + indexes_.size() - 1) / indexes_.size();  // Round up
     for (auto& index : indexes_) {
       RETURN_NOT_OK(index->Reserve(
-          capacity_per_shard, max_concurrent_inserts, max_concurrent_reads));
+          capacity_per_shard, max_concurrent_inserts, max_concurrent_reads, reservation_mode));
     }
     return Status::OK();
   }

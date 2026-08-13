@@ -56,6 +56,7 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/jwt_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/signal_util.h"
 #include "yb/util/slice.h"
@@ -2348,8 +2349,14 @@ void YBCClearTimeout() {
 }
 
 void YBCCheckForInterrupts() {
-  LOG_IF(FATAL, !is_main_thread())
-      << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
+  // CHECK_FOR_INTERRUPTS may longjmp, so it is only safe on the backend main thread. Extensions
+  // such as pg_duckdb run pggate calls on their own worker threads; there the interrupt is left
+  // for the main thread. Logged so that an unintended off-main-thread caller stays observable.
+  if (!is_main_thread()) {
+    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 60, 1)
+        << __PRETTY_FUNCTION__ << " invoked off the main thread, skipping the interrupt check";
+    return;
+  }
 
   // If we're in the midst of shutting down, do not bother checking for interrupts.
   if (!pgapi) {
@@ -3342,6 +3349,12 @@ YbcStatus YBCPgRegisterSnapshotReadTime(
       pgapi->RegisterSnapshotReadTime(read_time, use_read_time), handle ? handle : &tmp_handle);
 }
 
+void YBCPgPublishOldestReadPointHandle(YbcReadPointHandle handle) {
+  if (pgapi) {
+    pgapi->PublishOldestReadPointSerialNo(handle);
+  }
+}
+
 void YBCRecordTempRelationDDL() {
   if (YBCRecordTempRelationDDL_hook) {
     YBCRecordTempRelationDDL_hook();
@@ -3484,10 +3497,18 @@ void YBCPgGlobalViewReadSetParams(
   DCHECK_NOTNULL(handle)->SetParams(std::span{param_values, param_values + num_params});
 }
 
-YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(
+YbcPgResultPB YBCPgGlobalViewReadExecScan(
     YbcPgGlobalViewRead handle, const char *database_name, const char *query,
     const char *tserver_uuid) {
   return pgapi->ExecGlobalViewScan(handle, database_name, query, tserver_uuid);
+}
+
+const char* YBCPgGlobalViewReadGetError(YbcPgGlobalViewRead handle) {
+  return DCHECK_NOTNULL(handle)->GetError();
+}
+
+void YBCPgGlobalViewReadClearScanState(YbcPgGlobalViewRead handle) {
+  DCHECK_NOTNULL(handle)->ClearScanState();
 }
 
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle) {

@@ -406,7 +406,7 @@ class ObjectLockManagerImpl {
   void EnableSharedLockState() {
     std::lock_guard lock(global_mutex_);
     if (shared_manager_) {
-      shared_manager_->ResumeSharedLockState();
+      shared_manager_->Start();
     }
   }
 
@@ -1184,7 +1184,7 @@ void ObjectLockManagerImpl::Shutdown() {
   {
     std::lock_guard l(global_mutex_);
     if (shared_manager_) {
-      shared_manager_->PauseAndResetSharedLockState();
+      shared_manager_->Stop();
     }
     for (auto& [_, entry] : locks_) {
       std::lock_guard obj_lock(entry->mutex);

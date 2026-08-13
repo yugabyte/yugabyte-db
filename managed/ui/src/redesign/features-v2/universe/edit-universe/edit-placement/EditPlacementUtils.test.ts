@@ -14,9 +14,11 @@ import {
 import {
   buildGeoPartitionPlacementEditPayload,
   buildPrimaryPlacementEditPayload,
-  getNodesAvailabilityDefaultsForEditPlacement
+  getNodesAvailabilityDefaultsForEditPlacement,
+  resolveEditPlacementNodesOnSave
 } from './EditPlacementUtils';
 import { getResilientType } from '../EditUniverseUtils';
+import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 
 const PRIMARY = ClusterSpecClusterType.PRIMARY;
 
@@ -472,5 +474,36 @@ describe('getResilientType', () => {
   it('returns not resilient for uninferable placement layout', () => {
     const placementSpec = makePlacementSpec([[1, 1, 1]]);
     expect(getResilientType(placementSpec, 2, t)).toBe('Not Resilient to outages');
+  });
+});
+
+describe('resolveEditPlacementNodesOnSave', () => {
+  const defaults: NodeAvailabilityProps = {
+    availabilityZones: {
+      r0: [{ uuid: 'az-1', name: 'Z0', nodeCount: 2, preffered: 1 }]
+    },
+    useDedicatedNodes: true,
+    replicationFactor: 3
+  };
+  const emptyZones = (): NodeAvailabilityProps => ({
+    availabilityZones: {},
+    useDedicatedNodes: false
+  });
+
+  it.each([[undefined], [emptyZones()], [{ ...emptyZones(), useDedicatedNodes: true }]])(
+    're-seeds when zones empty %#',
+    (incoming) => {
+      expect(resolveEditPlacementNodesOnSave(incoming, defaults)).toBe(defaults);
+    }
+  );
+
+  it('passes through non-empty', () => {
+    const placement: NodeAvailabilityProps = {
+      availabilityZones: {
+        r0: [{ uuid: 'x', name: 'Edited', nodeCount: 1, preffered: 1 }]
+      },
+      useDedicatedNodes: false
+    };
+    expect(resolveEditPlacementNodesOnSave(placement, defaults)).toBe(placement);
   });
 });

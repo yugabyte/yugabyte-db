@@ -93,6 +93,7 @@
 /* YB includes */
 #include "access/yb_scan.h"
 #include "catalog/index.h"
+#include "catalog/pg_aggregate_d.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_collation.h"
@@ -2251,7 +2252,8 @@ typedef enum YbPFetchTable
 {
 	YB_PFETCH_TABLE_FIRST = 0,
 
-	YB_PFETCH_TABLE_PG_AM = YB_PFETCH_TABLE_FIRST,
+	YB_PFETCH_TABLE_PG_AGGREGATE = YB_PFETCH_TABLE_FIRST,
+	YB_PFETCH_TABLE_PG_AM,
 	YB_PFETCH_TABLE_PG_AMOP,
 	YB_PFETCH_TABLE_PG_AMPROC,
 	YB_PFETCH_TABLE_PG_ATTRDEF,
@@ -2316,6 +2318,7 @@ YbBinSearchCatNamesComp(const void *a, const void *b)
  * in production.
  */
 static const YbCatNamePfId YbCatalogNamesPfIds[] = {
+	{"pg_aggregate", YB_PFETCH_TABLE_PG_AGGREGATE},
 	{"pg_am", YB_PFETCH_TABLE_PG_AM},
 	{"pg_amop", YB_PFETCH_TABLE_PG_AMOP},
 	{"pg_amproc", YB_PFETCH_TABLE_PG_AMPROC},
@@ -2400,6 +2403,8 @@ static const YbPFetchTableInfo *
 YbGetPrefetchableTableInfo(YbPFetchTable table)
 {
 	static YbPFetchTableInfo tables[YB_PFETCH_TABLES_COUNT] = {
+		[YB_PFETCH_TABLE_PG_AGGREGATE] =
+		(YbPFetchTableInfo) {AggregateRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {AGGFNOID}}},
 		[YB_PFETCH_TABLE_PG_AM] =
 		(YbPFetchTableInfo) {AccessMethodRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {AMOID, AMNAME}}},
 		[YB_PFETCH_TABLE_PG_AMOP] =
@@ -3160,8 +3165,15 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	 * here. As far as data for the `pg_namespace` table is preloaded no RPC
 	 * will be sent a master and negative cache entry will be created for a
 	 * future use.
+	 *
+	 * Note: When minimal catalog caches preload is enabled, pg_namespace is
+	 * only partially preloaded (system namespaces only). Calling
+	 * get_namespace_oid here for a user namespace would result in a false
+	 * negative cache entry because the active prefetcher would intercept the
+	 * scan and return 0 rows. Therefore, we skip this optimization in that case.
 	 */
-	get_namespace_oid(GetUserNameFromId(GetUserId(), false), true);
+	if (!YbUseMinimalCatalogCachesPreload())
+		get_namespace_oid(GetUserNameFromId(GetUserId(), false), true);
 
 	YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 	elog(log_level, "Preloading relcache complete");

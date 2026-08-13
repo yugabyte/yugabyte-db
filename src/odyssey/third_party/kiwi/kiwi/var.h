@@ -41,6 +41,10 @@ typedef enum {
 	KIWI_VAR_GP_SESSION_ROLE,
 	/* odyssey own params */
 	KIWI_VAR_ODYSSEY_CATCHUP_TIMEOUT,
+	/* YB: logical client details forwarded by YSQL Connection Manager */
+	KIWI_VAR_YB_CONN_MGR_CLIENT_ADDR,
+	KIWI_VAR_YB_CONN_MGR_CLIENT_PORT,
+	KIWI_VAR_YB_CONN_MGR_CLIENT_HOSTNAME,
 	KIWI_VAR_MAX,
 	KIWI_VAR_UNDEF
 } kiwi_var_type_t;

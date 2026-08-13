@@ -59,7 +59,8 @@ class CountingVectorIndex : public DocVectorIndex {
   const DocVectorIndexMetrics& metrics() const override { LOG(FATAL) << "Unexpected call"; }
   size_t EstimateNumVectorsForBytes(size_t) const override { LOG(FATAL) << "Unexpected call"; }
   Result<DocVectorIndexSearchResult> Search(
-      Slice, const vector_index::SearchOptions&, bool, const ReadOperationData&) override {
+      Slice, const vector_index::SearchOptions&, bool, DocVectorIndexReverseMappingReader&)
+      override {
     LOG(FATAL) << "Unexpected call";
   }
   Result<EncodedDistance> Distance(Slice, Slice) override { LOG(FATAL) << "Unexpected call"; }
@@ -68,7 +69,9 @@ class CountingVectorIndex : public DocVectorIndex {
   Status WaitForCompaction() override { LOG(FATAL) << "Unexpected call"; }
   Status Flush() override { LOG(FATAL) << "Unexpected call"; }
   Status WaitForFlush() override { LOG(FATAL) << "Unexpected call"; }
-  ConsensusFrontierPtr GetFlushedFrontier() override { LOG(FATAL) << "Unexpected call"; }
+  storage::FrontierInfo GetFrontiers(storage::FrontierKinds) override {
+    LOG(FATAL) << "Unexpected call";
+  }
   storage::FlushAbility GetFlushAbility() override { LOG(FATAL) << "Unexpected call"; }
   Status CreateCheckpoint(const std::string&) override { LOG(FATAL) << "Unexpected call"; }
   const std::string& ToString() const override { LOG(FATAL) << "Unexpected call"; }

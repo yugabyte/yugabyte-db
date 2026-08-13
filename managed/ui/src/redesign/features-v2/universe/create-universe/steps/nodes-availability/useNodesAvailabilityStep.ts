@@ -17,7 +17,7 @@ import { useQuery } from 'react-query';
 import { MarkerType, useGetMapIcons } from '@yugabyte-ui-library/core';
 import {
   assignRegionsAZNodeByReplicationFactor,
-  getExpertNodesStepDefaultPlacement,
+  getExpertAvailabilityZonesOrEmpty,
   getFaultToleranceNeeded,
   getNodeCount,
   inferResilience,
@@ -93,8 +93,8 @@ export function applyNodesStepPlacementFromResilience(
 
   const zonesSnapshot = methods.getValues('availabilityZones');
   if (isEmpty(zonesSnapshot)) {
-    const expertPlacement = getExpertNodesStepDefaultPlacement(resilienceAndRegionsSettings);
-    if (expertPlacement) {
+    if (isExpert) {
+      const expertPlacement = getExpertAvailabilityZonesOrEmpty(resilienceAndRegionsSettings);
       methods.setValue(REPLICATION_FACTOR, expertPlacement.replicationFactor);
       methods.setValue('availabilityZones', expertPlacement.availabilityZones);
       if (
@@ -106,15 +106,6 @@ export function applyNodesStepPlacementFromResilience(
         });
       }
     } else {
-      if (isExpert) {
-        const currentRf = methods.getValues(REPLICATION_FACTOR);
-        if (currentRf === undefined || currentRf === null) {
-          methods.setValue(
-            REPLICATION_FACTOR,
-            resilienceAndRegionsSettings.resilienceFactor ?? 1
-          );
-        }
-      }
       const nextZones = assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
       methods.setValue('availabilityZones', nextZones);
     }

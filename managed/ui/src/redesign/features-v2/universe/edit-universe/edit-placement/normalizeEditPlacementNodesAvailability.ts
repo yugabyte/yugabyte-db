@@ -2,7 +2,7 @@ import { isEmpty, values } from 'lodash';
 import { Region } from '@app/redesign/helpers/dtos';
 import {
   assignRegionsAZNodeByReplicationFactor,
-  getExpertNodesStepDefaultPlacement,
+  getExpertAvailabilityZonesOrEmpty,
   getFaultToleranceNeeded,
   getGuidedNodesStepReplicationFactor
 } from '../../create-universe/CreateUniverseUtils';
@@ -66,7 +66,7 @@ function regionCodesMatchAvailabilityZones(
 
 /**
  * Prefer existing (universe) AZ rows for regions that stay selected; only fill
- * missing/new regions from expert defaults (or guided assign fallback).
+ * missing/new regions from expert defaults (never guided assign).
  */
 function recalculateExpertNodesAvailability(
   resilience: ResilienceAndRegionsProps,
@@ -77,9 +77,8 @@ function recalculateExpertNodesAvailability(
     nodesAndAvailability.availabilityZones ?? {},
     selectedCodes
   );
-  const expertPlacement = getExpertNodesStepDefaultPlacement(resilience);
-  const defaultZones =
-    expertPlacement?.availabilityZones ?? assignRegionsAZNodeByReplicationFactor(resilience);
+  const expertPlacement = getExpertAvailabilityZonesOrEmpty(resilience);
+  const defaultZones = expertPlacement.availabilityZones;
 
   const mergedZones: NodeAvailabilityProps['availabilityZones'] = {};
   for (const region of resilience.regions ?? []) {
@@ -99,7 +98,7 @@ function recalculateExpertNodesAvailability(
     useDedicatedNodes: nodesAndAvailability.useDedicatedNodes,
     availabilityZones: mergedZones,
     [REPLICATION_FACTOR]:
-      expertPlacement?.replicationFactor ??
+      expertPlacement.replicationFactor ??
       nodesAndAvailability[REPLICATION_FACTOR] ??
       resilience.resilienceFactor ??
       1

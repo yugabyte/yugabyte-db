@@ -616,7 +616,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       }
       if (!inflight_async_writes_.empty()) {
         async_write_commit_waiter_ = [transaction, seal_only, deadline,
+                                      wait_state = ash::WaitStateInfo::CurrentWaitState(),
                                       callback = std::move(callback)](const Status& status) {
+          ADOPT_WAIT_STATE(wait_state);
+          SCOPED_WAIT_STATUS(OnCpu_Active);
           TRACE_TO(transaction->trace(), "YBTransaction::Commit Async writes completed");
           if (status.ok()) {
             transaction->Commit(deadline, seal_only, std::move(callback));
@@ -624,6 +627,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             callback(status);
           }
         };
+        // The commit stays blocked after we return and resumes on the thread that completes the
+        // last async write.
+        ASH_ENABLE_CONCURRENT_UPDATES();
+        SET_WAIT_STATUS(YBClient_WaitingForPipelinedWrites);
         return;
       }
     }
@@ -1331,8 +1338,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // abort the transaction.
     auto min_op = *write_query->op_ids.begin();
     auto max_op = *write_query->op_ids.rbegin();
-    SCHECK_FORMAT(
+    SCHECK_EC_FORMAT(
         max_op.term - min_op.term <= 1, IllegalState,
+        TransactionError(TransactionErrorCode::kAborted),
         "Tablet $0: tablet leader moved more than once before async writes completed "
         "(min_op: $1, max_op: $2)",
         tablet_id, min_op, max_op);

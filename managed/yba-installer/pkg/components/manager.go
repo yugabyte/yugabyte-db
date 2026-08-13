@@ -107,6 +107,10 @@ func (m *Manager) serviceOrder() []string {
 	if viper.GetBool("nodeExporter.enabled") {
 		order = append(order, "node-exporter")
 	}
+	// byoc-api-proxy is only enabled in specific BYOC deployments
+	if viper.GetBool("byocApiProxy.enabled") {
+		order = append(order, "byoc-api-proxy")
+	}
 
 	// Logrotate should be last
 	order = append(order, "yb-logrotate")

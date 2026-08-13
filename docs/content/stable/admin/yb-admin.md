@@ -37,6 +37,7 @@ yb-admin \
     [ --init_master_addrs <master-address> ]  \
     [ --timeout_ms <millisec> ] \
     [ --certs_dir_name <dir-name> ] \
+    [ --flagfile <path-to-file> ] \
     <command> [ command_flags ]
 ```
 
@@ -46,6 +47,13 @@ yb-admin \
 * `certs_dir_name`: The directory with certificates to use for secure server connections. Default is `""`.
 
   To connect to a cluster with TLS enabled, you must include the `-certs_dir_name` flag with the directory location where the root certificate is located.
+* `flagfile`: The path to a file containing flags to pass to yb-admin. Use this flag with the YB-Master's `server.conf` configuration file to automatically pick up `master_addresses` and `certs_dir_name`, avoiding manual flag entry. For example:
+
+  ```sh
+  ./bin/yb-admin --flagfile master/conf/server.conf list_all_masters
+  ```
+
+  Available in v2026.1.1.0 and later.
 * **command**: The operation to be performed. See [Commands](#commands) for syntax details and examples.
 * **command_flags**: Configuration flags that can be applied to the command.
 
@@ -1914,6 +1922,14 @@ Encryption status: ENABLED with key id <key_id_2>
 #### create_change_data_stream
 
 Create a change data capture (CDC) DB stream for the specified namespace using the following command.
+
+{{< note title="Legacy workflow" >}}
+
+Use `yb-admin create_change_data_stream` to create streams in versions earlier than v2026.1.1.0. 
+
+In YugabyteDB v2026.1.1.0 and later, create gRPC CDC streams using the PostgreSQL replication slot interface and the `yb_grpc` output plugin {{<tags/feature/ea idea="2762">}}. For example, `SELECT * FROM pg_create_logical_replication_slot('<slot>', 'yb_grpc');`. See [Create a gRPC CDC stream](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#create-a-grpc-cdc-stream).
+
+{{< /note >}}
 
 **Syntax**
 

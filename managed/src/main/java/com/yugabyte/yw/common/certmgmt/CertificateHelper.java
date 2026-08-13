@@ -445,6 +445,14 @@ public class CertificateHelper {
       } catch (CertificateException e) {
         throw new PlatformServiceException(BAD_REQUEST, "Unable to get cert Objects");
       }
+      // generateCertificates() returns an empty list (rather than throwing) for content that
+      // contains no valid PEM certificate. Treat that as invalid input here: otherwise
+      // extractDatesFromCertBundle() below returns an epoch..Long.MAX_VALUE expiry that then fails
+      // to
+      // persist ("timestamp out of range" on Postgres).
+      if (x509CACerts == null || x509CACerts.isEmpty()) {
+        throw new PlatformServiceException(BAD_REQUEST, "Unable to get cert Objects");
+      }
       Pair<Date, Date> dates = extractDatesFromCertBundle(x509CACerts);
       Date certStart = dates.getLeft();
       Date certExpiry = dates.getRight();

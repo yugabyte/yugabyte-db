@@ -104,7 +104,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -373,7 +373,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void setUp() {
     testData.add(new TestData(Common.CloudType.aws));
     testData.add(new TestData(onprem));
-    YBClient mockYbClient = Mockito.mock(YBClient.class);
+    YBClientApi mockYbClient = Mockito.mock(YBClientApi.class);
     when(mockService.getClient(Mockito.any(), Mockito.any())).thenReturn(mockYbClient);
     when(mockYbClient.getLeaderMasterHostAndPort())
         .thenReturn(HostAndPort.fromString("some").withDefaultPort(11));
@@ -2791,6 +2791,107 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(
         toBeAdded,
         params.nodeDetailsSet.stream().filter(n -> n.state == NodeState.ToBeAdded).count());
+  }
+
+  @Test
+  @Parameters(method = "parametersForCheckReplicasDistributionIsCorrect")
+  public void testCheckReplicasDistributionIsCorrect(
+      String caseName,
+      String specs,
+      @Nullable String defaultRegionCode,
+      @Nullable String expectedMessage) {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    String[] split = specs.split(":");
+    int rf = Integer.parseInt(split[0]);
+    String zoneSpecs = split[1];
+    PlacementInfo placementInfo = buildPlacementInfoFromZoneSpecs(provider, zoneSpecs);
+
+    Region defaultRegion =
+        StringUtils.isEmpty(defaultRegionCode)
+            ? null
+            : Region.getByCode(provider, defaultRegionCode);
+    UUID defaultRegionUUID = defaultRegion == null ? null : defaultRegion.getUuid();
+
+    boolean result =
+        PlacementInfoUtil.checkReplicasDistributionIsCorrect(
+            placementInfo, rf, defaultRegionUUID, false);
+
+    assertEquals(caseName, expectedMessage == null, result);
+
+    if (expectedMessage != null) {
+      IllegalStateException exception =
+          assertThrows(
+              IllegalStateException.class,
+              () ->
+                  PlacementInfoUtil.checkReplicasDistributionIsCorrect(
+                      placementInfo, rf, defaultRegionUUID, true));
+
+      assertTrue(caseName, exception.getMessage().contains(expectedMessage));
+    }
+  }
+
+  @SuppressWarnings("unused")
+  private Object[] parametersForCheckReplicasDistributionIsCorrect() {
+    return new Object[] {
+      // Valid distributions
+      new Object[] {"valid_3az_equal", "3:r1,1,3|r1,1,3|r1,1,3", null, null},
+      new Object[] {"valid_rf3_2regions", "3:r1,1,3|r1,1,3|r2,1,3", null, null},
+      new Object[] {"valid_rf5_3regions", "5:r1,2,3|r2,1,3|r3,2,3", null, null},
+      new Object[] {"valid_special_rf3_two_zones", "3:r1,1,3|r1,1,3", null, null},
+      new Object[] {"valid_replicas_in_default_region_only", "3:r1,2,3|r1,1,3|r2,0,3", "r1", null},
+      // Majority-in-region allowed
+      new Object[] {"allow_majority_in_single_region", "5:r1,2,3|r1,2,3|r2,1,3", null, null},
+      // Incorrect total replicas
+      new Object[] {
+        "wrong_total_replicas",
+        "3:r1,1,3|r1,1,3|r1,2,3",
+        null,
+        "Illegal number of replicas: current 4 but should be 3"
+      },
+      // Zero-replica zones when zone count <= RF
+      new Object[] {"zero_replica_zone", "3:r1,2,3|r1,0,3|r1,1,3", null, "has zero replicas"},
+      // Default region placement
+      new Object[] {
+        "incorrectly_placed_outside_default_region",
+        "3:r1,1,3|r2,1,3",
+        "r1",
+        "should be in default region only"
+      },
+      // Negative per-AZ replication factor
+      new Object[] {
+        "negative_replication_factor",
+        "3:r1,-1,3|r1,1,3|r1,1,3",
+        null,
+        "Cannot have negative number of replicas"
+      },
+      // Replicas exceed available nodes in zone
+      new Object[] {
+        "replicas_exceed_nodes_in_zone",
+        "3:r1,2,1|r2,1,1",
+        null,
+        "Cannot have number of replicas 2 greater than the number of nodes 1"
+      },
+    };
+  }
+
+  /** Builds placement info from zone specs encoded as {@code RF:region,rf,numNodes|...}. */
+  private PlacementInfo buildPlacementInfoFromZoneSpecs(Provider provider, String zoneSpecs) {
+    PlacementInfo pi = new PlacementInfo();
+    int azIndex = 1;
+    for (String zoneSpec : zoneSpecs.split("\\|")) {
+      String[] parts = zoneSpec.split(",");
+      Region region = getOrCreate(provider, parts[0]);
+      int replicationFactor = Integer.parseInt(parts[1]);
+      int numNodesInAZ = Integer.parseInt(parts[2]);
+      AvailabilityZone az =
+          AvailabilityZone.createOrThrow(
+              region, "PlacementAZ " + azIndex, "az-" + azIndex, "subnet-" + azIndex);
+      PlacementInfoUtil.addPlacementZone(az.getUuid(), pi, replicationFactor, numNodesInAZ);
+      azIndex++;
+    }
+    return pi;
   }
 
   @Test

@@ -91,11 +91,15 @@ public class AZUtil implements CloudUtil {
 
   public static final String AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
 
+  public static final String AZURE_CLIENT_ID_FIELDNAME = "AZURE_CLIENT_ID";
+
   public static final String YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
 
   public static final String YBC_AZURE_STORAGE_END_POINT_FIELDNAME = "AZURE_STORAGE_END_POINT";
 
   public static final String YBC_USE_AZURE_IAM_FIELDNAME = "USE_AZURE_IAM";
+
+  public static final String YBC_AZURE_CLIENT_ID_FIELDNAME = "AZURE_CLIENT_ID";
 
   private static final String PRICING_JSON_URL =
       "https://prices.azure.com/api/retail/prices?$filter=";
@@ -293,11 +297,16 @@ public class AZUtil implements CloudUtil {
     return createBlobContainerClient(azureUrl, sasToken, container);
   }
 
-  private BlobContainerClient createBlobContainerClientWithIam(String azureUrl, String container)
+  private BlobContainerClient createBlobContainerClientWithIam(
+      String azureUrl, String container, @Nullable String azureClientId)
       throws BlobStorageException {
+    DefaultAzureCredentialBuilder credentialBuilder = new DefaultAzureCredentialBuilder();
+    if (StringUtils.isNotBlank(azureClientId)) {
+      credentialBuilder.managedIdentityClientId(azureClientId);
+    }
     return new BlobContainerClientBuilder()
         .endpoint(azureUrl)
-        .credential(new DefaultAzureCredentialBuilder().build())
+        .credential(credentialBuilder.build())
         .containerName(container)
         .buildClient();
   }
@@ -309,7 +318,7 @@ public class AZUtil implements CloudUtil {
     String azureUrl = cLInfo.azureUrl;
     String container = cLInfo.bucket;
     if (configData.useAzureIam) {
-      return createBlobContainerClientWithIam(azureUrl, container);
+      return createBlobContainerClientWithIam(azureUrl, container, configData.azureClientId);
     } else {
       Map<String, String> containerTokenMap = getContainerTokenMap(configData);
       String containerEndpoint = String.format("%s/%s", azureUrl, container);
@@ -325,7 +334,7 @@ public class AZUtil implements CloudUtil {
       CustomerConfigStorageAzureData configData, String azureUrl, String container)
       throws BlobStorageException {
     if (configData.useAzureIam) {
-      return createBlobContainerClientWithIam(azureUrl, container);
+      return createBlobContainerClientWithIam(azureUrl, container, configData.azureClientId);
     } else {
       return createBlobContainerClient(azureUrl, configData.azureSasToken, container);
     }
@@ -490,6 +499,9 @@ public class AZUtil implements CloudUtil {
       throw new RuntimeException(
           "Neither 'AZURE_STORAGE_SAS_TOKEN' nor 'USE_AZURE_IAM' are present in the backup"
               + " config.");
+    }
+    if (StringUtils.isNotBlank(azData.azureClientId)) {
+      azCredsMap.put(YBC_AZURE_CLIENT_ID_FIELDNAME, azData.azureClientId);
     }
     azCredsMap.put(YBC_AZURE_STORAGE_END_POINT_FIELDNAME, azureUrl);
     return azCredsMap;

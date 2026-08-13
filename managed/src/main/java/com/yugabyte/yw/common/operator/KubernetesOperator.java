@@ -347,6 +347,8 @@ public class KubernetesOperator {
                   Thread pitrConfigReconcilerThread = null;
                   Thread pitrRestoreReconcilerThread = null;
                   Thread drConfigReconcilerThread = null;
+                  Thread kmsConfigReconcilerThread = null;
+                  Thread universeKeyRotationReconcilerThread = null;
 
                   if (!ossMode) {
                     YBCertificateReconciler ybCertificateReconciler =
@@ -366,12 +368,19 @@ public class KubernetesOperator {
                         reconcilerFactory.getPitrRestoreReconciler(client);
                     DrConfigReconciler drConfigReconciler =
                         reconcilerFactory.getDrConfigReconciler(client);
+                    KMSConfigReconciler kmsConfigReconciler =
+                        reconcilerFactory.getKMSConfigReconciler(client);
+                    UniverseKeyRotationReconciler universeKeyRotationReconciler =
+                        reconcilerFactory.getUniverseKeyRotationReconciler(client);
 
                     scheduledBackupReconcilerThread =
                         new Thread(() -> scheduledBackupReconciler.run());
                     pitrConfigReconcilerThread = new Thread(() -> pitrConfigReconciler.run());
                     pitrRestoreReconcilerThread = new Thread(() -> pitrRestoreReconciler.run());
                     drConfigReconcilerThread = new Thread(() -> drConfigReconciler.run());
+                    kmsConfigReconcilerThread = new Thread(() -> kmsConfigReconciler.run());
+                    universeKeyRotationReconcilerThread =
+                        new Thread(() -> universeKeyRotationReconciler.run());
                   }
 
                   if (confGetter.getGlobalConf(
@@ -384,6 +393,9 @@ public class KubernetesOperator {
                       pitrConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                       pitrRestoreReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                       drConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                      kmsConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                      universeKeyRotationReconcilerThread.setUncaughtExceptionHandler(
+                          exceptionHandler);
                     }
                   }
 
@@ -394,6 +406,8 @@ public class KubernetesOperator {
                     pitrConfigReconcilerThread.start();
                     pitrRestoreReconcilerThread.start();
                     drConfigReconcilerThread.start();
+                    kmsConfigReconcilerThread.start();
+                    universeKeyRotationReconcilerThread.start();
                   }
 
                   ybUniverseReconcilerThread.join();
@@ -403,6 +417,8 @@ public class KubernetesOperator {
                     pitrConfigReconcilerThread.join();
                     pitrRestoreReconcilerThread.join();
                     drConfigReconcilerThread.join();
+                    kmsConfigReconcilerThread.join();
+                    universeKeyRotationReconcilerThread.join();
                   }
 
                   LOG.info(

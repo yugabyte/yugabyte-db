@@ -10,7 +10,7 @@
 import * as yup from 'yup';
 import { find, mapValues } from 'lodash';
 import { TFunction } from 'i18next';
-import { ProviderCode } from '../../constants';
+import { isPerRegionImageProvider, ProviderCode } from '../../constants';
 import { isDefinedNotNull, isNonEmptyString } from '../../../../../utils/ObjectUtils';
 import { ImageBundle } from '../../types';
 
@@ -47,7 +47,9 @@ export const getAddLinuxVersionSchema = (
           t('globalYBImagenameRequired', { keyPrefix: translationPrefix }),
           (value: any) => {
             if (isEditMode && isYBAManagedBundle) return true;
-            return providerCode === ProviderCode.AWS ? true : isNonEmptyString(value);
+            // Per-region-image clouds (AWS, OCI) collect images per region, not a
+            // single global image, so globalYbImage is not required for them.
+            return isPerRegionImageProvider(providerCode) ? true : isNonEmptyString(value);
           }
         ),
       regions: yup.lazy((obj: any) =>

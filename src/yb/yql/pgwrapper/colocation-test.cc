@@ -395,6 +395,16 @@ class ColocationConcurrencyTest : public ColocatedDBTest {
     ColocatedDBTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.emplace_back(
         "--ysql_enable_auto_analyze=false");
+    // TODO(#32565): remove this override once backfill pins history at its read time.  The
+    // pgwrapper harness runs with timestamp_history_retention_interval_sec=0 to surface
+    // stale-read-point bugs.  Here that canary trips on a known, deferred limitation instead:
+    // CREATE INDEX CONCURRENTLY backfills at a fixed read time, and the DML these tests run
+    // concurrently on a sibling colocated table compacts the shared parent tablet, advancing its
+    // history cutoff past that read time and failing the backfill with "Snapshot too old".  Raise
+    // retention beyond the test's lifetime so the cutoff can never reach a read time chosen
+    // during the test.
+    options->extra_tserver_flags.emplace_back(
+        "--timestamp_history_retention_interval_sec=3600");
   }
 };
 

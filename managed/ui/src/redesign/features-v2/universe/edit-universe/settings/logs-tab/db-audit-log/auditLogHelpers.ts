@@ -5,11 +5,14 @@ import {
   YSQLAuditConfigLogLevel
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
+import { getPreservedTelemetrySections } from '../../shared/telemetryConfigPreserveUtils';
+
 export const AUDIT_LOG_TRANSLATION_KEY_PREFIX = 'editUniverse.logs.auditLogSettings';
 
 export type AuditLogOperation = 'create' | 'edit';
 
 const DEFAULT_LOG_PARAMETER_MAX_SIZE = 0;
+export const DEFAULT_LOG_RETENTION_DAYS = 1;
 
 export interface AuditLogFormValues {
   classes: YSQLAuditConfigClassesItem[];
@@ -20,6 +23,8 @@ export interface AuditLogFormValues {
   logRelation: boolean;
   logStatement: boolean;
   logStatementOnce: boolean;
+  retainAuditLogArchive: boolean;
+  logRetentionDays: number;
 }
 
 const createDefaultFormValues = (): AuditLogFormValues => ({
@@ -30,13 +35,19 @@ const createDefaultFormValues = (): AuditLogFormValues => ({
   logParameter: false,
   logRelation: false,
   logStatement: true,
-  logStatementOnce: false
+  logStatementOnce: false,
+  retainAuditLogArchive: false,
+  logRetentionDays: DEFAULT_LOG_RETENTION_DAYS
 });
 
 export const getDefaultFormValues = (ysqlAuditConfig?: YSQLAuditConfig): AuditLogFormValues => {
   if (!ysqlAuditConfig) {
     return createDefaultFormValues();
   }
+
+  const logRetentionDays = ysqlAuditConfig.log_retention_days;
+  const retainAuditLogArchive =
+    logRetentionDays !== undefined && logRetentionDays !== null && logRetentionDays > 0;
 
   return {
     classes: ysqlAuditConfig.classes ?? [],
@@ -46,7 +57,9 @@ export const getDefaultFormValues = (ysqlAuditConfig?: YSQLAuditConfig): AuditLo
     logParameter: ysqlAuditConfig.log_parameter,
     logRelation: ysqlAuditConfig.log_relation,
     logStatement: ysqlAuditConfig.log_statement,
-    logStatementOnce: ysqlAuditConfig.log_statement_once
+    logStatementOnce: ysqlAuditConfig.log_statement_once,
+    retainAuditLogArchive,
+    logRetentionDays: retainAuditLogArchive ? logRetentionDays : DEFAULT_LOG_RETENTION_DAYS
   };
 };
 
@@ -67,45 +80,41 @@ const buildYsqlAuditConfig = (
     log_rows: currentYsqlConfig?.log_rows ?? false,
     log_statement: values.logStatement,
     log_statement_once: values.logStatementOnce,
-    ...(currentYsqlConfig?.log_retention_days !== undefined && {
-      log_retention_days: currentYsqlConfig.log_retention_days
-    })
+    // 0 disables dedicated audit-log retention (see YSQLAuditConfig.yaml log_retention_days).
+    log_retention_days: values.retainAuditLogArchive
+      ? Math.max(DEFAULT_LOG_RETENTION_DAYS, Number(values.logRetentionDays))
+      : 0
   };
 
   return ysqlConfig as YSQLAuditConfig;
 };
 
-/**
- * The export-telemetry-configs API fully replaces the telemetry config, so we preserve the
- * existing query_logs and metrics sections and only modify audit_logs. Existing audit-log
- * exporters and YCQL config are preserved as-is (export selection is managed via Telemetry Export).
- *
- * The GET returns audit_logs/metrics as null when those exports are disabled, but the API
- * rejects null sections, so we only carry them over when they are actually configured.
- */
 export const buildTelemetryConfig = (
   values: AuditLogFormValues,
   currentTelemetryConfig?: TelemetryConfig
 ): TelemetryConfig => {
-  const telemetryConfig: TelemetryConfig = {
+  const preserved = getPreservedTelemetrySections(currentTelemetryConfig);
+  const existingAuditLogs = preserved.audit_logs;
+
+  return {
+    ...preserved,
     audit_logs: {
       ysql_audit_config: buildYsqlAuditConfig(
         values,
         currentTelemetryConfig?.audit_logs?.ysql_audit_config
       ),
-      ...(currentTelemetryConfig?.audit_logs?.ycql_audit_config && {
-        ycql_audit_config: currentTelemetryConfig.audit_logs.ycql_audit_config
+      ...(existingAuditLogs?.ycql_audit_config && {
+        ycql_audit_config: existingAuditLogs.ycql_audit_config
       }),
       exporters: currentTelemetryConfig?.audit_logs?.exporters ?? []
     }
   };
+};
 
-  if (currentTelemetryConfig?.query_logs) {
-    telemetryConfig.query_logs = currentTelemetryConfig.query_logs;
-  }
-  if (currentTelemetryConfig?.metrics) {
-    telemetryConfig.metrics = currentTelemetryConfig.metrics;
-  }
-
-  return telemetryConfig;
+export const buildDisableTelemetryConfig = (
+  currentTelemetryConfig?: TelemetryConfig
+): TelemetryConfig => {
+  const preserved = getPreservedTelemetrySections(currentTelemetryConfig);
+  delete preserved.audit_logs;
+  return preserved;
 };

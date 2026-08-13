@@ -37,7 +37,9 @@ Review the requirements for your upgrade:
 
 - If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YugabyteDB Anywhere to the next major release.
 
-- YugabyteDB Anywhere v2025.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v2025.1 or later.
+- YugabyteDB Anywhere (v2025.2.2.0 and later) requires Python v3.10 to v3.12.
+
+  If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v2025.1 or later.
 
 - YugabyteDB Anywhere v2025.2 and later require all non-Kubernetes universes have node agent running on their nodes.
 

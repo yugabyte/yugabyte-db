@@ -133,10 +133,12 @@ class XClusterTableSetupTask : public MultiStepMonitoredTask {
 
   void GetStreamCallback(
       std::shared_ptr<TableId> received_table_id,
-      std::shared_ptr<std::unordered_map<std::string, std::string>> options, const Status& s);
+      std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+      std::shared_ptr<bool> xcluster_use_target_applied_filter, const Status& s);
   Status ProcessStreamOptions(
       std::shared_ptr<TableId> received_table_id,
-      std::shared_ptr<std::unordered_map<std::string, std::string>> options, const Status& s);
+      std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+      std::shared_ptr<bool> xcluster_use_target_applied_filter, const Status& s);
 
   void CreateXClusterStreamCallback(const Result<xrepl::StreamId>& stream_id);
   Status ProcessNewStream(const Result<xrepl::StreamId>& stream_id);

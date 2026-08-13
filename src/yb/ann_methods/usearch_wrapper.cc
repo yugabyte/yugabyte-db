@@ -142,7 +142,14 @@ class UsearchIndex :
   }
 
   Status Reserve(
-      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) override {
+      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads,
+      rocksdb::Cache::ReservationMode reservation_mode) override {
+    // Reserve block cache space before allocating the index to reject the operation in
+    // strict mode without first allocating the memory it is intended to control.
+    RETURN_NOT_OK(this->ReserveBlockCacheSpace(
+        block_cache_ ? &block_cache_->cache() : nullptr,
+        index_.estimate_bytes_for_num_vectors(num_vectors), reservation_mode));
+
     // Reserve allocates both the per-vector heap structures (vectors_lookup_, nodes_) and the
     // per-thread search contexts buffer, so we update both children when it returns.
     auto se = UpdateAllConsumptionOnExit();
@@ -161,12 +168,6 @@ class UsearchIndex :
     index_.reserve(unum::usearch::index_limits_t(
       num_members, max_concurrent_inserts + max_concurrent_reads));
     search_semaphore_.emplace(max_concurrent_reads);
-    // Reserve block cache space for this chunk's full footprint now: the index grows its node and
-    // vector tapes lazily up to the reserved capacity, so the cache evicts other blocks instead of
-    // letting the index push total memory past the limits.
-    this->ReserveBlockCacheSpace(
-        block_cache_ ? &block_cache_->cache() : nullptr,
-        index_.estimate_bytes_for_num_vectors(num_vectors));
     static std::once_flag log_once;
     std::call_once(log_once, [index = &index_]() {
       LOG(INFO) << "Usearch metric: " << index->metric().isa_name();

@@ -417,6 +417,7 @@ MakeDuckdbCopyQuery(PlannedStmt *pstmt, const char *query_string, struct QueryEn
 		Query *query = linitial_node(Query, rewritten);
 
 		if (needs_duckdb_execution) {
+			pgduckdb::YbCheckAllowedDuckdbQuery(query);
 			pgduckdb::IsAllowedStatement(query, true);
 		} else if (!pgduckdb::IsAllowedStatement(query, false) || query->commandType != CMD_SELECT) {
 			/* We don't need to do anything */

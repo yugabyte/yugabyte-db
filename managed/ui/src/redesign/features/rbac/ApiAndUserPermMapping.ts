@@ -711,6 +711,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/universes/$uniUUID<[^/]+>/status'
     },
+    GET_STATE_TRANSITION: {
+        requestType: ApiRequestType.GET,
+        endpoint: '/universes/$uniUUID<[^/]+>/state_transition'
+    },
 
     CREATE_SUPPORT_BUNDLE: {
         requestType: ApiRequestType.POST,
@@ -781,7 +785,17 @@ export const ApiPermissionMap = {
 
     GET_UNIVERSE_PERF_ADVISOR_STATUS: {
       requestType: ApiRequestType.GET,
-      endpoint: '/pa_collector/$paUUID<[^/]+>/universes/$uniUUID<[^/]+>'
+      endpoint: '/universes/$uUUID<[^/]+>/pa_collector'
+    },
+
+    REGISTER_UNIVERSE_TO_PERF_ADVISOR: {
+      requestType: ApiRequestType.PUT,
+      endpoint: '/universes/$uUUID<[^/]+>/pa_collector/$paUUID<[^/]+>'
+    },
+
+    UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR: {
+      requestType: ApiRequestType.DELETE,
+      endpoint: '/universes/$uUUID<[^/]+>/pa_collector'
     },
 
     MODIFY_BACKUP_STATE: {

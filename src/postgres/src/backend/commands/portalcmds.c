@@ -36,6 +36,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb_dist_trace.h"
 
 
 /*
@@ -330,6 +331,15 @@ PortalCleanup(Portal portal)
 			PG_END_TRY();
 
 			CurrentResourceOwner = saveResourceOwner;
+		}
+		else if (YBCIsDistTraceEnabled())
+		{
+			/*
+			 * YB: executor shutdown is skipped for failed portals, so
+			 * ExecEndNode never runs and node spans left open by a suspended
+			 * portal would leak.
+			 */
+			YbDistTraceEndNodeSpans(queryDesc->planstate, /* errored */ true);
 		}
 	}
 }

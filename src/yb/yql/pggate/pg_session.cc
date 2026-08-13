@@ -108,27 +108,47 @@ void Erase(Container* container, const Key& key) {
   }
 }
 
-void PublishPendingRpcTableInfo(
-    const std::vector<yb::PgObjectId>& relations,
-    const std::unordered_map<yb::PgObjectId, PgTableDescPtr, yb::PgObjectIdHash>& table_cache) {
-  if (!dist_trace::HasActiveContext() || relations.empty()) {
+template<class Pb>
+requires(requires(const Pb& pb) { pb.has_table_id(); })
+Slice FetchTableId(const Pb& pb) {
+  return pb.has_table_id() ? pb.table_id() : Slice{};
+}
+
+Slice FetchTableId(const PgsqlOp& op) {
+  return op.is_read()
+      ? FetchTableId(down_cast<const PgsqlReadOp&>(op).read_request())
+      : FetchTableId(down_cast<const PgsqlWriteOp&>(op).write_request());
+}
+
+void PublishPendingRpcTableInfo(const PgsqlOps& ops, const PgSession::TableCache& table_cache) {
+  if (!dist_trace::HasActiveContext() || ops.empty()) {
     return;
   }
   dist_trace::ClearPendingRpcAttrs();
-  std::set<PgObjectId> unique_relations(relations.begin(), relations.end());
   std::string joined_names;
-  for (const auto& relation : unique_relations) {
-    if (!relation.IsValid()) {
+  joined_names.reserve(128);
+  std::set<std::string_view> processed;
+  for (const auto& op : ops) {
+    const auto table_id_str = FetchTableId(*op);
+    if (table_id_str.empty()) {
+      continue;
+    }
+    const auto ipair = processed.insert(table_id_str);
+    if (!ipair.second) {
+      continue;
+    }
+    const PgObjectId table_id{table_id_str};
+    if (!table_id.IsValid()) {
+      continue;
+    }
+    const auto it = table_cache.find(table_id);
+    if (it == table_cache.end() || !it->second) {
       continue;
     }
     if (!joined_names.empty()) {
       joined_names += ", ";
     }
-    auto it = table_cache.find(relation);
-    // TODO(#32477): Queries after ALTER TABLE / TRUNCATE does not give table name span attribute.
-    if (it != table_cache.end() && it->second) {
-      joined_names += it->second->table_name().table_name();
-    }
+    joined_names += it->second->table_name().table_name();
   }
   if (!joined_names.empty()) {
     dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
@@ -172,10 +192,6 @@ Result<bool> ShouldHandleTransactionally(const PgTxnManager& txn_manager,
   }
   const auto has_non_ddl_txn = txn_manager.IsTxnInProgress();
 
-  if (!YBCIsLegacyModeForCatalogOps()) {
-    return true;
-  }
-
   if (!table.schema().table_properties().is_ysql_catalog_table()) {
     SCHECK(has_non_ddl_txn, IllegalState, "Transactional operation requires transaction");
     return true;
@@ -190,6 +206,11 @@ Result<bool> ShouldHandleTransactionally(const PgTxnManager& txn_manager,
                          "Transaction for catalog table write operation '$0' not found",
                          table.table_name().table_name());
   }
+
+  if (!YBCIsLegacyModeForCatalogOps()) {
+    return true;
+  }
+
   return false;
 }
 
@@ -841,6 +862,7 @@ Result<FlushFuture> PgSession::FlushOperations(
 NonTransactionalWrites PgSession::OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const {
   return NonTransactionalWrites(
       pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL &&
+      !pg_txn_manager_->IsDdlMode() &&
       std::ranges::any_of(operations, [](const auto& op) { return !IsReadOnly(*op); }));
 }
 
@@ -908,7 +930,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   } else {
     RETURN_NOT_OK(SetupPerformOptions(
         {}, options, OpsHaveNonTransactionalWrites(ops.operations()),
-        ops_options.read_time_action));
+        ops_options.read_time_action, SkipReadTimeOptions::kFalse,
+        IsCatalogSnapshot(!YBCIsLegacyModeForCatalogOps() && ops_options.has_catalog_ops)));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -993,9 +1016,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   PgsqlOps operations;
   PgObjectIds relations;
   std::move(ops).MoveTo(operations, relations);
-  // Must run before `relations` is moved into PerformFuture below; otherwise the vector is
-  // empty and no table info gets published for the upcoming RPC client span.
-  PublishPendingRpcTableInfo(relations, table_cache_);
+  PublishPendingRpcTableInfo(operations, table_cache_);
   return PerformFuture(
       pg_client_.PerformAsync(&options, std::move(operations), metrics_),
       std::move(relations));
@@ -1069,7 +1090,16 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
     false /* read_only */,
     pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
 
-  return SetupPerformOptions(*options, NonTransactionalWrites::kFalse);
+  return SetupPerformOptions(
+      *options, NonTransactionalWrites::kFalse, /* read_time_action= */ std::nullopt,
+      SkipReadTimeOptions::kTrue);
+}
+
+void PgSession::SetupDeferReadPointOptionForSeparateDdlTxn(
+    tserver::PgPerformOptionsPB* options) const {
+  if (pg_txn_manager_->ShouldDeferReadPoint()) {
+    options->mutable_read_time_options()->set_defer_read_point(true);
+  }
 }
 
 void PgSession::SetTransactionHasWrites() {
@@ -1147,28 +1177,10 @@ Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table
       << " for txn no " << original_read_point.txn;
   RSTATUS_DCHECK(
       catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
+  // Changing snapshots. Buffered writes are on the current snapshot. Flush them before the switch.
+  RETURN_NOT_OK(FlushBufferedEntities(
+      PgFlushDebugContext::SwitchToCatalogSnapshot(catalog_read_time_serial_no)));
   RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(catalog_read_time_serial_no));
-  // Clamp the uncertainty window for catalog reads.
-  //
-  // User table reads need an uncertainty window to guarantee read-after-commit-visibility because
-  // clock skew can cause a write's commit timestamp to exceed the reader's chosen read time.
-  //
-  // Catalog reads do not need this. Catalog operations use object locks (shared for reads,
-  // exclusive for writes) instead of relying solely on MVCC. A concurrent DDL writer must hold
-  // an exclusive lock, and the catalog reader can only acquire its shared lock after that
-  // exclusive lock is released. The lock release happens strictly after the DDL transaction
-  // commits, so it propagates the commit hybrid time. By the time the reader picks its catalog
-  // snapshot read time, that time is guaranteed to be >= the commit time of any concurrent DDL.
-  //
-  // The guarantee is also maintained when postgres uses AcceptInvalidationMessages instead of
-  // share locks: the exclusive lock release still propagates the commit time before invalidation
-  // messages are applied and a new catalog read time is chosen. The object lock release
-  // happens before postgres acknowledges the catalog write, maintaining the same guarantee.
-  //
-  // Without clamping, the uncertainty window causes spurious read restart errors on catalog
-  // tables that are unnecessary given the object-lock / invalidation-messages protocol.
-  pg_txn_manager_->SetClampUncertaintyWindow(true);
-  pg_txn_manager_->ResetFollowerReadTime();
   return original_read_point;
 }
 
@@ -1254,6 +1266,8 @@ Result<PerformFuture> PgSession::DoRunAsync(
         << "Restoring original read time serial no to "
         << read_point_before_catalog_ops->read_time_serial_no
         << " for txn no " << read_point_before_catalog_ops->txn;
+    RETURN_NOT_OK(FlushBufferedEntities(PgFlushDebugContext::ChangeTxnSnapshot(
+        read_point_before_catalog_ops->read_time_serial_no)));
     RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(*read_point_before_catalog_ops));
   }
   return result;

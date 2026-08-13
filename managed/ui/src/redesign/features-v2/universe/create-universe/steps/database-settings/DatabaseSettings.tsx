@@ -15,7 +15,11 @@ import {
 } from '../../CreateUniverseContext';
 import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { DatabaseSettingsProps } from './dtos';
-import { getConnectionPoolingPortsFromAdvanced } from '../../helpers/syncConnectionPoolingPorts';
+import {
+  canOverrideCommunicationPorts,
+  getConnectionPoolingPortsFromAdvanced,
+  shouldApplyConnectionPoolingPortOverrides
+} from '../../helpers/syncConnectionPoolingPorts';
 import {
   YSQL_FIELD,
   YCQL_FIELD,
@@ -48,9 +52,14 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     keyPrefix: 'createUniverseV2'
   });
 
-  // Prefer Advanced ports when remounting only if CP + override ports are enabled.
-  const shouldSyncCpPorts =
-    !!databaseSettings?.enableConnectionPooling && !!databaseSettings?.overrideCPPorts;
+  // Prefer Advanced ports when remounting only if CP + override ports are enabled
+  // and the provider allows port customization (not K8s).
+  const providerCode = generalSettings?.providerConfiguration?.code ?? generalSettings?.cloud;
+  const hideOverridePorts = !canOverrideCommunicationPorts(providerCode);
+  const shouldSyncCpPorts = shouldApplyConnectionPoolingPortOverrides(
+    databaseSettings,
+    providerCode
+  );
   const syncedCpPorts = shouldSyncCpPorts
     ? getConnectionPoolingPortsFromAdvanced(otherAdvancedSettings)
     : {};
@@ -59,6 +68,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     defaultValues: {
       overrideCPPorts: false,
       ...databaseSettings,
+      ...(hideOverridePorts && { overrideCPPorts: false }),
       ...syncedCpPorts
     },
     mode: 'onChange'
@@ -78,6 +88,9 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const ysqlConfirmPwd = watch(YSQL_CONFIRM_PWD);
   const ycqlConfirmPwd = watch(YCQL_CONFIRM_PWD);
   const gflagVal = watch(GFLAGS_FIELD);
+  const overrideCPPorts = watch('overrideCPPorts');
+  const ysqlServerRpcPort = watch('ysqlServerRpcPort');
+  const internalYsqlServerRpcPort = watch('internalYsqlServerRpcPort');
 
   useUpdateEffect(() => {
     if (!enableYCQLVal && !enableYSQLVal) {
@@ -101,6 +114,9 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     ycqlConfirmPwd,
     enableYSQLAuth,
     enableYCQLAuth,
+    overrideCPPorts,
+    ysqlServerRpcPort,
+    internalYsqlServerRpcPort,
     trigger
   ]);
 
@@ -142,6 +158,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
             <ConnectionPoolingField
               disabled={false}
               dbVersion={generalSettings?.databaseVersion ?? ''}
+              hideOverridePorts={hideOverridePorts}
             />
             <PGCompatibiltyField
               disabled={false}

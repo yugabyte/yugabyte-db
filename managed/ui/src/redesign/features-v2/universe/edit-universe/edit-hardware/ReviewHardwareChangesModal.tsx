@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { AlertVariant, mui, yba, YBAlert, YBTag, YBRadio, YBInput } from '@yugabyte-ui-library/core';
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { ResizeUpdateOption } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 const { Box, Typography, styled } = mui;
@@ -297,9 +298,11 @@ export const ReviewHardwareChangesModal = ({
   const canMigrate = canUseFullMove(resizeOptions);
   const nonRestart = isNonRestartSmartResize(resizeOptions);
   const isRf1 = (replicationFactor ?? 1) <= 1;
-  const onlyFullMove = canMigrate && !canRolling;
-  const onlyNonRestart = nonRestart && !canMigrate;
-  const showUpdateOptions = !onlyFullMove && !onlyNonRestart;
+  // Hide strategy UI until check-resize-capabilities finishes so we don't flash
+  // disabled radios / wrong alerts before options are known.
+  const onlyFullMove = !isLoadingOptions && canMigrate && !canRolling;
+  const onlyNonRestart = !isLoadingOptions && nonRestart && !canMigrate;
+  const showUpdateOptions = !isLoadingOptions && !onlyFullMove && !onlyNonRestart;
 
   const [strategy, setStrategy] = useState<UpdateStrategy>(() => pickDefaultStrategy(resizeOptions));
   const [delaySecondsInput, setDelaySecondsInput] = useState(String(initialDelaySeconds));
@@ -434,6 +437,17 @@ export const ReviewHardwareChangesModal = ({
             })}
           </Box>
         )}
+        {isLoadingOptions ? (
+          <Box
+            display="flex"
+            justifyContent="center"
+            alignItems="center"
+            py={3}
+            data-testid="hardware-resize-options-loading"
+          >
+            <YBLoadingCircleIcon size="small" />
+          </Box>
+        ) : null}
         {onlyFullMove ? (
           <YBAlert
             open

@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "yb/common/clock.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/util/result.h"
@@ -40,13 +41,15 @@ class PgSample final : public PgStatementLeafBase<PgDmlRead, StmtOp::kSample>  {
   // PgSampler is not ready to be executed until this function returns false
   Result<bool> SampleNextBlock();
 
+  Status Exec(const YbcPgExecParameters* exec_params);
+
   // Retrieve estimated number of live and dead rows. Available after execution.
   EstimatedRowCount GetEstimatedRowCount();
 
   static Result<std::unique_ptr<PgSample>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read, int targrows,
-      const SampleRandomState& rand_state, HybridTime read_time);
+      const SampleRandomState& rand_state, scoped_refptr<ClockBase> clock);
 
   Status SetNextBatchYbctids(const YbcPgExecParameters* exec_params);
 
@@ -56,7 +59,7 @@ class PgSample final : public PgStatementLeafBase<PgDmlRead, StmtOp::kSample>  {
   Status Prepare(
       const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
       bool skip_intents_read, int targrows,
-      const SampleRandomState& rand_state, HybridTime read_time);
+      const SampleRandomState& rand_state, scoped_refptr<ClockBase> clock);
 
   std::unique_ptr<SampleRowsPickerIf> sample_rows_picker_;
   // Index of next sampled ybctid in the reservoir which should be used to fetch

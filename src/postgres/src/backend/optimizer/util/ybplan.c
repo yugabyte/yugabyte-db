@@ -164,41 +164,6 @@ YBCIsSingleRowModify(PlannedStmt *pstmt)
 }
 
 /*
- * Returns true if this ModifyTable can be executed by a single RPC, without
- * an initial table scan fetching a target tuple.
- *
- * Right now, this is true iff:
- *  - it is UPDATE or DELETE command.
- *  - source data is a Result node (meaning we are skipping scan and thus
- *    are single row).
- *
- * Transition-table capture does not need to be checked here: the single-row
- * UPDATE/DELETE path in createplan.c is only taken when no row triggers
- * apply (see has_applicable_triggers()), and that helper consults
- * YBRelHasOldRowTriggers() which already rejects any relation carrying an
- * AFTER UPDATE/DELETE trigger with REFERENCING OLD/NEW TABLE.  So a Result
- * outer plan implies no transition_capture.
- */
-bool
-YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable)
-{
-	/* Support UPDATE and DELETE. */
-	if (modifyTable->operation != CMD_UPDATE &&
-		modifyTable->operation != CMD_DELETE)
-		return false;
-
-	/*
-	 * Verify the single data source is a Result node and does not have outer plan.
-	 * Note that Result node never has inner plan.
-	 */
-	if (!IsA(outerPlan(&modifyTable->plan), Result) ||
-		outerPlan(outerPlan(&modifyTable->plan)))
-		return false;
-
-	return true;
-}
-
-/*
  * Returns true if provided Bitmapset of attribute numbers
  * matches the primary key attribute numbers of the relation.
  * Expects YBGetFirstLowInvalidAttributeNumber to be subtracted from attribute numbers.

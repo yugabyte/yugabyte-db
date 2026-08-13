@@ -17,6 +17,7 @@
 
 #include "postgres.h"
 
+#include "catalog/namespace.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_amop_d.h"
@@ -462,8 +463,8 @@ HandleAlterColumnAddIndex(AlterTableCmd *subcmd, Oid rel_oid,
 }
 
 void
-CheckAlterColumnTypeDDL(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
-						bool is_table_rewrite, bool is_temporary_object)
+ProcessAlterTableSubcommands(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
+							 bool is_temporary_object)
 {
 	/* Ignore temp objects. */
 	if (is_temporary_object)
@@ -484,6 +485,21 @@ CheckAlterColumnTypeDDL(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
 				case AT_ReAddIndex:
 					{
 						HandleAlterColumnAddIndex(subcmd, rel_oid, new_rel_list);
+						break;
+					}
+				case AT_AttachPartition:
+					{
+						/*
+						 * ATTACH PARTITION may create matching child indexes on the
+						 * attached partition, so collect it and its indexes.
+						 */
+						PartitionCmd *partition_cmd = castNode(PartitionCmd, subcmd->def);
+						Oid			partition_oid =
+							RangeVarGetRelid(partition_cmd->name, NoLock,
+											 /* missing_ok= */ false);
+
+						ShouldReplicateNewRelation(partition_oid, new_rel_list,
+												   /* is_table_rewrite= */ false);
 						break;
 					}
 				default:
@@ -951,9 +967,8 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			/* Perform additional checks on subcommands. */
 			CollectedCommand *cmd = info->command;
 
-			CheckAlterColumnTypeDDL(obj_id, cmd, &new_rel_list,
-									 /* is_table_rewrite */ false,
-									is_temporary_object);
+			ProcessAlterTableSubcommands(obj_id, cmd, &new_rel_list,
+										 is_temporary_object);
 
 			should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
 		}

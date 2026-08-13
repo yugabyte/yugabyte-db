@@ -95,6 +95,7 @@ import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
+import com.yugabyte.yw.common.rollback.TaskRollbackModule;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
@@ -145,12 +146,14 @@ import play.Environment;
 @Slf4j
 public class MainModule extends AbstractModule {
   private final Config config;
+  private final Environment environment;
   private static final String[] TLD_OVERRIDE = {"local"};
   private static final String DEFAULT_OIDC_SCOPE = "openid profile email";
   private static final String TMPDIR_PROPERTY = "java.io.tmpdir";
 
   public MainModule(Environment environment, Config config) {
     this.config = config;
+    this.environment = environment;
   }
 
   @Override
@@ -242,6 +245,7 @@ public class MainModule extends AbstractModule {
     bind(RuntimeConfigCache.class).asEagerSingleton();
 
     install(new CloudModules());
+    install(new TaskRollbackModule());
     PrometheusRegistry.defaultRegistry.clear();
     try {
       DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
@@ -249,8 +253,21 @@ public class MainModule extends AbstractModule {
       log.info("Skipping Initialization of domain validator for dev env's");
     }
 
-    // Bind Application Initializer
-    bind(AppInit.class).asEagerSingleton();
+    // Bind Application Initializer. AppInit eagerly constructs a very large dependency graph (all
+    // the
+    // background schedulers/pollers/GCs and their transitive deps) purely to start them, but its
+    // body is a no-op under test (guarded by !environment.isTest()). Binding it eagerly under test
+    // therefore builds that whole graph for every test application - the dominant unit-test cost -
+    // for nothing. Under test we bind it lazily instead: nothing injects AppInit there, so that
+    // graph
+    // is never constructed, while any service a test actually needs is still built on demand. The
+    // one thing AppInit does before the isTest guard (publishing the YBA version) is handled by
+    // YBALifeCycle, which stays eager. In production AppInit remains eager (startup unchanged).
+    if (environment.isTest()) {
+      bind(AppInit.class).in(com.google.inject.Singleton.class);
+    } else {
+      bind(AppInit.class).asEagerSingleton();
+    }
     bind(ConfigHelper.class).asEagerSingleton();
     // Set LocalClientService as the implementation for YBClientService
     bind(YBClientService.class).to(LocalYBClientService.class);

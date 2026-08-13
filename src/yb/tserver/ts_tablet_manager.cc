@@ -330,9 +330,6 @@ DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
     "Number of threads used by vector index thread pool. 0 - use number of CPUs for it.");
 
-DEFINE_RUNTIME_uint32(vector_index_num_compactions_limit, 1,
-    "Number of vector index compaction per tserver. 0 - no limit per tserver.");
-
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
@@ -342,6 +339,10 @@ DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_bool(qos_compaction_per_db_cgroups);
 DECLARE_bool(qos_consensus_per_db_cgroups);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
+DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_uint32(vector_index_num_compactions_limit);
 
 namespace yb::tserver {
 
@@ -1004,7 +1005,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     RaftConfigPB config,
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
-    const std::unordered_set<StatefulServiceKind>& hosted_services) {
+    const std::unordered_set<StatefulServiceKind>& hosted_services,
+    const std::string& target_storage_tier) {
   LOG_WITH_FUNC(INFO) << "Table: " << table_info->ToString();
 
   SCOPED_WAIT_STATUS(CreatingNewTablet);
@@ -1029,7 +1031,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   string data_root_dir;
   string wal_root_dir;
   GetAndRegisterDataAndWalDir(
-      fs_manager_, table_info->table_id, tablet_id, &data_root_dir, &wal_root_dir);
+      fs_manager_, table_info->table_id, tablet_id, &data_root_dir, &wal_root_dir,
+      target_storage_tier);
   fs_manager_->SetTabletPathByDataPath(tablet_id, data_root_dir);
   auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
     .fs_manager = fs_manager_,
@@ -2330,6 +2333,10 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
           return VectorIndexCompactionToken();
         },
         .vector_index_block_cache = vector_index_block_cache_,
+        .schedule_tablet_metadata_validation =
+            [this](const tablet::RaftGroupMetadata& metadata) {
+              tablet_metadata_validator_->ScheduleValidation(metadata);
+            },
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -3277,7 +3284,8 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                                   const string& table_id,
                                                   const string& tablet_id,
                                                   string* data_root_dir,
-                                                  string* wal_root_dir) {
+                                                  string* wal_root_dir,
+                                                  const string& target_tier) {
   // Skip sys catalog table and kudu table from modifying the map.
   if (table_id == master::kSysCatalogTableId) {
     return;
@@ -3295,33 +3303,40 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
       table_data_assignment_map_[table_id][data_root_iter] = tablet_id_set;
     }
   }
-  // Find the data directory with the least count of tablets for this table.
-  // Break ties by choosing the data directory with the least number of tablets overall.
-  table_data_assignment_iter = table_data_assignment_map_.find(table_id);
-  auto data_assignment_value_map = table_data_assignment_iter->second;
-  string min_dir;
-  uint64_t min_dir_count = kuint64max;
-  uint64_t min_tablet_counts_across_tables = kuint64max;
-  for (auto& [dir, tablets_in_dir] : data_assignment_value_map) {
-    if (min_dir_count > tablets_in_dir.size() ||
-        (min_dir_count == tablets_in_dir.size() &&
-         min_tablet_counts_across_tables > data_dirs_per_drive_[dir])) {
-      min_dir = dir;
-      min_dir_count = tablets_in_dir.size();
-      min_tablet_counts_across_tables = data_dirs_per_drive_[min_dir];
+
+  // Tiered storage: if a target tier was requested (e.g. from the tablespace's storage_tier),
+  // restrict the candidate disks to that tier so the new tablet's home dir (path_id 0) lands
+  // on the right tier. If the tier isn't configured on this node, fall back to all disks rather
+  // than failing tablet creation outright.
+  // TODO(TieredStorage): wire up LB detection/reconciliation for tier-violating replicas.
+  // For this fallback to be safe long-term, the master's load balancer needs to detect a
+  // replica that isn't respecting its tablespace's tier placement and reconcile it
+  // (locally via AlterTabletTier, or RBS).
+  std::vector<string> candidate_dirs = data_root_dirs;
+  if (!target_tier.empty()) {
+    auto tier_dirs = fs_manager->GetDataRootDirsForTier(target_tier);
+    if (tier_dirs.empty()) {
+      LOG(WARNING) << Format(
+          "No data roots configured for target storage tier '$0' on this node; falling back to "
+          "default disk selection for tablet $1", target_tier, tablet_id);
+    } else {
+      candidate_dirs = std::move(tier_dirs);
     }
   }
+
+  // Find the data directory with the least count of tablets for this table.
+  // Break ties by choosing the data directory with the least number of tablets overall.
+  string min_dir = PickMinLoadDataRootUnlocked(table_id, candidate_dirs);
   *data_root_dir = min_dir;
   // Increment the count for min_dir.
-  auto data_assignment_value_iter = table_data_assignment_map_[table_id].find(min_dir);
-  data_assignment_value_iter->second.insert(tablet_id);
+  table_data_assignment_map_[table_id][min_dir].insert(tablet_id);
   data_dirs_per_drive_[min_dir] += 1;
 
   // Find the wal directory with the least count of tablets for this table.
   // Break ties by choosing the wal directory with the least number of tablets overall.
   min_dir = "";
-  min_dir_count = kuint64max;
-  min_tablet_counts_across_tables = kuint64max;
+  uint64_t min_dir_count = kuint64max;
+  uint64_t min_tablet_counts_across_tables = kuint64max;
   auto wal_root_dirs = fs_manager->GetWalRootDirs();
   CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
   auto table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
@@ -3346,6 +3361,68 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
   auto wal_assignment_value_iter = table_wal_assignment_map_[table_id].find(min_dir);
   wal_assignment_value_iter->second.insert(tablet_id);
   wal_dirs_per_drive_[min_dir] += 1;
+}
+
+Result<uint32_t> TSTabletManager::SelectPathIdForTier(
+    const tablet::RaftGroupMetadata& meta,
+    const std::string& table_id,
+    const std::string& target_tier) {
+  // Get candidate data roots directly from FsManager's tier map (built from --fs_data_dirs).
+  // These are the same directory strings used as keys in table_data_assignment_map_.
+  const auto candidate_dirs = fs_manager_->GetDataRootDirsForTier(target_tier);
+  if (candidate_dirs.empty()) {
+    return STATUS_FORMAT(
+        NotFound,
+        "No data roots configured for tier '$0' on this node (tablet $1)",
+        target_tier, meta.raft_group_id());
+  }
+
+  std::lock_guard dir_assignment_lock(dir_assignment_mutex_);
+  const std::string chosen_dir = PickMinLoadDataRootUnlocked(table_id, candidate_dirs);
+
+  // Map chosen data root back to path_id via the tablet's tier_paths.
+  for (const auto& tp : meta.tier_paths()) {
+    if (tp.tier == target_tier && tablet::GetDataRootFromTabletDir(tp.path) == chosen_dir) {
+      return tp.path_id;
+    }
+  }
+  return STATUS_FORMAT(
+      InternalError,
+      "Data root '$0' selected for tier '$1' has no matching tier_paths entry in tablet $2",
+      chosen_dir, target_tier, meta.raft_group_id());
+}
+
+std::string TSTabletManager::PickMinLoadDataRootUnlocked(
+    const std::string& table_id,
+    const std::vector<std::string>& candidate_dirs) {
+  std::string min_dir;
+  // Number of tablets belonging to table_id already on the candidate dir (per-table count).
+  uint64_t min_tablet_count = kuint64max;
+  // Number of tablets from any table already on the candidate dir (global tie-break count).
+  uint64_t min_global_count = kuint64max;
+
+  auto table_it = table_data_assignment_map_.find(table_id);
+  for (const auto& dir : candidate_dirs) {
+    uint64_t tablet_count = 0;
+    if (table_it != table_data_assignment_map_.end()) {
+      auto dir_it = table_it->second.find(dir);
+      if (dir_it != table_it->second.end()) {
+        tablet_count = dir_it->second.size();
+      }
+    }
+    uint64_t global_count = 0;
+    auto gc_it = data_dirs_per_drive_.find(dir);
+    if (gc_it != data_dirs_per_drive_.end()) {
+      global_count = gc_it->second;
+    }
+    if (tablet_count < min_tablet_count ||
+        (tablet_count == min_tablet_count && global_count < min_global_count)) {
+      min_dir = dir;
+      min_tablet_count = tablet_count;
+      min_global_count = global_count;
+    }
+  }
+  return min_dir;
 }
 
 void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
@@ -3618,6 +3695,28 @@ HybridTime TSTabletManager::TEST_LastSnapshotHybridTime(
   return it != snapshot_schedule_info_.end() ? it->second.last_snapshot_ht : HybridTime::kMin;
 }
 
+HybridTime TSTabletManager::ComputeDbHistoryRetentionPinCutoff(
+    HybridTime now, uint32_t db_oid, tablet::RaftGroupMetadata* metadata) const {
+
+  const auto safety_window_cutoff =
+      now.AddSeconds(-FLAGS_timestamp_history_retention_interval_sec);
+  const auto hard_cap_cutoff = now.AddSeconds(-FLAGS_db_history_retention_pin_max_txn_age_sec);
+  const auto pin = server_->GetClusterYsqlDbOldestPinnedReadTime(db_oid);
+  // Without a pin, only the default safety window governs this database.
+  HybridTime db_cutoff = pin.is_valid() ? pin : safety_window_cutoff;
+  // Minimum safety window (retain at least timestamp_history_retention_interval_sec).
+  db_cutoff.MakeAtMost(safety_window_cutoff);
+  // Hard cap (retain at most db_history_retention_pin_max_txn_age_sec).
+  db_cutoff.MakeAtLeast(hard_cap_cutoff);
+
+  VLOG(1) << "DB history retention pin cutoff: " << db_cutoff << " (pin: " << pin
+          << ", safety window: " << safety_window_cutoff
+          << ", hard cap: " << hard_cap_cutoff << ") for tablet: "
+          << metadata->raft_group_id();
+
+  return db_cutoff;
+}
+
 docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
   HybridTime result = HybridTime::kMax;
   // CDC SDK safe time
@@ -3696,6 +3795,35 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
       WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
     }
   }
+  // Apply the cluster-wide per-database history retention pin (aggregated by the master across
+  // all live tservers) on YSQL tables. The pin is bounded by:
+  //  * minimum safety window: never collapse history newer than now -
+  //    timestamp_history_retention_interval_sec, even if the pin would allow it.
+  //  * hard cap: always allow compaction of history older than now -
+  //    db_history_retention_pin_max_txn_age_sec, even if a pin is still protecting it
+  //    (so a single long-running transaction cannot block compaction forever).
+  // When neither bound binds, compact based on the pin: history older than the pin is compactable,
+  // history at or after the pin is retained.
+  //
+  // In the event where a transaction runs longer than the hard cap and gets forcefully compacted,
+  // the session's published pin is not cleared until the transaction ends. However, with the
+  // snapshot gone, the transaction should fail with snapshot too old error, which aborts and calls
+  // FinishTransaction, where the pin will be cleared.
+  if (FLAGS_enable_db_history_retention_pins && metadata->table_type() == PGSQL_TABLE_TYPE &&
+      !metadata->namespace_id().empty()) {
+    auto db_oid_result = GetPgsqlDatabaseOid(metadata->namespace_id());
+    if (db_oid_result.ok()) {
+      const auto now = server_->Clock()->Now();
+
+      const auto db_cutoff = ComputeDbHistoryRetentionPinCutoff(now, *db_oid_result, metadata);
+      result.MakeAtMost(db_cutoff);
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 30)
+          << "Unable to resolve db_oid for namespace " << metadata->namespace_id()
+          << " on tablet " << metadata->raft_group_id() << ": " << db_oid_result.status();
+    }
+  }
+
   VLOG(1) << "Setting the allowed history cutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
   return {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = result};

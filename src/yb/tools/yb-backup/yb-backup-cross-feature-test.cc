@@ -1550,29 +1550,25 @@ ALTER TABLE employees_hash ADD CONSTRAINT employees_hash_unique_id UNIQUE (id, a
       "SELECT yb_index_check('t1_b_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t2_c_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t3_b_c_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t4_b_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   // Validate indexes by performing index-only scans
   RunPsqlCommand(

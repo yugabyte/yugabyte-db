@@ -17,7 +17,13 @@
 #include <mutex>
 #include <unordered_map>
 
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
+
 #include "yb/docdb/object_lock_shared_state.h"
+
+#include "yb/util/unique_lock.h"
 
 namespace yb::docdb {
 
@@ -34,38 +40,54 @@ ObjectLockPrefix MakeLockPrefix(
 
 class ObjectLockOwnerRegistry::Impl {
  public:
-  RegistrationGuard Register(const TransactionId& id, const TabletId& tablet_id) {
-    const auto tag = next_++;
-    CHECK_NE(tag, 0);
-
+  RegistrationGuard Register(
+      ObjectLockSharedState& shared, TransactionId id, const TabletId& tablet_id) {
+    ParentProcessGuard g;
     std::lock_guard lock(mutex_);
-    owners_[tag] = std::make_shared<OwnerInfo>(id, tablet_id);
-    return {*this, tag};
+    owners_.insert(std::make_shared<OwnerInfo>(shared, id, tablet_id));
+    shared.Enable();
+    return {*this, id};
   }
 
-  void Unregister(SessionLockOwnerTag tag) {
+  void Unregister(TransactionId id) {
+    ParentProcessGuard g;
     std::lock_guard lock(mutex_);
-    [[maybe_unused]] auto erased = owners_.erase(tag);
-    DCHECK_EQ(erased, 1);
+    const auto i = owners_.find(id);
+    DCHECK(i != owners_.end());
+    (*i)->shared->Disable();
+    owners_.erase(i);
   }
 
-  [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(SessionLockOwnerTag tag) const {
+  [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(ObjectLockSharedState& state) const {
     std::lock_guard lock(mutex_);
-    const auto i = owners_.find(tag);
-    if (PREDICT_TRUE(i != owners_.end())) {
-      return i->second;
+    const auto& index = owners_.get<SharedTag>();
+    const auto i = index.find(&state);
+    if (PREDICT_TRUE(i != index.end())) {
+      return *i;
     }
     return {};
   }
 
  private:
   mutable std::mutex mutex_;
-  std::atomic<SessionLockOwnerTag> next_ = 1;
-  std::unordered_map<SessionLockOwnerTag, std::shared_ptr<OwnerInfo>> owners_ GUARDED_BY(mutex_);
+  struct SharedTag;
+  boost::multi_index_container<std::shared_ptr<OwnerInfo>,
+      boost::multi_index::indexed_by<
+          boost::multi_index::hashed_unique<
+              boost::multi_index::member<OwnerInfo, TransactionId, &OwnerInfo::txn_id>
+          >,
+          boost::multi_index::hashed_unique<
+              boost::multi_index::tag<SharedTag>,
+              boost::multi_index::member<OwnerInfo, ObjectLockSharedState*, &OwnerInfo::shared>
+          >
+      >
+  > owners_ GUARDED_BY(mutex_);
 };
 
 ObjectLockOwnerRegistry::RegistrationGuard::~RegistrationGuard() {
-  registry_.Unregister(tag_);
+  if (registry_) {
+    registry_->Unregister(id_);
+  }
 }
 
 ObjectLockOwnerRegistry::ObjectLockOwnerRegistry() : impl_(std::make_unique<Impl>()) {}
@@ -73,114 +95,150 @@ ObjectLockOwnerRegistry::ObjectLockOwnerRegistry() : impl_(std::make_unique<Impl
 ObjectLockOwnerRegistry::~ObjectLockOwnerRegistry() = default;
 
 ObjectLockOwnerRegistry::RegistrationGuard ObjectLockOwnerRegistry::Register(
-    const TransactionId& id, const TabletId& status_tablet) {
-  return impl_->Register(id, status_tablet);
+    ObjectLockSharedState& shared, TransactionId id, const TabletId& status_tablet) {
+  return impl_->Register(shared, id, status_tablet);
 }
 
 std::shared_ptr<ObjectLockOwnerRegistry::OwnerInfo>
-ObjectLockOwnerRegistry::GetOwnerInfo(SessionLockOwnerTag tag) const {
-  return impl_->GetOwnerInfo(tag);
+ObjectLockOwnerRegistry::GetOwnerInfo(ObjectLockSharedState& state) const {
+  return impl_->GetOwnerInfo(state);
 }
 
-void ObjectLockSharedStateManager::SetupShared(ObjectLockSharedState& shared) {
-  ParentProcessGuard g;
-  std::lock_guard lock(setup_mutex_);
-
-  DCHECK(!shared_.load(std::memory_order_acquire));
-
-  shared_activate_ = shared.Activate(std::move(pre_setup_locks_));
-  shared_.store(&shared, std::memory_order_release);
-}
-
-void ObjectLockSharedStateManager::PauseAndResetSharedLockState() {
-  auto* shared = shared_.load(std::memory_order_acquire);
-  if (PREDICT_FALSE(!shared)) {
-    return;
+ObjectLockSharedStateHolder::~ObjectLockSharedStateHolder() {
+  if (manager_) {
+    manager_->ReleaseShared(*state_);
   }
-
-  ParentProcessGuard g;
-  shared->PauseAndReset();
 }
 
-void ObjectLockSharedStateManager::ResumeSharedLockState() {
-  auto* shared = shared_.load(std::memory_order_acquire);
-  if (PREDICT_FALSE(!shared)) {
-    return;
+void ObjectLockSharedStateManager::SetupShared(SharedMemoryBackingAllocator& allocator) {
+  {
+    std::lock_guard lock(mutex_);
+    DCHECK(!allocator_);
+    allocator_ = &allocator;
+    stopped_ = false;
+    VLOG(1) << "Set up ObjectLockSharedStateManager";
   }
+  start_cond_.notify_all();
+}
 
-  ParentProcessGuard g;
-  shared->Resume();
+Result<ObjectLockSharedStateHolder> ObjectLockSharedStateManager::AllocateShared() {
+  UniqueLock lock(mutex_);
+  WaitOnConditionVariable(&start_cond_, &lock, [this] REQUIRES(mutex_) { return !stopped_; });
+  auto state = VERIFY_RESULT(DCHECK_NOTNULL(allocator_)->MakeUnique<ObjectLockSharedState>(
+      *allocator_, write_locks_));
+  auto* ptr = state.get();
+  shared_states_.insert(std::move(state));
+  return ObjectLockSharedStateHolder{*this, *ptr};
+}
+
+void ObjectLockSharedStateManager::ReleaseShared(ObjectLockSharedState& state) {
+  UniqueLock lock(mutex_);
+  // TODO: this could be shared_states_.erase(...) except our compilers currently don't support
+  // heterogeneous erasure overloads for associative containers.
+  auto iter = shared_states_.find(&state);
+  DCHECK(iter != shared_states_.end());
+  shared_states_.erase(iter);
+}
+
+void ObjectLockSharedStateManager::Start() {
+  {
+    std::lock_guard lock(mutex_);
+    DCHECK(stopped_);
+    if (!allocator_) {
+      // The initial Start() call happens before shared memory is ready.
+      VLOG(1) << "Shared memory not ready yet, not starting";
+      return;
+    }
+    stopped_ = false;
+    VLOG(1) << "Started ObjectLockSharedStateManager";
+  }
+  start_cond_.notify_all();
+}
+
+void ObjectLockSharedStateManager::Stop() {
+  VLOG(1) << "Stopping ObjectLockSharedStateManager";
+  {
+    std::lock_guard lock(mutex_);
+    for (auto& state : shared_states_) {
+      ParentProcessGuard g;
+      state->Shutdown();
+    }
+    stopped_ = true;
+    VLOG(1) << "Stopped ObjectLockSharedStateManager";
+  }
 }
 
 size_t ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
     const LockRequestConsumer& consume) {
-  auto* shared = shared_.load(std::memory_order_acquire);
-  return CallWithRequestConsumer(
-      shared,
-      [shared](auto&& c) PARENT_PROCESS_ONLY { return shared->ConsumePendingLockRequests(c); },
-      consume);
+  std::lock_guard lock(mutex_);
+  ParentProcessGuard g;
+  size_t count = 0;
+  for (auto& state : shared_states_) {
+    count += CallWithRequestConsumer(
+        *state,
+        [&state](auto&& c) PARENT_PROCESS_ONLY { return state->ConsumePendingLockRequests(c); },
+        consume);
+  }
+  return count;
 }
 
 size_t ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
     const LockRequestConsumer& consume,
     std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) {
-  auto* shared = shared_.load(std::memory_order_acquire);
-  if (PREDICT_FALSE(!shared)) {
-    std::lock_guard lock(setup_mutex_);
-    shared = shared_.load(std::memory_order_acquire);
-    if (!shared) {
-      for (const auto* key_and_intent : lock_entries) {
-        pre_setup_locks_[key_and_intent->key] += IntentTypeSetAdd(key_and_intent->intent_types);
-      }
-      return 0uz;
-    }
+  std::lock_guard lock(mutex_);
+  for (const auto* key_and_intent : lock_entries) {
+    write_locks_[key_and_intent->key] +=
+        LockStateToSharedWriteLockState(IntentTypeSetAdd(key_and_intent->intent_types));
   }
 
-  return CallWithRequestConsumer(
-      shared,
-      [shared, lock_entries](auto&& c) PARENT_PROCESS_ONLY {
-        return shared->ConsumeAndAcquireExclusiveLockIntents(c, lock_entries);
-      },
-      consume);
+  ParentProcessGuard g;
+  size_t count = 0;
+  for (auto& state : shared_states_) {
+    count += CallWithRequestConsumer(
+        *state,
+        [&state, lock_entries](auto&& c) PARENT_PROCESS_ONLY {
+          return state->ConsumeAndAcquireExclusiveLockIntents(c, lock_entries);
+        },
+        consume);
+  }
+  return count;
 }
 
 void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
     const ObjectLockPrefix& object_id, LockState lock_state) {
-  auto* shared = shared_.load(std::memory_order_acquire);
-  if (PREDICT_FALSE(!shared)) {
-    std::lock_guard lock(setup_mutex_);
-    shared = shared_.load(std::memory_order_acquire);
-    if (!shared) {
-      pre_setup_locks_[object_id] -= lock_state;
-      return;
-    }
+  std::lock_guard lock(mutex_);
+  auto iter = write_locks_.find(object_id);
+  DCHECK(iter != write_locks_.end());
+  SharedWriteLockStateRelease(iter->second, LockStateToSharedWriteLockState(lock_state));
+  if (iter->second == 0) {
+    write_locks_.erase(iter);
   }
 
   ParentProcessGuard g;
-  shared->ReleaseExclusiveLockIntent(object_id, lock_state);
+  for (auto& state : shared_states_) {
+    state->ReleaseExclusiveLockIntent(object_id, lock_state);
+  }
 }
 
 TransactionId ObjectLockSharedStateManager::TEST_last_owner() const {
-  ParentProcessGuard g;
-  return registry_.GetOwnerInfo(
-      DCHECK_NOTNULL(shared_.load(std::memory_order_acquire))->TEST_last_owner())->txn_id;
+  std::lock_guard lock(mutex_);
+  return TEST_last_owner_;
 }
 
-[[nodiscard]] bool ObjectLockSharedStateManager::TEST_has_exclusive_intents() const {
-  auto* shared = shared_.load(std::memory_order_acquire);
+bool ObjectLockSharedStateManager::TEST_has_exclusive_intents() const {
+  std::lock_guard lock(mutex_);
   ParentProcessGuard g;
-  return shared ? shared->TEST_has_exclusive_intents() : 0;
+  return std::ranges::any_of(
+      shared_states_, [](const auto& state) PARENT_PROCESS_ONLY {
+        return state->TEST_has_exclusive_intents();
+      });
 }
 
 template<typename ConsumeMethod>
 size_t ObjectLockSharedStateManager::CallWithRequestConsumer(
-    ObjectLockSharedState* shared, ConsumeMethod&& method, const LockRequestConsumer& consume) {
-  if (!shared) {
-    return 0;
-  }
-
-  auto consume_fastpath_request = [this, &consume](ObjectLockFastpathRequest request) {
-    auto owner_info = registry_.GetOwnerInfo(request.owner);
+    ObjectLockSharedState& shared, ConsumeMethod&& method, const LockRequestConsumer& consume) {
+  auto owner_info = registry_.GetOwnerInfo(shared);
+  auto consume_fastpath_request = [this, &owner_info, &consume](ObjectLockFastpathRequest request) {
     if (!owner_info) {
       return;
     }
@@ -205,7 +263,11 @@ size_t ObjectLockSharedStateManager::CallWithRequestConsumer(
   };
 
   ParentProcessGuard g;
-  return method(make_lw_function(consume_fastpath_request));
+  size_t consumed = method(make_lw_function(consume_fastpath_request));
+  if (consumed) {
+    TEST_last_owner_ = owner_info->txn_id;
+  }
+  return consumed;
 }
 
 } // namespace yb::docdb

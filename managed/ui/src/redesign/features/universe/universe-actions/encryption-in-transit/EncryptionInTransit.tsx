@@ -21,7 +21,6 @@ import {
   UpgradeOptions,
   isSelfSignedCert,
   getInitialFormValues,
-  getV2InitialFormValues,
   useEITStyles,
   K8sEncryptionOption,
   isCertManagerCert
@@ -38,19 +37,13 @@ import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUt
 import { createErrorMessage } from '../../universe-form/utils/helpers';
 import { getXClusterConfigUuids } from '../../../../../components/xcluster/ReplicationUtils';
 import { Universe } from '../../../../helpers/dtos';
-import { EncryptionInTransitSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
-export interface EITSpec {
-  universeUUID: string;
-  eitSpec: EncryptionInTransitSpec;
-}
 //EIT Component
 interface EncryptionInTransitProps {
   open: boolean;
   onClose: () => void;
-  universe?: Universe;
+  universe: Universe;
   isItKubernetesUniverse: boolean;
-  v2Spec?: EITSpec;
 }
 
 enum EitTabs {
@@ -77,15 +70,13 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
   open,
   onClose,
   universe,
-  isItKubernetesUniverse,
-  v2Spec
+  isItKubernetesUniverse
 }) => {
   const [openRollingUpgradeModal, setRollingUpgradeModal] = useState(false);
   const { t } = useTranslation();
   const classes = useEITStyles();
   const theme = useTheme();
-  //universe current status
-  const universeId = v2Spec ? v2Spec?.universeUUID : universe?.universeUUID;
+  const universeId = universe.universeUUID;
 
   //prefetch data
   const { isLoading, data: certificates } = useQuery(
@@ -94,10 +85,8 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
   );
 
   //initialize form
-  const INITIAL_VALUES = v2Spec?.eitSpec
-    ? getV2InitialFormValues(v2Spec.eitSpec, isItKubernetesUniverse)
-    : universe?.universeDetails
-    ? getInitialFormValues(universe?.universeDetails, isItKubernetesUniverse)
+  const INITIAL_VALUES = universe.universeDetails
+    ? getInitialFormValues(universe.universeDetails, isItKubernetesUniverse)
     : FORM_RESET_VALUES;
   const formMethods = useForm<EncryptionInTransitFormValues>({
     defaultValues: INITIAL_VALUES,

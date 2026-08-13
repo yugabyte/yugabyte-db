@@ -13,7 +13,7 @@
  */
 
 import { createRef } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { ResilienceAndRegions } from './ResilienceAndRegions';
 import {
@@ -22,11 +22,14 @@ import {
   createUniverseFormMethods,
   createUniverseFormProps
 } from '../../CreateUniverseContext';
-import { FaultToleranceType, ResilienceType } from './dtos';
+import { FaultToleranceType, ResilienceFormMode, ResilienceType } from './dtos';
 import {
   REGIONS_FIELD,
   RESILIENCE_FACTOR,
-  FAULT_TOLERANCE_TYPE
+  FAULT_TOLERANCE_TYPE,
+  RESILIENCE_FORM_MODE,
+  RESILIENCE_TYPE,
+  REPLICATION_FACTOR
 } from '../../fields/FieldNames';
 
 vi.mock('react-i18next', () => ({
@@ -40,6 +43,20 @@ vi.mock('react-i18next', () => ({
 vi.mock('@app/redesign/assets/map.svg', () => ({ default: () => null }));
 vi.mock('@app/redesign/assets/map_selected.svg', () => ({ default: () => null }));
 vi.mock('@app/redesign/assets/flash_transparent.svg', () => ({ default: () => null }));
+
+// Onboarding tip auto-opens and needs YB theme (palette.purple); out of scope for these unit tests.
+vi.mock(
+  '@app/redesign/features-v2/onboarding/universe-revamp/popovers/GuidedExpertModePopover',
+  () => ({
+    GuidedExpertModePopover: () => null,
+    useGuidedExpertModePopover: () => ({
+      open: false,
+      anchorRef: { current: null },
+      handleGuidedExpertModeClick: () => undefined,
+      handleClose: () => undefined
+    })
+  })
+);
 
 const mockMoveToNextPage = vi.fn();
 const mockSaveResilienceAndRegionsSettings = vi.fn();
@@ -90,6 +107,8 @@ function getContextValue(overrides?: {
   faultToleranceType?: FaultToleranceType;
   resilienceFactor?: number;
   regions?: RegionLike[];
+  resilienceFormMode?: ResilienceFormMode;
+  nodesAvailabilitySettings?: (typeof initialCreateUniverseFormState)['nodesAvailabilitySettings'];
 }) {
   const state = {
     ...initialCreateUniverseFormState,
@@ -98,8 +117,12 @@ function getContextValue(overrides?: {
       ...initialCreateUniverseFormState.resilienceAndRegionsSettings!,
       [FAULT_TOLERANCE_TYPE]: overrides?.faultToleranceType ?? FaultToleranceType.REGION_LEVEL,
       [RESILIENCE_FACTOR]: overrides?.resilienceFactor ?? 1,
+      [RESILIENCE_FORM_MODE]: overrides?.resilienceFormMode ?? ResilienceFormMode.GUIDED,
       [REGIONS_FIELD]: overrides?.regions ?? []
-    }
+    },
+    nodesAvailabilitySettings:
+      overrides?.nodesAvailabilitySettings ??
+      initialCreateUniverseFormState.nodesAvailabilitySettings
   };
   const methods = createUniverseFormMethods(state as createUniverseFormProps);
   return [
@@ -553,6 +576,121 @@ describe('ResilienceAndRegions', () => {
         // 4 regions with RF1 AZ-level: too many regions surfaces before AZ count (schema order).
         expect(screen.getByText('errMsg.azErrMany')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('nodes clear on mode / placement drivers', () => {
+    const seededNodes = {
+      availabilityZones: {
+        r0: [{ uuid: 'az-0', name: 'Z0', nodeCount: 1, preffered: 1 }],
+        r1: [{ uuid: 'az-1', name: 'Z1', nodeCount: 1, preffered: 2 }],
+        r2: [{ uuid: 'az-2', name: 'Z2', nodeCount: 1, preffered: 3 }]
+      },
+      useDedicatedNodes: false,
+      [REPLICATION_FACTOR]: 3
+    };
+
+    const expectNodesCleared = async () => {
+      await waitFor(() => {
+        expect(mockSaveNodesAvailabilitySettings).toHaveBeenCalledWith(
+          initialCreateUniverseFormState.nodesAvailabilitySettings
+        );
+      });
+    };
+
+    it('C1: guided → expert clears nodes and converts FT degree to RF', async () => {
+      renderResilience(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.AZ_LEVEL,
+          resilienceFactor: 1,
+          regions: makeRegions(1, 3),
+          nodesAvailabilitySettings: seededNodes
+        })
+      );
+      mockSaveNodesAvailabilitySettings.mockClear();
+      mockSaveResilienceAndRegionsSettings.mockClear();
+      fireEvent.click(screen.getByText('formType.expertMode'));
+      await expectNodesCleared();
+      await waitFor(() => {
+        const last = mockSaveResilienceAndRegionsSettings.mock.calls.at(-1)?.[0];
+        expect(last?.[RESILIENCE_FORM_MODE]).toBe(ResilienceFormMode.EXPERT_MODE);
+        expect(last?.[RESILIENCE_FACTOR]).toBe(3);
+        expect(last?.[FAULT_TOLERANCE_TYPE]).toBe(FaultToleranceType.AZ_LEVEL);
+      });
+    });
+
+    it('C2: expert → guided (supported) clears nodes and applies guided FT', async () => {
+      renderResilience(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.AZ_LEVEL,
+          resilienceFactor: 3,
+          regions: makeRegions(3, 1),
+          resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
+          nodesAvailabilitySettings: seededNodes
+        })
+      );
+      mockSaveNodesAvailabilitySettings.mockClear();
+      mockSaveResilienceAndRegionsSettings.mockClear();
+      fireEvent.click(screen.getByText('formType.guidedMode'));
+      await expectNodesCleared();
+      await waitFor(() => {
+        const last = mockSaveResilienceAndRegionsSettings.mock.calls.at(-1)?.[0];
+        expect(last?.[RESILIENCE_FORM_MODE]).toBe(ResilienceFormMode.GUIDED);
+      });
+    });
+
+    it('C3: expert → guided (unsupported) shows modal without clearing until confirm', async () => {
+      const unevenNodes = {
+        availabilityZones: {
+          r0: [{ uuid: 'az-0', name: 'Z0', nodeCount: 2, preffered: 1 }],
+          r1: [{ uuid: 'az-1', name: 'Z1', nodeCount: 1, preffered: 2 }]
+        },
+        useDedicatedNodes: false,
+        [REPLICATION_FACTOR]: 3
+      };
+      renderResilience(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.AZ_LEVEL,
+          resilienceFactor: 3,
+          regions: makeRegions(2, 1),
+          resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
+          nodesAvailabilitySettings: unevenNodes
+        })
+      );
+      mockSaveNodesAvailabilitySettings.mockClear();
+      fireEvent.click(screen.getByText('formType.guidedMode'));
+      await waitFor(() => {
+        expect(screen.getByText('title')).toBeInTheDocument();
+      });
+      expect(mockSaveNodesAvailabilitySettings).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByTestId('switch-to-guided-confirm'));
+      await expectNodesCleared();
+    });
+
+    it.each([
+      ['rf', (ref: { setValue: (n: string, v: unknown) => void }) => ref.setValue(RESILIENCE_FACTOR, 2)],
+      [
+        'regions',
+        (ref: { setValue: (n: string, v: unknown) => void }) =>
+          ref.setValue(REGIONS_FIELD, makeRegions(2))
+      ],
+      [
+        'resilienceType',
+        (ref: { setValue: (n: string, v: unknown) => void }) =>
+          ref.setValue(RESILIENCE_TYPE, ResilienceType.SINGLE_NODE)
+      ]
+    ] as const)('clears nodes on %s change', async (_kind, mutate) => {
+      const { ref } = renderResilience(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.REGION_LEVEL,
+          resilienceFactor: 1,
+          regions: makeRegions(3),
+          nodesAvailabilitySettings: seededNodes
+        })
+      );
+      mockSaveNodesAvailabilitySettings.mockClear();
+      mutate(ref.current!);
+      await expectNodesCleared();
     });
   });
 });

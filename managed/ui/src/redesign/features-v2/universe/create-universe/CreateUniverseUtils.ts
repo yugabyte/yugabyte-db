@@ -18,6 +18,8 @@ export {
   assignRegionsAZNodeByReplicationFactor,
   reduceExpertNodeCountsToAtMostRf,
   getExpertNodesStepDefaultPlacement,
+  toExpertResilienceForDefaults,
+  getExpertAvailabilityZonesOrEmpty,
   getPlacementRegions,
   getAZCount,
   distributeReplicationFactorAcrossAzs
@@ -34,3 +36,8 @@ export {
   getNodeSpec
 } from './utils/createUniverseNodeSpec';
 export { isV2CreateEditUniverseEnabled } from './utils/createUniverseRuntime';
+export {
+  canOverrideCommunicationPorts,
+  shouldApplyConnectionPoolingPortOverrides,
+  DEFAULT_CONNECTION_POOLING_PORTS
+} from './helpers/syncConnectionPoolingPorts';

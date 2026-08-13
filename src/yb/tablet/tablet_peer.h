@@ -349,10 +349,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // the earliest index needed by the tablet itself (in-memory / in-flight / durability) and the
   // index xrepl (CDCSDK/xCluster) still needs retained. Both the Log GC path and remote bootstrap
   // consume this.
-  // If details is specified then this function appends explanation of how the index was calculated
-  // to it.
+  // If retention_details is specified then this function appends explanation of how index was
+  // calculated to it.
   Result<log::MinRetainLogIndexInfo> GetEarliestNeededLogIndex(
-      std::string* details = nullptr) const;
+      std::string* retention_details = nullptr) const;
 
   Result<OpId> MaxPersistentOpId() const override;
 
@@ -688,6 +688,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // and other files in those directories. This can be stale as it is only updated every
   // FLAGS_data_size_metric_updater_interval_sec seconds.
   std::atomic<size_t> total_on_disk_size_{0};
+
+  // Earliest time at which the next WAL retention diagnostics log line may be emitted for this
+  // tablet, used to throttle that log per-tablet.
+  mutable std::atomic<CoarseTimePoint> next_wal_retention_diag_log_time_{CoarseTimePoint::min()};
 
   std::mutex async_write_queries_mutex_;
   std::atomic<OpId> last_known_committed_op_id_;

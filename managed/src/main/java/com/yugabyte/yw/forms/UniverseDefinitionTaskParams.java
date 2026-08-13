@@ -153,6 +153,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // operation.
   @ApiModelProperty public boolean updateSucceeded = true;
 
+  // Set to true the first time a CreateUniverse task successfully finishes on this universe. Once
+  // true it is never reset, so it distinguishes "universe was brought up at least once" from "the
+  // most recent operation on this universe succeeded" (which is what updateSucceeded tracks).
+  // Consumers such as HealthChecker and AlertConfigurationService use this to skip work for
+  // universes that never made it past the initial creation task. Existing universes are backfilled
+  // to true by a data migration.
+  @ApiModelProperty public boolean creationSucceeded = false;
+
   // This tracks whether the universe is in the paused state or not.
   @ApiModelProperty public boolean universePaused = false;
 
@@ -1847,6 +1855,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return getInstanceType(nodeDetails.dedicatedTo, nodeDetails.getAzUuid());
     }
 
+    public DeviceInfo getBaseDeviceInfo(UUID providerUUID) {
+      if (isMulticloudSupport()) {
+        return getNodeSpecProperty(
+            providerUUID, null, ServerType.TSERVER, HierarchicalNodesSpec.NodeSpec::getDeviceInfo);
+      }
+      return deviceInfo;
+    }
+
     public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
       return getDeviceInfoForAz(nodeDetails.getAzUuid(), nodeDetails.dedicatedTo);
     }
@@ -1877,10 +1893,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       OverridenDetails overridenDetails =
           getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
       if (overridenDetails.getDeviceInfo() != null) {
-        log.debug(
-            "Getting overriden device info {} for az {}",
-            Json.toJson(overridenDetails.getDeviceInfo()),
-            azUUID);
+        if (log.isTraceEnabled()) {
+          log.trace(
+              "Getting overriden device info {} for az {}",
+              Json.toJson(overridenDetails.getDeviceInfo()),
+              azUUID);
+        }
         return mergeDeviceInfos(deviceInfo, overridenDetails.getDeviceInfo());
       }
       return deviceInfo;
@@ -1896,9 +1914,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       JsonNode original = Json.toJson(deviceInfo);
       JsonNode overriden = Json.toJson(overridenDeviceInfo);
-      log.debug("Merging device info {} with {}", original, overriden);
+      log.trace("Merging device info {} with {}", original, overriden);
       CommonUtils.deepMerge(original, overriden, true);
-      log.debug("Device info after merging {}", original);
+      log.trace("Device info after merging {}", original);
       return Json.fromJson(original, DeviceInfo.class);
     }
 

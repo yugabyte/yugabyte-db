@@ -1716,8 +1716,7 @@ Status PgApiImpl::NewSample(
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(PgSample::Make(
-          pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state,
-          clock_->Now())),
+          pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state, clock_)),
       handle);
 }
 
@@ -2717,6 +2716,10 @@ YbcReadPointHandle PgApiImpl::GetMaxReadPoint() const {
   return pg_txn_manager_->GetMaxReadPoint();
 }
 
+void PgApiImpl::PublishOldestReadPointSerialNo(uint64_t serial_no) {
+  pg_client_.PublishOldestReadPointSerialNo(serial_no);
+}
+
 Status PgApiImpl::RestoreReadPoint(YbcReadPointHandle read_point) {
   RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::ChangeTxnSnapshot(read_point)));
   return pg_txn_manager_->RestoreReadPoint(read_point);
@@ -2815,7 +2818,7 @@ Status PgApiImpl::NewGlobalViewRead(PgGlobalViewRead** handle) {
   return AddToCurrentPgMemctx(std::make_unique<PgGlobalViewRead>(), handle);
 }
 
-YbcRemotePgExecResult PgApiImpl::ExecGlobalViewScan(
+YbcPgResultPB PgApiImpl::ExecGlobalViewScan(
     PgGlobalViewRead* handle, std::string_view database_name, std::string_view query,
     std::string_view tserver_uuid) {
   return handle->ExecScan(pg_client_, database_name, query, tserver_uuid);

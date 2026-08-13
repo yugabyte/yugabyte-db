@@ -1673,7 +1673,10 @@ Status YBClient::GetCDCStream(
     TableIds* unqualified_table_ids,
     std::optional<ReplicationSlotLsnType>* lsn_type,
     std::optional<ReplicationSlotOrderingMode>* ordering_mode,
-    std::optional<bool>* detect_publication_changes_implicitly) {
+    std::optional<bool>* detect_publication_changes_implicitly,
+    std::optional<std::string>* replication_slot_plugin_name,
+    bool* is_notification_slot,
+    std::optional<bool>* xcluster_use_target_applied_filter) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1732,6 +1735,11 @@ Status YBClient::GetCDCStream(
     *replication_slot_name = resp.stream().cdcsdk_ysql_replication_slot_name();
   }
 
+  if (replication_slot_plugin_name &&
+      resp.stream().has_cdcsdk_ysql_replication_slot_plugin_name()) {
+    *replication_slot_plugin_name = resp.stream().cdcsdk_ysql_replication_slot_plugin_name();
+  }
+
   if (lsn_type && resp.stream().has_cdc_stream_info_options() &&
       resp.stream().cdc_stream_info_options().has_cdcsdk_ysql_replication_slot_lsn_type()) {
     *lsn_type = resp.stream().cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type();
@@ -1746,6 +1754,15 @@ Status YBClient::GetCDCStream(
   if (detect_publication_changes_implicitly &&
       resp.stream().has_detect_publication_changes_implicitly()) {
     *detect_publication_changes_implicitly = resp.stream().detect_publication_changes_implicitly();
+  }
+
+  if (is_notification_slot) {
+    *is_notification_slot = resp.stream().is_notification_slot();
+  }
+
+  if (xcluster_use_target_applied_filter &&
+      resp.stream().has_xcluster_use_target_applied_filter()) {
+    *xcluster_use_target_applied_filter = resp.stream().xcluster_use_target_applied_filter();
   }
 
   return Status::OK();
@@ -1779,9 +1796,12 @@ void YBClient::GetCDCStream(
     const xrepl::StreamId& stream_id,
     std::shared_ptr<TableId> table_id,
     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-    StdStatusCallback callback) {
+    StdStatusCallback callback,
+    std::shared_ptr<bool> xcluster_use_target_applied_filter) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  data_->GetCDCStream(this, stream_id, table_id, options, deadline, callback);
+  data_->GetCDCStream(
+      this, stream_id, table_id, options, deadline, std::move(callback),
+      std::move(xcluster_use_target_applied_filter));
 }
 
 Result<std::vector<CDCSDKStreamInfo>> YBClient::ListCDCSDKStreams() {

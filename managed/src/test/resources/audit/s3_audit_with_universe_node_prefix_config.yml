@@ -3,7 +3,8 @@ exporters:
   awss3/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AWSS3Exporter
     marshaler: otlp_json
     s3uploader: {disable_ssl: false, file_prefix: yb-otel-, region: us-west2, s3_bucket: bucket,
-      s3_force_path_style: false, s3_partition: minute, s3_prefix: yb-logs/00000000-0000-0000-0000-000000000000/test-node}
+      s3_force_path_style: false, s3_partition_format: year=%Y/month=%m/day=%d/hour=%H/minute=%M,
+      s3_prefix: yb-logs/00000000-0000-0000-0000-000000000000/test-node}
 extensions:
   file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension
     compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true,
@@ -76,4 +77,9 @@ service:
   telemetry:
     logs:
       output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]
-    metrics: {address: '0.0.0.0:8889'}
+    metrics:
+      readers:
+      - pull:
+          exporter:
+            prometheus: {host: 0.0.0.0, port: 8889, without_scope_info: true, without_type_suffix: true,
+              without_units: true}

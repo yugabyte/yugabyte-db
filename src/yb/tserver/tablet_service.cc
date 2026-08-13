@@ -238,13 +238,14 @@ DEFINE_test_flag(double, fail_tablet_split_probability, 0.0,
 DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
     "Pause before processing a GetSplitKey request.");
 
-DEFINE_test_flag(bool, fail_wait_for_ysql_backends_catalog_version, false,
-    "Fail any WaitForYsqlBackendsCatalogVersion requests received by this tserver.");
+DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version, false,
+    "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
 
-DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version_1, false,
-    "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
-DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version_2, false,
-    "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
+DEFINE_test_flag(bool, pause_wait_for_lockers, false,
+    "Pause any WaitForLockers requests until flags is reset.");
+
+DEFINE_test_flag(bool, fail_wait_for_lockers, false,
+    "Fail any WaitForLockers requests received by this tserver.");
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
@@ -1767,7 +1768,7 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
 
   auto const tablet_peer_result = server_->tablet_manager()->CreateNewTablet(
       table_info, req->tablet_id(), partition, req->config(), req->colocated(), snapshot_schedules,
-      hosted_services);
+      hosted_services, req->target_storage_tier());
   if (PREDICT_FALSE(!tablet_peer_result.ok())) {
     status = tablet_peer_result.status();
     auto is_already_present = status.IsAlreadyPresent();
@@ -2395,9 +2396,8 @@ void TabletServiceAdminImpl::EnableDbConns(
 Status TabletServiceAdminImpl::DoEnableDbConns(
     const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp) {
   const std::string script = Format(
-      "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
-      "UPDATE pg_database SET datallowconn = true WHERE datname = $0",
-      pgwrapper::PqEscapeLiteral(req->target_db_name()));
+      "ALTER DATABASE $0 ALLOW_CONNECTIONS true",
+      pgwrapper::PqEscapeIdentifier(req->target_db_name()));
 
   auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
   YsqlshRunner ysqlsh_runner =
@@ -2443,19 +2443,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   VLOG_WITH_PREFIX(2) << "Received Wait for YSQL Backends Catalog Version RPC: "
                       << req->ShortDebugString();
 
-  if (FLAGS_TEST_fail_wait_for_ysql_backends_catalog_version) {
-    LOG(INFO) << "Responding with a failure to " << req->ShortDebugString();
-    // Send back OPERATION_NOT_SUPPORTED to prevent further retry.
-    SetupErrorAndRespond(
-        resp->mutable_error(),
-        STATUS(InternalError, "test failure").CloneAndAddErrorCode(
-          TabletServerError(TabletServerErrorPB::OPERATION_NOT_SUPPORTED)),
-        &context);
-    return;
-  }
-
-  TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_ysql_backends_catalog_version_1);
-  TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_ysql_backends_catalog_version_2);
+  TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_ysql_backends_catalog_version);
 
   const PgOid database_oid = req->database_oid();
   const uint64_t catalog_version = req->catalog_version();
@@ -2560,7 +2548,10 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
       },
       modified_deadline,
       description,
-      (prev_num_lagging_backends == -1 ? 10ms : 5s) /* initial_delay */,
+      // Start with a small delay even on retries (prev_num_lagging_backends != -1): a flat delay
+      // would report backends catching up that much later, adding the same latency to DDLs waiting
+      // on this.
+      10ms /* initial_delay */,
       1.4 /* delay_multiplier */,
       5s /* max_delay */);
 
@@ -2762,6 +2753,8 @@ void TabletServiceImpl::WaitForAsyncWrite(
   }
 
   DEBUG_ONLY_TEST_SYNC_POINT("TabletServiceImpl::WaitForAsyncWrite::BeforeRegister");
+  ASH_ENABLE_CONCURRENT_UPDATES();
+  SET_WAIT_STATUS(Raft_WaitingForPipelinedReplication);
   tablet_result->tablet_peer->RegisterAsyncWriteCompletion(
       OpId::FromPB(req->op_id()), std::move(callback));
 }
@@ -3968,6 +3961,18 @@ void TabletServiceImpl::ReleaseObjectLocks(
 void TabletServiceImpl::WaitForLockersMultiple(
     const WaitForLockersMultipleRequestPB* req, WaitForLockersMultipleResponsePB* resp,
     rpc::RpcContext context) {
+  if (FLAGS_TEST_fail_wait_for_lockers) {
+    LOG(INFO) << "Responding with a failure to " << req->ShortDebugString();
+    // Send back OPERATION_NOT_SUPPORTED to prevent further retry.
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(InternalError, "TEST_fail_wait_for_lockers set").CloneAndAddErrorCode(
+          TabletServerError(TabletServerErrorPB::OPERATION_NOT_SUPPORTED)),
+        &context);
+    return;
+  }
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_lockers);
   TRACE("Start WaitForLockersMultiple");
   VLOG(2) << "Received WaitForLockersMultiple RPC: " << req->DebugString();
   if (!FLAGS_enable_object_locking_for_table_locks) {
@@ -4019,7 +4024,7 @@ void TabletServiceImpl::AdminExecutePgsql(
     const auto& deadline = context.GetClientDeadline();
     auto pg_conn = VERIFY_RESULT(
         server->CreateInternalPGConn(req->database_name(), kDefaultInternalPgUser, false,
-                                     deadline));
+                                     deadline, req->yb_internal_conn_kind()));
     for (const auto& stmt : req->pgsql_statements()) {
       SCHECK_LT(
           CoarseMonoClock::Now(), deadline, TimedOut, "Timed out while executing Ysql statements");

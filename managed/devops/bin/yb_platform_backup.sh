@@ -32,8 +32,35 @@ PLATFORM_DUMP_K8S_DEFERRED_PATH="/opt/yugabyte/yugaware/data/restore_platform_du
 PA_DUMP_K8S_DEFERRED_PATH="/opt/yugabyte/perf-advisor/data/restore_pa_dump.sql"
 PLATFORM_DB_NAME="yugaware"
 PA_DUMP_FNAME="pa_ts_dump.sql"
+# Marker file included in the tar for --include_pa_config_only backups. Presence of this file on
+# restore switches PA restore to the data-only, whitelisted-tables code path.
+INCLUDE_PA_CONFIG_ONLY_MARKER_FNAME="pa_ts_config_only.marker"
 PA_DATA_DIR="perf-advisor"
 PA_DB_NAME="ts"
+# Whitelisted PA "configuration" tables for --include_pa_config_only mode. All other PA tables
+# (metrics, anomalies, background_task, etc.) are excluded to keep the standby PA's own scraped
+# state intact and avoid dragging metric bulk into every HA sync.
+#   - customer_metadata: registered customers, including their collection_enabled flag.
+#   - universe_metadata: registered universes and their auth_details JSON blob (per-universe
+#     DB credentials PA uses to talk to the universe). This is the sensitive table on the
+#     PA side - see restore_include_pa_config_only_backup for the log-safety measures.
+#   - universe_details: JSON per-universe topology (clusters, nodes, software version). Not
+#     itself sensitive, but needed on the standby so the newly promoted PA can start
+#     collecting the rest of the per-universe metadata (query metadata, tablet metadata,
+#     etc.) right away instead of waiting for its own UniverseDetailsQuery to run first.
+#   - node_metadata: per-node identity (customer/universe/name/cluster/master/tserver). PA
+#     joins against this for every node-scoped filter in the UI, and it's only refreshed
+#     by the UniverseDetails scrape - so without syncing, all node filters stay empty on
+#     the promoted PA until the next scrape lands.
+#   - runtime_config_entry: scope-keyed runtime config values.
+#   - users / user_auth_token: PA UI auth. Kept in sync so operators don't have to re-login
+#     against the newly promoted PA.
+#   - scheduled_tasks: task-runner schedule. Copying this makes the newly promoted PA pick
+#     up in-flight schedules immediately; picked / picked_by / last_heartbeat get reset in
+#     restore_include_pa_config_only_backup so the promoted PA can claim tasks right away
+#     rather than waiting for the ex-active's heartbeats to time out.
+PA_CONFIG_TABLES=(customer_metadata universe_metadata universe_details node_metadata \
+                  runtime_config_entry users user_auth_token scheduled_tasks)
 PROMETHEUS_SNAPSHOT_DIR="prometheus_snapshot"
 MIGRATION_BACKUP_DIR="migration_backup"
 VERSION_METADATA="version_metadata.json"
@@ -194,7 +221,10 @@ db_exists() {
   local db_port="$4"
   local yba_installer="$5"
   local ybdb="$6"
-  local pgdump_path="$7"
+  # Arg 7 is any PG helper binary (pg_dump / pg_restore) - psql lives in the same directory
+  # in the yba-installer layout, so we only use it to derive the psql path. Callers on the
+  # backup path pass pg_dump; callers on the restore path pass pg_restore. Either works.
+  local pg_helper_path="$7"
   local ysql_dump_path="$8"
 
   local probe="psql"
@@ -204,9 +234,9 @@ db_exists() {
       # ysqlsh ships next to ysql_dump in yba-installer layouts.
       probe="$(dirname "${ysql_dump_path}")/ysqlsh"
     fi
-  elif [[ "${yba_installer}" = true ]] && [[ "${pgdump_path}" != "" ]] && \
-       [[ -f "${pgdump_path}" ]]; then
-    probe="$(dirname "${pgdump_path}")/psql"
+  elif [[ "${yba_installer}" = true ]] && [[ "${pg_helper_path}" != "" ]] && \
+       [[ -f "${pg_helper_path}" ]]; then
+    probe="$(dirname "${pg_helper_path}")/psql"
   fi
 
   local probe_cmd="${probe} -h ${db_host} -p ${db_port} -U ${db_username} -tAc \
@@ -214,6 +244,36 @@ db_exists() {
   local probe_out
   probe_out=$(docker_aware_cmd "postgres" "${probe_cmd}" 2>/dev/null) || return 1
   [[ "${probe_out}" = "1" ]]
+}
+
+pa_config_schema_present() {
+  local db_name="$1"
+  local db_username="$2"
+  local db_host="$3"
+  local db_port="$4"
+  local yba_installer="$5"
+  local ybdb="$6"
+  local pg_helper_path="$7"
+  local ysql_dump_path="$8"
+
+  local probe="psql"
+  if [[ "$ybdb" = true ]]; then
+    probe="ysqlsh"
+    if [[ "${ysql_dump_path}" != "" ]] && [[ -f "${ysql_dump_path}" ]]; then
+      probe="$(dirname "${ysql_dump_path}")/ysqlsh"
+    fi
+  elif [[ "${yba_installer}" = true ]] && [[ "${pg_helper_path}" != "" ]] && \
+       [[ -f "${pg_helper_path}" ]]; then
+    probe="$(dirname "${pg_helper_path}")/psql"
+  fi
+
+  # to_regclass() returns NULL when the relation does not exist (instead of erroring), so a
+  # single query safely distinguishes "table present" from "empty database".
+  local probe_cmd="${probe} -h ${db_host} -p ${db_port} -U ${db_username} -d ${db_name} -tAc \
+\"SELECT to_regclass('public.customer_metadata') IS NOT NULL\""
+  local probe_out
+  probe_out=$(docker_aware_cmd "postgres" "${probe_cmd}" 2>/dev/null) || return 1
+  [[ "${probe_out}" = "t" ]]
 }
 
 # Creates a Postgres DB backup of the given database.
@@ -429,6 +489,147 @@ delete_db_backup() {
   fi
 }
 
+# Creates a data-only pg_dump of the PA "configuration" tables (see PA_CONFIG_TABLES).
+# Intended for the HA sync path so that the standby PA sees the same customer / universe
+# metadata and runtime configuration as the active PA, without dragging in metrics data.
+# The dump is a Postgres custom-format archive (-Fc); the restore side (see
+# restore_include_pa_config_only_backup) TRUNCATEs the whitelisted tables and then loads
+# them via pg_restore --data-only.
+create_include_pa_config_only_backup() {
+  backup_path="$1"
+  db_username="$2"
+  db_host="$3"
+  db_port="$4"
+  verbose="$5"
+  yba_installer="$6"
+  pgdump_path="$7"
+  pg_dump="pg_dump"
+
+  if [[ "${yba_installer}" = true ]] && \
+     [[ "${pgdump_path}" != "" ]] && \
+     [[ -f "${pgdump_path}" ]]; then
+    pg_dump="${pgdump_path}"
+  fi
+
+  # Explicitly qualify with the public schema. `-t <name>` in pg_dump matches any table
+  # named <name> in any schema, and while PA only creates its tables under public today,
+  # being explicit avoids surprises if a future migration adds a shadow schema.
+  local table_args=""
+  for t in "${PA_CONFIG_TABLES[@]}"; do
+    table_args+=" -t public.${t}"
+  done
+
+  local verbose_flag=""
+  if [[ "${verbose}" = true ]]; then
+    verbose_flag=" -v"
+  fi
+
+  # Note: pg_dump -v prints table names ("dumping contents of table
+  # public.universe_metadata") and any COPY error path could echo the offending row.
+  # universe_metadata carries universe DB credentials in auth_details, so we redirect
+  # pg_dump's stderr to /dev/null in this code path even in verbose mode - operators who
+  # need to debug the config sync can rerun pg_dump manually against a scratch DB.
+  local backup_cmd="${pg_dump} -h ${db_host} -p ${db_port} -U ${db_username} -Fc${verbose_flag} \
+    --data-only${table_args} ${PA_DB_NAME}"
+  echo "Creating PA config-only backup ${backup_path}..."
+  if [[ "${yba_installer}" = true ]]; then
+    ybai_backup_cmd="${backup_cmd} -f ${backup_path}"
+    docker_aware_cmd "postgres" "${ybai_backup_cmd}" 2>/dev/null
+  else
+    docker_aware_cmd "postgres" "${backup_cmd}" 2>/dev/null > "${backup_path}"
+  fi
+  echo "Done"
+}
+
+# Restores a data-only PA config-only backup produced by create_include_pa_config_only_backup.
+# Truncates the whitelisted tables first, then loads them via pg_restore --data-only. Every
+# other PA table (metrics, anomalies, background_tasks, ...) is left untouched on the
+# standby. Finally sets collection_enabled=FALSE on customer_metadata so the standby PA
+# immediately stops scraping / running anomaly detection - the recurring
+# EmbeddedCollectorInitializer on the standby YBA will confirm this with a PUT within
+# ~1 minute, but doing it here removes the window between restore and that PUT.
+#
+# The TRUNCATE ... CASCADE up front is required for two reasons:
+#   1. pg_restore --clean is a no-op in --data-only mode (--clean only drops schema objects,
+#      which are skipped in data-only), so without the explicit TRUNCATE the standby would
+#      keep any rows the active no longer has (e.g. universes/customers that were
+#      unregistered on the active, or leftovers from a previous promotion).
+#   2. Fresh COPY on top of surviving rows would collide on primary keys.
+# CASCADE is only there for FKs *within* the whitelist (universe_details -> universe_metadata,
+# user_auth_token -> users). No PA data table (metrics, anomalies, node_metadata, ...) FKs any
+# whitelisted config table today, so CASCADE doesn't touch scraped state on the standby.
+restore_include_pa_config_only_backup() {
+  backup_path="$1"
+  db_username="$2"
+  db_host="$3"
+  db_port="$4"
+  verbose="$5"
+  yba_installer="$6"
+  pgrestore_path="$7"
+  pg_restore="pg_restore"
+  psql="psql"
+
+  if [[ "${yba_installer}" = true ]] && \
+     [[ "${pgrestore_path}" != "" ]] && \
+     [[ "${USE_SYSTEM_PG}" != true ]] && \
+     [[ -f "${pgrestore_path}" ]]; then
+    pg_restore=${pgrestore_path}
+    psql=$(dirname "${pgrestore_path}")/psql
+  fi
+
+  # Build a comma-separated table list from the same whitelist used to create the dump.
+  local truncate_targets=""
+  for t in "${PA_CONFIG_TABLES[@]}"; do
+    if [[ -n "${truncate_targets}" ]]; then
+      truncate_targets+=","
+    fi
+    truncate_targets+=" ${t}"
+  done
+
+  # Don't echo the individual table list - universe_metadata carries universe DB
+  # credentials in auth_details, and even the table name is sensitive enough that we
+  # would prefer it not surface in HA sync logs.
+  echo "Wiping PA config tables on standby..."
+  truncate_cmd="${psql} -h ${db_host} -p ${db_port} -U ${db_username} -d ${PA_DB_NAME} \
+    -q -v ON_ERROR_STOP=1 -c \"TRUNCATE${truncate_targets} RESTART IDENTITY CASCADE;\""
+  # -q silences the "TRUNCATE TABLE" banner. Errors still surface via ON_ERROR_STOP.
+  # stderr is redirected because a TRUNCATE constraint failure would include the row
+  # detail (universe_metadata.auth_details JSON carries per-universe DB credentials) which
+  # we must not leak.
+  docker_aware_cmd "postgres" "${truncate_cmd}" 2>/dev/null
+
+  echo "Restoring PA config-only backup ${backup_path}..."
+  # Never pass -v to pg_restore here even if the caller asked for verbose: pg_restore -v
+  # would log lines like `processing data for table "public"."universe_details"` and,
+  # on any COPY failure, dump the offending row - the universe_details JSON blob contains
+  # per-universe DB credentials.
+  restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} \
+    --data-only --no-owner --no-acl -d ${PA_DB_NAME}"
+  docker_aware_cmd "postgres" "${restore_cmd}" < "${backup_path}" 2>/dev/null
+
+  # Post-restore fixups: two independent UPDATEs, kept in a single psql invocation so we
+  # only pay for one round-trip.
+  #   1. collection_enabled=FALSE on every customer_metadata row. The dump was produced on
+  #      the active (where collection_enabled defaults to TRUE), so a plain data-only
+  #      restore would flip the standby's collection_enabled to TRUE and briefly let it
+  #      scrape / run anomaly detection until the next EmbeddedCollectorInitializer PUT
+  #      corrects it.
+  #   2. Clear picked / picked_by / last_heartbeat on scheduled_tasks. These fields describe
+  #      *who* is currently running the task. On the active they point at the active's
+  #      hostname; if we left them alone the newly promoted PA's task runner would treat
+  #      those tasks as owned by someone else and wait for a heartbeat timeout before
+  #      taking them over. Resetting them lets the promoted PA claim work immediately.
+  echo "Marking customer_metadata rows as collection_enabled=FALSE and resetting" \
+    "scheduled_tasks picks..."
+  post_restore_sql="\
+UPDATE customer_metadata SET collection_enabled = FALSE; \
+UPDATE scheduled_tasks SET picked = FALSE, picked_by = NULL, last_heartbeat = NULL;"
+  update_cmd="${psql} -h ${db_host} -p ${db_port} -U ${db_username} -d ${PA_DB_NAME} \
+    -q -v ON_ERROR_STOP=1 -c \"${post_restore_sql}\""
+  docker_aware_cmd "postgres" "${update_cmd}" 2>/dev/null
+  echo "Done"
+}
+
 create_backup() {
   now=$(date -u +"%y-%m-%d-%H-%M")
   output_path="${1}"
@@ -450,6 +651,7 @@ create_backup() {
   prometheus_protocol="${17}"
   exclude_pa_database="${18}"
   exclude_pa_files="${19}"
+  include_pa_config_only="${20:-false}"
   include_releases_flag="**/releases/**"
   include_uploaded_releases_flag="**/upload/release_artifacts/**"
 
@@ -481,6 +683,9 @@ create_backup() {
     fi
     if [[ "$exclude_pa_files" = true ]]; then
       exclude_flags+=" --exclude_pa_files"
+    fi
+    if [[ "$include_pa_config_only" = true ]]; then
+      exclude_flags+=" --include_pa_config_only"
     fi
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
       "${backup_script} create ${verbose_flag} ${exclude_flags} --output ${K8S_BACKUP_DIR}"
@@ -555,15 +760,45 @@ create_backup() {
   # (e.g. the customer has never deployed Performance Advisor). In that case
   # skip the dump instead of failing the whole backup.
   pa_db_backup_path="${data_dir}/${PA_DUMP_FNAME}"
+  include_pa_config_only_marker_path="${data_dir}/${INCLUDE_PA_CONFIG_ONLY_MARKER_FNAME}"
   pa_db_present=false
+  if [[ "$include_pa_config_only" = true ]] && [[ "$exclude_pa_database" = true ]]; then
+    echo "Error: --include_pa_config_only is mutually exclusive with --exclude_pa_database" >&2
+    exit 1
+  fi
   if [[ "$exclude_pa_database" = false ]]; then
     if db_exists "${PA_DB_NAME}" "${db_username}" "${db_host}" "${db_port}" \
                  "${yba_installer}" "${ybdb}" "${pgdump_path}" "${ysql_dump_path}"; then
-      pa_db_present=true
-      if [[ "$ybdb" = true ]]; then
+      if [[ "$include_pa_config_only" = true ]]; then
+        # HA-sync path: dump only the whitelisted PA "configuration" tables (data-only)
+        # so the standby PA gets customer / universe metadata and runtime config without
+        # inheriting the active's metrics / anomalies / background_tasks data.
+        if [[ "$ybdb" = true ]]; then
+          echo "Error: --include_pa_config_only is not supported with --ybdb" >&2
+          exit 1
+        fi
+        # The 'ts' database can exist while empty (yba-installer's createTSDatabase creates it
+        # unconditionally; the schema only appears once the embedded PA collector migrates it).
+        # A data-only dump of the whitelisted tables would fail against an empty database, so
+        # only produce the config dump + marker when the schema is actually present.
+        if pa_config_schema_present "${PA_DB_NAME}" "${db_username}" "${db_host}" "${db_port}" \
+                                    "${yba_installer}" "${ybdb}" "${pgdump_path}" \
+                                    "${ysql_dump_path}"; then
+          pa_db_present=true
+          create_include_pa_config_only_backup "${pa_db_backup_path}" "${db_username}" \
+            "${db_host}" "${db_port}" "${verbose}" "${yba_installer}" "${pgdump_path}"
+          # Drop a marker so the restore side knows to use the data-only restore path.
+          touch "${include_pa_config_only_marker_path}"
+        else
+          echo "Performance Advisor database '${PA_DB_NAME}' exists but has no PA schema" \
+            "- skipping PA config backup."
+        fi
+      elif [[ "$ybdb" = true ]]; then
+        pa_db_present=true
         create_ybdb_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
                            "${verbose}" "${yba_installer}" "${ysql_dump_path}" "${PA_DB_NAME}"
       else
+        pa_db_present=true
         create_postgres_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
                                "${verbose}" "${yba_installer}" "${pgdump_path}" \
                                "${plain_sql}" "${PA_DB_NAME}"
@@ -593,6 +828,9 @@ create_backup() {
   # and is not subject to shell pathname expansion before being passed to find.
   if [[ "$exclude_pa_database" = false ]] && [[ "$pa_db_present" = true ]]; then
     FIND_OPTIONS+=( $(printf " -o -path '%s'" "**/${PA_DUMP_FNAME}") )
+    if [[ "$include_pa_config_only" = true ]]; then
+      FIND_OPTIONS+=( $(printf " -o -path '%s'" "**/${INCLUDE_PA_CONFIG_ONLY_MARKER_FNAME}") )
+    fi
   fi
   # Include PA collected data files in backup unless excluded.
   if [[ "$exclude_pa_files" = false ]]; then
@@ -630,6 +868,9 @@ create_backup() {
   delete_db_backup "${db_backup_path}"
   if [[ "$exclude_pa_database" = false ]] && [[ -f "${pa_db_backup_path}" ]]; then
     delete_db_backup "${pa_db_backup_path}"
+  fi
+  if [[ -f "${include_pa_config_only_marker_path}" ]]; then
+    rm -f "${include_pa_config_only_marker_path}"
   fi
 
   # Delete the version metadata backup if we had created it earlier
@@ -823,6 +1064,8 @@ restore_backup() {
       run_sudo_cmd "rm -f ${destination}/prometheus/targets/* ${destination}/prometheus/targets/*"
     fi
 
+    rm -f "${destination}/${PA_DUMP_FNAME}" "${destination}/${INCLUDE_PA_CONFIG_ONLY_MARKER_FNAME}"
+
     $tar_cmd "${input_path}" --directory "${destination}" "${skip_old_files}"
   fi
 
@@ -852,23 +1095,60 @@ restore_backup() {
   # Restore PA (ts) database unless excluded
   if [[ "$exclude_pa_database" = false ]]; then
     pa_db_backup_path="${untar_dir}"/"${PA_DUMP_FNAME}"
+    include_pa_config_only_marker_path="${untar_dir}"/"${INCLUDE_PA_CONFIG_ONLY_MARKER_FNAME}"
     if [[ -f "${pa_db_backup_path}" ]]; then
-      pa_dump_check_table="customer_metadata"
-      if [[ "$skip_dump_check" = true ]]; then
-        pa_dump_check_table=""
-      fi
-      pa_copy_dump_path=""
-      if [[ "$skip_dump_file_delete" = true ]]; then
-        pa_copy_dump_path="${PA_DUMP_K8S_DEFERRED_PATH}"
-      fi
-      if [[ "${ybdb}" = true ]]; then
-        restore_ybdb_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-          "${verbose}" "${yba_installer}" "${ysqlsh_path}" "${PA_DB_NAME}" \
-          "${single_transaction}"
+      if [[ -f "${include_pa_config_only_marker_path}" ]]; then
+        # The dump was produced with --include_pa_config_only. Only load whitelisted tables
+        # and flip collection_enabled back to FALSE afterwards; skip when the PA DB doesn't
+        # exist yet on this instance - the standby PA's own Flyway migrations will run on
+        # first start and the next HA sync will populate config.
+        if [[ "${ybdb}" = true ]]; then
+          echo "Error: --include_pa_config_only restore is not supported with --ybdb" >&2
+          exit 1
+        fi
+        # On the restore path we don't have pgdump_path. psql lives next to pg_restore in the
+        # yba-installer layout, so pass pgrestore_path in the "helper" slot - db_exists /
+        # pa_config_schema_present use it purely to derive the psql directory.
+        #
+        # Two independent guards, both required. The 'ts' database existing is NOT sufficient:
+        # yba-installer always provisions an empty 'ts' (createTSDatabase), so on an instance
+        # where PA is/was disabled the database is present but has no schema. Restoring a
+        # data-only config dump into it (TRUNCATE + COPY) would fail and abort the whole HA
+        # restore, so skip unless the collector has already migrated its schema. The standby
+        # PA's own Flyway migrations run on first start and the next HA sync then populates it.
+        if ! db_exists "${PA_DB_NAME}" "${db_username}" "${db_host}" "${db_port}" \
+                       "${yba_installer}" "${ybdb}" "${pgrestore_path}" "${ysqlsh_path}"; then
+          echo "Performance Advisor database '${PA_DB_NAME}' not found" \
+            "- skipping PA config restore."
+        elif ! pa_config_schema_present "${PA_DB_NAME}" "${db_username}" "${db_host}" \
+                       "${db_port}" "${yba_installer}" "${ybdb}" "${pgrestore_path}" \
+                       "${ysqlsh_path}"; then
+          echo "Performance Advisor database '${PA_DB_NAME}' exists but has no PA schema" \
+            "(the embedded collector has not migrated it yet) - skipping PA config restore."
+        else
+          restore_include_pa_config_only_backup "${pa_db_backup_path}" "${db_username}" \
+            "${db_host}" "${db_port}" "${verbose}" "${yba_installer}" "${pgrestore_path}"
+        fi
+        rm -f "${include_pa_config_only_marker_path}"
       else
-        restore_postgres_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-          "${verbose}" "${yba_installer}" "${pgrestore_path}" "${pa_dump_check_table}" \
-          "${pa_copy_dump_path}" "${single_transaction}" "${PA_DB_NAME}"
+        pa_dump_check_table="customer_metadata"
+        if [[ "$skip_dump_check" = true ]]; then
+          pa_dump_check_table=""
+        fi
+        pa_copy_dump_path=""
+        if [[ "$skip_dump_file_delete" = true ]]; then
+          pa_copy_dump_path="${PA_DUMP_K8S_DEFERRED_PATH}"
+        fi
+        if [[ "${ybdb}" = true ]]; then
+          restore_ybdb_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
+            "${verbose}" "${yba_installer}" "${ysqlsh_path}" "${PA_DB_NAME}" \
+            "${single_transaction}"
+        else
+          restore_postgres_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" \
+            "${db_port}" "${verbose}" "${yba_installer}" "${pgrestore_path}" \
+            "${pa_dump_check_table}" "${pa_copy_dump_path}" "${single_transaction}" \
+            "${PA_DB_NAME}"
+        fi
       fi
       delete_db_backup "${pa_db_backup_path}"
     else
@@ -1016,6 +1296,9 @@ print_backup_usage() {
   echo "  --ysql_dump_path               path to ysql_sump to dump ybdb"
   echo "  --exclude_pa_database          exclude Performance Advisor database from backup (default: false)"
   echo "  --exclude_pa_files             exclude Performance Advisor collected data files from backup (default: false)"
+  echo "  --include_pa_config_only       dump only Performance Advisor 'configuration' tables"
+  echo "                                 (whitelisted subset); mutually exclusive with"
+  echo "                                 --exclude_pa_database (default: false)"
   echo "  --disable_version_check        disable the backup version check (default: false)"
   echo "  -?, --help                     show create help, then exit"
   echo
@@ -1123,6 +1406,7 @@ case $command in
     exclude_releases=false
     exclude_pa_database=false
     exclude_pa_files=false
+    include_pa_config_only=false
     output_path="${HOME}"
     RESTART_PROCESSES=false
 
@@ -1230,6 +1514,10 @@ case $command in
           exclude_pa_files=true
           shift
           ;;
+        --include_pa_config_only)
+          include_pa_config_only=true
+          shift
+          ;;
         --disable_version_check)
           disable_version_check=true
           set -x
@@ -1256,7 +1544,7 @@ case $command in
     create_backup "$output_path" "$data_dir" "$exclude_prometheus" "$exclude_releases" \
     "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$prometheus_port" \
     "$k8s_namespace" "$k8s_pod" "$pgdump_path" "$plain_sql" "$ybdb" "$ysql_dump_path" \
-    "$prometheus_protocol" "$exclude_pa_database" "$exclude_pa_files"
+    "$prometheus_protocol" "$exclude_pa_database" "$exclude_pa_files" "$include_pa_config_only"
     exit 0
     ;;
   restore)

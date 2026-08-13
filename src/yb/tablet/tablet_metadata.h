@@ -224,6 +224,11 @@ struct TierPathInfo {
   }
 };
 
+// A tablet's per-tier rocksdb dir has the form <data_root>/rocksdb/table-X/tablet-Y (3 path
+// components under the data root that owns the disk/tier. Given such
+// a path, returns the data root directory (the --fs_data_dirs entry it lives under).
+std::string GetDataRootFromTabletDir(const std::string& tablet_rocksdb_dir);
+
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
 // whether distributed transactions are enabled for the table. KV-store for sys catalog could
 // contain multiple tables.
@@ -782,8 +787,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Called to update related metadata when index table backfilling is complete.
   // Returns kStatusNotFound if table is not found in kv_store, in other case returns kStatusOk.
-  Status OnBackfillDone(const TableId& table_id) EXCLUDES(data_mutex_);
-  Status OnBackfillDone(const OpId& op_id, const TableId& table_id) EXCLUDES(data_mutex_);
+  Status OnBackfillDone(const TableId& table_id, uint64_t birth_time = 0)
+      EXCLUDES(data_mutex_);
+  Status OnBackfillDone(const OpId& op_id, const TableId& table_id,
+                        uint64_t birth_time = 0) EXCLUDES(data_mutex_);
 
   // Updates related meta data as a reaction for post split compaction completed. Returns true
   // if any field has been updated and a flush may be required.
@@ -835,7 +842,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   void OnChangeMetadataOperationAppliedUnlocked(const OpId& applied_op_id) REQUIRES(data_mutex_);
 
-  Status OnBackfillDoneUnlocked(const TableId& table_id) REQUIRES(data_mutex_);
+  Status OnBackfillDoneUnlocked(const TableId& table_id, uint64_t birth_time = 0)
+      REQUIRES(data_mutex_);
 
   Status SetTableInfoUnlocked(const TableInfoMap::iterator& it,
                               const TableInfoPtr& new_table_info) REQUIRES(data_mutex_);

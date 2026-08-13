@@ -905,13 +905,14 @@ class PgApiImpl {
   [[nodiscard]] YbcReadPointHandle GetMaxReadPoint() const;
   Status RestoreReadPoint(YbcReadPointHandle read_point);
   Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
+  void PublishOldestReadPointSerialNo(uint64_t serial_no);
 
   void DdlEnableForceCatalogModification();
 
   Status TriggerRelcacheInitConnection(const std::string& dbname);
 
   Status NewGlobalViewRead(PgGlobalViewRead** handle);
-  YbcRemotePgExecResult ExecGlobalViewScan(
+  YbcPgResultPB ExecGlobalViewScan(
       PgGlobalViewRead* handle, std::string_view database_name, std::string_view query,
       std::string_view tserver_uuid);
 

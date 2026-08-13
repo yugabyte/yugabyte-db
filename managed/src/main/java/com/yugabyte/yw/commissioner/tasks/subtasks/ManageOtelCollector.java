@@ -30,7 +30,10 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ManageOtelCollector extends NodeTaskBase {
 
-  public static String OtelCollectorVersion = "0.90.0";
+  // Version of the YugabyteDB unified otel collector build consumed from ybm-package-store. This
+  // feeds the artifact filename built in NodeAgentRpcPayload#getOtelCollectorPackagePath, so it
+  // must stay in step with the URLs in support/thirdparty-dependencies.txt.
+  public static String OtelCollectorVersion = "0.145.0";
   public static String OtelCollectorPlatform = "linux";
 
   private final NodeAgentRpcPayload nodeAgentRpcPayload;
@@ -121,13 +124,17 @@ public class ManageOtelCollector extends NodeTaskBase {
     if (isNodeAgentSupported) {
       NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(node.cloudInfo.private_ip);
       log.info("Configuring otel-collector using node-agent");
-      if (taskParams().otelCollectorEnabled) {
-        nodeAgentClient.runInstallOtelCollector(
-            nodeAgent,
-            nodeAgentRpcPayload.setupInstallOtelCollectorBits(
-                universe, node, taskParams(), nodeAgent),
-            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
-      }
+      // Always invoke the InstallOtelCollector RPC so that audit-log setting
+      // changes always reach the node - specifically the on-node
+      // zip_purge_yb_logs.sh script and its otel-collector/log_cleanup_env
+      // sidecar. When otel-collector isn't being (re)installed the payload
+      // builder switches to a refresh-only mode that skips the heavy install
+      // steps (see NodeAgentRpcPayload.setupInstallOtelCollectorBits).
+      nodeAgentClient.runInstallOtelCollector(
+          nodeAgent,
+          nodeAgentRpcPayload.setupInstallOtelCollectorBits(
+              universe, node, taskParams(), nodeAgent),
+          NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
     } else {
       log.info("Configuring otel-collector using legacy mode without node-agent");
       getNodeManager()

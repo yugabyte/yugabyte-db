@@ -73,11 +73,15 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     // set creatingUser
     params.creatingUser = CommonUtils.getUserFromContext();
     // set rootCA of encryptionInTransit into top-level of v1 universe
+
     if (universeSpec != null && universeSpec.getEncryptionInTransitSpec() != null) {
       EncryptionInTransitSpec source = universeSpec.getEncryptionInTransitSpec();
       params.rootCA = source.getRootCa();
       params.setClientRootCA(source.getClientRootCa());
-      if (source.getRootCa() != null && !source.getRootCa().equals(source.getClientRootCa())) {
+      if (source.getRootAndClientRootCaSame() != null) {
+        params.rootAndClientRootCASame = source.getRootAndClientRootCaSame();
+      } else if (source.getRootCa() != null
+          && !source.getRootCa().equals(source.getClientRootCa())) {
         params.rootAndClientRootCASame = false;
       }
     }
@@ -92,10 +96,12 @@ public abstract class UniverseDefinitionTaskParamsDecorator
           if (universeSpec != null) {
             cluster.userIntent.universeName = universeSpec.getName();
           }
-          // set the provider type for each cluster
-          Provider clusterProvider =
-              Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-          cluster.userIntent.providerType = clusterProvider.getCloudCode();
+          if (!cluster.userIntent.isMulticloudSupport()) {
+            // set the provider type for each cluster
+            Provider clusterProvider =
+                Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+            cluster.userIntent.providerType = clusterProvider.getCloudCode();
+          }
           // set yb software version into all clusters
           if (universeSpec != null && universeSpec.getYbSoftwareVersion() != null) {
             cluster.userIntent.ybSoftwareVersion = universeSpec.getYbSoftwareVersion();

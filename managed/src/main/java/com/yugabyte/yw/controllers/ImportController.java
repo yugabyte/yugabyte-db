@@ -76,7 +76,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.ServerInfo;
 import play.data.Form;
 import play.libs.Json;
@@ -594,7 +594,7 @@ public class ImportController extends AuthenticatedController {
   private Map<String, Integer> getTServers(
       String masterAddresses, ImportUniverseResponseData results) {
     Map<String, Integer> tservers_list = new HashMap<>();
-    try (YBClient client = ybService.getClient(masterAddresses)) {
+    try (YBClientApi client = ybService.getClient(masterAddresses)) {
       // Fetch the tablet servers.
       ListTabletServersResponse listTServerResp = client.listTabletServers();
 

@@ -216,22 +216,19 @@ class PgGlobalViewsExceedRpcMaxSizeTest : public PgGlobalViewsTest {
   virtual ~PgGlobalViewsExceedRpcMaxSizeTest() = default;
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // rpc_max_message_size must be at least 3.5 MB for queries to work properly.
-    // Use a smaller ASH buffer so it fills and wraps faster (important for
-    // debug builds), while keeping the RPC limit at the required minimum.
-    constexpr auto kAshBufferSizeKiB = 2048;
-    constexpr auto kRpcMaxMessageSize = 3584 * 1024;
-    options->extra_tserver_flags.push_back(
-        "--ysql_pg_conf_csv=yb_enable_global_views=true");
-    options->extra_tserver_flags.push_back(Format(
-        "--ysql_yb_ash_circular_buffer_size=$0", kAshBufferSizeKiB));
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_ash_sampling_interval_ms=50");
+    PgGlobalViewsTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back(Format(
         "--rpc_max_message_size=$0", kRpcMaxMessageSize));
-    options->extra_tserver_flags.push_back(Format(
-        "--consensus_max_batch_size_bytes=$0", kRpcMaxMessageSize - 2048));
   }
+
+  // 6 MB rather than 5 MB: PgResultToPB charges each row its kRowSize value plus 12 bytes of
+  // protobuf tag and length framing, so five rows encode to 5242940 bytes. A 5 MB limit leaves
+  // only 5241856 bytes once 1 KB is reserved for RPC headers, which would truncate the result at
+  // four rows. 6 MB leaves 6290432 bytes, which fits five rows but not six.
+  static constexpr auto kRpcMaxMessageSize = 6 * 1024 * 1024;
+  static constexpr auto kRowSize = 1 * 1024 * 1024;
+  static constexpr auto kNumRows = 10;
+  static constexpr auto kNumExpectedRowsPerTserver = 5;
 };
 
 class PgBuiltinGlobalViewsTest : public LibPqTestBase {
@@ -502,51 +499,23 @@ TEST_F(PgGlobalViewsTest, TestTserverDownBetweenPrepareAndExecute) {
   ASSERT_STR_CONTAINS(warnings[0], Format("global view: skipping tserver $0", down_uuid));
 }
 
-TEST_F(PgGlobalViewsExceedRpcMaxSizeTest, YB_DISABLE_TEST_IN_SANITIZERS(TestDataExceedsRpcSize)) {
+TEST_F(PgGlobalViewsExceedRpcMaxSizeTest, TestDataExceedsRpcSize) {
   const auto kNumTservers = GetNumTabletServers();
 
-  // Run multiple concurrent connections per tserver to generate enough ASH samples
-  // to fill and wrap the circular buffer quickly.
-  constexpr auto kConnectionsPerTserver = 10;
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE VIEW large_result AS "
+      "SELECT yb_get_local_tserver_uuid() AS server_uuid, repeat('x', $0) AS data "
+      "FROM generate_series(1, $1)", kRowSize, kNumRows));
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE FOREIGN TABLE "gv$large_result" (server_uuid UUID, data TEXT)
+      SERVER gv_server
+      OPTIONS (schema_name 'public', table_name 'large_result'))"));
+  ASSERT_OK(conn_->Execute("GRANT SELECT ON large_result TO pg_read_all_stats"));
 
-  static constexpr auto kSleepDuration = 300;
-
-  TestThreadHolder thread_holder;
-  for (int i = 0; i < kNumTservers; ++i) {
-    for (int j = 0; j < kConnectionsPerTserver; ++j) {
-      thread_holder.AddThreadFunctor([this,  &stop = thread_holder.stop_flag(), i] {
-        auto conn = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(i)));
-        ASSERT_OK(conn.FetchFormat("SELECT pg_sleep($0)", kSleepDuration));
-      });
-    }
-  }
-  // Wait for the ASH circular buffer to fill and wrap around on each tserver.
-  // We detect wrapping by observing that MIN(sample_time) increases - once the
-  // buffer is full, new samples overwrite the oldest ones, causing the minimum
-  // to shift forward.
-  std::vector<MonoDelta> initial_min_times(kNumTservers);
   std::vector<PGConn> ts_conns;
   for (int i = 0; i < kNumTservers; ++i) {
-    ts_conns.push_back(ASSERT_RESULT(ConnectToTsForDB(*cluster_->tablet_server(i), kInitialDB)));
-    ASSERT_OK(LoggedWaitFor([&, i]() -> Result<bool> {
-      auto count = VERIFY_RESULT(ts_conns[i].FetchRow<PGUint64>(
-          "SELECT COUNT(*) FROM yb_active_session_history"));
-      return count > 0;
-    }, 60s, Format("Waiting for initial ASH samples on tserver $0", i)));
-
-    initial_min_times[i] = ASSERT_RESULT(ts_conns[i].FetchRow<MonoDelta>(
-        "SELECT MIN(sample_time) FROM yb_active_session_history"));
-  }
-
-  // Now wait for MIN(sample_time) to advance on each tserver, meaning old samples
-  // were overwritten and the circular buffer has wrapped around.
-  for (int i = 0; i < kNumTservers; ++i) {
-    ASSERT_OK(LoggedWaitFor([&, i]() -> Result<bool> {
-      auto min_time = VERIFY_RESULT(ts_conns[i].FetchRow<MonoDelta>(
-          "SELECT MIN(sample_time) FROM yb_active_session_history"));
-      return min_time > initial_min_times[i];
-    }, MonoDelta::FromSeconds(kSleepDuration),
-       Format("Waiting for ASH buffer to wrap on tserver $0", i)));
+    ts_conns.push_back(ASSERT_RESULT(
+        ConnectToTsForDB(*cluster_->tablet_server(i), kInitialDB)));
   }
 
   TestThreadHolder log_waiter_threads;
@@ -560,7 +529,8 @@ TEST_F(PgGlobalViewsExceedRpcMaxSizeTest, YB_DISABLE_TEST_IN_SANITIZERS(TestData
   }
 
   for (auto& conn : ts_conns) {
-    ASSERT_OK(conn.Fetch("SELECT * FROM gv$partial_ash"));
+    auto rows = ASSERT_RESULT(conn.FetchRows<std::string>("SELECT data FROM \"gv$large_result\""));
+    ASSERT_EQ(rows.size(), kNumExpectedRowsPerTserver * kNumTservers);
   }
 }
 

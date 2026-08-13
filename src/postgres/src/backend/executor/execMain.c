@@ -1708,7 +1708,6 @@ ExecutePlan(QueryDesc *queryDesc,
 		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
 		yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
 	}
-		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
 	queryDesc->already_executed = true;
 
 	estate->es_use_parallel_mode = use_parallel_mode;
@@ -2017,10 +2016,15 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		/*
 		 * YB: When the plan does not fetch the target tuple (e.g. the
 		 * single-row UPDATE path), unmodified columns are absent from the
-		 * slot, so the NOT NULL check below must skip them.
+		 * slot, so the NOT NULL check below must skip them.  Skip only for
+		 * UPDATE and DELETE: an INSERT has no target tuple to fetch, and the
+		 * inserted tuple is always complete.  Any future operation (e.g.
+		 * MERGE) must opt in deliberately.
 		 */
 		bool		yb_skip_unmodified = (mtstate &&
-										  !mtstate->yb_fetch_target_tuple);
+										  (mtstate->operation == CMD_UPDATE ||
+										   mtstate->operation == CMD_DELETE) &&
+										  mtstate->yb_skip_fetch_target_tuple);
 		Bitmapset  *yb_modifiedCols = NULL;
 
 		if (yb_skip_unmodified)

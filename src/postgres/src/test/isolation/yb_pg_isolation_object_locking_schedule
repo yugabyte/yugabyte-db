@@ -1,5 +1,10 @@
 test: fk-partitioned-1
 test: propagate-lock-delete
+test: multiple-cic
+test: alter-table-2
+test: alter-table-3
+test: alter-table-4
 test: yb.port.sequence-ddl
+test: yb.port.vacuum-concurrent-drop
 test: partition-concurrent-attach
 test: truncate-conflict

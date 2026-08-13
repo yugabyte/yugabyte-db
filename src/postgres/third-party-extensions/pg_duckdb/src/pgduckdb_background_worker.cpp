@@ -280,6 +280,12 @@ pgduckdb_background_worker_main(Datum main_arg) {
 PG_FUNCTION_INFO_V1(force_motherduck_sync);
 Datum
 force_motherduck_sync(PG_FUNCTION_ARGS) {
+	if (pgduckdb::YbIsLakeIoMode()) {
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		         errmsg("MotherDuck is not supported")));
+	}
+
 	Datum drop_with_cascade = PG_GETARG_BOOL(0);
 	/* clear the cache of known catalog versions to force a full sync */
 	last_known_motherduck_catalog_versions.clear();

@@ -2213,7 +2213,9 @@ ysql_conn_mgr_active_connections:
   function: "avg_over_time|sum"
   range: true
   filters:
-    saved_name: "ysql_conn_mgr_active_clients|ysql_conn_mgr_queued_clients|ysql_conn_mgr_waiting_clients|ysql_conn_mgr_clients_total"
+    saved_name: "ysql_conn_mgr_active_clients|ysql_conn_mgr_queued_clients|\
+      ysql_conn_mgr_waiting_clients|ysql_conn_mgr_clients_total|\
+      ysql_conn_mgr_sticky_connections"
   group_by: "saved_name"
   panel_group: "YSQL Ops & Latency"
   layout:
@@ -2226,6 +2228,7 @@ ysql_conn_mgr_active_connections:
         "ysql_conn_mgr_queued_clients": "Queued"
         "ysql_conn_mgr_waiting_clients": "Idle/Pending"
         "ysql_conn_mgr_clients_total": "Total"
+        "ysql_conn_mgr_sticky_connections": "Sticky"
 
 #Cassandra Metrics
 cql_server_rpc_per_second:

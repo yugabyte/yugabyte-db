@@ -3,6 +3,7 @@
 package api.v2.controllers;
 
 import api.v2.handlers.ImageBundleManagementHandler;
+import api.v2.models.ImageBundle;
 import api.v2.models.ImageBundlePagedQuerySpec;
 import api.v2.models.ImageBundlePagedResp;
 import com.google.inject.Inject;
@@ -24,6 +25,12 @@ public class ImageBundleApiControllerImp extends ImageBundleApiControllerImpInte
       ImageBundleManagementHandler handler) {
     super(auditService, config, gFlagsAuditHandler);
     this.handler = handler;
+  }
+
+  @Override
+  public ImageBundle getImageBundle(Request request, UUID cUUID, UUID providerUUID, UUID iBUUID)
+      throws Exception {
+    return handler.getImageBundle(cUUID, providerUUID, iBUUID);
   }
 
   @Override

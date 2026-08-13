@@ -67,6 +67,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -128,7 +129,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Status;
@@ -237,6 +238,7 @@ public class UniverseCRUDHandler {
             || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
             || isKubernetesVolumeUpdate(cluster, currentCluster)
             || isKubernetesNodeSpecUpdate(cluster, currentCluster)
+            || isProviderSpecificationsChanged(cluster, currentCluster)
             || (isK8s
                 && !isSameInstanceTypes(
                     cluster.userIntent, currentCluster.userIntent, nodesInCluster))
@@ -282,6 +284,18 @@ public class UniverseCRUDHandler {
       }
     }
     return result;
+  }
+
+  private static boolean isProviderSpecificationsChanged(Cluster cluster, Cluster currentCluster) {
+    Set<UniverseDefinitionTaskParams.ProviderSpecification> current = new HashSet<>();
+    if (currentCluster.userIntent.providerSpecifications != null) {
+      current.addAll(currentCluster.userIntent.providerSpecifications);
+    }
+    Set<UniverseDefinitionTaskParams.ProviderSpecification> newOne = new HashSet<>();
+    if (cluster.userIntent.providerSpecifications != null) {
+      newOne.addAll(cluster.userIntent.providerSpecifications);
+    }
+    return !Objects.equals(current, newOne);
   }
 
   private static boolean isRegionListUpdate(Cluster cluster, Cluster currentCluster) {
@@ -443,6 +457,18 @@ public class UniverseCRUDHandler {
           BAD_REQUEST,
           "masterDeviceInfo and masterInstanceType can only be set when dedicated nodes for "
               + "master and tserver are selected.");
+    }
+    if (userIntent.dedicatedNodes) {
+      if (userIntent.masterDeviceInfo == null && userIntent.deviceInfo != null) {
+        if (Util.isKubernetesBasedUniverse(taskParams)) {
+          userIntent.masterDeviceInfo = OperatorUtils.defaultMasterDeviceInfo();
+        } else {
+          userIntent.masterDeviceInfo = userIntent.deviceInfo.clone();
+        }
+      }
+      if (userIntent.masterInstanceType == null) {
+        userIntent.masterInstanceType = userIntent.instanceType;
+      }
     }
     if (userIntent.deviceInfo != null) {
       userIntent.deviceInfo.validate();
@@ -1083,7 +1109,14 @@ public class UniverseCRUDHandler {
         primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
 
         // Check if universe has multi-regions configured at creation time.
-        int numRegions = primaryIntent.regionList.size();
+        int numRegions =
+            (int)
+                primaryCluster
+                    .getOverallPlacement()
+                    .azInfoStream()
+                    .map(azInfo -> azInfo.region.uuid)
+                    .distinct()
+                    .count();
         boolean isMultiRegion = numRegions > 1;
         universe.updateConfig(
             ImmutableMap.of(Universe.IS_MULTIREGION, Boolean.toString(isMultiRegion)));
@@ -1458,6 +1491,8 @@ public class UniverseCRUDHandler {
 
     PlacementInfoUtil.updatePlacementInfo(
         taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster);
+    PlacementInfoUtil.finalSanityCheckConfigure(
+        primaryCluster, taskParams.getNodesInCluster(primaryCluster.uuid));
     TaskType taskType = TaskType.EditUniverse;
     if (primaryCluster.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
@@ -1488,6 +1523,8 @@ public class UniverseCRUDHandler {
     Cluster cluster = getOnlyReadReplicaOrBadRequest(taskParams.getReadOnlyClusters());
     validateConsistency(u.getUniverseDetails().getPrimaryCluster(), cluster);
     PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(cluster.uuid), cluster);
+    PlacementInfoUtil.finalSanityCheckConfigure(
+        cluster, taskParams.getNodesInCluster(cluster.uuid));
     TaskType taskType = TaskType.EditUniverse;
     if (cluster.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
@@ -1948,6 +1985,8 @@ public class UniverseCRUDHandler {
 
     PlacementInfoUtil.updatePlacementInfo(
         taskParams.getNodesInCluster(readOnlyCluster.uuid), readOnlyCluster);
+    PlacementInfoUtil.finalSanityCheckConfigure(
+        readOnlyCluster, taskParams.getNodesInCluster(readOnlyCluster.uuid));
 
     // Submit the task to create the cluster.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -3115,7 +3154,7 @@ public class UniverseCRUDHandler {
     if (taskParams.certUuid != null) {
       certificate = CertificateInfo.get(taskParams.certUuid).getCertificate();
     }
-    try (YBClient client = ybService.getClient(masterAddrs, certificate)) {
+    try (YBClientApi client = ybService.getClient(masterAddrs, certificate)) {
       return UUID.fromString(client.getMasterClusterConfig().getConfig().getClusterUuid());
     } catch (Exception e) {
       throw new RuntimeException(e);

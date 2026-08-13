@@ -74,6 +74,7 @@
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/status_fwd.h"
+#include "yb/util/abort_source.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_list.h"
@@ -375,6 +376,10 @@ class Tablet : public AbstractTablet,
 
   Status UpdateOpIdForOperation(WriteOperation* operation);
 
+  Status WriteTransactionMetadataUpdate(
+      OpId op_id, HybridTime write_hybrid_time, Slice transaction_id,
+      const LWTransactionMetadataPB& metadata_update) override;
+
   // `apply_to_storages`: see ApplyRowOperations.
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
@@ -514,7 +519,8 @@ class Tablet : public AbstractTablet,
 
   // Used to update the tablets on the index table that the index has been backfilled.
   // This means that full compactions can now garbage collect delete markers.
-  Status MarkBackfillDone(const OpId& op_id, const TableId& table_id = "");
+  Status MarkBackfillDone(
+      const OpId& op_id, const TableId& table_id = "", uint64_t birth_time = 0);
 
   // Change wal_retention_secs in the metadata.
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
@@ -689,7 +695,8 @@ class Tablet : public AbstractTablet,
         .intents = intents_db_.get(),
         .key_bounds = &key_bounds_,
         .retention_policy = retention_policy_.get(),
-        .metrics = metrics ? metrics : metrics_.get() };
+        .metrics = metrics ? metrics : metrics_.get(),
+        .abort_source = &abort_pending_op_source_ };
   }
 
   struct SplitKeysData {
@@ -1336,8 +1343,9 @@ class Tablet : public AbstractTablet,
   // RocksDB in-memory instance.
   mutable RWOperationCounter pending_op_counter_not_blocking_rocksdb_shutdown_start_;
 
-  // Used to abort pending operations that are not blocking RocksDB shutdown start.
-  StatusHolder abort_pending_op_status_holder_;
+  // Signals long-running operations (e.g. iterators, which poll it via docdb::DocDB) to abort
+  // while StartShutdownStorages drains pending operations for truncate, restore or shutdown.
+  AbortSource abort_pending_op_source_;
 
   // Used by Alter/Schema-change ops to pause new write ops from being submitted.
   RWOperationCounter write_ops_being_submitted_counter_;
@@ -1461,6 +1469,10 @@ class Tablet : public AbstractTablet,
   // Function to get min schema version for a table needed for xCluster.
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
+
+  // Used to schedule retain_delete_markers validation when colocated indexes are added
+  // to an already-open tablet.
+  std::function<void(const RaftGroupMetadata&)> schedule_tablet_metadata_validation_;
 
   simple_spinlock operation_filters_mutex_;
 

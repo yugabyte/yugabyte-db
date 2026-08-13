@@ -17,14 +17,18 @@ credential_vars:
 
 region_cidr_format: '{}.0.0/16'
 
-# OCI Regions with availability domains
-# Using Oracle Linux 8 as the default image (Platform Images)
-# Image OCIDs are region-specific - these are placeholders that should be updated
-# per deployment or use the OCI image lookup API
+# Default base image, published to the OCI Partner Image Catalog (PIC).
+# The listing OCID is region-independent; YBA resolves it to the region-specific
+# Compute image OCID.
+default_image_listing:
+  # AlmaLinux OS 9 (x86_64)
+  listing_id: 'ocid1.appcataloglisting.oc1..aaaaaaaae5csgo2yfi4f7wohwo3je5ukeianys2gfxuhhjuciuctfdsch2uq'
+  # AlmaLinux OS 9 (AArch64)
+  arm_listing_id: 'ocid1.appcataloglisting.oc1..aaaaaaaaftyo754yngogacktfvav4itegkcys2ssw7qhtuapucjq3walodbq'
+  resource_version: '9.8.20260616'
 regions:
   us-ashburn-1:
     cidr_prefix: '10.10'
-    # Oracle Linux 8 image - actual OCID varies by region
     image: ''
     zones:
     - 'AD-1'

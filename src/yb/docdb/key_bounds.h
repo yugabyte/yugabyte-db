@@ -21,6 +21,12 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+namespace yb {
+
+class AbortSource;
+
+}
+
 namespace yb::docdb {
 
 class HistoryRetentionPolicy;
@@ -59,6 +65,10 @@ struct DocDB {
   const KeyBounds* key_bounds = nullptr;
   HistoryRetentionPolicy* retention_policy = nullptr;
   tablet::TabletMetrics* metrics = nullptr;
+  // When set, long-running reads over this DocDB poll it and abort when requested. Each such
+  // read holds a pending tablet operation, and aborting it lets truncate, restore and shutdown
+  // drain pending operations quickly.
+  const AbortSource* abort_source = nullptr;
 
   DocDB WithoutIntents() const {
     auto result = *this;

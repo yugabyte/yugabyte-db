@@ -22,6 +22,7 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_ysql_lease.fwd.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status_callback.h"
@@ -95,7 +96,6 @@ class ObjectLockInfoManager {
       const RelinquishYsqlLeaseRequestPB& req, RelinquishYsqlLeaseResponsePB& resp,
       rpc::RpcContext& rpc, const LeaderEpoch& epoch);
 
-  tserver::DdlLockEntriesPB ExportObjectLockInfo();
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info);
   void RelaunchInProgressRequests(const LeaderEpoch& leader_epoch, const std::string& tserver_uuid);
   void Clear();

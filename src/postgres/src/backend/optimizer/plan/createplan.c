@@ -3724,12 +3724,31 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				return false;
 			}
 
-			/*
-			 * If the column is set to itself (SET col = col), it will not
-			 * get updated. So it has no impact on single row computation.
-			 */
-			if (varattno == tle->resno)
+			/* The column is set to itself (SET col = col). */
+			if (varattno == resno)
+			{
+				/*
+				 * If the column has a NOT NULL constraint, avoid the single row
+				 * path. NOT NULL constraint checks happen in the postgres
+				 * executor and require the value of the column to be populated.
+				 * Since the single row path skips fetching the target tuple,
+				 * the check cannot correctly distinguish between missing values
+				 * and NULL values.
+				 * TODO(kramanathan): Optimizing this path requires code
+				 * refactor.
+				 */
+				if (TupleDescAttr(tupDesc, resno - 1)->attnotnull)
+				{
+					RelationClose(relation);
+					return false;
+				}
+
+				/*
+				 * In all other cases, the column has no impact on the single
+				 * row computation.
+				 */
 				continue;
+			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);
 			update_attrs = bms_add_member(update_attrs, resno - attr_offset);

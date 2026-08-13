@@ -27,6 +27,8 @@
 #include "yb/docdb/read_operation_data.h"
 #include "yb/docdb/rocksdb_writer.h"
 
+#include "yb/hnsw/hnsw_block_cache.h"
+
 #include "yb/qlexpr/index.h"
 
 #include "yb/util/decimal.h"
@@ -35,6 +37,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 #include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
@@ -313,6 +316,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .vector_merge_filter_factory = std::move(merge_filter_factory),
       .file_extension = GetVectorIndexChunkFileExtension(options_),
       .metric_entity = metric_entity_,
+      .block_cache_capacity = block_cache_ ? block_cache_->capacity() : 0,
     };
     return lsm_.Open(std::move(lsm_options));
   }
@@ -332,6 +336,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
     vector_index::VectorLSMInsertContext context {
       .frontiers = insert_options.frontiers,
       .chunk_size = insert_options.chunk_size,
+      .reservation_mode = insert_options.reservation_mode,
     };
     return lsm_.Insert(lsm_entries, context);
   }
@@ -342,19 +347,22 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
-      const ReadOperationData& read_operation_data) override {
+      DocVectorIndexReverseMappingReader& reverse_mapping_reader) override {
     auto entries = VERIFY_RESULT(lsm_.Search(
         VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
 
     auto dump_stats = FLAGS_vector_index_dump_stats;
     auto start_time = MonoTime::Now();
 
-    // Resolve reverse mappings at the request read time, so a row deleted after the read time
-    // is still resolved to its ybctid, while a vector inserted after the read time is treated
-    // as missing.
-    auto reverse_mapping_reader = VERIFY_RESULT(context_->CreateReverseMappingReader(
-        read_operation_data.read_time, read_operation_data.statistics));
+    // Let a test apply a DELETE's reverse-mapping tombstone between the filter's read and the
+    // resolution below, reproducing the "Vector not found" race.
+    TEST_SYNC_POINT("DocVectorIndexImpl::Search:AfterFilter");
+    TEST_SYNC_POINT("DocVectorIndexImpl::Search:BeforeResolve");
 
+    // Resolve ybctids with the caller's reader -- the same one the filter used -- so both see one
+    // snapshot. Otherwise a DELETE whose reverse-mapping tombstone lands between the two reads lets
+    // the filter accept an entry that resolves empty here; such a row is still dropped when its
+    // ybctid is fetched (the row delete is intent-tracked, unlike the physical-only reverse map).
     DocVectorIndexSearchResult result;
     VLOG_WITH_FUNC(4) << "could_have_missing_entries: " << could_have_missing_entries
                       << ", entries.size(): " << entries.size()
@@ -363,7 +371,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
         could_have_missing_entries && entries.size() >= options.max_num_results;
     result.entries.reserve(entries.size());
     for (auto& entry : entries) {
-      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->FetchYbctid(entry.vector_id));
+      auto ybctid = VERIFY_RESULT(reverse_mapping_reader.FetchYbctid(entry.vector_id));
       VLOG_WITH_FUNC(4)
           << "vector_id: " << entry.vector_id << ", ybctid: " << ybctid.ToDebugHexString();
       if (ybctid.empty()) {
@@ -424,8 +432,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.WaitForFlush();
   }
 
-  ConsensusFrontierPtr GetFlushedFrontier() override {
-    return down_cast<ConsensusFrontier>(lsm_.GetFlushedFrontier());
+  storage::FrontierInfo GetFrontiers(storage::FrontierKinds kinds) override {
+    return lsm_.GetFrontiers(kinds);
   }
 
   rocksdb::FlushAbility GetFlushAbility() override {
@@ -502,6 +510,26 @@ Result<Slice> DocVectorIndexReverseMappingReader::FetchYbctid(
 
   auto decoded = VERIFY_RESULT(dockv::EncodedDocVectorMetaValue::Decode(value));
   return decoded.IsTombstone() ? Slice{} : decoded.ybctid;
+}
+
+ConsensusFrontierPtr DocVectorIndex::GetFlushedFrontier() {
+  return down_cast<ConsensusFrontier>(
+      GetFrontiers(storage::FrontierKinds{storage::FrontierKind::kFlushed}).flushed);
+}
+
+storage::UserFrontierRange DocVectorIndex::GetInMemoryFrontiers() {
+  return GetFrontiers(storage::FrontierKinds{
+      storage::FrontierKind::kInMemorySmallest,
+      storage::FrontierKind::kInMemoryLargest}).in_memory;
+}
+
+storage::UserFrontierPtr DocVectorIndex::GetInMemoryFrontier(storage::UpdateUserValueType type) {
+  if (type == storage::UpdateUserValueType::kSmallest) {
+    return GetFrontiers(storage::FrontierKinds{
+        storage::FrontierKind::kInMemorySmallest}).in_memory.smallest;
+  }
+  return GetFrontiers(storage::FrontierKinds{
+      storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
 }
 
 bool DocVectorIndex::BackfillDone() {

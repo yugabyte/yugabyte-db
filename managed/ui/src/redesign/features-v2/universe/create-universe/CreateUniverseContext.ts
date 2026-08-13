@@ -34,7 +34,9 @@ import { DEFAULT_COMMUNICATION_PORTS } from './helpers/constants';
 import {
   applyConnectionPoolingPortsToAdvanced,
   applyConnectionPoolingPortsToDatabase,
-  DEFAULT_CONNECTION_POOLING_PORTS
+  clearConnectionPoolingPortOverrides,
+  DEFAULT_CONNECTION_POOLING_PORTS,
+  shouldApplyConnectionPoolingPortOverrides
 } from './helpers/syncConnectionPoolingPorts';
 
 export enum CreateUniverseSteps {
@@ -171,17 +173,31 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
     instanceSettings: data
   }),
   saveDatabaseSettings: (data: DatabaseSettingsProps) => {
-    const shouldApplyCpPorts = !!(data.enableConnectionPooling && data.overrideCPPorts);
+    const providerCode =
+      context.generalSettings?.providerConfiguration?.code ?? context.generalSettings?.cloud;
+    // K8s cannot override ports — clear any stale override state.
+    const databaseSettings =
+      providerCode === CloudType.kubernetes
+        ? clearConnectionPoolingPortOverrides(data)
+        : data;
+    const shouldApplyCpPorts = shouldApplyConnectionPoolingPortOverrides(
+      databaseSettings,
+      providerCode
+    );
     let otherAdvancedSettings = context.otherAdvancedSettings;
 
     if (shouldApplyCpPorts) {
       // Sync CP ports into Advanced deployment ports only when CP + override are enabled.
       otherAdvancedSettings = applyConnectionPoolingPortsToAdvanced(otherAdvancedSettings, {
-        ysqlServerRpcPort: data.ysqlServerRpcPort,
-        internalYsqlServerRpcPort: data.internalYsqlServerRpcPort
+        ysqlServerRpcPort:
+          databaseSettings.ysqlServerRpcPort ??
+          DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort,
+        internalYsqlServerRpcPort:
+          databaseSettings.internalYsqlServerRpcPort ??
+          DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
       });
     } else if (otherAdvancedSettings) {
-      // When CP or override is off, Internal YSQL Port must stay at the default.
+      // When CP or override is off (or K8s), Internal YSQL Port must stay at the default.
       otherAdvancedSettings = {
         ...otherAdvancedSettings,
         internalYsqlServerRpcPort: DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
@@ -190,7 +206,7 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
 
     return {
       ...context,
-      databaseSettings: data,
+      databaseSettings,
       otherAdvancedSettings
     };
   },
@@ -203,16 +219,25 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
     proxySettings: data
   }),
   saveOtherAdvancedSettings: (data: OtherAdvancedProps) => {
-    const shouldApplyCpPorts = !!(
-      context.databaseSettings?.enableConnectionPooling &&
-      context.databaseSettings?.overrideCPPorts
+    const providerCode =
+      context.generalSettings?.providerConfiguration?.code ?? context.generalSettings?.cloud;
+    const shouldApplyCpPorts = shouldApplyConnectionPoolingPortOverrides(
+      context.databaseSettings,
+      providerCode
     );
-    const otherAdvancedSettings = shouldApplyCpPorts
-      ? data
-      : {
-          ...data,
-          internalYsqlServerRpcPort: DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
-        };
+    // K8s hides DeploymentPortsField — keep default communication ports.
+    const otherAdvancedSettings =
+      providerCode === CloudType.kubernetes
+        ? {
+            ...data,
+            ...DEFAULT_COMMUNICATION_PORTS
+          }
+        : shouldApplyCpPorts
+          ? data
+          : {
+              ...data,
+              internalYsqlServerRpcPort: DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+            };
 
     return {
       ...context,

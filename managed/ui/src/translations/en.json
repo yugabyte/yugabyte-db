@@ -165,6 +165,7 @@
       }
     },
     "universeActions": {
+      "blockedByKubernetesOperator": "This universe is controlled by the Kubernetes operator and cannot be modified from YugabyteDB Anywhere.",
       "precheckInitiatedMsg": "Running Prechecks...",
       "runPrecheckOnlyButton": "Run Pre-check Only",
       "lbState": {
@@ -497,6 +498,7 @@
           "actions": {
             "viewDetails": "View Details",
             "openUpgradeMonitor": "Open Upgrade Monitor",
+            "openUpgradeMonitorToContinue": "Open Upgrade Monitor to Continue",
             "upgradeDatabase": "Upgrade Database",
             "retry": "Retry"
           },
@@ -700,18 +702,24 @@
         }
       },
       "reprovisionNodesWithYnpModal": {
-        "title": "Reprovision Nodes with YNP",
-        "instructions": "Nodes will be provisioned in a rolling manner.",
+        "title": "Reprovision Universe Nodes",
+        "description": "This re-applies host setup on the selected nodes, including OS configuration, required packages, and Node Agent installation.",
+        "learnMoreAboutOperationalConsiderations": "Learn more about operational considerations",
+        "rollingRestartNoteRF3": "<bold>Note!</bold> Reprovisioning nodes will require a <bold>rolling restart</bold> of <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+        "rollingRestartNoteRF3SelectedNode": "<bold>Note!</bold> Reprovisioning will require a <bold>restart</bold> of <bold>{{nodeName}}</bold>. The universe will remain online and available throughout.",
+        "rollingRestartNoteLowRF": "<bold>Note!</bold> Reprovisioning nodes will require a <bold>restart</bold> of <bold>{{universeName}}</bold>. The universe won't be available for reads and writes during the restart.",
+        "rollingRestartNoteLowRFSelectedNode": "<bold>Note!</bold> Reprovisioning will require a <bold>restart</bold> of <bold>{{nodeName}}</bold>. The universe won't be available for reads and writes during the restart.",
         "reprovisionNodesFor": "Reprovision nodes for:",
         "allNodeInUniverse": "All nodes in this Universe",
         "selectedNode": "Selected node",
-        "confirmButton": "Reprovision Nodes with YNP",
+        "selectedNodeDisabledSingleNodeUniverse": "This universe only has one node.",
+        "confirmButton": "Reprovision Universe Nodes",
         "error": {
-          "requestFailureLabel": "Reprovision nodes with YNP request failed",
-          "taskFailure": "Failed to reprovision nodes with YNP."
+          "requestFailureLabel": "Reprovision Universe Nodes request failed",
+          "taskFailure": "Failed to Reprovision Universe Nodes."
         },
         "success": {
-          "requestSuccess": "Reprovision nodes with YNP started.",
+          "requestSuccess": "Reprovision Universe Nodes started.",
           "taskSuccess": "Reprovisioned nodes with YNP."
         }
       }
@@ -2746,9 +2754,11 @@
         "machineImageId": "Enter the machine image ID ",
         "machineImageIdPlaceholder": "e.g. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "amazonMachineImage": "Enter the Amazon Machine Image (AMI) ID for each region",
+        "machineImagePerRegion": "Enter the machine image OCID for each region",
         "machineImagePlaceholder": "e.g. ami-02d595c83c5e8504a",
         "region": "Region",
         "amiId": "AMI ID",
+        "imageId": "Image OCID",
         "portDetails": "Provide SSH user and SSH port details",
         "sshUser": "SSH User",
         "sshUserPlaceholder": "ec2-user",
@@ -3692,6 +3702,7 @@
           "enabled": "Enabled",
           "disabled": "Disabled",
           "creating": "Policy creation is in progress...",
+          "operatorControlledPolicy": "This backup schedule is controlled by the Kubernetes operator and cannot be changed from YugabyteDB Anywhere.",
           "deleteMsg": "scheduled backup policy is being deleted",
           "editModal": {
             "title": "Edit Scheduled Backup Policy",
@@ -3842,8 +3853,13 @@
           "quickSetup": "Quick Setup"
         },
         "formType": {
-          "guidedMode": "Guided Mode",
-          "expertMode": "Expert Mode"
+          "guidedMode": "Guided",
+          "expertMode": "Expert"
+        },
+        "setupMode": {
+          "title": "Setup Mode",
+          "description": "Choose how to configure cluster resilience and placement.",
+          "learnMore": "Learn more"
         },
         "singleNode": {
           "availabilityZone": "Availability Zone",
@@ -3864,6 +3880,7 @@
           "cancel": "Cancel"
         },
         "regions": "Regions",
+        "expertRegionIntro": "Start by selecting one or more regions.",
         "replicationFactor": "Replication Factor",
         "availabilityZonesCount": "{{count}} Availability Zone",
         "errMsg": {
@@ -3882,7 +3899,8 @@
           "moreNodesNone": "Fault tolerance <b>None</b> supports only single node deployments."
         },
         "guidedMode": {
-          "helpText": "Select the cluster’s <a>resilience</a> level to guide the setup.",
+          "header": "Resilience",
+          "helpText": "Start by Selecting the cluster’s <a>resilience</a> level to guide the setup.",
           "selectedResilienceRequires": "Selected resilience level requires:",
           "automaticReplicationFactor": "Replication factor {{replication_factor}} will be applied automatically.",
           "wordRegion": "region",
@@ -3898,20 +3916,20 @@
           "cautionLabel": "Caution!",
           "resilienceOutageWord": "outage",
           "REGION_LEVEL": {
-            "title": "Region",
+            "title": "Region Level",
             "subText": "Resilient to region outages.",
             "name": "region"
           },
           "NODE_LEVEL": {
-            "title": "Node",
+            "title": "Node Level",
             "subText": "Resilient to node outages but not availability zone outages.",
             "name": "node",
-            "titlePod": "Pod",
+            "titlePod": "Pod Level",
             "subTextPod": "Resilient to pod outages but not availability zone outages.",
             "namePod": "pod"
           },
           "AZ_LEVEL": {
-            "title": "Availability",
+            "title": "Availability Zone Level",
             "subText": "Resilient to availability zone outages.",
             "name": "availability zone"
           },
@@ -3970,6 +3988,7 @@
           "tServerPods": "Pods (TServer)",
           "nodes": "Nodes",
           "pods": "Pods",
+          "rankingAcrossRegions": "Ranking is applied across regions.",
           "tooltips": {
             "regionTag": "You can add or remove regions in the previous step (Regions).",
             "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.<br/><br/><a>Learn more</a>",
@@ -4276,7 +4295,11 @@
         "addHelmOverrides": "Add Helm Overrides",
         "overrideConfigured": "Helm Override Configured",
         "editHelmOverrides": "Edit Helm Overrides",
-        "helmOverrides": "HELM OVERRIDES"
+        "helmOverrides": "HELM OVERRIDES",
+        "validation": {
+          "duplicatePorts": "Port numbers must be unique.",
+          "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
+        }
       },
       "reviewAndSummary": {
         "daily": "Daily",
@@ -4295,7 +4318,8 @@
         "passwordStrength": "Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.",
         "required": "{{field}} is required",
         "universeNameValidation": "{{cloudType}} Universe name cannot contain capital letters or special characters except dashes",
-        "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
+        "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding.",
+        "duplicatePorts": "Port numbers must be unique."
       }
     },
     "geoPartition": {
@@ -4405,12 +4429,14 @@
         "editPodsAndAvailabilityZones": "Edit AZ and Pod Placement",
         "advancedPlacementOptions": "Advanced Placement Options",
         "editMasterServerNodeAllocation": "Edit Master Server Node Allocation",
+        "masterServerNodeAllocation": "Master Server Node Allocation",
+        "masterServerNodeAllocationHelpText": "Improve metadata performance by allocating dedicated master server nodes. <a>Learn more</a>",
         "clusterPlacement": "Cluster Placement",
         "primaryCluster": "Primary Cluster",
         "addReadReplica": "Add Read Replica",
         "editReadReplica": "Edit Read Replica",
         "readReplica": "Read Replica",
-        "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas.",
+        "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas. <a>Learn more</a>",
         "addGeoPartition": "Add Geo Partition",
         "geoPartitionHelpText": "Optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
         "faultTolerance": "Fault Tolerance",
@@ -4426,6 +4452,7 @@
         "noOfNodes": "No. of Nodes",
         "noOfPods": "No. of Pods",
         "reviewChanges": "Review Changes",
+        "noPlacementChanges": "Nothing to update - no placement fields changed.",
         "editPlacementConfirmModal": {
           "title": "Review Changes",
           "summary": "Summary of instance configuration changes:",
@@ -4570,6 +4597,12 @@
         "proxyHelper": "Configure web proxies as gateways for traffic from your database nodes. <a>Learn more</a>",
         "unableToApplyChanges": "Unable to apply changes."
       },
+      "fullMoveWarning": {
+        "message": "<bold>Changes to \"{{setting}} settings\" require a full move.</bold><br />Database performance may be temporarily affected while data is being moved. Consider making the change during lower-traffic period.",
+        "publicIp": "Public IP",
+        "networkPorts": "Network port",
+        "instanceProfileArn": "Instance Profile ARN"
+      },
       "logs": {
         "troubleshootingLogs": "Troubleshooting Logs",
         "complianceLogs": "Compliance Logs",
@@ -4587,6 +4620,16 @@
         "disableDatabaseQueryLogging": "Disable Database Query Logging",
         "enableAuditLogging": "Enable Audit Logging",
         "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to <telemetryLink>Telemetry Export</telemetryLink>.",
+        "toast": {
+          "disableQueryLogRequestFailedLabel": "Database query logging disable request failed",
+          "disableAuditLogRequestFailedLabel": "Database audit logging disable request failed"
+        },
+        "navigateToTelemetryExportConfirmation": {
+          "title": "You are about to leave this page",
+          "message": "To send logs to external tools, navigate to <bold>Settings / Telemetry Export</bold>.",
+          "back": "Back",
+          "submit": "Navigate to Settings / Telemetry Export"
+        },
         "queryLogSettings": {
           "title": "Configure Database Query Logging",
           "selectParameters": "Select Parameters",
@@ -4641,6 +4684,10 @@
             "title": "Confirm Configuration Change",
             "message": "Enabling database query logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
             "back": "Back"
+          },
+          "toast": {
+            "enableRequestFailedLabel": "Database query logging enable request failed",
+            "updateRequestFailedLabel": "Database query logging update request failed"
           }
         },
         "editAuditLogging": "Audit Logging Configuration",
@@ -4664,7 +4711,9 @@
             "logParameter": "pgaudit.log_parameter",
             "logRelation": "pgaudit.log_relation",
             "logStatement": "pgaudit.log_statement",
-            "logStatementOnce": "pgaudit.log_statement_once"
+            "logStatementOnce": "pgaudit.log_statement_once",
+            "retainAuditLogArchive": "Retain audit log archive on database nodes",
+            "logRetentionDays": "Retention period (days)"
           },
           "tooltips": {
             "read": "Log SELECT and COPY when the source is a relation or a query.",
@@ -4680,18 +4729,73 @@
             "logParameter": "Include parameters passed with the statement. Parameters are provided in .csv format after the statement text.",
             "logRelation": "Create separate log entries for each relation (TABLE, VIEW, etc.) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging.",
             "logStatement": "Include statement text with every log entry.",
-            "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry."
+            "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry.",
+            "retainAuditLogArchive": "Saves audit records in separate compressed archives on each database node so they can be retained independently of regular PostgreSQL logs.",
+            "logRetentionDays": "Number of days to keep the compressed audit log archives on each database node."
+          },
+          "validation": {
+            "logRetentionDaysMin": "Enter an integer of at least 1"
           },
           "confirmation": {
             "title": "Confirm Configuration Change",
             "message": "Enabling database audit logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
             "back": "Back"
+          },
+          "toast": {
+            "enableRequestFailedLabel": "Database audit logging enable request failed",
+            "updateRequestFailedLabel": "Database audit logging update request failed"
           }
+        }
+      },
+      "telemetryConfigConfirmation": {
+        "enableTitle": "Enable {{featureName}}",
+        "disableTitle": "Disable {{featureName}}",
+        "editTitle": "Confirm Configuration Change",
+        "enableSubmit": "Enable {{featureName}}",
+        "disableSubmit": "Disable {{featureName}}",
+        "editSubmit": "Apply Changes",
+        "acceptDowntimeProceed": "Accept Downtime and Proceed",
+        "back": "Back",
+        "enableMessageRolling": "Enabling {{featureNameLower}} requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+        "enableMessageRestart": "Enabling {{featureNameLower}} requires a <bold>restart</bold> of universe <bold>{{universeName}}</bold>.",
+        "enableDowntimeNote": "<bold>Note!</bold> The universe won’t be available for reads and writes during the restart.",
+        "disableConfirmMessage": "Are you sure you want to disable {{featureNameLower}}?",
+        "disableNoteRolling": "<bold>Note!</bold> Disabling {{featureNameLower}} requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+        "disableNoteRestart": "<bold>Note!</bold> Disabling {{featureNameLower}} requires a <bold>restart</bold> of universe <bold>{{universeName}}</bold>. The universe won’t be available for reads and writes during the restart.",
+        "featureNames": {
+          "queryLog": "Database Query Logging",
+          "auditLog": "Database Audit Logging",
+          "metricsExport": "Metrics Export",
+          "queryLogExport": "Query Log Export",
+          "auditLogExport": "Audit Log Export"
+        },
+        "featureNamesLower": {
+          "queryLog": "database query logging",
+          "auditLog": "database audit logging",
+          "metricsExport": "metrics export",
+          "queryLogExport": "query log export",
+          "auditLogExport": "audit log export"
         }
       },
       "telemetryExport": {
         "title": "Telemetry Export",
         "subtitle": "Export metrics and logs to external observability tools.",
+        "k8sUnsupportedAuditExportVersion": "Requires database version {{stableVersion}} (stable) or {{previewVersion}} (preview) or later.",
+        "k8sUnsupportedPassthroughExportVersion": "Requires database version {{stableVersion}} (stable) or {{previewVersion}} (preview) or later.",
+        "toast": {
+          "disableMetricsExportRequestFailedLabel": "Metrics export disable request failed",
+          "disableQueryLogExportRequestFailedLabel": "Query log export disable request failed",
+          "disableAuditLogExportRequestFailedLabel": "Audit log export disable request failed"
+        },
+        "navigateToLogsConfirmation": {
+          "title": "You are about to leave this page",
+          "message": {
+            "query": "To enable database query log, navigate to <bold>Settings / Logs</bold>.",
+            "audit": "To enable database audit log, navigate to <bold>Settings / Logs</bold>."
+          },
+          "back": "Back",
+          "submit": "Navigate to Settings / Logs"
+        },
         "metricsExport": {
           "title": "Export Metrics",
           "description": "Export cluster's metrics to 3rd party monitoring dashboards.",
@@ -4704,9 +4808,9 @@
           "exportStatus": "Export Status",
           "exportConfigurationName": "Export Configuration Name",
           "exportingTo": "Exporting to",
-          "editMetricsExportConfiguration": "Metrics Export Configuration",
-          "editMetricsExport": "Edit Metrics Export Configuration",
-          "disableMetricsExport": "Disable Metrics Export"
+          "editExportConfiguration": "Metrics Export Configuration",
+          "editExport": "Edit Metrics Export Configuration",
+          "disableExport": "Disable Metrics Export"
         },
         "metricsExportSettings": {
           "title": "Export Metrics",
@@ -4726,6 +4830,10 @@
           "applyChanges": "Apply Changes",
           "enableInProgress": "Enabling metrics export",
           "updateInProgress": "Updating metrics export configuration",
+          "toast": {
+            "enableRequestFailedLabel": "Metrics export enable request failed",
+            "updateRequestFailedLabel": "Metrics export update request failed"
+          },
           "collectionLevelOptions": {
             "all": "All",
             "normal": "Normal",
@@ -4750,6 +4858,92 @@
             "enableSubmit": "Enable Metrics Export",
             "editSubmit": "Apply Changes",
             "message": "Enable metrics export requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
+        },
+        "queryLogExport": {
+          "title": "Export Database Query Log",
+          "description": "Export query log to a third party log management tool.",
+          "exportOff": "Export Off",
+          "loggingOff": "Logging Off",
+          "enableLoggingHelper": "Enable logging to allow export.",
+          "enableLoggingAction": "Enable Database Query Log",
+          "actionLabel": "Export Database Query Log",
+          "active": "Active",
+          "configuring": "Configuring",
+          "exportStatus": "Export Status",
+          "exportConfigurationName": "Export Configuration Name",
+          "exportingTo": "Exporting to",
+          "editExportConfiguration": "Query Log Export Configuration",
+          "editExport": "Edit Query Log Export Configuration",
+          "disableExport": "Disable Query Log Export"
+        },
+        "auditLogExport": {
+          "title": "Export Database Audit Log",
+          "description": "Export audit log to a third party log management tool.",
+          "exportOff": "Export Off",
+          "loggingOff": "Logging Off",
+          "enableLoggingHelper": "Enable logging to allow export.",
+          "enableLoggingAction": "Enable Database Audit Log",
+          "actionLabel": "Export Database Audit Log",
+          "active": "Active",
+          "configuring": "Configuring",
+          "exportStatus": "Export Status",
+          "exportConfigurationName": "Export Configuration Name",
+          "exportingTo": "Exporting to",
+          "editExportConfiguration": "Audit Log Export Configuration",
+          "editExport": "Edit Audit Log Export Configuration",
+          "disableExport": "Disable Audit Log Export"
+        },
+        "queryLogExportSettings": {
+          "title": "Export Database Query Log",
+          "subtitle": "Select a destination for the logs.",
+          "exportConfiguration": "Log Export Configuration",
+          "exportConfigurationPlaceholder": "Select export configuration",
+          "cancel": "Cancel",
+          "exportLogs": "Export Query Log",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling query log export",
+          "updateInProgress": "Updating query log export configuration",
+          "toast": {
+            "enableRequestFailedLabel": "Query log export enable request failed",
+            "updateRequestFailedLabel": "Query log export update request failed"
+          },
+          "errors": {
+            "exportConfigurationRequired": "Select an export configuration"
+          },
+          "confirmation": {
+            "enableTitle": "Enable Query Log Export",
+            "editTitle": "Confirm Configuration Change",
+            "enableSubmit": "Enable Query Log Export",
+            "editSubmit": "Apply Changes",
+            "message": "Enable query log export requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
+        },
+        "auditLogExportSettings": {
+          "title": "Export Database Audit Log",
+          "subtitle": "Select a destination for the logs.",
+          "exportConfiguration": "Log Export Configuration",
+          "exportConfigurationPlaceholder": "Select export configuration",
+          "cancel": "Cancel",
+          "exportLogs": "Export Audit Log",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling audit log export",
+          "updateInProgress": "Updating audit log export configuration",
+          "toast": {
+            "enableRequestFailedLabel": "Audit log export enable request failed",
+            "updateRequestFailedLabel": "Audit log export update request failed"
+          },
+          "errors": {
+            "exportConfigurationRequired": "Select an export configuration"
+          },
+          "confirmation": {
+            "enableTitle": "Enable Audit Log Export",
+            "editTitle": "Confirm Configuration Change",
+            "enableSubmit": "Enable Audit Log Export",
+            "editSubmit": "Apply Changes",
+            "message": "Enable audit log export requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
             "back": "Back"
           }
         }
@@ -4824,7 +5018,8 @@
         },
         "toast": {
           "addRRFailed": "Failed to add read replica",
-          "updateRRFailed": "Failed to update read replica"
+          "updateRRFailed": "Failed to update read replica",
+          "noPlacementChanges": "Nothing to update - no placement fields changed."
         },
         "validation": {
           "invalidArchitecture": "Invalid CPU Architecture",
@@ -4840,6 +5035,136 @@
           "nodesPositiveInteger": "Nodes must be a positive whole number.",
           "universeUuidMissing": "Universe identifier is missing."
         }
+      }
+    },
+    "onBoarding": {
+      "whatChangedModal": {
+        "title": "What Changed",
+        "newAndImproved": "New and Improved",
+        "enhancedUniverseConfigTitle": "Enhanced Universe Configuration",
+        "enhancedUniverseConfigDescription": "Set up and manage universes using a wizard in Guided or Expert mode to help you build the right topology. <learnMore>Learn more</learnMore>",
+        "centralizedSettingsTitle": "Centralized Settings",
+        "centralizedSettingsDescription": "Access all your universe configuration settings from a single Settings tab. <learnMore>Learn more</learnMore>",
+        "preferredAzRankingTitle": "Preferred availability zone ranking",
+        "preferredAzRankingDescription": "Rank preferred availability zones to optimize connection latency. <learnMore>Learn more</learnMore>",
+        "otherImprovements": "Learn about other improvements in <releaseLink>this release.</releaseLink>",
+        "whereDidFeaturesMove": "Where did features move?",
+        "whereDidFeaturesMoveDescription": "Same features, new home. Here's where to find them now.",
+        "then": "Then",
+        "now": "Now",
+        "editUniverse": "Edit Universe",
+        "editUniversePlacementDetail": "(Region, AZ, and node placement)",
+        "editUniverseHardwareDetail": "(Instance Configuration)",
+        "logs": "Logs",
+        "logsAndMetricsExport": "Logs & Metrics Export",
+        "settings": "Settings",
+        "close": "Close",
+        "findOutMore": "Find Out More",
+        "nowPlacement": "Placement",
+        "nowHardware": "Hardware",
+        "nowLogs": "Logs",
+        "nowTelemetryExport": "Telemetry Export"
+      },
+      "whereThingsMovedModal": {
+        "title": "Where Things Moved",
+        "description": "Same features, new home. Here's where to find them now.",
+        "then": "Then",
+        "now": "Now",
+        "editUniversePlacement": "Edit Universe Placement",
+        "editUniverseInstance": "Edit Universe Instance",
+        "logs": "Logs",
+        "exportLogs": "Export Logs",
+        "exportMetrics": "Export Metrics",
+        "settings": "Settings",
+        "nowPlacement": "Placement",
+        "nowPlacementDetail": "(Availability zone placement and node allocation)",
+        "nowHardware": "Hardware",
+        "nowHardwareDetail": "(Instance settings)",
+        "nowLogs": "Logs",
+        "nowTelemetryExport": "Telemetry Export",
+        "close": "Close",
+        "findOutMore": "Find Out More"
+      },
+      "whereThingsMovedTip": {
+        "label": "Where things moved?"
+      },
+      "whatNewInPlacement": {
+        "title": "What's New",
+        "editPlacement": "Edit Placement",
+        "placement": "Placement",
+        "stepRegions": "Regions",
+        "stepAvailabilityZones": "Availability Zones and Nodes",
+        "calloutAddRegions": "Add or remove regions",
+        "calloutEditAz": "Edit availability zones and node distribution",
+        "instanceSettingsTip": "<bold>Looking for instance settings?</bold><br />Instance configuration is now available under →   <bold>Settings / Hardware</bold>",
+        "close": "Close",
+        "findOutMore": "Find Out More"
+      },
+      "beforeProceedWithNewModal": {
+        "title": "“Database Audit Log ” has moved",
+        "note": "Database audit log is now available under  “<settings>Settings</settings>” tab.",
+        "databaseAuditLogs": "Database audit logs settings",
+        "databaseAuditLogExport": "Database audit log export settings",
+        "settings": "Settings",
+        "nowLogs": "Logs",
+        "nowTelemetryExport": "Telemetry Export",
+        "close": "Close"
+      },
+      "universeCreationPopover": {
+        "title": "New Universe creation",
+        "body": "Explore the new workflow.",
+        "hideTip": "Hide tip"
+      },
+      "detailSettingsPopover": {
+        "title": "Centralized Settings",
+        "body": "Universe settings are now organized into dedicated sections where you can view configuration details and status.",
+        "hideTip": "Hide tip"
+      },
+      "advancedPlacementPopover": {
+        "title": "Advanced placement options",
+        "body": "Add read replicas, or configure dedicated master nodes.",
+        "hideTip": "Hide tip"
+      },
+      "guidedExpertModePopover": {
+        "hideTip": "Hide tip",
+        "learnMore": "Learn More",
+        "guided": {
+          "badge": "Recommended for most users",
+          "title": "Guided Mode",
+          "subtitle": "Outcome-driven setup",
+          "description": "Choose the resilience and let the system guide you through the steps to build your ideal cluster."
+        },
+        "expert": {
+          "badge": "Advanced",
+          "title": "Expert Mode",
+          "subtitle": "Flexible control",
+          "description": "Take full control to fine-tune node placement and provisioning and match the most exacting requirements."
+        }
+      },
+      "onBoardingBanner": {
+        "availableMessage": "A new and improved YugabyteDB Anywhere experience is available",
+        "enabledMessage": "You are now using the new experience.",
+        "usingNewExperienceMessage": "You are using a new and improved YugabyteDB Anywhere experience.",
+        "seeWhatsChanged": "See what's changed",
+        "newBadge": "New",
+        "tryItFirst": "Try it first on your account",
+        "tryItFirstInfoHeadline": "Applies only to your account. Other users will not see any change.",
+        "tryItFirstInfoBody": "To enable the new experience for all users on this YugabyteDB Anywhere instance, enable the <bold>{{runtimeConfig}}</bold> runtime configuration.",
+        "findOutMore": "Find out more"
+      },
+      "beforeNewExperiencePopover": {
+        "title": "Try the new experience",
+        "bodyLine1": "Switch between the current and new experiences at any time.",
+        "bodyLine2": "Once ready, use the <bold>{{runtimeConfig}} runtime configuration</bold> to enable the new experience for all users.",
+        "seeWhatsChanged": "See what's changed",
+        "hideTip": "Hide tip"
+      },
+      "afterNewExperiencePopover": {
+        "title": "Welcome to the new experience",
+        "bodyLine1": "YugabyteDB Anywhere has been updated with improved workflows, navigation, and settings organization.",
+        "bodyLine2": "See what's changed to learn about the new layout.",
+        "seeWhatsChanged": "See what's changed",
+        "hideTip": "Hide tip"
       }
     }
   }

@@ -311,7 +311,13 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             taskParams().getNewVersionsOfClusters(universe);
         List<UniverseDefinitionTaskParams.Cluster> newClustersList =
             new ArrayList<>(newClustersMap.values());
-        createValidateGFlagsTask(newClustersList, true /* useCLIBinary */, softwareVersion);
+        boolean useCLIBinary = true;
+        if (Util.compareYBVersions(
+                softwareVersion, "2026.2.0.0-b1", "2.31.0.0-b49", true /* suppressFormatError */)
+            >= 0) {
+          useCLIBinary = false;
+        }
+        createValidateGFlagsTask(newClustersList, useCLIBinary, softwareVersion);
       }
     }
 

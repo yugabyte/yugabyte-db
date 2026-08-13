@@ -1142,7 +1142,7 @@ Number of seconds to retain log files. Log files older than this value will be d
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `102400`
+Default: `100`
 {{% /tags/wrap %}}
 
 Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
@@ -2043,6 +2043,32 @@ Default: `300000`
 {{% /tags/wrap %}}
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
+
+### Multitenancy (resource governor) flags
+
+These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
+
+For information on other resource governor configuration flags, see the [YB-TServer reference](../yb-tserver/#multitenancy-resource-governor-flags).
+
+##### --enable_qos
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables per-database CPU limits and the maximum database count cap. When `false`, per-database cgroups are not created and none of the other `qos_*` flags have any effect.
+
+##### --qos_max_db_count
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+Default: `0`
+{{% /tags/wrap %}}
+
+The maximum number of non-template databases that can be created. `CREATE DATABASE` fails if it would exceed this limit. Because per-database cgroups are weighted equally, this cap sets the effective per-database minimum CPU as `1 / qos_max_db_count` (for example, a value of `20` guarantees each database at least 5% of the available CPU). Has no effect unless `enable_qos` is `true`.
 
 ### Other performance tuning options
 

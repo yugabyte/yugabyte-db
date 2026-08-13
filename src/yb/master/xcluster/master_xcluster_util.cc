@@ -22,6 +22,8 @@
 
 #include "yb/util/async_util.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 
 namespace yb::master {
@@ -159,7 +161,7 @@ Status SetupDDLReplicationExtension(
   RETURN_NOT_OK(ExecutePgsqlStatements(
       namespace_name, {statement}, catalog_manager,
       CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
-      sync.AsStdStatusCallback()));
+      sync.AsStdStatusCallback(), pgwrapper::YbInternalConnKindWireName::kXClusterSetup));
   auto status = sync.Wait();
   if (!status.ok()) {
     callback(status);
@@ -192,7 +194,7 @@ Status DropDDLReplicationExtensionIfExists(
   return ExecutePgsqlStatements(
       namespace_name, {statement}, catalog_manager,
       CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
-      std::move(callback));
+      std::move(callback), pgwrapper::YbInternalConnKindWireName::kXClusterSetup);
 }
 
 }  // namespace yb::master

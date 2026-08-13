@@ -52,6 +52,8 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_ysql_lease.pb.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_rpc_tasks.h"
@@ -198,6 +200,9 @@ TabletInfo::TabletInfo(const TableInfoPtr& table, TabletId tablet_id)
       table_(table),
       last_update_time_(MonoTime::Now()),
       last_time_with_valid_leader_(last_update_time_) {
+  if (tablet_id_ == kSysCatalogTabletId) {
+    mutable_metadata()->SetExcludeFromHeldTabletWriteLockCount();
+  }
 }
 
 TabletInfo::~TabletInfo() = default;
@@ -909,6 +914,15 @@ Status TableInfo::SetIsBackfilling() {
   return Status::OK();
 }
 
+bool TableInfo::TrySetPostTabletCreateTasksScheduled() {
+  bool expected = false;
+  return post_tablet_create_tasks_scheduled_.compare_exchange_strong(expected, true);
+}
+
+void TableInfo::ClearPostTabletCreateTasksScheduled() {
+  post_tablet_create_tasks_scheduled_.store(false);
+}
+
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
   VLOG_WITH_FUNC(1) << status;
   std::lock_guard l(lock_);
@@ -1104,6 +1118,15 @@ bool TableInfo::IsSequencesSystemTable(const ReadLock& lock) const {
     return false;
   }
   return *table_oid == kPgSequencesDataTableOid;
+}
+
+bool TableInfo::ShouldLookupPgSchemaName() const {
+  return ShouldLookupPgSchemaName(LockForRead());
+}
+
+bool TableInfo::ShouldLookupPgSchemaName(const ReadLock& lock) const {
+  return lock->table_type() == PGSQL_TABLE_TYPE && !is_system() &&
+         !IsColocationParentTable() && !IsSequencesSystemTable(lock);
 }
 
 bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {

@@ -133,9 +133,9 @@ SPLIT AT VALUES (
 INSERT INTO bkt_tbl (r1, r2, r3, r4, r5) SELECT r1, r2, r3, r4, r5 FROM r5n;
 
 --
--- RelabelType (varchar/text binary-compatible cast)
+-- Text and varchar
 --
-CREATE TABLE relabel_tbl (
+CREATE TABLE tv_tbl (
     n int GENERATED ALWAYS AS ((i2 + i4 * 10 + i8 * 100 + t::int * 1000 + v::int * 10000)::int) STORED,
     v varchar(10) NOT NULL,
     i2 int2,
@@ -144,12 +144,12 @@ CREATE TABLE relabel_tbl (
     t text NOT NULL,
     PRIMARY KEY ((i2, i4, i8, t, v) HASH))
 SPLIT INTO 9 TABLETS;
-INSERT INTO relabel_tbl (i2, i4, i8, t, v) SELECT r1, r3, r2, r5::text, r4::varchar FROM r5n;
+INSERT INTO tv_tbl (i2, i4, i8, t, v) SELECT r1, r3, r2, r5::text, r4::varchar FROM r5n;
 
 --
 -- Analyze
 --
-ANALYZE r5n, h3r2n, parent, bkt_tbl, relabel_tbl;
+ANALYZE r5n, h3r2n, parent, bkt_tbl, tv_tbl;
 
 --
 -- Colocated

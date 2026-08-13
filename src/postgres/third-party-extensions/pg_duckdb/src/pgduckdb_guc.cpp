@@ -118,6 +118,7 @@ DefineCustomDuckDBVariable(const char *name, const char *short_desc, T *var, T m
 } // namespace
 
 bool duckdb_force_execution = false;
+int yb_duckdb_execution_mode = YB_DUCKDB_EXECUTION_LAKE_IO;
 bool duckdb_unsafe_allow_execution_inside_functions = false;
 bool duckdb_unsafe_allow_mixed_transactions = false;
 bool duckdb_convert_unsupported_numeric_to_double = false;
@@ -143,11 +144,40 @@ char *duckdb_default_collation = strdup("");
 char *duckdb_azure_transport_option_type = strdup("");
 char *duckdb_custom_user_agent = strdup("");
 
+static const struct config_enum_entry execution_mode_options[] = {
+    {"lake_io", YB_DUCKDB_EXECUTION_LAKE_IO, false},
+    {NULL, 0, false}};
+
+static bool
+YbCheckForceExecution(bool *newval, void ** /*extra*/, GucSource /*source*/) {
+	if (*newval && YbIsLakeIoMode()) {
+		GUC_check_errmsg("duckdb.force_execution is not supported");
+		return false;
+	}
+	return true;
+}
+
 void
 InitGUC() {
 	/* pg_duckdb specific GUCs */
+	/*
+	 * YB: PGC_INTERNAL pins the value to the compiled-in default (lake_io) for the
+	 * backend's lifetime (see pgduckdb_guc.hpp). No SQL user, superuser, ALTER SYSTEM,
+	 * postgresql.conf entry, or YBA ysql_pg_conf_csv override can change it.
+	 *
+	 * lake_io is currently the only mode; every gating site pivots on YbIsLakeIoMode().
+	 */
+	DefineCustomEnumVariable("duckdb.execution_mode",
+	                         gettext_noop("Reserved: pg_duckdb execution mode "
+	                                      "(lake I/O only)."),
+	                         NULL, &yb_duckdb_execution_mode, YB_DUCKDB_EXECUTION_LAKE_IO,
+	                         execution_mode_options, PGC_INTERNAL,
+	                         GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE |
+	                             GUC_DISALLOW_IN_FILE | GUC_DISALLOW_IN_AUTO_FILE,
+	                         NULL, NULL, NULL);
+
 	DefineCustomVariable("duckdb.force_execution", "Force queries to use DuckDB execution", &duckdb_force_execution,
-	                     PGC_USERSET, GUC_REPORT);
+	                     PGC_USERSET, GUC_REPORT, YbCheckForceExecution);
 
 	DefineCustomVariable("duckdb.unsafe_allow_execution_inside_functions", "Allow DuckDB execution inside functions",
 	                     &duckdb_unsafe_allow_execution_inside_functions, PGC_SUSET);

@@ -35,9 +35,11 @@ import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/Objec
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { testFeatureFlagsLocalStorageKey } from './reducers/feature';
+import { resetUniverseRevampOnboardingStorage } from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
 import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
+import StateTransitionPage from './components/universes/UniverseDetail/compounds/StateTransitionDetails';
 import { SlotDetail } from './redesign/features/universe/universe-tabs/replication-slots/components/SlotDetail';
 import {
   clearRbacCreds,
@@ -71,6 +73,7 @@ export const clearCredentials = () => {
   localStorage.removeItem('customerId');
   localStorage.removeItem('userId');
   localStorage.removeItem(testFeatureFlagsLocalStorageKey);
+  // resetUniverseRevampOnboardingStorage();
   clearRbacCreds();
 
   /*
@@ -262,6 +265,12 @@ export default (store) => {
       <Route
         path="/universes/:uuid/add-read-replica"
         component={(props) => <AddReadReplica {...props} />}
+        onEnter={authenticatedSession}
+        onChange={checkIfAuthenticated}
+      />
+      <Route
+        path="/universes/:uuid/state_transition"
+        component={StateTransitionPage}
         onEnter={authenticatedSession}
         onChange={checkIfAuthenticated}
       />

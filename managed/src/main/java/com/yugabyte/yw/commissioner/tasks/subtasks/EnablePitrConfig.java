@@ -16,7 +16,7 @@ import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.CreateSnapshotScheduleResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class EnablePitrConfig extends UniverseTaskBase {
@@ -56,7 +56,7 @@ public class EnablePitrConfig extends UniverseTaskBase {
         disabledPitrConfigs.size(),
         taskParams().getUniverseUUID());
 
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       for (PitrConfig pitrConfig : disabledPitrConfigs) {
         try {
           // Find the keyspace id of the keyspace name specified in the pitr config.

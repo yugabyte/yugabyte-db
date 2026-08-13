@@ -14,6 +14,8 @@ type: docs
 
 You can export cluster metrics and logs to third-party tools for analysis and customization.
 
+All YugabyteDB metrics exported from a cluster are prefixed with `ybdb`.
+
 To export either metrics or logs from a cluster:
 
 1. [Create an export configuration](#configure-integrations) for the integration you want to use. A configuration defines the sign in credentials and settings for the tool that you want to export to.
@@ -142,6 +144,10 @@ The [Prometheus](https://prometheus.io/docs/introduction/overview/) integration 
 
     Note that the Prometheus instance itself should not be publicly accessible, but must be reachable from your YugabyteDB Aeon cluster via VPC peering (see YugabyteDB Aeon requirements below).
 
+  - Prometheus listening on the HTTP or HTTPS port that matches the endpoint URL you provide.
+
+    The Metrics Exporter connects using the port implied by the URL scheme: port 80 for `http://` and port 443 for `https://`. The default Prometheus listen port (9090) is not supported and export fails if Prometheus is only reachable on 9090. Configure Prometheus to listen on port 80 or 443, or place a reverse proxy such as nginx in front of Prometheus to terminate HTTP/HTTPS on 80 or 443 and forward traffic to Prometheus.
+
   - [OTLP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled.
   {{< note title="Note" >}}
 How you enable the OTLP Receiver feature flag differs between Prometheus versions. Be sure to check the appropriate documentation for your version of Prometheus.
@@ -171,6 +177,14 @@ To create an export configuration, do the following:
     http://<prometheus-endpoint-host-address>/api/v1/otlp
     ```
 
+    or, for HTTPS,
+
+    ```sh
+    https://<prometheus-endpoint-host-address>/api/v1/otlp
+    ```
+
+    Omit a custom port from the URL. The exporter targets port 80 for HTTP and port 443 for HTTPS. Do not use Prometheus's default port 9090.
+
 1. Click **Create Configuration**.
 
 ### VictoriaMetrics
@@ -193,6 +207,10 @@ The [VictoriaMetrics](https://docs.victoriametrics.com/) integration requires th
 
     See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation, or [VPC firewall rules](https://cloud.google.com/firewall/docs/firewalls) in the Google Cloud documentation.
 
+  - VictoriaMetrics listening on the HTTP or HTTPS port that matches the endpoint URL you provide.
+
+    The Metrics Exporter connects using the port implied by the URL scheme: port 80 for `http://` and port 443 for `https://`. The default VictoriaMetrics listen port is not supported and export fails if VictoriaMetrics is only reachable on a non-standard port such as 8428. Configure VictoriaMetrics to listen on port 80 or 443, or place a reverse proxy such as nginx in front of VictoriaMetrics to terminate HTTP/HTTPS on 80 or 443 and forward traffic to VictoriaMetrics.
+
 - YugabyteDB Aeon cluster from which you want to export metrics
   - Cluster deployed in VPCs on AWS, or a VPC in GCP. See [VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/).
   - VPCs are peered with the VPC hosting VictoriaMetrics. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
@@ -212,6 +230,14 @@ To create an export configuration, do the following:
     ```sh
     http://<victoria-metrics-endpoint-host-address>/opentelemetry
     ```
+
+    or, for HTTPS,
+
+    ```sh
+    https://<victoria-metrics-endpoint-host-address>/opentelemetry
+    ```
+
+    Omit a custom port from the URL. The exporter targets port 80 for HTTP and port 443 for HTTPS. Do not use VictoriaMetrics's default listen port.
 
 1. Click **Create Configuration**.
 

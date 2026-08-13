@@ -67,6 +67,7 @@ session			{ return SESSION; }
 setup			{ return SETUP; }
 step			{ return STEP; }
 teardown		{ return TEARDOWN; }
+yb_never_waits	{ return YB_NEVER_WAITS; }
 
  /* Whitespace and comments */
 [\n]			{ yyline++; }

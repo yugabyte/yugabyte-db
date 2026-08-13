@@ -219,6 +219,7 @@ Elasticsearch
 enablement
 enqueued
 enqueues
+Entra
 enum
 enums
 ETag
@@ -736,6 +737,7 @@ tablespace
 tablespaces
 tanuki
 tcpdump
+Tectia
 templated
 Thanos
 Thoughtbot

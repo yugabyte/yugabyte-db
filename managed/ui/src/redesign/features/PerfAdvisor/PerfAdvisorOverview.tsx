@@ -82,6 +82,7 @@ export const PerfAdvisorOverview = ({ activeTab, isEmbeddedPAEnabled }: PerfAdvi
               metricsScrapePeriodSecs={paData[0].metricsScrapePeriodSecs}
               customerUUID={paData[0].customerUUID}
               inUseStatus={paData[0].inUseStatus === 'IN_USE'}
+              embedded={!!paData[0].embedded}
               onRefetchConfig={onRefetchConfig}
             />
           ) : (

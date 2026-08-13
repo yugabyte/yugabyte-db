@@ -41,7 +41,7 @@ import clsx from 'clsx';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { BACKUP_API_TYPES } from '../common/IBackup';
-import { AllowedTasks, TableType } from '../../../redesign/helpers/dtos';
+import { AllowedTasks } from '../../../redesign/helpers/dtos';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
@@ -207,14 +207,6 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
       doRestore: boolean;
     }
   ) => {
-    // Restoring with duplicate keyspace name is supported in redis
-    if (values['backup']['backupType'] === BACKUP_API_TYPES.YEDIS) {
-      isFunction(options.setSubmitting) && options.setSubmitting(false);
-      if (options.doRestore) {
-        restore.mutate({ backup_details: backup_details as IBackup, values });
-      }
-      return;
-    }
     // find if the user has entered the duplicate keyspace name
     // we could have just find uniq(user_entered_keyspace), but in table by table backup
     // we can have duplicate keyspace, so we make sure that single keyspace entered by user map with single keyspace
@@ -650,35 +642,33 @@ function RestoreChooseUniverseForm({
           )}
         </Col>
       </Row>
-      {backup_details.backupType !== TableType.REDIS_TABLE_TYPE && (
-        <Row>
-          <Col lg={12} className="should-rename-keyspace">
-            <Field
-              name="should_rename_keyspace"
-              component={YBCheckBox}
-              label={`Rename databases in this backup before restoring (${
-                values['disable_keyspace_rename'] ? 'Required' : 'Optional'
-              })`}
-              input={{
-                checked: values['should_rename_keyspace'],
-                onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-                  setFieldValue('should_rename_keyspace', event.target.checked);
-                  setOverrideSubmitLabel(
-                    event.target.checked ? TEXT_RENAME_DATABASE : TEXT_RESTORE
-                  );
-                }
-              }}
-              disabled={values['disable_keyspace_rename']}
-            />
-            {values['disable_keyspace_rename'] && (
-              <div className="disable-keyspace-subtext">
-                <b>Note!</b> This is required since there are databases with the same name in the
-                selected target universe.
-              </div>
-            )}
-          </Col>
-        </Row>
-      )}
+      <Row>
+        <Col lg={12} className="should-rename-keyspace">
+          <Field
+            name="should_rename_keyspace"
+            component={YBCheckBox}
+            label={`Rename databases in this backup before restoring (${
+              values['disable_keyspace_rename'] ? 'Required' : 'Optional'
+            })`}
+            input={{
+              checked: values['should_rename_keyspace'],
+              onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+                setFieldValue('should_rename_keyspace', event.target.checked);
+                setOverrideSubmitLabel(
+                  event.target.checked ? TEXT_RENAME_DATABASE : TEXT_RESTORE
+                );
+              }
+            }}
+            disabled={values['disable_keyspace_rename']}
+          />
+          {values['disable_keyspace_rename'] && (
+            <div className="disable-keyspace-subtext">
+              <b>Note!</b> This is required since there are databases with the same name in the
+              selected target universe.
+            </div>
+          )}
+        </Col>
+      </Row>
       {showParallelThread && (
         <Row>
           <Col lg={8} className="no-padding">

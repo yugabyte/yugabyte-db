@@ -15,16 +15,18 @@ showRightNav: true
 
 YSQL supports the following data types for values that represent a date, a time of day, a date-and-time-of-day pair, or a duration. These data types will be referred to jointly as the _date-time_ data types.
 
-| Data type                                                                                          | Purpose                           | Internal format         | Min      | Max        | Resolution    |
-| -------------------------------------------------------------------------------------------------- | --------------------------------- | ----------------------- | -------- | ---------- | ------------- |
-| [date](./date-time-data-types-semantics/type-date/)                                                | date moment (wall-clock)          | 4-bytes                 | 4713 BC  | 5874897 AD | 1 day         |
-| [time](./date-time-data-types-semantics/type-time/) [(p)]                                          | time moment (wall-clock)          | 8-bytes                 | 00:00:00 | 24:00:00   | 1 microsecond |
-| [timetz](#avoid-timetz) [(p)]                                                                      | _[avoid this](#avoid-timetz)_     |                         |          |            |               |
-| [timestamp](./date-time-data-types-semantics/type-timestamp/#the-plain-timestamp-data-type) [(p)]  | date-and-time moment (wall-clock) | 12-bytes                | 4713 BC  | 294276 AD  | 1 microsecond |
-| [timestamptz](./date-time-data-types-semantics/type-timestamp/#the-timestamptz-data-type) [(p)]    | date-and-time moment (absolute)   | 12-bytes                | 4713 BC  | 294276 AD  | 1 microsecond |
-| [interval](./date-time-data-types-semantics/type-interval/) [fields] [(p)]                         | duration between two moments      | 16-bytes 3-field struct |          |            | 1 microsecond |
+| Data type                                                                                         | Purpose                                                                  | Size     | Min                | Max               | Resolution    |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | -------- | ------------------ | ----------------- | ------------- |
+| [date](./date-time-data-types-semantics/type-date/)                                               | date moment (wall-clock)                                                 | 4 bytes  | 4713 BC            | 5874897 AD        | 1 day         |
+| [time](./date-time-data-types-semantics/type-time/) [(p)]                                         | time moment (wall-clock)                                                 | 8 bytes  | 00:00:00           | 24:00:00          | 1 microsecond |
+| [timetz](#avoid-timetz) [(p)]                                                                     | time moment (wall-clock) with UTC offset — _[avoid this](#avoid-timetz)_ | 12 bytes | 00:00:00+15:59     | 24:00:00-15:59    | 1 microsecond |
+| [timestamp](./date-time-data-types-semantics/type-timestamp/#the-plain-timestamp-data-type) [(p)] | date-and-time moment (wall-clock)                                        | 8 bytes  | 4713 BC            | 294276 AD         | 1 microsecond |
+| [timestamptz](./date-time-data-types-semantics/type-timestamp/#the-timestamptz-data-type) [(p)]   | date-and-time moment (absolute)                                          | 8 bytes  | 4713 BC            | 294276 AD         | 1 microsecond |
+| [interval](./date-time-data-types-semantics/type-interval/) [fields] [(p)]                        | duration between two moments                                             | 16 bytes | -178000000 years † | 178000000 years † | 1 microsecond |
 
-The optional _(p)_ qualifier, where _p_ is a literal integer value in _0..6_, specifies the precision, in microseconds, with which values will be recorded. (It has no effect on the size of the internal representation.) The optional _fields_ qualifier, valid only in an _interval_ declaration, is explained in the [_interval_ data type](./date-time-data-types-semantics/type-interval/) section.
+† An _interval_ value is represented internally as a three-field _[mm, dd, ss]_ tuple, so its limits are properly expressed field by field. The values shown here express the limit in terms of years only. See [_interval_ value limits](./date-time-data-types-semantics/type-interval/interval-limits/).
+
+The _time_, _timetz_, _timestamp_, _timestamptz_, and _interval_ data types accept an optional _(p)_ qualifier, where _p_ is a literal integer value in _0..6_, that specifies the number of fractional digits that are retained in the seconds field. By default, there's no explicit bound on the precision. The qualifier has no effect on the size of a value: _timestamp(3)_ and _timestamp(6)_ values each occupy eight bytes. The optional _fields_ qualifier, valid only in an _interval_ declaration, is explained in the [_interval_ data type](./date-time-data-types-semantics/type-interval/) section.
 
 The spelling _timestamptz_ is an alias, defined by PostgreSQL and inherited by YSQL, for what the SQL Standard spells as _timestamp with time zone_. The unadorned spelling, _timestamp_, is defined by the SQL Standard and may, optionally, be spelled as _timestamp without time zone_. A corresponding account applies to _timetz_ and _time_.
 
@@ -41,7 +43,7 @@ The [PostgreSQL documentation](https://www.postgresql.org/docs/15/datatype-datet
 
 The thinking is that a notion that expresses only what a clock might read in a particular timezone gives only part of the picture. For example when a clock reads 20:00 in _UTC_, it reads 03:00 in China Standard Time. But 20:00 _UTC_ is the evening of one day and 03:00 is in the small hours of the morning of the _next day_ in China Standard Time. (Neither _UTC_ nor China Standard Time adjusts its clocks for Daylight Savings.) The data type _timestamptz_ represents both the time of day and the date and so it handles the present use case naturally. No further reference will be made to _timetz_.
 {{< /tip >}}
-<a name="maximum-and-minimum-supported-values"></br></a>
+<a name="maximum-and-minimum-supported-values"></a>
 {{< note title="Maximum and minimum supported values." >}}
 You can discover that you can define an earlier _timestamp[tz]_ value than _4713-01-01 00:00:00 BC_, or a later one than  _294276-01-01 00:00:00_, without error. Try this:
 
@@ -107,7 +109,7 @@ This test is shown for completeness. Its outcome is of little practical conseque
 ['4713-01-01 00:00:00 BC', '294276-12-31 23:59:59 AD']
 ```
 
-Notice that the minimum and maximum _interval_ values are not specified in the table above. You need to understand how an _interval_ value is represented internally as a three-field _[mm, dd, ss]_ tuple to appreciate that the limits must be expressed individually in terms of these fields. The section [_interval_ value limits](./date-time-data-types-semantics/type-interval/interval-limits/) explains all this.
+Notice that the "Min" and "Max" values for _interval_ in the table above express the limit in terms of years only. The section [_interval_ value limits](./date-time-data-types-semantics/type-interval/interval-limits/) explains how the limits are properly expressed, field by field, in terms of the internal three-field _[mm, dd, ss]_ representation.
 {{< /note >}}
 
 Modern applications almost always are designed for global deployment. This means that they must accommodate timezones—and that it will be the norm therefore to use the _timestamptz_ data type and not _date_, plain _time_, or plain _timestamp_. Application code will therefore need to be aware of, and to set, the timezone. It's not uncommon to expose the ability to set the timezone to the user so that _date-time_ moments can be shown differently according to the user's present purpose.
@@ -116,16 +118,16 @@ Modern applications almost always are designed for global deployment. This means
 
 PostgreSQL, and therefore YSQL, support the use of several special manifest _text_ constants when they are typecast to specified _date-time_ data types, thus:
 
-| constant    | valid with                         |
-| ----------- | ---------------------------------- |
-| 'epoch'     | date, plain timestamp              |
-| 'infinity'  | date, plain timestamp, timestamptz |
-| '-infinity' | date, plain timestamp              |
-| 'now'       | date, plain time, plain timestamp  |
-| 'today'     | date, plain timestamp              |
-| 'tomorrow'  | date, plain timestamp              |
-| 'yesterday' | date, plain timestamp              |
-| 'allballs'  | plain time                         |
+| constant    | valid with                                     |
+| ----------- | ---------------------------------------------- |
+| 'epoch'     | date, plain timestamp, timestamptz             |
+| 'infinity'  | date, plain timestamp, timestamptz             |
+| '-infinity' | date, plain timestamp, timestamptz             |
+| 'now'       | date, plain time, plain timestamp, timestamptz |
+| 'today'     | date, plain timestamp, timestamptz             |
+| 'tomorrow'  | date, plain timestamp, timestamptz             |
+| 'yesterday' | date, plain timestamp, timestamptz             |
+| 'allballs'  | plain time                                     |
 
 Their meanings are given in section [8.5.1.4. Special Values](https://www.postgresql.org/docs/15/datatype-datetime.html#DATATYPE-DATETIME-SPECIAL-VALUES) in the PostgreSQL documentation.
 

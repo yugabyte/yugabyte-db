@@ -21,6 +21,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_util.h"
+#include "yb/common/constants.h"
 #include "yb/common/opid.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema_pbutil.h"
@@ -112,6 +113,11 @@ DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
                     "subtransactions (rolled-back savepoints). This prevents CDC consumers "
                     "from receiving data that was never actually committed. This flag is only "
                     "used for YSQL tables.");
+
+DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
+                 "When set to true, GetConsistentStreamSafeTime will always return invalid value. "
+                 "This simulates the scenario when a GetChanges call is being served during tablet "
+                 "shutdown.");
 
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
@@ -850,10 +856,13 @@ bool IsColocatedTableQualifiedForStreaming(
 
 Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
     const StreamMetadata& metadata, const TableId& table_id) {
-  if (FLAGS_ysql_yb_enable_replica_identity && IsReplicationSlotStream(metadata)) {
+  // record_type is set only for gRPC streams without a replica_identity_map (legacy/backfilled/
+  // yb-admin). Logical and PG-syntax gRPC streams use replica_identity_map instead.
+  auto record_type = metadata.GetRecordType();
+  if (FLAGS_ysql_yb_enable_replica_identity && !record_type.has_value()) {
     auto replica_identity_map = metadata.GetReplicaIdentities();
     if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
-      PgReplicaIdentity replica_identity = metadata.GetReplicaIdentities().at(table_id);
+      PgReplicaIdentity replica_identity = replica_identity_map.at(table_id);
       switch (replica_identity) {
         case PgReplicaIdentity::CHANGE:
           return CDCRecordType::CHANGE;
@@ -871,7 +880,10 @@ Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
       return STATUS_FORMAT(InternalError, "Replica Identity not found for table: $0", table_id);
     }
   } else {
-    return metadata.GetRecordType();
+    RSTATUS_DCHECK(
+        record_type.has_value(), InternalError,
+        "record_type must be set for a stream that does not use replica identities");
+    return *record_type;
   }
 }
 
@@ -930,19 +942,26 @@ Result<tablet::TableInfoPtr> WarnIfNotFoundOrReturn(
     return result;
   }
 
-  LOG(WARNING) << "Did not find table info for table with colocation / cotable id: " << id
+  LOG(WARNING) << "Did not find table info for table with colocation / cotable / table id: " << id
                << " and tablet id: " << tablet_id
-               << ". This could be because the object corresponding to colocation id has "
-                  "been deleted.";
+               << ". This could be because the object corresponding to the id has been deleted.";
+  // TODO(#31908): callers treat this nullptr as a dropped or rewritten colocated table and skip the
+  // record, which is safe only while a lagging stream cannot stream such a table's remaining
+  // events.  Once that is supported, callers must resolve the table as of the record instead.
   return nullptr;
+}
+
+// The id is either a ColocationId or a TableId, matching the GetTableInfo overloads.
+template <class Id>
+Result<tablet::TableInfoPtr> GetTableInfoForColocatedTable(
+    const Id& id, tablet::TabletPtr tablet_ptr) {
+  auto table_info_result = tablet_ptr->metadata()->GetTableInfo(id);
+  return WarnIfNotFoundOrReturn(table_info_result, AsString(id), tablet_ptr->tablet_id());
 }
 
 Result<tablet::TableInfoPtr> GetTableInfoForColocatedTable(
     const dockv::SubDocKey& decoded_key, tablet::TabletPtr tablet_ptr) {
-  const auto& colocation_id = decoded_key.doc_key().colocation_id();
-  auto table_info_result = tablet_ptr->metadata()->GetTableInfo(colocation_id);
-  return WarnIfNotFoundOrReturn(
-      table_info_result, std::to_string(colocation_id), tablet_ptr->tablet_id());
+  return GetTableInfoForColocatedTable(decoded_key.doc_key().colocation_id(), tablet_ptr);
 }
 
 Result<tablet::TableInfoPtr> GetTableInfoForSysCatalogTable(
@@ -2112,8 +2131,9 @@ Status GetConsistentWALRecords(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const MemTrackerPtr& mem_tracker,
     consensus::ReplicateMsgsHolder* msgs_holder, ScopedTrackedConsumption* consumption,
     uint64_t* consistent_safe_time, const OpId& historical_max_op_id,
-    bool* wait_for_wal_update, OpId* last_seen_op_id, int64_t& last_readable_opid_index,
-    const int64_t& safe_hybrid_time_req, const CoarseTimePoint& deadline,
+    bool* wait_for_wal_update, OpId* last_seen_op_id, OpId* last_skipped_op_id,
+    int64_t& last_readable_opid_index, const int64_t& safe_hybrid_time_req,
+    const CoarseTimePoint& deadline,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* consistent_wal_records,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints,
     HybridTime* last_read_wal_op_record_time, bool* is_entire_wal_read) {
@@ -2160,6 +2180,8 @@ Status GetConsistentWALRecords(
 
       if (IsIntent(msg) || (IsUpdateTransactionOp(msg) &&
                             msg->transaction_state().status() != TransactionStatus::APPLYING)) {
+        last_skipped_op_id->term = msg->id().term();
+        last_skipped_op_id->index = msg->id().index();
         continue;
       }
 
@@ -2377,37 +2399,36 @@ bool CanUpdateCheckpointOpId(
   return update_checkpoint;
 }
 
-Result<uint64_t> GetConsistentStreamSafeTime(
+Result<HybridTime> GetConsistentStreamSafeTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const tablet::TabletPtr& tablet_ptr,
     const HybridTime& leader_safe_time, const int64_t& safe_hybrid_time_req,
     const CoarseTimePoint& deadline, bool* txn_load_in_progress) {
-  HybridTime consistent_stream_safe_time = tablet_ptr->GetMinStartHTRunningTxnsForCDCProducer();
-  // GetMinStartHTRunningTxnsForCDCProducer returns kInvalid when loading of transactions is not yet
-  // complete.
-  if (!consistent_stream_safe_time.is_valid()) {
-    *txn_load_in_progress = true;
-    return HybridTime::kInitial.ToUint64();
+  if (FLAGS_TEST_cdc_make_consistent_stream_safe_time_invalid) {
+    return HybridTime::kInvalid;
   }
 
-  // GetMinStartHTRunningTxnsForCDCProducer returns kMax when there are no running transactions. In
-  // this case use leader_safe_time,
-  consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kMax
-                                    ? leader_safe_time
-                                    : consistent_stream_safe_time;
-
+  HybridTime consistent_stream_safe_time = tablet_ptr->GetMinStartHTRunningTxnsForCDCProducer();
   VLOG_WITH_FUNC(3) << "Getting consistent_stream_safe_time. consistent_stream_safe_time: "
                     << consistent_stream_safe_time.ToUint64()
                     << ", safe_hybrid_time_req: " << safe_hybrid_time_req
                     << ", leader_safe_time: " << leader_safe_time.ToUint64()
                     << ", tablet_id: " << tablet_peer->tablet_id();
 
+  // GetMinStartHTRunningTxnsForCDCProducer returns kInvalid when loading of transactions is not yet
+  // complete.
   if (!consistent_stream_safe_time.is_valid()) {
-    VLOG_WITH_FUNC(3) << "We'll use the leader_safe_time as the consistent_stream_safe_time, since "
-                         "GetMinStartHTRunningTxnsForCDCProducer returned an invalid "
-                         "value";
-    return leader_safe_time.ToUint64();
-  } else if (
-      (safe_hybrid_time_req > 0 &&
+    *txn_load_in_progress = true;
+    return HybridTime::kInitial;
+  }
+
+  // GetMinStartHTRunningTxnsForCDCProducer returns kMax when there are no running transactions. In
+  // this case use leader_safe_time. Otherwise, take the min of consistent_stream_safe_time and
+  // leader_safe_time.
+  consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kMax
+                                    ? leader_safe_time
+                                    : std::min(consistent_stream_safe_time, leader_safe_time);
+
+  if ((safe_hybrid_time_req > 0 &&
        consistent_stream_safe_time.ToUint64() < (uint64_t)safe_hybrid_time_req) ||
       (int64_t)leader_safe_time.GetPhysicalValueMillis() -
               (int64_t)consistent_stream_safe_time.GetPhysicalValueMillis() >
@@ -2421,15 +2442,15 @@ Result<uint64_t> GetConsistentStreamSafeTime(
     RETURN_NOT_OK(
         tablet_ptr->transaction_participant()->ResolveIntents(leader_safe_time, deadline));
 
-    return leader_safe_time.ToUint64();
+    return leader_safe_time;
   }
 
   return safe_hybrid_time_req > 0
              // It is possible for us to receive a transaction with begin time lower than
              // a previously fetched leader_safe_time. So, we need a max of safe time from
              // request and consistent_stream_safe_time here.
-             ? std::max(consistent_stream_safe_time.ToUint64(), (uint64_t)safe_hybrid_time_req)
-             : consistent_stream_safe_time.ToUint64();
+             ? std::max(consistent_stream_safe_time, HybridTime((uint64_t)safe_hybrid_time_req))
+             : consistent_stream_safe_time;
 }
 
 void SetSafetimeFromRequestIfInvalid(
@@ -2609,11 +2630,6 @@ Status HandleGetChangesForSnapshotRequest(
   return Status::OK();
 }
 
-bool IsReplicationSlotStream(const StreamMetadata& stream_metadata) {
-  return stream_metadata.GetReplicationSlotName().has_value() &&
-         !stream_metadata.GetReplicationSlotName()->empty();
-}
-
 // Response safe time follows the invaraint:
 // Request safe time <= Response safe time <= value from GetConsistentStreamSafeTime().
 // If response safe time is set to GetConsistentStreamSafeTime()'s value, then it implies that we
@@ -2705,9 +2721,13 @@ Status GetChangesForCDCSDK(
   } else {
     leader_safe_time = *leader_safe_time_result;
   }
-  uint64_t consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
+  HybridTime consistent_stream_safe_hybrid_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
       tablet_peer, tablet_ptr, leader_safe_time, safe_hybrid_time_req, deadline,
       &txn_load_in_progress));
+  if (!consistent_stream_safe_hybrid_time.is_valid()) {
+    wait_for_wal_update = true;
+  }
+  uint64_t consistent_stream_safe_time = consistent_stream_safe_hybrid_time.ToUint64();
   OpId historical_max_op_id = tablet_ptr->transaction_participant()
                                   ? tablet_ptr->transaction_participant()->GetHistoricalMaxOpId()
                                   : OpId::Invalid();
@@ -2734,6 +2754,7 @@ Status GetChangesForCDCSDK(
     OpId last_seen_op_id;
     last_seen_op_id.term = from_op_id.term();
     last_seen_op_id.index = from_op_id.index();
+    OpId last_skipped_op_id = OpId::Invalid();
     HybridTime commit_timestamp;
     uint32_t xrepl_origin_id = 0;
 
@@ -2744,8 +2765,8 @@ Status GetChangesForCDCSDK(
     if (FLAGS_cdc_enable_consistent_records)
       RETURN_NOT_OK(GetConsistentWALRecords(
           tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
-          historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, *last_readable_opid_index,
-          safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
+          historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_skipped_op_id,
+          *last_readable_opid_index, safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
           &last_read_wal_op_record_time, &is_entire_wal_read));
     else
       // 'skip_intents' is true here because we want the first transaction to be the partially
@@ -2830,6 +2851,7 @@ Status GetChangesForCDCSDK(
     }
   } else {
     OpId last_seen_op_id = op_id;
+    OpId last_skipped_op_id = OpId::Invalid();
     bool saw_non_actionable_message = false;
     std::unordered_set<std::string> streamed_txns;
 
@@ -2850,9 +2872,13 @@ Status GetChangesForCDCSDK(
     do {
       size_t next_checkpoint_index = 0;
 
-      consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
+      consistent_stream_safe_hybrid_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
           tablet_peer, tablet_ptr, leader_safe_time, safe_hybrid_time_req, deadline,
           &txn_load_in_progress));
+      if (!consistent_stream_safe_hybrid_time.is_valid()) {
+        wait_for_wal_update = true;
+      }
+      consistent_stream_safe_time = consistent_stream_safe_hybrid_time.ToUint64();
 
       if (txn_load_in_progress) {
         LOG(INFO) << "Loading of transactions is in progress for tablet: " << tablet_id
@@ -2864,9 +2890,9 @@ Status GetChangesForCDCSDK(
       if (FLAGS_cdc_enable_consistent_records)
         RETURN_NOT_OK(GetConsistentWALRecords(
             tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
-            historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, *last_readable_opid_index,
-            safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
-            &last_read_wal_op_record_time, &is_entire_wal_read));
+            historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_skipped_op_id,
+            *last_readable_opid_index, safe_hybrid_time_req, deadline, &wal_records,
+            &all_checkpoints, &last_read_wal_op_record_time, &is_entire_wal_read));
       else
         // 'skip_intents' is false otherwise in case the complete wal segment is filled with
         // intents we will break the loop thinking that WAL has no more records.
@@ -2889,7 +2915,19 @@ Status GetChangesForCDCSDK(
                           << "last_seen_op_id: " << last_seen_op_id << ", last_readable_opid_index "
                           << *last_readable_opid_index << ", safe_hybrid_time "
                           << safe_hybrid_time_req << ", consistent_safe_time "
-                          << consistent_stream_safe_time;
+                          << consistent_stream_safe_time << ", last_skipped_op_id: "
+                          << last_skipped_op_id;
+
+        // This means that all the records read from the WAL were either intents or aborted
+        // transactions' UPDATE_TRANSACTION_OPs. These would always be filtered out, so we move the
+        // cdc_sdk_checkpoint forward to the last skipped op id.
+        if (last_skipped_op_id.valid()) {
+          checkpoint_updated = true;
+          checkpoint.set_term(last_skipped_op_id.term);
+          checkpoint.set_index(last_skipped_op_id.index);
+          VLOG_WITH_FUNC(1) << "Advancing checkpoint to last skipped op id: " << last_skipped_op_id
+                            << " on tablet: " << tablet_id;
+        }
         break;
       }
 
@@ -3047,12 +3085,41 @@ Status GetChangesForCDCSDK(
 
           case consensus::OperationType::CHANGE_METADATA_OP: {
             VLOG(3) << "Will stream a DDL record. " << msg->ShortDebugString();
+            if (!msg->change_metadata_request().has_schema()) {
+              // A change metadata op without a schema (for example a mark_backfill_done op
+              // or a colocated table add_table/remove_table_id) carries no schema change to
+              // stream.  Skip it instead of running the schema path below, which would cache
+              // an empty schema under version 0 and emit an empty schema DDL record if the
+              // sys catalog lookup fails.
+              VLOG(3) << "Skipping schema-less CHANGE_METADATA_OP. " << msg->ShortDebugString();
+              AcknowledgeStreamedMsg(
+                  msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                  &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                  &safe_hybrid_time_resp, &wal_segment_index);
+              checkpoint_updated = true;
+              break;
+            }
             RETURN_NOT_OK(SchemaFromPB(
                 msg->change_metadata_request().schema().ToGoogleProtobuf(), &current_schema));
             TabletId table_id = tablet_ptr->metadata()->table_id();
             if (tablet_ptr->metadata()->colocated()) {
-              auto table_info = CHECK_RESULT(tablet_ptr->metadata()->GetTableInfo(
-                  msg->change_metadata_request().alter_table_id().ToBuffer()));
+              auto table_info = VERIFY_RESULT(GetTableInfoForColocatedTable(
+                  msg->change_metadata_request().alter_table_id().ToBuffer(), tablet_ptr));
+              if (!table_info) {
+                // The table this op alters is no longer in the tablet metadata.  This happens
+                // when a colocated table is dropped after writing this op but before the
+                // stream reads it, since the lookup above reflects the current metadata and
+                // not the metadata as of the op.  The table is gone, so there is nothing to
+                // stream for it.
+                LOG(INFO) << "Skipping CHANGE_METADATA_OP for a table that is no longer in the "
+                          << "tablet metadata. " << msg->ShortDebugString();
+                AcknowledgeStreamedMsg(
+                    msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                    &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                    &safe_hybrid_time_resp, &wal_segment_index);
+                checkpoint_updated = true;
+                break;
+              }
               table_id = table_info->table_id;
               table_name = table_info->table_name;
             }

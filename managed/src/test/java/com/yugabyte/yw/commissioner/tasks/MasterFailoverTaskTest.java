@@ -38,7 +38,7 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.PeerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -118,7 +118,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
         .when(() -> MetricGroup.getTabletFollowerLagMap(any()))
         .thenReturn(new HashMap<>());
 
-    YBClient mockClient = mock(YBClient.class);
+    YBClientApi mockClient = mock(YBClientApi.class);
     try {
       when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       when(listMastersResponse.getPeersList()).thenReturn(Collections.singletonList(peerInfo));

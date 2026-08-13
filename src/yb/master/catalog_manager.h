@@ -81,6 +81,7 @@ class AsyncTaskThrottlerBase;
 class Counter;
 class DynamicAsyncTaskThrottler;
 class IsOperationDoneResult;
+struct ReadHybridTime;
 class Schema;
 class ScopedRWOperation;
 class ThreadPool;
@@ -434,7 +435,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Gets the backfilling status of the specified index tables. The result is provided via
   // the callback for every index from the indexes argument. If the indexes argument is empty,
   // the result is provided for every index of the specified indexed table. The callback must have
-  // the following signature: void (const Status&, const TableId&, IndexStatusPB::BackfillStatus).
+  // the following signature:
+  // void (const Status&, const TableId&, IndexStatusPB::BackfillStatus, uint64_t birth_time).
+  // birth_time is the value persisted on the index table's IndexInfo (0 if unset).
   void GetBackfillStatus(const TableId& indexed_table_id, TableIdSet&& indexes, auto&& callback);
 
   // Backfill the indexes for the specified table.
@@ -505,8 +508,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status UpdateSysCatalogWithNewSchema(
     const scoped_refptr<TableInfo>& table,
     const std::vector<DdlLogEntry>& ddl_log_entries,
-    const std::string& new_namespace_id,
-    const std::string& new_table_name,
     const LeaderEpoch& epoch,
     AlterTableResponsePB* resp);
 
@@ -587,7 +588,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn_data,
                                     const std::vector<DdlLogEntry>& ddl_log_entries,
-                                    const std::string& new_table_name,
                                     bool success,
                                     int rollback_till_ddl_state_index = 0);
 
@@ -1559,6 +1559,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  // This is used to backfill legacy gRPC streams (having no slot_name and plugin_name) which were
+  // created before promotion of FLAGS_cdc_pg_create_grpc_stream. Such streams are given a slot
+  // name, plugin name, and logical replication stream's analogous slot entry in cdc_state table.
+  Status BackfillLegacyGrpcStreams(const LeaderEpoch& epoch);
+
+  // Backfills the plugin name (to yboutput) for internal LISTEN/NOTIFY notifications streams that
+  // were created with an empty plugin name.
+  Status BackfillNotificationsStreamsPluginName(const LeaderEpoch& epoch);
+
   Status DisableDynamicTableAdditionOnCDCSDKStream(
       const DisableDynamicTableAdditionOnCDCSDKStreamRequestPB* req,
       DisableDynamicTableAdditionOnCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
@@ -1666,6 +1675,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // streamed. This is the single place to register such tables: when a new feature/extension
   // introduces a table that CDCSDK must exclude, add a check for it here.
   bool IsInternalTableToBeExcludedFromCDCSDKStream(const TableInfo::ReadLock& lock) const;
+
+  // Returns true if the given CDCSDK stream is an internal LISTEN/NOTIFY notifications stream.
+  bool IsNotificationSlotStream(const CDCStreamInfo& stream) const REQUIRES_SHARED(mutex_);
+
+  // Returns true if the given CDCSDK stream is a logical replication stream.
+  bool IsCdcLogicalReplicationStream(const CDCStreamInfo& stream) const REQUIRES_SHARED(mutex_);
 
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
@@ -2400,7 +2415,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Is this table part of xCluster or CDCSDK?
   bool IsTablePartOfXRepl(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
-  bool IsTablePartOfCDCSDK(const TableId& table_id, bool require_replication_slot = false) const
+  bool IsTablePartOfCDCSDK(const TableId& table_id, bool require_logical_replication = false) const
       REQUIRES_SHARED(mutex_);
 
   // Returns true, if there exists atleast one stream which uses pub refresh mechanism (detected by
@@ -2780,6 +2795,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // pg catalog tables.
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetYsqlTablespaceInfo();
 
+  // Look up pg schema name from PG catalog for a YSQL table. Returns nullopt when lookup should
+  // be skipped (e.g. system_postgres.sequences_data) or fails.
+  std::optional<std::string> LookupPgSchemaNameForTable(
+      const TableInfo& table, const ReadHybridTime& read_time) const;
+
   // Return the table->tablespace mapping by reading the pg catalog tables.
   Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap(
       const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
@@ -3067,13 +3087,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
       const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
-  Status PopulateCDCStateTable(const xrepl::StreamId& stream_id,
-                               const std::vector<TableId>& table_ids,
-                               bool has_consistent_snapshot_option,
-                               bool consistent_snapshot_option_use,
-                               uint64_t consistent_snapshot_time,
-                               uint64_t stream_creation_time,
-                               bool has_replication_slot_name);
+  Status PopulateCDCStateTable(
+      const xrepl::StreamId& stream_id, const std::vector<TableId>& table_ids,
+      bool has_consistent_snapshot_option, bool consistent_snapshot_option_use,
+      uint64_t consistent_snapshot_time, uint64_t stream_creation_time, bool create_slot_entry);
 
   Status SetAllCDCSDKRetentionBarriers(
       const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,

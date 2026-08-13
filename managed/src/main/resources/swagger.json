@@ -681,12 +681,6 @@
         },
         {
           "properties" : {
-            "apiKey" : {
-              "description" : "API key",
-              "maxLength" : 2147483647,
-              "minLength" : 1,
-              "type" : "string"
-            },
             "routingKey" : {
               "description" : "Routing key",
               "maxLength" : 2147483647,
@@ -695,7 +689,6 @@
             }
           },
           "required" : [
-            "apiKey",
             "routingKey"
           ],
           "type" : "object"
@@ -2198,7 +2191,8 @@
             "RunScript",
             "CreateFileCollection",
             "DownloadFileCollection",
-            "DeleteFileCollection"
+            "DeleteFileCollection",
+            "UpdateClusters"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -2408,6 +2402,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -4086,6 +4083,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
@@ -4540,6 +4538,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
@@ -5329,6 +5328,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -8481,6 +8483,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -9304,6 +9309,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -10857,6 +10865,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -11616,6 +11627,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -13137,6 +13151,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
@@ -14497,6 +14512,10 @@
       "properties" : {
         "vnet" : {
           "type" : "string"
+        },
+        "ybImage" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.</b> Use provider.imageBundle instead",
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -14640,6 +14659,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "embedded" : {
+          "description" : "True when this collector is the embedded PA managed by EmbeddedCollectorInitializer",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "inUseStatus" : {
           "description" : "In Use Status",
           "enum" : [
@@ -14753,6 +14777,11 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        },
+        "embedded" : {
+          "description" : "True when this collector is the embedded PA managed by EmbeddedCollectorInitializer",
+          "readOnly" : true,
+          "type" : "boolean"
         },
         "metricsPassword" : {
           "description" : "Metrics API Password",
@@ -16438,6 +16467,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -17144,6 +17176,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -18227,6 +18262,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -19096,6 +19134,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -20657,6 +20698,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -22507,6 +22551,11 @@
           ],
           "type" : "string"
         },
+        "isKubernetesOperatorControlled" : {
+          "description" : "True if this schedule is controlled by the Kubernetes operator",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "nextExpectedTask" : {
           "description" : "Next expected task time",
           "example" : "2022-12-12T13:07:18Z",
@@ -23143,6 +23192,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -24314,6 +24366,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -25658,6 +25713,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -26352,6 +26410,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -27195,6 +27256,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -27864,6 +27928,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -28525,6 +28592,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -29702,6 +29772,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -30906,6 +30979,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -45062,6 +45138,15 @@
             "name" : "uniUUID",
             "required" : true,
             "type" : "string"
+          },
+          {
+            "default" : 10,
+            "description" : "Maximum number of most recent health check entries to return. Defaults to 10.",
+            "format" : "int32",
+            "in" : "query",
+            "name" : "limit",
+            "required" : false,
+            "type" : "integer"
           }
         ],
         "responses" : {

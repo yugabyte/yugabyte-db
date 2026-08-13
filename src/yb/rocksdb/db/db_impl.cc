@@ -6369,36 +6369,38 @@ void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   versions_->GetLiveFilesMetaData(metadata);
 }
 
-yb::storage::UserFrontierPtr DBImpl::GetFlushedFrontier() {
+yb::storage::FrontierInfo DBImpl::GetFrontiers(yb::storage::FrontierKinds kinds) {
+  using yb::storage::FrontierKind;
+  using yb::storage::UpdateUserValueType;
   InstrumentedMutexLock l(&mutex_);
-  auto result = versions_->FlushedFrontier();
-  if (result) {
-    return result->Clone();
-  }
-  std::vector<LiveFileMetaData> files;
-  versions_->GetLiveFilesMetaData(&files);
-  yb::storage::UserFrontierPtr accumulated;
-  for (const auto& file : files) {
-    if (!file.imported) {
-      yb::storage::UserFrontier::Update(
-          file.largest.user_frontier.get(), yb::storage::UpdateUserValueType::kLargest,
-          &accumulated);
+  yb::storage::FrontierInfo result;
+  if (kinds.Test(FrontierKind::kFlushed)) {
+    auto flushed = versions_->FlushedFrontier();
+    if (flushed) {
+      result.flushed = flushed->Clone();
+    } else {
+      std::vector<LiveFileMetaData> files;
+      versions_->GetLiveFilesMetaData(&files);
+      for (const auto& file : files) {
+        if (!file.imported) {
+          yb::storage::UserFrontier::Update(
+              file.largest.user_frontier.get(), UpdateUserValueType::kLargest, &result.flushed);
+        }
+      }
     }
   }
-  return accumulated;
-}
-
-yb::storage::UserFrontierPtr DBImpl::CalcMemTableFrontier(
-    yb::storage::UpdateUserValueType frontier_type) {
-  InstrumentedMutexLock l(&mutex_);
-  auto cfd = default_cf_handle_->cfd();
-  return cfd->imm()->GetFrontier(cfd->mem()->GetFrontier(frontier_type), frontier_type);
-}
-
-UserFrontierRange DBImpl::CalcMemTableFrontiers() {
-  InstrumentedMutexLock l(&mutex_);
-  auto cfd = default_cf_handle_->cfd();
-  return cfd->imm()->MergeFrontiersWith(cfd->mem()->GetFrontiers());
+  if (kinds.Test(FrontierKind::kInMemorySmallest) || kinds.Test(FrontierKind::kInMemoryLargest)) {
+    auto cfd = default_cf_handle_->cfd();
+    if (kinds.Test(FrontierKind::kInMemorySmallest)) {
+      result.in_memory.smallest = cfd->imm()->GetFrontier(
+          cfd->mem()->GetFrontier(UpdateUserValueType::kSmallest), UpdateUserValueType::kSmallest);
+    }
+    if (kinds.Test(FrontierKind::kInMemoryLargest)) {
+      result.in_memory.largest = cfd->imm()->GetFrontier(
+          cfd->mem()->GetFrontier(UpdateUserValueType::kLargest), UpdateUserValueType::kLargest);
+    }
+  }
+  return result;
 }
 
 yb::storage::UserFrontierPtr DBImpl::GetMutableMemTableFrontier(

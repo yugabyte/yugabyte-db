@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.metrics.MetricUrlProvider;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -23,10 +24,6 @@ import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -61,9 +58,15 @@ public class EmbeddedCollectorInitializer {
 
   public void start() {
     log.info("Started Embedded PA Collector initialization");
-    platformScheduler.scheduleOnce(
+    // Recurring, and runs on followers too. The initializer is what pushes local PA URLs and
+    // collection_enabled=false to the embedded PA's customer_metadata; if it only ran on the
+    // leader the standby PA would never get its state refreshed after an HA restore, and the
+    // collection_enabled gate would never flip after a role change that doesn't restart YBA
+    // (yb.ha.shutdown_level=0).
+    platformScheduler.scheduleAlwaysOn(
         getClass().getSimpleName(),
         Duration.ZERO, // InitialDelay
+        Duration.ofMinutes(1), // Interval
         this::initializeAll);
   }
 
@@ -86,13 +89,6 @@ public class EmbeddedCollectorInitializer {
         SwamperHelper.getScrapeIntervalSeconds(configFactory.staticApplicationConf());
     String prometheusUrl = metricUrlProvider.getMetricsInternalUrl();
 
-    Map<UUID, PACollector> allCollectors =
-        perfAdvisorService.list(PACollectorFilter.builder().build()).stream()
-            .collect(Collectors.toMap(PACollector::getUuid, Function.identity()));
-    if (StringUtils.isEmpty(embeddedPaUrl) && allCollectors.isEmpty()) {
-      return;
-    }
-
     if (StringUtils.isNotEmpty(embeddedPaUrl)) {
       boolean paCollectorEnabled =
           configFactory.globalRuntimeConf().getBoolean(CustomerConfKeys.enablePACollector.getKey());
@@ -112,25 +108,33 @@ public class EmbeddedCollectorInitializer {
         configFactory
             .staticApplicationConf()
             .getString(GlobalConfKeys.metricsAuthPassword.getKey());
+    // Uses isLocalLeader() (not the switchover-aware HighAvailabilityConfig.isFollower())
+    // so the post-promotion initialize() call from PlatformReplicationManager, which still
+    // runs while isSwitchOverInProgress=true, sees the newly-promoted instance as a leader
+    // and takes the leader path.
+    boolean isFollower = HighAvailabilityConfig.get().map(c -> !c.isLocalLeader()).orElse(false);
     for (Customer customer : customers) {
       try {
-        PACollector embeddedCollector = allCollectors.get(customer.getUuid());
+        // Find the embedded collector using the explicit marker. After an HA restore the
+        // paUrl on the row still points at the old active's PA, so URL-based lookup would
+        // miss it; the embedded flag is the stable identity.
+        List<PACollector> embeddedMatches =
+            perfAdvisorService.list(
+                PACollectorFilter.builder()
+                    .customerUuid(customer.getUuid())
+                    .embedded(true)
+                    .build());
+        PACollector embeddedCollector = embeddedMatches.isEmpty() ? null : embeddedMatches.get(0);
+
+        // On the follower we only need to mark our local collector as hot standby.
+        // All other cases we skip.
+        if (isFollower && (embeddedCollector == null || StringUtils.isEmpty(embeddedPaUrl))) {
+          continue;
+        }
+
         if (StringUtils.isEmpty(embeddedPaUrl) && embeddedCollector == null) {
           continue;
         } else if (StringUtils.isNotEmpty(embeddedPaUrl) && embeddedCollector == null) {
-          List<PACollector> existing =
-              perfAdvisorService.list(
-                  PACollectorFilter.builder()
-                      .customerUuid(customer.getUuid())
-                      .paUrl(embeddedPaUrl)
-                      .build());
-
-          if (!existing.isEmpty()) {
-            log.info(
-                "Embedded collector already exists for customer {}, skipping", customer.getUuid());
-            continue;
-          }
-
           String paUserEmail = "pa_collector_" + customer.getId() + "@yugabyte.com";
           Users paUser = Users.getByEmail(paUserEmail);
           if (paUser == null) {
@@ -163,36 +167,41 @@ public class EmbeddedCollectorInitializer {
           collector.setMetricsPassword(metricsPassword);
           collector.setYbaUrl(platformUrl);
           collector.setMetricsScrapePeriodSecs(scrapeInterval);
+          collector.setEmbedded(true);
           perfAdvisorService.create(collector);
         } else if (StringUtils.isEmpty(embeddedPaUrl) && embeddedCollector != null) {
           log.info("Removing embedded collector for customer {}", customer.getUuid());
-          perfAdvisorService.delete(customer.getUuid(), customer.getUuid(), true);
+          // Delete the local yugaware DB row only - if we don't have embeddedPaUrl - this
+          // means that embedded collector is not running and we can't call it's APIs anyway
+          embeddedCollector.delete();
           for (Universe universe : Universe.getAllWithoutResources(customer)) {
             if (universe.getUniverseDetails().getPaCollectorUuid() != null
-                && universe.getUniverseDetails().getPaCollectorUuid().equals(customer.getUuid())) {
+                && universe
+                    .getUniverseDetails()
+                    .getPaCollectorUuid()
+                    .equals(embeddedCollector.getUuid())) {
               Universe.saveDetails(
                   universe.getUniverseUUID(), u -> u.getUniverseDetails().setPaCollectorUuid(null));
             }
           }
         } else {
-          if (embeddedCollector.getMetricsScrapePeriodSecs() != scrapeInterval
-              || !embeddedCollector.getPaUrl().equals(embeddedPaUrl)
-              || !embeddedCollector.getPaApiToken().equals(embeddedPaToken)
-              || !embeddedCollector.getYbaUrl().equals(platformUrl)
-              || !embeddedCollector.getMetricsUrl().equals(prometheusUrl)
-              || !embeddedCollector.getMetricsUsername().equals(metricsUsername)
-              || !embeddedCollector.getMetricsPassword().equals(metricsPassword)) {
-
-            log.info("Updating embedded collector for customer {}", customer.getUuid());
-            embeddedCollector.setPaApiToken(embeddedPaToken);
-            embeddedCollector.setPaUrl(embeddedPaUrl);
-            embeddedCollector.setMetricsUrl(prometheusUrl);
-            embeddedCollector.setMetricsUsername(metricsUsername);
-            embeddedCollector.setMetricsPassword(metricsPassword);
-            embeddedCollector.setYbaUrl(platformUrl);
-            embeddedCollector.setMetricsScrapePeriodSecs(scrapeInterval);
-            perfAdvisorService.save(embeddedCollector, true);
-          }
+          // Always update. On the leader this pushes YBA-side changes (URLs, scrape
+          // interval, api tokens) to PA. On a follower it re-points the mirrored row at
+          // this YBA's LOCAL PA and re-PUTs customer_metadata with collection_enabled=false
+          // (see PerfAdvisorClient.putCustomerMetadata, which reads
+          // HighAvailabilityConfig.isFollower()) - both mandatory so a role flip that
+          // doesn't restart YBA propagates promptly. The row write is clobbered by the
+          // next HA sync, but the customer_metadata PUT on the local PA is what actually
+          // gates its scraping / anomaly detection.
+          log.info("Updating embedded collector for customer {}", customer.getUuid());
+          embeddedCollector.setPaApiToken(embeddedPaToken);
+          embeddedCollector.setPaUrl(embeddedPaUrl);
+          embeddedCollector.setMetricsUrl(prometheusUrl);
+          embeddedCollector.setMetricsUsername(metricsUsername);
+          embeddedCollector.setMetricsPassword(metricsPassword);
+          embeddedCollector.setYbaUrl(platformUrl);
+          embeddedCollector.setMetricsScrapePeriodSecs(scrapeInterval);
+          perfAdvisorService.save(embeddedCollector, true);
         }
         metricService.setOkStatusMetric(
             buildMetricTemplate(PlatformMetrics.PA_EMBEDDED_COLLECTOR_INIT_STATUS, customer));

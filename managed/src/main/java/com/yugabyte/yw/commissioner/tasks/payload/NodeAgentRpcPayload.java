@@ -173,6 +173,13 @@ public class NodeAgentRpcPayload {
     return null;
   }
 
+  /**
+   * Name of the otel collector archive as it lands in the third-party package directory. The
+   * dependency list is fetched with {@code wget -i}, which saves each file under its URL basename,
+   * so this must track the archive names published to ybm-package-store. The executable inside is
+   * named {@code otelcol-unified}; node-agent renames it to {@code otelcol-contrib} on extract to
+   * keep the running process name stable.
+   */
   private String getOtelCollectorPackagePath(Architecture arch) {
     String architecture = "";
     if (arch.equals(Architecture.x86_64)) {
@@ -181,7 +188,7 @@ public class NodeAgentRpcPayload {
       architecture = "arm64";
     }
     return String.format(
-        "otelcol-contrib_%s_%s_%s.tar.gz",
+        "otelcol-unified_%s_%s_%s.tar.gz",
         ManageOtelCollector.OtelCollectorVersion,
         ManageOtelCollector.OtelCollectorPlatform,
         architecture);
@@ -480,12 +487,19 @@ public class NodeAgentRpcPayload {
     AuditLogConfig config = null;
     QueryLogConfig queryLogConfig = null;
     TelemetryConfig telemetryConfig = null;
+    // Refresh-only mode: node-agent should just rewrite log_cleanup_env +
+    // refresh the on-node zip_purge_yb_logs.sh script, without going through
+    // the (expensive) otel-collector install steps. Triggered when the caller
+    // isn't actually installing/keeping otel-collector on the universe but we
+    // still want audit-log setting changes to reach the node.
+    boolean refreshScriptOnly = false;
     if (taskParams instanceof ManageOtelCollector.Params) {
       ManageOtelCollector.Params params = (ManageOtelCollector.Params) taskParams;
       telemetryConfig = params.telemetryConfig;
       config = params.getAuditLogConfig();
       queryLogConfig = params.getQueryLogConfig();
       gflags = params.gflags;
+      refreshScriptOnly = !params.otelCollectorEnabled;
     } else if (taskParams instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
       telemetryConfig = params.telemetryConfig;
@@ -497,10 +511,12 @@ public class NodeAgentRpcPayload {
               UniverseTaskBase.ServerType.TSERVER,
               cluster,
               universe.getUniverseDetails().clusters);
+      refreshScriptOnly = !params.otelCollectorEnabled;
     }
 
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
+    installOtelCollectorInputBuilder.setRefreshScriptOnly(refreshScriptOnly);
 
     // Set memory limit for OTel collector
     int otelColMaxMemory =
@@ -509,19 +525,26 @@ public class NodeAgentRpcPayload {
       installOtelCollectorInputBuilder.setOtelColMaxMemory(otelColMaxMemory);
     }
 
-    String otelCollectorPackagePath =
-        getThirdpartyPackagePath()
-            + "/"
-            + getOtelCollectorPackagePath(universe.getUniverseDetails().arch);
-    nodeAgentClient.uploadFile(
-        nodeAgent,
-        otelCollectorPackagePath,
-        customTmpDirectory + "/" + getOtelCollectorPackagePath(universe.getUniverseDetails().arch),
-        DEFAULT_CONFIGURE_USER,
-        0,
-        null);
-    installOtelCollectorInputBuilder.setOtelColPackagePath(
-        getOtelCollectorPackagePath(universe.getUniverseDetails().arch));
+    // Skip the (expensive) otel-collector package upload/extract in
+    // refresh-only mode - node-agent's InstallOtelCollector.Handle takes an
+    // early-return path that doesn't touch these bits.
+    if (!refreshScriptOnly) {
+      String otelCollectorPackagePath =
+          getThirdpartyPackagePath()
+              + "/"
+              + getOtelCollectorPackagePath(universe.getUniverseDetails().arch);
+      nodeAgentClient.uploadFile(
+          nodeAgent,
+          otelCollectorPackagePath,
+          customTmpDirectory
+              + "/"
+              + getOtelCollectorPackagePath(universe.getUniverseDetails().arch),
+          DEFAULT_CONFIGURE_USER,
+          0,
+          null);
+      installOtelCollectorInputBuilder.setOtelColPackagePath(
+          getOtelCollectorPackagePath(universe.getUniverseDetails().arch));
+    }
     String ycqlAuditLogLevel = "NONE";
     if (config != null && config.getYcqlAuditConfig() != null) {
       YCQLAuditConfig.YCQLAuditLogLevel logLevel =
@@ -547,7 +570,7 @@ public class NodeAgentRpcPayload {
     }
     installOtelCollectorInputBuilder.addAllMountPoints(getMountPoints(taskParams));
 
-    if (OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
+    if (!refreshScriptOnly && OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
       String otelCollectorConfigFile =
           otelCollectorConfigGenerator
               .generateConfigFile(

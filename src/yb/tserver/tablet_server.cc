@@ -267,6 +267,8 @@ DEFINE_RUNTIME_int32(min_invalidation_message_retention_time_secs, 60,
     "Minimal time at which a catalog version with invalidation message is retained.");
 TAG_FLAG(min_invalidation_message_retention_time_secs, advanced);
 
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_qos);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_bool(enable_update_local_peer_min_index);
@@ -381,6 +383,10 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
 
 bool MinimalRetentionTimePassed(CoarseTimePoint message_time, CoarseTimePoint now) {
   return message_time + FLAGS_min_invalidation_message_retention_time_secs * 1s < now;
+}
+
+bool ObjectLockFastpathEnabled() {
+  return FLAGS_enable_object_lock_fastpath && FLAGS_enable_object_locking_for_table_locks;
 }
 
 }  // namespace
@@ -627,8 +633,8 @@ Status TabletServer::Init() {
   shared->SetTserverUuid(fs_manager()->uuid());
 
   shared_mem_manager_->SetReadyCallback([this] {
-    if (auto* object_lock_state = shared_mem_manager_->SharedData()->object_lock_state()) {
-      object_lock_shared_state_manager_->SetupShared(*object_lock_state);
+    if (ObjectLockFastpathEnabled()) {
+      object_lock_shared_state_manager_->SetupShared(shared_mem_manager_->allocator());
     }
   });
 
@@ -2357,7 +2363,8 @@ Status TabletServer::CreateXClusterConsumer() {
   };
   auto connect_to_pg = [this](const std::string& database_name, const CoarseTimePoint& deadline) {
     return CreateInternalPGConn(
-        database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline);
+        database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline,
+        pgwrapper::YbInternalConnKindWireName::kXClusterDdlQueue);
   };
   auto get_namespace_info =
       [this](const TabletId& tablet_id) -> Result<std::pair<NamespaceId, NamespaceName>> {
@@ -2555,6 +2562,8 @@ void TabletServer::RegisterConnectionManagerRestarter(std::function<Status(void)
 Status TabletServer::StartYSQLLeaseRefresher() {
   return ysql_lease_manager_->StartYSQLLeaseRefresher();
 }
+
+void TabletServer::ShutdownYSQLLeaseManager() { ysql_lease_manager_->Shutdown(); }
 
 Status TabletServer::SetCDCServiceEnabled() {
   if (!cdc_service_) {
@@ -2754,6 +2763,34 @@ Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLoc
   return pg_client_service->impl.GetLocalPgTxnSnapshot(snapshot_id);
 }
 
+master::DbOidToHybridTimeMap TabletServer::GetYsqlDbOldestPinnedReadTimes() {
+  auto pg_client_service = pg_client_service_.lock();
+  if (!pg_client_service) {
+    return {};
+  }
+  return pg_client_service->impl.GetDatabasePins();
+}
+
+void TabletServer::UpdateClusterYsqlDbOldestPinnedReadTimes(
+  const master::TSHeartbeatResponsePB& resp) {
+  master::DbOidToHybridTimeMap pins;
+  pins.reserve(resp.cluster_ysql_db_oldest_pinned_read_times().size());
+  for (const auto& [db_oid, db_pins] : resp.cluster_ysql_db_oldest_pinned_read_times()) {
+    auto pin = HybridTime::FromPB(db_pins.db_level_oldest_read_time());
+    if (pin.is_valid()) {
+      pins.emplace(static_cast<PgOid>(db_oid), pin);
+    }
+  }
+  std::lock_guard lock(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+  cluster_ysql_db_oldest_pinned_read_times_ = std::move(pins);
+}
+
+HybridTime TabletServer::GetClusterYsqlDbOldestPinnedReadTime(PgOid db_oid) const {
+  SharedLock l(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+  auto it = cluster_ysql_db_oldest_pinned_read_times_.find(db_oid);
+  return it != cluster_ysql_db_oldest_pinned_read_times_.end() ? it->second : HybridTime::kInvalid;
+}
+
 Result<std::string> TabletServer::GetUniverseUuid() const {
   return fs_manager_->GetUniverseUuidFromTserverInstanceMetadata();
 }
@@ -2766,6 +2803,18 @@ PgClientServiceImpl* TabletServer::TEST_GetPgClientService() {
 PgClientServiceMockImpl* TabletServer::TEST_GetPgClientServiceMock() {
   auto holder = pg_client_service_.lock();
   return holder && holder->mock.has_value() ? &holder->mock.value() : nullptr;
+}
+
+std::optional<docdb::ObjectLockSharedStateHolder>
+TabletServer::AllocateObjectLockSharedState() const {
+  if (ObjectLockFastpathEnabled()) {
+    auto result = object_lock_shared_state_manager_->AllocateShared();
+    if (result.ok()) {
+      return std::move(*result);
+    }
+    LOG(DFATAL) << "Failed to allocate new object lock shared state: " << result.status();
+  }
+  return std::nullopt;
 }
 
 ConnectivityStateResponsePB TabletServer::ConnectivityState() {

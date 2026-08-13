@@ -61,7 +61,7 @@ Result<std::vector<std::vector<std::string>>> GetHtmlTableRows(
   std::smatch match;
   if (!std::regex_search(webpage, match, table_open_regex)) {
     LOG(INFO) << "Full webpage: " << webpage;
-    return STATUS_FORMAT(NotFound, "Table with id $0 not found", html_table_tag_id);
+    return STATUS_FORMAT(NotFound, "Table with id $0 does not exist", html_table_tag_id);
   }
   const auto content_begin = match.position(0) + match.length(0);
   const std::string table = webpage.substr(

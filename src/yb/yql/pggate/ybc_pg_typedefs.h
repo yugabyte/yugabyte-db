@@ -34,10 +34,17 @@
     } \
     typedef class yb::pggate::name *Ybc##name;
 
+#define YB_DEFINE_YB_HANDLE_TYPE(name) \
+    namespace yb { \
+    class name; \
+    } \
+    typedef class yb::name *Ybc##name;
+
 #define YB_PGGATE_IDENTIFIER(name) yb::pggate::name
 
 #else
 #define YB_DEFINE_HANDLE_TYPE(name) typedef struct name *Ybc##name;
+#define YB_DEFINE_YB_HANDLE_TYPE(name) typedef struct name *Ybc##name;
 #define YB_PGGATE_IDENTIFIER(name) name
 #endif  // __cplusplus
 
@@ -66,8 +73,14 @@ YB_DEFINE_HANDLE_TYPE(PgMemctx);
 // Handle to a global view read scan.
 YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
 
+// Handle to a PgResultPB protobuf message.
+YB_DEFINE_YB_HANDLE_TYPE(PgResultPB);
+
 // Handle to a distributed trace span context.
 YB_DEFINE_HANDLE_TYPE(OtelSpanContext);
+
+// Handle to a live distributed-trace span for a single executor plan node.
+YB_DEFINE_HANDLE_TYPE(OtelNodeSpan);
 
 // Represents STATUS_* definitions from src/postgres/src/include/c.h.
 #define YBC_STATUS_OK     (0)
@@ -210,7 +223,9 @@ typedef enum {
 typedef enum {
   kLowerPriorityRange,
   kHigherPriorityRange,
-  kHighestPriority
+  kHighestPriority,
+  // Pre-empted by any conflicting transaction, whichever priority range it belongs to.
+  kLowestPriority
 } YbcTxnPriorityRequirement;
 
 // Single key column value for YBCGetTabletForKey (used by yb_get_tablet_for_key).
@@ -1090,17 +1105,6 @@ typedef struct {
   int (*comparator)(uint64_t datum1, bool isnull1, uint64_t datum2, bool isnull2, void *sortstate);
   void *sortstate;
 } YbcSortKey;
-
-typedef struct {
-  // We cannot use the PGresult symbol inside pggate because of circular dependency.
-  // So the response PB is stored in this uint8_t* and later converted to PGresult.
-  uint8_t* pgresult;
-  size_t pgresult_size;
-  // Human-readable error description when the remote query failed.
-  // NULL when the query succeeded. Owned by PgGlobalViewRead and valid
-  // until the next ExecScan call on the same handle.
-  const char* error_message;
-} YbcRemotePgExecResult;
 
 typedef struct YbcCloudInfo {
   const char *cloud;
