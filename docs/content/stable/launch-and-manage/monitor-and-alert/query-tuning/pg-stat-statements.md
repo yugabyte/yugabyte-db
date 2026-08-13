@@ -482,7 +482,8 @@ FROM
     pg_stat_statements;
 ```
 
--[ RECORD 1 ]----------+-------------------------------------------------------
+```caddyfile{.nocopy}
+-[ RECORD 1 ]---------------+-------
 rows                        | 12
 docdb_read_rpcs             | 1
 docdb_write_rpcs            | 1
@@ -551,6 +552,7 @@ If two queries from different transactions try to update the same row at the sam
 UPDATE customers SET name = name || '_updated' WHERE customer_id = 1;
 ```
 
+```caddyfile{.nocopy}
 -[ RECORD 1 ]-------------------+-------
 rows                            | 1
 docdb_read_rpcs                 | 1
