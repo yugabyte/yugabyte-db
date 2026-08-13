@@ -1626,16 +1626,19 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 newPlacement.tservers.get(azUUID) + newPlacement.masters.getOrDefault(azUUID, 0),
                 isReadOnlyCluster));
         // New Masters are up, garbage colllect the extra master volumes now.
-        pvcDeletes.addSubTask(
-            garbageCollectMasterVolumes(
-                universeName,
-                taskParams().nodePrefix,
-                azCode,
-                config,
-                newPlacement.masters.getOrDefault(azUUID, 0),
-                isReadOnlyCluster,
-                taskParams().useNewHelmNamingStyle,
-                taskParams().getUniverseUUID()));
+        // Read-only clusters have no master StatefulSets/PVCs, so skip master volume GC there.
+        if (!isReadOnlyCluster) {
+          pvcDeletes.addSubTask(
+              garbageCollectMasterVolumes(
+                  universeName,
+                  taskParams().nodePrefix,
+                  azCode,
+                  config,
+                  newPlacement.masters.getOrDefault(azUUID, 0),
+                  isReadOnlyCluster,
+                  taskParams().useNewHelmNamingStyle,
+                  taskParams().getUniverseUUID()));
+        }
       } else {
         // Delete the helm deployments.
         helmDeletes.addSubTask(
