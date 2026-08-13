@@ -19,7 +19,7 @@ Parse `$ARGUMENTS` (whitespace-separated):
 
 If `<commit>` is missing, stop and ask the user.
 
-If no `<branches>` are provided, ask the user which release branches to target before invoking the script. Do **not** rely on the script's interactive prompt mode — Claude Code's Bash tool cannot answer interactive `read -p` prompts and the run will hang. Active stable branches: `curl -s https://release.dev.yugabyte.com/version/active/text`. Backport to the branches that actually carry the affected code.
+If no `<branches>` are provided, ask the user which release branches to target before invoking the script. Do **not** rely on the script's interactive prompt mode — Claude Code's Bash tool cannot answer interactive `read -p` prompts and the run will hang. For the candidate list, see the supported release series at <https://docs.yugabyte.com/stable/releases/ybdb-releases/> — the release branch name is the series without the leading `v` (`v2025.2` → `2025.2`). Backport to the branches that actually carry the affected code.
 
 ```
 $ARGUMENTS
