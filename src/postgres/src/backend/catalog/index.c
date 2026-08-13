@@ -748,7 +748,8 @@ index_create(Relation heapRelation,
 			 bool is_colocated,
 			 Oid tablegroupId,
 			 Oid colocationId,
-			 bool yb_skip_index_creation)
+			 bool yb_skip_index_creation,
+			 Oid yb_index_old_relfilenode)
 {
 	Oid			heapRelationId = RelationGetRelid(heapRelation);
 	Relation	pg_class;
@@ -1048,7 +1049,7 @@ index_create(Relation heapRelation,
 					   colocationId,
 					   tableSpaceId,
 					   YbGetRelfileNodeId(indexRelation),
-					   InvalidOid /* oldRelfileNodeId */ ,
+					   yb_index_old_relfilenode /* oldRelfileNodeId */ ,
 					   classObjectId);
 	}
 
@@ -1574,7 +1575,8 @@ index_concurrently_create_copy(Relation heapRelation, Oid oldIndexId,
 							  InvalidOid,	/* colocationId, TODO: fill this
 											 * appropriately when adding
 											 * support for reindex */
-							  false /* yb_skip_index_creation */ );
+							  false /* yb_skip_index_creation */ ,
+							  InvalidOid /* yb_index_old_relfilenode */ );
 
 	/* Close the relations used and clean up */
 	index_close(indexRelation, NoLock);

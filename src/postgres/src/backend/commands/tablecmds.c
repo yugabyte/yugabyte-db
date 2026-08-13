@@ -15343,6 +15343,23 @@ TryReuseIndex(Oid oldId, IndexStmt *stmt, bool *yb_reuse_index)
 		}
 		index_close(irel, NoLock);
 	}
+	else if (IsYugaByteEnabled())
+	{
+		/*
+		 * YB: The index is not reusable, so its DocDB table will be dropped
+		 * and re-created.  Record the old relfilenode on the IndexStmt so
+		 * that the master can apply its table rewrite guardrails (e.g., for
+		 * non-automatic mode xCluster replication) to the new index's
+		 * CreateTable request.
+		 */
+		Relation	irel = index_open(oldId, NoLock);
+
+		/* Partitioned indexes have no DocDB table of their own. */
+		if (irel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX &&
+			IsYBRelation(irel))
+			stmt->yb_index_old_relfilenode = YbGetRelfileNodeId(irel);
+		index_close(irel, NoLock);
+	}
 }
 
 /*
