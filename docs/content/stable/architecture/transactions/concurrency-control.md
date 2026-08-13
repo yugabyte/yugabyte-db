@@ -1286,9 +1286,10 @@ The `SKIP LOCKED` clause allows a transaction to skip rows that are already lock
 
 YugabyteDB provides the following configuration parameters to optimize SKIP LOCKED performance:
 
-- [yb_explicit_row_locking_batch_size](../../../reference/configuration/yb-tserver/#ysql-yb-explicit-row-locking-batch-size): Controls the number of lock requests batched together. Default is 1024. Larger batches improve throughput; smaller batches reduce memory usage and latency.
+- [yb_explicit_row_locking_batch_size](../../../reference/configuration/yb-tserver/#ysql-yb-explicit-row-locking-batch-size): Controls the number of lock requests batched together. Applies to the WAIT and NOWAIT cases. Default is 1024. Larger batches improve both throughput and latency; smaller batches reduce memory usage (but only by small amounts).
 
-- [yb_explicit_row_lock_skip_locked_max_read_ahead](../../../reference/configuration/yb-tserver/#ysql-yb-explicit-row-lock-skip-locked-max-read-ahead) (v2026.1.1.0+): Controls parallelism when locking rows in a SKIP LOCKED query. Default is 1 (disabled). Values greater than 1 enable read-ahead optimization, allowing YugabyteDB to attempt locking multiple rows concurrently, significantly improving performance.
+- `yb_explicit_row_lock_skip_locked_max_read_ahead` (v2026.1.1.0+): Locking multiple rows in a single batch in SKIP LOCKED requires the execution engine to prefetch the candidate rows that are to be locked. This parameter controls how many rows are prefetched. Default is 1 (disabled, only the current row is fetched).
+To batch SKIP LOCKED queries, you must set both `yb_explicit_row_locking_batch_size` and `yb_explicit_row_lock_skip_locked_max_read_ahead` greater than 0 for improved performance.
 
 For detailed examples and configuration guidance, refer to [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
 

@@ -108,7 +108,9 @@ This should succeed.
 
 ### Explicit row locking modes
 
-YSQL supports PostgreSQL's explicit locking clauses that provide advanced control over lock acquisition behavior when conflicts occur.
+YSQL supports [PostgreSQL's explicit locking clause](https://www.postgresql.org/docs/15/sql-select.html#SQL-FOR-UPDATE-SHARE) that provides advanced control over lock acquisition behavior when conflicts occur.
+
+By default, the system waits to acquire locks when competing transactions hold the lock. You can modify this behavior using the NOWAIT and the SKIP LOCKED clauses. These locks can only be applied to row-level locks. They are not applicable to table locks.
 
 #### NOWAIT clause
 
@@ -124,6 +126,8 @@ For support details and limitations, see [Row-level explicit locking clauses](..
 #### SKIP LOCKED clause
 
 The `SKIP LOCKED` clause allows a SELECT FOR UPDATE/SHARE to skip rows that are locked, returning only the unlocked rows. This is useful for applications that can process any available rows.
+
+Skipping locked rows provides an inconsistent view of the data, so this is not suitable for general purpose work, but can be used to avoid lock contention with multiple consumers accessing a queue-like table.
 
 Example:
 ```sql
