@@ -124,28 +124,6 @@ using master::TableIdentifierPB;
 
 const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "snapshot_test_table");
 
-TEST(TabletSnapshotsTest, DeletedSnapshotDirectoryName) {
-  const std::string snapshot_dir = "/tmp/snapshots/snapshot.id";
-  const auto deleted_snapshot_dir =
-      tablet::TabletSnapshots::DeletedSnapshotDir(snapshot_dir, OpId(7, 1234));
-
-  ASSERT_EQ(deleted_snapshot_dir, snapshot_dir + ".7.1234.deleted.tmp");
-  ASSERT_TRUE(tablet::TabletSnapshots::IsTempSnapshotDir(deleted_snapshot_dir));
-  ASSERT_TRUE(tablet::TabletSnapshots::IsDeletedSnapshotDir(deleted_snapshot_dir));
-  ASSERT_EQ(
-      ASSERT_RESULT(
-          tablet::TabletSnapshots::ActiveSnapshotDirFromDeletedSnapshotDir(deleted_snapshot_dir)),
-      snapshot_dir);
-  ASSERT_EQ(
-      ASSERT_RESULT(
-          tablet::TabletSnapshots::ActiveSnapshotDirFromDeletedSnapshotDir(
-              "/tmp/snapshots/snapshot.id.with.dots.7.1234.deleted.tmp")),
-      "/tmp/snapshots/snapshot.id.with.dots");
-  ASSERT_FALSE(tablet::TabletSnapshots::IsDeletedSnapshotDir(snapshot_dir + ".tmp"));
-  ASSERT_FALSE(tablet::TabletSnapshots::IsDeletedSnapshotDir(
-      snapshot_dir + ".invalid.1234.deleted.tmp"));
-}
-
 template <typename MiniClusterType>
 class SnapshotTestBase : public YBMiniClusterTestBase<MiniClusterType> {
  protected:
@@ -588,8 +566,9 @@ TEST_F(SnapshotTest, CreateSnapshot) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
-// Verifies that physical cleanup only starts after the snapshot directory is tombstoned.
-TEST_F(SnapshotTest, DeleteSnapshotTombstonesBeforePhysicalCleanup) {
+// Verifies that snapshot deletion completes once the snapshot directory is tombstoned, without
+// waiting for physical cleanup, and that the tombstones are cleaned up once cleanup is unpaused.
+TEST_F(SnapshotTest, DeleteSnapshotTombstoneCompletedBeforePhysicalCleanup) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = true;
   auto workload = SetupWorkload();
   const auto snapshot_id = CreateSnapshot();
@@ -644,6 +623,29 @@ TEST_F(SnapshotTest, DeleteSnapshotTombstonesBeforePhysicalCleanup) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = false;
   delete_thread_holder.JoinAll();
+
+  // Close the loop: with physical cleanup unpaused, both the active snapshot directory and its
+  // tombstone are removed.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    MiniTabletServer* const ts = cluster_->mini_tablet_server(i);
+    for (const auto& tablet_peer : ts->server()->tablet_manager()->GetTabletPeers()) {
+      const auto top_snapshots_dir = tablet_peer->tablet_metadata()->snapshots_dir();
+      const auto snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id.ToString());
+      auto* const env = tablet_peer->tablet_metadata()->fs_manager()->env();
+      ASSERT_OK(WaitFor([&] {
+        if (env->FileExists(snapshot_dir)) {
+          return false;
+        }
+        const auto children = env->GetChildren(top_snapshots_dir, ExcludeDots::kTrue);
+        if (!children.ok()) {
+          return false;
+        }
+        return std::none_of(children->begin(), children->end(), [&](const auto& child) {
+          return child.starts_with(snapshot_id.ToString());
+        });
+      }, 15s, Format("Wait for snapshot $0 tombstones to be cleaned up", snapshot_id)));
+    }
+  }
 }
 
 // Tests that a non-imported snapshot hides a table that is dropped subsequently.

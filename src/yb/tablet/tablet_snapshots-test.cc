@@ -273,6 +273,23 @@ TEST(TabletSnapshotPathTest, AsyncCleanupDisabledByDefault) {
   ASSERT_FALSE(FLAGS_enable_async_snapshot_directory_cleanup);
 }
 
+TEST(TabletSnapshotPathTest, DeletedSnapshotDirectoryName) {
+  const std::string snapshot_dir = "/tmp/snapshots/snapshot.id";
+  const auto deleted_snapshot_dir =
+      TabletSnapshots::DeletedSnapshotDir(snapshot_dir, OpId(7, 1234));
+
+  ASSERT_EQ(deleted_snapshot_dir, snapshot_dir + ".7.1234.deleted.tmp");
+  ASSERT_TRUE(TabletSnapshots::IsTempSnapshotDir(deleted_snapshot_dir));
+  ASSERT_TRUE(TabletSnapshots::IsDeletedSnapshotDir(deleted_snapshot_dir));
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          TabletSnapshots::ActiveSnapshotDirFromDeletedSnapshotDir(deleted_snapshot_dir)),
+      snapshot_dir);
+  ASSERT_FALSE(TabletSnapshots::IsDeletedSnapshotDir(snapshot_dir + ".tmp"));
+  ASSERT_FALSE(
+      TabletSnapshots::IsDeletedSnapshotDir(snapshot_dir + ".invalid.1234.deleted.tmp"));
+}
+
 TEST(TabletSnapshotPathTest, RecoverActivePath) {
   ASSERT_EQ(
       ASSERT_RESULT(

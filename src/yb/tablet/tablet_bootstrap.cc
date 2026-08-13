@@ -1999,7 +1999,7 @@ class TabletBootstrap {
 
           if (TabletSnapshots::IsTempSnapshotDir(snapshot_dir)) {
             const auto snapshot_dir_type =
-                TabletSnapshots::IsDeletedSnapshotDir(snapshot_dir) ? "deleted" : "temporary";
+                TabletSnapshots::IsDeletedSnapshotDir(snapshot_dir) ? "tombstoned" : "temporary";
             LOG_WITH_PREFIX(INFO) << "Deleting old " << snapshot_dir_type
                                   << " snapshot directory " << snapshot_dir;
 
