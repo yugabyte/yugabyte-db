@@ -11,9 +11,9 @@ menu:
 type: indexpage
 ---
 
-Upgrade the database and operating system on universe nodes, troubleshoot and manage nodes, and monitor universe tasks.
+Upgrade the database and operating system on universe nodes, troubleshoot and manage nodes, monitor universe tasks, and pause or delete universes.
 
-For scaling, configuration changes, and pausing or deleting universes, refer to [Scale and edit universes](../scale-deployments/).
+For scaling and configuration changes, refer to [Scale and edit universes](../scale-deployments/).
 
 {{<index/block>}}
 
@@ -40,5 +40,11 @@ For scaling, configuration changes, and pausing or deleting universes, refer to 
     body="Monitor and manage universe tasks."
     href="retry-failed-task/"
     icon="fa-thin fa-magnifying-glass">}}
+
+  {{<index/item
+    title="Pause, resume, and delete universes"
+    body="Pause or delete a universe that is not needed."
+    href="delete-universe/"
+    icon="fa-thin fa-traffic-light-go">}}
 
 {{</index/block>}}
