@@ -34,6 +34,10 @@
       "Bash(mkdir -p /tmp/claude)",
       "Edit(/tmp/claude/**)",
       "Read(/tmp/claude/**)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(git * push *)"
     ]
   },
   "hooks": {

@@ -1,23 +1,34 @@
 #!/usr/bin/env python3
-"""block-upstream-push: Claude Code PreToolUse/Bash hook that denies `git push`
-when the resolved push target is the upstream repo's owner, while leaving
-pushes to forks and unrelated remotes alone.
+"""block-upstream-push: agent shell hook that denies `git push` when the
+resolved push target is the upstream repo's owner, while leaving pushes to
+forks and unrelated remotes alone.
 
-Unlike a `permissions.deny` rule -- which can only pattern-match the command
-text -- this resolves the remote to a URL first, so `git push private HEAD`
-succeeds and `git push origin master` does not.
+Unlike a pattern match on the command text, this resolves the remote to a URL
+first, so `git push my-fork HEAD` succeeds and `git push origin master` does
+not.
 
-Registered from .claude/settings.json. The Cursor equivalent is
-.agents/scripts/block-git-push.sh, which denies every push unconditionally
-(Cursor hooks use a different payload/response format).
+Serves both agent harnesses; the payload shape on stdin selects the dialect:
 
-Reads the hook payload on stdin, writes a PreToolUse decision on stdout.
-Silence + exit 0 means "no opinion" -- normal permission rules apply.
+  Claude Code  PreToolUse/Bash hook, registered in .claude/settings.json.
+               Command arrives as {"tool_input": {"command": ...}}. Replies
+               with a `hookSpecificOutput.permissionDecision`, where staying
+               silent means "no opinion" and normal permission rules apply.
+  Cursor       beforeShellExecution hook, registered in .cursor/hooks.json.
+               Command arrives as {"command": ...}. Replies with
+               {"permission": ...}. That hook sets failClosed, so silence is
+               not a safe "no opinion" -- an explicit allow is always emitted.
+
+Claude Code has no failClosed equivalent: if this hook crashes or its config
+goes stale, the push is allowed. .claude/settings.json therefore also keeps
+`git push` on the `ask` list, so a human is prompted even when the hook does
+not run. Cursor needs no such backstop.
+
+Pass --format=claude|cursor to override the auto-detection (useful for tests).
 
 Decisions:
-  deny   -- target resolves to a blocked owner
-  ask    -- command is a push but the target could not be resolved
-  (none) -- not a push, or the target is some other repo
+  deny  -- target resolves to a blocked owner
+  ask   -- command is a push but the target could not be resolved
+  allow -- not a push, or the target is some other repo
 
 Env overrides:
   GH_REPO         default: yugabyte/yugabyte-db (its owner is what gets blocked)
@@ -50,13 +61,29 @@ PUSH_OPTS_WITH_VALUE = {"-o", "--push-option", "--receive-pack", "--exec",
                         "--force-with-lease", "--repo"}
 
 
-def decide(decision, reason):
-    json.dump({"hookSpecificOutput": {
-        "hookEventName": "PreToolUse",
-        "permissionDecision": decision,
-        "permissionDecisionReason": reason,
-    }}, sys.stdout)
-    sys.stdout.write("\n")
+def decide(fmt, decision, reason=""):
+    """Emit a decision in the harness's own dialect and exit.
+
+    For Claude Code an `allow` is expressed by staying silent, so that normal
+    permission rules still get a say. Cursor's hook runs failClosed, so it
+    always gets an explicit verdict.
+    """
+    if fmt == "cursor":
+        payload = {"permission": decision}
+        if reason:
+            # Cursor has used both spellings for the operator-facing string;
+            # `permission` is what enforces, so send both and let it pick.
+            payload.update(user_message=reason, userMessage=reason,
+                           agentMessage=reason)
+        json.dump(payload, sys.stdout)
+        sys.stdout.write("\n")
+    elif decision != "allow":
+        json.dump({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": decision,
+            "permissionDecisionReason": reason,
+        }}, sys.stdout)
+        sys.stdout.write("\n")
     sys.exit(0)
 
 
@@ -163,27 +190,43 @@ def find_push(tokens, workdir):
 
 
 def main():
+    fmt = ""
+    for arg in sys.argv[1:]:
+        if arg.startswith("--format="):
+            fmt = arg.split("=", 1)[1]
+
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, UnicodeDecodeError):
+        # No payload to inspect. Claude Code treats silence as "no opinion";
+        # Cursor's hook is failClosed and will deny on its own.
         return
-    cmd = (payload.get("tool_input") or {}).get("command") or ""
+    if not fmt:
+        fmt = "claude" if "tool_input" in payload else "cursor"
+
+    # Claude Code nests the command under tool_input; Cursor puts it at top level.
+    cmd = (payload.get("tool_input") or {}).get("command") or \
+        payload.get("command") or ""
     # Cheap bail-out before any parsing: the overwhelming majority of commands.
     if "push" not in cmd:
-        return
+        decide(fmt, "allow")
 
-    workdir = payload.get("cwd") or os.getcwd()
-    if not os.path.isdir(workdir):
+    workdir = payload.get("cwd") or ""
+    if not workdir:
+        roots = payload.get("workspace_roots") or []   # Cursor
+        workdir = roots[0] if roots else ""
+    if not workdir or not os.path.isdir(workdir):
         workdir = os.getcwd()
 
     try:
         tokens = tokenize(cmd)
     except ValueError:  # unbalanced quotes -- can't tell what this does
-        decide("ask", "Could not parse this command well enough to check its "
-                      "push target. Confirm it does not push to an upstream repo.")
+        decide(fmt, "ask", "Could not parse this command well enough to check "
+                           "its push target. Confirm it does not push to an "
+                           "upstream repo.")
     found, remote, workdir = find_push(tokens, workdir)
     if not found:
-        return
+        decide(fmt, "allow")
 
     # No remote on the command line: whatever `git push` would pick by itself.
     if not remote:
@@ -199,19 +242,21 @@ def main():
     else:
         url = git(workdir, "remote", "get-url", "--push", remote)
     if not url:
-        decide("ask", f"Could not resolve the push target for remote '{remote}' in "
-                      f"{workdir}. Confirm manually that this is not a "
-                      f"{BLOCKED_HOST}/{BLOCKED_OWNERS[0]} repo.")
+        decide(fmt, "ask", f"Could not resolve the push target for remote "
+                           f"'{remote}' in {workdir}. Confirm manually that this "
+                           f"is not a {BLOCKED_HOST}/{BLOCKED_OWNERS[0]} repo.")
 
     parsed = url_owner(url)
     if parsed is None:
-        decide("ask", f"Could not parse the push URL '{url}'. Confirm manually "
-                      f"that this is not an upstream repo.")
+        decide(fmt, "ask", f"Could not parse the push URL '{url}'. Confirm "
+                           f"manually that this is not an upstream repo.")
     host, owner = parsed
     if host == BLOCKED_HOST and owner in BLOCKED_OWNERS:
-        decide("deny", f"Blocked: pushing to {host}/{owner} is not allowed "
-                       f"(remote '{remote}' -> {url}). Use "
-                       f".agents/scripts/git-push.sh to push to your fork instead.")
+        decide(fmt, "deny", f"Blocked: pushing to {host}/{owner} is not allowed "
+                            f"(remote '{remote}' -> {url}). Use "
+                            f".agents/scripts/git-push.sh to push to your fork "
+                            f"instead.")
+    decide(fmt, "allow")
 
 
 if __name__ == "__main__":
