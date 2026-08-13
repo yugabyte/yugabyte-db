@@ -34,10 +34,21 @@
       "Bash(mkdir -p /tmp/claude)",
       "Edit(/tmp/claude/**)",
       "Read(/tmp/claude/**)"
-    ],
-    "deny": [
-      "Bash(git push *)",
-      "Bash(git * push *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}/.agents/scripts/block-upstream-push.py\"",
+            "timeout": 15,
+            "statusMessage": "Checking push target"
+          }
+        ]
+      }
     ]
   }
 }
