@@ -4981,6 +4981,9 @@ RelationRebuildRelation(Relation relation)
 		bool		keep_policies;
 		bool		keep_partkey;
 
+		/* YB declarations */
+		bool		yb_keep_pgstats;
+
 		/* Build temporary entry, but don't link it into hashtable */
 		newrel = RelationBuildDesc(save_relid, false);
 
@@ -5019,8 +5022,34 @@ RelationRebuildRelation(Relation relation)
 		 * If we were to, again, have cases of the relkind of a relcache entry
 		 * changing, we would need to ensure that pgstats does not get
 		 * confused.
+		 *
+		 * YB: REFRESH MATERIALIZED VIEW is such a case.  It rebuilds the matview
+		 * contents in a transient heap that make_new_heap() creates as
+		 * RELKIND_RELATION, and swap_relation_files() (commands/repack.c) then
+		 * retags that heap as RELKIND_MATVIEW so that YB drops it correctly.  So
+		 * the transient relation's relcache entry really does change relkind
+		 * across the rebuild that follows the swap.  When the relkind changes,
+		 * the rebuilt entry must not inherit the old entry's pgstats
+		 * association: the two would disagree, with PgStat_TableStatus->relation
+		 * pointing at one Relation while some other Relation's pgstat_info
+		 * points back at that PgStat_TableStatus.  Unlink the stale pgstat entry
+		 * instead -- before the swap below, which must stay interrupt-free --
+		 * and keep the freshly built entry's pgstat state.  This is what
+		 * PostgreSQL itself did before commit cb2e7ddfe57 began assuming relkind
+		 * is stable across a rebuild.
 		 */
-		Assert(relation->rd_rel->relkind == newrel->rd_rel->relkind);
+		yb_keep_pgstats = (relation->rd_rel->relkind == newrel->rd_rel->relkind);
+		if (!yb_keep_pgstats)
+		{
+			/*
+			 * Only YB's REFRESH MATVIEW transient-heap retag (repack.c) should
+			 * get here.
+			 */
+			Assert(IsYugaByteEnabled() &&
+				   relation->rd_rel->relkind == RELKIND_RELATION &&
+				   newrel->rd_rel->relkind == RELKIND_MATVIEW);
+			pgstat_unlink_relation(relation);
+		}
 
 		if (yb_debug_log_catcache_events)
 			elog(LOG, "Rebuild relcache entry %p for %s (oid %u)", relation,
@@ -5086,8 +5115,12 @@ RelationRebuildRelation(Relation relation)
 		/* toast OID override must be preserved */
 		SWAPFIELD(Oid, rd_toastoid);
 		/* pgstat_info / enabled must be preserved */
-		SWAPFIELD(struct PgStat_TableStatus *, pgstat_info);
-		SWAPFIELD(bool, pgstat_enabled);
+		/* YB: ... except when the relkind changed; see yb_keep_pgstats above. */
+		if (yb_keep_pgstats)
+		{
+			SWAPFIELD(struct PgStat_TableStatus *, pgstat_info);
+			SWAPFIELD(bool, pgstat_enabled);
+		}
 		/* preserve old partition key if we have one */
 		if (keep_partkey)
 		{
