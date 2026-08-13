@@ -476,7 +476,7 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
   }
   SchemaToPB(builder.Build(), mutable_pb.mutable_schema());
   return YsqlDdlTxnAlterTableHelper(
-      txn_data, ddl_log_entries, /*new_table_name=*/"", /*success=*/true);
+      txn_data, ddl_log_entries, /*success=*/true);
 }
 
 Status CatalogManager::HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_data) {
@@ -552,7 +552,7 @@ Status CatalogManager::RollbackYsqlTxnDdlStates(
     mutable_pb.set_next_column_id(first_ddl_state.previous_next_column_id());
   }
   return YsqlDdlTxnAlterTableHelper(
-      txn_data, ddl_log_entries, new_table_name, /*success=*/false,
+      txn_data, ddl_log_entries, /*success=*/false,
       rollback_till_ddl_state_index);
 }
 
@@ -600,7 +600,6 @@ Status CatalogManager::ClearYsqlDdlTxnState(
 
 Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn_data,
                                                   const std::vector<DdlLogEntry>& ddl_log_entries,
-                                                  const string& new_table_name,
                                                   bool success,
                                                   int rollback_till_ddl_state_index) {
   RSTATUS_DCHECK(
@@ -632,8 +631,6 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
   RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
         txn_data.table,
         ddl_log_entries,
-        "" /* new_namespace_id */,
-        new_table_name,
         txn_data.epoch,
         nullptr /* resp */));
 
