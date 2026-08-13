@@ -11,9 +11,9 @@ menu:
 type: indexpage
 ---
 
-Scale universes horizontally and vertically, edit configuration flags and instance tags, configure Kubernetes overrides, and pause or delete universes that are not needed.
+Scale universes horizontally and vertically, edit configuration flags and instance tags, and configure Kubernetes overrides.
 
-For upgrades, node troubleshooting, and task monitoring, refer to [Manage universes](../manage-deployments/).
+For upgrades, node troubleshooting, pausing or deleting universes, and task monitoring, refer to [Manage universes](../manage-deployments/).
 
 {{<index/block>}}
 
@@ -46,11 +46,5 @@ For upgrades, node troubleshooting, and task monitoring, refer to [Manage univer
     body="Create and edit instance tags for cloud resources."
     href="instance-tags/"
     icon="fa-thin fa-tags">}}
-
-  {{<index/item
-    title="Pause, resume, and delete universes"
-    body="Pause or delete a universe that is not needed."
-    href="delete-universe/"
-    icon="fa-thin fa-traffic-light-go">}}
 
 {{</index/block>}}
