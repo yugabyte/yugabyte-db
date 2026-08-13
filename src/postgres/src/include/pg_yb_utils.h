@@ -996,6 +996,8 @@ extern bool yb_silence_advisory_locks_not_supported_error;
  */
 extern bool yb_xcluster_automatic_mode_target_ddl;
 
+extern bool yb_enable_xcluster_analyze_replication;
+
 extern bool yb_user_ddls_preempt_auto_analyze;
 
 /*

@@ -332,6 +332,14 @@ extern void analyze_rel(Oid relid, RangeVar *relation,
 						BufferAccessStrategy bstrategy);
 extern bool std_typanalyze(VacAttrStats *stats);
 
+/*
+ * YB: Hook fired after ANALYZE refreshes each relation's statistics, while its
+ * locks are still held. xCluster uses it to tell the target to refresh its own
+ * statistics because ANALYZE does not fire ddl_command_end.
+ */
+typedef void (*YbAnalyzeRelEnd_hook_type) (Oid relid);
+extern PGDLLIMPORT YbAnalyzeRelEnd_hook_type YbAnalyzeRelEnd_hook;
+
 /* in utils/misc/sampling.c --- duplicate of declarations in utils/sampling.h */
 extern double anl_random_fract(void);
 extern double anl_init_selection_state(int n);

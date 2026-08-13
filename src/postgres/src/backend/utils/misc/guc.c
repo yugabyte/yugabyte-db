@@ -3978,6 +3978,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_xcluster_analyze_replication", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Autoflag to enable capturing ANALYZE for xCluster DDL "
+						 "replication. Not to be touched by users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_xcluster_analyze_replication,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_pg_stat_statements_rpc_stats", PGC_SUSET, STATS_MONITORING,
 			gettext_noop("If true, enable RPC execution time stats for pg_stat_statements."),
 			NULL,

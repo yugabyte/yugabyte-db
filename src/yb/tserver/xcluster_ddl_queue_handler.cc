@@ -22,6 +22,7 @@
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
+#include "yb/client/stateful_services/pg_auto_analyze_service_client.h"
 #include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
@@ -48,6 +49,14 @@ DEFINE_RUNTIME_int64(xcluster_ddl_queue_advisory_lock_key, 8674896558949688690,
 DEFINE_RUNTIME_bool(xcluster_ddl_queue_enable_transactional_ddl, true,
     "When enabled, multiple DDLs from the same source transaction are applied "
     "atomically within a transaction block on the target.");
+
+DEFINE_RUNTIME_uint64(xcluster_ddl_queue_analyze_mutation_count, 1000000000000,
+    "Mutation count reported to the auto analyze service for a table that was analyzed on the "
+    "source. It has to exceed the target's analyze threshold, which grows with the size of "
+    "the table (threshold = ysql_auto_analyze_threshold + ysql_auto_analyze_scale_factor * "
+    "reltuples), so that the table is picked for an ANALYZE on the target. The default of 1e12 "
+    "covers tables of up to ten trillion rows with the default scale factor of 0.1. Note that "
+    "this does not bypass the auto analyze cooldown for the table.");
 
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
     "Whether we should cache the ddl_queue handler's connection, or always recreate it.");
@@ -76,6 +85,9 @@ DEFINE_test_flag(string, xcluster_ddl_queue_handler_fail_ddl_matching, "",
 
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_int32(ysql_node_level_mutation_reporting_timeout_ms);
 
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
   SCHECK( \
@@ -108,6 +120,8 @@ const char* kDDLJsonVersion = "version";
 const char* kDDLJsonSchema = "schema";
 const char* kDDLJsonUser = "user";
 const char* kDDLJsonNewRelMap = "new_rel_map";
+const char* kDDLJsonAnalyzeRels = "analyze_rels";
+const char* kAnalyzeCommandTag = "ANALYZE";
 const char* kDDLJsonRelName = "rel_name";
 const char* kDDLJsonRelPgSchemaName = "rel_namespace";
 const char* kDDLJsonRelFileOid = "relfile_oid";
@@ -122,6 +136,7 @@ const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
 const char* kDDLPrepStmtCommitTimesUpsert = "commit_times_insert";
 const char* kDDLPrepStmtCommitTimesSelect = "commit_times_select";
+const char* kDDLPrepStmtTargetRelfileNode = "target_relfilenode";
 const int kDDLReplicatedTableSpecialKey = 1;
 const char* kSafeTimeBatchCommitTimes = "commit_times";
 const char* kSafeTimeBatchApplySafeTime = "apply_safe_time";
@@ -147,6 +162,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "ALTER SEQUENCE",
     "TRUNCATE TABLE",
     "REFRESH MATERIALIZED VIEW",
+    "ANALYZE",
     // Pass thru DDLs
     "CREATE ACCESS METHOD",
     "CREATE AGGREGATE",
@@ -319,6 +335,15 @@ Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
       query_info.relation_map.push_back(std::move(rel_info));
     }
   }
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonAnalyzeRels, IsArray)) {
+    for (const auto& rel : doc[kDDLJsonAnalyzeRels].GetArray()) {
+      VALIDATE_MEMBER(rel, kDDLJsonRelName, String);
+      VALIDATE_MEMBER(rel, kDDLJsonRelPgSchemaName, String);
+      query_info.analyze_relations.push_back(
+          {.relation_name = rel[kDDLJsonRelName].GetString(),
+           .relation_pgschema_name = rel[kDDLJsonRelPgSchemaName].GetString()});
+    }
+  }
   if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonVariableMap, IsObject)) {
     auto variables = doc[kDDLJsonVariableMap].GetObject();
     for (const auto& variable : variables) {
@@ -430,7 +455,8 @@ Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& co
     });
     RETURN_NOT_OK(ProcessNewRelations(query_info, new_relations, commit_time));
 
-    auto s = ProcessDDLQuery(query_info);
+    auto s = query_info.command_tag == kAnalyzeCommandTag ? ProcessAnalyzeQuery(query_info)
+                                                          : ProcessDDLQuery(query_info);
     if (!s.ok()) {
       RETURN_NOT_OK(ProcessFailedDDLQuery(s, query_info));
     }
@@ -661,12 +687,93 @@ Status XClusterDDLQueueHandler::CheckForFailedQuery() {
 
 Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(
     const XClusterDDLQueryInfo& query_info) {
+  return InsertIntoReplicatedDDLs(query_info, /* is_manual_execution */ true);
+}
+
+Result<std::optional<uint32_t>> XClusterDDLQueueHandler::GetTargetRelfileNodeOid(
+    const XClusterDDLQueryInfo::AnalyzeRelationInfo& relation) {
+  // The relation is identified by name because the target assigns its own relfilenode, which a
+  // table rewrite on either side can change independently. A relation with no storage has no
+  // DocDB table for the auto analyze service to track, so it is treated as missing.
+  auto rows = VERIFY_RESULT(pg_conn_->FetchRows<pgwrapper::PGOid>(Format(
+      "EXECUTE $0($1, $2)", kDDLPrepStmtTargetRelfileNode,
+      pgwrapper::PqEscapeLiteral(relation.relation_pgschema_name),
+      pgwrapper::PqEscapeLiteral(relation.relation_name))));
+  if (rows.empty()) {
+    return std::nullopt;
+  }
+  return rows.front();
+}
+
+Status XClusterDDLQueueHandler::ProcessAnalyzeQuery(const XClusterDDLQueryInfo& query_info) {
+  // Reset the role in case an earlier query in this batch left one set; the queries below run
+  // against the catalog and the extension's tables.
+  RETURN_NOT_OK(RunAndLogQuery("SET ROLE NONE"));
+
+  if (!FLAGS_ysql_enable_auto_analyze_infra) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 300)
+        << "ysql_enable_auto_analyze_infra is disabled, so the statistics of relations analyzed "
+        << "on the xCluster source will remain stale on this universe. Dropped hint: "
+        << query_info.query;
+    return InsertIntoReplicatedDDLs(query_info, /* is_manual_execution */ false);
+  }
+
+  if (!FLAGS_ysql_enable_auto_analyze) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 300)
+        << "ysql_enable_auto_analyze is disabled, so the statistics of relations analyzed on the "
+        << "xCluster source will remain stale on this universe until it is enabled. "
+        << "Mutation counts will be accumulated (note that the count can be lost if the "
+        << "service leader moves). Hint: " << query_info.query;
+  }
+
+  const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(target_namespace_id_));
+
+  stateful_service::IncreaseMutationCountersRequestPB req;
+  for (const auto& relation : query_info.analyze_relations) {
+    auto relfilenode_oid = VERIFY_RESULT(GetTargetRelfileNodeOid(relation));
+    if (!relfilenode_oid) {
+      // The relation has been dropped since the source analyzed it. Nothing to refresh.
+      LOG_WITH_PREFIX(INFO) << "Skipping auto analyze hint for missing relation "
+                            << relation.ToString();
+      continue;
+    }
+    auto* table_mutation_count = req.add_table_mutation_counts();
+    table_mutation_count->set_table_id(PgObjectId(db_oid, *relfilenode_oid).GetYbTableId());
+    table_mutation_count->set_mutation_count(FLAGS_xcluster_ddl_queue_analyze_mutation_count);
+  }
+
+  // The mutation counter bump is best effort, a missed bump leaves the target with stale
+  // statistics until the source analyzes again, which is far less severe than failing the entry
+  // and eventually pausing DDL replication.
+  if (req.table_mutation_counts_size() > 0) {
+    if (!auto_analyze_client_) {
+      auto_analyze_client_ = std::make_unique<client::PgAutoAnalyzeServiceClient>(*local_client_);
+    }
+    VLOG_WITH_PREFIX(2) << "Reporting mutation counts for auto analyze: " << req.ShortDebugString();
+    auto status = ResultToStatus(auto_analyze_client_->IncreaseMutationCounters(
+        req, MonoDelta::FromMilliseconds(FLAGS_ysql_node_level_mutation_reporting_timeout_ms)));
+    if (!status.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to report mutation counts to the auto analyze service, the statistics of "
+          << "the analyzed relations will remain stale on this universe until the source "
+          << "analyzes them again: " << status << ". Request: " << req.ShortDebugString();
+    }
+  }
+
+  // ANALYZE is not a DDL, so nothing fired the event trigger that would have recorded this entry.
+  return InsertIntoReplicatedDDLs(query_info, /* is_manual_execution */ false);
+}
+
+Status XClusterDDLQueueHandler::InsertIntoReplicatedDDLs(
+    const XClusterDDLQueryInfo& query_info, bool is_manual_execution) {
   rapidjson::Document doc;
   doc.SetObject();
   doc.AddMember(
       rapidjson::StringRef(kDDLJsonQuery),
       rapidjson::Value(query_info.query.c_str(), doc.GetAllocator()), doc.GetAllocator());
-  doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
+  if (is_manual_execution) {
+    doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
+  }
 
   RETURN_NOT_OK(RunAndLogQuery(Format(
       "EXECUTE $0($1, $2, $3)", kDDLPrepStmtManualInsert, query_info.ddl_end_time,
@@ -716,6 +823,10 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
       kDDLPrepStmtCommitTimesUpsert, kReplicatedDDLsFullTableName, kDDLReplicatedTableSpecialKey,
       xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn);
+  query << "PREPARE " << kDDLPrepStmtTargetRelfileNode << "(text, text) AS "
+        << "SELECT c.relfilenode FROM pg_catalog.pg_class c "
+        << "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+        << "WHERE n.nspname = $1 AND c.relname = $2 AND c.relfilenode != 0;";
 
   return pg_conn->Execute(query.str());
 }

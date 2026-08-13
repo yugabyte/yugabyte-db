@@ -85,9 +85,13 @@ DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_bool(xcluster_target_manual_override);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
+DECLARE_uint32(ysql_cluster_level_mutation_persist_interval_ms);
 DECLARE_string(ysql_cron_database_name);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
@@ -4347,6 +4351,193 @@ TEST_F(XClusterDDLReplicationTest, TruncateTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
 
   ASSERT_OK(verify_data());
+}
+
+// ANALYZE is not a DDL and is not replayed on the target. The target is told which relation was
+// analyzed and marks it as needing an ANALYZE of its own, which the auto analyze service then
+// performs. Sampling on the target is what keeps its statistics consistent with the data it has
+// applied, and it is also what produces its extended statistics.
+class XClusterDDLReplicationAnalyzeTestBase : public XClusterDDLReplicationTest {
+ protected:
+
+  static std::string StatsCountQuery(const std::string& table_name, bool inherited = false) {
+    return Format(
+        "SELECT count(*) FROM pg_stats WHERE schemaname = 'public' AND tablename = '$0'$1",
+        table_name, inherited ? " AND inherited" : "");
+  }
+
+  Status WaitForTargetStats(const std::string& count_query, const std::string& description) {
+    return WaitFor(
+        [this, &count_query]() -> Result<bool> {
+          return VERIFY_RESULT(consumer_conn_->FetchRow<int64_t>(count_query)) > 0;
+        },
+        MonoDelta::FromSeconds(120) * kTimeMultiplier, description);
+  }
+
+  Status CheckStatsAgree(const std::string& table_name, bool inherited = false) {
+    const auto query = Format(
+        "SELECT attname, n_distinct FROM pg_stats "
+        "WHERE schemaname = 'public' AND tablename = '$0'$1 ORDER BY attname",
+        table_name, inherited ? " AND inherited" : "");
+    SCHECK_EQ(
+        VERIFY_RESULT(consumer_conn_->FetchAllAsString(query)),
+        VERIFY_RESULT(producer_conn_->FetchAllAsString(query)), IllegalState,
+        Format("Statistics for $0 differ between the universes", table_name));
+    return Status::OK();
+  }
+
+  Status CheckReplicationStillWorks() {
+    const auto table_name = Format("tbl_after_$0", ++tables_created_after_hint_);
+    RETURN_NOT_OK(
+        producer_conn_->ExecuteFormat("CREATE TABLE $0(id int PRIMARY KEY)", table_name));
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+    SCHECK_EQ(
+        VERIFY_RESULT(CountConsumerTables({table_name})), 1, IllegalState,
+        Format("Expected $0, created after the hint, to replicate", table_name));
+    return Status::OK();
+  }
+
+  int tables_created_after_hint_ = 0;
+};
+
+class XClusterDDLReplicationAutoAnalyzeTest : public XClusterDDLReplicationAnalyzeTestBase {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = true;
+    // Keep the mutation reporting and persisting intervals low so the test does not have to wait
+    // out the default ten second cycles.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_node_level_mutation_reporting_interval_ms) = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 10;
+    XClusterDDLReplicationTest::SetUp();
+  }
+};
+
+TEST_F(XClusterDDLReplicationAutoAnalyzeTest, AnalyzeTriggersAutoAnalyzeOnTarget) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(id int PRIMARY KEY, col1 int, col2 text)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO tbl1 SELECT g, g % 5, 'value' || (g % 7) FROM generate_series(1, 20) g"));
+  ASSERT_OK(
+      producer_conn_->Execute("CREATE TABLE tbl_part(id int, col1 int) PARTITION BY RANGE (id)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE tbl_part_1 PARTITION OF tbl_part FOR VALUES FROM (0) TO (10)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE tbl_part_2 PARTITION OF tbl_part FOR VALUES FROM (10) TO (20)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO tbl_part SELECT g, g % 5 FROM generate_series(0, 19) g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(CountConsumerTables({"tbl1", "tbl_part", "tbl_part_1", "tbl_part_2"})), 4);
+
+  const auto tbl1_stats_query = StatsCountQuery("tbl1");
+  const auto parent_stats_query = StatsCountQuery("tbl_part", /* inherited */ true);
+
+  // Writes arriving over xCluster bypass the pggate layer that counts mutations, so nothing has
+  // made the target consider analyzing these tables.
+  SleepFor(MonoDelta::FromSeconds(3) * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<int64_t>(tbl1_stats_query)), 0);
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(tbl1_stats_query)), 0);
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(parent_stats_query)), 0);
+
+  // The source analyzed it, so the target should now analyze its own copy.
+  ASSERT_OK(producer_conn_->Execute("ANALYZE tbl1"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForTargetStats(tbl1_stats_query, "Waiting for auto analyze on the target"));
+  ASSERT_OK(CheckStatsAgree("tbl1"));
+
+  // Extended statistics are computed by the target's own ANALYZE, which is the point of triggering
+  // one there rather than copying pg_statistic over.
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE STATISTICS tbl1_stats (dependencies) ON id, col1 FROM tbl1"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(producer_conn_->Execute("ANALYZE tbl1"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForTargetStats(
+      "SELECT count(*) FROM pg_statistic_ext_data d JOIN pg_statistic_ext e ON e.oid = d.stxoid "
+      "WHERE e.stxname = 'tbl1_stats'",
+      "Waiting for extended statistics on the target"));
+
+  // A partitioned table is sampled in two passes, so the parent's inherited statistics and each
+  // leaf's own statistics both have to be refreshed on the target.
+  ASSERT_OK(producer_conn_->Execute("ANALYZE tbl_part"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForTargetStats(
+      parent_stats_query, "Waiting for inherited statistics on the target"));
+  ASSERT_OK(CheckStatsAgree("tbl_part", /* inherited */ true));
+  ASSERT_OK(WaitForTargetStats(
+      StatsCountQuery("tbl_part_1"), "Waiting for leaf statistics on the target"));
+
+  // A hint for a relation that cannot be found on the target is skipped
+  // and doesn't stuck the replication.
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl_renamed(id int PRIMARY KEY)"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl_renamed SELECT g FROM generate_series(1, 10) g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_target_manual_override) = true;
+  ASSERT_OK(consumer_conn_->Execute("ALTER TABLE tbl_renamed RENAME TO tbl_renamed_target"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_target_manual_override) = false;
+
+  ASSERT_OK(producer_conn_->Execute("ANALYZE tbl_renamed"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(CheckReplicationStillWorks());
+}
+
+// The target's default configuration: the auto analyze infra is up so there is a service to
+// report to, but auto analyze itself is off, so nothing acts on the hint yet.
+class XClusterDDLReplicationAutoAnalyzeDisabledTest : public XClusterDDLReplicationAnalyzeTestBase {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    // Keep the persist interval low so that the test does not have to wait out the default ten
+    // second cycle once it enables auto analyze.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 10;
+    XClusterDDLReplicationTest::SetUp();
+  }
+};
+
+TEST_F(XClusterDDLReplicationAutoAnalyzeDisabledTest, AnalyzeHintWhenAutoAnalyzeDisabled) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(id int PRIMARY KEY, col1 int)"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT g, g % 5 FROM generate_series(1, 20) g"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto stats_query = StatsCountQuery("tbl1");
+  const auto replicated_ddls_query =
+      "SELECT count(*) FROM yb_xcluster_ddl_replication.replicated_ddls";
+
+  // Without the infra there is no auto analyze service to report to, so the hint is dropped. With
+  // the infra up but auto analyze off the count is reported and the service holds it. Either way
+  // the entry must be recorded as processed so that the queue does not retry it forever, and
+  // neither may hold up replication.
+  for (const bool enable_infra : {false, true}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = enable_infra;
+    SCOPED_TRACE(Format("ysql_enable_auto_analyze_infra = $0", enable_infra));
+
+    const auto replicated_ddls_before =
+        ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(replicated_ddls_query));
+    ASSERT_OK(producer_conn_->Execute("ANALYZE tbl1"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    ASSERT_EQ(
+        ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(replicated_ddls_query)),
+        replicated_ddls_before + 1);
+    ASSERT_OK(CheckReplicationStillWorks());
+  }
+
+  // The service holds the reported count without acting on it while auto analyze is off.
+  SleepFor(MonoDelta::FromSeconds(3) * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(stats_query)), 0);
+
+  // Enabling auto analyze drains the count reported while it was off, so the target catches up
+  // without the source having to analyze again.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = true;
+  ASSERT_OK(WaitForTargetStats(
+      stats_query, "Waiting for auto analyze on the target after enabling it"));
 }
 
 // Make sure we can run a variety of DDLs related to temp tables on both clusters.
