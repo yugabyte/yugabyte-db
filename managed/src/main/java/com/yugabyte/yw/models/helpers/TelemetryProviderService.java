@@ -44,6 +44,11 @@ import org.apache.commons.collections4.CollectionUtils;
 public class TelemetryProviderService {
 
   public static final String LOKI_PUSH_ENDPOINT = "/loki/api/v1/push";
+
+  // Loki's native OTLP ingestion path (Loki 3.0+). The dedicated `loki` exporter was deprecated
+  // upstream on 2024-07-09 and removed from otel-collector-contrib in 0.131.0, so Loki log export
+  // now goes over OTLP HTTP against this path instead of LOKI_PUSH_ENDPOINT.
+  public static final String LOKI_OTLP_LOGS_ENDPOINT = "/otlp/v1/logs";
   public static final String WS_CLIENT_KEY = "yb.ws";
   private final BeanValidator beanValidator;
   private final RuntimeConfGetter confGetter;

@@ -1,7 +1,8 @@
 - name: Install OpenTelemetry collector | Set paths part 1
   set_fact:
     otel_col_temp_path: "{{ remote_tmp_dir | default('/tmp') }}/otel-collector"
-    otel_col_package_file: "otelcol-contrib_{{ otel_col_version }}_{{ otel_col_platform }}_{{ otel_col_arch }}.tar.gz"
+    otel_col_package_file: "{{ otel_col_packaged_binary }}_{{ otel_col_version }}_\
+      {{ otel_col_platform }}_{{ otel_col_arch }}.tar.gz"
     _mount_points: "{{ mount_points.split(',') }}"
 
 - name: Install OpenTelemetry collector | Set paths part 2
@@ -39,9 +40,19 @@
     dest: "{{ otel_col_dir }}"
     remote_src: True
 
-- name: Install OpenTelemetry collector | Ensure otelcol-contrib permissions.
+- name: Install OpenTelemetry collector | Rename collector binary to the installed name
+  # mv rather than copy: rename(2) succeeds even when the previous binary is still mapped by a
+  # running collector, which overwriting in place would not (ETXTBSY). Mirrors the node-agent
+  # install path in install_otel_collector.go.
+  command: >
+    mv -f {{ otel_col_dir }}/{{ otel_col_packaged_binary }}
+    {{ otel_col_dir }}/{{ otel_col_installed_binary }}
+  args:
+    removes: "{{ otel_col_dir }}/{{ otel_col_packaged_binary }}"
+
+- name: Install OpenTelemetry collector | Ensure {{ otel_col_installed_binary }} permissions.
   shell: |
-    chmod -R 755 {{ otel_col_dir }}/otelcol-contrib
+    chmod -R 755 {{ otel_col_dir }}/{{ otel_col_installed_binary }}
 
 - name: Install OpenTelemetry collector | Clean up OpenTelemetry collector temp directory
   file:

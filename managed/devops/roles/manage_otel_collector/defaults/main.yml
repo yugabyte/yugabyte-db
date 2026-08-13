@@ -14,7 +14,16 @@ otel_col_queue_dir: "{{ yb_home_dir }}/otel-collector/queue"
 aws_creds: "{{ yb_home_dir }}/.aws/credentials"
 otel_col_gcp_creds: "{{ yb_home_dir }}/otel-collector/gcp_creds"
 otel_col_log_cleanup_env: "{{ yb_home_dir }}/otel-collector/log_cleanup_env"
-otel_col_version: "0.90.0"
+# Keep in step with ManageOtelCollector.OtelCollectorVersion and the URLs in
+# support/thirdparty-dependencies.txt - this role installs the same artifact as the node-agent path.
+otel_col_version: "0.145.0"
+# Name of the executable inside the published archive. The YugabyteDB unified collector is a custom
+# ocb distribution rather than the upstream contrib one, so it does not ship under the contrib name.
+otel_col_packaged_binary: "otelcol-unified"
+# Name the executable is installed under on the node. This becomes the running process name, which
+# otel-collector.service, the health check's `ps -C` lookup and the `process` label on the
+# per-process metrics all key off, so it must stay stable across collector version changes.
+otel_col_installed_binary: "otelcol-contrib"
 otel_col_platform: "linux"
 otel_col_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64'}}"
 otel_col_max_memory: "2048"
