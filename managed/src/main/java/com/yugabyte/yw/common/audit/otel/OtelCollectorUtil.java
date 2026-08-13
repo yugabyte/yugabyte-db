@@ -10,6 +10,8 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -28,6 +30,29 @@ public class OtelCollectorUtil {
   // "recievers" key (OtelCollectorConfigGenerator.getOtelHelmValues).
   public static final String OTEL_HELM_CONFIG_PASSTHROUGH_STABLE_VERSION = "2026.1.2.0";
   public static final String OTEL_HELM_CONFIG_PASSTHROUGH_PREVIEW_VERSION = "2.31.0.0";
+
+  public static final Set<ScrapeConfigTargetType> K8S_SUPPORTED_SCRAPE_TARGETS =
+      Collections.unmodifiableSet(
+          EnumSet.of(
+              ScrapeConfigTargetType.MASTER_EXPORT,
+              ScrapeConfigTargetType.TSERVER_EXPORT,
+              ScrapeConfigTargetType.YSQL_EXPORT,
+              ScrapeConfigTargetType.CQL_EXPORT,
+              ScrapeConfigTargetType.OTEL_EXPORT));
+
+  public static Set<ScrapeConfigTargetType> getUnsupportedK8sScrapeTargets(
+      MetricsExportConfig config) {
+    if (config == null) {
+      return Collections.emptySet();
+    }
+    Set<ScrapeConfigTargetType> unsupported = EnumSet.noneOf(ScrapeConfigTargetType.class);
+    unsupported.addAll(
+        CollectionUtils.isEmpty(config.getScrapeConfigTargets())
+            ? EnumSet.allOf(ScrapeConfigTargetType.class)
+            : config.getScrapeConfigTargets());
+    unsupported.removeAll(K8S_SUPPORTED_SCRAPE_TARGETS);
+    return unsupported;
+  }
 
   /**
    * Whether the chart for the given YBDB version accepts the full collector config via spec.config
