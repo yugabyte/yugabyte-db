@@ -17,9 +17,11 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
@@ -90,6 +92,15 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.helpers.exporters.UniverseExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.SimpleServerLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -121,6 +132,8 @@ import io.yugabyte.operator.v1alpha1.ReleaseSpec;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.StorageConfigSpec;
 import io.yugabyte.operator.v1alpha1.StorageConfigStatus;
+import io.yugabyte.operator.v1alpha1.TelemetryProvider;
+import io.yugabyte.operator.v1alpha1.TelemetryProviderStatus;
 import io.yugabyte.operator.v1alpha1.YBProvider;
 import io.yugabyte.operator.v1alpha1.YBProviderSpec;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
@@ -140,6 +153,7 @@ import io.yugabyte.operator.v1alpha1.ybproviderspec.Regions;
 import io.yugabyte.operator.v1alpha1.ybproviderspec.regions.Zones;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.EncryptionAtRest;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import java.nio.file.Paths;
 import java.time.OffsetDateTime;
@@ -176,6 +190,14 @@ public class OperatorUtils {
   public static final String AUTO_PROVIDER_LABEL = "auto-provider";
   public static final int KUBERNETES_NAME_MAX_LENGTH = 63;
   public static final String PROVIDER_KUBECONFIG_KEY = "PROVIDER_KUBECONFIG";
+
+  /**
+   * Used to deep-copy telemetry config sections before neutralizing their server-derived fields for
+   * comparison. Plain mapper: the internal telemetry configs are camelCase POJOs whose computed
+   * properties are {@code @JsonIgnore}, so a round trip through it preserves the stored state
+   * exactly.
+   */
+  private static final ObjectMapper TELEMETRY_COPY_MAPPER = new ObjectMapper();
 
   private static final String[] ZONE_CONFIG_KEYS_TO_CHECK = {
     "KUBENAMESPACE",
@@ -333,6 +355,58 @@ public class OperatorUtils {
       if (StringUtils.isBlank(resourceUUID)) {
         throw new Exception(
             "KMS config CR '" + kmsConfigCrName + "' has no resolved config UUID yet");
+      }
+      return UUID.fromString(resourceUUID);
+    }
+  }
+
+  /**
+   * Resolves a TelemetryProvider CR (by name, in the given namespace) to its YBA telemetry provider
+   * UUID. Mirrors {@link #resolveReadyKmsConfigUuid}: throws when the CR is missing, has not
+   * reached a state that means the provider exists in YBA, or has not published a resolved UUID
+   * yet, so a universe CR never gets an exporter pointing at a provider YBA does not have.
+   *
+   * @param telemetryProviderCrName the TelemetryProvider CR name
+   * @param namespace the namespace to look it up in
+   * @return the resolved YBA telemetry provider UUID
+   */
+  public UUID resolveReadyTelemetryProviderUuid(String telemetryProviderCrName, String namespace)
+      throws Exception {
+    try (final KubernetesClient kubernetesClient =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      TelemetryProvider telemetryProviderCr =
+          kubernetesClient
+              .resources(TelemetryProvider.class)
+              .inNamespace(namespace)
+              .withName(telemetryProviderCrName)
+              .get();
+      if (telemetryProviderCr == null) {
+        throw new Exception(
+            "Telemetry provider CR '"
+                + telemetryProviderCrName
+                + "' not found in namespace '"
+                + namespace
+                + "'");
+      }
+      TelemetryProviderStatus status = telemetryProviderCr.getStatus();
+      String state = status == null ? null : status.getState();
+      String resourceUUID = status == null ? null : status.getResourceUUID();
+      // Ready or InUse both mean the provider exists in YBA with a valid UUID. InUse is what the
+      // TelemetryProvider reconciler reports after refusing to delete a provider a universe still
+      // references, which must not stop that universe from reconciling.
+      if (!"Ready".equals(state) && !"InUse".equals(state)) {
+        throw new Exception(
+            "Telemetry provider CR '"
+                + telemetryProviderCrName
+                + "' is not ready (state: "
+                + state
+                + ")");
+      }
+      if (StringUtils.isBlank(resourceUUID)) {
+        throw new Exception(
+            "Telemetry provider CR '"
+                + telemetryProviderCrName
+                + "' has no resolved provider UUID yet");
       }
       return UUID.fromString(resourceUUID);
     }
@@ -1033,6 +1107,8 @@ public class OperatorUtils {
     log.trace("tls parameters mismatch: {}", mismatch);
     mismatch = mismatch || shouldUpdateEncryptionAtRest(u, ybUniverse);
     log.trace("encryption at rest mismatch: {}", mismatch);
+    mismatch = mismatch || shouldUpdateTelemetry(u, ybUniverse);
+    log.trace("telemetry mismatch: {}", mismatch);
     return mismatch;
   }
 
@@ -1144,6 +1220,218 @@ public class OperatorUtils {
   /** Whether the universe CR's encryptionAtRest block calls for an edit to the universe. */
   public boolean shouldUpdateEncryptionAtRest(Universe u, YBUniverse ybUniverse) {
     return getEncryptionAtRestChange(u, ybUniverse).isActionable();
+  }
+
+  /*--- Telemetry export helper methods ---*/
+
+  /**
+   * The telemetry export config the universe CR asks for, with every exporter's TelemetryProvider
+   * CR name resolved to its YBA UUID.
+   *
+   * @throws Exception if an exporter names a TelemetryProvider CR that is missing, not ready, or
+   *     has not published its resolved UUID yet
+   */
+  public TelemetryConfig getDesiredTelemetryConfig(YBUniverse ybUniverse) throws Exception {
+    String namespace =
+        ybUniverse.getMetadata() == null ? null : ybUniverse.getMetadata().getNamespace();
+    Telemetry telemetry = ybUniverse.getSpec() == null ? null : ybUniverse.getSpec().getTelemetry();
+    return UniverseTelemetrySpecConverter.toTelemetryConfig(
+        telemetry, crName -> resolveReadyTelemetryProviderUuid(crName, namespace));
+  }
+
+  /**
+   * Whether the universe CR's telemetry block differs from what the universe currently has applied,
+   * and therefore whether an export-telemetry task should be submitted.
+   */
+  public boolean shouldUpdateTelemetry(Universe universe, YBUniverse ybUniverse) {
+    TelemetryConfig desired;
+    try {
+      desired = getDesiredTelemetryConfig(ybUniverse);
+    } catch (Exception e) {
+      // An exporter names a TelemetryProvider CR that is missing or not ready yet. Queueing an edit
+      // that cannot complete would only flip the universe to ERROR_UPDATING on every resync and
+      // block unrelated edits.
+      log.warn(
+          "Cannot determine the desired telemetry config for universe {}: {}",
+          universe.getName(),
+          e.getMessage());
+      return false;
+    }
+    TelemetryConfig current = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    for (ExportType type : ExportType.values()) {
+      if (telemetrySectionDiffers(type, desired, current)) {
+        log.debug(
+            "Telemetry section {} of universe {} differs from the CR spec",
+            type,
+            universe.getName());
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Whether one export type's section differs between the desired and current configs, comparing
+   * authored fields only.
+   *
+   * <p>an "authored" field is one that is explicitly set, not derived. For example, exportActive in
+   * AuditLogConfig.
+   */
+  @VisibleForTesting
+  public static boolean telemetrySectionDiffers(
+      ExportType type,
+      @Nullable TelemetryConfig desiredConfig,
+      @Nullable TelemetryConfig currentConfig) {
+    // A null aggregate means "nothing configured", same as an aggregate with all-null sections.
+    TelemetryConfig desired = desiredConfig != null ? desiredConfig : new TelemetryConfig();
+    TelemetryConfig current = currentConfig != null ? currentConfig : new TelemetryConfig();
+    switch (type) {
+      case AUDIT_LOGS:
+        return !Objects.equals(
+            authoredView(desired.getAuditLogConfig()), authoredView(current.getAuditLogConfig()));
+      case QUERY_LOGS:
+        return !Objects.equals(
+            authoredView(desired.getQueryLogConfig()), authoredView(current.getQueryLogConfig()));
+      case METRICS:
+        return !Objects.equals(
+            authoredView(desired.getMetricsExportConfig()),
+            authoredView(current.getMetricsExportConfig()));
+      case MASTER_LOGS:
+        return !Objects.equals(
+            authoredView(desired.getMasterLogConfig()), authoredView(current.getMasterLogConfig()));
+      case TSERVER_LOGS:
+        return !Objects.equals(
+            authoredView(desired.getTserverLogConfig()),
+            authoredView(current.getTserverLogConfig()));
+      case YSQL_CONN_MGR_LOGS:
+        return !Objects.equals(
+            authoredView(desired.getYsqlConnMgrLogConfig()),
+            authoredView(current.getYsqlConnMgrLogConfig()));
+      case CONTROLLER_LOGS:
+        return !Objects.equals(
+            authoredView(desired.getControllerLogConfig()),
+            authoredView(current.getControllerLogConfig()));
+      case NODE_AGENT_LOGS:
+      case YNP_LOGS:
+        // VM-only (ExportType.isSupportedOnKubernetes() is false), so they are absent from the
+        // universe CRD entirely and the operator never reconciles them.
+        return false;
+      default:
+        throw new IllegalArgumentException(
+            "Unhandled export type in the operator telemetry comparison: " + type);
+    }
+  }
+
+  /**
+   * Audit Log Config with derived fields forced to false. - exportActive - ysqlAuditConfig.enabled
+   * - ycqlAuditConfig.enabled
+   */
+  private static AuditLogConfig authoredView(AuditLogConfig config) {
+    if (config == null) {
+      return null;
+    }
+    AuditLogConfig view = authoredCopy(config);
+    view.setExportActive(false);
+    if (config.getYsqlAuditConfig() != null && config.getYsqlAuditConfig().isEnabled()) {
+      view.getYsqlAuditConfig().setEnabled(false);
+    } else {
+      view.setYsqlAuditConfig(null);
+    }
+    if (config.getYcqlAuditConfig() != null && config.getYcqlAuditConfig().isEnabled()) {
+      view.getYcqlAuditConfig().setEnabled(false);
+    } else {
+      view.setYcqlAuditConfig(null);
+    }
+    view.setUniverseLogsExporterConfig(authoredExporters(view.getUniverseLogsExporterConfig()));
+    return view;
+  }
+
+  /**
+   * QueryLogConfig with derived fields forced to false. - exportActive - ysqlQueryLogConfig.enabled
+   */
+  private static QueryLogConfig authoredView(QueryLogConfig config) {
+    if (config == null) {
+      return null;
+    }
+    QueryLogConfig view = authoredCopy(config);
+    view.setExportActive(false);
+    if (config.getYsqlQueryLogConfig() != null && config.getYsqlQueryLogConfig().isEnabled()) {
+      view.getYsqlQueryLogConfig().setEnabled(false);
+    } else {
+      view.setYsqlQueryLogConfig(null);
+    }
+    view.setUniverseLogsExporterConfig(authoredExporters(view.getUniverseLogsExporterConfig()));
+    return view;
+  }
+
+  /** MetricsExportConfig has no derived fields, just handle exporter configs. */
+  private static MetricsExportConfig authoredView(MetricsExportConfig config) {
+    if (config == null) {
+      return null;
+    }
+    MetricsExportConfig view = authoredCopy(config);
+    view.setUniverseMetricsExporterConfig(
+        authoredExporters(view.getUniverseMetricsExporterConfig()));
+    return view;
+  }
+
+  /** MasterLogConfig has no derived fields, just handle exporter configs. */
+  private static MasterLogConfig authoredView(MasterLogConfig config) {
+    if (config == null) {
+      return null;
+    }
+    MasterLogConfig view = authoredCopy(config);
+    view.setUniverseLogsExporterConfig(authoredExporters(view.getUniverseLogsExporterConfig()));
+    return view;
+  }
+
+  /** TserverLogConfig has no derived fields, just handle exporter configs. */
+  private static TServerLogConfig authoredView(TServerLogConfig config) {
+    if (config == null) {
+      return null;
+    }
+    TServerLogConfig view = authoredCopy(config);
+    view.setUniverseLogsExporterConfig(authoredExporters(view.getUniverseLogsExporterConfig()));
+    return view;
+  }
+
+  /** SimpleServerLogConfig has no derived fields, just handle exporter configs. */
+  private static <T extends SimpleServerLogConfig> T authoredView(T config) {
+    if (config == null) {
+      return null;
+    }
+    T view = authoredCopy(config);
+    view.setUniverseLogsExporterConfig(authoredExporters(view.getUniverseLogsExporterConfig()));
+    return view;
+  }
+
+  /** Exporters normalized - nulls become empty maps or strings */
+  private static <T extends UniverseExporterConfig> List<T> authoredExporters(List<T> exporters) {
+    if (CollectionUtils.isEmpty(exporters)) {
+      return Collections.emptyList();
+    }
+    for (T exporter : exporters) {
+      if (exporter.getAdditionalTags() == null) {
+        exporter.setAdditionalTags(new HashMap<>());
+      }
+      if (exporter instanceof UniverseMetricsExporterConfig) {
+        UniverseMetricsExporterConfig metricsExporter = (UniverseMetricsExporterConfig) exporter;
+        if (metricsExporter.getMetricsPrefix() == null) {
+          metricsExporter.setMetricsPrefix("");
+        }
+      }
+    }
+    return exporters;
+  }
+
+  /**
+   * Deep copy of a telemetry section, so the authored views can neutralize derived fields without
+   * mutating either the desired config or - importantly - the live objects the current config was
+   * read from (they belong to the universe details and the export_telemetry_config row).
+   */
+  @SuppressWarnings("unchecked")
+  private static <T> T authoredCopy(T config) {
+    return (T) TELEMETRY_COPY_MAPPER.convertValue(config, config.getClass());
   }
 
   /*--- Release related help methods ---*/

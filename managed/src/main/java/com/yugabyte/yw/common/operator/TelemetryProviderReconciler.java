@@ -49,12 +49,6 @@ import org.apache.commons.lang3.StringUtils;
  * InUse} on a live object with the finalizer kept, while a DELETE is requeued so the deletion is
  * retried once the universe stops exporting. The finalizer is removed only once the provider is
  * gone from YBA.
- *
- * <p>The YBA provider name is taken from {@code spec.name}, not from the Kubernetes object name:
- * {@code spec.name} is the CRD's declared "name as registered in YBA" and is required and
- * immutable. Both the create call and the lookups use it, so a resource whose Kubernetes name
- * differs from its YBA name still resolves to the same provider. Log lines outside the reconcile
- * path use the Kubernetes object name, which is always present.
  */
 @Slf4j
 public class TelemetryProviderReconciler extends AbstractReconciler<TelemetryProvider> {
@@ -273,8 +267,9 @@ public class TelemetryProviderReconciler extends AbstractReconciler<TelemetryPro
   }
 
   /**
-   * Looks the telemetry provider up in YBA under the name from {@code spec.name} - the same name a
-   * create would use.
+   * Looks the telemetry provider up in YBA First by uuid - provided by the yba resource ID
+   * annotation and then under the name from {@code metadata.name} - the same name a create would
+   * use.
    *
    * @param provider the TelemetryProvider resource to look up
    * @param cust the operator customer the provider belongs to
@@ -284,6 +279,18 @@ public class TelemetryProviderReconciler extends AbstractReconciler<TelemetryPro
    */
   private com.yugabyte.yw.models.TelemetryProvider findExistingProvider(
       TelemetryProvider provider, Customer cust) throws Exception {
+    UUID providerUUID = operatorUtils.getYbaResourceId(provider.getMetadata());
+    if (providerUUID != null) {
+      log.debug(
+          "Looking up TelemetryProvider {} by UUID {}",
+          provider.getMetadata().getName(),
+          providerUUID);
+      return telemetryProviderService.get(providerUUID);
+    }
+    log.debug(
+        "Looking up TelemetryProvider {} by name {}",
+        provider.getMetadata().getName(),
+        getYbaProviderName(provider));
     return findByName(cust.getUuid(), getYbaProviderName(provider));
   }
 
@@ -382,14 +389,9 @@ public class TelemetryProviderReconciler extends AbstractReconciler<TelemetryPro
     return providers.isEmpty() ? null : providers.get(0);
   }
 
-  /** The name the provider is registered under in YBA, from {@code spec.name}. */
+  /** The name the provider is registered under in YBA */
   private static String getYbaProviderName(TelemetryProvider provider) {
-    String name = provider.getSpec() == null ? null : provider.getSpec().getName();
-    if (StringUtils.isBlank(name)) {
-      throw new IllegalArgumentException(
-          "Telemetry provider spec is missing required field 'name'");
-    }
-    return name;
+    return provider.getMetadata().getName();
   }
 
   private static UUID getStatusResourceUUID(TelemetryProvider provider) {
