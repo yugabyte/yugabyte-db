@@ -768,24 +768,27 @@ WriteRpc::WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag)
     req_.set_leader_term(batcher_->GetLeaderTerm());
   }
 
-  const auto& client_id = batcher_->client_id();
-  if (!client_id.IsNil() && FLAGS_detect_duplicates_for_retryable_requests) {
-    auto temp = client_id.ToUInt64Pair();
-    req_.set_client_id1(temp.first);
-    req_.set_client_id2(temp.second);
+  if (!batcher_->client_id().IsNil() && FLAGS_detect_duplicates_for_retryable_requests) {
     const auto& first_yb_op = ops_.begin()->yb_op;
-    // That means we are trying to resend all ops from this RPC and need to reuse retryable
-    // request ID and details (see https://github.com/yugabyte/yugabyte-db/issues/14005).
+    // The id belongs to the shard that allocated it, and so does the client id to send with it.
+    const internal::AtomicRequestIdAllocator* shard;
+    // A set request id means we are trying to resend all ops from this RPC and need to reuse
+    // retryable request ID and details (see https://github.com/yugabyte/yugabyte-db/issues/14005).
     if (first_yb_op->request_id()) {
       const auto& request_detail = batcher_->GetRequestDetails(*first_yb_op->request_id());
       req_.set_request_id(*first_yb_op->request_id());
       req_.set_min_running_request_id(request_detail.min_running_request_id);
+      shard = request_detail.shard;
     } else {
-      const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
-      req_.set_request_id(request_pair.first);
-      req_.set_min_running_request_id(request_pair.second);
-      batcher_->RegisterRequest(request_pair.first, request_pair.second);
+      const auto allocation = batcher_->NextRequestIdAndMinRunningRequestId();
+      req_.set_request_id(allocation.id);
+      req_.set_min_running_request_id(allocation.min_running);
+      batcher_->RegisterRequest(allocation);
+      shard = allocation.shard;
     }
+    auto client_id = shard->client_id().ToUInt64Pair();
+    req_.set_client_id1(client_id.first);
+    req_.set_client_id2(client_id.second);
     FillRequestIds(req_.request_id(), &ops_);
   }
 

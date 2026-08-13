@@ -720,12 +720,14 @@ server::Clock* Batcher::Clock() const {
   return client_->Clock();
 }
 
-std::pair<RetryableRequestId, RetryableRequestId> Batcher::NextRequestIdAndMinRunningRequestId() {
+ShardedAtomicRequestIdAllocation Batcher::NextRequestIdAndMinRunningRequestId() {
   return client_->NextRequestIdAndMinRunningRequestId();
 }
 
 void Batcher::RequestsFinished() {
-  client_->RequestsFinished(retryable_requests_ | boost::adaptors::map_keys);
+  for (const auto& [id, details] : retryable_requests_) {
+    details.shard->Finish(id);
+  }
 }
 
 void Batcher::MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id) {

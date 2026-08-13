@@ -177,6 +177,9 @@ struct CDCSDKStreamInfo {
 
 namespace internal {
 class ClientMasterRpcBase;
+class AtomicRequestIdAllocator;
+template <class Allocator> struct ShardedRequestIdAllocation;
+using ShardedAtomicRequestIdAllocation = ShardedRequestIdAllocation<AtomicRequestIdAllocator>;
 }
 
 using GetTableLocationsCallback =
@@ -209,9 +212,6 @@ struct TableCompactionStatus {
   HybridTime last_request_time;
   std::vector<TabletReplicaFullCompactionStatus> replica_statuses;
 };
-
-using RetryableRequestIdRange =
-    boost::any_range<RetryableRequestId, boost::forward_traversal_tag, RetryableRequestId>;
 
 // Creates a new YBClient with the desired options.
 //
@@ -1132,11 +1132,11 @@ class YBClient {
 
   const CloudInfoPB& cloud_info() const;
 
-  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
+  // The allocation carries the shard that owns the id: it finishes the request and provides the
+  // client id to send with it.
+  internal::ShardedAtomicRequestIdAllocation NextRequestIdAndMinRunningRequestId();
 
   void AddMetaCacheInfo(JsonWriter* writer) const;
-
-  void RequestsFinished(const RetryableRequestIdRange& request_id_range);
 
   void Shutdown();
 

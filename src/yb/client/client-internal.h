@@ -39,6 +39,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "yb/client/sharded_request_id_allocator.h"
 #include "yb/client/client.h"
 
 #include "yb/common/common_net.pb.h"
@@ -643,15 +644,11 @@ class YBClient::Data {
   const ClientId id_;
   const std::string log_prefix_;
 
-  // Used to track requests that were sent to a particular tablet, so it could track different
-  // RPCs related to the same write operation and reject duplicates.
-  struct TabletRequests {
-    RetryableRequestId request_id_seq = 0;
-    std::set<RetryableRequestId> running_requests;
-  };
-
-  simple_spinlock tablet_requests_mutex_;
-  TabletRequests requests_;
+  // Allocates ids for the retryable write requests, so the server could track different RPCs
+  // related to the same write operation and reject duplicates. Sharded, so that the threads do
+  // not contend for the ids and an unfinished request holds back the min running id of its shard
+  // only. Each shard has its own client id, hence its own id space on the server.
+  internal::ShardedAtomicRequestIdAllocator request_id_allocator_;
 
   std::array<std::atomic<int>, 2> tserver_count_cached_;
 
