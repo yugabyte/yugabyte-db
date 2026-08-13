@@ -1284,11 +1284,9 @@ The `SKIP LOCKED` clause allows a transaction to skip rows that are already lock
 - **Supported in:** Both Fail-on-Conflict and Wait-on-Conflict concurrency control policies
 - **Not supported in:** Serializable isolation ([#5683](https://github.com/yugabyte/yugabyte-db/issues/5683))
 
-**Performance optimization for SKIP LOCKED:**
+YugabyteDB provides the following configuration parameter to optimize SKIP LOCKED performance:
 
-YugabyteDB provides configuration parameter to optimize SKIP LOCKED performance:
-
-- **[`yb_explicit_row_locking_batch_size`](../../../reference/configuration/yb-tserver/#ysql-yb-explicit-row-locking-batch-size):** Controls the number of lock requests batched together. Default is 1024. Larger batches improve throughput; smaller batches reduce memory usage and latency.
+- [yb_explicit_row_locking_batch_size](../../../reference/configuration/yb-tserver/#ysql-yb-explicit-row-locking-batch-size): Controls the number of lock requests batched together. Default is 1024. Larger batches improve throughput; smaller batches reduce memory usage and latency.
 
 For detailed examples and configuration guidance, refer to [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
 

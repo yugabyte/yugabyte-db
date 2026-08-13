@@ -1268,7 +1268,7 @@ Refer to [#5680](https://github.com/yugabyte/yugabyte-db/issues/5680) for limita
 
 ## Row-level explicit locking clauses
 
-YugabyteDB supports PostgreSQL's row-level explicit locking clauses, which provide advanced control over lock acquisition behavior in the presence of conflicts. The behavior of these clauses depends on the concurrency control policy:
+YugabyteDB supports PostgreSQL's row-level explicit locking clauses, which provide advanced control over lock acquisition behavior in the presence of conflicts. The behavior of these clauses depends on the concurrency control policy.
 
 ### NOWAIT clause
 
@@ -1284,13 +1284,11 @@ The `SKIP LOCKED` clause allows a transaction to skip rows that are already lock
 - **Supported in:** Both Fail-on-Conflict and Wait-on-Conflict concurrency control policies
 - **Not supported in:** Serializable isolation ([#5683](https://github.com/yugabyte/yugabyte-db/issues/5683))
 
-**Performance optimization for SKIP LOCKED:**
+YugabyteDB provides the following configuration parameters to optimize SKIP LOCKED performance:
 
-YugabyteDB provides two configuration parameters to optimize SKIP LOCKED performance:
+- [yb_explicit_row_locking_batch_size](../../../reference/configuration/yb-tserver/#ysql-yb-explicit-row-locking-batch-size): Controls the number of lock requests batched together. Default is 1024. Larger batches improve throughput; smaller batches reduce memory usage and latency.
 
-- [`yb_explicit_row_locking_batch_size`](../../../reference/configuration/yb-tserver/#ysql-yb-explicit-row-locking-batch-size): Controls the number of lock requests batched together. Default is 1024. Larger batches improve throughput; smaller batches reduce memory usage and latency.
-
-- [`yb_explicit_row_lock_skip_locked_max_read_ahead`](../../../reference/configuration/yb-tserver/#ysql-yb-explicit-row-lock-skip-locked-max-read-ahead) (v2026.1.1.0+): Controls parallelism when locking rows in a SKIP LOCKED query. Default is 1 (disabled). Values greater than 1 enable read-ahead optimization, allowing YugabyteDB to attempt locking multiple rows concurrently, significantly improving performance.
+- [yb_explicit_row_lock_skip_locked_max_read_ahead](../../../reference/configuration/yb-tserver/#ysql-yb-explicit-row-lock-skip-locked-max-read-ahead) (v2026.1.1.0+): Controls parallelism when locking rows in a SKIP LOCKED query. Default is 1 (disabled). Values greater than 1 enable read-ahead optimization, allowing YugabyteDB to attempt locking multiple rows concurrently, significantly improving performance.
 
 For detailed examples and configuration guidance, refer to [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
 

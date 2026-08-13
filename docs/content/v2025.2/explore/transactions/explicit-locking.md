@@ -86,9 +86,29 @@ This operation fails because it conflicts with the row-level lock and as per Fai
 
 Note that the error message appears after all [best-effort statement retries](../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction) have been exhausted.
 
+Finally, in the first session, update the row and commit the transaction, as follows:
+
+```sql
+yugabyte=# UPDATE t SET v='v1.2' WHERE k='k1';
+```
+
+```output
+UPDATE 1
+```
+
+```sql
+yugabyte=# COMMIT;
+```
+
+```output
+COMMIT
+```
+
+This should succeed.
+
 ### Explicit row locking modes
 
-YugabyteDB's YSQL supports PostgreSQL's explicit locking clauses that provide advanced control over lock acquisition behavior when conflicts occur:
+YSQL supports PostgreSQL's explicit locking clauses that provide advanced control over lock acquisition behavior when conflicts occur.
 
 #### NOWAIT clause
 
@@ -111,26 +131,6 @@ SELECT * FROM orders WHERE status = 'pending' FOR UPDATE SKIP LOCKED LIMIT 10;
 ```
 
 For support details, limitations, and performance tuning options, see [Row-level explicit locking clauses](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses) and [Explicit row locking flags](../../../reference/configuration/yb-tserver/#explicit-row-locking-flags).
-
-Finally, in the first session, update the row and commit the transaction, as follows:
-
-```sql
-yugabyte=# UPDATE t SET v='v1.2' WHERE k='k1';
-```
-
-```output
-UPDATE 1
-```
-
-```sql
-yugabyte=# COMMIT;
-```
-
-```output
-COMMIT
-```
-
-This should succeed.
 
 ## Advisory locks
 

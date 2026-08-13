@@ -2269,12 +2269,14 @@ To learn about explicit row locking, see [Row-level locks](../../../explore/tran
 ##### --ysql_yb_explicit_row_locking_batch_size
 
 {{% tags/wrap %}}
+
 Default: `1024`
 {{% /tags/wrap %}}
 
 Controls the batch size of explicit row locking operations. When YugabyteDB processes SELECT FOR UPDATE/SHARE statements, it batches lock requests to optimize performance. A larger batch size can improve throughput by reducing round-trips, but may consume more memory.
 
 This flag can be set dynamically using:
+
 ```sql
 SET yb_explicit_row_locking_batch_size = 512;
 ```
@@ -2702,6 +2704,7 @@ Enables Read Committed isolation. By default this flag is false and in this case
 ##### --pg_client_use_shared_memory
 
 {{% tags/wrap %}}
+
 Default: `true`
 {{% /tags/wrap %}}
 
