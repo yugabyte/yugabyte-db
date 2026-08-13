@@ -55,6 +55,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_aggregate.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
@@ -4603,6 +4604,9 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			break;
 
 		// MyDb tables
+		case AggregateRelationId:                         // pg_aggregate
+			sys_only_filter_attr = Anum_pg_aggregate_aggfnoid;
+			break;
 		case AccessMethodProcedureRelationId:             // pg_amproc
 			sys_table_index_id = AccessMethodProcedureIndexId;
 			break;
