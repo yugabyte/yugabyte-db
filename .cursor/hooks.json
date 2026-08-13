@@ -4,7 +4,7 @@
     "beforeShellExecution": [
       {
         "matcher": "git.*\\spush\\b",
-        "command": ".agents/scripts/block-upstream-push.py",
+        "command": ".agents/scripts/block-git-push.sh",
         "failClosed": true
       }
     ]
