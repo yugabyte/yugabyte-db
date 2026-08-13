@@ -245,7 +245,9 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     assertEquals(State.READY, nodeAgent.getState());
     assertFalse("Merged cert file still exists", mergedCertFile.toFile().exists());
     assertFalse("Cert dir is not updated", certDir.equals(newCertDirPath));
-    verify(mockNodeAgentClient, times(4)).uploadFile(any(), any(), any(), any(), anyInt(), any());
+    // Package(1), installer script(2), server cert(3), server key(4), signer public(5), signer
+    // private(6).
+    verify(mockNodeAgentClient, times(6)).uploadFile(any(), any(), any(), any(), anyInt(), any());
     verify(mockNodeAgentClient, times(1)).startUpgrade(any(), any());
     verify(mockNodeAgentClient, times(2)).finalizeUpgrade(any());
   }

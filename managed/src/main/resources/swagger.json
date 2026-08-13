@@ -6661,7 +6661,17 @@
         "serverCert" : {
           "type" : "string"
         },
+        "serverCertExpirySecs" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
         "serverKey" : {
+          "type" : "string"
+        },
+        "signerPrivateKey" : {
+          "type" : "string"
+        },
+        "signerPublicKey" : {
           "type" : "string"
         }
       },
@@ -6670,7 +6680,10 @@
         "compressor",
         "offloadable",
         "serverCert",
-        "serverKey"
+        "serverCertExpirySecs",
+        "serverKey",
+        "signerPrivateKey",
+        "signerPublicKey"
       ],
       "type" : "object"
     },
