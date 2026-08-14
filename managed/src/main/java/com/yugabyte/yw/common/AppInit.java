@@ -187,7 +187,7 @@ public class AppInit {
           for (Users user : Users.find.all()) {
             Principal principal = Principal.get(user.getUuid());
             if (principal == null) {
-              log.info("Adding Principal entry for user with email: " + user.getEmail());
+              log.info("Adding Principal entry for user with uuid: " + user.getUuid());
               new Principal(user).save();
             }
             ResourceGroup resourceGroup =
@@ -205,7 +205,7 @@ public class AppInit {
                 "Created system role binding for user '{}' (email '{}') of customer '{}', "
                     + "with role '{}' (name '{}'), and default role binding '{}'.",
                 user.getUuid(),
-                user.getEmail(),
+                RedactingService.SECRET_REPLACEMENT,
                 customer.getUuid(),
                 newRbacRole.getRoleUUID(),
                 newRbacRole.getName(),
