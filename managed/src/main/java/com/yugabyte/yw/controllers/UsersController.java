@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.SendUserNotification;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -250,7 +251,7 @@ public class UsersController extends AuthenticatedController {
         LOG.info(
             "Created user '{}', email '{}', custom role bindings '{}'.",
             user.getUuid(),
-            user.getEmail(),
+            RedactingService.SECRET_REPLACEMENT,
             createdRoleBindings.toString());
       }
 
@@ -416,7 +417,7 @@ public class UsersController extends AuthenticatedController {
       LOG.info(
           "Changed user '{}' with email '{}' to role '{}', with default role bindings '{}'.",
           user.getUuid(),
-          user.getEmail(),
+          RedactingService.SECRET_REPLACEMENT,
           role,
           createdRoleBindings.toString());
     }
@@ -667,7 +668,7 @@ public class UsersController extends AuthenticatedController {
             + "If you did not request this change or believe your account may be compromised,"
             + " please reset your password immediately or contact support.\n\n";
     UUID taskUUID = commissioner.submit(TaskType.SendUserNotification, taskParams);
-    log.info("Submitted task to notify user {}, task uuid = {}.", user.getEmail(), taskUUID);
+    log.info("Submitted task to notify user {}, task uuid = {}.", user.getUuid(), taskUUID);
     CustomerTask.createWithBackgroundUser(
         Customer.getOrBadRequest(customerUUID),
         user.getUuid(),

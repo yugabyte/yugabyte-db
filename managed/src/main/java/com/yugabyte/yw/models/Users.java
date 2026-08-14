@@ -10,6 +10,7 @@ import static play.mvc.Http.Status.UNAUTHORIZED;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -44,6 +45,7 @@ import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
@@ -57,6 +59,9 @@ import play.mvc.Http.Status;
 @ApiModel(description = "A user associated with a customer")
 @Getter
 @Setter
+// Fields must be opted in explicitly so that credentials and PII added to this entity in future
+// are never emitted by toString(), which reaches the logs via RoleBinding and Principal.
+@ToString(onlyExplicitlyIncluded = true)
 public class Users extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Users.class);
@@ -132,9 +137,11 @@ public class Users extends Model {
   // A globally unique UUID for the Users.
   @Id
   @ApiModelProperty(value = "User UUID", accessMode = READ_ONLY)
+  @ToString.Include
   private UUID uuid = UUID.randomUUID();
 
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
+  @ToString.Include
   private UUID customerUUID;
 
   @Constraints.Required
@@ -145,11 +152,21 @@ public class Users extends Model {
       required = true)
   private String email;
 
+  @ToString.Include(name = "email")
+  private String toStringEmail() {
+    return email == null ? null : RedactingService.SECRET_REPLACEMENT;
+  }
+
   @JsonIgnore
   @ApiModelProperty(
       value = "User password hash",
       example = "$2y$10$ABccHWa1DO2VhcF1Ea2L7eOBZRhktsJWbFaB/aEjLfpaplDBIJ8K6")
   private String passwordHash;
+
+  @ToString.Include(name = "passwordHash")
+  private String toStringPasswordHash() {
+    return passwordHash == null ? null : RedactingService.SECRET_REPLACEMENT;
+  }
 
   public void setPassword(String password) {
     this.setPasswordHash(Users.pbkdf2Hasher.hash(password));
@@ -160,6 +177,7 @@ public class Users extends Model {
       value = "User creation date",
       example = "2022-12-12T13:07:18Z",
       accessMode = READ_ONLY)
+  @ToString.Include
   private Date creationDate;
 
   @Encrypted @JsonIgnore private String authToken;
@@ -169,15 +187,22 @@ public class Users extends Model {
       value = "UI session token creation date",
       example = "2021-06-17T15:00:05Z",
       accessMode = READ_ONLY)
+  @ToString.Include
   private Date authTokenIssueDate;
 
   @ApiModelProperty(value = "Hash of API Token")
   @JsonIgnore
   private String apiToken;
 
-  @JsonIgnore private Long apiTokenVersion = 0L;
+  @ToString.Include(name = "apiToken")
+  private String toStringApiToken() {
+    return apiToken == null ? null : RedactingService.SECRET_REPLACEMENT;
+  }
+
+  @JsonIgnore @ToString.Include private Long apiTokenVersion = 0L;
 
   @ApiModelProperty(value = "User timezone")
+  @ToString.Include
   private String timezone;
 
   // The role of the user.
@@ -187,15 +212,19 @@ public class Users extends Model {
               + " getRoleBindings instead.",
       example = "Admin")
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.19.3.0")
+  @ToString.Include
   private Role role;
 
   @ApiModelProperty(value = "True if the user is the primary user")
+  @ToString.Include
   private boolean isPrimary;
 
   @ApiModelProperty(value = "User Type")
+  @ToString.Include
   private UserType userType;
 
   @ApiModelProperty(value = "LDAP Specified Role")
+  @ToString.Include
   private boolean ldapSpecifiedRole;
 
   @Encrypted
@@ -203,7 +232,14 @@ public class Users extends Model {
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
   private String oidcJwtAuthToken;
 
+  // Reads the field rather than the getter, which always returns null.
+  @ToString.Include(name = "oidcJwtAuthToken")
+  private String toStringOidcJwtAuthToken() {
+    return oidcJwtAuthToken == null ? null : RedactingService.SECRET_REPLACEMENT;
+  }
+
   @DbArray(name = "group_memberships")
+  @ToString.Include
   private Set<UUID> groupMemberships = new HashSet<>();
 
   public String getOidcJwtAuthToken() {
@@ -217,10 +253,12 @@ public class Users extends Model {
 
   @ApiModelProperty(value = "YbaApi Internal. Used to turn off new UI feature for particular user")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  @ToString.Include
   private Boolean newUniverseUiEnabled = true;
 
   @ApiModelProperty(value = "YbaApi Internal. Whether the new UI tour was shown to particular user")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  @ToString.Include
   private Boolean newUniverseUiTourCompleted;
 
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
@@ -338,10 +376,7 @@ public class Users extends Model {
   public static void deleteUser(String email) {
     Users userToDelete = Users.find.query().where().eq("email", email).findOne();
     if (userToDelete != null && userToDelete.getUserType().equals(UserType.ldap)) {
-      log.info(
-          "Deleting user id {} with email address {}",
-          userToDelete.getUuid(),
-          userToDelete.getEmail());
+      log.info("Deleting user id {}", userToDelete.getUuid());
       userToDelete.delete();
     }
     return;
@@ -354,7 +389,7 @@ public class Users extends Model {
     super.save();
     Principal principal = Principal.get(this.uuid);
     if (principal == null) {
-      log.info("Adding Principal entry for user with email: " + this.email);
+      log.info("Adding Principal entry for user with uuid: " + this.uuid);
       new Principal(this).save();
     }
   }
@@ -363,7 +398,7 @@ public class Users extends Model {
   @Transactional
   @Override
   public boolean delete() {
-    log.info("Deleting Principal entry for user with email: " + this.email);
+    log.info("Deleting Principal entry for user with uuid: " + this.uuid);
     Principal principal = Principal.getOrBadRequest(this.uuid);
     principal.delete();
     return super.delete();
