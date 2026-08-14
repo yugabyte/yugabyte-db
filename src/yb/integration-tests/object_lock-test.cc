@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <functional>
 #include <future>
+#include <unordered_set>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -1173,6 +1174,73 @@ TEST_F(ObjectLockTest, TServerHeldExclusiveLocksReleasedAfterRestart) {
   ASSERT_OK(AcquireLockGlobally(
       &master_proxy, TSUuid(1), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch, nullptr, std::nullopt,
       kTimeout));
+}
+
+TEST_F(ObjectLockTest, ExpiredLeaseReleaseClearsPersistedLocks) {
+  // Keep background cleanup from racing; this test drives release explicitly.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_cleanup_interval_ms) = 60 * 60 * 1000;
+
+  // Copy the uuid; TSUuid() returns a reference into the live TabletServer.
+  const auto kSessionHostUuid = TSUuid(0);
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  auto* olm =
+      cluster_->mini_master()->master()->catalog_manager_impl()->object_lock_info_manager();
+  auto master_lm = olm->TEST_ts_local_lock_manager();
+
+  const auto old_lease_epoch =
+      ASSERT_RESULT(GetTServerLeaseInfo(*cluster_, kSessionHostUuid)).lease_epoch();
+  ASSERT_OK(AcquireLockGlobally(
+      &master_proxy, kSessionHostUuid, kTxn1, kDatabaseID, kRelationId, old_lease_epoch));
+  ASSERT_GE(master_lm->TEST_GrantedLocksSize(), 1);
+
+  {
+    auto pb = ASSERT_RESULT(olm->TEST_GetObjectLockInfoPB(kSessionHostUuid));
+    auto epoch_it = pb.lease_epochs().find(old_lease_epoch);
+    ASSERT_NE(epoch_it, pb.lease_epochs().end());
+    ASSERT_NE(
+        epoch_it->second.transactions().find(kTxn1.txn_id.ToString()),
+        epoch_it->second.transactions().end());
+  }
+
+  ASSERT_OK(RestartTabletServer(*cluster_->mini_tablet_server(0), kTimeout));
+  const auto new_lease_epoch =
+      ASSERT_RESULT(GetTServerLeaseInfo(*cluster_, kSessionHostUuid)).lease_epoch();
+  ASSERT_GT(new_lease_epoch, old_lease_epoch);
+
+  auto latch = olm->ReleaseLocksHeldByExpiredLeaseEpoch(kSessionHostUuid, old_lease_epoch);
+  ASSERT_TRUE(latch->WaitFor(kTimeout));
+  ASSERT_OK(WaitFor(
+      [master_lm] {
+        return master_lm->TEST_GrantedLocksSize() == 0 && master_lm->TEST_WaitingLocksSize() == 0;
+      },
+      kTimeout, "wait for expired-lease locks to clear in-memory"));
+
+  {
+    auto pb = ASSERT_RESULT(olm->TEST_GetObjectLockInfoPB(kSessionHostUuid));
+    auto epoch_it = pb.lease_epochs().find(old_lease_epoch);
+    ASSERT_TRUE(
+        epoch_it == pb.lease_epochs().end() || epoch_it->second.transactions().empty())
+        << "Expired lease epoch " << old_lease_epoch
+        << " still has persisted locks after release: " << pb.ShortDebugString();
+  }
+
+  ASSERT_OK(AcquireLockGlobally(
+      &master_proxy, kSessionHostUuid, kTxn2, kDatabaseID, kRelationId, new_lease_epoch));
+
+  // Master failover bootstraps from this export; conflicting exclusive locks must not appear.
+  auto entries = olm->TEST_ExportObjectLockInfoForMaster();
+  std::unordered_set<std::string> txns_with_exclusive_on_relation;
+  for (const auto& entry : entries.lock_entries()) {
+    for (const auto& lock : entry.object_locks()) {
+      if (lock.database_oid() == kDatabaseID && lock.relation_oid() == kRelationId &&
+          lock.lock_type() == TableLockType::ACCESS_EXCLUSIVE) {
+        txns_with_exclusive_on_relation.insert(entry.txn_id());
+      }
+    }
+  }
+  ASSERT_EQ(txns_with_exclusive_on_relation.size(), 1)
+      << "Conflicting persisted exclusive locks visible to master bootstrap: "
+      << entries.ShortDebugString();
 }
 
 TEST_F(ObjectLockTest, TServerCanAcquireLocksAfterRestart) {

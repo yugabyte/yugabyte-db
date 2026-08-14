@@ -545,6 +545,10 @@ message ReleaseObjectLockRequestPB {
   optional uint64 recipient_lease_epoch = 12;
 
   repeated docdb.ObjectLockPB object_locks = 13;
+  // Set on master -> tserver request for cleaning up locks corresponding to
+  // expired lease epochs. tservers reject any further acquires with lesser
+  // lease epochs for the same source tserver.
+  optional uint64 ignore_lease_epochs_before = 14;
   // If any new field is added here. Do not forget to update
   // ReleaseRequestToPersist accordingly.
 }

@@ -19,6 +19,7 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
@@ -100,6 +101,9 @@ class ObjectLockInfoManager {
   void RelaunchInProgressRequests(const LeaderEpoch& leader_epoch, const std::string& tserver_uuid);
   void Clear();
   tserver::TSLocalLockManagerPtr TEST_ts_local_lock_manager();
+  // Returns a snapshot of the persisted ObjectLockInfo for the given tserver.
+  Result<SysObjectLockEntryPB> TEST_GetObjectLockInfoPB(const std::string& tserver_uuid);
+  tserver::DdlLockEntriesPB TEST_ExportObjectLockInfoForMaster();
   tserver::TSLocalLockManagerPtr ts_local_lock_manager();
 
   // Releases any object locks that may have been taken by the specified tservers's previous
