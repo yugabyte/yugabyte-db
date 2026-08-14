@@ -91,7 +91,7 @@ This means a breaking DDL (a schema or cluster-wide change, such as `ALTER ROLE`
 
 YSQL already attempts to [retry](../../develop/learn/transactions/transactions-retries-ysql/#automatic-retries) some `40001` errors, including this one, transparently on your behalf for plain DML (`SELECT`/`INSERT`/`UPDATE`/`DELETE`) statements. DDL statements are not retried automatically. If you still see this error, retry the statement or transaction from the client.
 
-Most common database-level DDL, such as `CREATE TABLE`, `ALTER TABLE`, or `DROP`, do not cause this error on their own, because they are not usually breaking DDL (DDL event triggers can sometimes cause exceptions to this rule). It's typically caused by a change with cluster-wide effect, such as a role or tablespace change.
+Most common database-level DDL, such as `CREATE TABLE`, `ALTER TABLE`, or `DROP TABLE`, do not cause this error on their own, because they are not usually breaking DDL (DDL event triggers can sometimes cause exceptions to this rule). It's typically caused by a change with cluster-wide effect, such as a role or tablespace change.
 
 To find which statement caused the mismatch, check the PostgreSQL log on the node that ran the DDL for a line similar to:
 
