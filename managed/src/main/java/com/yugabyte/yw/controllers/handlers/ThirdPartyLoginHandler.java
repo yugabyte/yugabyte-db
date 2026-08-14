@@ -128,8 +128,8 @@ public class ThirdPartyLoginHandler {
       user.setRole(userRole);
       user.setUserType(UserType.oidc);
     } else {
-      log.info("Adding new user with email: " + email);
       user = Users.create(email, getRandomPassword(), userRole, custUUID, false, UserType.oidc);
+      log.info("Added new user with uuid: {}", user.getUuid());
     }
 
     // add role bindings if RBAC is on

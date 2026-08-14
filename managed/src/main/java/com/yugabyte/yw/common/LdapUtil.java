@@ -680,7 +680,7 @@ public class LdapUtil {
             log.debug(
                 "Assigning LDAP-specified role {} to existing user {}",
                 roleToAssign,
-                oldUser.getEmail());
+                oldUser.getUuid());
           }
           oldUser.setRole(roleToAssign);
           oldUser.setLdapSpecifiedRole(true);
