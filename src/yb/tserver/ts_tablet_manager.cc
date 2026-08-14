@@ -2455,7 +2455,23 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
   }
 
-  tablet->TriggerPostSplitCompactionIfNeeded();
+  // The tablet peer is already started, so an applied snapshot restore could be replacing the
+  // storages and resetting the key bounds that TriggerPostSplitCompactionIfNeeded reads (see
+  // Tablet::CompleteShutdownStorages). Only that synchronous check needs the guard, the compaction
+  // it schedules takes its own scoped operation. The guard is not inside
+  // TriggerPostSplitCompactionIfNeeded because its other caller,
+  // TabletSnapshots::RestoreCheckpoint, runs with read/write operations paused and would never
+  // acquire the operation.
+  {
+    auto scoped_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+    if (scoped_op.ok()) {
+      tablet->TriggerPostSplitCompactionIfNeeded();
+    } else {
+      // The storages are being shut down or replaced, so there's nothing to compact.
+      LOG(INFO) << kLogPrefix << "Skipped post split compaction trigger: "
+                << scoped_op.CreateStatus();
+    }
+  }
 
   if (tablet->ShouldDisableLbMove()) {
     std::lock_guard lock(mutex_);
