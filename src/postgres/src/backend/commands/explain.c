@@ -647,6 +647,8 @@ const char *yb_metric_counter_label[] = {
 	BUILD_METRIC_LABEL("docdb_obsolete_keys_found_past_cutoff"),
 	[YB_STORAGE_COUNTER_BACKFILL_READS_REJECTED_BELOW_HISTORY_CUTOFF] =
 	BUILD_METRIC_LABEL("backfill_reads_rejected_below_history_cutoff"),
+	[YB_STORAGE_COUNTER_CONSISTENT_PREFIX_READ_REJECTED] =
+	BUILD_METRIC_LABEL("consistent_prefix_read_rejected"),
 };
 
 const char *yb_metric_event_label[] = {

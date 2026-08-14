@@ -67,6 +67,7 @@
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/shared_lock.h"
@@ -805,6 +806,14 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Prevents master lookup "storms" by delaying master lookups when all
   // permits have been acquired.
   Semaphore master_lookup_sem_;
+
+  // Incremented every time MarkTSFailed sweeps a whole tablet server, marking all of its cached
+  // replicas as failed (triggered by network connect failures when
+  // FLAGS_update_all_tablets_upon_network_failure is set).
+  CounterPtr tserver_marked_failed_metric_;
+
+  // Total number of cached tablet replicas marked failed by MarkTSFailed sweeps.
+  CounterPtr replicas_marked_failed_metric_;
 
   const std::string log_prefix_;
 

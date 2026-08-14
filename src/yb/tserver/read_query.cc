@@ -259,6 +259,9 @@ Status ReadQuery::WaitForSafeTime() {
       // waiting for the safe time to catch up, which may be better for follower reads.
       // When the read time was picked on this tserver (allow_retry_), the client has nothing to
       // retry with, so wait even at a follower.
+      if (auto* metrics = this->metrics()) {
+        metrics->Increment(tablet::TabletCounters::kConsistentPrefixReadRejected);
+      }
       return STATUS(IllegalState, "Requested read time is not safe at this follower.");
     }
     auto* metrics = this->metrics();

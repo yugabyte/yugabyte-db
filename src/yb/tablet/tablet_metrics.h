@@ -81,7 +81,8 @@ YB_DEFINE_ENUM(TabletCounters,
   (kDocDBKeysFound)
   (kDocDBObsoleteKeysFound)
   (kDocDBObsoleteKeysFoundPastCutoff)
-  (kBackfillReadsRejectedBelowHistoryCutoff))
+  (kBackfillReadsRejectedBelowHistoryCutoff)
+  (kConsistentPrefixReadRejected))
 
 YB_DEFINE_ENUM(TabletGauges, (kActiveWriteQueryObjects))
 

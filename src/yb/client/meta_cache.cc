@@ -132,6 +132,21 @@ METRIC_DEFINE_event_stats(
   yb::MetricUnit::kMicroseconds,
   "Microseconds spent resolving DNS requests during MetaCache::InitProxy");
 
+METRIC_DEFINE_counter(
+  server, meta_cache_tserver_marked_failed,
+  "Tablet Servers Marked Failed in Meta Cache",
+  yb::MetricUnit::kUnits,
+  "Number of times the meta cache marked a whole tablet server as failed, marking every cached "
+  "replica hosted by it as failed. Triggered by network connect failures when "
+  "update_all_tablets_upon_network_failure is enabled.");
+
+METRIC_DEFINE_counter(
+  server, meta_cache_replicas_marked_failed,
+  "Replicas Marked Failed by Meta Cache Tablet Server Sweeps",
+  yb::MetricUnit::kUnits,
+  "Total number of cached tablet replicas marked as failed by whole-tablet-server failure "
+  "sweeps in the meta cache.");
+
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_bool(TEST_always_return_consensus_info_for_succeeded_rpc);
@@ -787,6 +802,13 @@ MetaCache::MetaCache(YBClient* client)
   : client_(client),
     master_lookup_sem_(FLAGS_max_concurrent_master_lookups),
     log_prefix_(Format("MetaCache($0)(client_id: $1): ", static_cast<void*>(this), client_->id())) {
+  const auto& metric_entity = client_->metric_entity();
+  if (metric_entity) {
+    tserver_marked_failed_metric_ =
+        METRIC_meta_cache_tserver_marked_failed.Instantiate(metric_entity);
+    replicas_marked_failed_metric_ =
+        METRIC_meta_cache_replicas_marked_failed.Instantiate(metric_entity);
+  }
 }
 
 MetaCache::~MetaCache() {
@@ -2482,16 +2504,26 @@ void MetaCache::RefreshTablePartitions(
 void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
                              const Status& status) {
   LOG_WITH_PREFIX(INFO) << "Marking tablet server " << ts->ToString() << " as failed.";
-  SharedLock<decltype(mutex_)> lock(mutex_);
+  int64_t replicas_marked_failed = 0;
+  {
+    SharedLock<decltype(mutex_)> lock(mutex_);
 
-  Status ts_status = status.CloneAndPrepend("TS failed");
+    Status ts_status = status.CloneAndPrepend("TS failed");
 
-  // TODO: replace with a ts->tablet multimap for faster lookup?
-  for (const auto& tablet : tablets_by_id_) {
-    // We just loop on all tablets; if a tablet does not have a replica on this
-    // TS, MarkReplicaFailed() returns false and we ignore the return value.
-    tablet.second->MarkReplicaFailed(ts, ts_status);
+    // TODO: replace with a ts->tablet multimap for faster lookup?
+    for (const auto& tablet : tablets_by_id_) {
+      // We just loop on all tablets; if a tablet does not have a replica on this
+      // TS, MarkReplicaFailed() returns false and we count only the tablets affected.
+      if (tablet.second->MarkReplicaFailed(ts, ts_status)) {
+        ++replicas_marked_failed;
+      }
+    }
   }
+  LOG_WITH_PREFIX(INFO) << "Marked " << replicas_marked_failed
+                        << " cached replicas on tablet server " << ts->permanent_uuid()
+                        << " as failed.";
+  IncrementCounter(tserver_marked_failed_metric_);
+  IncrementCounterBy(replicas_marked_failed_metric_, replicas_marked_failed);
 }
 
 void MetaCache::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {

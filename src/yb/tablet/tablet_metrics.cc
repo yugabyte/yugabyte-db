@@ -139,6 +139,15 @@ METRIC_DEFINE_counter(tablet, consistent_prefix_read_requests,
     yb::MetricUnit::kRequests,
     "Number of consistent prefix read requests");
 
+METRIC_DEFINE_counter(tablet, consistent_prefix_read_rejected,
+    "Consistent Prefix Reads Rejected as Not Safe",
+    yb::MetricUnit::kRequests,
+    "Number of consistent prefix (follower) read requests rejected because the requested read "
+    "time was not yet safe on this replica. The client marks this replica as failed for the "
+    "tablet and retries at another replica. This is a tablet-level metric only: the rejection "
+    "happens before any per-query response is built, so it is not surfaced in per-query "
+    "YSQL/EXPLAIN metrics.");
+
 METRIC_DEFINE_counter(tablet, picked_read_time_on_docdb,
     "Picked read time on docdb",
     yb::MetricUnit::kRequests,
@@ -259,6 +268,9 @@ const CounterEntry kCounters[] = {
   {pggate::YB_STORAGE_COUNTER_BACKFILL_READS_REJECTED_BELOW_HISTORY_CUTOFF,
       TabletCounters::kBackfillReadsRejectedBelowHistoryCutoff,
       &METRIC_backfill_reads_rejected_below_history_cutoff},
+  {pggate::YB_STORAGE_COUNTER_CONSISTENT_PREFIX_READ_REJECTED,
+      TabletCounters::kConsistentPrefixReadRejected,
+      &METRIC_consistent_prefix_read_rejected},
 };
 
 const CounterEntry kCountersForPgStatStatements[] = {
