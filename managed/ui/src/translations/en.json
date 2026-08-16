@@ -4319,7 +4319,8 @@
         "required": "{{field}} is required",
         "universeNameValidation": "{{cloudType}} Universe name cannot contain capital letters or special characters except dashes",
         "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding.",
-        "duplicatePorts": "Port numbers must be unique."
+        "duplicatePorts": "Port numbers must be unique.",
+        "invalidArn": "Enter a valid AWS ARN."
       }
     },
     "geoPartition": {

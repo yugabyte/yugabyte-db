@@ -1,6 +1,6 @@
 ---
-title: Multitenancy CPU isolation
-headerTitle: Multitenancy
+title: Resource Governor for Multitenancy CPU isolation
+headerTitle: Resource Governor for multitenancy
 linkTitle: Multitenancy
 description: Isolate CPU usage across databases (tenants) on a YugabyteDB node.
 headcontent: Prevent one database from starving others of CPU
@@ -15,7 +15,7 @@ cascade:
     feature: early-access
 ---
 
-Multitenancy CPU isolation (also referred to as the resource governor) treats each YSQL database in a universe as a tenant, enforcing per-database CPU limits on each node. This provides predictable performance isolation across tenants, preventing noisy-neighbor problems and acting as insurance against rare incidents such as bugs and runaway workloads.
+The Resource Governor for multitenancy CPU isolation treats each YSQL database in a universe as a tenant, enforcing per-database CPU limits on each node. This provides predictable performance isolation across tenants, preventing noisy-neighbor problems and acting as insurance against rare incidents such as bugs and runaway workloads.
 
 The feature is built on [Linux control groups (cgroups)](https://man7.org/linux/man-pages/man7/cgroups.7.html). When enabled, the YB-TServer creates and manages a cgroup hierarchy, assigns threads and thread pools that do work for a specific database to per-database cgroups, and lets the Linux scheduler enforce the configured CPU limits.
 
@@ -49,9 +49,9 @@ For example, to guarantee each database at least 5% of CPU, cap the number of da
 
 ### Reserved CPU for system work
 
-To keep the cluster stable and responsive under heavy tenant load, a portion of CPU can be reserved for high-priority internal work (such as network reactors and Raft heartbeats) that all tenants depend on. This ensures critical background work is never fully starved by tenant queries.
+To keep the cluster stable and responsive under heavy tenant load, you can reserve a portion of CPU for high-priority internal work (such as network reactors and Raft heartbeats) that all tenants depend on. This ensures critical background work is never fully starved by tenant queries.
 
-The reserved amount is set with the [qos_system_high_cpu_reserved_percent](../../reference/configuration/yb-tserver/#qos-system-high-cpu-reserved-percent) flag.
+Set the reserved amount using the [qos_system_high_cpu_reserved_percent](../../reference/configuration/yb-tserver/#qos-system-high-cpu-reserved-percent) flag.
 
 ## Scope and limitations
 
@@ -59,7 +59,7 @@ Keep the following in mind when planning a multitenant deployment:
 
 - **YSQL only.** A cluster using multitenancy must not have any YCQL databases.
 - **CPU only.** The feature limits CPU usage. It does not limit memory, disk I/O, or network.
-- **Per node.** Limits apply to CPU usage on a single node (a single YB-TServer process), not to CPU aggregated across the cluster.
+- **Per node.** Limits apply to CPU usage on a single node (a single YB-TServer process), CPU is not aggregated across the cluster.
 - **Linux only.** The feature relies on Linux cgroups and is not available on macOS.
 - **Shared configuration.** All tenants share the same cluster, and therefore the same flag values. You cannot, for example, enable packed rows for one tenant and disable it for another.
 - **No security isolation.** Multitenancy provides performance isolation only. It does not add any security or privacy isolation beyond the existing PostgreSQL security model.
@@ -71,7 +71,7 @@ Keep the following in mind when planning a multitenant deployment:
 {{<index/block>}}
 
   {{<index/item
-    title="Set up multitenancy"
+    title="Set up Resource Governor"
     body="Prepare cgroups and enable per-database CPU isolation."
     href="set-up/"
     icon="fa-thin fa-sliders">}}

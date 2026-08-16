@@ -2363,6 +2363,13 @@ DefineIndex(Oid relationId,
 
 				/* YB: Short wait for backends on older catalog versions. */
 				YbWaitForBackendsCatalogVersion(false);
+
+				/*
+				 * YB: Acquire ShareUpdateExclusiveLock on the parent table to
+				 * further prevent concurrent schema changes until the end of
+				 * this txn, as the session object lock is released early.
+				 */
+				LockRelationOid(relationId, ShareUpdateExclusiveLock);
 			}
 		}
 		PG_FINALLY();

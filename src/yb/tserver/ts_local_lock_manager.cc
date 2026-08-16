@@ -520,7 +520,9 @@ class TSLocalLockManager::Impl {
             << " and subtxn: " << req.subtxn_id()
             << " with incoming rpc request: " << req.ShortDebugString();
 
-    UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
+    auto ignore_lease_epochs_before =
+        std::max(req.ignore_lease_epochs_before(), req.lease_epoch());
+    UpdateLeaseEpochIfNecessary(req.session_host_uuid(), ignore_lease_epochs_before);
     RETURN_NOT_OK(WaitToApplyIfNecessary(req, deadline));
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
     RETURN_NOT_OK(add_to_in_progress.status());

@@ -1,6 +1,6 @@
 ---
-title: Set up multitenancy
-headerTitle: Set up multitenancy
+title: Set up Resource Governor for multitenancy
+headerTitle: Set up Resource Governor
 linkTitle: Set up
 description: Prepare cgroups and enable per-database CPU isolation in YugabyteDB.
 headcontent: Prepare cgroups and enable per-database CPU isolation
@@ -14,7 +14,7 @@ rightNav:
   hideH4: true
 ---
 
-Setting up multitenancy has two parts:
+Setting up Resource Governor has two parts:
 
 1. Prepare a writable, dedicated cgroup for the YB-TServer process (a one-time, environment-specific, operating system step that typically requires root).
 1. Enable the resource governor using YB-TServer and YB-Master flags.

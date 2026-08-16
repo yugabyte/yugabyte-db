@@ -74,9 +74,13 @@ func (perf PerfAdvisor) Version() string {
 	return perf.version
 }
 
-// Initialize starts the Perf Advisor service and logs the initialization process.
+// Initialize builds the TLS keystore and starts the Perf Advisor service.
 func (perf PerfAdvisor) Initialize() error {
 	log.Info("Starting Perf Advisor initialize")
+
+	if err := ensurePerfAdvisorTLSKeystore(); err != nil {
+		return fmt.Errorf("ensure Perf Advisor TLS keystore: %w", err)
+	}
 
 	if err := perf.Start(); err != nil {
 		return err
@@ -244,9 +248,6 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 
 func (perf PerfAdvisor) Install() error {
 	log.Info("Starting Perf Advisor install")
-	if err := ensurePerfAdvisorTLSKeystore(); err != nil {
-		return fmt.Errorf("ensure Perf Advisor TLS keystore: %w", err)
-	}
 	template.GenerateTemplate(perf)
 	if err := ensurePerfAdvisorConfigOwnership(); err != nil {
 		return fmt.Errorf("set perf-advisor config ownership: %w", err)

@@ -33,7 +33,7 @@ type: indexpage
     icon="fa-thin fa-people-roof">}}
 
   {{<index/item
-    title="Multitenancy"
+    title="Resource Governor for multitenancy"
     body="Isolate CPU usage across databases (tenants)."
     href="multitenancy/"
     icon="fa-thin fa-people-group">}}

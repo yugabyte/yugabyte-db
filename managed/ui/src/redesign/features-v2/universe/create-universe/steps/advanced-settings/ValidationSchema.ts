@@ -9,6 +9,7 @@ import {
   throwDuplicatePortsYupError
 } from '../../helpers/duplicatePortValidation';
 import { getCommunicationPortFieldIds } from '../../utils/createUniversePayload';
+import { awsArnStringSchema } from '../../fields/arn-field/awsArnValidation';
 
 export interface OtherAdvancedValidationOptions {
   providerCode?: CloudType;
@@ -42,6 +43,7 @@ export const OtherAdvancedValidationSchema = (
     accessKeyCode: requireAccessKey
       ? Yup.string().required(t('accessKeyRequired'))
       : Yup.string().notRequired(),
+    awsArnString: awsArnStringSchema(t),
     ...portShape
   }).test('unique-deployment-ports', '', function (value) {
     if (!canOverrideCommunicationPorts(providerCode)) return true;

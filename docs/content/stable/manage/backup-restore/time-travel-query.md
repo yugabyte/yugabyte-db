@@ -3,8 +3,6 @@ title: Time travel queries
 headerTitle: Time travel query
 linkTitle: Time travel query
 description: Read data at a specific point in time for data recovery and analysis.
-tags:
-  feature: early-access
 menu:
   stable:
     identifier: time-travel-query

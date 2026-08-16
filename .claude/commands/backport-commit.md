@@ -1,11 +1,13 @@
 ---
-description: Backport a commit to one or more YugabyteDB release branches
+description: Backport a commit to one or more YugabyteDB release branches as GitHub PRs
 argument-hint: <commit-sha> [<branch> ...]
 allowed-tools: Bash(.agents/scripts/backport-commit.sh *)
 model: sonnet
 ---
 
 Backport a merged commit to one or more YugabyteDB release branches using the bundled `backport-commit.sh` at `.agents/scripts/backport-commit.sh`. The script handles cherry-picking, message rewriting, fork detection, push, and PR creation. Wrap it with conflict-resolution logic: trivial whitespace conflicts are fixed automatically; anything more complex is escalated to the user.
+
+**This command produces GitHub PRs.** A backport should go through the same review system the original went through, so if the original landed via Phorge — the argument is a `Dxxxxx` revision ID, or `git log -n1 --format=%b <commit>` shows a `Differential Revision:` line — stop and use `/backport-diff` instead. If neither pattern matches cleanly, ask the user rather than guessing.
 
 **Always pass the full branch list in a single invocation.** After each successful branch, the script chains the next branch's cherry-pick from the previous branch's task branch — so a conflict you resolve on `b2` carries forward, and `b3+` typically apply cleanly without re-resolving the same conflict.
 
@@ -17,7 +19,7 @@ Parse `$ARGUMENTS` (whitespace-separated):
 
 If `<commit>` is missing, stop and ask the user.
 
-If no `<branches>` are provided, ask the user which release branches to target before invoking the script. Do **not** rely on the script's interactive prompt mode — Claude Code's Bash tool cannot answer interactive `read -p` prompts and the run will hang.
+If no `<branches>` are provided, ask the user which release branches to target before invoking the script. Do **not** rely on the script's interactive prompt mode — Claude Code's Bash tool cannot answer interactive `read -p` prompts and the run will hang. For the candidate list, see the supported release series at <https://docs.yugabyte.com/stable/releases/ybdb-releases/> — the release branch name is the series without the leading `v` (`v2025.2` → `2025.2`). Backport to the branches that actually carry the affected code.
 
 ```
 $ARGUMENTS
@@ -86,9 +88,9 @@ Once **all** conflicts are resolved (and only then):
 
 4. **Run the linter** from the repo root and confirm it is clean before re-running:
    ```
-   ./build-support/lint.sh
+   ./build-support/lint.sh --rev origin/<release-branch>
    ```
-   If the linter reports errors, fix them, `git add` the fixes, and `git commit --amend --no-edit`. Do not proceed until lint output is clean.
+   Pass `--rev` explicitly: a backport task branch has no `@{upstream}`, and `lint.py`'s fallback base is a guess at best. If the linter reports errors, fix them, `git add` the fixes, and `git commit --amend --no-edit`. Do not proceed until lint output is clean.
 
 5. Re-run the script with `-x <conflicted-branch>` and the **same full branch list** as the original invocation:
    ```
