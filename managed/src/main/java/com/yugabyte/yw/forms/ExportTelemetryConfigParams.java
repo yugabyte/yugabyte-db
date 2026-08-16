@@ -18,10 +18,11 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Data;
@@ -69,6 +70,10 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
     return telemetryConfig != null ? telemetryConfig.getMasterLogConfig() : null;
   }
 
+  public TServerLogConfig getTserverLogConfig() {
+    return telemetryConfig != null ? telemetryConfig.getTserverLogConfig() : null;
+  }
+
   @Override
   public boolean isKubernetesUpgradeSupported() {
     return true;
@@ -106,28 +111,9 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
     // Validate that every referenced telemetry exporter exists up front, so a missing/deleted
     // provider fails synchronously with a 400 here instead of deep inside the task at config
     // render time. Only the active exporters are checked (the ones the task will resolve), so
-    // disabling export with a since-deleted provider still works.
-    Set<UUID> exporterUuids = new HashSet<>();
-    if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(getAuditLogConfig())) {
-      getAuditLogConfig()
-          .getUniverseLogsExporterConfig()
-          .forEach(c -> exporterUuids.add(c.getExporterUuid()));
-    }
-    if (OtelCollectorUtil.isQueryLogExportEnabledInUniverse(getQueryLogConfig())) {
-      getQueryLogConfig()
-          .getUniverseLogsExporterConfig()
-          .forEach(c -> exporterUuids.add(c.getExporterUuid()));
-    }
-    if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(getMetricsExportConfig())) {
-      getMetricsExportConfig()
-          .getUniverseMetricsExporterConfig()
-          .forEach(c -> exporterUuids.add(c.getExporterUuid()));
-    }
-    if (OtelCollectorUtil.isMasterLogExportEnabledInUniverse(getMasterLogConfig())) {
-      getMasterLogConfig()
-          .getUniverseLogsExporterConfig()
-          .forEach(c -> exporterUuids.add(c.getExporterUuid()));
-    }
+    // disabling export with a since-deleted provider still works. Uses the aggregate helper so a
+    // new export type is covered without touching this validation.
+    Set<UUID> exporterUuids = OtelCollectorUtil.getActiveExporterUuids(telemetryConfig);
     if (!exporterUuids.isEmpty()) {
       TelemetryProviderService telemetryProviderService =
           StaticInjectorHolder.injector().instanceOf(TelemetryProviderService.class);
@@ -138,16 +124,12 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
       return;
     }
 
-    if (OtelCollectorUtil.isMasterLogExportEnabledInUniverse(getMasterLogConfig())) {
-      throw new PlatformServiceException(
-          play.mvc.Http.Status.BAD_REQUEST,
-          "Master log export is not yet supported for kubernetes based universes.");
-    }
-
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     boolean wantsLogExport =
         OtelCollectorUtil.isAuditLogExportEnabledInUniverse(getAuditLogConfig())
-            || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(getQueryLogConfig());
+            || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(getQueryLogConfig())
+            || OtelCollectorUtil.isMasterLogExportEnabledInUniverse(getMasterLogConfig())
+            || OtelCollectorUtil.isTserverLogExportEnabledInUniverse(getTserverLogConfig());
     if (wantsLogExport) {
       if (!KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
         throw new PlatformServiceException(
@@ -162,36 +144,37 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
       }
     }
 
-    // Query log export on K8s needs the newer chart that renders a query receiver via the
-    // spec.config passthrough. Older charts are audit-only, so reject query log export below the
-    // passthrough version instead of silently dropping (or mis-wiring) it in the structured
+    // Query, metrics, master and tserver export on K8s need the newer chart that renders their
+    // receivers via the spec.config passthrough. Older charts are audit-only, so reject them below
+    // the passthrough version instead of silently dropping (or mis-wiring) them in the structured
     // fallback.
-    if (OtelCollectorUtil.isQueryLogExportEnabledInUniverse(getQueryLogConfig())
-        && !OtelCollectorUtil.supportsOtelConfigPassthrough(userIntent.ybSoftwareVersion)) {
-      throw new PlatformServiceException(
-          play.mvc.Http.Status.BAD_REQUEST,
-          String.format(
-              "Query log export is not supported for kubernetes universe '%s' running version"
-                  + " '%s'. Please upgrade to version '%s' or '%s', or disable query log export.",
-              universe.getUniverseUUID(),
-              userIntent.ybSoftwareVersion,
-              OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_STABLE_VERSION,
-              OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_PREVIEW_VERSION));
-    }
+    boolean supportsPassthrough =
+        OtelCollectorUtil.supportsOtelConfigPassthrough(userIntent.ybSoftwareVersion);
+    boolean metricsEnabled =
+        OtelCollectorUtil.isMetricsExportEnabledInUniverse(getMetricsExportConfig());
+    requirePassthroughForK8s(
+        supportsPassthrough,
+        OtelCollectorUtil.isQueryLogExportEnabledInUniverse(getQueryLogConfig()),
+        "Query log export",
+        universe,
+        userIntent);
+    requirePassthroughForK8s(
+        supportsPassthrough, metricsEnabled, "Metrics export", universe, userIntent);
+    requirePassthroughForK8s(
+        supportsPassthrough,
+        OtelCollectorUtil.isMasterLogExportEnabledInUniverse(getMasterLogConfig()),
+        "Master log export",
+        universe,
+        userIntent);
+    requirePassthroughForK8s(
+        supportsPassthrough,
+        OtelCollectorUtil.isTserverLogExportEnabledInUniverse(getTserverLogConfig()),
+        "TServer log export",
+        universe,
+        userIntent);
 
-    if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(getMetricsExportConfig())) {
-      if (!OtelCollectorUtil.supportsOtelConfigPassthrough(userIntent.ybSoftwareVersion)) {
-        throw new PlatformServiceException(
-            play.mvc.Http.Status.BAD_REQUEST,
-            String.format(
-                "Metrics export is not supported for kubernetes universe '%s' running version"
-                    + " '%s'. Please upgrade to version '%s' or '%s', or disable metrics export.",
-                universe.getUniverseUUID(),
-                userIntent.ybSoftwareVersion,
-                OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_STABLE_VERSION,
-                OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_PREVIEW_VERSION));
-      }
-
+    // Metrics has extra K8s-specific target validation beyond the shared passthrough gate.
+    if (metricsEnabled) {
       // Fail fast on an empty target list: downstream layers assume a validated, non-empty set
       // of K8s-servable targets (the config generator refuses to render otherwise).
       if (CollectionUtils.isEmpty(getMetricsExportConfig().getScrapeConfigTargets())) {
@@ -218,6 +201,32 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
                 universe.getUniverseUUID(),
                 OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS));
       }
+    }
+  }
+
+  /**
+   * Rejects an export feature that needs the spec.config passthrough chart on a K8s universe still
+   * running a pre-passthrough version. No-op when the feature is disabled or the version supports
+   * passthrough. {@code feature} is the human-readable label (e.g. "Query log export").
+   */
+  private void requirePassthroughForK8s(
+      boolean supportsPassthrough,
+      boolean featureEnabled,
+      String feature,
+      Universe universe,
+      UserIntent userIntent) {
+    if (featureEnabled && !supportsPassthrough) {
+      throw new PlatformServiceException(
+          play.mvc.Http.Status.BAD_REQUEST,
+          String.format(
+              "%s is not supported for kubernetes universe '%s' running version '%s'. Please"
+                  + " upgrade to version '%s' or '%s', or disable %s.",
+              feature,
+              universe.getUniverseUUID(),
+              userIntent.ybSoftwareVersion,
+              OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_STABLE_VERSION,
+              OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_PREVIEW_VERSION,
+              feature.toLowerCase(Locale.ROOT)));
     }
   }
 

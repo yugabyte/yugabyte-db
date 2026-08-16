@@ -7,7 +7,8 @@ public enum ExportType {
   QUERY_LOGS(true),
   // No DB restart needed.
   METRICS(false),
-  MASTER_LOGS(false);
+  MASTER_LOGS(false),
+  TSERVER_LOGS(false);
 
   private final boolean requiresDbRestart;
 

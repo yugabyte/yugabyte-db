@@ -11,6 +11,7 @@ import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -32,6 +33,7 @@ public class TelemetryConfigTest {
     cfg.setQueryLogConfig(new QueryLogConfig());
     cfg.setMetricsExportConfig(new MetricsExportConfig());
     cfg.setMasterLogConfig(new MasterLogConfig());
+    cfg.setTserverLogConfig(new TServerLogConfig());
     return cfg;
   }
 
@@ -93,6 +95,9 @@ public class TelemetryConfigTest {
         break;
       case MASTER_LOGS:
         cfg.setMasterLogConfig(null);
+        break;
+      case TSERVER_LOGS:
+        cfg.setTserverLogConfig(null);
         break;
       default:
         throw new IllegalArgumentException("Unhandled export type: " + type);
