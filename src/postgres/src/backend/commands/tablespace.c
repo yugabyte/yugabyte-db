@@ -1118,6 +1118,28 @@ RenameTableSpace(const char *oldname, const char *newname)
 	return address;
 }
 
+static bool
+yb_tablespace_has_dependencies(Oid tablespaceoid)
+{
+	char	   *detail = NULL;
+	char	   *detail_log = NULL;
+	bool		has_dependencies;
+
+	if (IsPinnedObject(TableSpaceRelationId, tablespaceoid))
+		return true;
+
+	has_dependencies = checkSharedDependencies(TableSpaceRelationId, tablespaceoid,
+										  &detail, &detail_log);
+
+	if (detail)
+		pfree(detail);
+	if (detail_log)
+		pfree(detail_log);
+
+	return has_dependencies;
+}
+
+
 /*
  * Alter table space options
  */
@@ -1135,6 +1157,7 @@ AlterTableSpaceOptions(AlterTableSpaceOptionsStmt *stmt)
 	bool		isnull;
 	bool		repl_null[Natts_pg_tablespace];
 	bool		repl_repl[Natts_pg_tablespace];
+	bool		yb_tablespace_in_use = false;
 	HeapTuple	newtuple;
 
 	/* Search pg_tablespace */
@@ -1167,7 +1190,18 @@ AlterTableSpaceOptions(AlterTableSpaceOptionsStmt *stmt)
 									 stmt->isReset);
 
 	if (IsYugaByteEnabled())
+	{
+		/*
+		 * Validate syntax for all ALTER TABLESPACE changes.  When the
+		 * tablespace already has dependent objects, also verify that the new
+		 * placement is satisfiable because existing tablets may be moved by the
+		 * load balancer after this catalog update commits.
+		 */
 		(void) yb_tablespace_reloptions(newOptions, true);
+		yb_tablespace_in_use = yb_tablespace_has_dependencies(tablespaceoid);
+		yb_validate_tablespace_placement_options(newOptions,
+										   yb_tablespace_in_use);
+	}
 	else
 		(void) tablespace_reloptions(newOptions, true);
 
@@ -1186,6 +1220,14 @@ AlterTableSpaceOptions(AlterTableSpaceOptionsStmt *stmt)
 	CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
 
 	InvokeObjectPostAlterHook(TableSpaceRelationId, tablespaceoid, 0);
+
+	if (IsYugaByteEnabled() && yb_tablespace_in_use)
+		ereport(NOTICE,
+				(errmsg("data movement for tablespace %s is successfully initiated",
+						stmt->tablespacename),
+				 errdetail("Data movement is a long running asynchronous process "
+						   "and can be monitored by checking the tablet placement "
+						   "in http://<YB-Master-host>:7000/tables.")));
 
 	heap_freetuple(newtuple);
 
@@ -1682,6 +1724,119 @@ yb_get_tablespace_options(Datum **options, int *num_options, Oid spc_oid)
 						spc_oid)));
 
 	ReleaseSysCache(tuple);
+}
+
+/*
+ * yb_extract_tablespace_placement_options - extract Yugabyte placement
+ * options from a pg_tablespace spcoptions text array.
+ *
+ * live_placement and read_replica_placement are returned as palloc'd strings
+ * without their reloption name prefixes, or NULL if absent.
+ */
+static void
+yb_extract_tablespace_placement_options(Datum *options, int num_options,
+									   char **live_placement,
+									   char **read_replica_placement)
+{
+	const char *placement_prefix = "replica_placement=";
+	const char *read_prefix = "read_replica_placement=";
+	const int	placement_prefix_len = strlen(placement_prefix);
+	const int	read_prefix_len = strlen(read_prefix);
+
+	*live_placement = NULL;
+	*read_replica_placement = NULL;
+
+	if (options == NULL || num_options <= 0)
+		return;
+
+	for (int i = 0; i < num_options; i++)
+	{
+		char	   *option = text_to_cstring(DatumGetTextP(options[i]));
+
+		if (strncmp(option, placement_prefix, placement_prefix_len) == 0)
+		{
+			if (*live_placement != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("duplicate replica_placement option found")));
+			*live_placement = pstrdup(option + placement_prefix_len);
+		}
+		else if (strncmp(option, read_prefix, read_prefix_len) == 0)
+		{
+			if (*read_replica_placement != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("duplicate read_replica_placement option found."
+								"Only one read_replica_placement option is supported via "
+								"tablespaces.")));
+			*read_replica_placement = pstrdup(option + read_prefix_len);
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("expected replica_placement or read_replica_placement "
+							"option. Got %s", option)));
+		}
+
+		pfree(option);
+	}
+}
+
+void
+yb_validate_tablespace_placement_options(Datum reloptions, bool check_satisfiable)
+{
+	Datum	   *options = NULL;
+	int			num_options = 0;
+	char	   *live_placement = NULL;
+	char	   *read_replica_placement = NULL;
+
+	if (reloptions != (Datum) 0)
+	{
+		ArrayType  *array = DatumGetArrayTypeP(reloptions);
+
+		deconstruct_array(array, TEXTOID, -1, false, 'i',
+						  &options, NULL, &num_options);
+	}
+
+	yb_extract_tablespace_placement_options(options, num_options,
+									   &live_placement, &read_replica_placement);
+
+	YBCValidatePlacements(live_placement, read_replica_placement,
+						  check_satisfiable);
+
+	if (live_placement)
+		pfree(live_placement);
+	if (read_replica_placement)
+		pfree(read_replica_placement);
+	if (options)
+		pfree(options);
+}
+
+void
+yb_validate_tablespace_placement_by_oid(Oid spc_oid, bool check_satisfiable)
+{
+	Datum	   *options;
+	int			num_options;
+	char	   *live_placement = NULL;
+	char	   *read_replica_placement = NULL;
+
+	if (!OidIsValid(spc_oid))
+		return;
+
+	yb_get_tablespace_options(&options, &num_options, spc_oid);
+	yb_extract_tablespace_placement_options(options, num_options,
+									   &live_placement, &read_replica_placement);
+
+	YBCValidatePlacements(live_placement, read_replica_placement,
+						  check_satisfiable);
+
+	if (live_placement)
+		pfree(live_placement);
+	if (read_replica_placement)
+		pfree(read_replica_placement);
+	if (options)
+		pfree(options);
 }
 
 /*
