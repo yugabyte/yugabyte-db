@@ -334,6 +334,7 @@ DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
 DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_int32(snapshot_cleanup_pool_size);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_uint32(vector_index_num_compactions_limit);
@@ -555,6 +556,12 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     .name = "raft_notifications",
     .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
   });
+
+  CHECK_GT(FLAGS_snapshot_cleanup_pool_size, 0);
+  CHECK_OK(ThreadPoolBuilder("snapshot-cleanup")
+               .set_min_threads(1)
+               .set_max_threads(FLAGS_snapshot_cleanup_pool_size)
+               .Build(&snapshot_cleanup_pool_));
 
   CHECK_OK(ThreadPoolBuilder("log-sync")
                .set_min_threads(1)
@@ -2305,6 +2312,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         tablet->GetTableMetricsEntity(),
         tablet->GetTabletMetricsEntity(),
         raft_pool(),
+        snapshot_cleanup_pool(),
         raft_notifications_pool(),
         tablet_prepare_pool(),
         &retryable_requests,
@@ -2530,6 +2538,9 @@ void TSTabletManager::CompleteShutdown() {
   // Shut down the apply pool.
   apply_pool_->Shutdown();
 
+  if (snapshot_cleanup_pool_) {
+    snapshot_cleanup_pool_->Shutdown();
+  }
   if (raft_pool_) {
     raft_pool_->Shutdown();
   }
