@@ -72,6 +72,8 @@ YUGABYTE_SG_PREFIX = "yugabyte-sl-{}"
 DEFAULT_BOOT_VOLUME_SIZE_GB = 50
 MIN_BOOT_VOLUME_SIZE_GB = 50
 
+AARCH64_ARCHITECTURES = ("aarch64", "arm64")
+
 # Max length of a single DNS label per RFC 1035.
 MAX_DNS_LABEL_LENGTH = 63
 
@@ -276,6 +278,27 @@ class OciCloudAdmin:
             shape=shape
         )
         return images.data
+
+    def get_app_catalog_image(self, region, listing_id, resource_version=None):
+        """Resolve a region-independent PIC listing to the region-specific image OCID."""
+        self.set_region(region)
+        if resource_version:
+            # A pinned version can be fetched directly, no need to list all versions.
+            try:
+                version = self.compute_client.get_app_catalog_listing_resource_version(
+                    listing_id, resource_version).data
+            except oci.exceptions.ServiceError as e:
+                if e.status == 404:
+                    return None
+                raise
+            return version.listing_resource_id
+        # No pinned version: list versions and pick the most recently published.
+        versions = self.compute_client.list_app_catalog_listing_resource_versions(
+            listing_id).data
+        if not versions:
+            return None
+        match = max(versions, key=lambda v: v.time_published)
+        return match.listing_resource_id
 
     def get_image(self, image_id):
         return self.compute_client.get_image(image_id).data
@@ -552,7 +575,7 @@ class OciCloudAdmin:
                 "public_ip": public_ip,
                 "private_ip": private_ip,
                 "private_dns": private_dns,
-                "region": instance.region,
+                "region": region or instance.region,
                 "zone": instance.availability_domain,
                 "instance_type": instance.shape,
                 "server_type": inst_tags.get("yb-server-type", "unknown"),

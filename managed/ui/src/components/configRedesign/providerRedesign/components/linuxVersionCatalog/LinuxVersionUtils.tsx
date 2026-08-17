@@ -202,16 +202,17 @@ export const getImageBundleUsedByUniverse = (universeDetails: UniverseDetails, p
  * Constructs the payload for image bundles based on the form values.
  *
  * @param formValues - The form values.
- * @param isAWS - Whether the provider is AWS.
+ * @param isPerRegionImage - Whether the provider uses per-region images (AWS, OCI).
  * @returns The constructed image bundle payload.
  */
-export const constructImageBundlePayload = (formValues: any, isAWS = false) => {
+export const constructImageBundlePayload = (formValues: any, isPerRegionImage = false) => {
   const imageBundles = [...formValues.imageBundles];
 
   imageBundles.forEach((img) => {
     formValues.regions.forEach((region: CloudVendorRegionField) => {
-      // Only AWS supports region specific AMI
-      if (isAWS && !has(img.details.regions, region.code)) {
+      // Clouds with per-region images (AWS AMIs, OCI image OCIDs) need a per-region
+      // entry seeded for every configured region.
+      if (isPerRegionImage && !has(img.details.regions, region.code)) {
         img.details.regions[region.code] = {};
       }
     });
