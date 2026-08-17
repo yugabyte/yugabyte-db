@@ -833,7 +833,7 @@ class Tablet : public AbstractTablet,
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 
-  void SetCleanupPool(rpc::Scheduler* scheduler);
+  void SetCleanupPool(ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler);
 
   TabletSnapshots& snapshots() {
     return *snapshots_;
