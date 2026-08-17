@@ -3144,8 +3144,10 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
           // ReplicaState lock and re-checking, here we simply block for up to 100ms in that case,
           // because this function is currently (08/14/2017) only used in a context when it is OK,
           // such as catalog manager initialization.
+          // The wait is capped at 100ms because the condition variable is not signalled when we
+          // lose leadership or shut down, so we must re-check the replica state periodically.
           leader_lease_wait_cond_.wait_for(
-              lock, std::max<MonoDelta>(100ms, deadline - now).ToSteadyDuration());
+              lock, std::min<MonoDelta>(100ms, deadline - now).ToSteadyDuration());
         }
         continue;
       case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE: {
