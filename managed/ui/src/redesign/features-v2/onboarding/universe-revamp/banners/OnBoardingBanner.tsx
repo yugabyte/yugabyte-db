@@ -2,7 +2,15 @@ import { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
-import { mui, YBPromotionalBanner, YBToggle, YBTooltip } from '@yugabyte-ui-library/core';
+import { toast } from 'react-toastify';
+import {
+  AlertVariant,
+  mui,
+  YBAlert,
+  YBPromotionalBanner,
+  YBToggle,
+  YBTooltip
+} from '@yugabyte-ui-library/core';
 
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '@app/actions/customers';
 import { api, runtimeConfigQueryKey } from '@app/redesign/helpers/api';
@@ -17,6 +25,7 @@ import {
   useOnboardingNewExperienceEnabled
 } from '../helper-methods';
 import { DEFAULT_RELEASE_NOTES_URL } from '../modals/HelperComponent';
+import { UnsupportedFeatureWarningModal } from '../modals/UnsupportedFeatureWarningModal';
 import { WhatChangedModal, WHAT_CHANGED_MODAL_DISMISS_KEY } from '../modals/WhatChangedModal';
 import {
   BeforeNewExperiencePopover,
@@ -184,6 +193,7 @@ export const OnBoardingBanner: FC = () => {
 
   const enabled = useOnboardingNewExperienceEnabled();
   const [showWhatChangedModal, setShowWhatChangedModal] = useState(false);
+  const [isUnsupportedFeatureWarningOpen, setUnsupportedFeatureWarningOpen] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(isOnboardingBannerDismissed);
   const isFullscreenOverlayOpen = useOnboardingFullscreenOverlayOpen();
   const afterTipTimerRef = useRef<number>();
@@ -298,24 +308,41 @@ export const OnBoardingBanner: FC = () => {
 
   const handleToggle = useCallback(
     (_event: unknown, checked: boolean) => {
-      setOnboardingNewExperienceEnabled(checked);
-      if (checked) {
-        scheduleAfterTipOpen();
-      } else {
-        clearAfterTipTimer();
-        setAfterPopoverOpen(false);
-        if (!isBeforeNewExperiencePopoverDismissed()) {
-          setBeforePopoverOpen(true);
-        }
+      if (!checked) {
+        setUnsupportedFeatureWarningOpen(true);
+        return;
       }
+
+      setOnboardingNewExperienceEnabled(true);
+      toast(
+        ({ closeToast }) => (
+          <YBAlert
+            open
+            text={t('switchedToNewExperience')}
+            variant={AlertVariant.Success}
+            onClose={closeToast}
+          />
+        ),
+        {
+          closeButton: false,
+          hideProgressBar: true,
+          style: { background: 'transparent', boxShadow: 'none', padding: 0 }
+        }
+      );
+      scheduleAfterTipOpen();
     },
-    [
-      clearAfterTipTimer,
-      scheduleAfterTipOpen,
-      setAfterPopoverOpen,
-      setBeforePopoverOpen
-    ]
+    [scheduleAfterTipOpen, t]
   );
+
+  const handleSwitchBackConfirm = useCallback(() => {
+    setUnsupportedFeatureWarningOpen(false);
+    setOnboardingNewExperienceEnabled(false);
+    clearAfterTipTimer();
+    setAfterPopoverOpen(false);
+    if (!isBeforeNewExperiencePopoverDismissed()) {
+      setBeforePopoverOpen(true);
+    }
+  }, [clearAfterTipTimer, setAfterPopoverOpen, setBeforePopoverOpen]);
 
   const handleSeeWhatsChanged = useCallback(() => {
     localStorage.removeItem(WHAT_CHANGED_MODAL_DISMISS_KEY);
@@ -517,6 +544,11 @@ export const OnBoardingBanner: FC = () => {
         />
       )}
       <WhatChangedModal open={showWhatChangedModal} onClose={handleWhatChangedClose} />
+      <UnsupportedFeatureWarningModal
+        open={isUnsupportedFeatureWarningOpen}
+        onClose={() => setUnsupportedFeatureWarningOpen(false)}
+        onSwitchBack={handleSwitchBackConfirm}
+      />
     </>
   );
 };

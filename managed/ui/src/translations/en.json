@@ -2147,6 +2147,7 @@
           "ModelResetConfigTitle": "Reset Configuration",
           "ShowOverridenConfigs": "Show Overridden Configs",
           "EditConfigWarningMessage": "Value not changed",
+          "EditUniverseV2ConfigInfo": "When enabled, all users on this account will use the <experienceLink>new YugabyteDB Anywhere UI experience</experienceLink>.",
           "SelectProvider": "Select Provider:",
           "SelectUniverse": "Select Universe:",
           "SelectCustomer": "Select Customer:",
@@ -5049,8 +5050,7 @@
         "preferredAzRankingTitle": "Preferred availability zone ranking",
         "preferredAzRankingDescription": "Rank preferred availability zones to optimize connection latency. <learnMore>Learn more</learnMore>",
         "otherImprovements": "Learn about other improvements in <releaseLink>this release.</releaseLink>",
-        "whereDidFeaturesMove": "Where did features move?",
-        "whereDidFeaturesMoveDescription": "Same features, new home. Here's where to find them now.",
+        "sameFeaturesNewHome": "Same features, new home",
         "then": "Then",
         "now": "Now",
         "editUniverse": "Edit Universe",
@@ -5059,6 +5059,8 @@
         "logs": "Logs",
         "logsAndMetricsExport": "Logs & Metrics Export",
         "settings": "Settings",
+        "rolloutTitle": "Roll out the new experience for everyone",
+        "rolloutBody": "To enable the new experience for all users, set the <configTag>{{runtimeConfig}}</configTag> config on <globalConfigLink>global configuration page.</globalConfigLink>",
         "close": "Close",
         "findOutMore": "Find Out More",
         "nowPlacement": "Placement",
@@ -5087,7 +5089,7 @@
         "findOutMore": "Find Out More"
       },
       "whereThingsMovedTip": {
-        "label": "Where things moved?"
+        "label": "Can't find a setting?"
       },
       "whatNewInPlacement": {
         "title": "What's New",
@@ -5110,6 +5112,18 @@
         "nowLogs": "Logs",
         "nowTelemetryExport": "Telemetry Export",
         "close": "Close"
+      },
+      "unsupportedFeatureWarningModal": {
+        "title": "Are you sure?",
+        "affectedUniverses": "The following universes use features that are only available in the new experience.",
+        "accessChange": "Your universes will continue to run normally, but how you access some features will change.",
+        "learnMore": "Learn more",
+        "afterSwitchingBack": "After switching back:",
+        "preferredAzRanking": "Preferred AZ ranking will be removed.",
+        "databaseQueryLogging": "Database query logging must be managed through the API.",
+        "proxies": "Proxies can only be managed through the API.",
+        "cancel": "Cancel",
+        "switchBack": "Switch back"
       },
       "universeCreationPopover": {
         "title": "New Universe creation",
@@ -5151,20 +5165,19 @@
         "tryItFirst": "Try it first on your account",
         "tryItFirstInfoHeadline": "Applies only to your account. Other users will not see any change.",
         "tryItFirstInfoBody": "To enable the new experience for all users on this YugabyteDB Anywhere instance, enable the <bold>{{runtimeConfig}}</bold> runtime configuration.",
-        "findOutMore": "Find out more"
+        "findOutMore": "Find out more",
+        "switchedToNewExperience": "Switched to new experience"
       },
       "beforeNewExperiencePopover": {
-        "title": "Try the new experience",
-        "bodyLine1": "Switch between the current and new experiences at any time.",
-        "bodyLine2": "Once ready, use the <bold>{{runtimeConfig}} runtime configuration</bold> to enable the new experience for all users.",
-        "seeWhatsChanged": "See what's changed",
+        "title": "Try the new experience on your account.",
+        "body": "Switch between the current and new experiences at any time.",
+        "seeWhatsChanged": "See what’s changed",
         "hideTip": "Hide tip"
       },
       "afterNewExperiencePopover": {
         "title": "Welcome to the new experience",
-        "bodyLine1": "YugabyteDB Anywhere has been updated with improved workflows, navigation, and settings organization.",
-        "bodyLine2": "See what's changed to learn about the new layout.",
-        "seeWhatsChanged": "See what's changed",
+        "body": "YugabyteDB Anywhere has been updated with improved workflows, navigation, and settings organization.",
+        "seeWhatsChanged": "See what’s changed",
         "hideTip": "Hide tip"
       }
     }
