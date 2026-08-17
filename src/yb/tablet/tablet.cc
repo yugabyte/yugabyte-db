@@ -1406,14 +1406,16 @@ void Tablet::RegularDbFilesChanged() {
   }
 }
 
-void Tablet::SetCleanupPool(ThreadPool* thread_pool, rpc::Scheduler* scheduler) {
+void Tablet::SetCleanupPool(
+    ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
+  snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
   vector_indexes_->SetScheduler(scheduler);
 
   if (!transaction_participant_) {
     return;
   }
 
-  cleanup_intent_files_token_ = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+  cleanup_intent_files_token_ = intent_cleanup_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
 
   CleanupIntentFiles();
 }
@@ -1694,6 +1696,8 @@ bool Tablet::StartShutdown(
   // pause.
   TEST_SYNC_POINT("Tablet::StartShutdown");
 
+  snapshots_->StartShutdown();
+
   // Stop the transaction coordinator's pollers before StartShutdownStorages pauses read/write
   // operations below: otherwise a poll could submit a transaction status update operation against
   // the paused tablet and fail with a non-shutdown status, tripping a DFATAL. See issue #32211.
@@ -1741,6 +1745,8 @@ void Tablet::CompleteShutdown() {
   // consume below.
   LOG_IF_WITH_PREFIX(DFATAL, !shutdown_requested_.load(std::memory_order_acquire))
       << "CompleteShutdown called without a preceding StartShutdown";
+
+  snapshots_->CompleteShutdown();
 
   // Final, unlike the vector index shutdown below, which a truncate or a restore also runs before
   // re-opening the storages.
