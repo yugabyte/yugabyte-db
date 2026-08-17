@@ -757,40 +757,40 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	}
 
 	/*
-	* yb_num_logical_conn: Stores count for all client connections made to conn mgr.
-	* yb_num_physical_conn_from_ysqlconnmgr: Stores physical connection count created from
-	* conn mgr to yb/database.
-	* CountUserBackends: Function returns total number of backend connections made by given
-	* user(roleid). It will be sum of physical connections from connection manager and direct
-	* connections to yb/database.
-	*/
-
-	uint32_t	yb_num_logical_conn = 0,
-				yb_num_physical_conn_from_ysqlconnmgr = 0;
-
-	yb_net_client_connections = CountUserBackends(*roleid);
-
-	if (IsYugaByteEnabled() &&
-		YbGetNumYsqlConnMgrConnections(-1, *roleid, &yb_num_logical_conn,
-									   &yb_num_physical_conn_from_ysqlconnmgr))
+	 * yb_num_logical_conn: Stores count for all client connections made to conn mgr.
+	 * yb_num_physical_conn_from_ysqlconnmgr: Stores physical connection count created from
+	 * conn mgr to yb/database.
+	 * CountUserBackends: Function returns total number of backend connections made by given
+	 * user(roleid). It will be sum of physical connections from connection manager and direct
+	 * connections to yb/database.
+	 */
+	if (rform->rolconnlimit >= 0 && !rform->rolsuper)
 	{
-		yb_net_client_connections +=
-			yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+		uint32_t	yb_num_logical_conn = 0,
+					yb_num_physical_conn_from_ysqlconnmgr = 0;
 
-		if (YbIsYsqlConnMgrWarmupModeEnabled())
-			yb_net_client_connections = yb_num_logical_conn;
-	}
+		yb_net_client_connections = CountUserBackends(*roleid);
 
-	if (rform->rolconnlimit >= 0 &&
-		!rform->rolsuper &&
-		yb_net_client_connections + 1 > rform->rolconnlimit)
-	{
-		YbSendFatalForLogicalConnectionPacket();
-		ereport(WARNING,
-				(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-				 errmsg("too many connections for role \"%s\"", rname)));
-		ReleaseSysCache(roleTup);
-		return -1;
+		if (IsYugaByteEnabled() &&
+			YbGetNumYsqlConnMgrConnections(-1, *roleid, &yb_num_logical_conn,
+										   &yb_num_physical_conn_from_ysqlconnmgr))
+		{
+			yb_net_client_connections +=
+				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+
+			if (YbIsYsqlConnMgrWarmupModeEnabled())
+				yb_net_client_connections = yb_num_logical_conn;
+		}
+
+		if (yb_net_client_connections + 1 > rform->rolconnlimit)
+		{
+			YbSendFatalForLogicalConnectionPacket();
+			ereport(WARNING,
+					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+					 errmsg("too many connections for role \"%s\"", rname)));
+			ReleaseSysCache(roleTup);
+			return -1;
+		}
 	}
 
 	SetConfigOption("session_authorization", rolename, PGC_BACKEND,
@@ -1007,38 +1007,67 @@ YbGetNumYsqlConnMgrConnections(const Oid db_oid, const Oid user_oid,
 							   uint32_t *num_logical_conn,
 							   uint32_t *num_physical_conn)
 {
-	const char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
-
 	/*
-	 * If YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME is not set,
-	 * Ysql Connection Manager is not enabled on the node.
+	 * The stats shared-memory segment is created once by tserver at startup and
+	 * lives for the entire lifetime of this backend, and the environment
+	 * variables describing it never change. This function is on the
+	 * per-connection auth path, so attaching (shmget + shmat) and detaching
+	 * (shmdt) on every call adds several syscalls plus page-table/TLB work per
+	 * connection. Attach lazily once and cache the mapping (and the derived
+	 * pool count) in process-local statics for all subsequent calls. This
+	 * mirrors how Odyssey caches the same mapping in instance->yb_stats.
 	 */
-	if (stats_shm_key == NULL)
-		return false;
+	static struct ConnectionStats *shmp = NULL;
+	static int	max_pools = 0;
 
-	const int32_t shmid = shmget((key_t) atoi(stats_shm_key), 0, 0666);
-
-	if (shmid == -1)
-	{
-		int			save_errno = errno;
-
-		elog(WARNING,
-			 "Unable to attach to the shared memory segment %d, errno: %d",
-			 shmid, save_errno);
-		return false;
-	}
-
-	struct ConnectionStats *shmp;
-
-	shmp = (struct ConnectionStats *) shmat(shmid, NULL, 0);
 	if (shmp == NULL)
 	{
-		int			save_errno = errno;
+		const char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
 
-		elog(WARNING,
-			 "Unable to read the shared memory segment %d, errno: %d",
-			 shmid, save_errno);
-		return false;
+		/*
+		 * If YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME is not set,
+		 * Ysql Connection Manager is not enabled on the node.
+		 */
+		if (stats_shm_key == NULL)
+			return false;
+
+		const int32_t shmid = shmget((key_t) atoi(stats_shm_key), 0, 0666);
+
+		if (shmid == -1)
+		{
+			int			save_errno = errno;
+
+			elog(WARNING,
+				 "Unable to attach to the shared memory segment, errno: %d",
+				 save_errno);
+			return false;
+		}
+
+		/* shmat() returns (void *) -1 on failure, not NULL. */
+		void	   *addr = shmat(shmid, NULL, 0);
+
+		if (addr == (void *) -1)
+		{
+			int			save_errno = errno;
+
+			elog(WARNING,
+				 "Unable to read the shared memory segment %d, errno: %d",
+				 shmid, save_errno);
+			return false;
+		}
+
+		char *max_pools_char = getenv("FLAGS_ysql_conn_mgr_max_pools");
+		if (max_pools_char == NULL)
+		{
+			ereport(WARNING,
+				(errmsg("unable to fetch ysql_conn_mgr_max_pools when "
+					"counting active connections")));
+			return false;
+		}
+
+		max_pools = atoi(max_pools_char);
+
+		shmp = (struct ConnectionStats *) addr;
 	}
 
 	/*
@@ -1047,7 +1076,7 @@ YbGetNumYsqlConnMgrConnections(const Oid db_oid, const Oid user_oid,
 	 */
 	*num_logical_conn = 0;
 	*num_physical_conn = 0;
-	for (int32_t itr = 0; itr < atoi(getenv("FLAGS_ysql_conn_mgr_max_pools")); ++itr)
+	for (int32_t itr = 0; itr < max_pools; ++itr)
 	{
 		if (shmp[itr].user_oid == -1 ||
 			shmp[itr].database_oid == -1)
@@ -1069,7 +1098,6 @@ YbGetNumYsqlConnMgrConnections(const Oid db_oid, const Oid user_oid,
 		*num_physical_conn += shmp[itr].active_servers + shmp[itr].idle_servers;
 	}
 
-	shmdt(shmp);
 	return true;
 }
 
