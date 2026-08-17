@@ -110,12 +110,13 @@ Write temporary files (PR bodies, commit messages, lint logs, etc.) to **`/tmp/c
 
 ## Prose discipline
 
-Comment the *why* when it isn't obvious — an invariant, a locking or ordering constraint,
-a workaround and the upstream bug behind it. Don't restate the line below, caption an
-obvious block, or narrate the change you just made; `git log` and the diff already say
-that. The same applies to PR/diff descriptions and `architecture/` docs: give the reader
-the motivation and what they must act on, not a retelling of the diff. Padding costs
-reviewers real time and rots as the code moves. Full rule and reasoning:
+Comment the *why* when it isn't obvious: an invariant, a cross-component contract, a
+locking or ordering constraint, a workaround and the upstream bug behind it. Not a label
+for the block below it, not narration of the change you just made. Don't restate the code;
+`git log` and the diff already say that. The same applies to PR/diff descriptions and
+`architecture/` docs: give the reader the motivation and what they must act on, not a
+retelling of the diff. Padding costs reviewers real time and rots as the code moves. Full
+rule and reasoning:
 [`AGENTS.md` § Prose discipline](../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume);
 the `create-pr` and `create-diff` skills re-check it before publishing.
 

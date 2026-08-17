@@ -227,10 +227,9 @@ Pre-fill the message file with:
 - **Title**: the constructed title from step 4
 - **Summary**: derived from the branch commits.  Say **why**, always —
   a reviewer who has to reverse-engineer the motivation is the
-  expensive case — then a summary sized to the change, roughly a line
-  per file, and whatever the reader must *act* on (new gflags,
-  upgrade/rollback consequences, migration steps).  Not a narration of
-  the diff.  See [`AGENTS.md` Prose
+  expensive case — then what changed, and whatever the reader must *act*
+  on (new gflags, upgrade/rollback consequences, migration steps).  Not
+  a narration of the diff.  See [`AGENTS.md` Prose
   discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
 - **Test Plan**: ask the user for one if not obvious from the branch.
   Keep it to what was actually run — it is not a place for prose.

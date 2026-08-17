@@ -128,7 +128,7 @@ a dirty tree.
 
 Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script.
 
-Say **why**, always — a reviewer who has to reverse-engineer the motivation is the expensive case — then a summary sized to the change, roughly a line per file, and whatever the reader must *act* on (new gflags, upgrade/rollback consequences, migration steps). Not a narration of the diff. Keep the test plan to what was actually run. See [`AGENTS.md` § Prose discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
+Say **why**, always — a reviewer who has to reverse-engineer the motivation is the expensive case — then what changed, and whatever the reader must *act* on (new gflags, upgrade/rollback consequences, migration steps). Not a narration of the diff. Keep the test plan to what was actually run. See [`AGENTS.md` § Prose discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
 
 ```
 .agents/scripts/create-pr.sh \
