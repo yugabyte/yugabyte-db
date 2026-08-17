@@ -1925,7 +1925,8 @@ void CDCServiceImpl::GetChanges(
         composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
         &commit_timestamp, &cached_schema_details, &schema_packing_storages, &last_streamed_op_id,
         req->safe_hybrid_time(), consistent_snapshot_time, req->wal_segment_index(),
-        &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
+        req->max_index_in_sort_window(), &last_readable_index,
+        tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
         get_changes_deadline, getchanges_resp_max_size_bytes, &throughput_metrics);
     // This specific error from the docdb_pgapi layer is used to identify enum cache entry is
     // out of date, hence we need to repopulate.
@@ -1961,7 +1962,8 @@ void CDCServiceImpl::GetChanges(
           enum_map, composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
           &commit_timestamp, &cached_schema_details, &schema_packing_storages, &last_streamed_op_id,
           req->safe_hybrid_time(), consistent_snapshot_time, req->wal_segment_index(),
-          &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
+          req->max_index_in_sort_window(), &last_readable_index,
+          tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
           get_changes_deadline, getchanges_resp_max_size_bytes, &throughput_metrics);
     }
     // This specific error indicates that a tablet split occured on the tablet.
