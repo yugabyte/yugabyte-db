@@ -1,0 +1,20 @@
+name: "bld-yba-install"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review ]
+    paths:
+      - 'managed/yba-installer/**'
+      - 'managed/devops/bin/yb_platform_backup.sh'
+
+# Can be skipped if PR is draft or the commit message contains [skip ci] or [ci skip]
+jobs:
+  bld-yba-install:
+    if: github.event.pull_request.draft == false
+    runs-on: ybdbghr
+    steps:
+      - name: Build Trigger
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ybbld "$PR_NUMBER" "$PR_SHA" YBA-INSTALL
