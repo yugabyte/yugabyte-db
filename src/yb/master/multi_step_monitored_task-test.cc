@@ -279,6 +279,10 @@ TEST(CatalogEntityTaskTest, TestAbortWithInFlightTransactionPoll) {
   auto abort_returned = std::make_shared<std::atomic<bool>>(false);
   std::thread abort_thread(
       [task, abort_returned, catalog_entity, thread_pool, messenger, client]() {
+        (void)catalog_entity;
+        (void)thread_pool;
+        (void)messenger;
+        (void)client;
         task->AbortAndReturnPrevState(STATUS(Aborted, "Test abort"));
         abort_returned->store(true);
       });
