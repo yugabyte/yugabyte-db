@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
@@ -49,8 +50,13 @@ export const EditNetworkPortsModal = ({ open, onClose }: EditNetworkPortsModalPr
   const methods = useForm<Partial<OtherAdvancedProps>>({ defaultValues });
   const {
     handleSubmit,
+    reset,
     formState: { isDirty }
   } = methods;
+
+  useEffect(() => {
+    if (open) reset(defaultValues);
+  }, [open]);
 
   const handleFormSubmit = handleSubmit(async (values) => {
     if (!universeUUID || !primaryCluster?.uuid) {
@@ -76,6 +82,7 @@ export const EditNetworkPortsModal = ({ open, onClose }: EditNetworkPortsModalPr
       },
       {
         onSuccess: (response) => {
+          reset(values);
           handleEditUniverseSuccess(response.task_uuid);
           onClose();
         },

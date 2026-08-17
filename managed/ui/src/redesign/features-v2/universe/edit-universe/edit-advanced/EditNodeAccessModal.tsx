@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
@@ -53,8 +53,13 @@ export const EditNodeAcessModal = ({ open, onClose }: EditNodeAcessModalProps) =
   });
   const {
     handleSubmit,
+    reset,
     formState: { isDirty }
   } = methods;
+
+  useEffect(() => {
+    if (open) reset(defaultValues);
+  }, [open]);
 
   const handleFormSubmit = handleSubmit(async (values) => {
     if (!universeUUID || !primaryCluster?.uuid) {
@@ -80,6 +85,7 @@ export const EditNodeAcessModal = ({ open, onClose }: EditNodeAcessModalProps) =
       },
       {
         onSuccess: (response) => {
+          reset(values);
           handleEditUniverseSuccess(response.task_uuid);
           onClose();
         },
