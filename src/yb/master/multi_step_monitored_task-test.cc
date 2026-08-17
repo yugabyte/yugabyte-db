@@ -277,25 +277,24 @@ TEST(CatalogEntityTaskTest, TestAbortWithInFlightTransactionPoll) {
   // That will call PerformAbort and release the poll step.
 
   auto abort_returned = std::make_shared<std::atomic<bool>>(false);
-  std::thread abort_thread(
-      [task, abort_returned, catalog_entity, thread_pool, messenger, client]() {
-        (void)catalog_entity;
-        (void)thread_pool;
-        (void)messenger;
-        (void)client;
-        task->AbortAndReturnPrevState(STATUS(Aborted, "Test abort"));
-        abort_returned->store(true);
-      });
+  std::thread abort_thread([task, abort_returned, catalog_entity]() {
+    task->AbortAndReturnPrevState(STATUS(Aborted, "Test abort"));
+    abort_returned->store(true);
+  });
 
   auto wait_status = WaitFor(
       [abort_returned]() -> Result<bool> { return abort_returned->load(); },
       MonoDelta::FromSeconds(30), "abort to complete");
 
   if (!wait_status.ok()) {
-    // don't worry about the leaks, it failed
+    // Record the failure first, so the diagnostic lands even if the cleanup below blocks.
+    ADD_FAILURE() << wait_status.CloneAndPrepend(
+        "Abort deadlocked on the transaction status poll Synchronizer");
     abort_thread.detach();
-    ASSERT_OK(wait_status.CloneAndPrepend(
-        "Abort deadlocked on the transaction status poll Synchronizer"));
+    yb::SyncPoint::GetInstance()->DisableProcessing();
+    messenger->Shutdown();
+    thread_pool->Shutdown();
+    return;
   }
 
   abort_thread.join();
