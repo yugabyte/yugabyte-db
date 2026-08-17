@@ -1347,6 +1347,10 @@ class TransactionParticipant::Impl
     // committed/applied, aborted or we realize that transaction was not committed at
     // resolve_at.
     for (;;) {
+      // Committed transactions are no longer applied once shutdown starts, so waiting for them
+      // below would block until the deadline and stall shutdown of the calling RPC handler thread.
+      RETURN_NOT_OK(CheckClosing());
+
       TransactionStatusResolver resolver(
           &participant_context_, &rpcs_, FLAGS_max_transactions_in_status_request,
           [this, resolve_at, &recheck_ids, &committed_ids](
