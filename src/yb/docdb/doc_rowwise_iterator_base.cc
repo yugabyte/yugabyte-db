@@ -172,7 +172,7 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
   // TODO(bogdan): decide if this is a good enough heuristic for using blooms for scans.
   const bool is_fixed_point_get =
       !bounds.lower.empty() &&
-      VERIFY_RESULT(HashedOrFirstRangeComponentsEqual(bounds.lower, bounds.upper));
+      VERIFY_RESULT(HashedOrFirstRangeComponentsExistAndEqual(bounds.lower, bounds.upper));
   const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER
                                        : BloomFilterMode::DONT_USE_BLOOM_FILTER;
 
