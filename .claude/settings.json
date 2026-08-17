@@ -49,6 +49,11 @@
             "type": "command",
             "command": "\"${CLAUDE_PROJECT_DIR:-.}/.agents/scripts/block-git-push.sh\" --format=claude",
             "if": "Bash(git push *)"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}/.agents/scripts/block-git-push.sh\" --format=claude",
+            "if": "Bash(git * push *)"
           }
         ]
       }
