@@ -457,7 +457,7 @@ public class NodeAgentEnabler {
           }
         }
         if (processNextUniverse) {
-          log.debug("Continuing to the next eligible universe for customer {}", customer.getUuid());
+          log.trace("Continuing to the next eligible universe for customer {}", customer.getUuid());
           Iterator<Universe> universeIter =
               customer.getUniverses().stream()
                   .sorted(
