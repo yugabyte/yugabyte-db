@@ -1077,6 +1077,7 @@ class UniverseDetail extends Component {
             title="Actions"
             id="bg-nested-dropdown"
             pullRight
+            open={this.state.actionsDropdownOpen}
             onToggle={(isOpen) => this.setState({ actionsDropdownOpen: isOpen })}
           >
             <MenuItemsContainer
@@ -1326,6 +1327,7 @@ class UniverseDetail extends Component {
                               )}
                               disabled={isEditUniverseDisabled}
                               className="no-border-bottom"
+                              onClick={() => this.setState({ actionsDropdownOpen: false })}
                             >
                               <YBLabelWithIcon
                                 icon="fa fa-pencil"
@@ -1356,6 +1358,7 @@ class UniverseDetail extends Component {
                               )}
                               disabled={isEditUniverseDisabled}
                               className="no-border-bottom"
+                              onClick={() => this.setState({ actionsDropdownOpen: false })}
                             >
                               <YBLabelWithIcon
                                 icon="fa fa-pencil"
