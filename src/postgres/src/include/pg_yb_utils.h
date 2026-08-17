@@ -1018,6 +1018,9 @@ extern int	YBGetDdlNestingLevel();
 extern NodeTag YBGetCurrentStmtDdlNodeTag();
 extern bool YBIsCurrentStmtDdl();
 extern CommandTag YBGetCurrentStmtDdlCommandTag();
+extern CommandTag YBGetTopLevelStmtDdlCommandTag();
+extern CommandTag YBGetGlobalDdlCommandTag();
+extern CommandTag YBGetBreakingDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
 
 /*
