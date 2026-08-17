@@ -40,13 +40,13 @@ You can enable or disable:
 
 This requires a simultaneous restart of all nodes, resulting in some downtime.
 
-To enable or disable encryption in transit:
+To enable or disable encryption in transit, navigate to the universe and do the following:
 
-1. Navigate to your universe.
+1. New UI: Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
 
-1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+    Classic UI: Click **Actions > More > Edit Security > Encryption in-Transit**.
 
-<!--    ![Enable encryption in transit](/images/yp/encryption-in-transit/enable-eit.png)-->
+    This displays the **Manage encryption in transit** dialog.
 
 1. Set the **Enable encryption in transit for this Universe** option.
 
@@ -91,11 +91,13 @@ For universes with _only_ client-to-node encryption enabled, when rotating certi
 
 ### Rotate server certificates
 
-To rotate server (node) certificates for a universe, do the following:
+To rotate server (node) certificates for a universe, navigate to the universe and do the following:
 
-1. Navigate to your universe.
+1. New UI: Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
 
-1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+    Classic UI: Click **Actions > More > Edit Security > Encryption in-Transit**.
+
+    This displays the **Manage encryption in transit** dialog.
 
 1. On the **Server Certificate** tab, select the **Rotate Node-to-Node Server Certificate** and **Rotate Client-to-Node Server Certificate** options as appropriate.
 
@@ -111,11 +113,13 @@ To rotate server (node) certificates for a universe, do the following:
 
 ### Rotate root certificates
 
-To rotate root certificates for a universe, do the following:
+To rotate root certificates for a universe, navigate to the universe and do the following:
 
-1. Navigate to your universe.
+1. New UI: Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
 
-1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+    Classic UI: Click **Actions > More > Edit Security > Encryption in-Transit**.
+
+    This displays the **Manage encryption in transit** dialog.
 
 1. On the **Certificate Authority** tab, select the new root certificate(s).
 
