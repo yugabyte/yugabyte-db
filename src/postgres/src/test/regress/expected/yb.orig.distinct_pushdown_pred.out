@@ -61,10 +61,10 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=2 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=2.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3.00 loops=1)
          Distinct Keys: r1, r2
          Storage Filter: (r1 = r2)
 (4 rows)
@@ -79,10 +79,10 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=2 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=2.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3.00 loops=1)
          Distinct Keys: r1, r2
          Storage Filter: (r1 = r2)
 (4 rows)
@@ -98,10 +98,10 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=1 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=1.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3.00 loops=1)
          Index Cond: (r3 = 1)
          Distinct Keys: r1
 (4 rows)
@@ -116,10 +116,10 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=0 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=0 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=0.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=0.00 loops=1)
          Index Cond: (r3 = 5)
          Distinct Keys: r1
 (4 rows)
@@ -133,11 +133,11 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- HashAggregate (actual rows=1 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ HashAggregate (actual rows=1.00 loops=1)
    Group Key: r2, r3
-   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3.00 loops=1)
          Index Cond: (r3 = 1)
          Distinct Keys: r1, r2
 (5 rows)
@@ -151,11 +151,11 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- HashAggregate (actual rows=0 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ HashAggregate (actual rows=0.00 loops=1)
    Group Key: r2, r3
-   ->  Distinct Index Scan using t_pkey on t (actual rows=0 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=0.00 loops=1)
          Index Cond: (r3 = 5)
          Distinct Keys: r1, r2
 (5 rows)
@@ -170,10 +170,10 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=1 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=1.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3.00 loops=1)
          Index Cond: ((r2 = 1) AND (r3 = 1))
          Distinct Keys: r1
 (4 rows)
@@ -188,10 +188,10 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                 QUERY PLAN                  
----------------------------------------------
- Unique (actual rows=1 loops=1)
-   ->  Seq Scan on t (actual rows=6 loops=1)
+                   QUERY PLAN                   
+------------------------------------------------
+ Unique (actual rows=1.00 loops=1)
+   ->  Seq Scan on t (actual rows=6.00 loops=1)
          Storage Filter: (v = 1)
 (3 rows)
 
@@ -204,11 +204,11 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                 QUERY PLAN                  
----------------------------------------------
- HashAggregate (actual rows=2 loops=1)
+                   QUERY PLAN                   
+------------------------------------------------
+ HashAggregate (actual rows=2.00 loops=1)
    Group Key: r1, v
-   ->  Seq Scan on t (actual rows=6 loops=1)
+   ->  Seq Scan on t (actual rows=6.00 loops=1)
          Storage Filter: (v = 1)
 (4 rows)
 
@@ -226,10 +226,10 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=1 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=2 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=1.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=2.00 loops=1)
          Distinct Keys: r1
          Storage Filter: ((r1 * r1) = 1)
 (4 rows)
@@ -243,10 +243,10 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=2 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=2.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3.00 loops=1)
          Distinct Keys: r1, r2
          Storage Filter: ((r2 * r2) = 1)
 (4 rows)
@@ -262,11 +262,11 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- HashAggregate (actual rows=4 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ HashAggregate (actual rows=4.00 loops=1)
    Group Key: (r1 * r2)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=7.00 loops=1)
          Distinct Keys: r1, r2
 (4 rows)
 
@@ -283,11 +283,11 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- HashAggregate (actual rows=1 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ HashAggregate (actual rows=1.00 loops=1)
    Group Key: (0 * r1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3.00 loops=1)
          Distinct Keys: r1
 (4 rows)
 
@@ -321,10 +321,10 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=1 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=1 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=1.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=1.00 loops=1)
          Index Cond: (r1 > 1)
          Distinct Keys: r1
 (4 rows)
@@ -340,10 +340,10 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=2 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=2 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=2.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=2.00 loops=1)
          Index Cond: (r2 > 1)
          Distinct Keys: r1
 (4 rows)
@@ -360,11 +360,11 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- HashAggregate (actual rows=3 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ HashAggregate (actual rows=3.00 loops=1)
    Group Key: r2
-   ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=7.00 loops=1)
          Index Cond: (r2 < 5)
          Distinct Keys: r1, r2
 (5 rows)
@@ -381,10 +381,10 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=2 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=2.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3.00 loops=1)
          Index Cond: (r1 = ANY ('{1,2}'::integer[]))
          Distinct Keys: r1
 (4 rows)
@@ -397,10 +397,10 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
 
 -- Out-of-range query.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r1 IN (1, 2);
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=2 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=2.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3.00 loops=1)
          Index Cond: (r1 = ANY ('{1,2}'::integer[]))
          Distinct Keys: r1
 (4 rows)
@@ -415,10 +415,10 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=2 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=2.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3.00 loops=1)
          Index Cond: (r2 = ANY ('{1,2}'::integer[]))
          Distinct Keys: r1
 (4 rows)
@@ -434,10 +434,10 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=2 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=2 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=2.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=2.00 loops=1)
          Index Cond: ((r1 = ANY ('{1,2}'::integer[])) AND (r2 = 2))
          Distinct Keys: r1
 (4 rows)
@@ -454,10 +454,10 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=4 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=5 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=4.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=5.00 loops=1)
          Index Cond: (r2 = ANY ('{1,2}'::integer[]))
          Distinct Keys: r1, r2
 (4 rows)
@@ -475,10 +475,10 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Unique (actual rows=1 loops=1)
-   ->  Distinct Index Scan using t_pkey on t (actual rows=2 loops=1)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Unique (actual rows=1.00 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=2.00 loops=1)
          Index Cond: (r1 = 1)
          Distinct Keys: r1
 (4 rows)
@@ -521,9 +521,9 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                           QUERY PLAN                            
------------------------------------------------------------------
- Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Distinct Index Scan using th_pkey on th (actual rows=6.00 loops=1)
    Distinct Keys: h1, h2
 (2 rows)
 
@@ -542,11 +542,11 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                              QUERY PLAN                               
------------------------------------------------------------------------
- HashAggregate (actual rows=2 loops=1)
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ HashAggregate (actual rows=2.00 loops=1)
    Group Key: h1
-   ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
+   ->  Distinct Index Scan using th_pkey on th (actual rows=6.00 loops=1)
          Distinct Keys: h1, h2
 (4 rows)
 
@@ -561,11 +561,11 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                              QUERY PLAN                               
------------------------------------------------------------------------
- HashAggregate (actual rows=3 loops=1)
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ HashAggregate (actual rows=3.00 loops=1)
    Group Key: h2
-   ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
+   ->  Distinct Index Scan using th_pkey on th (actual rows=6.00 loops=1)
          Distinct Keys: h1, h2
 (4 rows)
 
@@ -582,9 +582,9 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                           QUERY PLAN                            
------------------------------------------------------------------
- Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Distinct Index Scan using th_pkey on th (actual rows=6.00 loops=1)
    Distinct Keys: h1, h2, r1
 (2 rows)
 
@@ -604,11 +604,11 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                              QUERY PLAN                               
------------------------------------------------------------------------
- HashAggregate (actual rows=3 loops=1)
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ HashAggregate (actual rows=3.00 loops=1)
    Group Key: r1
-   ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
+   ->  Distinct Index Scan using th_pkey on th (actual rows=6.00 loops=1)
          Distinct Keys: h1, h2, r1
 (4 rows)
 
@@ -626,13 +626,13 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
- Unique (actual rows=2 loops=1)
-   ->  Sort (actual rows=6 loops=1)
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Unique (actual rows=2.00 loops=1)
+   ->  Sort (actual rows=6.00 loops=1)
          Sort Key: h1
          Sort Method: quicksort
-         ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
+         ->  Distinct Index Scan using th_pkey on th (actual rows=6.00 loops=1)
                Distinct Keys: h1, h2
 (6 rows)
 
@@ -647,9 +647,9 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                           QUERY PLAN                            
------------------------------------------------------------------
- Distinct Index Scan using th_pkey on th (actual rows=1 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Distinct Index Scan using th_pkey on th (actual rows=1.00 loops=1)
    Index Cond: ((h1 = 1) AND (h2 = 1))
    Distinct Keys: h1, h2, r1
 (3 rows)
@@ -664,13 +664,13 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
- Unique (actual rows=3 loops=1)
-   ->  Sort (actual rows=3 loops=1)
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Unique (actual rows=3.00 loops=1)
+   ->  Sort (actual rows=3.00 loops=1)
          Sort Key: r1
          Sort Method: quicksort
-         ->  Distinct Index Scan using th_pkey on th (actual rows=3 loops=1)
+         ->  Distinct Index Scan using th_pkey on th (actual rows=3.00 loops=1)
                Distinct Keys: h1, h2, r1
                Storage Filter: (h1 = 1)
 (7 rows)
@@ -687,9 +687,9 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                           QUERY PLAN                            
------------------------------------------------------------------
- Distinct Index Scan using th_pkey on th (actual rows=1 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Distinct Index Scan using th_pkey on th (actual rows=1.00 loops=1)
    Index Cond: ((h1 = 1) AND (h2 = 1))
    Distinct Keys: h1, h2
 (3 rows)
@@ -704,9 +704,9 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                           QUERY PLAN                            
------------------------------------------------------------------
- Distinct Index Scan using th_pkey on th (actual rows=2 loops=1)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Distinct Index Scan using th_pkey on th (actual rows=2.00 loops=1)
    Distinct Keys: h1, h2, r1
    Storage Filter: (r1 = 1)
 (3 rows)
@@ -721,10 +721,10 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                              QUERY PLAN                               
------------------------------------------------------------------------
- Unique (actual rows=1 loops=1)
-   ->  Distinct Index Scan using th_pkey on th (actual rows=2 loops=1)
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Unique (actual rows=1.00 loops=1)
+   ->  Distinct Index Scan using th_pkey on th (actual rows=2.00 loops=1)
          Distinct Keys: h1, h2, r1
          Storage Filter: (r1 = 1)
 (4 rows)
@@ -747,10 +747,10 @@ INSERT INTO t (SELECT 2, i%3, i, NULL FROM GENERATE_SERIES(1, 1000) AS i);
 CREATE INDEX irv ON t (v ASC, r1 ASC);
 -- Start off easy.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- Unique (actual rows=335 loops=1)
-   ->  Distinct Index Only Scan using irv on t (actual rows=335 loops=1)
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Unique (actual rows=335.00 loops=1)
+   ->  Distinct Index Only Scan using irv on t (actual rows=335.00 loops=1)
          Distinct Keys: v
          Heap Fetches: 0
 (4 rows)
@@ -773,10 +773,10 @@ SELECT DISTINCT v FROM t LIMIT 10;
 -- Check if ORDER BY works as usual with DISTINCT.
 -- Might as well fish for a backwards scan.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t ORDER BY v DESC;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Unique (actual rows=335 loops=1)
-   ->  Distinct Index Only Scan Backward using irv on t (actual rows=335 loops=1)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Unique (actual rows=335.00 loops=1)
+   ->  Distinct Index Only Scan Backward using irv on t (actual rows=335.00 loops=1)
          Distinct Keys: v
          Heap Fetches: 0
 (4 rows)
@@ -798,11 +798,11 @@ SELECT DISTINCT v FROM t ORDER BY v DESC LIMIT 10;
 
 -- Cover a case where no index is applicable.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v, r2 FROM t;
-                   QUERY PLAN                   
-------------------------------------------------
- HashAggregate (actual rows=1003 loops=1)
+                    QUERY PLAN                     
+---------------------------------------------------
+ HashAggregate (actual rows=1003.00 loops=1)
    Group Key: v, r2
-   ->  Seq Scan on t (actual rows=2000 loops=1)
+   ->  Seq Scan on t (actual rows=2000.00 loops=1)
 (3 rows)
 
 SELECT DISTINCT v, r2 FROM t LIMIT 10;
@@ -824,10 +824,10 @@ DROP INDEX irv;
 -- Secondary index is useful for DISTINCT regardless of whether NULLS are first or last.
 CREATE INDEX irv ON t(v ASC NULLS FIRST, r1 ASC);
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- Unique (actual rows=335 loops=1)
-   ->  Distinct Index Only Scan using irv on t (actual rows=335 loops=1)
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Unique (actual rows=335.00 loops=1)
+   ->  Distinct Index Only Scan using irv on t (actual rows=335.00 loops=1)
          Distinct Keys: v
          Heap Fetches: 0
 (4 rows)
@@ -856,11 +856,11 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 CREATE INDEX ihv ON th((v, h1) HASH);
 -- Go easy again. Picks the index ihv for distinct index scan.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM th;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
- HashAggregate (actual rows=334 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ HashAggregate (actual rows=334.00 loops=1)
    Group Key: v
-   ->  Distinct Index Only Scan using ihv on th (actual rows=668 loops=1)
+   ->  Distinct Index Only Scan using ihv on th (actual rows=668.00 loops=1)
          Distinct Keys: v, h1
          Heap Fetches: 0
 (5 rows)
@@ -953,10 +953,10 @@ DELETE FROM sample where b = 1;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
- Unique (actual rows=1 loops=1)
-   ->  Distinct Index Scan using sample_pkey on sample (actual rows=1 loops=1)
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Unique (actual rows=1.00 loops=1)
+   ->  Distinct Index Scan using sample_pkey on sample (actual rows=1.00 loops=1)
          Index Cond: (a > 0)
          Distinct Keys: a
 (4 rows)
