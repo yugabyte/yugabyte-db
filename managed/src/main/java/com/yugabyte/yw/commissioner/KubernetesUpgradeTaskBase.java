@@ -389,7 +389,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           rootCAUUID,
           useExistingServerCert,
           null /* skipAZs */,
-          targetUniverseState);
+          targetUniverseState,
+          false /* useNewMasterDeviceInfo */,
+          false /* useNewTserverDeviceInfo */);
     }
 
     if (upgradeTservers) {
@@ -419,7 +421,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           rootCAUUID,
           useExistingServerCert,
           null /* skipAZs */,
-          targetUniverseState);
+          targetUniverseState,
+          false /* useNewMasterDeviceInfo */,
+          false /* useNewTserverDeviceInfo */);
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -471,7 +475,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             rootCAUUID,
             useExistingServerCert,
             null /* skipAZs */,
-            targetUniverseState);
+            targetUniverseState,
+            false /* useNewMasterDeviceInfo */,
+            false /* useNewTserverDeviceInfo */);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
@@ -509,7 +515,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           rootCAUUID,
           useExistingServerCert,
           null /* skipAZs */,
-          targetUniverseState);
+          targetUniverseState,
+          false /* useNewMasterDeviceInfo */,
+          false /* useNewTserverDeviceInfo */);
     }
   }
 
