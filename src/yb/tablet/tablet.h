@@ -838,11 +838,13 @@ class Tablet : public AbstractTablet,
   Status SetAllCDCRetentionBarriersUnlocked(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
       HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
-      bool initial_retention_barrier, HybridTime min_start_ht_cdc_unstreamed_txns);
+      bool initial_retention_barrier, HybridTime min_start_ht_cdc_unstreamed_txns,
+      CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   Status SetAllInitialCDCRetentionBarriers(
       log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
-      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+      CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   Status SetAllInitialCDCSDKRetentionBarriers(
       log::Log* log, OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff,
@@ -851,7 +853,7 @@ class Tablet : public AbstractTablet,
   Result<bool> MoveForwardAllCDCRetentionBarriers(
       log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
       MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
-      bool require_history_cutoff);
+      bool require_history_cutoff, CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   HybridTime GetMinStartHTCDCUnstreamedTxns(log::Log* log) const;
 

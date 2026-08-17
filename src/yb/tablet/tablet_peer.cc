@@ -366,6 +366,7 @@ Status TabletPeer::InitTabletPeer(
   operation_tracker_.StartMemoryTracking(tablet_->mem_tracker());
 
   RETURN_NOT_OK(set_cdc_min_replicated_index(meta_->cdc_min_replicated_index()));
+  RETURN_NOT_OK(set_cdc_sdk_safe_time(meta_->cdc_sdk_safe_time()));
 
   TRACE("TabletPeer::Init() finished");
   VLOG_WITH_PREFIX(2) << "Peer Initted";
@@ -1209,10 +1210,9 @@ yb::OpId TabletPeer::GetLatestLogEntryOpId() const {
   return yb::OpId();
 }
 
-bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh_ptr) const {
-  std::lock_guard l(cdc_min_replicated_index_lock_);
-  auto seconds_since_last_refresh =
-      MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
+bool TabletPeer::is_cdc_barrier_stale(
+    const MonoTime& refresh_time, double* seconds_since_last_refresh_ptr) const {
+  auto seconds_since_last_refresh = MonoTime::Now().GetDeltaSince(refresh_time).ToSeconds();
   if (seconds_since_last_refresh_ptr) {
     *seconds_since_last_refresh_ptr = seconds_since_last_refresh;
   }
@@ -1220,6 +1220,17 @@ bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_re
       ? FLAGS_cdc_min_replicated_index_considered_stale_secs_master
       : FLAGS_cdc_min_replicated_index_considered_stale_secs;
   return (seconds_since_last_refresh > stale_secs);
+}
+
+bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh_ptr) const {
+  std::lock_guard l(cdc_resource_refresh_time_lock_);
+  return is_cdc_barrier_stale(
+      cdc_min_replicated_index_refresh_time_, seconds_since_last_refresh_ptr);
+}
+
+bool TabletPeer::is_cdc_sdk_safe_time_stale(double* seconds_since_last_refresh_ptr) const {
+  std::lock_guard l(cdc_resource_refresh_time_lock_);
+  return is_cdc_barrier_stale(cdc_sdk_safe_time_refresh_time_, seconds_since_last_refresh_ptr);
 }
 
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
@@ -1234,7 +1245,7 @@ Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replica
 }
 
 Status TabletPeer::set_cdc_min_replicated_index(int64_t cdc_min_replicated_index) {
-  std::lock_guard l(cdc_min_replicated_index_lock_);
+  std::lock_guard l(cdc_resource_refresh_time_lock_);
   return set_cdc_min_replicated_index_unlocked(cdc_min_replicated_index);
 }
 
@@ -1261,6 +1272,10 @@ Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_chec
 Status TabletPeer::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
   VLOG(1) << "Setting CDCSDK safe time to " << cdc_sdk_safe_time;
   RETURN_NOT_OK(meta_->set_cdc_sdk_safe_time(cdc_sdk_safe_time));
+  {
+    std::lock_guard l(cdc_resource_refresh_time_lock_);
+    cdc_sdk_safe_time_refresh_time_ = MonoTime::Now();
+  }
   return Status::OK();
 }
 
@@ -1288,19 +1303,39 @@ bool TabletPeer::is_under_cdc_sdk_replication() {
   return meta_->is_under_cdc_sdk_replication();
 }
 
-Status TabletPeer::reset_all_cdc_retention_barriers_if_stale() {
-  double seconds_since_last_refresh;
-  if (is_cdc_min_replicated_index_stale(&seconds_since_last_refresh)) {
-    VLOG_WITH_PREFIX(1) << "Trying to reset cdc retention barriers. Seconds since last update: "
-                        << seconds_since_last_refresh;
-    RETURN_NOT_OK(SetAllCDCRetentionBarriers(
-        std::numeric_limits<int64_t>::max() /* cdc_wal_index */,
-        OpId::Max() /* cdc_sdk_intents_op_id */, MonoDelta::kZero /* cdc_sdk_op_id_expiration */,
-        HybridTime::kInvalid /* cdc_sdk_history_cutoff */, true /* require_history_cutoff */,
-        false /* initial_retention_barrier */));
-    TEST_SYNC_POINT("TabletPeer::reset_all_cdc_retention_barriers_if_stale::End");
+Result<CDCRetentionBarrierMoveSelector> TabletPeer::reset_cdc_retention_barriers_if_stale() {
+  double seconds_since_cdc_min_replicated_index_last_refresh;
+  double seconds_since_cdc_sdk_safe_time_last_refresh;
+  bool is_cdc_min_replicated_index_stale =
+      this->is_cdc_min_replicated_index_stale(&seconds_since_cdc_min_replicated_index_last_refresh);
+  bool is_cdc_sdk_safe_time_stale =
+      this->is_cdc_sdk_safe_time_stale(&seconds_since_cdc_sdk_safe_time_last_refresh);
+  if (!is_cdc_min_replicated_index_stale && !is_cdc_sdk_safe_time_stale) {
+    return CDCRetentionBarrierMoveSelector{
+        .move_cdc_min_replicated_index = false,
+        .move_cdc_sdk_min_checkpoint_op_id = false,
+        .move_cdc_sdk_safe_time = false};
   }
-  return Status::OK();
+
+  // The WAL and intent retention barriers share the cdc_min_replicated_index staleness clock, so
+  // when it is stale we release both of them. The history barrier has its own clock and is released
+  // independently. Barriers that are still being advanced are left in place.
+  CDCRetentionBarrierMoveSelector barrier_move_selector{
+      .move_cdc_min_replicated_index = is_cdc_min_replicated_index_stale,
+      .move_cdc_sdk_min_checkpoint_op_id = is_cdc_min_replicated_index_stale,
+      .move_cdc_sdk_safe_time = is_cdc_sdk_safe_time_stale};
+  VLOG_WITH_PREFIX(1) << "Trying to reset stale cdc retention barriers. WAL/intent barriers stale: "
+                      << is_cdc_min_replicated_index_stale << " ("
+                      << seconds_since_cdc_min_replicated_index_last_refresh
+                      << "s), history barrier stale: " << is_cdc_sdk_safe_time_stale << " ("
+                      << seconds_since_cdc_sdk_safe_time_last_refresh << "s)";
+  RETURN_NOT_OK(SetAllCDCRetentionBarriers(
+      std::numeric_limits<int64_t>::max() /* cdc_wal_index */,
+      OpId::Max() /* cdc_sdk_intents_op_id */, MonoDelta::kZero /* cdc_sdk_op_id_expiration */,
+      HybridTime::kInvalid /* cdc_sdk_history_cutoff */, true /* require_history_cutoff */,
+      false /* initial_retention_barrier */, barrier_move_selector));
+  TEST_SYNC_POINT("TabletPeer::reset_cdc_retention_barriers_if_stale::End");
+  return barrier_move_selector;
 }
 
 OpId TabletPeer::GetLatestCheckPoint() {
@@ -1392,25 +1427,33 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_l
 
 Result<bool> TabletPeer::SetAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
-    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
-    bool initial_retention_barrier) {
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff, bool initial_retention_barrier,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
   auto tablet = VERIFY_RESULT(shared_tablet());
   Log* log = log_atomic_.load(std::memory_order_acquire);
 
   {
-    std::lock_guard lock(cdc_min_replicated_index_lock_);
-    cdc_min_replicated_index_refresh_time_ = MonoTime::Now();
+    std::lock_guard lock(cdc_resource_refresh_time_lock_);
+    auto now = MonoTime::Now();
+    // Refresh only the clocks of the barriers actually being moved.
+    if (barrier_move_selector.move_cdc_min_replicated_index ||
+        barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id) {
+      cdc_min_replicated_index_refresh_time_ = now;
+    }
+    if (barrier_move_selector.move_cdc_sdk_safe_time) {
+      cdc_sdk_safe_time_refresh_time_ = now;
+    }
   }
 
   if (initial_retention_barrier) {
     RETURN_NOT_OK(tablet->SetAllInitialCDCRetentionBarriers(
-        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_history_cutoff,
-        require_history_cutoff));
+        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_history_cutoff, require_history_cutoff,
+        barrier_move_selector));
     return true;
   } else {
     return tablet->MoveForwardAllCDCRetentionBarriers(
-        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration,
-        cdc_sdk_history_cutoff, require_history_cutoff);
+        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
+        require_history_cutoff, barrier_move_selector);
   }
 }
 
@@ -1418,13 +1461,12 @@ Result<bool> TabletPeer::SetAllCDCRetentionBarriers(
 // retention barrier
 Result<bool> TabletPeer::SetAllInitialCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
-    bool require_history_cutoff) {
-
+    bool require_history_cutoff, CDCRetentionBarrierMoveSelector barrier_move_selector) {
   MonoDelta cdc_sdk_op_id_expiration =
       MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms);
   return SetAllCDCRetentionBarriers(
       cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
-      require_history_cutoff, /*initial_retention_barrier=*/true);
+      require_history_cutoff, /*initial_retention_barrier=*/true, barrier_move_selector);
 }
 
 // Applies only to CDCSDK streams
@@ -1440,11 +1482,11 @@ Result<bool> TabletPeer::SetAllInitialCDCSDKRetentionBarriers(
 // corresponding to the slowest consumer of this tablet among all streams.
 Result<bool> TabletPeer::MoveForwardAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
-    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
-
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
   return SetAllCDCRetentionBarriers(
       cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
-      require_history_cutoff, /*initial_retention_barrier=*/false);
+      require_history_cutoff, /*initial_retention_barrier=*/false, barrier_move_selector);
 }
 
 std::string TabletPeer::AllCDCRetentionBarriersToString() const {

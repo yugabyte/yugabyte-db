@@ -14102,22 +14102,26 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
       "Timed out waiting for CDCMasterBgTask to move ahead history retention barrier on sys "
       "catalog"));
 
-  // We will now check that even after a stream expiry, the history retention barrier on the sys
-  // catalog tablet will not be lifted. This is because stream expiry ligic will delete the
-  // sys_catalog tablet-stream entry in cdc_state table. But it doesn't act upon such stream's slot
-  // entry. In the next run of CDCMasterBgTask, it will use the slot entry's restart time to set the
-  // history barrier.
-  // Since current stream 'stream_without_sys_catalog_poll' doesn't poll sys_catalog
-  // tablet, there's no sys_catalog tablet-stream entry in cdc_state table. Thus, the logic of
-  // deleting tablet-stream entry on stream expiry will not be triggered by CDCMasterBgTask. So, we
-  // will create a new stream which will poll sys_catalog tablet for changes.
+  // In this step we will now check that even after a stream expiry, the history retention barrier
+  // on the sys catalog tablet will not be lifted. This is because stream expiry logic will delete
+  // the sys_catalog tablet-stream entry in cdc_state table. But it doesn't act upon such stream's
+  // slot entry. In the next run of CDCMasterBgTask, it will use the slot entry's restart time to
+  // set the history barrier.
+  // However since current stream was created before FLAGS_cdc_enable_dynamic_schema_changes was set
+  // to true, it doesn't poll sys_catalog tablet. Thus there's no sys_catalog tablet-stream entry in
+  // cdc_state table for this stream. And so consequently the logic of deleting tablet-stream entry
+  // on such stream's expiry will not be triggered by CDCMasterBgTask.
+  // So to check the consequences of stream expiry we will create a new stream which will poll
+  // sys_catalog tablet for changes.
   ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   ASSERT_NE(metadata->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
 
-  // Verify that the history barrier gets set to current time by CDCMasterBgTask and intents
-  // retention barrier gets lifted due to stream expiry.
+  // Verify that CDCMasterBgTask only moves history barrier to current time and do not move intent
+  // barrier. The ResetStaleRetentionBarriersOp will release the intent barrier once it becomes
+  // stale.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto cutoff_after_bg_task = cm.AllowedHistoryCutoffProvider(metadata.get());

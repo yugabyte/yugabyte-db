@@ -1731,7 +1731,8 @@ Status RaftGroupMetadata::set_all_cdc_retention_barriers(
 
 Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
-    bool require_history_cutoff, bool initial_retention_barrier) {
+    bool require_history_cutoff, bool initial_retention_barrier,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
 
   bool set_cdc_min_replicated_index_check = false;
   bool set_cdc_min_checkpoint_op_id_check = false;
@@ -1739,7 +1740,8 @@ Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
   // WAL retention
   //  cdc_min_replicated_index : indicates if a WAL segment is being used by CDC
   //                             and thus impacts GC of the WAL segments
-  if (!initial_retention_barrier || cdc_min_replicated_index() > cdc_wal_index) {
+  if (barrier_move_selector.move_cdc_min_replicated_index &&
+      (!initial_retention_barrier || cdc_min_replicated_index() > cdc_wal_index)) {
     VLOG_WITH_PREFIX(1) << "Setting cdc_min_replicated index WAL retention barrier to "
                         << cdc_wal_index;
     set_cdc_min_replicated_index_check = true;
@@ -1750,7 +1752,7 @@ Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
   }
 
   // History Retention
-  if (require_history_cutoff) {
+  if (require_history_cutoff && barrier_move_selector.move_cdc_sdk_safe_time) {
     if (!initial_retention_barrier ||
         cdc_sdk_safe_time() == HybridTime::kInvalid ||
         cdc_sdk_safe_time() > cdc_sdk_history_cutoff) {
@@ -1765,9 +1767,10 @@ Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
 
   // Intents Retention
   //  set_cdc_sdk_min_checkpoint_op_id - opid beyond which GC will not happen
-  if (!initial_retention_barrier ||
-      cdc_sdk_min_checkpoint_op_id() == OpId::Invalid() ||
-      cdc_sdk_min_checkpoint_op_id() > cdc_sdk_intents_op_id) {
+  if (barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id &&
+      (!initial_retention_barrier ||
+       cdc_sdk_min_checkpoint_op_id() == OpId::Invalid() ||
+       cdc_sdk_min_checkpoint_op_id() > cdc_sdk_intents_op_id)) {
     VLOG_WITH_PREFIX(1) << "Setting intents retention barrier to " << cdc_sdk_intents_op_id;
     set_cdc_min_checkpoint_op_id_check = true;
   } else {
