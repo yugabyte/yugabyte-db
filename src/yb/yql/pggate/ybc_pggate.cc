@@ -1493,8 +1493,7 @@ YbcStatus YBCPgDmlApplyParallelRange(YbcPgStatement handle,
                                      const char *lower_bound, size_t lower_bound_len,
                                      const char *upper_bound, size_t upper_bound_len) {
   return ToYBCStatus(pgapi->DmlApplyParallelRange(
-    handle, Slice(lower_bound, lower_bound_len), true,
-            Slice(upper_bound, upper_bound_len), false));
+    handle, Slice(lower_bound, lower_bound_len), Slice(upper_bound, upper_bound_len)));
 }
 
 YbcStatus YBCPgDmlSetMergeSortKeys(YbcPgStatement handle, int num_keys,
