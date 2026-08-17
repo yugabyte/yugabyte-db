@@ -522,7 +522,7 @@ export const InstanceSettings = forwardRef<
 
           return (
             <YBAccordion
-              defaultExpanded={!sameAsTserver}
+              defaultExpanded
               titleContent={<>{t('master')}</>}
               sx={{ width: '100%' }}
             >
