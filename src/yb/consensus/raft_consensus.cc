@@ -1052,7 +1052,16 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
     LOG_WITH_PREFIX(WARNING) << "Tablet error from RunLeaderElection() call to peer "
                              << election_state->req.dest_uuid() << ": "
                              << StatusFromPB(election_state->resp.error().status());
+  } else {
+    // The protege accepted the request and started an election, so it reports a loss back to us
+    // via NotifyOriginatorAboutLostElection.
+    return;
   }
+  // The protege did not even start an election, so it will never report the loss back to us.
+  // Handle it here, otherwise this tablet stays leaderless until the post stepdown election delay
+  // expires.
+  WARN_NOT_OK(ElectionLostByProtege(election_state->req.dest_uuid()),
+              "Failed to handle stepdown election request failure");
 }
 
 void RaftConsensus::ReportFailureDetectedTask() {

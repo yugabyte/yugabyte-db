@@ -100,8 +100,10 @@ void LogGCOp::Perform() {
 
   Status s = tablet_peer_->RunLogGC();
   if (!s.ok()) {
-    s = s.CloneAndPrepend("Unexpected error while running Log GC from TabletPeer");
-    LOG(DFATAL) << s.ToString();
+    // Log GC races with tablet shutdown, e.g. a tombstone delete, so shutdown is expected here.
+    s = s.CloneAndPrepend("Error while running Log GC from TabletPeer");
+    LOG_IF(WARNING, s.IsShutdownInProgress()) << s.ToString();
+    LOG_IF(DFATAL, !s.IsShutdownInProgress()) << s.ToString();
   }
 
   sem_.unlock();
