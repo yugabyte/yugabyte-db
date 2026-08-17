@@ -29,7 +29,7 @@
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/signal_util.h"
 
-DEFINE_NON_RUNTIME_PREVIEW_string(otel_collector_traces_endpoint, "",
+DEFINE_NON_RUNTIME_PREVIEW_string(otel_collector_traces_endpoint, "http://127.0.0.1:14318",
     "OTLP HTTP endpoint for the OpenTelemetry collector. When set, distributed tracing is "
     "enabled and spans are exported to this endpoint on each query execution.");
 
