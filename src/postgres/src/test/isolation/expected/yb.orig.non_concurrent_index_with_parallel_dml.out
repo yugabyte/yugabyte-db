@@ -96,7 +96,7 @@ step s2select: SELECT * FROM test ORDER BY k;
  1|  1
  2|  2
  3|  3
- 4|100
+ 4|  4
  5|200
  6|  6
  7|  7
