@@ -4298,7 +4298,7 @@
         "editHelmOverrides": "Edit Helm Overrides",
         "helmOverrides": "HELM OVERRIDES",
         "validation": {
-          "duplicatePorts": "Port numbers must be unique.",
+          "duplicatePorts": "Port must be unique.",
           "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
         }
       },
@@ -4320,8 +4320,8 @@
         "required": "{{field}} is required",
         "universeNameValidation": "{{cloudType}} Universe name cannot contain capital letters or special characters except dashes",
         "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding.",
-        "duplicatePorts": "Port numbers must be unique.",
-        "invalidArn": "Enter a valid AWS ARN."
+        "invalidArn": "Enter a valid AWS ARN.",
+        "duplicatePorts": "Port must be unique."
       }
     },
     "geoPartition": {
