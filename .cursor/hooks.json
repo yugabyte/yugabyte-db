@@ -4,7 +4,7 @@
     "beforeShellExecution": [
       {
         "matcher": "git.*\\spush\\b",
-        "command": ".agents/scripts/block-git-push.sh",
+        "command": ".agents/scripts/block-git-push.sh --format=cursor",
         "failClosed": true
       }
     ]
