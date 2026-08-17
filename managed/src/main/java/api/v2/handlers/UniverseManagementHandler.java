@@ -1475,6 +1475,16 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         log.error("Incorrect option: " + updateOption);
       }
     }
+    // Kubernetes hardware/instance edits are reported by getUpdateOptions as UPDATE (rather than
+    // one of the ResizeUpdateOption values) because k8s resizes are applied by recreating the
+    // StatefulSet pods rather than doing a smart resize. There is no UPDATE member in
+    // ResizeUpdateOption, so without this the endpoint would report no available options for k8s.
+    // Surface it as FULL_MOVE, which is the only strategy supported for k8s resizes.
+    if (Util.isKubernetesBasedUniverse(dbUniverse)
+        && !res.contains(ResizeUpdateOption.FULL_MOVE)
+        && updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)) {
+      res.add(ResizeUpdateOption.FULL_MOVE);
+    }
     return new CheckResizeOptionsResp().options(res);
   }
 }
