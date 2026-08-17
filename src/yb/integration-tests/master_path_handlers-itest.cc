@@ -76,6 +76,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_tablespace_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
@@ -1097,6 +1098,76 @@ TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointTableReplic
 
   // YBMiniClusterTestBase test-end verification will fail if the cluster is up with stopped nodes.
   cluster_->Shutdown();
+}
+
+class MasterPathHandlersUnderReplicationColocatedItest :
+    public MasterPathHandlersUnderReplicationItest {
+ public:
+  void SetUp() override {
+    opts_.enable_ysql = true;
+    opts_.extra_master_flags.push_back("--ysql_enable_colocated_tables_with_tablespaces=true");
+    opts_.extra_master_flags.push_back("--ysql_tablespace_info_refresh_secs=1");
+    opts_.extra_tserver_flags.push_back("--ysql_enable_colocated_tables_with_tablespaces=true");
+    MasterPathHandlersUnderReplicationItest::SetUp();
+  }
+};
+
+// Colocated child tables are not in the tablespace map, so GetTableReplicationInfoWithDefault
+// falls back to the cluster spec for them. The underreplicated-tablets UI must use the parent
+// tablegroup's replication info instead; otherwise RF-1 colocated tablets in a custom tablespace
+// are falsely reported as underreplicated against the cluster RF.
+TEST_F_EX(
+    MasterPathHandlersItest, TestTabletUnderReplicationColocatedTablespace,
+    MasterPathHandlersUnderReplicationColocatedItest) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn.Execute("CREATE DATABASE colodb WITH COLOCATION = true"));
+  conn = ASSERT_RESULT(cluster_->ConnectToDB("colodb"));
+
+  const test::Tablespace ts("ts_rf1", 1, {test::PlacementBlock("c", "r", "z0", 1)});
+  ASSERT_OK(conn.Execute(ts.CreateCmd()));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t (k INT PRIMARY KEY) TABLESPACE $0", ts.name));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  TabletId tablet_id;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto tables = VERIFY_RESULT(client->ListTables("t", false /* exclude_ysql */, "colodb"));
+        const client::YBTableName* table = nullptr;
+        for (const auto& listed : tables) {
+          if (listed.table_name() == "t") {
+            table = &listed;
+            break;
+          }
+        }
+        if (!table) {
+          return false;
+        }
+        master::GetTableLocationsResponsePB locs;
+        auto s = itest::GetTableLocations(
+            cluster_.get(), *table, 10s, RequireTabletsRunning::kFalse, &locs);
+        if (!s.ok() || locs.tablet_locations_size() != 1) {
+          return false;
+        }
+        const auto& tablet = locs.tablet_locations(0);
+        if (tablet.replicas_size() != 1) {
+          return false;
+        }
+        tablet_id = tablet.tablet_id();
+        return true;
+      },
+      30s * kTimeMultiplier, "Wait for RF-1 colocated tablet"));
+
+  faststring response;
+  ASSERT_OK(GetUrl("/api/v1/tablet-under-replication", &response));
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(response.ToString()));
+  auto underreplicated_tablets =
+      ASSERT_RESULT(json_obj["underreplicated_tablets"].GetArray());
+  for (const auto& tablet_json : underreplicated_tablets) {
+    ASSERT_NE(ASSERT_RESULT(tablet_json["tablet_uuid"].GetString()), tablet_id)
+        << "Tablet reported underreplicated, expected_num_replicas="
+        << ASSERT_RESULT(tablet_json["expected_num_replicas"].GetInt32());
+  }
 }
 
 class MasterPathHandlersUnderReplicationTwoTsItest :
