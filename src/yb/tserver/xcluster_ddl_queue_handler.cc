@@ -70,6 +70,10 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_before_incremental_safe_t
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_ddl, false,
     "Whether the ddl_queue handler should fail the ddl command that it executes.");
 
+DEFINE_test_flag(string, xcluster_ddl_queue_handler_fail_ddl_matching, "",
+    "If non-empty, the ddl_queue handler fails only the ddl commands whose query contains this "
+    "substring.");
+
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 
@@ -572,7 +576,10 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
     setup_query << Format("SET $0 = $1;", name, pgwrapper::PqEscapeLiteral(value));
   }
 
-  if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {
+  const auto& fail_ddl_matching = FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl_matching;
+  if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl ||
+      (!fail_ddl_matching.empty() &&
+       query_info.query.find(fail_ddl_matching) != std::string::npos)) {
     setup_query << "SET yb_test_fail_next_ddl TO 1;";
   }
 

@@ -3464,7 +3464,10 @@ void MasterPathHandlers::HandleXCluster(
 
         for (const auto& table_status : namespace_status.table_statuses) {
           auto color = HtmlTableRowColor::Default;
-          if (table_status.state.contains("PAUSED") || table_status.state.contains("INITIATED")) {
+          if (table_status.is_wal_anchor) {
+            // A WAL anchor is expected to sit unconsumed, so leave it uncolored.
+          } else if (table_status.state.contains("PAUSED") ||
+                     table_status.state.contains("INITIATED")) {
             color = HtmlTableRowColor::Yellow;
           } else if (table_status.state != "ACTIVE") {
             color = HtmlTableRowColor::Red;

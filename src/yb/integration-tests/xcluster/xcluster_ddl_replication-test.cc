@@ -12,7 +12,9 @@
 //
 
 #include <atomic>
+#include <fstream>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/xcluster_types.h"
 
 #include "yb/client/schema.h"
@@ -23,20 +25,30 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_types.pb.h"
 
+#include "yb/integration-tests/path_handlers_util.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
+#include "yb/master/xcluster/xcluster_source_manager.h"
+
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller_stats.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
@@ -48,10 +60,14 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
+DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(enable_pg_cron);
+DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_int64(xcluster_ddl_queue_advisory_lock_key);
@@ -63,6 +79,7 @@ DECLARE_bool(xcluster_enable_target_applied_filter);
 DECLARE_bool(xcluster_target_manual_override);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 DECLARE_string(ysql_cron_database_name);
+DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_bool(enable_object_locking_for_table_locks);
@@ -85,10 +102,14 @@ DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
+DECLARE_string(TEST_xcluster_ddl_queue_handler_fail_ddl_matching);
+DECLARE_bool(TEST_xcluster_fail_table_stream_checkpoint);
 DECLARE_bool(TEST_xcluster_increment_logical_commit_time);
+DECLARE_bool(TEST_xcluster_pause_wal_anchor_deletion);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
+DECLARE_bool(TEST_xcluster_wal_anchor_deletion_skip_marker_clear);
 
 using namespace std::chrono_literals;
 
@@ -5951,6 +5972,480 @@ TEST_F(XClusterDDLReplicationTest, CreatePartitionSkipsDefaultPartitionScanOnTar
       producer_conn_->Execute(
           "CREATE TABLE parted_p2 PARTITION OF parted FOR VALUES FROM (200) TO (300)"),
       "would be violated by some row");
+}
+
+class XClusterWalAnchorStreamTest : public XClusterDDLReplicationTest {
+ public:
+  void SetUp() override {
+    // The source tservers refresh cdc_min_replicated_index on a timer, lower it so the WAL pin
+    // check below observe fresh values quickly.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+    XClusterDDLReplicationTest::SetUp();
+  }
+
+  Result<TableId> GetSourceTableId(const std::string& table_name) {
+    auto table = VERIFY_RESULT(GetProducerTable(VERIFY_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", table_name))));
+    return table->id();
+  }
+
+  Result<TableId> GetTargetTableId(const std::string& table_name) {
+    auto table = VERIFY_RESULT(GetConsumerTable(VERIFY_RESULT(
+        GetYsqlTable(&consumer_cluster_, namespace_name, /*schema_name=*/"", table_name))));
+    return table->id();
+  }
+
+  Result<master::XClusterManager*> SourceXClusterManager() {
+    auto* leader = VERIFY_RESULT(producer_cluster_.mini_cluster_->GetLeaderMiniMaster());
+    return leader->catalog_manager_impl().GetXClusterManagerImpl();
+  }
+
+  // The WAL anchor stream id for source_table_id, or empty string if the table has no anchor.
+  Result<std::string> GetWalAnchorStreamId(const TableId& source_table_id) {
+    return VERIFY_RESULT(SourceXClusterManager())->TEST_GetWalAnchorStreamId(source_table_id);
+  }
+
+  Result<bool> HasWalAnchorStream(const TableId& source_table_id) {
+    return !VERIFY_RESULT(GetWalAnchorStreamId(source_table_id)).empty();
+  }
+
+  Status WaitForWalAnchorDeletion(const TableId& source_table_id) {
+    return LoggedWaitFor(
+        [this, source_table_id]() -> Result<bool> {
+          return !VERIFY_RESULT(HasWalAnchorStream(source_table_id));
+        },
+        kTimeout, Format("WAL anchor stream for $0 to be deleted", source_table_id));
+  }
+
+  Status WaitForNoSourceStreams(const TableId& source_table_id) {
+    return LoggedWaitFor(
+        [this, source_table_id]() -> Result<bool> {
+          return VERIFY_RESULT(SourceStreamIdsForTable(source_table_id)).empty();
+        },
+        kTimeout, Format("all source streams for $0 to be deleted", source_table_id));
+  }
+
+  // Returns nullopt while the tserver's checkpoint map is stale.
+  Result<std::optional<int64_t>> SourceXClusterMinRequiredIndex(const TableId& source_table_id) {
+    SCHECK_EQ(
+        producer_cluster_.mini_cluster_->num_tablet_servers(), 1, IllegalState,
+        "Expected a single source tserver");
+    auto* tserver = producer_cluster_.mini_cluster_->mini_tablet_server(0)->server();
+    auto* cdc_service = down_cast<cdc::CDCServiceImpl*>(tserver->GetCDCService().get());
+
+    int64_t min_index = std::numeric_limits<int64_t>::max();
+    for (const auto& peer : tserver->tablet_manager()->GetTabletPeers()) {
+      auto metadata = peer->tablet_metadata();
+      if (!metadata || metadata->table_id() != source_table_id) {
+        continue;
+      }
+      auto tablet_index = cdc_service->TryGetXClusterMinRequiredIndex(peer->tablet_id());
+      if (!tablet_index) {
+        return std::nullopt;
+      }
+      min_index = std::min(min_index, *tablet_index);
+    }
+    return min_index;
+  }
+
+  Status WaitForWalPinnedAtZero(const TableId& source_table_id) {
+    return LoggedWaitFor(
+        [this, source_table_id]() -> Result<bool> {
+          auto min_index = VERIFY_RESULT(SourceXClusterMinRequiredIndex(source_table_id));
+          return min_index.has_value() && *min_index == 0;
+        },
+        kTimeout, Format("WAL for $0 to be pinned at index 0 by the anchor", source_table_id));
+  }
+
+  Status WaitForWalUnpinned(const TableId& source_table_id) {
+    return LoggedWaitFor(
+        [this, source_table_id]() -> Result<bool> {
+          auto min_index = VERIFY_RESULT(SourceXClusterMinRequiredIndex(source_table_id));
+          return min_index.has_value() && *min_index > 0 &&
+                 *min_index != std::numeric_limits<int64_t>::max();
+        },
+        kTimeout, Format("WAL for $0 to be released after anchor deletion", source_table_id));
+  }
+
+  Result<master::ListCDCStreamsResponsePB> ListSourceStreamsForTable(
+      const TableId& source_table_id) {
+    auto* leader = VERIFY_RESULT(producer_cluster_.mini_cluster_->GetLeaderMiniMaster());
+    master::ListCDCStreamsRequestPB req;
+    master::ListCDCStreamsResponsePB resp;
+    req.set_table_id(source_table_id);
+    RETURN_NOT_OK(leader->catalog_manager_impl().ListCDCStreams(&req, &resp));
+    SCHECK(!resp.has_error(), IllegalState, "ListCDCStreams failed");
+    return resp;
+  }
+
+  Result<std::set<std::string>> SourceStreamIdsForTable(const TableId& source_table_id) {
+    const auto resp = VERIFY_RESULT(ListSourceStreamsForTable(source_table_id));
+
+    std::set<std::string> stream_ids;
+    for (const auto& stream : resp.streams()) {
+      stream_ids.insert(stream.stream_id());
+    }
+    return stream_ids;
+  }
+
+  Result<std::set<std::string>> SourceWalAnchorStreamIdsForTable(const TableId& source_table_id) {
+    const auto resp = VERIFY_RESULT(ListSourceStreamsForTable(source_table_id));
+
+    std::set<std::string> stream_ids;
+    for (const auto& stream : resp.streams()) {
+      if (stream.xcluster_is_wal_anchor()) {
+        stream_ids.insert(stream.stream_id());
+      }
+    }
+    return stream_ids;
+  }
+
+  Result<size_t> CountAllSourceXClusterStreams() {
+    auto* leader = VERIFY_RESULT(producer_cluster_.mini_cluster_->GetLeaderMiniMaster());
+    master::ListCDCStreamsRequestPB req;
+    master::ListCDCStreamsResponsePB resp;
+    RETURN_NOT_OK(leader->catalog_manager_impl().ListCDCStreams(&req, &resp));
+    SCHECK(!resp.has_error(), IllegalState, "ListCDCStreams failed");
+    return static_cast<size_t>(resp.streams_size());
+  }
+
+  Result<bool> TargetHasPendingDeletionMarker(const TableId& target_table_id) {
+    auto* leader = VERIFY_RESULT(consumer_cluster_.mini_cluster_->GetLeaderMiniMaster());
+    auto table_info = leader->catalog_manager_impl().GetTableInfo(target_table_id);
+    SCHECK(table_info != nullptr, NotFound, "Target table info not found");
+    return table_info->LockForRead()
+        ->pb.has_xcluster_pending_wal_anchor_deletion_source_table_id();
+  }
+
+  Status WaitForTargetDeletionMarkerCleared(const TableId& target_table_id) {
+    return LoggedWaitFor(
+        [this, target_table_id]() -> Result<bool> {
+          return !VERIFY_RESULT(TargetHasPendingDeletionMarker(target_table_id));
+        },
+        kTimeout, "target WAL anchor stream deletion marker to be cleared");
+  }
+
+  // Simulate a target retry after a DDL/transaction rollback. Ensure that the anchor stream is
+  // created, pinned at 0, and deleted after the target rolls back the DDL.
+  void RunBaseCase(
+      const std::function<Status()>& run_ddl, const std::string& table_name,
+      const std::vector<TableName>& verify_tables) {
+    // Keep the anchor around after commit so we can inspect later.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_pause_wal_anchor_deletion) = true;
+    // Fail the CREATE TABLE on the target after it has been added to replication.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+
+    ASSERT_OK(run_ddl());
+
+    const auto source_table_id = ASSERT_RESULT(GetSourceTableId(table_name));
+    ASSERT_OK(LoggedWaitFor(
+        [this, source_table_id]() { return HasWalAnchorStream(source_table_id); }, kTimeout,
+        "WAL anchor stream to be created"));
+    const auto anchor_id_before = ASSERT_RESULT(GetWalAnchorStreamId(source_table_id));
+
+    // Verify the target failed the DDL and rolled it back.
+    ASSERT_OK(StringWaiterLogSink("Failed DDL operation as requested").WaitFor(kTimeout));
+
+    // Allow the retry to succeed and the data replays from the anchored WAL.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    ASSERT_OK(VerifyWrittenRecords(verify_tables));
+
+    const auto target_table_id = ASSERT_RESULT(GetTargetTableId(table_name));
+
+    // WAL_ANCHOR deletion is paused, so post-commit the anchor is still present, and same id.
+    ASSERT_EQ(anchor_id_before, ASSERT_RESULT(GetWalAnchorStreamId(source_table_id)));
+    ASSERT_EQ(ASSERT_RESULT(SourceStreamIdsForTable(source_table_id)).size(), 2);
+    ASSERT_EQ(
+        ASSERT_RESULT(SourceWalAnchorStreamIdsForTable(source_table_id)),
+        std::set<std::string>{anchor_id_before});
+    // Target still have the durable pending deletion marker.
+    ASSERT_TRUE(ASSERT_RESULT(TargetHasPendingDeletionMarker(target_table_id)));
+    // The anchor pins the WAL, the min required index for the table is held at 0.
+    ASSERT_OK(WaitForWalPinnedAtZero(source_table_id));
+
+    // Resume deletion, the anchor is cleaned up and the marker cleared, leaving just the regular
+    // stream.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_pause_wal_anchor_deletion) = false;
+    ASSERT_OK(WaitForWalAnchorDeletion(source_table_id));
+    ASSERT_OK(WaitForTargetDeletionMarkerCleared(target_table_id));
+    ASSERT_EQ(ASSERT_RESULT(SourceStreamIdsForTable(source_table_id)).size(), 1);
+    ASSERT_TRUE(ASSERT_RESULT(SourceWalAnchorStreamIdsForTable(source_table_id)).empty());
+    // With the anchor gone, the WAL is no longer pinned at 0.
+    ASSERT_OK(WaitForWalUnpinned(source_table_id));
+  }
+};
+
+TEST_F(XClusterWalAnchorStreamTest, BasicRollbackThenRetrySucceeds) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const auto kTableName = "anchor_basic";
+  RunBaseCase(
+      [&]() -> Status {
+        RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+            "CREATE TABLE $0 (key int PRIMARY KEY, v int UNIQUE)", kTableName));
+        return producer_conn_->ExecuteFormat(
+            "INSERT INTO $0 SELECT i, i * 2 FROM generate_series(1, 100) as i", kTableName);
+      },
+      /*table_name=*/kTableName, /*verify_tables=*/{kTableName});
+}
+
+TEST_F(XClusterWalAnchorStreamTest, CreateIndexBackfillRollbackThenRetrySucceeds) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const auto kBaseTable = "anchor_idx_base";
+  const auto kIndexName = "anchor_idx";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key int PRIMARY KEY, v int)", kBaseTable));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i * 2 FROM generate_series(1, 100) as i", kBaseTable));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  RunBaseCase(
+      [&]() -> Status {
+        return producer_conn_->ExecuteFormat("CREATE INDEX $0 ON $1(v ASC)",
+                                             kIndexName, kBaseTable);
+      },
+      /*table_name=*/kIndexName, /*verify_tables=*/{kBaseTable});
+}
+
+TEST_F(XClusterWalAnchorStreamTest, TableRewriteRollbackThenRetrySucceeds) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const auto kBaseTable = "anchor_rewrite_base";
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int, v int)", kBaseTable));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i * 2 FROM generate_series(1, 100) as i", kBaseTable));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // ADD PRIMARY KEY rewrites the table, creating a new table id with a new anchor under the same
+  // name, table_name resolves to that new id after the DDL runs.
+  RunBaseCase(
+      [&]() -> Status {
+        return producer_conn_->ExecuteFormat(
+            "ALTER TABLE $0 ADD PRIMARY KEY (key ASC)", kBaseTable);
+      },
+      /*table_name=*/kBaseTable, /*verify_tables=*/{kBaseTable});
+}
+
+// The stream created for a reconnecting table is not usable until its checkpoint lands. Until then
+// the target must keep retrying, without leaking a stream per attempt.
+TEST_F(XClusterWalAnchorStreamTest, ReconnectCheckpointFailureAndRetrySucceeds) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_pause_wal_anchor_deletion) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_stream_checkpoint) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 1;
+
+  const auto kTableName = "anchor_reprovision_retry";
+  ASSERT_OK(
+      producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int PRIMARY KEY, v int)", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i * 2 FROM generate_series(1, 50) as i", kTableName));
+
+  const auto source_table_id = ASSERT_RESULT(GetSourceTableId(kTableName));
+  ASSERT_OK(LoggedWaitFor(
+      [this, source_table_id]() { return HasWalAnchorStream(source_table_id); }, kTimeout,
+      "WAL anchor stream to be created"));
+  const auto anchor_id = ASSERT_RESULT(GetWalAnchorStreamId(source_table_id));
+
+  ASSERT_OK(
+      StringWaiterLogSink("Failing table stream checkpoint for testing").WaitFor(kTimeout));
+
+  // The new table stream exists but is still is_checkpointing, so it is not usable.
+  // it must stay stuck until the source finishes the checkpoint.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+
+  // Wait for the old table stream's async DELETING cleanup so the count is stable at 2.
+  ASSERT_OK(LoggedWaitFor(
+      [this, source_table_id]() -> Result<bool> {
+        return VERIFY_RESULT(SourceStreamIdsForTable(source_table_id)).size() == 2;
+      },
+      kTimeout, Format("source streams for $0 to settle at 2", source_table_id)));
+  ASSERT_EQ(anchor_id, ASSERT_RESULT(GetWalAnchorStreamId(source_table_id)));
+  ASSERT_OK(WaitForWalPinnedAtZero(source_table_id));
+
+  // Target DDL retries are running, but the source refuses to hand out the is_checkpointing stream,
+  // so the CREATE just keeps retrying.
+  ASSERT_NOK_STR_CONTAINS(
+      consumer_conn_->FetchAllAsString(Format("SELECT * FROM $0", kTableName)), "does not exist");
+  ASSERT_EQ(ASSERT_RESULT(SourceStreamIdsForTable(source_table_id)).size(), 2);
+
+  // Once the checkpoint can succeed, the next connect attempt gets the stream and the DDL goes
+  // through replaying the WAL the anchor held.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_stream_checkpoint) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_pause_wal_anchor_deletion) = false;
+  ASSERT_OK(WaitForWalAnchorDeletion(source_table_id));
+  ASSERT_EQ(ASSERT_RESULT(SourceStreamIdsForTable(source_table_id)).size(), 1);
+}
+
+// The deletion task must be durable across a target master leader crash at either point of the
+// two step deletion: before the anchor is deleted, and after the delete RPC but before the marker
+// clear was durable.
+TEST_F(XClusterWalAnchorStreamTest, GcTaskSurvivesTargetMasterRestart) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Pause deletion so the anchor + durable marker persist up to the first restart.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_pause_wal_anchor_deletion) = true;
+
+  const auto kTableName = "anchor_crash_before_gc";
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int PRIMARY KEY)", kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto source_table_id = ASSERT_RESULT(GetSourceTableId(kTableName));
+  const auto target_table_id = ASSERT_RESULT(GetTargetTableId(kTableName));
+  ASSERT_TRUE(ASSERT_RESULT(HasWalAnchorStream(source_table_id)));
+  ASSERT_TRUE(ASSERT_RESULT(TargetHasPendingDeletionMarker(target_table_id)));
+
+  // Crash between the DDL commit and the deletion. The marker is durable, so after recovery the
+  // leader still sees it and the source still holds the anchor.
+  ASSERT_OK(ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->Restart());
+  ASSERT_TRUE(ASSERT_RESULT(TargetHasPendingDeletionMarker(target_table_id)));
+  ASSERT_TRUE(ASSERT_RESULT(HasWalAnchorStream(source_table_id)));
+
+  // Let the recovered leader send the delete RPC, but stop it short of clearing the marker.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_wal_anchor_deletion_skip_marker_clear) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_pause_wal_anchor_deletion) = false;
+  ASSERT_OK(WaitForWalAnchorDeletion(source_table_id));
+  ASSERT_TRUE(ASSERT_RESULT(TargetHasPendingDeletionMarker(target_table_id)));
+
+  // Crash again, now after the RPC but before the marker clear was durable.
+  ASSERT_OK(ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->Restart());
+  ASSERT_TRUE(ASSERT_RESULT(TargetHasPendingDeletionMarker(target_table_id)));
+
+  // The task will resend the delete (an idempotent no-op since the anchor is already gone) and
+  // then clear the marker.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_wal_anchor_deletion_skip_marker_clear) = false;
+  ASSERT_OK(WaitForTargetDeletionMarkerCleared(target_table_id));
+  ASSERT_FALSE(ASSERT_RESULT(HasWalAnchorStream(source_table_id)));
+}
+
+// Deleting the whole replication group while an anchor is still live tears down both the
+// main and the anchor stream.
+TEST_F(XClusterWalAnchorStreamTest, DeleteReplicationGroupTearsDownAnchor) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_pause_wal_anchor_deletion) = true;
+
+  const auto kTableName = "anchor_drop_group";
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int PRIMARY KEY)", kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto source_table_id = ASSERT_RESULT(GetSourceTableId(kTableName));
+  ASSERT_EQ(ASSERT_RESULT(SourceStreamIdsForTable(source_table_id)).size(), 2);
+
+  ASSERT_OK(DeleteOutboundReplicationGroup());
+
+  ASSERT_OK(WaitForNoSourceStreams(source_table_id));
+}
+
+class XClusterWalAnchorStreamTxnBlockTest : public XClusterWalAnchorStreamTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    // Sweep the hidden tables of dropped tables often, so that their anchors get dropped promptly
+    // once cdc_wal_retention_time_secs elapses.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+    XClusterWalAnchorStreamTest::SetUp();
+  }
+};
+
+// Make sure Create and Drop in one transaction works, including when the target rolls the DDL
+// back. By the time the target connects the table again the source has already dropped it, so
+// creating a stream on a hidden table has to work.
+TEST_F(XClusterWalAnchorStreamTxnBlockTest, CreateAndDropSameTableInTxnLeavesNoStreams) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const auto baseline_streams = ASSERT_RESULT(CountAllSourceXClusterStreams());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+
+  const auto kTableName = "anchor_create_drop_txn";
+  ASSERT_OK(producer_conn_->Execute("BEGIN"));
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int PRIMARY KEY)", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP TABLE $0", kTableName));
+  ASSERT_OK(producer_conn_->Execute("COMMIT"));
+
+  ASSERT_OK(StringWaiterLogSink("Failed DDL operation as requested").WaitFor(kTimeout));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // The target never asks the source to delete the anchor of a dropped table, since it cannot tell
+  // a committed drop from rollback. The source drops it once the hidden table
+  // has outlived cdc_wal_retention_time_secs.
+  // TODO(#33446): Distinguish commit vs rollback for CREATE+DROP in one txn so we can delete the
+  // WAL anchor immediately instead of waiting for hidden-table expiry.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 5;
+
+  // No streams should leak.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(CountAllSourceXClusterStreams()) == baseline_streams;
+      },
+      kTimeout, "source xCluster streams to return to baseline after create+drop in one txn"));
+}
+
+TEST_F(XClusterWalAnchorStreamTxnBlockTest, AnchorsHeldPerTableInTransactionBlock) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Keep anchors around after commit so we can inspect them.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_pause_wal_anchor_deletion) = true;
+
+  // Fail the second CREATE of the transaction block, so the first table is already created on the
+  // target when the transaction rolls back.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl_matching) =
+      "anchor_txn_b";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+
+  ASSERT_OK(producer_conn_->Execute(
+      "BEGIN; "
+      "CREATE TABLE anchor_txn_a (key int PRIMARY KEY, v int); "
+      "CREATE TABLE anchor_txn_b (key int PRIMARY KEY, v int); "
+      "COMMIT"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO anchor_txn_a SELECT i, i FROM generate_series(1, 50) as i"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO anchor_txn_b SELECT i, i FROM generate_series(1, 50) as i"));
+
+  ASSERT_OK(StringWaiterLogSink("Failed DDL operation as requested").WaitFor(kTimeout));
+
+  // Allow the retry to roll forward off the anchored WAL.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl_matching) = "";
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  struct AnchoredTable {
+    TableId source_table_id;
+    TableId target_table_id;
+  };
+  std::vector<AnchoredTable> tables;
+  for (const auto& table_name : {"anchor_txn_a", "anchor_txn_b"}) {
+    ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{table_name}));
+    tables.push_back(
+        {ASSERT_RESULT(GetSourceTableId(table_name)),
+         ASSERT_RESULT(GetTargetTableId(table_name))});
+  }
+
+  // Every table got an anchor, a durable deletion marker, and its WAL pinned at 0.
+  for (const auto& [source_table_id, target_table_id] : tables) {
+    ASSERT_TRUE(ASSERT_RESULT(HasWalAnchorStream(source_table_id)));
+    ASSERT_TRUE(ASSERT_RESULT(TargetHasPendingDeletionMarker(target_table_id)));
+    ASSERT_OK(WaitForWalPinnedAtZero(source_table_id));
+  }
+
+  // Resume deletion, every anchor is cleaned up, every marker cleared, and no WAL stays pinned.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_pause_wal_anchor_deletion) = false;
+  for (const auto& [source_table_id, target_table_id] : tables) {
+    ASSERT_OK(WaitForWalAnchorDeletion(source_table_id));
+    ASSERT_OK(WaitForTargetDeletionMarkerCleared(target_table_id));
+    ASSERT_OK(WaitForWalUnpinned(source_table_id));
+  }
 }
 
 }  // namespace yb

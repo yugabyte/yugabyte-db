@@ -231,6 +231,10 @@ class XClusterManager : public XClusterManagerIf,
       const RepairOutboundXClusterReplicationGroupRemoveTableRequestPB* req,
       RepairOutboundXClusterReplicationGroupRemoveTableResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+  Status DeleteXClusterWalAnchorStreams(
+      const DeleteXClusterWalAnchorStreamsRequestPB* req,
+      DeleteXClusterWalAnchorStreamsResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
   Status GetXClusterOutboundReplicationGroups(
       const GetXClusterOutboundReplicationGroupsRequestPB* req,
       GetXClusterOutboundReplicationGroupsResponsePB* resp, rpc::RpcContext* rpc,
@@ -264,6 +268,8 @@ class XClusterManager : public XClusterManagerIf,
 
   Status ClearXClusterFieldsAfterYsqlDDL(
       TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) override;
+
+  void MarkWalAnchorDeletionPending(const TableId& table_id) override;
 
   void NotifyAutoFlagsConfigChanged() override;
 

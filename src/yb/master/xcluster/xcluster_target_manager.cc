@@ -14,6 +14,7 @@
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
 #include <algorithm>
+#include <map>
 
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
@@ -46,6 +47,7 @@
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_alter_helper.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
+#include "yb/master/xcluster/xcluster_wal_anchor_deletion_task.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -63,6 +65,9 @@ DEFINE_RUNTIME_uint32(add_new_index_to_bidirectional_xcluster_timeout_secs, 10 *
     "Time in seconds within which index must be created on other universe when the indexed table "
     "is part of bidirectional xCluster replication. Applies only when "
     "--ysql_auto_add_new_index_to_bidirectional_xcluster is set.");
+
+DEFINE_test_flag(bool, xcluster_pause_wal_anchor_deletion, false,
+    "If set, skip send request for deleting the source WAL_ANCHOR streams.");
 
 DECLARE_bool(ysql_auto_add_new_index_to_bidirectional_xcluster);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
@@ -115,6 +120,11 @@ void XClusterTargetManager::Clear() {
     std::lock_guard l(table_stream_ids_map_mutex_);
     table_stream_ids_map_.clear();
   }
+
+  {
+    std::lock_guard l(wal_anchor_deletion_mutex_);
+    pending_wal_anchor_deletion_tables_.clear();
+  }
 }
 
 Status XClusterTargetManager::RunLoaders() {
@@ -141,6 +151,8 @@ void XClusterTargetManager::SysCatalogLoaded() {
       stale_failover_replication_groups_.push_back(universe->ReplicationGroupId());
     }
   }
+
+  RebuildPendingWalAnchorDeletionTables();
 
   safe_time_service_->ScheduleTaskIfNeeded();
 }
@@ -434,6 +446,10 @@ void XClusterTargetManager::RunBgTasks(const LeaderEpoch& epoch) {
   WARN_NOT_OK(
       CleanupStaleFailovers(epoch),
       "Failed to clean up stale in-progress failovers");
+
+  WARN_NOT_OK(
+      DeletePendingWalAnchorStreams(epoch),
+      "Failed to delete pending xCluster WAL_ANCHOR streams on source");
 }
 
 Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpoch& epoch) {
@@ -779,6 +795,8 @@ Status XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(
                          << ") in namespace " << table_info->namespace_id();
   }
 
+  const auto source_table_id = table_pb.xcluster_table_info().xcluster_source_table_id();
+
   // Clear xcluster_table_info if present.  Exception: leave just xcluster_backfill_hybrid_time if
   // present: we will clear that when the backfill succeeds.  (We need it to start the backfill,
   // which begins after this DDL finishes.)
@@ -792,6 +810,137 @@ Status XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(
     }
   }
 
+  // Written in the same catalog upsert as the DDL commit. Our caller calls
+  // MarkWalAnchorDeletionPending once that write commits. Colocated tables share their parent's
+  // stream, so they are not anchored.
+  if (!source_table_id.empty() && IsXClusterWalAnchorStreamEnabled() &&
+      !table_info->IsSecondaryTable()) {
+    table_pb.set_xcluster_pending_wal_anchor_deletion_source_table_id(source_table_id);
+  }
+
+  return Status::OK();
+}
+
+void XClusterTargetManager::MarkWalAnchorDeletionPending(const TableId& table_id) {
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  pending_wal_anchor_deletion_tables_.insert(table_id);
+}
+
+Status XClusterTargetManager::DeletePendingWalAnchorStreams(const LeaderEpoch& epoch) {
+  if (FLAGS_TEST_xcluster_pause_wal_anchor_deletion) {
+    return Status::OK();
+  }
+
+  {
+    std::lock_guard guard(wal_anchor_deletion_mutex_);
+    // Nothing to delete, or the previous task is still working on it.
+    if (pending_wal_anchor_deletion_tables_.empty() || wal_anchor_deletion_task_.lock()) {
+      return Status::OK();
+    }
+  }
+
+  auto task = std::make_shared<XClusterWalAnchorDeletionTask>(
+      catalog_manager_, *master_.messenger(), *this, epoch);
+  task->Start();
+  return Status::OK();
+}
+
+Status XClusterTargetManager::RegisterWalAnchorDeletionTask(server::MonitoredTaskPtr task) {
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  SCHECK(
+      !wal_anchor_deletion_task_.lock(), AlreadyPresent,
+      "xCluster WAL_ANCHOR stream deletion is already in progress");
+  wal_anchor_deletion_task_ = task;
+  return Status::OK();
+}
+
+void XClusterTargetManager::UnRegisterWalAnchorDeletionTask(server::MonitoredTaskPtr task) {
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  if (wal_anchor_deletion_task_.lock() == task) {
+    wal_anchor_deletion_task_.reset();
+  }
+}
+
+std::vector<TableId> XClusterTargetManager::GetPendingWalAnchorDeletionTables() const {
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  return {pending_wal_anchor_deletion_tables_.begin(), pending_wal_anchor_deletion_tables_.end()};
+}
+
+void XClusterTargetManager::RemovePendingWalAnchorDeletionsFromSet(
+    const std::vector<TableId>& consumer_table_ids) {
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  for (const auto& consumer_table_id : consumer_table_ids) {
+    pending_wal_anchor_deletion_tables_.erase(consumer_table_id);
+  }
+}
+
+void XClusterTargetManager::RebuildPendingWalAnchorDeletionTables() {
+  std::vector<TableId> consumer_table_ids;
+  {
+    SharedLock table_stream_l(table_stream_ids_map_mutex_);
+    consumer_table_ids.reserve(table_stream_ids_map_.size());
+    for (const auto& [table_id, _] : table_stream_ids_map_) {
+      consumer_table_ids.push_back(xcluster::StripSequencesDataAliasIfPresent(table_id));
+    }
+  }
+
+  std::set<TableId> tables_with_marker;
+  for (const auto& consumer_table_id : consumer_table_ids) {
+    auto table_info = catalog_manager_.GetTableInfo(consumer_table_id);
+    if (!table_info) {
+      continue;
+    }
+    if (!table_info->LockForRead()
+             ->pb.xcluster_pending_wal_anchor_deletion_source_table_id()
+             .empty()) {
+      tables_with_marker.insert(consumer_table_id);
+    }
+  }
+
+  LOG_IF(INFO, !tables_with_marker.empty())
+      << "Found " << tables_with_marker.size()
+      << " table(s) with a pending xCluster WAL_ANCHOR stream deletion marker: "
+      << yb::ToString(tables_with_marker);
+
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  pending_wal_anchor_deletion_tables_.insert(tables_with_marker.begin(), tables_with_marker.end());
+}
+
+Status XClusterTargetManager::ClearWalAnchorDeletionMarkers(
+    const std::vector<TableId>& consumer_table_ids, const LeaderEpoch& epoch) {
+  const std::set<TableId> sorted_table_ids(consumer_table_ids.begin(), consumer_table_ids.end());
+
+  std::vector<std::pair<TableInfoPtr, TableInfo::WriteLock>> tables_and_locks;
+  for (const auto& consumer_table_id : sorted_table_ids) {
+    auto table_info = catalog_manager_.GetTableInfo(consumer_table_id);
+    if (!table_info) {
+      continue;
+    }
+    auto l = table_info->LockForWrite();
+    l.mutable_data()->pb.clear_xcluster_pending_wal_anchor_deletion_source_table_id();
+    tables_and_locks.emplace_back(std::move(table_info), std::move(l));
+  }
+
+  if (tables_and_locks.empty()) {
+    return Status::OK();
+  }
+
+  std::vector<TableInfo*> tables_to_upsert;
+  tables_to_upsert.reserve(tables_and_locks.size());
+  for (const auto& [table_info, l] : tables_and_locks) {
+    tables_to_upsert.push_back(table_info.get());
+  }
+  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, tables_to_upsert));
+  for (auto& [table_info, l] : tables_and_locks) {
+    l.Commit();
+  }
+
+  // The markers these tables were tracked for are gone, so stop carrying them. The table locks are
+  // committed above, so this does not take wal_anchor_deletion_mutex_ while holding one.
+  std::lock_guard guard(wal_anchor_deletion_mutex_);
+  for (const auto& [table_info, l] : tables_and_locks) {
+    pending_wal_anchor_deletion_tables_.erase(table_info->id());
+  }
   return Status::OK();
 }
 
