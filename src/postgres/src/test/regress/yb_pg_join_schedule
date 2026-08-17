@@ -6,6 +6,8 @@
 # Dependencies for `yb.port.join`
 test: yb.depd.float8_tbl
 test: yb.depd.int4_tbl
+test: yb.depd.int8_tbl
+test: yb.depd.onek
 test: yb.depd.tenk1
 test: yb.depd.tenk2
 

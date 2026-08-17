@@ -3,5 +3,6 @@
 ####################################################################################################
 # This includes tests for Joins
 ####################################################################################################
+test: yb.orig.join_batching_partition
 test: yb.orig.join_batching
 test: yb.orig.join_batching_parallel

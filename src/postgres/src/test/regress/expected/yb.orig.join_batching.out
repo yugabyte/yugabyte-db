@@ -2210,6 +2210,55 @@ on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a > 20;
  25 | 25 | 25
 (2 rows)
 
+-- Quals referencing a left join's null-producing side change across the join
+-- boundary: PG19 marks their Vars (varnullingrels) above it. The batched copy
+-- in the inner scan is unmarked; both must count as one re-applied qual.
+SET yb_bnl_batch_size = 3;
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_material = off;
+SET join_collapse_limit = 1;
+explain (costs off) select s1.a, s2.a, s3.a from s1 left outer join s2
+on s2.a = s1.a + 1 left outer join s3 on s3.a = s2.a order by 1, 2, 3;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Sort
+   Sort Key: s1.a, s2.a, s3.a
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: (s3.a = s2.a)
+         ->  YB Batched Nested Loop Left Join
+               Join Filter: (s2.a = (s1.a + 1))
+               ->  Seq Scan on s1
+               ->  Index Scan using s2_pkey on s2
+                     Index Cond: (a = ANY (ARRAY[(s1.a + 1), ($1 + 1), ($2 + 1)]))
+         ->  Index Scan using s3_pkey on s3
+               Index Cond: (a = ANY (ARRAY[s2.a, $4, $5]))
+(11 rows)
+
+select s1.a, s2.a, s3.a from s1 left outer join s2
+on s2.a = s1.a + 1 left outer join s3 on s3.a = s2.a order by 1, 2, 3;
+ a  | a  | a  
+----+----+----
+ 24 | 25 | 25
+ 25 |    |   
+(2 rows)
+
+SET yb_bnl_enable_hashing = off;
+select s1.a, s2.a, s3.a from s1 left outer join s2
+on s2.a = s1.a + 1 left outer join s3 on s3.a = s2.a order by 1, 2, 3;
+ a  | a  | a  
+----+----+----
+ 24 | 25 | 25
+ 25 |    |   
+(2 rows)
+
+RESET yb_bnl_enable_hashing;
+RESET join_collapse_limit;
+RESET enable_material;
+RESET enable_mergejoin;
+RESET enable_hashjoin;
+RESET yb_bnl_batch_size;
+
 drop table s1;
 drop table s2;
 drop table s3;
@@ -3665,7 +3714,7 @@ WHERE t3.c_vc_key  = t2.c_vc
      1
 (1 row)
 
--- BNL hashing off still needs scalar rechecks.
+-- BNL hashing off still needs the scalar clauses re-applied.
 SET yb_bnl_enable_hashing = off;
 /*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) YbBatchedNL(t1 t3) */
 SELECT COUNT(*)
@@ -3728,3 +3777,218 @@ SELECT t.* FROM generate_series(1, 100) i, generate_series(1, 100) j, t_multi_ta
 (11 rows)
 
 DROP TABLE t_multi_tablet;
+-------------------------------------------------------------------------
+-- BNL over join shapes from upstream commit
+-- 2489d76c4906f4461a364ca8ad7e0751ead8aa0d ("Make Vars be
+-- outer-join-aware", PG16): join-alias Vars, coerced join-alias Vars, and
+-- full-join strength reduction, with the join clauses batched.  See the
+-- "Vars and PlaceHolderVars" section of src/backend/optimizer/README.
+-------------------------------------------------------------------------
+create table ja0 (f1 int, primary key (f1 asc));
+create table ja1 (f1 int, x int, primary key (f1 asc));
+create index on ja1 (x asc);
+create table ja2 (x int, y int, primary key (x asc));
+insert into ja0 select i from generate_series(1, 20) i;
+insert into ja1 select i, i % 10 from generate_series(1, 15) i;
+insert into ja2 select i, i * 100 from generate_series(0, 6) i;
+create table ag1 (f1 int, f2 int, primary key (f1 asc));
+create index on ag1 (f2 asc);
+insert into ag1 select i, i + 10 from generate_series(1, 8) i;
+create table ag2 (f1 bigint, f2 oid, primary key (f1 asc));
+create index on ag2 (f2 asc);
+insert into ag2 select i, i + 10 from generate_series(1, 5) i;
+SET yb_bnl_batch_size = 3;
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_material = off;
+SET yb_prefer_bnl = on;
+SET join_collapse_limit = 1;
+-- USING join alias referenced across nested left joins.
+explain (costs off) select * from ja0 left join (ja1 left join ja2 using (x)) ss
+  on ja0.f1 = ss.f1 order by ja0.f1, x;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Sort
+   Sort Key: ja0.f1, ja1.x
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: (ja0.f1 = ja1.f1)
+         ->  Seq Scan on ja0
+         ->  YB Batched Nested Loop Left Join
+               Join Filter: (ja1.x = ja2.x)
+               Sort Keys: ja1.f1
+               ->  Index Scan using ja1_pkey on ja1
+                     Index Cond: (f1 = ANY (ARRAY[ja0.f1, $1, $2]))
+               ->  Index Scan using ja2_pkey on ja2
+                     Index Cond: (x = ANY (ARRAY[ja1.x, $4, $5]))
+(12 rows)
+
+select * from ja0 left join (ja1 left join ja2 using (x)) ss
+  on ja0.f1 = ss.f1 order by ja0.f1, x;
+ f1 | x | f1 |  y  
+----+---+----+-----
+  1 | 1 |  1 | 100
+  2 | 2 |  2 | 200
+  3 | 3 |  3 | 300
+  4 | 4 |  4 | 400
+  5 | 5 |  5 | 500
+  6 | 6 |  6 | 600
+  7 | 7 |  7 |    
+  8 | 8 |  8 |    
+  9 | 9 |  9 |    
+ 10 | 0 | 10 |   0
+ 11 | 1 | 11 | 100
+ 12 | 2 | 12 | 200
+ 13 | 3 | 13 | 300
+ 14 | 4 | 14 | 400
+ 15 | 5 | 15 | 500
+ 16 |   |    |    
+ 17 |   |    |    
+ 18 |   |    |    
+ 19 |   |    |    
+ 20 |   |    |    
+(20 rows)
+
+-- Full-join strength reduction: a strict WHERE on one side turns the full
+-- join into a left join (on both sides: an inner join), which BNL batches.
+explain (costs off) select a.f1, b.y from ja1 a full join ja2 b
+  on a.x = b.x where a.f1 <= 12;
+                     QUERY PLAN                     
+----------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (a.x = b.x)
+   ->  Index Scan using ja1_pkey on ja1 a
+         Index Cond: (f1 <= 12)
+   ->  Index Scan using ja2_pkey on ja2 b
+         Index Cond: (x = ANY (ARRAY[a.x, $1, $2]))
+(6 rows)
+
+select a.f1, b.y from ja1 a full join ja2 b
+  on a.x = b.x where a.f1 <= 12 order by a.f1, b.y;
+ f1 |  y  
+----+-----
+  1 | 100
+  2 | 200
+  3 | 300
+  4 | 400
+  5 | 500
+  6 | 600
+  7 |    
+  8 |    
+  9 |    
+ 10 |   0
+ 11 | 100
+ 12 | 200
+(12 rows)
+
+explain (costs off) select a.f1, b.y from ja1 a full join ja2 b
+  on a.x = b.x where a.f1 <= 12 and b.y >= 0;
+                     QUERY PLAN                     
+----------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (b.x = a.x)
+   ->  Index Scan using ja1_pkey on ja1 a
+         Index Cond: (f1 <= 12)
+   ->  Index Scan using ja2_pkey on ja2 b
+         Index Cond: (x = ANY (ARRAY[a.x, $1, $2]))
+         Filter: (y >= 0)
+(7 rows)
+
+select a.f1, b.y from ja1 a full join ja2 b
+  on a.x = b.x where a.f1 <= 12 and b.y >= 0 order by a.f1, b.y;
+ f1 |  y  
+----+-----
+  1 | 100
+  2 | 200
+  3 | 300
+  4 | 400
+  5 | 500
+  6 | 600
+ 10 |   0
+ 11 | 100
+ 12 | 200
+(9 rows)
+
+-- Coerced join-alias Vars as the grouping key above a left join whose ON
+-- references only the row-preserving side; the alias coercion also runs
+-- through the batched lookup (int to bigint, and RelabelType for oid).
+explain (costs off) select f1, count(ag2.f2) from
+  ag1 x(x0,x1) left join (ag1 left join ag2 using (f1)) on (x0 = 1)
+  group by f1 order by f1;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ GroupAggregate
+   Group Key: ((ag1.f1)::bigint)
+   ->  Sort
+         Sort Key: ((ag1.f1)::bigint)
+         ->  Nested Loop Left Join
+               Join Filter: (x.x0 = 1)
+               ->  Seq Scan on ag1 x
+               ->  YB Batched Nested Loop Left Join
+                     Join Filter: (ag1.f1 = ag2.f1)
+                     ->  Seq Scan on ag1
+                     ->  Index Scan using ag2_pkey on ag2
+                           Index Cond: (f1 = ANY (ARRAY[ag1.f1, $1, $2]))
+(12 rows)
+
+select f1, count(ag2.f2) from
+  ag1 x(x0,x1) left join (ag1 left join ag2 using (f1)) on (x0 = 1)
+  group by f1 order by f1;
+ f1 | count 
+----+-------
+  1 |     1
+  2 |     1
+  3 |     1
+  4 |     1
+  5 |     1
+  6 |     0
+  7 |     0
+  8 |     0
+    |     0
+(9 rows)
+
+explain (costs off) select f2, count(ag2.f1) from
+  ag1 x(x0,x1) left join (ag1 left join ag2 using (f2)) on (x0 = 1)
+  group by f2 order by f2;
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ GroupAggregate
+   Group Key: ((ag1.f2)::oid)
+   ->  Sort
+         Sort Key: ((ag1.f2)::oid)
+         ->  Nested Loop Left Join
+               Join Filter: (x.x0 = 1)
+               ->  Seq Scan on ag1 x
+               ->  YB Batched Nested Loop Left Join
+                     Join Filter: ((ag1.f2)::oid = ag2.f2)
+                     ->  Seq Scan on ag1
+                     ->  Index Scan using ag2_f2_idx on ag2
+                           Index Cond: (f2 = ANY (ARRAY[(ag1.f2)::oid, ($1)::oid, ($2)::oid]))
+(12 rows)
+
+select f2, count(ag2.f1) from
+  ag1 x(x0,x1) left join (ag1 left join ag2 using (f2)) on (x0 = 1)
+  group by f2 order by f2;
+ f2 | count 
+----+-------
+ 11 |     1
+ 12 |     1
+ 13 |     1
+ 14 |     1
+ 15 |     1
+ 16 |     0
+ 17 |     0
+ 18 |     0
+    |     0
+(9 rows)
+
+RESET join_collapse_limit;
+RESET yb_prefer_bnl;
+RESET enable_material;
+RESET enable_mergejoin;
+RESET enable_hashjoin;
+RESET yb_bnl_batch_size;
+DROP TABLE ja0;
+DROP TABLE ja1;
+DROP TABLE ja2;
+DROP TABLE ag1;
+DROP TABLE ag2;

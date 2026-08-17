@@ -722,6 +722,33 @@ on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a > 20;
 /*+set(yb_bnl_batch_size 3) Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/ select * from s1 left outer join s2
 on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a > 20;
 
+-- Quals referencing a left join's null-producing side change across the join
+-- boundary: PG19 marks their Vars (varnullingrels) above it. The batched copy
+-- in the inner scan is unmarked; both must count as one re-applied qual.
+SET yb_bnl_batch_size = 3;
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_material = off;
+SET join_collapse_limit = 1;
+
+explain (costs off) select s1.a, s2.a, s3.a from s1 left outer join s2
+on s2.a = s1.a + 1 left outer join s3 on s3.a = s2.a order by 1, 2, 3;
+
+select s1.a, s2.a, s3.a from s1 left outer join s2
+on s2.a = s1.a + 1 left outer join s3 on s3.a = s2.a order by 1, 2, 3;
+
+SET yb_bnl_enable_hashing = off;
+
+select s1.a, s2.a, s3.a from s1 left outer join s2
+on s2.a = s1.a + 1 left outer join s3 on s3.a = s2.a order by 1, 2, 3;
+
+RESET yb_bnl_enable_hashing;
+RESET join_collapse_limit;
+RESET enable_material;
+RESET enable_mergejoin;
+RESET enable_hashjoin;
+RESET yb_bnl_batch_size;
+
 drop table s1;
 drop table s2;
 drop table s3;
@@ -1413,7 +1440,7 @@ WHERE t3.c_vc_key  = t2.c_vc
       SELECT s.c_int FROM repro31724 AS s WHERE s.c_vc = t1.c_vc
   );
 
--- BNL hashing off still needs scalar rechecks.
+-- BNL hashing off still needs the scalar clauses re-applied.
 SET yb_bnl_enable_hashing = off;
 
 /*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) YbBatchedNL(t1 t3) */
@@ -1447,3 +1474,78 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT t.* FROM generate_series(1, 100) i, generate_series(1, 100) j, t_multi_tablet t WHERE h1 = i AND h2 = j;
 
 DROP TABLE t_multi_tablet;
+
+
+-------------------------------------------------------------------------
+-- BNL over join shapes from upstream commit
+-- 2489d76c4906f4461a364ca8ad7e0751ead8aa0d ("Make Vars be
+-- outer-join-aware", PG16): join-alias Vars, coerced join-alias Vars, and
+-- full-join strength reduction, with the join clauses batched.  See the
+-- "Vars and PlaceHolderVars" section of src/backend/optimizer/README.
+-------------------------------------------------------------------------
+create table ja0 (f1 int, primary key (f1 asc));
+create table ja1 (f1 int, x int, primary key (f1 asc));
+create index on ja1 (x asc);
+create table ja2 (x int, y int, primary key (x asc));
+insert into ja0 select i from generate_series(1, 20) i;
+insert into ja1 select i, i % 10 from generate_series(1, 15) i;
+insert into ja2 select i, i * 100 from generate_series(0, 6) i;
+create table ag1 (f1 int, f2 int, primary key (f1 asc));
+create index on ag1 (f2 asc);
+insert into ag1 select i, i + 10 from generate_series(1, 8) i;
+create table ag2 (f1 bigint, f2 oid, primary key (f1 asc));
+create index on ag2 (f2 asc);
+insert into ag2 select i, i + 10 from generate_series(1, 5) i;
+
+SET yb_bnl_batch_size = 3;
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_material = off;
+SET yb_prefer_bnl = on;
+SET join_collapse_limit = 1;
+
+-- USING join alias referenced across nested left joins.
+explain (costs off) select * from ja0 left join (ja1 left join ja2 using (x)) ss
+  on ja0.f1 = ss.f1 order by ja0.f1, x;
+select * from ja0 left join (ja1 left join ja2 using (x)) ss
+  on ja0.f1 = ss.f1 order by ja0.f1, x;
+
+-- Full-join strength reduction: a strict WHERE on one side turns the full
+-- join into a left join (on both sides: an inner join), which BNL batches.
+explain (costs off) select a.f1, b.y from ja1 a full join ja2 b
+  on a.x = b.x where a.f1 <= 12;
+select a.f1, b.y from ja1 a full join ja2 b
+  on a.x = b.x where a.f1 <= 12 order by a.f1, b.y;
+explain (costs off) select a.f1, b.y from ja1 a full join ja2 b
+  on a.x = b.x where a.f1 <= 12 and b.y >= 0;
+select a.f1, b.y from ja1 a full join ja2 b
+  on a.x = b.x where a.f1 <= 12 and b.y >= 0 order by a.f1, b.y;
+
+-- Coerced join-alias Vars as the grouping key above a left join whose ON
+-- references only the row-preserving side; the alias coercion also runs
+-- through the batched lookup (int to bigint, and RelabelType for oid).
+explain (costs off) select f1, count(ag2.f2) from
+  ag1 x(x0,x1) left join (ag1 left join ag2 using (f1)) on (x0 = 1)
+  group by f1 order by f1;
+select f1, count(ag2.f2) from
+  ag1 x(x0,x1) left join (ag1 left join ag2 using (f1)) on (x0 = 1)
+  group by f1 order by f1;
+explain (costs off) select f2, count(ag2.f1) from
+  ag1 x(x0,x1) left join (ag1 left join ag2 using (f2)) on (x0 = 1)
+  group by f2 order by f2;
+select f2, count(ag2.f1) from
+  ag1 x(x0,x1) left join (ag1 left join ag2 using (f2)) on (x0 = 1)
+  group by f2 order by f2;
+
+RESET join_collapse_limit;
+RESET yb_prefer_bnl;
+RESET enable_material;
+RESET enable_mergejoin;
+RESET enable_hashjoin;
+RESET yb_bnl_batch_size;
+
+DROP TABLE ja0;
+DROP TABLE ja1;
+DROP TABLE ja2;
+DROP TABLE ag1;
+DROP TABLE ag2;

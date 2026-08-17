@@ -1,0 +1,784 @@
+--
+-- BNL with partitioned tables
+--
+-- Derived from yb.port.partition_join by forcing batched nested loop join.
+--
+-- BNL batches into an Append over the partitions: create_append_path
+-- accumulates the batching requirement of the subpaths, so the whole Append
+-- becomes a batched inner.  That beats a partitionwise join on cost for every
+-- shape below, so none of these plans is partitionwise even where the join
+-- keys would allow it.  enable_partitionwise_join is toggled anyway, so that
+-- a costing change which starts choosing per-partition child joins shows up
+-- here as a plan diff.
+--
+-- The outer joins matter for a second reason.  A qual referencing a left
+-- join's null-producing side exists as several RestrictInfo clones differing
+-- only in varnullingrels, and BNL re-adds such quals to its Join Filter, so
+-- it has to install the clone valid at the join being built.  The 3-way
+-- cases below cover that: the upper BNL's Join Filter references a relation
+-- the lower left join can null.
+--
+-- Plans are forced with GUCs, not pg_hint_plan hints: the extension is not
+-- built on this branch yet, so hints would be silently ignored.
+--
+CREATE TABLE prt1 (a int, b int, c varchar) PARTITION BY RANGE(a);
+CREATE TABLE prt1_p1 PARTITION OF prt1 FOR VALUES FROM (0) TO (250);
+CREATE TABLE prt1_p3 PARTITION OF prt1 FOR VALUES FROM (500) TO (600);
+CREATE TABLE prt1_p2 PARTITION OF prt1 FOR VALUES FROM (250) TO (500);
+INSERT INTO prt1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
+CREATE INDEX iprt1_p1_a on prt1_p1(a);
+CREATE INDEX iprt1_p2_a on prt1_p2(a);
+CREATE INDEX iprt1_p3_a on prt1_p3(a);
+ANALYZE prt1;
+CREATE TABLE prt2 (a int, b int, c varchar) PARTITION BY RANGE(b);
+CREATE TABLE prt2_p1 PARTITION OF prt2 FOR VALUES FROM (0) TO (250);
+CREATE TABLE prt2_p2 PARTITION OF prt2 FOR VALUES FROM (250) TO (500);
+CREATE TABLE prt2_p3 PARTITION OF prt2 FOR VALUES FROM (500) TO (600);
+INSERT INTO prt2 SELECT i % 25, i, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 3 = 0;
+CREATE INDEX iprt2_p1_b on prt2_p1(b);
+CREATE INDEX iprt2_p2_b on prt2_p2(b);
+CREATE INDEX iprt2_p3_b on prt2_p3(b);
+ANALYZE prt2;
+-- Ranges do not line up with prt1, so partitionwise join cannot apply.
+CREATE TABLE prt4_n (a int, b int, c text) PARTITION BY RANGE(a);
+CREATE TABLE prt4_n_p1 PARTITION OF prt4_n FOR VALUES FROM (0) TO (300);
+CREATE TABLE prt4_n_p2 PARTITION OF prt4_n FOR VALUES FROM (300) TO (500);
+CREATE TABLE prt4_n_p3 PARTITION OF prt4_n FOR VALUES FROM (500) TO (600);
+INSERT INTO prt4_n SELECT i, i, to_char(i, 'FM0000') FROM generate_series(0, 599, 2) i;
+ANALYZE prt4_n;
+-- Force BNL: no other join method, and prefer batching over a plain nestloop.
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_material = off;
+SET enable_nestloop = off;
+SET yb_prefer_bnl = on;
+SET yb_bnl_batch_size = 3;
+SET max_parallel_workers_per_gather = 0;
+SET enable_partitionwise_join = on;
+--
+-- enable_partitionwise_join = on (BNL over Append still wins)
+--
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t2.b = t1.a)
+         ->  Append
+               ->  Seq Scan on prt2_p1 t2_1
+               ->  Seq Scan on prt2_p2 t2_2
+               ->  Seq Scan on prt2_p3 t2_3
+         ->  Append
+               ->  Index Scan using iprt1_p1_a on prt1_p1 t1_1
+                     Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
+                     Filter: (b = 0)
+               ->  Index Scan using iprt1_p2_a on prt1_p2 t1_2
+                     Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
+                     Filter: (b = 0)
+               ->  Index Scan using iprt1_p3_a on prt1_p3 t1_3
+                     Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
+                     Filter: (b = 0)
+(18 rows)
+
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+   0 | 0000 |   0 | 0000
+ 150 | 0150 | 150 | 0150
+ 300 | 0300 | 300 | 0300
+ 450 | 0450 | 450 | 0450
+(4 rows)
+
+-- Partially-redundant join clauses: both derive from one EquivalenceClass, so
+-- only one of them should end up in the Join Filter.
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.a AND t1.a = t2.b ORDER BY t1.a, t2.b;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t2.a = t1.a)
+         ->  Append
+               ->  Seq Scan on prt2_p1 t2_1
+                     Filter: (a = b)
+               ->  Seq Scan on prt2_p2 t2_2
+                     Filter: (a = b)
+               ->  Seq Scan on prt2_p3 t2_3
+                     Filter: (a = b)
+         ->  Append
+               ->  Index Scan using iprt1_p1_a on prt1_p1 t1_1
+                     Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
+               ->  Index Scan using iprt1_p2_a on prt1_p2 t1_2
+                     Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
+               ->  Index Scan using iprt1_p3_a on prt1_p3 t1_3
+                     Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
+(18 rows)
+
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.a AND t1.a = t2.b ORDER BY t1.a, t2.b;
+ a  |  c   | b  |  c   
+----+------+----+------
+  0 | 0000 |  0 | 0000
+  6 | 0006 |  6 | 0006
+ 12 | 0012 | 12 | 0012
+ 18 | 0018 | 18 | 0018
+ 24 | 0024 | 24 | 0024
+(5 rows)
+
+--
+-- Outer joins over the partition boundary
+--
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Sort
+   Sort Key: t1.a, t2.b
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: (t1.a = t2.b)
+         ->  Append
+               ->  Seq Scan on prt1_p1 t1_1
+                     Filter: (b = 0)
+               ->  Seq Scan on prt1_p2 t1_2
+                     Filter: (b = 0)
+               ->  Seq Scan on prt1_p3 t1_3
+                     Filter: (b = 0)
+         ->  Append
+               ->  Index Scan using iprt2_p1_b on prt2_p1 t2_1
+                     Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
+               ->  Index Scan using iprt2_p2_b on prt2_p2 t2_2
+                     Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
+               ->  Index Scan using iprt2_p3_b on prt2_p3 t2_3
+                     Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
+(18 rows)
+
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1 LEFT JOIN prt2 t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+   0 | 0000 |   0 | 0000
+  50 | 0050 |     | 
+ 100 | 0100 |     | 
+ 150 | 0150 | 150 | 0150
+ 200 | 0200 |     | 
+ 250 | 0250 |     | 
+ 300 | 0300 | 300 | 0300
+ 350 | 0350 |     | 
+ 400 | 0400 |     | 
+ 450 | 0450 | 450 | 0450
+ 500 | 0500 |     | 
+ 550 | 0550 |     | 
+(12 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt2 t2 RIGHT JOIN prt1 t1 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Sort
+   Sort Key: t1.a, t2.b
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: (t1.a = t2.b)
+         ->  Append
+               ->  Seq Scan on prt1_p1 t1_1
+                     Filter: (b = 0)
+               ->  Seq Scan on prt1_p2 t1_2
+                     Filter: (b = 0)
+               ->  Seq Scan on prt1_p3 t1_3
+                     Filter: (b = 0)
+         ->  Append
+               ->  Index Scan using iprt2_p1_b on prt2_p1 t2_1
+                     Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
+               ->  Index Scan using iprt2_p2_b on prt2_p2 t2_2
+                     Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
+               ->  Index Scan using iprt2_p3_b on prt2_p3 t2_3
+                     Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
+(18 rows)
+
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt2 t2 RIGHT JOIN prt1 t1 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+   0 | 0000 |   0 | 0000
+  50 | 0050 |     | 
+ 100 | 0100 |     | 
+ 150 | 0150 | 150 | 0150
+ 200 | 0200 |     | 
+ 250 | 0250 |     | 
+ 300 | 0300 | 300 | 0300
+ 350 | 0350 |     | 
+ 400 | 0400 |     | 
+ 450 | 0450 | 450 | 0450
+ 500 | 0500 |     | 
+ 550 | 0550 |     | 
+(12 rows)
+
+-- 3-way left outer join.  The upper join's qual references t2, which the
+-- lower join can null, so the qual has clones; when re-applying it in the
+-- Join Filter, BNL must install the clone valid at the join it is building.
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM prt1 t1
+  LEFT JOIN prt1 t2 ON t1.a = t2.a
+  LEFT JOIN prt1 t3 ON t2.a = t3.a;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: (t2.a = t3.a)
+         ->  YB Batched Nested Loop Left Join
+               Join Filter: (t1.a = t2.a)
+               ->  Append
+                     ->  Seq Scan on prt1_p1 t1_1
+                     ->  Seq Scan on prt1_p2 t1_2
+                     ->  Seq Scan on prt1_p3 t1_3
+               ->  Append
+                     ->  Index Only Scan using iprt1_p1_a on prt1_p1 t2_1
+                           Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+                     ->  Index Only Scan using iprt1_p2_a on prt1_p2 t2_2
+                           Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+                     ->  Index Only Scan using iprt1_p3_a on prt1_p3 t2_3
+                           Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+         ->  Append
+               ->  Index Only Scan using iprt1_p1_a on prt1_p1 t3_1
+                     Index Cond: (a = ANY (ARRAY[t2.a, $4, $5]))
+               ->  Index Only Scan using iprt1_p2_a on prt1_p2 t3_2
+                     Index Cond: (a = ANY (ARRAY[t2.a, $4, $5]))
+               ->  Index Only Scan using iprt1_p3_a on prt1_p3 t3_3
+                     Index Cond: (a = ANY (ARRAY[t2.a, $4, $5]))
+(23 rows)
+
+SELECT COUNT(*) FROM prt1 t1
+  LEFT JOIN prt1 t2 ON t1.a = t2.a
+  LEFT JOIN prt1 t3 ON t2.a = t3.a;
+ count 
+-------
+   300
+(1 row)
+
+-- Same shape, non-trivial payload so null-extended rows are visible.
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t2.a, t3.a FROM prt1 t1
+  LEFT JOIN prt2 t2 ON t2.b = t1.a
+  LEFT JOIN prt1 t3 ON t3.a = t2.b
+  WHERE t1.a < 60 ORDER BY t1.a, t2.a, t3.a;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Sort
+   Sort Key: t1_1.a, t2_1.a, t3_1.a
+   ->  Nested Loop Left Join
+         Disabled: true
+         ->  Seq Scan on prt1_p1 t1_1
+               Filter: (a < 60)
+         ->  Nested Loop Left Join
+               Disabled: true
+               ->  Index Scan using iprt2_p1_b on prt2_p1 t2_1
+                     Index Cond: (b = t1_1.a)
+               ->  Index Only Scan using iprt1_p1_a on prt1_p1 t3_1
+                     Index Cond: (a = t2_1.b)
+(12 rows)
+
+SELECT t1.a, t2.a, t3.a FROM prt1 t1
+  LEFT JOIN prt2 t2 ON t2.b = t1.a
+  LEFT JOIN prt1 t3 ON t3.a = t2.b
+  WHERE t1.a < 60 ORDER BY t1.a, t2.a, t3.a;
+ a  | a  | a  
+----+----+----
+  0 |  0 |  0
+  2 |    |   
+  4 |    |   
+  6 |  6 |  6
+  8 |    |   
+ 10 |    |   
+ 12 | 12 | 12
+ 14 |    |   
+ 16 |    |   
+ 18 | 18 | 18
+ 20 |    |   
+ 22 |    |   
+ 24 | 24 | 24
+ 26 |    |   
+ 28 |    |   
+ 30 |  5 | 30
+ 32 |    |   
+ 34 |    |   
+ 36 | 11 | 36
+ 38 |    |   
+ 40 |    |   
+ 42 | 17 | 42
+ 44 |    |   
+ 46 |    |   
+ 48 | 23 | 48
+ 50 |    |   
+ 52 |    |   
+ 54 |  4 | 54
+ 56 |    |   
+ 58 |    |   
+(30 rows)
+
+-- The tuplestore strategy must apply the Join Filter like the hash strategy.
+SET yb_bnl_enable_hashing = off;
+SELECT COUNT(*) FROM prt1 t1
+  LEFT JOIN prt1 t2 ON t1.a = t2.a
+  LEFT JOIN prt1 t3 ON t2.a = t3.a;
+ count 
+-------
+   300
+(1 row)
+
+SELECT t1.a, t2.a, t3.a FROM prt1 t1
+  LEFT JOIN prt2 t2 ON t2.b = t1.a
+  LEFT JOIN prt1 t3 ON t3.a = t2.b
+  WHERE t1.a < 60 ORDER BY t1.a, t2.a, t3.a;
+ a  | a  | a  
+----+----+----
+  0 |  0 |  0
+  2 |    |   
+  4 |    |   
+  6 |  6 |  6
+  8 |    |   
+ 10 |    |   
+ 12 | 12 | 12
+ 14 |    |   
+ 16 |    |   
+ 18 | 18 | 18
+ 20 |    |   
+ 22 |    |   
+ 24 | 24 | 24
+ 26 |    |   
+ 28 |    |   
+ 30 |  5 | 30
+ 32 |    |   
+ 34 |    |   
+ 36 | 11 | 36
+ 38 |    |   
+ 40 |    |   
+ 42 | 17 | 42
+ 44 |    |   
+ 46 |    |   
+ 48 | 23 | 48
+ 50 |    |   
+ 52 |    |   
+ 54 |  4 | 54
+ 56 |    |   
+ 58 |    |   
+(30 rows)
+
+RESET yb_bnl_enable_hashing;
+--
+-- Same shapes with partitionwise join off: plans should be unchanged
+--
+SET enable_partitionwise_join = off;
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t2.b = t1.a)
+         ->  Append
+               ->  Seq Scan on prt2_p1 t2_1
+               ->  Seq Scan on prt2_p2 t2_2
+               ->  Seq Scan on prt2_p3 t2_3
+         ->  Append
+               ->  Index Scan using iprt1_p1_a on prt1_p1 t1_1
+                     Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
+                     Filter: (b = 0)
+               ->  Index Scan using iprt1_p2_a on prt1_p2 t1_2
+                     Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
+                     Filter: (b = 0)
+               ->  Index Scan using iprt1_p3_a on prt1_p3 t1_3
+                     Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
+                     Filter: (b = 0)
+(18 rows)
+
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+   0 | 0000 |   0 | 0000
+ 150 | 0150 | 150 | 0150
+ 300 | 0300 | 300 | 0300
+ 450 | 0450 | 450 | 0450
+(4 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM prt1 t1
+  LEFT JOIN prt1 t2 ON t1.a = t2.a
+  LEFT JOIN prt1 t3 ON t2.a = t3.a;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: (t2.a = t3.a)
+         ->  YB Batched Nested Loop Left Join
+               Join Filter: (t1.a = t2.a)
+               ->  Append
+                     ->  Seq Scan on prt1_p1 t1_1
+                     ->  Seq Scan on prt1_p2 t1_2
+                     ->  Seq Scan on prt1_p3 t1_3
+               ->  Append
+                     ->  Index Only Scan using iprt1_p1_a on prt1_p1 t2_1
+                           Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+                     ->  Index Only Scan using iprt1_p2_a on prt1_p2 t2_2
+                           Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+                     ->  Index Only Scan using iprt1_p3_a on prt1_p3 t2_3
+                           Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+         ->  Append
+               ->  Index Only Scan using iprt1_p1_a on prt1_p1 t3_1
+                     Index Cond: (a = ANY (ARRAY[t2.a, $4, $5]))
+               ->  Index Only Scan using iprt1_p2_a on prt1_p2 t3_2
+                     Index Cond: (a = ANY (ARRAY[t2.a, $4, $5]))
+               ->  Index Only Scan using iprt1_p3_a on prt1_p3 t3_3
+                     Index Cond: (a = ANY (ARRAY[t2.a, $4, $5]))
+(23 rows)
+
+SELECT COUNT(*) FROM prt1 t1
+  LEFT JOIN prt1 t2 ON t1.a = t2.a
+  LEFT JOIN prt1 t3 ON t2.a = t3.a;
+ count 
+-------
+   300
+(1 row)
+
+RESET enable_partitionwise_join;
+--
+-- Mismatched partition bounds: partitionwise join cannot apply even when
+-- enabled, so this exercises BNL with a partitioned inner directly.
+--
+SET enable_partitionwise_join = on;
+EXPLAIN (COSTS OFF)
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt4_n t2 WHERE t1.a = t2.a ORDER BY t1.a;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t2.a = t1.a)
+         ->  Append
+               ->  Seq Scan on prt4_n_p1 t2_1
+               ->  Seq Scan on prt4_n_p2 t2_2
+               ->  Seq Scan on prt4_n_p3 t2_3
+         ->  Append
+               ->  Index Scan using iprt1_p1_a on prt1_p1 t1_1
+                     Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
+               ->  Index Scan using iprt1_p2_a on prt1_p2 t1_2
+                     Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
+               ->  Index Scan using iprt1_p3_a on prt1_p3 t1_3
+                     Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
+(15 rows)
+
+SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt4_n t2 WHERE t1.a = t2.a ORDER BY t1.a;
+  a  |  c   |  b  |  c   
+-----+------+-----+------
+   0 | 0000 |   0 | 0000
+   2 | 0002 |   2 | 0002
+   4 | 0004 |   4 | 0004
+   6 | 0006 |   6 | 0006
+   8 | 0008 |   8 | 0008
+  10 | 0010 |  10 | 0010
+  12 | 0012 |  12 | 0012
+  14 | 0014 |  14 | 0014
+  16 | 0016 |  16 | 0016
+  18 | 0018 |  18 | 0018
+  20 | 0020 |  20 | 0020
+  22 | 0022 |  22 | 0022
+  24 | 0024 |  24 | 0024
+  26 | 0026 |  26 | 0026
+  28 | 0028 |  28 | 0028
+  30 | 0030 |  30 | 0030
+  32 | 0032 |  32 | 0032
+  34 | 0034 |  34 | 0034
+  36 | 0036 |  36 | 0036
+  38 | 0038 |  38 | 0038
+  40 | 0040 |  40 | 0040
+  42 | 0042 |  42 | 0042
+  44 | 0044 |  44 | 0044
+  46 | 0046 |  46 | 0046
+  48 | 0048 |  48 | 0048
+  50 | 0050 |  50 | 0050
+  52 | 0052 |  52 | 0052
+  54 | 0054 |  54 | 0054
+  56 | 0056 |  56 | 0056
+  58 | 0058 |  58 | 0058
+  60 | 0060 |  60 | 0060
+  62 | 0062 |  62 | 0062
+  64 | 0064 |  64 | 0064
+  66 | 0066 |  66 | 0066
+  68 | 0068 |  68 | 0068
+  70 | 0070 |  70 | 0070
+  72 | 0072 |  72 | 0072
+  74 | 0074 |  74 | 0074
+  76 | 0076 |  76 | 0076
+  78 | 0078 |  78 | 0078
+  80 | 0080 |  80 | 0080
+  82 | 0082 |  82 | 0082
+  84 | 0084 |  84 | 0084
+  86 | 0086 |  86 | 0086
+  88 | 0088 |  88 | 0088
+  90 | 0090 |  90 | 0090
+  92 | 0092 |  92 | 0092
+  94 | 0094 |  94 | 0094
+  96 | 0096 |  96 | 0096
+  98 | 0098 |  98 | 0098
+ 100 | 0100 | 100 | 0100
+ 102 | 0102 | 102 | 0102
+ 104 | 0104 | 104 | 0104
+ 106 | 0106 | 106 | 0106
+ 108 | 0108 | 108 | 0108
+ 110 | 0110 | 110 | 0110
+ 112 | 0112 | 112 | 0112
+ 114 | 0114 | 114 | 0114
+ 116 | 0116 | 116 | 0116
+ 118 | 0118 | 118 | 0118
+ 120 | 0120 | 120 | 0120
+ 122 | 0122 | 122 | 0122
+ 124 | 0124 | 124 | 0124
+ 126 | 0126 | 126 | 0126
+ 128 | 0128 | 128 | 0128
+ 130 | 0130 | 130 | 0130
+ 132 | 0132 | 132 | 0132
+ 134 | 0134 | 134 | 0134
+ 136 | 0136 | 136 | 0136
+ 138 | 0138 | 138 | 0138
+ 140 | 0140 | 140 | 0140
+ 142 | 0142 | 142 | 0142
+ 144 | 0144 | 144 | 0144
+ 146 | 0146 | 146 | 0146
+ 148 | 0148 | 148 | 0148
+ 150 | 0150 | 150 | 0150
+ 152 | 0152 | 152 | 0152
+ 154 | 0154 | 154 | 0154
+ 156 | 0156 | 156 | 0156
+ 158 | 0158 | 158 | 0158
+ 160 | 0160 | 160 | 0160
+ 162 | 0162 | 162 | 0162
+ 164 | 0164 | 164 | 0164
+ 166 | 0166 | 166 | 0166
+ 168 | 0168 | 168 | 0168
+ 170 | 0170 | 170 | 0170
+ 172 | 0172 | 172 | 0172
+ 174 | 0174 | 174 | 0174
+ 176 | 0176 | 176 | 0176
+ 178 | 0178 | 178 | 0178
+ 180 | 0180 | 180 | 0180
+ 182 | 0182 | 182 | 0182
+ 184 | 0184 | 184 | 0184
+ 186 | 0186 | 186 | 0186
+ 188 | 0188 | 188 | 0188
+ 190 | 0190 | 190 | 0190
+ 192 | 0192 | 192 | 0192
+ 194 | 0194 | 194 | 0194
+ 196 | 0196 | 196 | 0196
+ 198 | 0198 | 198 | 0198
+ 200 | 0200 | 200 | 0200
+ 202 | 0202 | 202 | 0202
+ 204 | 0204 | 204 | 0204
+ 206 | 0206 | 206 | 0206
+ 208 | 0208 | 208 | 0208
+ 210 | 0210 | 210 | 0210
+ 212 | 0212 | 212 | 0212
+ 214 | 0214 | 214 | 0214
+ 216 | 0216 | 216 | 0216
+ 218 | 0218 | 218 | 0218
+ 220 | 0220 | 220 | 0220
+ 222 | 0222 | 222 | 0222
+ 224 | 0224 | 224 | 0224
+ 226 | 0226 | 226 | 0226
+ 228 | 0228 | 228 | 0228
+ 230 | 0230 | 230 | 0230
+ 232 | 0232 | 232 | 0232
+ 234 | 0234 | 234 | 0234
+ 236 | 0236 | 236 | 0236
+ 238 | 0238 | 238 | 0238
+ 240 | 0240 | 240 | 0240
+ 242 | 0242 | 242 | 0242
+ 244 | 0244 | 244 | 0244
+ 246 | 0246 | 246 | 0246
+ 248 | 0248 | 248 | 0248
+ 250 | 0250 | 250 | 0250
+ 252 | 0252 | 252 | 0252
+ 254 | 0254 | 254 | 0254
+ 256 | 0256 | 256 | 0256
+ 258 | 0258 | 258 | 0258
+ 260 | 0260 | 260 | 0260
+ 262 | 0262 | 262 | 0262
+ 264 | 0264 | 264 | 0264
+ 266 | 0266 | 266 | 0266
+ 268 | 0268 | 268 | 0268
+ 270 | 0270 | 270 | 0270
+ 272 | 0272 | 272 | 0272
+ 274 | 0274 | 274 | 0274
+ 276 | 0276 | 276 | 0276
+ 278 | 0278 | 278 | 0278
+ 280 | 0280 | 280 | 0280
+ 282 | 0282 | 282 | 0282
+ 284 | 0284 | 284 | 0284
+ 286 | 0286 | 286 | 0286
+ 288 | 0288 | 288 | 0288
+ 290 | 0290 | 290 | 0290
+ 292 | 0292 | 292 | 0292
+ 294 | 0294 | 294 | 0294
+ 296 | 0296 | 296 | 0296
+ 298 | 0298 | 298 | 0298
+ 300 | 0300 | 300 | 0300
+ 302 | 0302 | 302 | 0302
+ 304 | 0304 | 304 | 0304
+ 306 | 0306 | 306 | 0306
+ 308 | 0308 | 308 | 0308
+ 310 | 0310 | 310 | 0310
+ 312 | 0312 | 312 | 0312
+ 314 | 0314 | 314 | 0314
+ 316 | 0316 | 316 | 0316
+ 318 | 0318 | 318 | 0318
+ 320 | 0320 | 320 | 0320
+ 322 | 0322 | 322 | 0322
+ 324 | 0324 | 324 | 0324
+ 326 | 0326 | 326 | 0326
+ 328 | 0328 | 328 | 0328
+ 330 | 0330 | 330 | 0330
+ 332 | 0332 | 332 | 0332
+ 334 | 0334 | 334 | 0334
+ 336 | 0336 | 336 | 0336
+ 338 | 0338 | 338 | 0338
+ 340 | 0340 | 340 | 0340
+ 342 | 0342 | 342 | 0342
+ 344 | 0344 | 344 | 0344
+ 346 | 0346 | 346 | 0346
+ 348 | 0348 | 348 | 0348
+ 350 | 0350 | 350 | 0350
+ 352 | 0352 | 352 | 0352
+ 354 | 0354 | 354 | 0354
+ 356 | 0356 | 356 | 0356
+ 358 | 0358 | 358 | 0358
+ 360 | 0360 | 360 | 0360
+ 362 | 0362 | 362 | 0362
+ 364 | 0364 | 364 | 0364
+ 366 | 0366 | 366 | 0366
+ 368 | 0368 | 368 | 0368
+ 370 | 0370 | 370 | 0370
+ 372 | 0372 | 372 | 0372
+ 374 | 0374 | 374 | 0374
+ 376 | 0376 | 376 | 0376
+ 378 | 0378 | 378 | 0378
+ 380 | 0380 | 380 | 0380
+ 382 | 0382 | 382 | 0382
+ 384 | 0384 | 384 | 0384
+ 386 | 0386 | 386 | 0386
+ 388 | 0388 | 388 | 0388
+ 390 | 0390 | 390 | 0390
+ 392 | 0392 | 392 | 0392
+ 394 | 0394 | 394 | 0394
+ 396 | 0396 | 396 | 0396
+ 398 | 0398 | 398 | 0398
+ 400 | 0400 | 400 | 0400
+ 402 | 0402 | 402 | 0402
+ 404 | 0404 | 404 | 0404
+ 406 | 0406 | 406 | 0406
+ 408 | 0408 | 408 | 0408
+ 410 | 0410 | 410 | 0410
+ 412 | 0412 | 412 | 0412
+ 414 | 0414 | 414 | 0414
+ 416 | 0416 | 416 | 0416
+ 418 | 0418 | 418 | 0418
+ 420 | 0420 | 420 | 0420
+ 422 | 0422 | 422 | 0422
+ 424 | 0424 | 424 | 0424
+ 426 | 0426 | 426 | 0426
+ 428 | 0428 | 428 | 0428
+ 430 | 0430 | 430 | 0430
+ 432 | 0432 | 432 | 0432
+ 434 | 0434 | 434 | 0434
+ 436 | 0436 | 436 | 0436
+ 438 | 0438 | 438 | 0438
+ 440 | 0440 | 440 | 0440
+ 442 | 0442 | 442 | 0442
+ 444 | 0444 | 444 | 0444
+ 446 | 0446 | 446 | 0446
+ 448 | 0448 | 448 | 0448
+ 450 | 0450 | 450 | 0450
+ 452 | 0452 | 452 | 0452
+ 454 | 0454 | 454 | 0454
+ 456 | 0456 | 456 | 0456
+ 458 | 0458 | 458 | 0458
+ 460 | 0460 | 460 | 0460
+ 462 | 0462 | 462 | 0462
+ 464 | 0464 | 464 | 0464
+ 466 | 0466 | 466 | 0466
+ 468 | 0468 | 468 | 0468
+ 470 | 0470 | 470 | 0470
+ 472 | 0472 | 472 | 0472
+ 474 | 0474 | 474 | 0474
+ 476 | 0476 | 476 | 0476
+ 478 | 0478 | 478 | 0478
+ 480 | 0480 | 480 | 0480
+ 482 | 0482 | 482 | 0482
+ 484 | 0484 | 484 | 0484
+ 486 | 0486 | 486 | 0486
+ 488 | 0488 | 488 | 0488
+ 490 | 0490 | 490 | 0490
+ 492 | 0492 | 492 | 0492
+ 494 | 0494 | 494 | 0494
+ 496 | 0496 | 496 | 0496
+ 498 | 0498 | 498 | 0498
+ 500 | 0500 | 500 | 0500
+ 502 | 0502 | 502 | 0502
+ 504 | 0504 | 504 | 0504
+ 506 | 0506 | 506 | 0506
+ 508 | 0508 | 508 | 0508
+ 510 | 0510 | 510 | 0510
+ 512 | 0512 | 512 | 0512
+ 514 | 0514 | 514 | 0514
+ 516 | 0516 | 516 | 0516
+ 518 | 0518 | 518 | 0518
+ 520 | 0520 | 520 | 0520
+ 522 | 0522 | 522 | 0522
+ 524 | 0524 | 524 | 0524
+ 526 | 0526 | 526 | 0526
+ 528 | 0528 | 528 | 0528
+ 530 | 0530 | 530 | 0530
+ 532 | 0532 | 532 | 0532
+ 534 | 0534 | 534 | 0534
+ 536 | 0536 | 536 | 0536
+ 538 | 0538 | 538 | 0538
+ 540 | 0540 | 540 | 0540
+ 542 | 0542 | 542 | 0542
+ 544 | 0544 | 544 | 0544
+ 546 | 0546 | 546 | 0546
+ 548 | 0548 | 548 | 0548
+ 550 | 0550 | 550 | 0550
+ 552 | 0552 | 552 | 0552
+ 554 | 0554 | 554 | 0554
+ 556 | 0556 | 556 | 0556
+ 558 | 0558 | 558 | 0558
+ 560 | 0560 | 560 | 0560
+ 562 | 0562 | 562 | 0562
+ 564 | 0564 | 564 | 0564
+ 566 | 0566 | 566 | 0566
+ 568 | 0568 | 568 | 0568
+ 570 | 0570 | 570 | 0570
+ 572 | 0572 | 572 | 0572
+ 574 | 0574 | 574 | 0574
+ 576 | 0576 | 576 | 0576
+ 578 | 0578 | 578 | 0578
+ 580 | 0580 | 580 | 0580
+ 582 | 0582 | 582 | 0582
+ 584 | 0584 | 584 | 0584
+ 586 | 0586 | 586 | 0586
+ 588 | 0588 | 588 | 0588
+ 590 | 0590 | 590 | 0590
+ 592 | 0592 | 592 | 0592
+ 594 | 0594 | 594 | 0594
+ 596 | 0596 | 596 | 0596
+ 598 | 0598 | 598 | 0598
+(300 rows)
+
+RESET enable_partitionwise_join;
+DROP TABLE prt1;
+DROP TABLE prt2;
+DROP TABLE prt4_n;
+RESET yb_bnl_batch_size;
+RESET yb_prefer_bnl;
+RESET enable_nestloop;
+RESET enable_material;
+RESET enable_mergejoin;
+RESET enable_hashjoin;
+RESET max_parallel_workers_per_gather;

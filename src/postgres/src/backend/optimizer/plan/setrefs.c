@@ -2639,21 +2639,13 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 	 * NestLoopParams now, because those couldn't refer to nullable
 	 * subexpressions.
 	 */
-	/*
-	 * YB: A batched nestloop's joinqual can contain recheck clauses re-added
-	 * from the inner path's parameterization (ppi_clauses); like
-	 * NestLoopParam expressions, those are not reparameterized to the
-	 * outer-join level at which they are used, so their Vars may carry only
-	 * a subset of the nullingrels present in the input tlists.
-	 */
 	join->joinqual = fix_join_expr(root,
 								   join->joinqual,
 								   outer_itlist,
 								   inner_itlist,
 								   (Index) 0,
 								   rtoffset,
-								   IsA(join, YbBatchedNestLoop) ?
-								   NRM_SUBSET : NRM_EQUAL,
+								   NRM_EQUAL,
 								   NUM_EXEC_QUAL((Plan *) join));
 
 	/* Now do join-type-specific stuff */

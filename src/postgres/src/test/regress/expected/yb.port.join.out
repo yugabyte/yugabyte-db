@@ -2173,6 +2173,165 @@ select count(*) from tenk1 x where
 
 rollback;
 --
+-- check handling of a variable-free join alias
+--
+explain (verbose, costs off)
+select * from
+int4_tbl i0 left join
+( (select *, 123 as x from int4_tbl i1) ss1
+  left join
+  (select *, q2 as x from int8_tbl i2) ss2
+  using (x)
+) ss0
+on (i0.f1 = ss0.f1)
+order by i0.f1, x;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Incremental Sort
+   Output: i0.f1, ('123'::bigint), i1.f1, i2.q1, i2.q2
+   Sort Key: i0.f1, ('123'::bigint)
+   Presorted Key: i0.f1
+   ->  Merge Left Join
+         Output: i0.f1, ('123'::bigint), i1.f1, i2.q1, i2.q2
+         Merge Cond: (i0.f1 = i1.f1)
+         ->  Sort
+               Output: i0.f1
+               Sort Key: i0.f1
+               ->  Seq Scan on public.int4_tbl i0
+                     Output: i0.f1
+         ->  Materialize
+               Output: i1.f1, i2.q1, i2.q2, ('123'::bigint)
+               ->  Sort
+                     Output: i1.f1, i2.q1, i2.q2, ('123'::bigint)
+                     Sort Key: i1.f1
+                     ->  Nested Loop Left Join
+                           Output: i1.f1, i2.q1, i2.q2, '123'::bigint
+                           ->  Seq Scan on public.int4_tbl i1
+                                 Output: i1.f1
+                           ->  Materialize
+                                 Output: i2.q1, i2.q2
+                                 ->  Seq Scan on public.int8_tbl i2
+                                       Output: i2.q1, i2.q2
+                                       Filter: (123 = i2.q2)
+(26 rows)
+
+select * from
+int4_tbl i0 left join
+( (select *, 123 as x from int4_tbl i1) ss1
+  left join
+  (select *, q2 as x from int8_tbl i2) ss2
+  using (x)
+) ss0
+on (i0.f1 = ss0.f1)
+order by i0.f1, x;
+     f1      |  x  |     f1      |        q1        | q2  
+-------------+-----+-------------+------------------+-----
+ -2147483647 | 123 | -2147483647 | 4567890123456789 | 123
+     -123456 | 123 |     -123456 | 4567890123456789 | 123
+           0 | 123 |           0 | 4567890123456789 | 123
+      123456 | 123 |      123456 | 4567890123456789 | 123
+  2147483647 | 123 |  2147483647 | 4567890123456789 | 123
+(5 rows)
+
+--
+-- test full-join strength reduction
+--
+explain (costs off)
+select a.unique1, b.unique2
+  from onek a full join onek b on a.unique1 = b.unique2
+  where a.unique1 = 42;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Nested Loop Left Join
+   ->  Index Only Scan using onek_unique1 on onek a
+         Index Cond: (unique1 = 42)
+   ->  Materialize
+         ->  Index Only Scan using onek_unique2 on onek b
+               Index Cond: (unique2 = 42)
+(6 rows)
+
+select a.unique1, b.unique2
+  from onek a full join onek b on a.unique1 = b.unique2
+  where a.unique1 = 42;
+ unique1 | unique2 
+---------+---------
+      42 |      42
+(1 row)
+
+explain (costs off)
+select a.unique1, b.unique2
+  from onek a full join onek b on a.unique1 = b.unique2
+  where b.unique2 = 43;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Nested Loop Left Join
+   ->  Index Only Scan using onek_unique2 on onek b
+         Index Cond: (unique2 = 43)
+   ->  Materialize
+         ->  Index Only Scan using onek_unique1 on onek a
+               Index Cond: (unique1 = 43)
+(6 rows)
+
+select a.unique1, b.unique2
+  from onek a full join onek b on a.unique1 = b.unique2
+  where b.unique2 = 43;
+ unique1 | unique2 
+---------+---------
+      43 |      43
+(1 row)
+
+explain (costs off)
+select a.unique1, b.unique2
+  from onek a full join onek b on a.unique1 = b.unique2
+  where a.unique1 = 42 and b.unique2 = 42;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Nested Loop
+   ->  Index Only Scan using onek_unique1 on onek a
+         Index Cond: (unique1 = 42)
+   ->  Materialize
+         ->  Index Only Scan using onek_unique2 on onek b
+               Index Cond: (unique2 = 42)
+(6 rows)
+
+select a.unique1, b.unique2
+  from onek a full join onek b on a.unique1 = b.unique2
+  where a.unique1 = 42 and b.unique2 = 42;
+ unique1 | unique2 
+---------+---------
+      42 |      42
+(1 row)
+
+--
+-- test result-RTE removal underneath a full join
+--
+explain (costs off)
+select * from
+  (select * from int8_tbl i81 join (values(123,2)) v(v1,v2) on q2=v1) ss1
+full join
+  (select * from (values(456,2)) w(v1,v2) join int8_tbl i82 on q2=v1) ss2
+on true;
+              QUERY PLAN              
+--------------------------------------
+ Merge Full Join
+   ->  Seq Scan on int8_tbl i81
+         Filter: (q2 = 123)
+   ->  Materialize
+         ->  Seq Scan on int8_tbl i82
+               Filter: (q2 = 456)
+(6 rows)
+
+select * from
+  (select * from int8_tbl i81 join (values(123,2)) v(v1,v2) on q2=v1) ss1
+full join
+  (select * from (values(456,2)) w(v1,v2) join int8_tbl i82 on q2=v1) ss2
+on true;
+        q1        | q2  | v1  | v2 | v1  | v2 | q1  | q2  
+------------------+-----+-----+----+-----+----+-----+-----
+ 4567890123456789 | 123 | 123 |  2 | 456 |  2 | 123 | 456
+(1 row)
+
+--
 -- Test hints given on incorrect column references are useful
 --
 select t1.uunique1 from

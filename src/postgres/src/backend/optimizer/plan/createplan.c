@@ -1121,57 +1121,23 @@ yb_get_actual_batched_clauses(PlannerInfo *root,
 }
 
 /*
- * Strip all varnullingrels/phnullingrels markers from an expression copy.
- * Used to compare clause clones that differ only in outer-join nulling
- * marks (the executor evaluates them identically).
- */
-static Node *
-yb_strip_nullingrels_mutator(Node *node, void *context)
-{
-	if (node == NULL)
-		return NULL;
-	if (IsA(node, Var))
-	{
-		Var		   *var = (Var *) copyObject(node);
-
-		var->varnullingrels = NULL;
-		return (Node *) var;
-	}
-	if (IsA(node, PlaceHolderVar))
-	{
-		PlaceHolderVar *phv = (PlaceHolderVar *)
-			expression_tree_mutator(node, yb_strip_nullingrels_mutator, context);
-
-		phv->phnullingrels = NULL;
-		return (Node *) phv;
-	}
-	return expression_tree_mutator(node, yb_strip_nullingrels_mutator, context);
-}
-
-/*
  * Check whether a clause is already represented in a qual list.  BNL planning
  * may see the original scalar clause with operands switched relative to the
  * join qual, while the executor will treat either orientation as the same
- * recheck condition.
+ * re-applied condition.
  *
- * Vars are compared with nullingrels stripped: the candidate may be the
- * join-level clone of the same RestrictInfo while the probed clause is the
- * scan-parameterization variant (ppi_clauses), and the two differ only in
- * nullingrels.  The executor evaluates both identically, so they are the
- * same recheck condition.
+ * Clones of one qual are not compared here: they differ in varnullingrels, so
+ * equal() rejects them.  They are filtered out earlier by rinfo_serial, and
+ * the surviving clause is re-leveled to this join before use.
  */
 static bool
 yb_clause_list_contains_equivalent(List *clauses, Node *clause)
 {
 	ListCell   *lc;
 
-	clause = yb_strip_nullingrels_mutator(clause, NULL);
-
 	foreach(lc, clauses)
 	{
 		Node	   *candidate = (Node *) lfirst(lc);
-
-		candidate = yb_strip_nullingrels_mutator(candidate, NULL);
 
 		if (equal(candidate, clause))
 			return true;
@@ -1240,7 +1206,7 @@ yb_bnl_joinclauses_have_batched_mergejoinable(List *joinclauses,
 /*
  * Returns true iff some clause in joinrestrictclauses (whose bare clause
  * is in joinclauses) was generated from the same EquivalenceClass as
- * candidate_ec.  Used to skip BNL recheck clauses that are EC-redundant
+ * candidate_ec.  Used to skip BNL re-applied clauses that are EC-redundant
  * with what the planner already kept in joinclauses: per the standard PG
  * comment on RestrictInfo.parent_ec, "Multiple clauses with the same
  * parent_ec in the same join are redundant."  This avoids re-adding e.g.
@@ -6242,6 +6208,9 @@ create_nestloop_plan(PlannerInfo *root,
 	double		yb_first_batch_factor = 1.0;
 	size_t		yb_num_hashClauseInfos;
 	YbBNLHashClauseInfo *yb_hashClauseInfos;
+	Relids		batched_outerrelids = NULL;
+	Relids		inner_relids = NULL;
+	List	   *yb_reapplied_rinfos = NIL;
 
 	/* NestLoop can project, so no need to be picky about child tlists */
 	outer_plan = create_plan_recurse(root, best_path->jpath.outerjoinpath, 0);
@@ -6290,35 +6259,29 @@ create_nestloop_plan(PlannerInfo *root,
 		root->yb_availBatchedRelids =
 			lcons(outerrelids, root->yb_availBatchedRelids);
 
-		/* Collect all the equality operators of the batched join conditions. */
-		/*
-		 * This needs to happen before the inner plan is created as the inner
-		 * plan creation could "zip" up the batched clauses and convert all
-		 * the equality operators to RECORD_EQ.
-		 */
 		ListCell   *l;
 
-		Relids		batched_outerrelids = bms_difference(outerrelids,
-														 yb_get_unbatched_relids(best_path));
-
-		Relids		inner_relids = best_path->jpath.innerjoinpath->parent->relids;
-
 		Relids		available_rels = bms_copy(best_path->jpath.path.parent->relids);
-		List	   *recheck_joinclauses = NIL;
-		List	   *recheck_otherclauses = NIL;
+		List	   *reapplied_joinclauses = NIL;
+		List	   *reapplied_otherclauses = NIL;
+		Bitmapset  *yb_join_serials = NULL;
+
+		batched_outerrelids =
+			bms_difference(outerrelids, yb_get_unbatched_relids(best_path));
+		inner_relids = best_path->jpath.innerjoinpath->parent->relids;
 
 		/*
 		 * Batched index quals only prove that an inner tuple matches
 		 * some outer tuple in the batch.  Whenever the inner side absorbed
 		 * batched join equalities via parameterization (so the original
-		 * scalar form does not appear in joinclauses), re-add a scalar copy
-		 * to the BNL's Join Filter so the executor can authoritatively
-		 * recheck per (outer, inner) tuple pair.  This guards two distinct
+		 * scalar form does not appear in joinclauses), re-apply a scalar
+		 * copy in the BNL's Join Filter so the executor evaluates the
+		 * exact condition per (outer, inner) pair.  This guards two distinct
 		 * failure modes:
 		 *
 		 *   - When a SubPlan-bearing join qual sits next to a batched
 		 *     equality, the SubPlan must not pass for the wrong outer
-		 *     tuple from the batch (the scalar recheck short-circuits
+		 *     tuple from the batch (the re-applied scalar short-circuits
 		 *     before the SubPlan is evaluated since it is prepended).
 		 *
 		 *   - When all join quals were absorbed into the inner path (e.g.
@@ -6329,7 +6292,7 @@ create_nestloop_plan(PlannerInfo *root,
 		 *
 		 * The collected clauses must be batchable (so they came in through
 		 * batched parameterization in the first place) and mergejoinable
-		 * (so the recheck is an authoritative equality, satisfying the
+		 * (so the re-applied clause is an authoritative equality, satisfying the
 		 * Join Filter invariants asserted below).  The condition is
 		 * independent of yb_bnl_enable_hashing, which is PGC_USERSET and
 		 * only flips the executor's strategy choice.
@@ -6340,6 +6303,22 @@ create_nestloop_plan(PlannerInfo *root,
 				bms_add_members(available_rels,
 								best_path->jpath.path.param_info->ppi_req_outer);
 		}
+
+		/*
+		 * Upstream commit 2489d76c4906f4461a364ca8ad7e0751ead8aa0d (PG16)
+		 * made Vars outer-join-aware, so one join qual can be split into
+		 * RestrictInfo clones that share a rinfo_serial and differ only in
+		 * varnullingrels, exactly one clone being valid at a given join
+		 * level.  ppi_clauses carries the scan-level clone, which equal()
+		 * cannot match against the join-level clone.  Collect the serials
+		 * enforced at this join (kept in joinrestrictinfo for batched
+		 * paths); a serial match means the qual is already in
+		 * joinclauses/otherclauses.
+		 */
+		foreach(l, joinrestrictclauses)
+			yb_join_serials =
+				bms_add_member(yb_join_serials,
+							   lfirst_node(RestrictInfo, l)->rinfo_serial);
 
 		if (best_path->jpath.innerjoinpath->param_info)
 		{
@@ -6364,7 +6343,7 @@ create_nestloop_plan(PlannerInfo *root,
 				/*
 				 * Skip clauses whose generating EquivalenceClass is
 				 * already represented in joinclauses by a peer derived from
-				 * the same EC; transitive closure makes the recheck
+				 * the same EC; transitive closure makes re-applying it
 				 * redundant.  Plain expression equalities (no parent_ec)
 				 * are never EC-redundant and always fall through.
 				 */
@@ -6373,30 +6352,119 @@ create_nestloop_plan(PlannerInfo *root,
 													   rinfo->parent_ec))
 					continue;
 
+				/*
+				 * Skip if any clone of this qual is already enforced at
+				 * this join level; see yb_join_serials above.
+				 */
+				if (bms_is_member(rinfo->rinfo_serial, yb_join_serials))
+					continue;
+
+				/*
+				 * A cloned qual must be installed as the clone valid at
+				 * this join level (build_joinrel_restrictlist's selection
+				 * rule): the scan-level clone's Vars lack the nulling bits
+				 * of outer joins evaluated below this one, which
+				 * setrefs.c's NRM_EQUAL cross-check rejects.  Clones share
+				 * the qual's rinfo_serial, translated child-rel copies
+				 * included, so the lookup is expected to succeed; if it
+				 * ever does not, demote the join to a plain nested loop
+				 * below instead of leaving the qual enforced only by the
+				 * inner side's over-approximating batched ANY().
+				 */
+				if (rinfo->has_clone || rinfo->is_clone)
+				{
+					RestrictInfo *yb_level_rinfo = NULL;
+					Relids		yb_input_relids = bms_union(outerrelids,
+															inner_relids);
+					ListCell   *yb_lc;
+
+					foreach(yb_lc, best_path->jpath.innerjoinpath->parent->joininfo)
+					{
+						RestrictInfo *yb_sib = lfirst_node(RestrictInfo,
+														   yb_lc);
+
+						if (yb_sib->rinfo_serial != rinfo->rinfo_serial)
+							continue;
+						if (bms_overlap(yb_sib->incompatible_relids,
+										yb_input_relids))
+							continue;
+						if (!bms_is_subset(yb_sib->required_relids,
+										   available_rels))
+							continue;
+						yb_level_rinfo = yb_sib;
+						break;
+					}
+					bms_free(yb_input_relids);
+					if (yb_level_rinfo == NULL)
+					{
+						yb_is_batched = false;
+						break;
+					}
+					rinfo = yb_level_rinfo;
+				}
+				yb_reapplied_rinfos = lappend(yb_reapplied_rinfos, rinfo);
+
 				if (IS_OUTER_JOIN(best_path->jpath.jointype) &&
 					RINFO_IS_PUSHED_DOWN(rinfo,
 										 best_path->jpath.path.parent->relids))
 				{
 					if (!yb_clause_list_contains_equivalent(otherclauses,
 															(Node *) rinfo->clause) &&
-						!yb_clause_list_contains_equivalent(recheck_otherclauses,
+						!yb_clause_list_contains_equivalent(reapplied_otherclauses,
 															(Node *) rinfo->clause))
-						recheck_otherclauses =
-							lappend(recheck_otherclauses, rinfo->clause);
+						reapplied_otherclauses =
+							lappend(reapplied_otherclauses, rinfo->clause);
 				}
 				else if (!yb_clause_list_contains_equivalent(joinclauses,
 															 (Node *) rinfo->clause) &&
-						 !yb_clause_list_contains_equivalent(recheck_joinclauses,
+						 !yb_clause_list_contains_equivalent(reapplied_joinclauses,
 															 (Node *) rinfo->clause))
 				{
-					recheck_joinclauses =
-						lappend(recheck_joinclauses, rinfo->clause);
+					reapplied_joinclauses =
+						lappend(reapplied_joinclauses, rinfo->clause);
 				}
 			}
 		}
-		joinclauses = list_concat(recheck_joinclauses, joinclauses);
-		otherclauses = list_concat(recheck_otherclauses, otherclauses);
+		if (!yb_is_batched)
+		{
+			/*
+			 * Demote this join to a plain nested loop.  Undoing the
+			 * batched bookkeeping makes the inner plan come out with
+			 * ordinary nestloop params, whose scalar quals enforce the
+			 * absorbed join clauses exactly, so nothing needs to be
+			 * re-applied.  joinclauses keeps every clause of this join
+			 * because create_nestloop_path skips its redundant-clause
+			 * removal for batched paths.  The path keeps its batched
+			 * cost estimate.
+			 */
+			elog(DEBUG1,
+				 "batched nested loop demoted to nested loop: no valid "
+				 "clone to re-apply for a batched join clause");
+			Assert(bms_equal((Relids) linitial(root->yb_availBatchedRelids),
+							 outerrelids));
+			root->yb_availBatchedRelids =
+				list_delete_first(root->yb_availBatchedRelids);
+			bms_free(root->yb_cur_batched_relids);
+			root->yb_cur_batched_relids =
+				bms_copy(prev_yb_cur_batched_relids);
+		}
+		else
+		{
+			joinclauses = list_concat(reapplied_joinclauses, joinclauses);
+			otherclauses = list_concat(reapplied_otherclauses, otherclauses);
+		}
 		bms_free(available_rels);
+	}
+
+	if (yb_is_batched)
+	{
+		/* Collect all the equality operators of the batched join conditions. */
+		/*
+		 * This needs to happen before the inner plan is created as the inner
+		 * plan creation could "zip" up the batched clauses and convert all
+		 * the equality operators to RECORD_EQ.
+		 */
+		ListCell   *l;
 
 		yb_hashClauseInfos =
 			palloc0(list_length(joinclauses) * sizeof(YbBNLHashClauseInfo));
@@ -6418,7 +6486,7 @@ create_nestloop_plan(PlannerInfo *root,
 			/*
 			 * Look up the originating RestrictInfo by pointer equality.
 			 * For original clauses the rinfo is in joinrestrictclauses; for
-			 * recheck-prepended clauses (added above from the inner path's
+			 * re-applied clauses (prepended above from the inner path's
 			 * absorbed batched equalities) the rinfo is in ppi_clauses.
 			 * Searching both keeps slot/clause alignment without tracking
 			 * origin per clause.
@@ -6431,6 +6499,16 @@ create_nestloop_plan(PlannerInfo *root,
 			if (!OidIsValid(hashOpno))
 				hashOpno = yb_bnl_compute_hash_op(clause,
 												  inner_ppi_clauses,
+												  batched_outerrelids,
+												  inner_relids);
+
+			/*
+			 * Re-applied clauses substituted with their join-level clone
+			 * are in neither list searched above.
+			 */
+			if (!OidIsValid(hashOpno))
+				hashOpno = yb_bnl_compute_hash_op(clause,
+												  yb_reapplied_rinfos,
 												  batched_outerrelids,
 												  inner_relids);
 
@@ -6451,7 +6529,7 @@ create_nestloop_plan(PlannerInfo *root,
 		 *      batched form over-approximates the original predicate
 		 *      (e.g. see #31724).
 		 *   2. At least one Join Filter clause must be a mergejoinable
-		 *      batched equality so the recheck can authoritatively reject
+		 *      batched equality so the re-applied clause can authoritatively reject
 		 *      tuples that matched the batched index qual but not the
 		 *      scalar predicate.
 		 *
@@ -6461,9 +6539,7 @@ create_nestloop_plan(PlannerInfo *root,
 		Assert(joinclauses != NIL);
 		Assert(yb_bnl_joinclauses_have_batched_mergejoinable(joinclauses,
 			   joinrestrictclauses,
-			   best_path->jpath.innerjoinpath->param_info ?
-			   best_path->jpath.innerjoinpath->param_info->ppi_clauses :
-			   NIL,
+			   yb_reapplied_rinfos,	/* may hold level-clone substitutions */
 			   batched_outerrelids,
 			   inner_relids));
 
