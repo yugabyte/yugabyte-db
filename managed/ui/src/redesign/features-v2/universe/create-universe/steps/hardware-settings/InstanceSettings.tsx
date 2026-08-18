@@ -270,7 +270,7 @@ export const InstanceSettings = forwardRef<
       ? 1
       : getNodeCount(nodesAvailabilitySettings?.availabilityZones ?? {}));
   const masterNodeCount = dedicatedCounts?.master ?? 0;
-  const goToPlacementRegions = () => setActiveStep(CreateUniverseSteps.RESILIENCE_AND_REGIONS);
+  const goToNodesAvailibility = () => setActiveStep(CreateUniverseSteps.NODES_AVAILABILITY);
 
   // this file is also used in edit universe hardware tab. To match the design there we need to conditionally change Panel and Content components
   const Panel = editMode ? Box : StyledPanel;
@@ -308,7 +308,7 @@ export const InstanceSettings = forwardRef<
                       : t(isK8s ? 'totalPods' : 'totalNodes')
                   }
                   count={tserverNodeCount}
-                  onEdit={goToPlacementRegions}
+                  onEdit={goToNodesAvailibility}
                   dataTestId={
                     useDedicatedNodes
                       ? 'instance-settings-total-tserver-nodes'
@@ -445,7 +445,7 @@ export const InstanceSettings = forwardRef<
                 <TotalNodesBadge
                   label={t(isK8s ? 'totalMasterServerPods' : 'totalMasterServerNodes')}
                   count={masterNodeCount}
-                  onEdit={goToPlacementRegions}
+                  onEdit={goToNodesAvailibility}
                   dataTestId="instance-settings-total-master-nodes"
                 />
               </Box>
