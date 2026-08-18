@@ -873,6 +873,103 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertThat(v1DeleteClusterParams.clusterUUID, is(rrClusterUuid));
   }
 
+  // Build a dedicated multi-AZ Kubernetes universe directly in the DB (mirrors the setup used by
+  // EditKubernetesUniverseTest) so that a v2 edit can exercise the K8s full-move code path.
+  private Universe setupKubernetesUniverseInDB() {
+    setupProvider(Common.CloudType.kubernetes);
+    Provider k8sProvider = Provider.getOrBadRequest(providerUuid);
+    Region region = Region.getByProvider(providerUuid).get(0);
+    UserIntent userIntent = ApiUtils.getTestUserIntent(region, k8sProvider, null, 3, 100, 50);
+    userIntent.replicationFactor = 3;
+    userIntent.dedicatedNodes = true;
+    userIntent.universeName = "k8s-full-move";
+    userIntent.ybSoftwareVersion = "2.20.0.0-b123";
+
+    Universe universe = ModelFactory.createUniverse(customer.getId(), rootCA);
+    UUID k8sUuid = universe.getUniverseUUID();
+    Universe.saveDetails(
+        k8sUuid,
+        ApiUtils.mockUniverseUpdaterForK8sEdit(
+            userIntent, "k8s-full-move", true /* setMasters */, false /* updateInProgress */));
+    // mockUniverseUpdaterForK8sEdit rebuilds the details from scratch and does not carry over the
+    // universe UUID, which configure()'s EDIT path needs to look up the existing universe.
+    Universe.saveDetails(
+        k8sUuid,
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.setUniverseUUID(k8sUuid);
+          univ.setUniverseDetails(details);
+        });
+    universe = Universe.getOrBadRequest(k8sUuid);
+    universe.updateConfig(Map.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    universe.save();
+    return Universe.getOrBadRequest(k8sUuid);
+  }
+
+  // A K8s full move (here triggered by changing the tserver storage volume count) must bump the
+  // per-AZ statefulset index in the submitted params. EditKubernetesUniverse relies on that index
+  // change to detect and perform the full move; without the v2 edit path applying the increment
+  // (see UniverseManagementHandler.applyK8sPlacementFinalization), the full move silently becomes a
+  // no-op.
+  @Test
+  public void testEditUniverseV2KubernetesFullMoveBumpsStsIndex() throws ApiException {
+    Universe k8sUniverse = setupKubernetesUniverseInDB();
+    UUID k8sUuid = k8sUniverse.getUniverseUUID();
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), k8sUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+
+    // Changing the volume count forces every tserver pod to be replaced (a full move).
+    ClusterStorageSpec newStorageSpec =
+        primaryClusterSpec.getNodeSpec().getStorageSpec().numVolumes(2);
+    ClusterNodeSpec newNodeSpec = primaryClusterSpec.getNodeSpec().storageSpec(newStorageSpec);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).nodeSpec(newNodeSpec);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditKubernetesUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    YBATask editTask = api.editUniverse(customer.getUuid(), k8sUuid, universeEditSpec);
+    assertThat(editTask.getResourceUuid(), is(k8sUuid));
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditKubernetesUniverse), v1EditParamsCapture.capture());
+    UniverseConfigureTaskParams v1EditParams = v1EditParamsCapture.getValue();
+
+    // configure() must have marked nodes in each AZ as both ToBeAdded and ToBeRemoved (full move).
+    Map<NodeState, Long> stateCounts =
+        v1EditParams.getNodesInCluster(v1EditParams.getPrimaryCluster().uuid).stream()
+            .collect(Collectors.groupingBy(n -> n.state, Collectors.counting()));
+    long toBeAdded = stateCounts.getOrDefault(NodeState.ToBeAdded, 0L);
+    long toBeRemoved = stateCounts.getOrDefault(NodeState.ToBeRemoved, 0L);
+    assertTrue("expected nodes ToBeAdded for a full move", toBeAdded > 0);
+    assertThat("a full move adds and removes equal node counts", toBeAdded, is(toBeRemoved));
+
+    // The full move must have bumped the per-AZ statefulset index. Without the v2 edit path
+    // applying applyK8sStsIndexIncrement, these would all remain 0 and EditKubernetesUniverse would
+    // treat the edit as a no-op instead of a full move.
+    boolean stsIndexBumped =
+        v1EditParams
+            .getPrimaryCluster()
+            .placementInfo
+            .azStream()
+            .anyMatch(az -> az.tsStsIndex > 0 || az.masterStsIndex > 0);
+    assertTrue("Expected a K8s statefulset index bump signalling a full move", stsIndexBumped);
+  }
+
   @Test
   public void testValidateKubernetesOverrides() throws Exception {
     setupProvider(Common.CloudType.kubernetes);
