@@ -232,7 +232,7 @@ class PollTransactionStatusTestTask : public MultiStepCatalogEntityTask,
 
   // Only reachable from the RPC callback, which never fires in this test.
   void TransactionPending() override {}
-  void FinishPollTransaction(bool aborted) override {}
+  void FinishPollTransaction() override {}
 };
 
 // Aborting a task while one of its steps is polling the transaction status must not strand the
