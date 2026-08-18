@@ -36,6 +36,8 @@ class OciCloud(AbstractCloud):
     def __init__(self):
         super(OciCloud, self).__init__("oci")
         self.admin = None
+        self._wait_for_startup_script_command = \
+            "until test -e /var/lib/cloud/instance/boot-finished ; do sleep 1 ; done"
 
     def get_admin(self):
         if self.admin is None:
