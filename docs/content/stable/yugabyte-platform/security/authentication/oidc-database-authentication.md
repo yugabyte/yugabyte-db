@@ -348,11 +348,9 @@ To enable YCQL authorization when creating or modifying a universe, refer to [En
 
 #### Set OIDC YB-TServer flags
 
-Add all OIDC-related flags to YB-TServer in a single **Actions > Edit Flags** session. For more information, refer to [Edit configuration flags](../../../manage-deployments/edit-config-flags/).
+Add all OIDC-related flags using [Edit configuration flags](../../../scale-deployments/edit-config-flags/).
 
-1. Navigate to your universe and click **Actions > Edit Flags**.
-1. Add the following flags to YB-TServer (and `ycql_ident_conf_csv` if you are using identity mapping).
-1. Apply the changes.
+Add the following flags to YB-TServer (and `ycql_ident_conf_csv` if you are using identity mapping). Be sure to add the flags in a single session.
 
 Use the following flags to configure OIDC for YCQL.
 

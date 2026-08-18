@@ -161,35 +161,3 @@ When smart resize is available, YugabyteDB Anywhere gives you the option to eith
 ![Smart resize dialog](/images/ee/edit-univ-2.png)
 
 If you change only the volume size, YugabyteDB Anywhere automatically performs a smart resize.
-
-## Edit connection pooling
-
-{{<tags/feature/ea idea="1368">}}If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
-
-While in Early Access, the feature is not available by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
-
-{{< tabpane text=true >}}
-
-{{% tab header="New UI" lang="new" %}}
-
-1. Navigate to the universe, then open **Settings > Database**.
-1. Under **Features**, click **Edit** and choose **Edit Connection Pooling Settings**.
-1. Enable or disable the **Built-In Connection Pooling** option.
-1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
-1. Click **Apply Changes**.
-
-{{% /tab %}}
-
-{{% tab header="Classic UI" lang="classic" %}}
-
-1. Navigate to your universe.
-1. Click **Actions > More > Edit Connection Pooling** to open the **Edit Connection Pooling** dialog.
-1. Enable or disable the **Built-In Connection Pooling** option.
-1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
-1. Click **Apply Changes**.
-
-{{% /tab %}}
-
-{{< /tabpane >}}
-
-To customize other Connection Manager settings, use [Edit configuration flags](../edit-config-flags/). For information on Connection Manager settings and defaults, refer to [Set up YSQL Connection Manager](../../../additional-features/connection-manager-ysql/ycm-setup/#configure).

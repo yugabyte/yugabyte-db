@@ -25,27 +25,30 @@ Full move for Kubernetes universes requires YugabyteDB v2026.1.0.0 or later on t
 {{< /note >}}
 Use this page based on how your universe is managed:
 
-- [Non-operator universes](#non-operator-universes): Universes created and managed through the YugabyteDB Anywhere UI or API using [Helm charts](../edit-helm-overrides/). Change volumes using [Edit Universe](../edit-universe/).
+- [Non-operator universes](#non-operator-universes): Universes created and managed through the YugabyteDB Anywhere UI or API using [Helm charts](../edit-helm-overrides/).
 - [Operator universes](#operator-universes): Universes managed with the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/). Change volumes by updating the `YBUniverse` CRD. If you [imported a Helm-managed universe](../../anywhere-automation/yb-kubernetes-operator/#import-universe) to the Operator, use the Operator workflow going forward.
 
 ## Non-operator universes
 
-Full move applies to universes that YugabyteDB Anywhere manages via Helm charts. For information on creating these universes and setting initial volume configuration, refer to [Create a multi-zone universe](../../create-deployments/create-universe-multi-zone/) and [Configure a Kubernetes provider](../../configure-yugabyte-platform/kubernetes/).
+Full move applies to universes that YugabyteDB Anywhere manages via Helm charts. For information on creating these universes and setting initial volume configuration, refer to [Create universes](../../create-deployments/create-universe-multi-zone/) and [Configure a Kubernetes provider](../../configure-yugabyte-platform/kubernetes/).
 
 ### Modify volume attributes
 
-To change storage class, volume count, or volume size on a running universe:
+To change storage class, volume count, or volume size on a running universe, and do the following:
 
-1. Navigate to your universe and choose **Actions > Edit Universe**. For general edit-universe options, refer to [Modify universe](../edit-universe/).
-2. Edit the volume fields under **Instance Configuration** for TServer and Master as needed.
+1. New UI: Click **Settings > Hardware**, and under **Cluster Instance** click **Edit**.
 
-   ![Create instance tags](/images/ee/fm-instance-config.png)
+    Classic UI: Click **Actions > Edit Universe**.
 
-3. To edit per-AZ storage overrides, use **Edit storage overrides** in the UI.
+1. Edit the volume fields under **Instance Configuration** for TServer and Master as needed.
 
-   ![Create instance tags](/images/ee/edit-storage-overrides.png)
+   ![Edit instance configuration](/images/ee/fm-instance-config.png)
 
-4. Click **Save**, confirm the placement summary, and monitor the **Edit Kubernetes Universe** task on the universe [Tasks](../retry-failed-task/) page.
+1. To edit per-AZ storage overrides, use **Edit storage overrides** in the UI.
+
+   ![Storage overrides](/images/ee/edit-storage-overrides.png)
+
+Monitor the **Edit Kubernetes Universe** task on the universe [Tasks](../retry-failed-task/) page.
 
 To change other Helm chart settings (resources, labels, and so on) without changing storage class or volume count, use [Edit Kubernetes overrides](../edit-helm-overrides/) instead.
 
@@ -55,7 +58,7 @@ _Existing universes_ are migrated so that the volume attributes in use are store
 
 _New universes_ maintain backward compatibility. When deciding per-AZ volume attributes, YugabyteDB Anywhere considers all sources, including [provider per-AZ storage class](../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones) and [provider overrides](../../configure-yugabyte-platform/kubernetes/#overrides). For storage class recommendations, refer to [Hardware requirements for pods](../../prepare/server-nodes-hardware/).
 
-When you add a new AZ through **Actions > Edit Universe**, volume attributes for that zone are populated from the same sources the first time. After that, persisted attributes are used.
+When you add a new AZ, volume attributes for that zone are populated from the same sources the first time. After that, persisted attributes are used.
 
 For each AZ, the effective volume attributes are the merge of that AZ's overrides and the base fields `deviceInfo` (TServer) and `masterDeviceInfo` (Master), with AZ overrides taking precedence.
 

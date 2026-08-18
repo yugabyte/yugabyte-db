@@ -65,7 +65,7 @@ YugabyteDB Anywhere uses ICMP to verify connectivity between universes during xC
 
 ### Overriding default port assignments
 
-When [deploying a universe](../../create-deployments/create-universe-multi-zone/), you can customize the following ports:
+When [deploying a universe](../../create-deployments/create-universes-wizard/), you can customize the following ports:
 
 - YB-Master HTTP(S)
 - YB-Master RPC

@@ -56,13 +56,17 @@ If there are any errors in your overrides definitions, a detailed error message 
 
 ### Edit overrides on an existing universe
 
-To edit Kubernetes overrides on an existing universe, do the following:
+To edit Kubernetes overrides on an existing universe, navigate to the universe and do the following:
 
-1. Navigate to your universe's **Overview**.
+1. New UI: Click **Settings > Advanced**, and under **Helm Overrides** click **Add Helm Overrides** or **Edit**.
 
-1. Click **Actions > Edit Kubernetes Overrides** to open the **Kubernetes Overrides** dialog.
+    Classic UI: Click **Actions > Edit Kubernetes Overrides**.
+
+    This displays the **Kubernetes Overrides** dialog.
 
 1. Complete the dialog using the same YAML format and options described in [During universe creation](#during-universe-creation).
+
+For examples of typical overrides, see [Override examples](#override-examples).
 
 ## Override examples
 

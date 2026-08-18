@@ -222,7 +222,7 @@ By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [cu
 
 Enable Connection Pooling
 : If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
-: After the universe is created, you can customize additional connection pooling YB-TServer flags using **Actions > Edit Flags**. For flag names and defaults, refer to [YSQL Connection Manager configuration](../../../additional-features/connection-manager-ysql/ycm-setup/#configure).
+: After the universe is created, you can customize additional connection pooling YB-TServer flags using [Edit configuration flags](../../scale-deployments/edit-config-flags/). For flag names and defaults, refer to [YSQL Connection Manager configuration](../../../additional-features/connection-manager-ysql/ycm-setup/#configure).
 
 Enhanced Postgres Compatibility
 : If database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
