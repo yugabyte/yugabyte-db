@@ -95,8 +95,12 @@ class Synchronizer {
 
  private:
 
+  // Waits for the callback until the given time, using a lock already held on mutex_.
+  Status DoWaitUntil(
+      std::unique_lock<std::mutex>& lock, const std::chrono::steady_clock::time_point& time);
+
   // Invoked in the destructor and in Reset() to make sure Wait() was invoked if it had to be.
-  void EnsureWaitDone();
+  void EnsureWaitDone(std::unique_lock<std::mutex>& lock);
 
   std::mutex mutex_;
   std::condition_variable cond_;
