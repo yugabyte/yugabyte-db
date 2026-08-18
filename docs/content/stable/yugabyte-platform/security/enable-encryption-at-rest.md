@@ -36,7 +36,7 @@ For more information on the features, assumptions, design, data key management, 
 
 You can enable encryption at rest when creating a universe, and enable and disable encryption at rest on existing universes.
 
-For information on creating universes, see [Create universes](../../create-deployments/create-universe-multi-zone/).
+For information on creating universes, see [Create universes](../../create-deployments/create-universes-wizard/).
 
 ### Enable encryption at rest on an existing universe
 

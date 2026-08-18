@@ -28,7 +28,7 @@ If you are using your own certificates, before rotating certificates, ensure tha
 
 If you are using Kubertnetes cert-manager, certificate renewal is handled automatically by cert-manager before expiry. For information on rotating and managing certificates using cert-manager, refer to [Rotate certificates in cert-manager](../add-certificate-kubernetes/#rotate-certificates-in-cert-manager).
 
-Rotating the CA certificate on the source universe with xCluster Replication causes replication to pause. You should [restart replication](../../../manage-deployments/xcluster-replication/xcluster-replication-setup/#restart-replication) after completing the CA certificate rotation on the source universe.
+Rotating the CA certificate on the source universe with xCluster Replication causes replication to pause. You should [restart replication](../../../create-deployments/xcluster-replication/xcluster-replication-setup/#restart-replication) after completing the CA certificate rotation on the source universe.
 
 ## Enable or disable encryption in transit
 

@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-If your universe uses Kubernetes, you can set Helm chart overrides when you [create the universe](../../create-deployments/create-universe-multi-zone/), and modify them later for an existing universe.
+If your universe uses Kubernetes, you can set Helm chart overrides when you [create the universe](../../create-deployments/create-universes-wizard/), and modify them later for an existing universe.
 
 To change storage class or volume count on a running universe (v2026.1.0.0 or later), use [Full move for Kubernetes universes](../kubernetes-full-move/) instead.
 
