@@ -138,4 +138,20 @@ SpanWithScopePtr ActivateParentScope(const std::optional<trace::SpanContext>& pa
 // Buffers an attribute for the next RPC span started on this thread.
 void AddPendingRpcStringAttr(std::string key, std::string value);
 
+// Holds the span context captured where it is constructed, so work that runs on another thread can
+// re-parent itself under it. Copying carries the captured context; it does not re-capture.
+class TraceParent {
+ public:
+  TraceParent() : parent_(GetActiveSpanContext()) {}
+
+  // Re-captures the currently active context, for holders constructed off the submitting thread.
+  void Capture() { parent_ = GetActiveSpanContext(); }
+
+  // Makes the captured context current for as long as the returned scope is held.
+  [[nodiscard]] SpanWithScopePtr Activate() const { return ActivateParentScope(parent_); }
+
+ private:
+  std::optional<trace::SpanContext> parent_;
+};
+
 }  // namespace yb::dist_trace

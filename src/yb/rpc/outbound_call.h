@@ -610,7 +610,7 @@ class OutboundCall : public RpcCall {
 
   // The trace context active when this call was constructed -- its PARENT, re-activated around the
   // completion callback so follow-on RPCs nest as SIBLINGS of this call.
-  std::optional<dist_trace::trace::SpanContext> trace_parent_;
+  dist_trace::TraceParent trace_parent_;
 
   // InvokeCallbackTask should be able to call InvokeCallbackSync and we don't want other that
   // method to be public.

@@ -279,10 +279,6 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
 
   // Guarded so that with tracing off the span name below is never formatted.
   if (dist_trace::HasActiveContext()) {
-    // Save this call's traceparent before StartClientSpanWithScope makes otel_span_ current.
-    // InvokeCallbackSync restores it around the callback so follow-on work nests as a sibling.
-    trace_parent_ = dist_trace::GetActiveSpanContext();
-
     // Not attached: the wire header and the local inbound call both take this span from
     // GetContext().
     otel_span_ = dist_trace::StartClientSpanWithScope(
@@ -622,11 +618,8 @@ void OutboundCall::InvokeCallbackSync(std::optional<CoarseTimePoint> now_optiona
   // TODO: consider removing the cycle-based mechanism of reporting slow callbacks below.
 
   int64_t start_cycles = CycleClock::Now();
-  // Re-activate the call's parent context so RPCs the callback issues nest as siblings, not
-  // parentless roots. No-op when trace_parent_ is invalid; parent_scope drops at block end so it
-  // can't leak.
   {
-    auto parent_scope = dist_trace::ActivateParentScope(trace_parent_);
+    auto parent_scope = trace_parent_.Activate();
     callback_();
   }
   // Clear the callback, since it may be holding onto reference counts
