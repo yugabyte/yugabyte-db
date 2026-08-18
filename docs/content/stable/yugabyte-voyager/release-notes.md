@@ -33,9 +33,9 @@ Contact {{% support-general %}} to discuss alternative tools and migration appro
 
 ### Enhancements
 
-- Improved CDC partition key conflict handling: Tables with foreign keys or unique indexes had to be used with the slower table mode, but can now be consumed by parallel streams
+- Improved CDC partition key conflict handling. Tables with foreign keys or unique indexes had to be used with the slower table mode, but can now be consumed by parallel streams:
   - Improved resume validation for `--cdc-partition-key-overrides` so equivalent configurations are accepted and changed table strategies are identified clearly.
-  - CDC partition-key options are now visible in [import data](../reference/data-migration/import-data/) help and live migration configuration templates.
+  - CDC partition key options are now visible in [import data](../reference/data-migration/import-data/) help and live migration configuration templates.
 
 ### Bug fixes
 
