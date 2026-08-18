@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PROJECT_DIR:-.}/.agents/scripts/block-git-push.sh\" --format=claude"
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}/.agents/scripts/block-git-push.sh\""
           }
         ]
       }
