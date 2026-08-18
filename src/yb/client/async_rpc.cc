@@ -456,7 +456,53 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     if constexpr (std::is_same_v<Req, tserver::LWWriteRequestPB>) {
       IncrementCounter(async_rpc_metrics_->skip_intents_writes);
     }
-    if (req_.read_time().read_ht() > 0) {
+
+    // Writes with skip_intents bypass the intents db, so their rows land in the regular db at
+    // the hybrid time picked when the write is applied, which is always above the in_txn_limit
+    // of the statement (except in a corner case where the write occurs before the first read of
+    // the statement, refer src/yb/yql/pggate/README).
+    //
+    // Sending the statement's in_txn_limit as the read time gives those rows the same visibility
+    // that intents based rows would follow (i.e., without the optimization). This is because:
+    //
+    // (1) All rows written before the in_txn_limit would be visible and those written afterwards
+    // won't be visible.
+    //
+    // (2) No concurrent backend can write to the same table because the skip_intents optimization
+    // only applies to tables created in the current active transaction which is not committed yet.
+    //
+    // (3) The corner case implementation quirk that is seen in the normal unoptimized case remains
+    // in the optimized path of skip_intents.
+    //
+    // Collapsing local_limit and global_limit onto read_ht also removes the uncertainty window, so
+    // such a read can never ask for a read restart. That matters because query layer retries are
+    // blocked once the transaction has performed a skip_intents write, which would make a restart
+    // fatal rather than retryable.
+    //
+    // TODO: It could happen that a table is written to with skip_intents for sometime and later
+    // switches to the normal unoptimized path (e.g., due to a savepoint). Even in such cases, we
+    // should still use the in_txn_limit as the read point instead of the transaction snapshot.
+    // This is not done now but is not a problem yet because the optimization only applies to Read
+    // Committed isolation level and any new statement after the optimization is disabled will
+    // refresh the transaction snapshot. So, it would still see all data written in regular db
+    // before the statement even if it uses the transaction snapshot instead of in_txn_limit as the
+    // read point. However, when we enable this optimization for Repeatable Read isolation too,
+    // this TODO would need to be addressed to ensure that a read after the optimization is
+    // disabled still sees data written to regular DB.
+    //
+    // The statement's in_txn_limit is taken from the read point, where PgClientSession stores it
+    // via YBSession::SetInTxnLimit. kMax is not a statement limit: it is the backward-compatible
+    // "no cutoff, see all own intents" default that ReadHybridTime's constructors and FromPB
+    // assign when no limit was chosen (e.g. on autonomous DDL sessions, which never set one).
+    // In that case clearing the read time is enough (the remote tserver would pick the latest
+    // time for reading); waiting for safe time to reach kMax would block forever.
+    const auto in_txn_limit =
+        read_point ? read_point->GetReadTime().in_txn_limit : HybridTime::kInvalid;
+    if (in_txn_limit && in_txn_limit != HybridTime::kMax) {
+      req_.mutable_read_time()->set_read_ht(in_txn_limit.ToUint64());
+      req_.mutable_read_time()->set_local_limit_ht(in_txn_limit.ToUint64());
+      req_.mutable_read_time()->set_global_limit_ht(in_txn_limit.ToUint64());
+    } else if (req_.read_time().read_ht() > 0) {
       req_.clear_read_time();
     }
   }

@@ -5128,7 +5128,7 @@ YbBeginInternalSubTransactionForReadCommittedStatement()
 }
 
 bool
-YBTransactionContainsNonReadCommittedSavepoint(void)
+YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_compat_escape_hatch)
 {
 	if (!IsTransactionBlock())
 		return false;
@@ -5152,10 +5152,15 @@ YBTransactionContainsNonReadCommittedSavepoint(void)
 			 * correctly catch this, but to avoid breaking existing extensions
 			 * (like pg_partman) during upgrades, we skip returning true if
 			 * the backward-compatibility flag is enabled.
+			 *
+			 * That escape hatch exists only to preserve the behavior of the
+			 * buggy DDL code path, so it must not be extended to other callers.
+			 * Those pass skip_backward_compat_escape_hatch to opt out of it.
 			 */
 			if (s->parent)
 			{
-				if (!*YBCGetGFlags()->ysql_bypass_anonymous_savepoint_ddl_check)
+				if (skip_backward_compat_escape_hatch ||
+					!*YBCGetGFlags()->ysql_bypass_anonymous_savepoint_ddl_check)
 					return true;
 			}
 		}

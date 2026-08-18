@@ -63,10 +63,17 @@ class SkipIntentsMetricTest : public pgwrapper::LibPqTestBase {
   Result<int64_t> GetSkipIntentsCount() {
     int64_t result = 0;
     for (auto* tserver : cluster_->tserver_daemons()) {
-      int64_t count = CHECK_RESULT(tserver->GetMetric<int64>(
+      auto count_res = tserver->GetMetric<int64>(
           &METRIC_ENTITY_server, "yb.tabletserver", &METRIC_skip_intents_writes,
-          "value"));
-      result += count;
+          "value");
+      // The metric might not be instantiated on a tablet server if it hasn't
+      // handled any relevant operations yet, causing GetMetric to return NotFound.
+      // We gracefully treat NotFound as a count of 0.
+      if (count_res.ok()) {
+        result += *count_res;
+      } else if (!count_res.status().IsNotFound()) {
+        RETURN_NOT_OK(count_res);
+      }
     }
     return result;
   }
@@ -582,12 +589,15 @@ TEST_F(SkipIntentsCDCSDKTest, TestSkipIntentsDisabledWithLegacyCDCStream) {
 }
 
 /*
- * Same-transaction-created relation reads vs skip-intents (Halloween guard):
- * a standalone SELECT on a table created in the current txn must not flip
- * disable_skip_intents for later statements, while read+write shapes (modifying
- * CTE, self INSERT..SELECT, etc.) must still disable the optimization.
+ * Reads of a relation created in the current transaction vs skip-intents.
+ * Reading such a relation - standalone, from a modifying CTE, or from a self
+ * referencing INSERT..SELECT - must neither disable the optimization for later
+ * statements nor produce an anomaly, because fastpath operations read at the
+ * statement's in_txn_limit. Only a subtransaction (an explicit SAVEPOINT or a
+ * PL/pgSQL EXCEPTION block) still disables the optimization, since writes to the
+ * regular db cannot be rolled back.
  */
-class SkipIntentsSameTxnCreatedReadGuardTest : public SkipIntentsMetricTest {
+class SkipIntentsSameTxnCreatedRelationTest : public SkipIntentsMetricTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
@@ -595,7 +605,7 @@ class SkipIntentsSameTxnCreatedReadGuardTest : public SkipIntentsMetricTest {
   }
 };
 
-TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, SelectBetweenInsertsStillSkips) {
+TEST_F(SkipIntentsSameTxnCreatedRelationTest, SelectBetweenInsertsStillSkips) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
 
@@ -624,7 +634,7 @@ TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, SelectBetweenInsertsStillSkips) {
   ASSERT_EQ(n, 80);
 }
 
-TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, ModifyingCteDisablesFollowingInsert) {
+TEST_F(SkipIntentsSameTxnCreatedRelationTest, ModifyingCteStillSkips) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
 
@@ -650,16 +660,14 @@ TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, ModifyingCteDisablesFollowingInse
             << ", after modifying-CTE SELECT " << m_after_mcte_select
             << ", after tail INSERT " << m_after_tail_insert;
 
-  ASSERT_EQ(m_after_mcte_select, m_after_seed)
-      << "INSERT inside CTE should not use skip-intents because the query is a modifying CTE";
-  ASSERT_EQ(m_after_tail_insert, m_after_mcte_select)
-      << "INSERT after a SELECT that has a modifying CTE should not use skip-intents";
+  ASSERT_GT(m_after_mcte_select, m_after_seed);
+  ASSERT_GT(m_after_tail_insert, m_after_mcte_select);
 
   auto n = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM si_mcte_guard"));
   ASSERT_EQ(n, 3);
 }
 
-TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, SelfInsertSelectDisablesFollowingInsert) {
+TEST_F(SkipIntentsSameTxnCreatedRelationTest, SelfInsertSelectStillSkips) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
 
@@ -681,16 +689,14 @@ TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, SelfInsertSelectDisablesFollowing
             << ", after INSERT..SELECT self " << m_after_self_scan_insert
             << ", after tail INSERT " << m_after_tail_insert;
 
-  ASSERT_EQ(m_after_self_scan_insert, m_after_seed)
-      << "INSERT..SELECT from the same txn-created table should not use skip-intents";
-  ASSERT_EQ(m_after_tail_insert, m_after_self_scan_insert)
-      << "INSERT after INSERT..SELECT from the same txn-created table should not use skip-intents";
+  ASSERT_GT(m_after_self_scan_insert, m_after_seed);
+  ASSERT_GT(m_after_tail_insert, m_after_self_scan_insert);
 
   auto n = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM si_self_ins"));
   ASSERT_EQ(n, 51);
 }
 
-TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, ExceptionBlockDisablesFollowingInsert) {
+TEST_F(SkipIntentsSameTxnCreatedRelationTest, ExceptionBlockDisablesFollowingInsert) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
 
@@ -727,7 +733,7 @@ TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, ExceptionBlockDisablesFollowingIn
   ASSERT_EQ(n, 27);
 }
 
-TEST_F(SkipIntentsSameTxnCreatedReadGuardTest, ExplicitSavepointDisablesOptimization) {
+TEST_F(SkipIntentsSameTxnCreatedRelationTest, ExplicitSavepointDisablesOptimization) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
 
@@ -1065,6 +1071,41 @@ TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
   auto val4 = ASSERT_RESULT(conn.FetchRow<std::string>(
       "SHOW yb_enable_new_relation_fastpath_write_in_txn_blocks"));
   ASSERT_EQ(val4, "off");
+}
+
+TEST_F(SkipIntentsMetricTest, TestAbortedSubtxnWrite) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  for (bool fastpath_enabled : {true, false}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "SET yb_enable_new_relation_fastpath_write_in_txn_blocks = $0", fastpath_enabled));
+    ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'READ COMMITTED'"));
+
+    std::string table = fastpath_enabled ? "subtxn_abort_t" : "subtxn_abort_ctl_t";
+    ASSERT_OK(conn.Execute("BEGIN"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", table));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (0)", table));
+    auto skips_before = ASSERT_RESULT(GetSkipIntentsCount());
+    ASSERT_OK(conn.ExecuteFormat(
+        "DO $$$$ BEGIN\n"
+        "  INSERT INTO $0 VALUES (1);\n"
+        "  PERFORM 1 / 0;\n"
+        "EXCEPTION WHEN division_by_zero THEN NULL;\n"
+        "END $$$$", table));
+    auto skips_after = ASSERT_RESULT(GetSkipIntentsCount());
+    ASSERT_OK(conn.Execute("COMMIT"));
+
+    // Machine check: the INSERT inside the EXCEPTION block must not have used the fastpath
+    // due to implicit savepoint associated with EXCEPTION block.
+    ASSERT_EQ(skips_after - skips_before, 0);
+
+    // Correctness check (PostgreSQL semantics): only row 0 must be visible.
+    auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>(
+        Format("SELECT k FROM $0 ORDER BY k", table)));
+    ASSERT_EQ(rows, (std::vector<int32_t>{0}))
+        << "a row written inside an aborted subtransaction is visible after commit with fastpath="
+        << fastpath_enabled;
+  }
 }
 
 } // namespace pgwrapper

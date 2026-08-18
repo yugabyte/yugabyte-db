@@ -1749,7 +1749,6 @@ extern YbcPgStatement YbNewTruncateColocated(Relation rel,
 extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 														   YbcPgTransactionSetting transaction_setting);
 extern bool YbCanSkipIntentsWrite(Relation rel);
-extern void YbDisableSkipIntentsIfModifyingCTE(struct QueryDesc *queryDesc);
 extern void YbEnableSkipIntentsForNewTransaction();
 extern void YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid);
 
