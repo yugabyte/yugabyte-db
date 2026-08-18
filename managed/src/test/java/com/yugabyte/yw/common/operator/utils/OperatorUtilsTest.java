@@ -38,6 +38,7 @@ import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.CiphertrustEARServiceUtil.CipherTrustKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
@@ -47,6 +48,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.Schedule;
@@ -2250,5 +2252,84 @@ public class OperatorUtilsTest extends FakeDBApplication {
     // node-agent and YNP logs are absent from the universe CRD, so they can never be authored.
     assertNull(desired.getNodeAgentLogConfig());
     assertNull(desired.getYnpLogConfig());
+  }
+
+  /**
+   * The import path builds a CR spec out of a stored auth config, and the reconciler turns that CR
+   * back into an auth config. If the two disagree the reconciler sees an edit on every resync, so
+   * the round trip has to land on the config it started from. Vault AppRole is the sharpest case:
+   * the auth config holds a namespace-qualified mount path while the CR holds a relative one.
+   */
+  @Test
+  public void testBuildKMSConfigSpecHashicorpAppRoleRoundTrips() {
+    ObjectNode authConfig = Json.newObject();
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_ADDRESS, "http://vault:8200");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_KEY_NAME, "key_yugabyte");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_ENGINE, "transit");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID, "role-id");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID, "secret-id");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE, "yb-ns");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH, "yb-ns/transit/");
+    KmsConfig cfg =
+        KmsConfig.createKMSConfig(
+            testCustomer.getUuid(), KeyProvider.HASHICORP, authConfig, "vault-kms-config");
+
+    // Only the AppRole secret ID is a credential, so only it needs a Secret.
+    assertEquals(
+        Map.of(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID, "secret-id"),
+        OperatorUtils.getKMSConfigSecretValues(cfg));
+
+    KMSConfigSpec spec =
+        operatorUtils.buildKMSConfigSpec(
+            cfg,
+            "test-namespace",
+            Map.of(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID, "vault-secret-id"));
+
+    assertEquals(KMSConfigSpec.Provider.HASHICORP, spec.getProvider());
+    assertEquals(Vault.AuthType.APPROLE, spec.getVault().getAuthType());
+    assertEquals("role-id", spec.getVault().getAppRole().getRoleID());
+    assertEquals("vault-secret-id", spec.getVault().getAppRole().getSecretIdSecret().getName());
+    assertEquals(
+        HashicorpVaultConfigParams.HC_VAULT_SECRET_ID,
+        spec.getVault().getAppRole().getSecretIdSecret().getKey());
+    // The mount path on the CR is relative to the auth namespace.
+    assertEquals("transit/", spec.getVault().getMountPath());
+
+    KMSConfig kmsConfigCr = baseKmsConfigCr(KMSConfigSpec.Provider.HASHICORP);
+    kmsConfigCr.setSpec(spec);
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("secret-id").when(operatorUtils).parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode roundTripped = operatorUtils.getKMSConfigFormDataFromCr(kmsConfigCr);
+
+    // The form data carries the config name alongside the auth config fields; the rest of it has
+    // to match the auth config the spec was built from, exactly.
+    assertEquals("vault-kms-config", roundTripped.remove("name").asText());
+    assertEquals(authConfig, roundTripped);
+  }
+
+  /**
+   * A config authenticating with the host IAM profile stores no credentials at all, so nothing has
+   * to move into a Secret and the spec must not ask for one.
+   */
+  @Test
+  public void testBuildKMSConfigSpecAwsIamProfileNeedsNoSecrets() {
+    ObjectNode authConfig = Json.newObject();
+    authConfig.put(AwsKmsAuthConfigField.REGION.fieldName, "us-west-2");
+    authConfig.put(AwsKmsAuthConfigField.CMK_ID.fieldName, "arn:aws:kms:us-west-2:1:key/cmk");
+    KmsConfig cfg =
+        KmsConfig.createKMSConfig(
+            testCustomer.getUuid(), KeyProvider.AWS, authConfig, "aws-kms-config");
+
+    assertTrue(OperatorUtils.getKMSConfigSecretValues(cfg).isEmpty());
+
+    KMSConfigSpec spec = operatorUtils.buildKMSConfigSpec(cfg, "test-namespace", Map.of());
+
+    assertEquals(true, spec.getAws().getUseIAMProfile());
+    assertNull(spec.getAws().getAccessKeyIdSecret());
+    assertNull(spec.getAws().getSecretAccessKeySecret());
+    assertEquals("us-west-2", spec.getAws().getRegion());
+    // The CMK is carried over so that a later edit does not create a second one.
+    assertEquals("arn:aws:kms:us-west-2:1:key/cmk", spec.getAws().getCmkID());
   }
 }

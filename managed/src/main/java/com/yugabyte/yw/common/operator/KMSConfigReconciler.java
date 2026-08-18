@@ -26,7 +26,6 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import io.yugabyte.operator.v1alpha1.KMSConfig;
 import io.yugabyte.operator.v1alpha1.KMSConfigStatus;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -52,14 +51,7 @@ import org.apache.commons.collections4.CollectionUtils;
 public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
 
   // Providers implemented by the operator (create/edit/delete). Others surface as an Error state.
-  private static final Set<KeyProvider> SUPPORTED_PROVIDERS =
-      EnumSet.of(
-          KeyProvider.HASHICORP,
-          KeyProvider.AWS,
-          KeyProvider.GCP,
-          KeyProvider.AZU,
-          KeyProvider.CIPHERTRUST,
-          KeyProvider.OCI);
+  private static final Set<KeyProvider> SUPPORTED_PROVIDERS = OperatorUtils.SUPPORTED_KMS_PROVIDERS;
 
   private final KMSConfigHelper kmsConfigHelper;
   private final Map<String, UUID> kmsConfigTaskMap;
