@@ -554,6 +554,10 @@ reauthenticate
 reauthenticated
 reauthenticates
 reauthenticating
+rebalance
+rebalanced
+rebalancer
+rebalances
 rebalancing
 rebar
 rebase
