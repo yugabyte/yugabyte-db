@@ -142,6 +142,10 @@ DEFINE_test_flag(bool, fail_create_table_rpc, false,
 DEFINE_test_flag(bool, pause_session_lock_before_release, false,
     "Pause before releasing session object lock.");
 
+DEFINE_test_flag(bool, pause_perform_with_paging_state, false,
+    "Pause Perform requests that contain a read operation with a "
+    "paging state, until the flag is reset.");
+
 DEFINE_test_flag(bool, pause_session_lock_after_release, false,
     "Pause after releasing session object lock.");
 
@@ -449,6 +453,29 @@ Status ProcessUsedReadTime(uint64_t session_id,
     *used_read_time = {.tablet_id = read_op.used_tablet(), .value = op_used_read_time};
   }
   return Status::OK();
+}
+
+// Pauses a request which fetches a continuation page of a previous request. Allows tests to
+// control the interleaving of the requests of a single catalog prefetching chain.
+void MaybePauseReadWithPagingStateForTesting(const PgPerformRequestMsg& req) {
+  if (PREDICT_TRUE(!ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_pause_perform_with_paging_state))) {
+    return;
+  }
+
+  for (const auto& op : req.ops()) {
+    if (!op.has_read()) {
+      continue;
+    }
+    // The paging state belongs to the innermost query of a nested request.
+    const auto* read = &op.read();
+    while (read->has_index_request()) {
+      read = &read->index_request();
+    }
+    if (read->has_paging_state()) {
+      TEST_PAUSE_IF_FLAG(TEST_pause_perform_with_paging_state);
+      return;
+    }
+  }
 }
 
 Status HandleOperationResponse(uint64_t session_id,
@@ -3328,6 +3355,8 @@ class PgClientSession::Impl {
     VLOG(5) << "Perform request: " << data->req.ShortDebugString();
 
     RETURN_NOT_OK(ValidateRequestForXCluster(options, data));
+
+    MaybePauseReadWithPagingStateForTesting(data->req);
 
     if (options.has_caching_info()) {
       VLOG_WITH_PREFIX(3)
