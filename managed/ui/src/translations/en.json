@@ -4549,6 +4549,25 @@
           "migrateNodes": "Migrate to a new set of nodes.",
           "migrateNodesDescription": "Migrate all data to a new set of nodes with new IP addresses. The universe will remain online and available throughout.",
           "confirmAndApply": "Confirm and Apply"
+        },
+        "storageOverrides": {
+          "title": "Storage Overrides",
+          "primaryClusterTitle": "Primary Cluster Storage Overrides",
+          "asyncClusterTitle": "Read Replica Storage Overrides",
+          "emptyStateText": "Override storage settings for selected availability zones.",
+          "addStorageOverride": "Add Storage Override",
+          "editStorageOverride": "Edit Storage Override",
+          "modalTitle": "Storage Override",
+          "zonesWithStorageOverrides": "Zones With Storage Overrides",
+          "availabilityZone": "Availability Zone",
+          "select": "Select",
+          "tserver": "T-Server",
+          "masterServer": "Master Server",
+          "volumeCount": "Volume Count",
+          "volumeSizeGib": "Volume Size (Gib)",
+          "storageClass": "Storage Class",
+          "addAvailabilityZone": "Add Availability Zone",
+          "applyingChanges": "Applying changes..."
         }
       },
       "security": {

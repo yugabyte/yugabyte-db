@@ -8,6 +8,7 @@ import {
   ClusterPlacementSpec,
   ClusterSpec,
   ClusterSpecClusterType,
+  NodeDetailsDedicatedTo,
   PlacementAZ,
   PlacementRegion
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -17,7 +18,7 @@ import {
 } from '../../create-universe/helpers/constants';
 import {
   countRegionsAzsAndNodes,
-  countMasterNodesInAz,
+  countNodesInAzByType,
   getDedicatedCountsForPlacementRegion,
   getDedicatedTserverMasterDisplayCounts,
   getResilientType,
@@ -253,7 +254,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
                   accessorKey: 'masters',
                   header: t('masters'),
                   Cell: ({ row: azRow }: any) =>
-                    countMasterNodesInAz(universeData!, azRow.original?.uuid)
+                    countNodesInAzByType(universeData!, azRow.original?.uuid, NodeDetailsDedicatedTo.MASTER)
                 }
               ]
             : [])

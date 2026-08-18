@@ -75,6 +75,10 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
     </YBButton>
   );
 
+  // if it is k8's and read replica is already present, then we remove the actions menu as there are no actions to show
+  if(!showAddReadReplica && !onEditMasterAllocationClick) {
+    return null;
+  }
   return (
     <>
       <span

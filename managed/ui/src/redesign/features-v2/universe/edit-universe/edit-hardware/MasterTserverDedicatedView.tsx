@@ -15,6 +15,7 @@ import {
 import { StyledPane } from './Component';
 import { InstanceCard } from './InstanceCard';
 import { EditHardwareConfirmModal } from './EditHardwareConfirmModal';
+import { StorageOverrides } from './StorageOverrides';
 
 const { Box, Typography } = mui;
 
@@ -22,6 +23,7 @@ export const MasterTserverDedicatedView = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.hardware' });
   const { universeData } = useEditUniverseContext();
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
+  const asyncCluster = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
   const readReplicaCluster = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
   const isK8s = isKubernetesCluster(primaryCluster);
   const tserverK8sResourceSpec = getK8sResourceSpecFromNodeSpec(
@@ -95,6 +97,16 @@ export const MasterTserverDedicatedView = () => {
           }}
         />
       )}
+      {
+        isK8s && primaryCluster && (
+          <StorageOverrides cluster={primaryCluster} hasReadReplica={!!readReplicaCluster} />
+        )
+      }
+      {
+        isK8s && asyncCluster && (
+          <StorageOverrides cluster={asyncCluster} hasReadReplica={true}/>
+        )
+      }
       <EditHardwareConfirmModal
         visible={isTServerEditOpen}
         mode="tserver"
