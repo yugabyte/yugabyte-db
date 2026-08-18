@@ -640,16 +640,9 @@ namespace dist_trace_hops {
 
 using dist_trace::MakeTestSpanContext;
 
-// Enables distributed tracing, pointed at an unreachable collector.
 class ThreadPoolTraceTest : public ThreadPoolTest {
- protected:
-  void SetUp() override {
-    ThreadPoolTest::SetUp();
-    dist_trace::TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
-  }
-
  private:
-  google::FlagSaver flag_saver_;
+  dist_trace::ScopedTestDistTrace dist_trace_;
 };
 
 // Records the trace context active on the worker thread while Run() executes.
@@ -743,6 +736,67 @@ TEST_F(ThreadPoolTraceTest, TraceContextCarriedToStrand) {
   ASSERT_TRUE(task.observed().has_value());
   ASSERT_EQ(task.observed()->trace_id(), expected.trace_id());
   ASSERT_EQ(task.observed()->span_id(), expected.span_id());
+}
+
+// Same, blocking in Run() so another task can be queued behind it in the same drain batch.
+class BlockingContextObservingStrandTask : public StrandTask {
+ public:
+  BlockingContextObservingStrandTask(
+      CountDownLatch* started, CountDownLatch* resume, CountDownLatch* done)
+      : started_(started), resume_(resume), done_(done) {}
+
+  const std::optional<dist_trace::trace::SpanContext>& observed() const { return observed_; }
+
+ private:
+  void Run() override {
+    observed_ = dist_trace::GetActiveSpanContext();
+    started_->CountDown();
+    CHECK(resume_->WaitFor(30s * kTimeMultiplier));
+  }
+
+  void Done(const Status&) override { done_->CountDown(); }
+
+  CountDownLatch* started_;
+  CountDownLatch* resume_;
+  CountDownLatch* done_;
+  std::optional<dist_trace::trace::SpanContext> observed_;
+};
+
+// A traced task and an untraced one drained by the same strand invocation: the untraced task must
+// not inherit the traced task's context.
+TEST_F(ThreadPoolTraceTest, StrandDoesNotLeakContextToUntracedTask) {
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = strand::kPoolTotalWorkers,
+  });
+  Strand strand(&pool);
+
+  const auto first_context = MakeTestSpanContext(0x55);
+  CountDownLatch started(1);
+  CountDownLatch resume(1);
+  CountDownLatch done(2);
+  BlockingContextObservingStrandTask first_task(&started, &resume, &done);
+  ContextObservingStrandTask second_task(&done);
+
+  {
+    auto scope = dist_trace::ActivateParentScope(first_context);
+    ASSERT_TRUE(scope != nullptr);
+    ASSERT_TRUE(strand.Enqueue(&first_task));
+  }
+
+  // Queue the second task with no context active while the first is still running, so that both are
+  // drained by the same Strand::Task::Done invocation.
+  ASSERT_TRUE(started.WaitFor(10s * kTimeMultiplier));
+  ASSERT_FALSE(dist_trace::HasActiveContext());
+  ASSERT_TRUE(strand.Enqueue(&second_task));
+  resume.CountDown();
+
+  ASSERT_TRUE(done.WaitFor(10s * kTimeMultiplier));
+  strand.Shutdown();
+
+  ASSERT_TRUE(first_task.observed().has_value());
+  ASSERT_EQ(first_task.observed()->trace_id(), first_context.trace_id());
+  ASSERT_FALSE(second_task.observed().has_value());
 }
 
 // Two tasks enqueued under different trace contexts: each runs under its own.

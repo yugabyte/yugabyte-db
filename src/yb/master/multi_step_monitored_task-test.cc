@@ -351,16 +351,9 @@ class TraceObservingCatalogEntityTask : public MultiStepCatalogEntityTask {
   Synchronizer completion_sync_;
 };
 
-// Enables distributed tracing, pointed at an unreachable collector.
 class CatalogEntityTaskTraceTest : public YBTest {
- protected:
-  void SetUp() override {
-    YBTest::SetUp();
-    dist_trace::TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
-  }
-
  private:
-  google::FlagSaver flag_saver_;
+  dist_trace::ScopedTestDistTrace dist_trace_;
 };
 
 // Construct a task under an active trace context, then Start() it after the context is gone: the

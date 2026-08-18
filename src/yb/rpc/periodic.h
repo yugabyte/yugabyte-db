@@ -174,7 +174,7 @@ class PeriodicTimer : public std::enable_shared_from_this<PeriodicTimer> {
   RunTaskFunctor functor_;
 
   // Trace context captured at construction
-  const std::optional<dist_trace::trace::SpanContext> trace_parent_;
+  const dist_trace::TraceParent trace_parent_;
 
   // User-specified task period.
   const MonoDelta period_;

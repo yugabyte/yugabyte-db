@@ -193,7 +193,7 @@ class RpcRetrier {
   std::atomic<RpcRetrierState> state_{RpcRetrierState::kIdle};
 
   // Trace context active when this retrier was constructed -- the caller's parent span.
-  std::optional<dist_trace::trace::SpanContext> trace_parent_;
+  dist_trace::TraceParent trace_parent_;
 
   DISALLOW_COPY_AND_ASSIGN(RpcRetrier);
 };

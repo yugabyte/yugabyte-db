@@ -23,7 +23,6 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/dist_trace_test_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -68,12 +67,10 @@ class TraceObservingRpcCommand : public RpcCommand {
   Status finished_status_;
 };
 
-// Enables distributed tracing, pointed at an unreachable collector.
 class RpcRetrierTraceTest : public YBTest {
  public:
   void SetUp() override {
     YBTest::SetUp();
-    dist_trace::TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
     messenger_ = ASSERT_RESULT(MessengerBuilder("test").Build());
     proxy_cache_ = std::make_unique<ProxyCache>(messenger_.get());
   }
@@ -93,7 +90,7 @@ class RpcRetrierTraceTest : public YBTest {
   std::unique_ptr<ProxyCache> proxy_cache_;
 
  private:
-  google::FlagSaver flag_saver_;
+  dist_trace::ScopedTestDistTrace dist_trace_;
 };
 
 // Construct a retrier under an active trace context: the reactor thread re-sends under that
