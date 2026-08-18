@@ -308,6 +308,10 @@ public class TestPagingSelect extends BaseCQLTest {
           String.format("INSERT INTO test_table (h, a, b) VALUES (%d, 10, 'varstr%d')", i, i));
     }
 
+    // The queries below are paged, so every node must plan them as an index scan before the first
+    // one starts.
+    waitForIndexScanPlanOnAllNodes("SELECT a, b FROM test_table WHERE a = 10", "test_index_ab");
+
     // Index only scan.
     {
       HashSet<String> expectedRows = new HashSet<>(Arrays.asList(
