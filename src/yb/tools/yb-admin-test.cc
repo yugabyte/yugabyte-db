@@ -2765,6 +2765,107 @@ TEST_F(AdminCliTest, TestGetTableHashRejectsTooOldReadTime) {
   ASSERT_OK(CallAdmin("get_table_hash", table_id));
 }
 
+// get_table_hash tests. It only talks to leaders, whose safe time cannot be held back without
+// costing them their majority, so these tests use a read time ahead of the cluster's clock instead.
+class AdminCliGetTableHashReadTimeTest : public AdminCliTest {
+ protected:
+  // Brings up the cluster with a populated multi-tablet YCQL table in hash_table_id_.
+  void StartClusterWithTable() {
+    BuildAndStart();
+
+    const auto table_name = YBTableName(
+        YQLDatabase::YQL_DATABASE_CQL, kTableName.namespace_name(), "read_time_table");
+    client::TableHandle table;
+    ASSERT_OK(table.Create(
+        table_name, /* num_tablets */ 3, client::YBSchema(schema_), client_.get()));
+
+    TestYcqlWorkload workload(cluster_.get());
+    workload.set_table_name(table_name);
+    workload.Setup();
+    workload.Start();
+    workload.WaitInserted(100);
+    workload.StopAndJoin();
+
+    auto tables = ASSERT_RESULT(client_->ListTables(table_name.table_name()));
+    ASSERT_EQ(1, tables.size());
+    hash_table_id_ = tables.front().table_id();
+  }
+
+  // A read time no replica has reached, but inside dump_tablet_data_max_read_time_ahead_ms so it
+  // counts as lag, not as a caller error. Recompute per command: yb-admin startup eats a second or
+  // two.
+  Result<uint64_t> ReadTimeAheadOfClock(int64_t seconds) {
+    return VERIFY_RESULT(cluster_->master()->GetServerTime()).AddSeconds(seconds).ToUint64();
+  }
+
+  // Reads get_table_hash's whole-table {row count, XOR hash} back out of its stdout.
+  static Result<std::pair<uint64_t, uint64_t>> Totals(const std::string& output) {
+    const auto value = [&output](const char* prefix) -> Result<uint64_t> {
+      auto pos = output.find(prefix);
+      SCHECK_NE(
+          pos, std::string::npos, NotFound,
+          Format("'$0' missing from output: $1", prefix, output));
+      return std::stoull(output.substr(pos + strlen(prefix)));
+    };
+    auto row_count = VERIFY_RESULT(value("Total row count: "));
+    auto xor_hash = VERIFY_RESULT(value("Total XOR hash: "));
+    return std::make_pair(row_count, xor_hash);
+  }
+
+  std::string hash_table_id_;
+};
+
+// A read time nothing has reached must be reported as such, not answered with whatever happens to
+// be applied. With a zero wait, straight away.
+TEST_F(AdminCliGetTableHashReadTimeTest, TestGetTableHashReadTimeNotReachedFailsFast) {
+  ASSERT_NO_FATALS(StartClusterWithTable());
+
+  const auto past_ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+  // Safe time trails the present. Let it move past past_ht before asking with a zero wait.
+  SleepFor(2s * kTimeMultiplier);
+
+  // A read time the tablets have reached does not involve the wait at all.
+  ASSERT_OK(CallAdmin(
+      "--read_time_wait_ms", 0, "get_table_hash", hash_table_id_, past_ht.ToUint64()));
+
+  const auto start = MonoTime::Now();
+  auto result = CallAdmin(
+      "--read_time_wait_ms", 0, "get_table_hash", hash_table_id_,
+      ASSERT_RESULT(ReadTimeAheadOfClock(10)));
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "is not yet safe on this replica");
+  ASSERT_STR_CONTAINS(result.status().ToString(), "behind by");
+  // Zero means zero: it did not sit out the 10s gap.
+  ASSERT_LT(MonoTime::Now() - start, MonoDelta::FromSeconds(30));
+
+  // A key range narrows which rows get hashed. It must not narrow away the read-time check.
+  result = CallAdmin(
+      "--read_time_wait_ms", 0, "get_table_hash", hash_table_id_,
+      ASSERT_RESULT(ReadTimeAheadOfClock(10)),
+      /* start_key_hex */ "8000", /* end_key_hex */ std::string());
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "is not yet safe on this replica");
+}
+
+// Given time to wait, get_table_hash waits instead of failing, and answers with the same data as a
+// read at that time once it is in the past.
+TEST_F(AdminCliGetTableHashReadTimeTest, TestGetTableHashWaitsForReadTime) {
+  ASSERT_NO_FATALS(StartClusterWithTable());
+
+  const auto past_ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+  SleepFor(2s * kTimeMultiplier);
+  const auto past_totals = ASSERT_RESULT(Totals(
+      ASSERT_RESULT(CallAdmin("get_table_hash", hash_table_id_, past_ht.ToUint64()))));
+  ASSERT_GT(past_totals.first, 0ULL);
+  ASSERT_NE(past_totals.second, 0ULL);
+
+  // Nothing writes between the two read times, so the totals have to match.
+  const auto future_totals = ASSERT_RESULT(Totals(ASSERT_RESULT(CallAdmin(
+      "--read_time_wait_ms", 30000, "get_table_hash", hash_table_id_,
+      ASSERT_RESULT(ReadTimeAheadOfClock(8))))));
+  ASSERT_EQ(future_totals, past_totals);
+}
+
 // DB-21953: get_table_hash registers its read time with the retention policy, which also pins the
 // history cutoff for the whole call. That pin is what stops a compaction running alongside the scan
 // from garbage-collecting row versions the scan still needs.

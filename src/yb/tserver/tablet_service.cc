@@ -4128,6 +4128,12 @@ Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
   if (req.has_read_ht()) {
     read_ht = req.read_ht();
   }
+  // An absent max_wait_ms falls back to the server default, not to zero. Safe time trails the
+  // present, so a caller asking for "now" is always slightly ahead of it.
+  std::optional<MonoDelta> max_read_time_wait;
+  if (req.has_max_wait_ms()) {
+    max_read_time_wait = MonoDelta::FromMilliseconds(req.max_wait_ms());
+  }
 
   auto peer_role = VERIFY_RESULT(peer_tablet.tablet_peer->GetConsensus())->role();
 
@@ -4152,8 +4158,8 @@ Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
   Slice end_key = req.has_end_key() ? Slice(req.end_key()) : Slice();
   RETURN_NOT_OK(
       tablet::DumpTabletData(
-          *peer_tablet.tablet, server_->client_future(), file.get(), read_ht, deadline, xor_hash,
-          row_count, target_table_id, start_key, end_key));
+          *peer_tablet.tablet, server_->client_future(), file.get(), read_ht, max_read_time_wait,
+          deadline, xor_hash, row_count, target_table_id, start_key, end_key));
   DumpTabletDataResponsePB resp;
   resp.set_row_count(row_count);
   resp.set_xor_hash(xor_hash);

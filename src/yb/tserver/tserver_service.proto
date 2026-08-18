@@ -697,6 +697,12 @@ message DumpTabletDataRequestPB {
   // requires a concrete table_id (not the colocation parent id).
   optional bytes start_key = 5;
   optional bytes end_key = 6;
+
+  // How long to wait for safe time to reach read_ht, before failing with READ_TIME_NOT_REACHED.
+  // 0 fails immediately. Unset uses FLAGS_dump_tablet_data_max_read_time_wait_ms. Capped at the
+  // RPC deadline.
+  // A tserver that predates this field ignores it and answers at whatever it has applied.
+  optional uint32 max_wait_ms = 7;
 }
 
 message DumpTabletDataResponsePB {

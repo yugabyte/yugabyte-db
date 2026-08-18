@@ -13,9 +13,15 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "yb/util/flags.h"
 
 static constexpr int kAutoDetectNumShardsPerTServer = -1;
+
+// Default for dump_tablet_data_max_read_time_wait_ms and for the --read_time_wait_ms flags of
+// yb-ts-cli and yb-admin. Shared so the CLIs cannot drift from the server default.
+static constexpr uint32_t kDumpTabletDataMaxReadTimeWaitMsDefault = 5000;
 
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_num_shards_per_tserver);
