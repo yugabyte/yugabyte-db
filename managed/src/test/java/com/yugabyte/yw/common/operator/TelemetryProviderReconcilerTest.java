@@ -3,7 +3,6 @@
 package com.yugabyte.yw.common.operator;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
@@ -153,7 +152,6 @@ public class TelemetryProviderReconcilerTest extends FakeDBApplication {
     cr.setMetadata(metadata);
 
     TelemetryProviderSpec spec = new TelemetryProviderSpec();
-    spec.setName(specName);
     spec.setProvider(TelemetryProviderSpec.Provider.DATA_DOG);
     DataDog dataDog = new DataDog();
     dataDog.setSite("datadoghq.com");
@@ -230,7 +228,7 @@ public class TelemetryProviderReconcilerTest extends FakeDBApplication {
     verify(telemetryProviderService, times(1)).save(captor.capture());
     com.yugabyte.yw.models.TelemetryProvider saved = captor.getValue();
     assertEquals(customer.getUuid(), saved.getCustomerUUID());
-    assertEquals(SPEC_NAME, saved.getName());
+    assertEquals(CR_NAME, saved.getName());
     assertSame(convertedConfig, saved.getConfig());
     Map<String, String> expectedTags = new HashMap<>();
     expectedTags.put("env", "dev");
@@ -308,15 +306,14 @@ public class TelemetryProviderReconcilerTest extends FakeDBApplication {
     verify(telemetryProviderService, times(1))
         .list(customerCaptor.capture(), namesCaptor.capture());
     assertEquals(customer.getUuid(), customerCaptor.getValue());
-    assertEquals(Collections.singleton(SPEC_NAME), namesCaptor.getValue());
+    assertEquals(Collections.singleton(metadataName), namesCaptor.getValue());
 
     ArgumentCaptor<com.yugabyte.yw.models.TelemetryProvider> captor = saveCaptor();
     verify(telemetryProviderService, times(1)).save(captor.capture());
     String createdName = captor.getValue().getName();
 
-    assertEquals(SPEC_NAME, createdName);
+    assertEquals(metadataName, createdName);
     assertEquals(namesCaptor.getValue().iterator().next(), createdName);
-    assertNotEquals(metadataName, createdName);
   }
 
   @Test
@@ -353,7 +350,7 @@ public class TelemetryProviderReconcilerTest extends FakeDBApplication {
 
     ArgumentCaptor<com.yugabyte.yw.models.TelemetryProvider> captor = saveCaptor();
     verify(telemetryProviderService, times(1)).save(captor.capture());
-    assertEquals(SPEC_NAME, captor.getValue().getName());
+    assertEquals(CR_NAME, captor.getValue().getName());
     assertEquals("Ready", cr.getStatus().getState());
     assertEquals(createdUuid.toString(), cr.getStatus().getResourceUUID());
   }
@@ -498,7 +495,7 @@ public class TelemetryProviderReconcilerTest extends FakeDBApplication {
     verify(telemetryProviderService, times(1))
         .list(customerCaptor.capture(), namesCaptor.capture());
     assertEquals(customer.getUuid(), customerCaptor.getValue());
-    assertEquals(Collections.singleton(SPEC_NAME), namesCaptor.getValue());
+    assertEquals(Collections.singleton(CR_NAME), namesCaptor.getValue());
     verify(telemetryProviderService, times(1)).delete(providerUuid);
   }
 
