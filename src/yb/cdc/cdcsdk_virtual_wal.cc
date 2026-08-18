@@ -143,6 +143,7 @@ std::string CDCSDKVirtualWAL::GetChangesRequestInfo::ToString() const {
   result += Format(", write_id: $0", write_id);
   result += Format(", safe_hybrid_time: $0", safe_hybrid_time);
   result += Format(", wal_segment_index: $0", wal_segment_index);
+  result += Format(", max_index_in_sort_window: $0", max_index_in_sort_window);
 
   return result;
 }
@@ -358,6 +359,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
       info.write_id = checkpoint.write_id();
       info.safe_hybrid_time = checkpoint.snapshot_time();
       info.wal_segment_index = 0;
+      info.max_index_in_sort_window = 0;
       children_tablet_to_next_req_info.emplace_back(tablet_id, info);
     }
 
@@ -399,6 +401,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
       info.write_id = checkpoint.write_id();
       info.safe_hybrid_time = checkpoint.snapshot_time();
       info.wal_segment_index = 0;
+      info.max_index_in_sort_window = 0;
       tablet_next_req_map_[tablet_id] = info;
       VLOG_WITH_PREFIX(1) << "Adding entry in tablet_next_req map for tablet_id: " << tablet_id
                           << " table_id: " << table_id
@@ -984,6 +987,7 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
   req->set_safe_hybrid_time(
       std::max(next_req_info.safe_hybrid_time, last_persisted_record_id_commit_time_.ToUint64()));
   req->set_wal_segment_index(next_req_info.wal_segment_index);
+  req->set_max_index_in_sort_window(next_req_info.max_index_in_sort_window);
 
   // We dont set the snapshot_time in from_cdc_sdk_checkpoint object of GetChanges request since it
   // is not used by the GetChanges RPC.
@@ -1093,6 +1097,7 @@ Status CDCSDKVirtualWAL::UpdateTabletCheckpointForNextRequest(
   tablet_checkpoint_info.write_id = resp->cdc_sdk_checkpoint().write_id();
   tablet_checkpoint_info.safe_hybrid_time = resp->safe_hybrid_time();
   tablet_checkpoint_info.wal_segment_index = resp->wal_segment_index();
+  tablet_checkpoint_info.max_index_in_sort_window = resp->max_index_in_sort_window();
 
   return Status::OK();
 }

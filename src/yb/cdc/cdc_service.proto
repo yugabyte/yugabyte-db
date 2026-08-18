@@ -375,6 +375,12 @@ message GetChangesRequestPB {
 
   // If true, update the cdc_state checkpoint as part of this request.
   optional bool force_update_cdc_state_checkpoint = 17;
+
+  // This is the max index that was part of the sort window in the previous GetChanges call.
+  // Subsequent GetChanges call keeps reading WAL segments until the maximum op-index it has read
+  // is >= this value, so that all peers reconstruct an identical sort window regardless of their
+  // segment boundaries.
+  optional int64 max_index_in_sort_window = 18 [default = 0];
 }
 
 message KeyValuePairPB {
@@ -606,6 +612,9 @@ message GetChangesResponsePB {
   optional uint32 auto_flags_config_version = 12;
 
   optional yb.tserver.TabletConsensusInfoPB tablet_consensus_info = 13;
+
+  // Maximum WAL op-index read while building the commit-time sort window for this response.
+  optional int64 max_index_in_sort_window = 14 [default = 0];
 }
 
 message GetCheckpointRequestPB {
