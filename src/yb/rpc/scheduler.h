@@ -32,13 +32,11 @@ constexpr ScheduledTaskId kUninitializedScheduledTaskId = 0;
 class ScheduledTaskBase {
  public:
   explicit ScheduledTaskBase(ScheduledTaskId id, const SteadyTimePoint& time)
-      : id_(id), time_(time), trace_parent_(dist_trace::GetActiveSpanContext()) {}
+      : id_(id), time_(time) {}
 
   ScheduledTaskId id() const { return id_; }
   SteadyTimePoint time() const { return time_; }
-  const std::optional<dist_trace::trace::SpanContext>& trace_parent() const {
-    return trace_parent_;
-  }
+  const dist_trace::TraceParent& trace_parent() const { return trace_parent_; }
 
   virtual ~ScheduledTaskBase() {}
   virtual void Run(const Status& status) = 0;
@@ -46,7 +44,7 @@ class ScheduledTaskBase {
  private:
   ScheduledTaskId id_;
   SteadyTimePoint time_;
-  std::optional<dist_trace::trace::SpanContext> trace_parent_;
+  dist_trace::TraceParent trace_parent_;
 };
 
 template<class F>
@@ -56,7 +54,7 @@ class ScheduledTask : public ScheduledTaskBase {
       : ScheduledTaskBase(id, time), f_(f) {}
 
   void Run(const Status& status) override {
-    auto scope = dist_trace::ActivateParentScope(trace_parent());
+    auto scope = trace_parent().Activate();
     f_(status);
   }
  private:
@@ -70,7 +68,7 @@ class ScheduledTaskWithId : public ScheduledTaskBase {
       : ScheduledTaskBase(id, time), f_(f) {}
 
   void Run(const Status& status) override {
-    auto scope = dist_trace::ActivateParentScope(trace_parent());
+    auto scope = trace_parent().Activate();
     f_(id(), status);
   }
 

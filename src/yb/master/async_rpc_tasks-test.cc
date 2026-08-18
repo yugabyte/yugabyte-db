@@ -19,7 +19,6 @@
 
 #include "yb/util/dist_trace.h"
 #include "yb/util/dist_trace_test_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -57,16 +56,9 @@ class TraceObservingRpcTask : public RetryingRpcTask {
   std::optional<dist_trace::trace::SpanContext> observed_;
 };
 
-// Enables distributed tracing, pointed at an unreachable collector.
 class RetryingRpcTaskTraceTest : public YBTest {
- protected:
-  void SetUp() override {
-    YBTest::SetUp();
-    dist_trace::TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
-  }
-
  private:
-  google::FlagSaver flag_saver_;
+  dist_trace::ScopedTestDistTrace dist_trace_;
 };
 
 // Runs the task on a thread other than the one that created it, as the master does.
