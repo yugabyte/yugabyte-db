@@ -33,7 +33,6 @@
 #include "yb/tserver/tablet_service.h"
 
 #include <algorithm>
-#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -3560,15 +3559,6 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
 void TabletServiceImpl::SetActiveTableMetrics(
     const SetActiveTableMetricsRequestPB* req, SetActiveTableMetricsResponsePB* resp,
     rpc::RpcContext context) {
-  if (!req->has_lease_duration_ms() || req->lease_duration_ms() == 0 ||
-      req->lease_duration_ms() > std::numeric_limits<int64_t>::max()) {
-    SetupErrorAndRespond(
-        resp->mutable_error(),
-        STATUS(InvalidArgument, "lease_duration_ms must be between 1 and INT64_MAX"),
-        &context);
-    return;
-  }
-
   std::unordered_set<std::string> table_ids;
   table_ids.reserve(req->table_ids_size());
   for (const auto& table_id : req->table_ids()) {
@@ -3581,9 +3571,11 @@ void TabletServiceImpl::SetActiveTableMetrics(
     table_ids.insert(table_id);
   }
 
-  server_->SetActiveTableMetrics(
-      std::move(table_ids),
-      MonoDelta::FromMilliseconds(static_cast<int64_t>(req->lease_duration_ms())));
+  const auto status = server_->SetActiveTableMetrics(std::move(table_ids));
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
   context.RespondSuccess();
 }
 

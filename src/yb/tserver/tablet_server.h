@@ -78,6 +78,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/one_time_bool.h"
@@ -179,8 +180,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
-  void SetActiveTableMetrics(
-      std::unordered_set<std::string> table_ids, MonoDelta lease_duration) override;
+  Status SetActiveTableMetrics(std::unordered_set<std::string> table_ids) override;
 
   void ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const override;
 
@@ -674,8 +674,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   mutable std::mutex active_table_metrics_mutex_;
   std::shared_ptr<const std::unordered_set<std::string>> active_table_ids_
       GUARDED_BY(active_table_metrics_mutex_);
-  CoarseTimePoint active_table_metrics_lease_expiration_
-      GUARDED_BY(active_table_metrics_mutex_) = CoarseTimePoint::min();
+  scoped_refptr<AtomicGauge<uint64_t>> active_table_metrics_last_update_time_;
 
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();

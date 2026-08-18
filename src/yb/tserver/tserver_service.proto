@@ -274,9 +274,8 @@ message GetMetricsResponsePB {
 
 message SetActiveTableMetricsRequestPB {
   // The complete set of tables whose table-level metrics should be exported by
-  // /prometheus-metrics while this lease is valid.
+  // /prometheus-metrics. Each request replaces the previous set.
   repeated string table_ids = 1;
-  optional uint64 lease_duration_ms = 2;
 }
 
 message SetActiveTableMetricsResponsePB {

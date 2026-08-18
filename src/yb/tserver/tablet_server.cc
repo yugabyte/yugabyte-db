@@ -60,6 +60,7 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/walltime.h"
 
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -106,6 +107,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/ntp_clock.h"
@@ -190,8 +192,14 @@ DEFINE_NON_RUNTIME_bool(tserver_enable_metrics_snapshotter, false,
     "Should metrics snapshotter be enabled");
 
 DEFINE_RUNTIME_bool(enable_active_table_metrics_filtering, false,
-    "Filter table-level Prometheus metrics using active table leases supplied through "
-    "SetActiveTableMetrics. When disabled, all table metrics are exported.");
+    "Filter table-level Prometheus metrics using the latest active table list supplied through "
+    "SetActiveTableMetrics. When enabled, table metrics are not exported until the first list is "
+    "received. When disabled, all table metrics are exported.");
+
+DEFINE_RUNTIME_uint32(max_active_table_metrics_table_count, 1000,
+    "Maximum number of table IDs accepted by SetActiveTableMetrics. Requests exceeding this limit "
+    "are rejected and the previously accepted list remains active. Zero allows only an empty "
+    "list.");
 
 DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero");
 
@@ -286,6 +294,12 @@ DECLARE_string(ysql_ident_conf_csv);
 DECLARE_string(tmp_dir);
 
 namespace yb::tserver {
+
+METRIC_DEFINE_gauge_uint64(
+    server, active_table_metrics_last_update_time, "Active Table Metrics Last Update Time",
+    MetricUnit::kMicroseconds,
+    "Physical time of the last SetActiveTableMetrics request received by this tablet server. "
+    "Zero means no request has been received since process start.");
 
 constexpr auto kYsqlPgConfCsvFlag = "ysql_pg_conf_csv";
 constexpr auto kYsqlHbaConfCsvFlag = "ysql_hba_conf_csv";
@@ -422,6 +436,8 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       cgroup_manager_(FLAGS_enable_qos ? new TServerCgroupManager() : nullptr)
 #endif
       {
+  active_table_metrics_last_update_time_ =
+      METRIC_active_table_metrics_last_update_time.Instantiate(metric_entity(), 0);
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   ysql_db_catalog_version_index_used_ =
@@ -441,23 +457,30 @@ std::string TabletServer::ToString() const {
                              fs_manager_->uuid());
 }
 
-void TabletServer::SetActiveTableMetrics(
-    std::unordered_set<std::string> table_ids, MonoDelta lease_duration) {
-  std::lock_guard lock(active_table_metrics_mutex_);
-  active_table_ids_ =
-      std::make_shared<const std::unordered_set<std::string>>(std::move(table_ids));
-  active_table_metrics_lease_expiration_ = CoarseMonoClock::Now() + lease_duration;
+Status TabletServer::SetActiveTableMetrics(std::unordered_set<std::string> table_ids) {
+  if (table_ids.size() > FLAGS_max_active_table_metrics_table_count) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Active table list contains $0 tables, exceeding the limit of $1",
+        table_ids.size(), FLAGS_max_active_table_metrics_table_count);
+  }
+  {
+    std::lock_guard lock(active_table_metrics_mutex_);
+    active_table_ids_ =
+        std::make_shared<const std::unordered_set<std::string>>(std::move(table_ids));
+  }
+  active_table_metrics_last_update_time_->set_value(
+      static_cast<uint64_t>(GetCurrentTimeMicros()));
+  return Status::OK();
 }
 
 void TabletServer::ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const {
   if (!FLAGS_enable_active_table_metrics_filtering) {
     return;
   }
+  static const auto kNoActiveTables =
+      std::make_shared<const std::unordered_set<std::string>>();
   std::lock_guard lock(active_table_metrics_mutex_);
-  if (active_table_ids_ &&
-      CoarseMonoClock::Now() < active_table_metrics_lease_expiration_) {
-    options->active_table_ids = active_table_ids_;
-  }
+  options->active_table_ids = active_table_ids_ ? active_table_ids_ : kNoActiveTables;
 }
 
 MonoDelta TabletServer::default_client_timeout() {
