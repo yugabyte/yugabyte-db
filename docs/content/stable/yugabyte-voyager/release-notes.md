@@ -29,6 +29,19 @@ Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated o
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
 
+## v2026.8.2 - August 18, 2026
+
+### Enhancements
+
+- Improved CDC partition key conflict handling. Tables with foreign keys or unique indexes had to be used with the slower table mode, but can now be consumed by parallel streams:
+  - Improved resume validation for `--cdc-partition-key-overrides` so equivalent configurations are accepted and changed table strategies are identified clearly.
+  - CDC partition key options are now visible in [import data](../reference/data-migration/import-data/) help and live migration configuration templates.
+
+### Bug fixes
+
+- Fixed an issue where live migration unique key conflict detection incorrectly treated non-key INCLUDE columns of a covering unique index as part of the uniqueness key.
+- Fixed an issue where live migration could fail with read-restart errors while updating migration metadata.
+
 ## v2026.8.1 - August 4, 2026
 
 ### Overview
