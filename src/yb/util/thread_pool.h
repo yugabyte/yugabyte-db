@@ -61,7 +61,7 @@ class ThreadPoolTask {
     return trace_parent_;
   }
 
-  void set_trace_parent(std::optional<dist_trace::trace::SpanContext> trace_parent) {
+  virtual void set_trace_parent(std::optional<dist_trace::trace::SpanContext> trace_parent) {
     trace_parent_ = std::move(trace_parent);
   }
 
@@ -203,7 +203,6 @@ class TaskRecipient {
   }
 
  private:
-  // Sets trace context to carry it across the threads: stamp the active context onto the task
   template <class Task>
   Task* StampTraceContext(Task* task) {
     task->set_trace_parent(dist_trace::GetActiveSpanContext());

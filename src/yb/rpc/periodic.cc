@@ -56,7 +56,6 @@ PeriodicTimer::PeriodicTimer(
     Messenger* messenger, RunTaskFunctor functor, MonoDelta period, Options options)
     : messenger_(messenger),
       functor_(std::move(functor)),
-      trace_parent_(dist_trace::GetActiveSpanContext()),
       period_(period),
       options_(std::move(options)),
       rng_(GetRandomSeed32()),
@@ -196,7 +195,7 @@ void PeriodicTimer::Callback(int64_t my_callback_generation) {
 
   if (run_task) {
     // Re-activate the context captured at construction so the task's RPCs nest under it.
-    auto parent_scope = dist_trace::ActivateParentScope(trace_parent_);
+    auto parent_scope = trace_parent_.Activate();
     functor_();
 
     if (options_.one_shot) {

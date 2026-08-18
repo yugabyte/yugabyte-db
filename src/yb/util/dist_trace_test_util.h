@@ -17,8 +17,18 @@
 #include <cstdint>
 
 #include "yb/util/dist_trace.h"
+#include "yb/util/flags.h"
 
 namespace yb::dist_trace {
+
+// Enables distributed tracing for the lifetime of the object, pointed at an unreachable collector.
+class ScopedTestDistTrace {
+ public:
+  ScopedTestDistTrace() { TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces"); }
+
+ private:
+  google::FlagSaver flag_saver_;
+};
 
 // Sampled, remote trace context whose trace and span id bytes are all `seed`.
 inline trace::SpanContext MakeTestSpanContext(uint8_t seed) {

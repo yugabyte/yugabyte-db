@@ -28,7 +28,6 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/dist_trace_test_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
@@ -263,16 +262,9 @@ TEST_F(PeriodicTimerTest, TestCallbackRestartsOneShotTimer) {
 
 namespace dist_trace_hops {
 
-// Enables distributed tracing, pointed at an unreachable collector.
 class PeriodicTimerTraceTest : public PeriodicTimerTest {
- public:
-  void SetUp() override {
-    dist_trace::TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
-    PeriodicTimerTest::SetUp();
-  }
-
  private:
-  google::FlagSaver flag_saver_;
+  dist_trace::ScopedTestDistTrace dist_trace_;
 };
 
 // Create a one-shot timer under an active trace context, then Start() it after the context is gone:

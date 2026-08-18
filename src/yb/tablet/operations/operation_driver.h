@@ -271,7 +271,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   const ash::WaitStateInfoPtr wait_state_;
 
   // OpenTelemetry trace context of the submitting thread
-  const std::optional<dist_trace::trace::SpanContext> otel_parent_;
+  const dist_trace::TraceParent otel_parent_;
 
   const MonoTime start_time_;
 

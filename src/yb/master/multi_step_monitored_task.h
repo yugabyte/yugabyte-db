@@ -144,8 +144,8 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
   std::string next_step_description_ GUARDED_BY(schedule_task_mutex_);
   std::function<Status()> next_step_ GUARDED_BY(schedule_task_mutex_) = nullptr;
 
-  // Creating operation's trace context, re-activated around each step; no-op when tracing is off.
-  std::optional<dist_trace::trace::SpanContext> trace_parent_;
+  // Creating operation's trace context, re-activated around each step.
+  dist_trace::TraceParent trace_parent_;
 };
 
 // A MultiStepMonitoredTask that is tied to a single CatalogEntity object (ex: Table) and the master
