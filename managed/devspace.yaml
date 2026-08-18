@@ -22,6 +22,7 @@ pipelines:
       echo "You can override this by running 'export YB_IMAGE_TAG=<custom tag>'"
       echo "Using Helm release name ${YBA_HELM_RELEASE_NAME}"
       echo "You can override this by running 'export YBA_HELM_RELEASE_NAME=<custom name>'"
+
       create_deployments --all
 
       echo "Building the YBA UI"
@@ -39,10 +40,13 @@ deployments:
     helm:
       releaseName: ${YBA_HELM_RELEASE_NAME}
       chart:
-        name: ../../charts/stable/yugaware/
+        name: /home/centos/code/charts/stable/yugaware/
       valuesFiles:
         -  ${YBA_ADDITIONAL_VALUES_FILE}
       values:
+        perf-advisor-chart:
+          yugaware:
+            enabled: ${PERF_ADVISOR_ENABLED}
         image:
           repository: ${YBA_IMAGE_REPO}
           pullSecret: ${PULL_SECRET}
@@ -175,3 +179,12 @@ vars:
   OPERATOR_ENABLED:
     source: env
     default: "false"
+  PERF_ADVISOR_ENABLED:
+    source: env
+    default: false
+
+hooks:
+- name: "build helm dependencies"
+  events: ["before:deploy:yba"]
+  command: "helm"
+  args: ["dependency", "build", "/home/centos/code/charts/stable/yugaware/"]

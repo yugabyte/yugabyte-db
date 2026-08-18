@@ -1808,6 +1808,12 @@ std::ostream& operator<<(std::ostream& str, const FinishTxnLogPrefix& value) {
       << ", txn: " << (value.txn ? ToString(value.txn->id()) : "-none-") << "] ";
 }
 
+void ClearTransaction(client::YBSession& session) {
+  const auto momento = session.read_point()->GetMomento();
+  session.SetTransaction(nullptr);
+  session.read_point()->SetMomento(momento);
+}
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -3628,13 +3634,6 @@ class PgClientSession::Impl {
       }
     }
 
-    if (const auto* read_point = setup_session_result.kind == PgClientSessionKind::kPlain
-            ? session->read_point() : nullptr;
-        read_point && read_point->GetReadTime()) {
-      VLOG_WITH_PREFIX(3) << "Saving read time that is already picked";
-      read_point_history_.Save(*read_point, read_time_serial_no_);
-    }
-
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
@@ -3770,7 +3769,6 @@ class PgClientSession::Impl {
       WARN_NOT_OK(EnsureClientSessionCgroup(options.namespace_id()),
                   "Setting cgroup of PgClientSession");
     }
-    const auto read_time_serial_no = options.read_time_options().read_time_serial_no();
     auto kind = PgClientSessionKind::kPlain;
     if (options.use_legacy_catalog_session()) {
       SCHECK(!options.read_from_followers(),
@@ -3787,15 +3785,8 @@ class PgClientSession::Impl {
           options.pg_txn_start_us()));
     } else {
       DCHECK(kind == PgClientSessionKind::kPlain);
-      auto& session = EnsureSession(kind, deadline, arena);
-      RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(options));
-      read_point_history_.Cleanup(options.read_time_options().read_time_serial_no_history_min());
-      if (read_time_serial_no != read_time_serial_no_) {
-        auto& read_point = *session->read_point();
-        if (read_point_history_.Restore(&read_point, read_time_serial_no)) {
-          read_time_serial_no_ = read_time_serial_no;
-        }
-      }
+      EnsureSession(kind, deadline, arena);
+      RETURN_NOT_OK(SetupPlainSessionReadTime(options));
       RETURN_NOT_OK(BeginTransactionIfNecessary(options, deadline, locality, arena));
     }
 
@@ -4021,7 +4012,7 @@ class PgClientSession::Impl {
       }
       RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kSessionKind, deadline));
       txn->Abort();
-      session->SetTransaction(nullptr);
+      ClearTransaction(*session);
       txn = nullptr;
     }
 
@@ -4233,11 +4224,32 @@ class PgClientSession::Impl {
   }
 
   template <class OptionsPB>
-  Status CheckPlainSessionPendingUsedReadTime(const OptionsPB& options) {
+  Status SetupPlainSessionReadTime(const OptionsPB& options) {
+    const auto& session_data = GetSessionData(PgClientSessionKind::kPlain);
+    RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(session_data, options));
+    read_point_history_.Cleanup(options.read_time_options().read_time_serial_no_history_min());
+    const auto read_time_serial_no = options.read_time_options().read_time_serial_no();
+    if (read_time_serial_no != read_time_serial_no_) {
+      // Update history because a read point could have been chosen (due to multiple reasons:
+      // a used read time was received from DocDB or a read time was chosen while sending previous
+      // request).
+      auto& read_point = *session_data.session->read_point();
+      if (read_point.GetReadTime()) {
+        read_point_history_.Save(read_point, read_time_serial_no_);
+      }
+      if (read_point_history_.Restore(&read_point, read_time_serial_no)) {
+        read_time_serial_no_ = read_time_serial_no;
+      }
+    }
+    return Status::OK();
+  }
+
+  template <class OptionsPB>
+  Status CheckPlainSessionPendingUsedReadTime(
+      const SessionData& plain_session_data, const OptionsPB& options) {
     if (!plain_session_used_read_time_.pending_update) {
       return Status::OK();
     }
-    auto& session_data = GetSessionData(PgClientSessionKind::kPlain);
     TabletReadTime read_time_data;
     {
       auto& used_read_time = plain_session_used_read_time_.value;
@@ -4250,7 +4262,7 @@ class PgClientSession::Impl {
           return Status::OK();
         }
         if (options.read_time_options().read_time_serial_no() == read_time_serial_no_ &&
-            !session_data.transaction &&
+            !plain_session_data.transaction &&
             options.isolation() == IsolationLevel::NON_TRANSACTIONAL &&
             IsReadPointResetRequested(options.read_time_options())) {
           // Read time from previous operations is not required for non-transaction operation which
@@ -4268,18 +4280,11 @@ class PgClientSession::Impl {
     // At this point the read_time_data.value could be empty in 2 cases:
     // - session already has a read time (i.e. was selected prior to sending of the request)
     // - request has finished with error
-    auto& session = *session_data.session;
+    auto& session = *plain_session_data.session;
     if (read_time_data.value) {
       VLOG_WITH_PREFIX(3) << "Applying non empty used read time: " << read_time_data.value
           << " to read time serial no: " << read_time_serial_no_;
       session.SetReadPoint(read_time_data.value, read_time_data.tablet_id);
-    }
-
-    // Update history because a read point could have been chosen (due to multiple reasons:
-    // a used read time was received from DocDB or a read time was chosen while sending previous
-    // request).
-    if (const auto& read_point = *session.read_point(); read_point.GetReadTime()) {
-      read_point_history_.Save(read_point, read_time_serial_no_);
     }
     return Status::OK();
   }
@@ -4394,7 +4399,7 @@ class PgClientSession::Impl {
     // txn ddl enabled.
     client::YBTransactionPtr txn_value;
     txn.swap(txn_value);
-    Session(kind)->SetTransaction(nullptr);
+    ClearTransaction(*Session(kind));
 
     auto metadata_cleanupper = ddl_txn_metadata_.transaction_id == txn_value->id()
         ? MakeOptionalScopeExit([this] { ddl_txn_metadata_ = {}; }) : std::nullopt;

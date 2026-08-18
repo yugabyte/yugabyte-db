@@ -88,6 +88,12 @@ DEFINE_test_flag(uint64, cdcsdk_publication_list_refresh_interval_micros, 300000
     "Interval in micro seconds at which the table list in the publication will be refreshed. This "
     "will be used only when cdcsdk_use_microseconds_refresh_interval is set to true");
 
+DEFINE_test_flag(uint64, cdcsdk_publication_list_refresh_interval_ht_delta, 0,
+    "When non-zero, the publication refresh interval is this raw HybridTime delta and the interval "
+    "flags above are ignored. Unlike a microseconds based interval, this lets tests place the "
+    "publication refresh record exactly at a transaction's commit time, including its logical "
+    "component.");
+
 DEFINE_RUNTIME_bool(cdcsdk_enable_dynamic_table_support, true,
     "This flag can be used to switch the dynamic addition of tables ON or OFF.");
 
@@ -142,6 +148,7 @@ std::string CDCSDKVirtualWAL::GetChangesRequestInfo::ToString() const {
   result += Format(", write_id: $0", write_id);
   result += Format(", safe_hybrid_time: $0", safe_hybrid_time);
   result += Format(", wal_segment_index: $0", wal_segment_index);
+  result += Format(", max_index_in_sort_window: $0", max_index_in_sort_window);
 
   return result;
 }
@@ -359,6 +366,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
       info.write_id = checkpoint.write_id();
       info.safe_hybrid_time = checkpoint.snapshot_time();
       info.wal_segment_index = 0;
+      info.max_index_in_sort_window = 0;
       children_tablet_to_next_req_info.emplace_back(tablet_id, info);
     }
 
@@ -400,6 +408,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
       info.write_id = checkpoint.write_id();
       info.safe_hybrid_time = checkpoint.snapshot_time();
       info.wal_segment_index = 0;
+      info.max_index_in_sort_window = 0;
       tablet_next_req_map_[tablet_id] = info;
       VLOG_WITH_PREFIX(1) << "Adding entry in tablet_next_req map for tablet_id: " << tablet_id
                           << " table_id: " << table_id
@@ -988,6 +997,7 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
   req->set_safe_hybrid_time(
       std::max(next_req_info.safe_hybrid_time, last_persisted_record_id_commit_time_.ToUint64()));
   req->set_wal_segment_index(next_req_info.wal_segment_index);
+  req->set_max_index_in_sort_window(next_req_info.max_index_in_sort_window);
 
   // We dont set the snapshot_time in from_cdc_sdk_checkpoint object of GetChanges request since it
   // is not used by the GetChanges RPC.
@@ -1097,6 +1107,7 @@ Status CDCSDKVirtualWAL::UpdateTabletCheckpointForNextRequest(
   tablet_checkpoint_info.write_id = resp->cdc_sdk_checkpoint().write_id();
   tablet_checkpoint_info.safe_hybrid_time = resp->safe_hybrid_time();
   tablet_checkpoint_info.wal_segment_index = resp->wal_segment_index();
+  tablet_checkpoint_info.max_index_in_sort_window = resp->max_index_in_sort_window();
 
   return Status::OK();
 }
@@ -1505,7 +1516,11 @@ Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
 
   auto last_decided_pub_refresh_time_hybrid = HybridTime(last_decided_pub_refresh_time.first);
   HybridTime hybrid_sum;
-  if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
+  if (FLAGS_TEST_cdcsdk_publication_list_refresh_interval_ht_delta > 0) {
+    hybrid_sum = HybridTime(
+        last_decided_pub_refresh_time.first +
+        FLAGS_TEST_cdcsdk_publication_list_refresh_interval_ht_delta);
+  } else if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
     hybrid_sum = last_decided_pub_refresh_time_hybrid.AddMicroseconds(
         FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros);
   } else {

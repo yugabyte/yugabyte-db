@@ -887,4 +887,32 @@ public class BaseCQLTest extends BaseMiniClusterTest {
         return true;
       }, 20000 /* timeoutMs */, 100 /* sleepTime */);
   }
+
+  /**
+   * Waits until every CQL node plans the given query as a scan of the given index.
+   *
+   * waitForReadPermsOnAllIndexes() only checks the master. A node picks an index based on its own
+   * cached copy of the indexed table, which is purged (and the statement retried internally) only
+   * when a statement it executes hits a tablet reporting a schema version mismatch. Tablets get the
+   * new schema asynchronously, so even a statement run after the master granted the permission can
+   * hit a tablet that is still on the old schema, see no mismatch and leave the node planning a
+   * table scan. A plan that changes between pages of a paged SELECT fails the query with "Object no
+   * longer exists.", because the paging state records the table or index scanned by the previous
+   * page. Hence the query is executed (to refresh the metadata of the node serving it) before it is
+   * explained: an explain alone never refreshes it.
+   */
+  protected void waitForIndexScanPlanOnAllNodes(String query, String indexName) throws Exception {
+    final Set<String> nodesUsingIndex = new HashSet<>();
+    final int numNodes = miniCluster.getTabletServers().size();
+    TestUtils.waitFor(
+      () -> {
+        session.execute(query);
+        ResultSet rs = session.execute("explain " + query);
+        String node = rs.getExecutionInfo().getQueriedHost().toString();
+        if (rs.all().toString().contains(indexName)) {
+          nodesUsingIndex.add(node);
+        }
+        return nodesUsingIndex.size() >= numNodes;
+      }, 60000 /* timeoutMs */, 100 /* sleepTime */);
+  }
 }

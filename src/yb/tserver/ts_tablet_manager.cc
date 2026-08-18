@@ -334,6 +334,7 @@ DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
 DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_int32(snapshot_cleanup_pool_size);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_bool(qos_compaction_per_db_cgroups);
@@ -542,6 +543,12 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
   });
 
+  CHECK_GT(FLAGS_snapshot_cleanup_pool_size, 0);
+  CHECK_OK(ThreadPoolBuilder("snapshot-cleanup")
+               .set_min_threads(1)
+               .set_max_threads(FLAGS_snapshot_cleanup_pool_size)
+               .Build(&snapshot_cleanup_pool_));
+
   CHECK_OK(ThreadPoolBuilder("log-sync")
                .set_min_threads(1)
                .unlimited_threads()
@@ -702,6 +709,7 @@ Status TSTabletManager::Init() {
     // waiting_txn_pool tokens get per-task cgroup wired up per-tablet in MaybeAssignPerDbCgroups.
     open_tablet_pool_->SetCgroup(sys_med);
     flush_bootstrap_state_pool_->SetCgroup(sys_med);
+    snapshot_cleanup_pool_->SetCgroup(sys_med);
     waiting_txn_pool_->SetCgroup(sys_med);
     read_pool_->SetCgroup(sys_med);
   }
@@ -2397,6 +2405,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         tablet->GetTableMetricsEntity(),
         tablet->GetTabletMetricsEntity(),
         raft_pool(),
+        snapshot_cleanup_pool(),
         raft_notifications_pool(),
         tablet_prepare_pool(),
         &retryable_requests,
@@ -2446,7 +2455,23 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
   }
 
-  tablet->TriggerPostSplitCompactionIfNeeded();
+  // The tablet peer is already started, so an applied snapshot restore could be replacing the
+  // storages and resetting the key bounds that TriggerPostSplitCompactionIfNeeded reads (see
+  // Tablet::CompleteShutdownStorages). Only that synchronous check needs the guard, the compaction
+  // it schedules takes its own scoped operation. The guard is not inside
+  // TriggerPostSplitCompactionIfNeeded because its other caller,
+  // TabletSnapshots::RestoreCheckpoint, runs with read/write operations paused and would never
+  // acquire the operation.
+  {
+    auto scoped_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+    if (scoped_op.ok()) {
+      tablet->TriggerPostSplitCompactionIfNeeded();
+    } else {
+      // The storages are being shut down or replaced, so there's nothing to compact.
+      LOG(INFO) << kLogPrefix << "Skipped post split compaction trigger: "
+                << scoped_op.CreateStatus();
+    }
+  }
 
   if (tablet->ShouldDisableLbMove()) {
     std::lock_guard lock(mutex_);
@@ -2629,6 +2654,9 @@ void TSTabletManager::CompleteShutdown() {
   // Shut down the apply pool.
   apply_pool_->Shutdown();
 
+  if (snapshot_cleanup_pool_) {
+    snapshot_cleanup_pool_->Shutdown();
+  }
   if (raft_pool_) {
     raft_pool_->Shutdown();
   }

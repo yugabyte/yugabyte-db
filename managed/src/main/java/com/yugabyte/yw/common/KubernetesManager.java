@@ -96,6 +96,26 @@ public abstract class KubernetesManager {
       String helmReleaseName,
       String namespace,
       String overridesFile) {
+    helmInstall(
+        universeUUID,
+        ybSoftwareVersion,
+        config,
+        providerUUID,
+        helmReleaseName,
+        namespace,
+        overridesFile,
+        null /* postRendererPath */);
+  }
+
+  public void helmInstall(
+      UUID universeUUID,
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      UUID providerUUID,
+      String helmReleaseName,
+      String namespace,
+      String overridesFile,
+      @Nullable String postRendererPath) {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
 
@@ -164,6 +184,9 @@ public abstract class KubernetesManager {
     if (labelsFlag != null && !labelsFlag.isEmpty()) {
       commandBuilder.add("--labels", labelsFlag);
     }
+    if (StringUtils.isNotBlank(postRendererPath)) {
+      commandBuilder.add("--post-renderer", postRendererPath);
+    }
     commandBuilder.add("--timeout", getTimeout(universeUUID), "--wait");
     List<String> commandList = commandBuilder.build();
     ShellResponse response = execCommand(config, commandList);
@@ -187,25 +210,48 @@ public abstract class KubernetesManager {
       String helmReleaseName,
       String namespace,
       String overridesFile) {
+    return helmTemplate(
+        universeUuid,
+        ybSoftwareVersion,
+        config,
+        helmReleaseName,
+        namespace,
+        overridesFile,
+        null /* postRendererPath */);
+  }
+
+  public String helmTemplate(
+      UUID universeUuid,
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      String helmReleaseName,
+      String namespace,
+      String overridesFile,
+      @Nullable String postRendererPath) {
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
 
     Path tempOutputFile = fileHelperService.createTempFile("helm-template", ".output");
     String tempOutputPath = tempOutputFile.toAbsolutePath().toString();
-    List<String> templateCommandList =
-        ImmutableList.of(
-            "helm",
-            "template",
-            helmReleaseName,
-            helmPackagePath,
-            "-f",
-            overridesFile,
-            "--namespace",
-            namespace,
-            "--timeout",
-            getTimeout(universeUuid),
-            "--is-upgrade",
-            "--no-hooks",
-            "--skip-crds");
+    ImmutableList.Builder<String> templateCommandBuilder =
+        ImmutableList.<String>builder()
+            .add(
+                "helm",
+                "template",
+                helmReleaseName,
+                helmPackagePath,
+                "-f",
+                overridesFile,
+                "--namespace",
+                namespace,
+                "--timeout",
+                getTimeout(universeUuid),
+                "--is-upgrade",
+                "--no-hooks",
+                "--skip-crds");
+    if (StringUtils.isNotBlank(postRendererPath)) {
+      templateCommandBuilder.add("--post-renderer", postRendererPath);
+    }
+    List<String> templateCommandList = templateCommandBuilder.build();
 
     ShellResponse response = execCommand(config, templateCommandList);
     if (response != null && !response.isSuccess()) {
@@ -261,12 +307,36 @@ public abstract class KubernetesManager {
       String helmReleaseName,
       String namespace,
       String overridesFile) {
+    helmUpgrade(
+        universeUuid,
+        ybSoftwareVersion,
+        config,
+        helmReleaseName,
+        namespace,
+        overridesFile,
+        null /* postRendererPath */);
+  }
+
+  public void helmUpgrade(
+      UUID universeUuid,
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      String helmReleaseName,
+      String namespace,
+      String overridesFile,
+      @Nullable String postRendererPath) {
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
 
     // Capture the diff what is going to be upgraded.
     String helmTemplatePath =
         helmTemplate(
-            universeUuid, ybSoftwareVersion, config, helmReleaseName, namespace, overridesFile);
+            universeUuid,
+            ybSoftwareVersion,
+            config,
+            helmReleaseName,
+            namespace,
+            overridesFile,
+            postRendererPath);
     if (helmTemplatePath != null) {
       diff(config, helmTemplatePath);
     } else {
@@ -281,6 +351,9 @@ public abstract class KubernetesManager {
             .add("--namespace", namespace);
     if (labelsFlag != null && !labelsFlag.isEmpty()) {
       commandBuilder.add("--labels", labelsFlag);
+    }
+    if (StringUtils.isNotBlank(postRendererPath)) {
+      commandBuilder.add("--post-renderer", postRendererPath);
     }
     commandBuilder.add("--timeout", getTimeout(universeUuid), "--wait");
     List<String> commandList = commandBuilder.build();

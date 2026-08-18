@@ -804,6 +804,31 @@ build_regtype_array(Oid *param_types, int num_params)
 	return PointerGetDatum(result);
 }
 
+void
+YbForceDropPreparedStatement(PreparedStatement *entry)
+{
+	if (!entry)
+		return;
+
+	/* Release the plancache entry */
+	DropCachedPlan(entry->plansource);
+
+	/* YB: Send close complete packet if connection manager is used */
+	YbConnMgrSendCloseComplete(entry);
+
+	/* Now we can remove the hash table entry */
+	hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
+}
+
+void
+YbDropProtoPrepStmtIfInvalid(PreparedStatement *entry)
+{
+	if (!entry || entry->from_sql || YbIsCachedQueryValid(entry->plansource))
+		return;
+
+	YbForceDropPreparedStatement(entry);
+}
+
 /*
  * YB: Drop all invalid protocol level prepared statements used by ConnMgr.
  */
@@ -822,21 +847,7 @@ YbConnMgrDropAllInvalidProtocolLevelPreparedStmts(void)
 	/* walk over cache */
 	hash_seq_init(&seq, prepared_queries);
 	while ((entry = hash_seq_search(&seq)) != NULL)
-	{
-		if (YbIsCachedQueryValid(entry->plansource) ||
-			entry->from_sql)
-			continue;
-
-		/* Release the plancache entry */
-		DropCachedPlan(entry->plansource);
-
-		/* YB: Send close complete packet if connection manager is used */
-		YbConnMgrSendCloseComplete(entry);
-
-		/* Now we can remove the hash table entry */
-		hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
-
-	}
+		YbDropProtoPrepStmtIfInvalid(entry);
 }
 
 /*

@@ -735,8 +735,6 @@ Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
         !ShouldResetReadTime(read_time_action) && !ops_has_non_transactional_writes, IllegalState,
         "Non transactional writes do not face read restart errors");
     RSTATUS_DCHECK(
-        !ShouldClamp(), IllegalState, "Clamped reads do not face read restart errors.");
-    RSTATUS_DCHECK(
         !need_defer_read_point, IllegalState, "Deferred reads do not face read restart errors.");
     RSTATUS_DCHECK(
         !has_read_time, IllegalState,

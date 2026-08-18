@@ -250,7 +250,7 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
 
  private:
   void OnKeyLookup(const Result<internal::RemoteTabletPtr>& result);
-  void FinishOrRetry(Status&& status);
+  void FinishOrRetry(Status&& status, bool allow_retry = true);
 
   const TabletId tracking_tablet_id_;
   const PartitionKey partition_key_;

@@ -1,7 +1,10 @@
+import { useEffect, useMemo } from 'react';
+import { isEmpty } from 'lodash';
 import { FormProvider, useForm } from 'react-hook-form';
-import { useTranslation } from 'react-i18next';
+import { yupResolver } from '@hookform/resolvers/yup';
+import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
-import { mui, yba } from '@yugabyte-ui-library/core';
+import { AlertVariant, mui, yba, YBAlert } from '@yugabyte-ui-library/core';
 import { DeploymentPortsField } from '../../create-universe/fields';
 import { useEditUniverse } from '../../../../../v2/api/universe/universe';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
@@ -13,6 +16,8 @@ import {
 } from '../../create-universe/utils/createUniversePayload';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { OtherAdvancedProps } from '../../create-universe/steps/advanced-settings/dtos';
+import { OtherAdvancedValidationSchema } from '../../create-universe/steps/advanced-settings/ValidationSchema';
+import { CloudType } from '@app/redesign/helpers/dtos';
 import { FullMoveWarning } from '../components';
 
 const { YBModal } = yba;
@@ -33,6 +38,9 @@ export const EditNetworkPortsModal = ({ open, onClose }: EditNetworkPortsModalPr
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.otherAdvancedSettings.deployPortsFeild'
   });
+  const { t: tSettings } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.otherAdvancedSettings'
+  });
   const { universeData } = useEditUniverseContext();
   const editUniverse = useEditUniverse();
   const universeUUID = universeData?.info?.universe_uuid;
@@ -46,11 +54,34 @@ export const EditNetworkPortsModal = ({ open, onClose }: EditNetworkPortsModalPr
   const communicationPorts = universeData?.spec?.networking_spec?.communication_ports;
   const defaultValues = mapAPIPortValues(communicationPorts ?? {});
 
-  const methods = useForm<Partial<OtherAdvancedProps>>({ defaultValues });
+  const validationSchema = useMemo(
+    () =>
+      OtherAdvancedValidationSchema(tSettings, {
+        providerCode: providerCode as CloudType | undefined,
+        requireAccessKey: false,
+        ysql: !!enableYSQL,
+        ycql: !!enableYCQL,
+        enableConnectionPooling: !!enableCP
+      }),
+    [tSettings, providerCode, enableYSQL, enableYCQL, enableCP]
+  );
+
+  const methods = useForm<Partial<OtherAdvancedProps>>({
+    defaultValues,
+    resolver: yupResolver(validationSchema),
+    mode: 'onSubmit',
+    reValidateMode: 'onChange'
+  });
   const {
     handleSubmit,
-    formState: { isDirty }
+    reset,
+    formState: { isDirty, errors, isSubmitted }
   } = methods;
+  const hasErrors = !isEmpty(errors);
+
+  useEffect(() => {
+    if (open) reset(defaultValues);
+  }, [open]);
 
   const handleFormSubmit = handleSubmit(async (values) => {
     if (!universeUUID || !primaryCluster?.uuid) {
@@ -76,6 +107,7 @@ export const EditNetworkPortsModal = ({ open, onClose }: EditNetworkPortsModalPr
       },
       {
         onSuccess: (response) => {
+          reset(values);
           handleEditUniverseSuccess(response.task_uuid);
           onClose();
         },
@@ -109,6 +141,15 @@ export const EditNetworkPortsModal = ({ open, onClose }: EditNetworkPortsModalPr
             providerCode={providerCode ?? ''}
             isEditMode={true}
           />
+          {isSubmitted && hasErrors && (
+            <Box mt={2}>
+              <YBAlert
+                open
+                variant={AlertVariant.Error}
+                text={<Trans t={tSettings}>{tSettings('validation.alertMsg')}</Trans>}
+              />
+            </Box>
+          )}
           {isDirty && <FullMoveWarning setting="networkPorts" />}
         </ModalContent>
       </FormProvider>

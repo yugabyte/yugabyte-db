@@ -1,7 +1,7 @@
 /* ----------
- * pg_yb_param_status_flags.h
+ * pg_yb_conn_mgr_protocol.h
  *
- * Values of flag bits that are sent by Postgres to YB Connection Manager
+ * Constants shared between Postgres and YB Connection Manager
  * This file is also included by YSQL Connection Manager
  *
  * Copyright (c) YugabyteDB, Inc.
@@ -18,7 +18,7 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/common/pg_yb_param_status_flags.h
+ * src/common/pg_yb_conn_mgr_protocol.h
  * ----------
  */
 
@@ -31,3 +31,12 @@
 /* Constants used by Connection Manager and also required in Postgres */
 
 #define YB_LOGICAL_CLIENT_VERSION_STR "yb_logical_client_version"
+
+/* Values of the type field of the YbParse packet */
+
+typedef enum YbParseType
+{
+	YB_PARSE_NORMAL,
+	YB_PARSE_FORCE,
+	YB_PARSE_REDEPLOY,
+} YbParseType;

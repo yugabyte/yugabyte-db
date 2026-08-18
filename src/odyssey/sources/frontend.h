@@ -12,6 +12,15 @@
 extern int yb_max_query_size;
 extern int yb_wait_timeout;
 
+char *yb_prepare_server_key(char *stmt_name, int stmt_name_len,
+			    char *query_string, int query_string_len,
+			    char *client_id, int client_id_len,
+			    int *server_key_len);
+void yb_lru_on_new_insert(od_server_t *server, yb_od_hash_64_t yb_stmt_hash,
+			  od_hashmap_elt_t *server_key_desc);
+void yb_lru_on_cache_hit(od_server_t *server, yb_od_hash_64_t yb_stmt_hash,
+			 od_hashmap_elt_t *server_key_desc);
+
 static inline machine_msg_t *od_frontend_error_msg(od_client_t *client,
 						   machine_msg_t *stream,
 						   char *code, char *fmt,

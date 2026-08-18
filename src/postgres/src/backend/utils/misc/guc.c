@@ -121,7 +121,7 @@
 #include "catalog/index.h"
 #include "commands/copy.h"
 #include "common/ip.h"
-#include "common/pg_yb_param_status_flags.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/ybModifyTable.h"
 #include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
@@ -342,7 +342,8 @@ static bool check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newv
 																	 GucSource source);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
-static ConfigVariable *ProcessConfigFileInternal(GucContext context,
+static ConfigVariable *ProcessConfigFileInternal(const char *yb_config_file,
+												 GucContext context,
 												 bool applySettings, int elevel);
 
 /*
@@ -14631,7 +14632,8 @@ show_all_file_settings(PG_FUNCTION_ARGS)
 	int			seqno;
 
 	/* Scan the config files using current context as workspace */
-	conf = ProcessConfigFileInternal(PGC_SIGHUP, false, DEBUG3);
+	conf = ProcessConfigFileInternal(NULL /* yb_config_file */ , PGC_SIGHUP,
+									 false /* applySettings */ , DEBUG3);
 
 	/* Build a tuplestore to return our results in */
 	InitMaterializedSRF(fcinfo, 0);

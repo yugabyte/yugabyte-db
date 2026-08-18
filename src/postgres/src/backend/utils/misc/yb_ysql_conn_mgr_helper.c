@@ -36,7 +36,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
 #include "common/ip.h"
-#include "common/pg_yb_param_status_flags.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "libpq/libpq-be.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"

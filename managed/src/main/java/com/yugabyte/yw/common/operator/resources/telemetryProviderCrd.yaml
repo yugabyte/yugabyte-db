@@ -83,15 +83,6 @@ spec:
                 - rule: "(self.provider == 'OTLP') == has(self.otlp)"
                   message: "otlp must be set if and only if provider is OTLP"
               properties:
-                name:
-                  description: >
-                    Name of the telemetry provider as registered in YBA. Must be unique
-                    within the customer. Immutable.
-                  type: string
-                  minLength: 1
-                  x-kubernetes-validations:
-                    - rule: self == oldSelf
-                      message: "name is immutable"
                 provider:
                   description: Telemetry provider backing this configuration. Immutable once set.
                   type: string
@@ -703,7 +694,6 @@ spec:
                     - endpoint
                     - authType
               required:
-                - name
                 - provider
           required:
             - spec

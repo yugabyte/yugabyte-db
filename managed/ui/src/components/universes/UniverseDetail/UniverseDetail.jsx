@@ -1,6 +1,6 @@
 // Copyright (c) YugabyteDB, Inc.
 
-import { Component, createRef } from 'react';
+import { Component } from 'react';
 import { Link, withRouter, browserHistory } from 'react-router';
 import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';
@@ -105,6 +105,7 @@ import {
   isVersionConnectionPoolSupported
 } from '../../../redesign/features/universe/universe-form/utils/helpers';
 import { DbUpgradeRollBackModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeRollBackModal';
+import { getAddReadReplicaRoute } from '@app/redesign/features-v2/universe/read-replica/readReplicaUtils';
 
 //icons
 import ClockRewind from '../../../redesign/assets/clock-rewind.svg?img';
@@ -168,7 +169,6 @@ class UniverseDetail extends Component {
 
     this.showUpgradeMarker = this.showUpgradeMarker.bind(this);
     this.onEditUniverseButtonClick = this.onEditUniverseButtonClick.bind(this);
-    this.settingsTabPopoverRef = createRef();
     this.state = {
       dimensions: {},
       showAlert: false,
@@ -656,13 +656,13 @@ class UniverseDetail extends Component {
     const editUniverseTooltipTitle = isK8ActionsDisabled
       ? k8OperatorTooltipTitle
       : isAsymmetricPrimaryEditBlocked
-      ? ASYMMETRIC_CLUSTER_EDIT_REASON
-      : '';
+        ? ASYMMETRIC_CLUSTER_EDIT_REASON
+        : '';
     const editGFlagsTooltipTitle = isK8ActionsDisabled
       ? k8OperatorTooltipTitle
       : isAsymmetricPrimaryEditBlocked
-      ? ASYMMETRIC_GFLAGS_EDIT_REASON
-      : '';
+        ? ASYMMETRIC_GFLAGS_EDIT_REASON
+        : '';
     const isUpgradeSoftwareDisabled =
       isUniverseStatusPending ||
       [SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) ||
@@ -732,8 +732,8 @@ class UniverseDetail extends Component {
     const readReplicaTooltipTitle = isK8ActionsDisabled
       ? k8OperatorTooltipTitle
       : isReadReplicaAsymmetricBlocked
-      ? ASYMMETRIC_CLUSTER_EDIT_REASON
-      : '';
+        ? ASYMMETRIC_CLUSTER_EDIT_REASON
+        : '';
     const isReadReplicaDisabled =
       isUniverseStatusPending ||
       isReadReplicaAsymmetricBlocked ||
@@ -1013,14 +1013,7 @@ class UniverseDetail extends Component {
               <Tab.Pane
                 eventKey="settings"
                 key="settings-tab"
-                tabtitle={<SettingsTabTitleWithPopover ref={this.settingsTabPopoverRef} />}
-                onBeforeSelect={() => {
-                  // Block Settings navigation until the tip is dismissed.
-                  if (this.settingsTabPopoverRef.current?.tryIntercept()) {
-                    return false;
-                  }
-                  return true;
-                }}
+                tabtitle={<SettingsTabTitleWithPopover />}
                 mountOnEnter={true}
                 unmountOnExit={true}
               >
@@ -1084,6 +1077,7 @@ class UniverseDetail extends Component {
             title="Actions"
             id="bg-nested-dropdown"
             pullRight
+            open={this.state.actionsDropdownOpen}
             onToggle={(isOpen) => this.setState({ actionsDropdownOpen: isOpen })}
           >
             <MenuItemsContainer
@@ -1333,6 +1327,7 @@ class UniverseDetail extends Component {
                               )}
                               disabled={isEditUniverseDisabled}
                               className="no-border-bottom"
+                              onClick={() => this.setState({ actionsDropdownOpen: false })}
                             >
                               <YBLabelWithIcon
                                 icon="fa fa-pencil"
@@ -1363,6 +1358,7 @@ class UniverseDetail extends Component {
                               )}
                               disabled={isEditUniverseDisabled}
                               className="no-border-bottom"
+                              onClick={() => this.setState({ actionsDropdownOpen: false })}
                             >
                               <YBLabelWithIcon
                                 icon="fa fa-pencil"
@@ -1490,6 +1486,7 @@ class UniverseDetail extends Component {
                         <YBMenuItem
                           disabled={isReadReplicaDisabled}
                           to={
+                            isV2EditUniverseUIEnabled ? getAddReadReplicaRoute(uuid) : 
                             this.isNewUIEnabled()
                               ? `/universes/${uuid}/${
                                   this.hasReadReplica(universeInfo) ? 'edit' : 'create'
@@ -1608,7 +1605,9 @@ class UniverseDetail extends Component {
                         )}
                         disabled={isDeleteUniverseDisabled}
                       >
-                        <YBLabelWithIcon icon="fa fa-trash-o fa-fw">Delete Universe</YBLabelWithIcon>
+                        <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                          Delete Universe
+                        </YBLabelWithIcon>
                       </YBMenuItem>
                     )}
                   </RbacValidator>

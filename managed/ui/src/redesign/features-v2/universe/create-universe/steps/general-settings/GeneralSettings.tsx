@@ -8,8 +8,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { forwardRef, useContext, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useContext, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
+import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { yupResolver } from '@hookform/resolvers/yup';
 import {
@@ -28,6 +29,15 @@ import {
   resetProviderDependentSettings,
   usePersistStepFormValues
 } from '../../helpers/persistStepFormValues';
+import { useGeneralSettingsDefaults } from '../../helpers/useGeneralSettingsDefaults';
+import {
+  buildGeneralSettingsDefaults,
+  CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY,
+  CREATE_UNIVERSE_PROVIDERS_QUERY_KEY,
+  fetchCreateUniverseDbVersions,
+  fetchCreateUniverseProviders,
+  transformDbVersionQueryData
+} from '../../helpers/generalSettingsDefaults';
 import { GeneralSettingsValidationSchema } from './ValidationSchema';
 import { GeneralSettingsProps } from './dtos';
 import {
@@ -55,13 +65,32 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.generalSettings' });
+
+  const { data: providers } = useQuery(
+    CREATE_UNIVERSE_PROVIDERS_QUERY_KEY,
+    fetchCreateUniverseProviders
+  );
+  const { data: dbVersions } = useQuery(
+    CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY,
+    fetchCreateUniverseDbVersions,
+    { select: transformDbVersionQueryData }
+  );
+
+  const defaultValues = useMemo(
+    () => buildGeneralSettingsDefaults(providers, dbVersions, generalSettings),
+    // First paint only: providers/DB versions are already in the React Query cache from CreateUniverse.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   const methods = useForm<GeneralSettingsProps>({
     resolver: yupResolver(GeneralSettingsValidationSchema(t)),
-    defaultValues: generalSettings,
+    defaultValues,
     mode: 'onChange'
   });
 
   usePersistStepFormValues(methods.watch, methods.getValues, saveGeneralSettings);
+  useGeneralSettingsDefaults(methods);
 
   useImperativeHandle(
     forwardRef,

@@ -105,7 +105,7 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     masterDeviceInfo: null,
     tserverK8SNodeResourceSpec: null,
     masterK8SNodeResourceSpec: null,
-    keepMasterTserverSame: false,
+    keepMasterTserverSame: true,
     enableEbsVolumeEncryption: false,
     ebsKmsConfigUUID: null
   },

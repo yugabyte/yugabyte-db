@@ -1420,12 +1420,15 @@ void Tablet::RegularDbFilesChanged() {
   }
 }
 
-void Tablet::SetCleanupPool(ThreadPool* thread_pool) {
+void Tablet::SetCleanupPool(
+    ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
+  snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
+
   if (!transaction_participant_) {
     return;
   }
 
-  cleanup_intent_files_token_ = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+  cleanup_intent_files_token_ = intent_cleanup_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
 
   CleanupIntentFiles();
 }
@@ -1706,6 +1709,8 @@ bool Tablet::StartShutdown(
   // pause.
   TEST_SYNC_POINT("Tablet::StartShutdown");
 
+  snapshots_->StartShutdown();
+
   // Stop the transaction coordinator's pollers before StartShutdownStorages pauses read/write
   // operations below: otherwise a poll could submit a transaction status update operation against
   // the paused tablet and fail with a non-shutdown status, tripping a DFATAL. See issue #32211.
@@ -1754,6 +1759,7 @@ void Tablet::CompleteShutdown() {
   LOG_IF_WITH_PREFIX(DFATAL, !shutdown_requested_.load(std::memory_order_acquire))
       << "CompleteShutdown called without a preceding StartShutdown";
 
+  snapshots_->CompleteShutdown();
   cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
@@ -2924,20 +2930,22 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
 Status Tablet::SetAllCDCRetentionBarriersUnlocked(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
     HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff, bool initial_retention_barrier,
-    HybridTime min_start_ht_cdc_unstreamed_txns) {
+    HybridTime min_start_ht_cdc_unstreamed_txns,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
   // WAL, History, Intents Retention
   RETURN_NOT_OK(metadata_->SetAllCDCRetentionBarriers(cdc_wal_index,
                                                       cdc_sdk_intents_op_id,
                                                       cdc_sdk_history_cutoff,
                                                       require_history_cutoff,
-                                                      initial_retention_barrier));
+                                                      initial_retention_barrier,
+                                                      barrier_move_selector));
   // Intents Retention setting on txn_participant
   // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
   // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
   // 3. min_start_ht_cdc_unstreamed_txns - time up to which intents SST files retained for CDC can
   // be deleted, provided their maximum record time is earlier than this value.
   auto txn_participant = transaction_participant();
-  if (txn_participant) {
+  if (barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id && txn_participant) {
     VLOG_WITH_PREFIX_AND_FUNC(1)
         << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
         << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
@@ -2956,14 +2964,16 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
 // retention barrier
 Status Tablet::SetAllInitialCDCRetentionBarriers(
     log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
-    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
 
   VLOG_WITH_PREFIX(1) << "CDC Retention barrier initialization request";
   std::lock_guard lock(cdcsdk_retention_barrier_lock_);
 
   cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
 
-  if (log && log->cdc_min_replicated_index() > cdc_wal_index) {
+  if (barrier_move_selector.move_cdc_min_replicated_index && log &&
+      log->cdc_min_replicated_index() > cdc_wal_index) {
     log->set_cdc_min_replicated_index(cdc_wal_index);
   }
   auto intent_retention_duration =
@@ -2974,7 +2984,7 @@ Status Tablet::SetAllInitialCDCRetentionBarriers(
   return SetAllCDCRetentionBarriersUnlocked(
       cdc_wal_index, cdc_sdk_intents_op_id, intent_retention_duration, cdc_sdk_history_cutoff,
       require_history_cutoff, true /* initial_retention_barrier */,
-      min_start_ht_cdc_unstreamed_txns);
+      min_start_ht_cdc_unstreamed_txns, barrier_move_selector);
 }
 
 // This is called From ChangeMetadaOperation::Apply during the
@@ -3006,7 +3016,7 @@ Status Tablet::SetAllInitialCDCSDKRetentionBarriers(
 Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
     log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
     MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
-    bool require_history_cutoff) {
+    bool require_history_cutoff, CDCRetentionBarrierMoveSelector barrier_move_selector) {
 
   VLOG_WITH_PREFIX(1) << "Move forward CDC Retention barrier request";
   std::lock_guard lock(cdcsdk_retention_barrier_lock_);
@@ -3021,7 +3031,7 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
       FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) {
     VLOG_WITH_PREFIX(1) << "Advance CDC retention barriers";
 
-    if (log) {
+    if (barrier_move_selector.move_cdc_min_replicated_index && log) {
       log->set_cdc_min_replicated_index(cdc_wal_index);
     }
 
@@ -3030,7 +3040,7 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
     RETURN_NOT_OK(SetAllCDCRetentionBarriersUnlocked(
         cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
         require_history_cutoff, false /* initial_retention_barrier */,
-        min_start_ht_cdc_unstreamed_txns));
+        min_start_ht_cdc_unstreamed_txns, barrier_move_selector));
     return true;
   } else {
     VLOG_WITH_PREFIX(1) << "Revision of CDC retention barriers is currently blocked";

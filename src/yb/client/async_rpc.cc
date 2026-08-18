@@ -34,6 +34,8 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
 
+#include "yb/master/master_error.h"
+
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_controller.h"
 
@@ -1003,7 +1005,13 @@ void WaitForAsyncWriteRpc::SendRpc() {
 
 void WaitForAsyncWriteRpc::OnKeyLookup(const Result<internal::RemoteTabletPtr>& result) {
   if (!result.ok()) {
-    FinishOrRetry(Status(result.status()));
+    const auto& status = result.status();
+    // OBJECT_NOT_FOUND from the master means the table itself is gone (dropped, or rewritten by
+    // TRUNCATE). Refreshing partitions can never resolve that, so fail instead of retrying until
+    // the deadline. Other NotFound flavors, e.g. a tablet split in flight, stay retryable.
+    const auto table_gone = status.IsNotFound() &&
+                            master::MasterError(status) == master::MasterErrorPB::OBJECT_NOT_FOUND;
+    FinishOrRetry(Status(status), /*allow_retry=*/!table_gone);
     return;
   }
   const TabletId& tablet_id = (*result)->tablet_id();
@@ -1033,12 +1041,12 @@ void WaitForAsyncWriteRpc::Finished(const Status& status) {
   }
 }
 
-void WaitForAsyncWriteRpc::FinishOrRetry(Status&& status) {
+void WaitForAsyncWriteRpc::FinishOrRetry(Status&& status, bool allow_retry) {
   DCHECK(table_);
   // NotFound (parent GC'd) and TryAgain (TABLET_SPLIT or stale partitions) both mean the key has
   // moved. Refresh partitions and DelayedRetry (this is bounded by the retrier's deadline).
   // Other errors (network, etc.) are already handled by TabletInvoker's internal retries.
-  if (!status.ok() && (status.IsNotFound() || status.IsTryAgain())) {
+  if (allow_retry && !status.ok() && (status.IsNotFound() || status.IsTryAgain())) {
     const_cast<YBTable&>(*table_).MarkPartitionsAsStale();
     status = mutable_retrier()->DelayedRetry(this, status);
     if (status.ok()) {

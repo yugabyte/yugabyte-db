@@ -101,7 +101,7 @@ export const InstanceSettingsValidationSchema = (
       otherwise: Yup.mixed().nullable()
     }),
 
-    keepMasterTserverSame: Yup.boolean().nullable().default(false),
+    keepMasterTserverSame: Yup.boolean().nullable().default(true),
 
     enableEbsVolumeEncryption: Yup.boolean().nullable().default(false),
 

@@ -1052,7 +1052,16 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
     LOG_WITH_PREFIX(WARNING) << "Tablet error from RunLeaderElection() call to peer "
                              << election_state->req.dest_uuid() << ": "
                              << StatusFromPB(election_state->resp.error().status());
+  } else {
+    // The protege accepted the request and started an election, so it reports a loss back to us
+    // via NotifyOriginatorAboutLostElection.
+    return;
   }
+  // The protege did not even start an election, so it will never report the loss back to us.
+  // Handle it here, otherwise this tablet stays leaderless until the post stepdown election delay
+  // expires.
+  WARN_NOT_OK(ElectionLostByProtege(election_state->req.dest_uuid()),
+              "Failed to handle stepdown election request failure");
 }
 
 void RaftConsensus::ReportFailureDetectedTask() {
@@ -3135,8 +3144,10 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
           // ReplicaState lock and re-checking, here we simply block for up to 100ms in that case,
           // because this function is currently (08/14/2017) only used in a context when it is OK,
           // such as catalog manager initialization.
+          // The wait is capped at 100ms because the condition variable is not signalled when we
+          // lose leadership or shut down, so we must re-check the replica state periodically.
           leader_lease_wait_cond_.wait_for(
-              lock, std::max<MonoDelta>(100ms, deadline - now).ToSteadyDuration());
+              lock, std::min<MonoDelta>(100ms, deadline - now).ToSteadyDuration());
         }
         continue;
       case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE: {

@@ -2037,4 +2037,35 @@ TEST_P(PgClampDeferReadTest, PrecedesEnsureReadTime) {
   }
 }
 
+TEST_P(PgClampDeferReadTest, DoesNotApplyIfReadTimeIsAlreadyPicked) {
+  if (isolation() != IsolationLevel::SNAPSHOT_ISOLATION) {
+    return;
+  }
+  auto setup = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup.ExecuteFormat(
+      "INSERT INTO t SELECT i, 0 FROM generate_series(1, $0) i", kSeedRows));
+
+  auto reader = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(SetSessionIsolation(&reader));
+  ASSERT_OK(reader.Execute("SET yb_max_query_layer_retries = 60"));
+  ASSERT_OK(reader.ExecuteFormat(
+      "CREATE FUNCTION clamp_after_read_time() RETURNS bigint AS "
+      "'BEGIN"
+      "   PERFORM count(*) FROM t WHERE k <= $0;"
+      "   SET yb_read_after_commit_visibility = relaxed;"
+      "   RETURN (SELECT count(*) FROM t WHERE k <= $0);"
+      " END' LANGUAGE plpgsql", kSeedRows));
+
+  TestThreadHolder threads;
+  StartConcurrentInserts(&threads, "t", kWriterStartKey);
+
+  RunFor(10s * kTimeMultiplier, [&reader] {
+    ASSERT_OK(reader.Execute("SET yb_read_after_commit_visibility = strict"));
+    ASSERT_EQ(
+        ASSERT_RESULT(reader.FetchRow<PGUint64>("SELECT clamp_after_read_time()")), kSeedRows);
+  });
+  threads.Stop();
+}
+
 } // namespace yb::pgwrapper

@@ -98,7 +98,7 @@
 #include "commands/yb_cmds.h"
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
-#include "common/pg_yb_param_status_flags.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/execdesc.h"
 #include "executor/spi.h"
 #include "executor/ybExpr.h"
