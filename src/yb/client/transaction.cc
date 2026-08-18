@@ -576,6 +576,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
           if (state == TransactionState::kRunning) {
             abort = true;
+            // Remember why we abort, so that the operations that fail because of this abort could
+            // report the original failure instead of their own kAborted error.
+            flush_abort_cause_ = status;
             // State will be changed to aborted in SetError
           }
           SetErrorUnlocked(status, "Flush");
@@ -600,6 +603,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (abort && !child_) {
       DoAbort(TransactionRpcDeadline(), transaction_->shared_from_this());
     }
+  }
+
+  Status FlushAbortCause() EXCLUDES(mutex_) override {
+    std::lock_guard lock(mutex_);
+    return flush_abort_cause_;
   }
 
   void Commit(CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback)
@@ -2692,6 +2700,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // We might need to fix this before turning on transactions sealing.
   // https://github.com/yugabyte/yugabyte-db/issues/7984.
   size_t running_requests_ GUARDED_BY(mutex_) = 0;
+  // Flush failure that made this transaction abort itself, if any.
+  Status flush_abort_cause_ GUARDED_BY(mutex_);
   // Set to true after commit record is replicated. Used only during transaction sealing.
   bool commit_replicated_ GUARDED_BY(mutex_) = false;
 

@@ -62,6 +62,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/pgsql_utils.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/stl_util.h"
@@ -796,8 +797,16 @@ void Batcher::Flushed(
   }
 
   if (--outstanding_rpcs_ == 0) {
+    // A failed operation aborts the transaction, so its siblings could fail with a kAborted error,
+    // which outranks the original failure. Restore the original failure for such operations.
+    const auto flush_abort_cause =
+        transaction ? transaction->batcher_if().FlushAbortCause() : Status::OK();
     for (auto& op : ops_queue_) {
       if (!op.error.ok()) {
+        if (!flush_abort_cause.ok() &&
+            TransactionError(op.error).value() == TransactionErrorCode::kAborted) {
+          op.error = flush_abort_cause;
+        }
         CombineError(op);
       }
     }

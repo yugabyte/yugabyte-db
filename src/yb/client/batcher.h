@@ -110,6 +110,11 @@ class TxnBatcherIf {
       const std::optional<SubTransactionMetadataPB>& subtransaction_pb,
       const ReadHybridTime& used_read_time, const Status& status) = 0;
 
+  // Returns the flush failure that made this transaction abort itself, or an OK status if the
+  // transaction was not aborted this way. Operations that failed because of such an abort should
+  // report this status instead of their own kAborted error, which hides the actual failure reason.
+  virtual Status FlushAbortCause() = 0;
+
   // This function is used to init metadata of Write/Read request.
   // If we don't have enough information, then the function returns false and stores
   // the waiter, which will be invoked when we obtain such information.
