@@ -318,6 +318,10 @@ typedef struct YbcPgExecOutParamValue {
 #endif
 } YbcPgExecOutParamValue;
 
+// Value of a rowmark field when no row mark is set.  A sentinel outside
+// RowMarkType is needed because 0 is a valid value (ROW_MARK_EXCLUSIVE).
+#define YBC_NO_ROW_MARK (-1)
+
 // Structure to hold the execution-control parameters.
 typedef struct YbcPgExecParameters {
   // TODO(neil) Move forward_scan flag here.
@@ -343,7 +347,7 @@ typedef struct YbcPgExecParameters {
   uint64_t limit_count = 0;
   uint64_t limit_offset = 0;
   bool limit_use_default = true;
-  int rowmark = -1;
+  int rowmark = YBC_NO_ROW_MARK;
   // Cast these *_wait_policy fields to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
   // Please see the WaitPolicy enum in common.proto for details.

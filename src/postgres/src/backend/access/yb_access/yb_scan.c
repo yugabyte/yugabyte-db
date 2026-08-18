@@ -5289,7 +5289,7 @@ ybBeginSample(Relation rel, int targrows)
 
 	ybSample->exec_params.yb_fetch_row_limit = yb_fetch_row_limit;
 	ybSample->exec_params.yb_fetch_size_limit = yb_fetch_size_limit;
-	ybSample->exec_params.rowmark = -1;
+	ybSample->exec_params.rowmark = YBC_NO_ROW_MARK;
 
 	return ybSample;
 }
