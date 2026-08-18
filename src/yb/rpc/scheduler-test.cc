@@ -23,7 +23,6 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/dist_trace_test_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
 
@@ -144,16 +143,9 @@ TEST_F(SchedulerTest, Shutdown) {
 
 namespace dist_trace_hops {
 
-// Enables distributed tracing, pointed at an unreachable collector.
 class SchedulerTraceTest : public SchedulerTest {
- public:
-  void SetUp() override {
-    dist_trace::TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
-    SchedulerTest::SetUp();
-  }
-
  private:
-  google::FlagSaver flag_saver_;
+  dist_trace::ScopedTestDistTrace dist_trace_;
 };
 
 // Schedule under an active trace context: the io thread runs the task under that context.

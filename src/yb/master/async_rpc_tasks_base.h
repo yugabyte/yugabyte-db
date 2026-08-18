@@ -248,8 +248,8 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
   virtual int max_delay_ms();
 
   // Trace context active when this task was created, re-activated at the top of Run() so the task's
-  // RPCs nest under it. Invalid (no-op) when created outside a traced origin.
-  std::optional<dist_trace::trace::SpanContext> trace_parent_;
+  // RPCs nest under it.
+  dist_trace::TraceParent trace_parent_;
 };
 
 // A background task which continuously retries sending an RPC to master server.

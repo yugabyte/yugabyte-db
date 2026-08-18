@@ -97,7 +97,7 @@ struct IndexTableInfo {
 
   // OTel context active when this index was scheduled (the CreateTablet RPC's trace, carried into
   // OpenTablet by the threadpool). Used to nest the later GetBackfillStatus poll under that trace.
-  std::optional<dist_trace::trace::SpanContext> trace_parent;
+  dist_trace::TraceParent trace_parent;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(index_tablet_id, index_table_id, group_id);
@@ -430,7 +430,7 @@ bool TabletMetadataValidator::Impl::ScheduleTabletPropertiesValidation(
   // Active OTel context, live here because the threadpool carries it from the CreateTablet RPC into
   // OpenTablet. Stored per index so the later GetBackfillStatus poll nests under the triggering
   // trace.
-  const auto trace_parent = dist_trace::GetActiveSpanContext();
+  const dist_trace::TraceParent trace_parent;
 
   // Pick all index tables with retain_delete_markers set to true.
   std::vector<IndexTableInfo> candidates;
@@ -526,7 +526,7 @@ Result<master::GetBackfillStatusResponsePB> TabletMetadataValidator::Impl::SyncW
   // has a single parent. Nest the RPC under the first batched index's captured trace context.
   dist_trace::SpanWithScopePtr otel_scope;
   if (!index_tablets_to_sync_.empty()) {
-    otel_scope = dist_trace::ActivateParentScope(index_tablets_to_sync_.begin()->trace_parent);
+    otel_scope = index_tablets_to_sync_.begin()->trace_parent.Activate();
   }
 
   // Only backfilling status is being synced with the master at the moment.

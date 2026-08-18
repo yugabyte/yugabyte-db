@@ -79,6 +79,18 @@ nostd::shared_ptr<trace::Span> StartServerSpan(
 // Buffers an attribute for the next RPC span started on this thread.
 void AddPendingRpcStringAttr(std::string key, std::string value);
 
+// Holds the span context captured where it is constructed, so work that runs on another thread can
+// re-parent itself under it. Copying carries the captured context; it does not re-capture.
+class TraceParent {
+ public:
+  TraceParent() : parent_(GetActiveSpanContext()) {}
+
+  const std::optional<trace::SpanContext>& context() const { return parent_; }
+
+ private:
+  std::optional<trace::SpanContext> parent_;
+};
+
 // Makes a span (or a captured parent context) current on this thread for the enclosing block,
 // like ScopedAdoptTrace / ADOPT_WAIT_STATE. Stack-only; the span itself may cross threads.
 class ScopedAdoptSpan {
@@ -91,6 +103,9 @@ class ScopedAdoptSpan {
 
   // Adopts a context captured elsewhere without starting a span; no-op when there is none.
   explicit ScopedAdoptSpan(const std::optional<trace::SpanContext>& parent_context);
+
+  explicit ScopedAdoptSpan(const TraceParent& parent) : ScopedAdoptSpan(parent.context()) {}
+
 
   ScopedAdoptSpan(const ScopedAdoptSpan&) = delete;
   ScopedAdoptSpan& operator=(const ScopedAdoptSpan&) = delete;
