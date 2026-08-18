@@ -1184,7 +1184,61 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         rootCAUUID,
         false /* useExistingServerCert */,
         skipAZs,
-        null /* targetUniverseState */);
+        null /* targetUniverseState */,
+        false /* useNewMasterDeviceInfo */,
+        false /* useNewTserverDeviceInfo */);
+  }
+
+  /**
+   * Same as the overload above, but allows the caller to control whether the Helm overrides use the
+   * target (new) device info for the master/tserver StatefulSets. This is needed by edit-universe
+   * flows: a HELM_UPGRADE re-renders the whole release (both master and tserver StatefulSets), so
+   * the storage stanza must reflect what the cluster has already converged to (e.g. after a disk
+   * resize). Otherwise the still-stale persisted intent would be rendered and Kubernetes rejects
+   * the immutable volumeClaimTemplates update on the StatefulSet.
+   */
+  public void upgradePodsTask(
+      String universeName,
+      KubernetesPlacement newPlacement,
+      String masterAddresses,
+      KubernetesPlacement currPlacement,
+      ServerType serverType,
+      String softwareVersion,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      CommandType commandType,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      PodUpgradeParams podUpgradeParams,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      Set<UUID> skipAZs,
+      boolean useNewMasterDeviceInfo,
+      boolean useNewTserverDeviceInfo) {
+    upgradePodsTask(
+        universeName,
+        newPlacement,
+        masterAddresses,
+        currPlacement,
+        serverType,
+        softwareVersion,
+        universeOverridesStr,
+        azsOverrides,
+        newNamingStyle,
+        isReadOnlyCluster,
+        commandType,
+        enableYbc,
+        ybcSoftwareVersion,
+        podUpgradeParams,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        false /* useExistingServerCert */,
+        skipAZs,
+        null /* targetUniverseState */,
+        useNewMasterDeviceInfo,
+        useNewTserverDeviceInfo);
   }
 
   public void upgradePodsTask(
@@ -1206,7 +1260,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       UUID rootCAUUID,
       boolean useExistingServerCert,
       Set<UUID> skipAZs,
-      @Nullable Universe targetUniverseState) {
+      @Nullable Universe targetUniverseState,
+      boolean useNewMasterDeviceInfo,
+      boolean useNewTserverDeviceInfo) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -1394,7 +1450,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               null /* previousGflagsChecksumMap */,
               ysqlMajorVersionUpgradeState,
               rootCAUUID,
-              useExistingServerCert);
+              useExistingServerCert,
+              useNewMasterDeviceInfo,
+              useNewTserverDeviceInfo);
         }
 
         addParallelTasks(
@@ -2607,6 +2665,60 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID,
       boolean useExistingServerCert) {
+    createSingleKubernetesExecutorTaskForServerType(
+        universeName,
+        commandType,
+        pi,
+        az,
+        masterAddresses,
+        ybSoftwareVersion,
+        serverType,
+        config,
+        masterPartition,
+        tserverPartition,
+        universeOverrides,
+        azOverrides,
+        isReadOnlyCluster,
+        podName,
+        newDiskSize,
+        ignoreErrors,
+        enableYbc,
+        ybcSoftwareVersion,
+        usePreviousGflagsChecksum,
+        previousGflagsChecksumMap,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        useExistingServerCert,
+        false /* useNewMasterDeviceInfo */,
+        false /* useNewTserverDeviceInfo */);
+  }
+
+  public void createSingleKubernetesExecutorTaskForServerType(
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      Map<String, String> config,
+      int masterPartition,
+      int tserverPartition,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      String podName,
+      String newDiskSize,
+      boolean ignoreErrors,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      boolean usePreviousGflagsChecksum,
+      Map<ServerType, String> previousGflagsChecksumMap,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      boolean useExistingServerCert,
+      boolean useNewMasterDeviceInfo,
+      boolean useNewTserverDeviceInfo) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(commandType.getSubTaskGroupName(), ignoreErrors);
     subTaskGroup.addSubTask(
         getSingleKubernetesExecutorTaskForServerTypeTask(
@@ -2631,8 +2743,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             previousGflagsChecksumMap,
             false /* usePreviousCertChecksum */,
             null /* previousCertChecksum */,
-            false /* useNewMasterDeviceInfo */,
-            false /* useNewTserverDeviceInfo */,
+            useNewMasterDeviceInfo,
+            useNewTserverDeviceInfo,
             ysqlMajorVersionUpgradeState,
             rootCAUUID,
             useExistingServerCert));
@@ -2805,6 +2917,30 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       if (useNewMasterDeviceInfo || useNewTserverDeviceInfo) {
         // Only update the deviceInfo all other things remain same
         params.universeDetails = universe.getUniverseDetails();
+        // Carry over the target instance type / node resource spec from the task params.
+        // Rendering the storage stanza from the new device info (below) requires switching the
+        // base universeDetails to the persisted (DB) copy, which still holds the pre-edit instance
+        // type. Callers that also change the instance type (edit-universe) would otherwise have
+        // their resource change silently dropped by this Helm upgrade. This is a no-op for callers
+        // that do not change the instance type (e.g. disk resize / full move), since the copied
+        // values are identical to what is already persisted.
+        Cluster taskDeviceCluster =
+            isReadOnlyCluster
+                ? taskParams().getReadOnlyClusters().get(0)
+                : taskParams().getPrimaryCluster();
+        Cluster paramsDeviceCluster =
+            isReadOnlyCluster
+                ? params.universeDetails.getReadOnlyClusters().get(0)
+                : params.universeDetails.getPrimaryCluster();
+        if (taskDeviceCluster != null && paramsDeviceCluster != null) {
+          paramsDeviceCluster.userIntent.instanceType = taskDeviceCluster.userIntent.instanceType;
+          paramsDeviceCluster.userIntent.masterInstanceType =
+              taskDeviceCluster.userIntent.masterInstanceType;
+          paramsDeviceCluster.userIntent.tserverK8SNodeResourceSpec =
+              taskDeviceCluster.userIntent.tserverK8SNodeResourceSpec;
+          paramsDeviceCluster.userIntent.masterK8SNodeResourceSpec =
+              taskDeviceCluster.userIntent.masterK8SNodeResourceSpec;
+        }
         if (useNewTserverDeviceInfo) {
           if (isReadOnlyCluster) {
             params.universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo =
