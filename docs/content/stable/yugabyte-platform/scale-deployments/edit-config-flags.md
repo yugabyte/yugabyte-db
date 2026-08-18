@@ -42,16 +42,35 @@ Enabling Enhanced Postgres Compatibility sets several flags, and overrides any s
 
 ## Connection Pooling
 
-You can enable [built-in connection pooling](../../../additional-features/connection-manager-ysql/) on universes.
+If your universe is running database v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
 
-Navigate to the universe and do the following:
+{{< tabpane text=true >}}
 
-- New UI: Click **Settings > Database** and under **Features** click **Edit>Edit Connection Pooling**.
-- Classic UI: Click **Actions > More > Edit Connection Pooling**.
+{{% tab header="New UI" lang="new" %}}
 
-On universes with built-in connection pooling enabled, you can customize YSQL Connection Manager settings using **Actions > Edit Flags**.
+1. Navigate to the universe, then open **Settings > Database**.
+1. Under **Features**, click **Edit** and choose **Edit Connection Pooling Settings**.
+1. Enable or disable the **Built-In Connection Pooling** option.
+1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
+1. Click **Apply Changes**.
 
-Do not set `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, or `pgsql_proxy_bind_address` through **Edit Flags** when YugabyteDB Anywhere manages connection pooling for the universe.
+{{% /tab %}}
+
+{{% tab header="Classic UI" lang="classic" %}}
+
+1. Navigate to your universe.
+1. Click **Actions > More > Edit Connection Pooling** to open the **Edit Connection Pooling** dialog.
+1. Enable or disable the **Built-In Connection Pooling** option.
+1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
+1. Click **Apply Changes**.
+
+{{% /tab %}}
+
+{{< /tabpane >}}
+
+To customize other Connection Manager settings, use [Edit configuration flags](../edit-config-flags/).
+
+Do not set `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, or `pgsql_proxy_bind_address` manually when using YugabyteDB Anywhere to manage connection pooling for the universe.
 
 For information on Connection Manager settings and defaults, refer to [Set up YSQL Connection Manager](../../../additional-features/connection-manager-ysql/ycm-setup/#configure).
 

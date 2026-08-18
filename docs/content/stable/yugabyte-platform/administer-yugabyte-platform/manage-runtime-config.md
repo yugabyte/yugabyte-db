@@ -43,8 +43,8 @@ Note that only a Super Admin user has edit or reset access for Global configurat
 
 To modify the `Enforce Auth` runtime configuration key (applicable only at Global or Customer scope), perform the following steps:
 
-1. From your YugabyteDB Anywhere UI, navigate to **Admin** > **Advanced** and select the **Global Configuration** or **Customer Configuration** tab.
+1. Navigate to **Admin > Advanced** and select the **Global Configuration** or **Customer Configuration** tab.
 1. In the **Search** bar, enter "Enforce Auth".
-1. Click **Actions** and choose **Edit Configuration**.
+1. Click **Actions** for the **Enforce Auth** config and choose **Edit Configuration**.
 1. Change the **Config value** to "True" and click **Save**.
 1. To verify the change, navigate to **Universes**, click **Create Universe**, and verify that for the  **Authentication Settings** section, "Enable YSQL Auth" is not be displayed and you are must enter a password in the **YSQL Password** and **Confirm Password** fields.
