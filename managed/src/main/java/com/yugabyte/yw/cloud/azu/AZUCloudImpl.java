@@ -324,7 +324,8 @@ public class AZUCloudImpl implements CloudAPI {
    * Method to update existing backend pools, as well as create the missing backend pools. This
    * methods leads to the creation of the pools on Azure cloud as well The vms that are a part of
    * the backend pool, all need to be a part of the same virtual network in which the existing
-   * backend pool is already a part of
+   * backend pool is already a part of. An empty node list empties the primary backend pool
+   * (detach).
    *
    * @param apiClient Azure API client to communicate with the Azure cloud
    * @param lbName Name of the load balancer to which the backend pools belong
@@ -332,7 +333,8 @@ public class AZUCloudImpl implements CloudAPI {
    * @param nodes List of nodes that need to be present in the backend pools
    * @return Updated list of backend pools
    */
-  private List<BackendAddressPoolInner> ensureBackends(
+  @VisibleForTesting
+  protected List<BackendAddressPoolInner> ensureBackends(
       AZUResourceGroupApiClient apiClient,
       String lbName,
       List<BackendAddressPoolInner> backends,
@@ -347,19 +349,29 @@ public class AZUCloudImpl implements CloudAPI {
                 Collectors.toMap(
                     entry -> entry.getKey().privateIpAddress(),
                     entry -> CloudAPI.getResourceNameFromResourceUrl(entry.getValue().id())));
-    Set<String> subnetIds =
-        ipToVm.keySet().stream()
-            .map(ipConfig -> ipConfig.subnet().id())
-            .collect(Collectors.toSet());
     try {
+      // Assumption: The backend pool at 0th index is primary backend pool, and we only change this
+      // pool
+      if (ipToVmName.isEmpty()) {
+        // Detach: no member subnets to derive vnet from (onlyElement() below throws on empty
+        // set); vnet unused when writing an empty address list.
+        if (backends == null || backends.isEmpty()) {
+          return backends == null ? new ArrayList<>() : backends;
+        }
+        backends.set(
+            0, apiClient.updateIPsInBackendPool(lbName, ipToVmName, backends.get(0), null));
+        return backends;
+      }
+      Set<String> subnetIds =
+          ipToVm.keySet().stream()
+              .map(ipConfig -> ipConfig.subnet().id())
+              .collect(Collectors.toSet());
       SubResource virtualNetwork =
           (new SubResource())
               .withId(
                   subnetIds.stream()
                       .map(subnet -> subnet.split("/subnets")[0])
                       .collect(onlyElement()));
-      // Assumption: The backend pool at 0th index is primary backend pool, and we only change this
-      // pool
       if (backends == null || backends.size() == 0) {
         return Arrays.asList(
             apiClient.createNewBackendPoolForIPs(lbName, ipToVmName, virtualNetwork));
@@ -372,8 +384,15 @@ public class AZUCloudImpl implements CloudAPI {
       }
       return backends;
     } catch (Exception exception) {
+      log.error("Error updating backend pools for load balancer {}", lbName, exception);
+      // getMessage() can be null (e.g. NoSuchElementException); fall back to toString() so the
+      // task error is not reported as "null".
+      String errorDetail =
+          StringUtils.isNotBlank(exception.getMessage())
+              ? exception.getMessage()
+              : exception.toString();
       throw new PlatformServiceException(
-          BAD_REQUEST, "Error updating backend pools: " + exception.getMessage());
+          BAD_REQUEST, "Error updating backend pools: " + errorDetail);
     }
   }
 
