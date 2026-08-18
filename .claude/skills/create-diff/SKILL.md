@@ -176,6 +176,22 @@ Based on the files changed on the branch, decide the default subscriber:
 
 Confirm the subscriber list with the user before creating the diff.
 
+### Step 5.5: Cut the prose the branch added
+
+Re-read the **text** the branch adds — comments, `architecture/` docs,
+agent docs — and apply [`AGENTS.md` Prose
+discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
+It is a gate here because it is easy to hold at the start of a task and
+gone by the end of one, and this is the last point where cutting is
+free.
+
+```
+git diff <base>...HEAD -- '*.md'   # doc prose; also skim added comments in the code diff
+```
+
+Commit any resulting edits on the branch before Step 6, and re-run the
+linter (Step 2).
+
 ### Step 6: Create the diff with `arc diff --create`
 
 **Confidentiality — final scrub before publishing.** Phorge is treated
@@ -209,8 +225,14 @@ arc diff --create --message-file <path> --reviewers <reviewers> --cc <subscriber
 Pre-fill the message file with:
 
 - **Title**: the constructed title from step 4
-- **Summary**: a short description of the change (derive from branch commits)
-- **Test Plan**: ask the user for one if not obvious from the branch
+- **Summary**: derived from the branch commits.  Say **why**, always —
+  a reviewer who has to reverse-engineer the motivation is the
+  expensive case — then what changed, and whatever the reader must *act*
+  on (new gflags, upgrade/rollback consequences, migration steps).  Not
+  a narration of the diff.  See [`AGENTS.md` Prose
+  discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
+- **Test Plan**: ask the user for one if not obvious from the branch.
+  Keep it to what was actually run — it is not a place for prose.
 - **Reviewers**: (as provided)
 - **Subscribers**: `ybase` and/or `yugaware` per Step 4
 
