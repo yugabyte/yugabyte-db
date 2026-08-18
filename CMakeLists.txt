@@ -923,6 +923,7 @@ set(YB_SUBDIR_NAMES
     server
     storage
     tablet
+    thin_client
     tools
     tserver
     util
