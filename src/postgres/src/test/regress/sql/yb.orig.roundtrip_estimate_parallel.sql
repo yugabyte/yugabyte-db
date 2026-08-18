@@ -153,12 +153,7 @@ insert into queries values
 -- block.  Do NOT use this rule to hide legitimate model mismatches such as
 -- "way too many empty ranges": empty ranges per se shouldn't accumulate
 -- error if model and reality both scale linearly with range count.
-
--- 2026.1: use parallel_*_cost and yb_parallel_range_rows to encourage
--- parallelism instead of yb_test_force_parallel.
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set yb_parallel_range_rows = 3000;  -- ~4 workers for 12345-row table
+set yb_test_force_parallel = force;
 set max_parallel_workers_per_gather = 4;
 
 select * from queries order by qid;
@@ -166,7 +161,6 @@ select * from queries order by qid;
 update explain_query_options set with_analyze = false;
 
 -- verify scan node types: first variant saves baseline; later variants assert symmetric diff is empty.
--- 2026.1: some unparallelized nodeds expected because of lack of yb_test_force_parallel enforcement.
 create temp table baseline_scan_nodes as
 select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
        "Index Name", "Index Cond", "Storage Index Filter",
@@ -197,7 +191,6 @@ set yb_parallel_range_size = 1048576;
 
 update explain_query_options set with_analyze = false;
 
--- 2026.1: expected to see some unparallelized nodeds because of lack of yb_test_force_parallel.
 (table baseline_scan_nodes
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
@@ -233,7 +226,6 @@ set yb_parallel_range_size = 524288;
 
 update explain_query_options set with_analyze = false;
 
--- 2026.1: some unparallelized nodeds expected because of lack of yb_test_force_parallel enforcement.
 (table baseline_scan_nodes
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
@@ -286,7 +278,6 @@ union all
 update explain_query_options set with_analyze = true;
 
 -- should not return any row; columns surface per-field counts on failure.
--- 2026.1: some unparallelized nodeds expected because of lack of yb_test_force_parallel enforcement.
 select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
        "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
        "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,

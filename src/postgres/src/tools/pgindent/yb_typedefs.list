@@ -96,6 +96,7 @@ YbFdwPlanState
 YbFetchKeysParam
 YbFetchStatus
 YbFlushTupleFn_t
+YbForceParallel
 YbFreeBatchFn_t
 YbFuncCallContext
 YbGateTestCase

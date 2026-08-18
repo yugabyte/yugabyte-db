@@ -143,11 +143,7 @@ insert into queries values
 -- block.  Do NOT use this rule to hide legitimate model mismatches such as
 -- "way too many empty ranges": empty ranges per se shouldn't accumulate
 -- error if model and reality both scale linearly with range count.
--- 2026.1: use parallel_*_cost and yb_parallel_range_rows to encourage
--- parallelism instead of yb_test_force_parallel.
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set yb_parallel_range_rows = 3000;  -- ~4 workers for 12345-row table
+set yb_test_force_parallel = force;
 set max_parallel_workers_per_gather = 4;
 select * from queries order by qid;
   qid  |                                                             query                                                             
@@ -232,91 +228,90 @@ select * from queries order by qid;
 
 update explain_query_options set with_analyze = false;
 -- verify scan node types: first variant saves baseline; later variants assert symmetric diff is empty.
--- 2026.1: some unparallelized nodeds expected because of lack of yb_test_force_parallel enforcement.
 create temp table baseline_scan_nodes as
 select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
        "Index Name", "Index Cond", "Storage Index Filter",
        "Storage Filter", "Filter"
 from queries q full join check_roundtrip_estimates x on x.qid = q.qid;
 select * from baseline_scan_nodes order by qid, nid;
-  qid  | nid |             Node Type             |  Index Name  |                                               Index Cond                                               | Storage Index Filter |                             Storage Filter                              |                Filter                 
--------+-----+-----------------------------------+--------------+--------------------------------------------------------------------------------------------------------+----------------------+-------------------------------------------------------------------------+---------------------------------------
- 10101 |   1 | Index Scan                        | r_pkey       | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                                                                         | 
- 10102 |   1 | Seq Scan                          |              |                                                                                                        |                      | ((b >= 1) AND (b <= 10000))                                             | 
- 10103 |   1 | Seq Scan                          |              |                                                                                                        |                      | ((b >= 1) AND (b <= 10000))                                             | 
- 10104 |   1 | Index Scan                        | r_pkey       | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                                                                         | 
- 10105 |   1 | Seq Scan                          |              |                                                                                                        |                      | ((b >= 1) AND (b <= 10000))                                             | 
- 10201 |   1 | Index Scan                        | r_pkey       | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                                                                         | 
- 10202 |   1 | Seq Scan                          |              |                                                                                                        |                      | ((b >= 1) AND (b <= 11000))                                             | 
- 10203 |   1 | Seq Scan                          |              |                                                                                                        |                      | ((b >= 1) AND (b <= 11000))                                             | 
- 10204 |   1 | Index Scan                        | r_pkey       | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                                                                         | 
- 10205 |   1 | Seq Scan                          |              |                                                                                                        |                      | ((b >= 1) AND (b <= 11000))                                             | 
- 11101 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                                                                         | 
- 11102 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            |                      |                                                                         | 
- 11103 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            |                      |                                                                         | 
- 11104 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                                                                         | 
- 11105 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      | ((b >= 1) AND (b <= 10000))                                             | 
- 11201 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                                                                         | 
- 11202 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 11000))                                                                            |                      |                                                                         | 
- 11203 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 11000))                                                                            |                      |                                                                         | 
- 11204 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                                                                         | 
- 11205 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      | ((b >= 1) AND (b <= 11000))                                             | 
- 20001 |   1 | Seq Scan                          |              |                                                                                                        |                      |                                                                         | 
- 20002 |   1 | Seq Scan                          |              |                                                                                                        |                      |                                                                         | 
- 20101 |   1 | Index Scan                        | r_pkey       | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)                                                      | 
- 20102 |   1 | Index Scan                        | r_pkey       | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)                                                      | (non_pushable((pk)::bigint) <= 12345)
- 20201 |   1 | Index Only Scan                   | r_b_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)                                                       | 
- 20202 |   1 | Seq Scan                          |              |                                                                                                        |                      | ((b >= 1) AND (b <= 10000) AND ((b % 100) <= 33) AND ((e % 100) <= 33)) | 
- 20203 |   1 | Seq Scan                          |              |                                                                                                        |                      | ((b >= 1) AND (b <= 10000) AND ((b % 100) <= 33) AND ((e % 100) <= 33)) | (non_pushable((e)::bigint) <= 12345)
- 20301 |   1 | Index Only Scan                   | r_b_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)                                                       | 
- 20302 |   1 | Index Only Scan                   | r_b_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)                                                       | (non_pushable((b)::bigint) <= 12345)
- 21001 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      |                                                                         | 
- 21002 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      |                                                                         | 
- 21101 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)                                                      | 
- 21102 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)                                                      | (non_pushable((pk)::bigint) <= 12345)
- 21201 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)                                                       | 
- 21202 |   1 | Parallel Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            | ((b % 100) <= 33)    | ((e % 100) <= 33)                                                       | 
- 21203 |   1 | Parallel Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            | ((b % 100) <= 33)    | ((e % 100) <= 33)                                                       | (non_pushable((e)::bigint) <= 12345)
- 21301 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)                                                       | 
- 21302 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)                                                       | (non_pushable((b)::bigint) <= 12345)
- 30001 |   1 | Index Scan                        | r_pkey       | (pk = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                                                                         | 
- 30002 |   1 | Index Only Scan                   | r_b_idx      | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                                                                         | 
- 30003 |   1 | Index Only Scan                   | r_b_idx      | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                                                                         | 
- 31001 |   1 | Parallel Index Scan               | rc_pkey      | (pk = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                                                                         | 
- 31002 |   1 | Parallel Index Only Scan          | rc_b_idx     | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                                                                         | 
- 31003 |   1 | Parallel Index Only Scan          | rc_b_idx     | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                                                                         | 
- 40001 |   1 | Index Scan                        | r_pkey       | (pk = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                            |                      |                                                                         | 
- 40002 |   1 | Index Only Scan                   | r_b_idx      | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                                                                         | 
- 40003 |   1 | Index Only Scan                   | r_b_idx      | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                                                                         | 
- 41001 |   1 | Parallel Index Scan               | rc_pkey      | (pk = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                            |                      |                                                                         | 
- 41002 |   1 | Parallel Index Only Scan          | rc_b_idx     | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                                                                         | 
- 41003 |   1 | Parallel Index Only Scan          | rc_b_idx     | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                                                                         | 
- 51001 |   1 | Seq Scan                          |              |                                                                                                        |                      | (dv1 <= 1)                                                              | 
- 51002 |   1 | Seq Scan                          |              |                                                                                                        |                      | (f1000 <= 10)                                                           | 
- 51003 |   1 | Seq Scan                          |              |                                                                                                        |                      | (f100 <= 100)                                                           | 
- 52001 |   1 | Seq Scan                          |              |                                                                                                        |                      | (dv1 <= 1)                                                              | 
- 52002 |   1 | Seq Scan                          |              |                                                                                                        |                      | (f1000 <= 10)                                                           | 
- 52003 |   1 | Seq Scan                          |              |                                                                                                        |                      | (f100 <= 100)                                                           | 
- 53001 |   1 | Index Only Scan Backward          | r_dv1_idx    | (dv1 <= 1)                                                                                             |                      |                                                                         | 
- 53002 |   1 | Index Only Scan Backward          | r_f1000_idx  | (f1000 <= 10)                                                                                          |                      |                                                                         | 
- 53003 |   1 | Index Only Scan Backward          | r_f100_idx   | (f100 <= 100)                                                                                          |                      |                                                                         | 
- 54001 |   1 | Index Only Scan Backward          | r_dv1_idx    | (dv1 <= 1)                                                                                             |                      |                                                                         | 
- 54002 |   1 | Index Only Scan Backward          | r_f1000_idx  | (f1000 <= 10)                                                                                          |                      |                                                                         | 
- 54003 |   1 | Index Only Scan Backward          | r_f100_idx   | (f100 <= 100)                                                                                          |                      |                                                                         | 
- 56001 |   1 | Parallel Index Only Scan          | rc_dv1_idx   | (dv1 <= 1)                                                                                             |                      |                                                                         | 
- 56002 |   1 | Parallel Index Only Scan          | rc_f1000_idx | (f1000 <= 10)                                                                                          |                      |                                                                         | 
- 56003 |   1 | Parallel Index Only Scan          | rc_f100_idx  | (f100 <= 100)                                                                                          |                      |                                                                         | 
- 57001 |   1 | Parallel Index Only Scan          | rc_dv1_idx   | (dv1 <= 1)                                                                                             |                      |                                                                         | 
- 57002 |   1 | Parallel Index Only Scan          | rc_f1000_idx | (f1000 <= 10)                                                                                          |                      |                                                                         | 
- 57003 |   1 | Parallel Index Only Scan          | rc_f100_idx  | (f100 <= 100)                                                                                          |                      |                                                                         | 
- 58001 |   1 | Parallel Index Only Scan Backward | rc_dv1_idx   | (dv1 <= 1)                                                                                             |                      |                                                                         | 
- 58002 |   1 | Parallel Index Only Scan Backward | rc_f1000_idx | (f1000 <= 10)                                                                                          |                      |                                                                         | 
- 58003 |   1 | Parallel Index Only Scan Backward | rc_f100_idx  | (f100 <= 100)                                                                                          |                      |                                                                         | 
- 59001 |   1 | Parallel Index Only Scan Backward | rc_dv1_idx   | (dv1 <= 1)                                                                                             |                      |                                                                         | 
- 59002 |   1 | Parallel Index Only Scan Backward | rc_f1000_idx | (f1000 <= 10)                                                                                          |                      |                                                                         | 
- 59003 |   1 | Parallel Index Only Scan Backward | rc_f100_idx  | (f100 <= 100)                                                                                          |                      |                                                                         | 
- 60001 |   1 | Index Scan                        | r_pkey       | (pk <= 1000)                                                                                           |                      |                                                                         | 
- 61001 |   1 | Parallel Index Scan               | rc_pkey      | (pk <= 1000)                                                                                           |                      |                                                                         | 
+  qid  | nid |             Node Type             |  Index Name  |                                               Index Cond                                               | Storage Index Filter |       Storage Filter        |                Filter                 
+-------+-----+-----------------------------------+--------------+--------------------------------------------------------------------------------------------------------+----------------------+-----------------------------+---------------------------------------
+ 10101 |   1 | Parallel Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                             | 
+ 10102 |   1 | Parallel Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      |                             | 
+ 10103 |   1 | Parallel Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      |                             | 
+ 10104 |   1 | Parallel Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                             | 
+ 10105 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      | ((b >= 1) AND (b <= 10000)) | 
+ 10201 |   1 | Parallel Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                             | 
+ 10202 |   1 | Parallel Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 11000))                                                                            |                      |                             | 
+ 10203 |   1 | Parallel Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 11000))                                                                            |                      |                             | 
+ 10204 |   1 | Parallel Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                             | 
+ 10205 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      | ((b >= 1) AND (b <= 11000)) | 
+ 11101 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                             | 
+ 11102 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            |                      |                             | 
+ 11103 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            |                      |                             | 
+ 11104 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                             | 
+ 11105 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      | ((b >= 1) AND (b <= 10000)) | 
+ 11201 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                             | 
+ 11202 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 11000))                                                                            |                      |                             | 
+ 11203 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 11000))                                                                            |                      |                             | 
+ 11204 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                             | 
+ 11205 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      | ((b >= 1) AND (b <= 11000)) | 
+ 20001 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      |                             | 
+ 20002 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      |                             | 
+ 20101 |   1 | Parallel Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)          | 
+ 20102 |   1 | Parallel Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)          | (non_pushable((pk)::bigint) <= 12345)
+ 20201 |   1 | Parallel Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | 
+ 20202 |   1 | Parallel Index Scan               | r_b_idx      | ((b >= 1) AND (b <= 10000))                                                                            | ((b % 100) <= 33)    | ((e % 100) <= 33)           | 
+ 20203 |   1 | Parallel Index Scan               | r_b_idx      | ((b >= 1) AND (b <= 10000))                                                                            | ((b % 100) <= 33)    | ((e % 100) <= 33)           | (non_pushable((e)::bigint) <= 12345)
+ 20301 |   1 | Parallel Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | 
+ 20302 |   1 | Parallel Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | (non_pushable((b)::bigint) <= 12345)
+ 21001 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      |                             | 
+ 21002 |   1 | Parallel Seq Scan                 |              |                                                                                                        |                      |                             | 
+ 21101 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)          | 
+ 21102 |   1 | Parallel Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)          | (non_pushable((pk)::bigint) <= 12345)
+ 21201 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | 
+ 21202 |   1 | Parallel Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            | ((b % 100) <= 33)    | ((e % 100) <= 33)           | 
+ 21203 |   1 | Parallel Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            | ((b % 100) <= 33)    | ((e % 100) <= 33)           | (non_pushable((e)::bigint) <= 12345)
+ 21301 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | 
+ 21302 |   1 | Parallel Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | (non_pushable((b)::bigint) <= 12345)
+ 30001 |   1 | Parallel Index Scan               | r_pkey       | (pk = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                             | 
+ 30002 |   1 | Parallel Index Only Scan          | r_b_idx      | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                             | 
+ 30003 |   1 | Parallel Index Only Scan          | r_b_idx      | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                             | 
+ 31001 |   1 | Parallel Index Scan               | rc_pkey      | (pk = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                             | 
+ 31002 |   1 | Parallel Index Only Scan          | rc_b_idx     | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                             | 
+ 31003 |   1 | Parallel Index Only Scan          | rc_b_idx     | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                             | 
+ 40001 |   1 | Parallel Index Scan               | r_pkey       | (pk = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                            |                      |                             | 
+ 40002 |   1 | Parallel Index Only Scan          | r_b_idx      | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                             | 
+ 40003 |   1 | Parallel Index Only Scan          | r_b_idx      | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                             | 
+ 41001 |   1 | Parallel Index Scan               | rc_pkey      | (pk = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                            |                      |                             | 
+ 41002 |   1 | Parallel Index Only Scan          | rc_b_idx     | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                             | 
+ 41003 |   1 | Parallel Index Only Scan          | rc_b_idx     | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                             | 
+ 51001 |   1 | Parallel Index Only Scan          | r_dv1_idx    | (dv1 <= 1)                                                                                             |                      |                             | 
+ 51002 |   1 | Parallel Index Only Scan          | r_f1000_idx  | (f1000 <= 10)                                                                                          |                      |                             | 
+ 51003 |   1 | Parallel Index Only Scan          | r_f100_idx   | (f100 <= 100)                                                                                          |                      |                             | 
+ 52001 |   1 | Parallel Index Only Scan          | r_dv1_idx    | (dv1 <= 1)                                                                                             |                      |                             | 
+ 52002 |   1 | Parallel Index Only Scan          | r_f1000_idx  | (f1000 <= 10)                                                                                          |                      |                             | 
+ 52003 |   1 | Parallel Index Only Scan          | r_f100_idx   | (f100 <= 100)                                                                                          |                      |                             | 
+ 53001 |   1 | Parallel Index Only Scan Backward | r_dv1_idx    | (dv1 <= 1)                                                                                             |                      |                             | 
+ 53002 |   1 | Parallel Index Only Scan Backward | r_f1000_idx  | (f1000 <= 10)                                                                                          |                      |                             | 
+ 53003 |   1 | Parallel Index Only Scan Backward | r_f100_idx   | (f100 <= 100)                                                                                          |                      |                             | 
+ 54001 |   1 | Parallel Index Only Scan Backward | r_dv1_idx    | (dv1 <= 1)                                                                                             |                      |                             | 
+ 54002 |   1 | Parallel Index Only Scan Backward | r_f1000_idx  | (f1000 <= 10)                                                                                          |                      |                             | 
+ 54003 |   1 | Parallel Index Only Scan Backward | r_f100_idx   | (f100 <= 100)                                                                                          |                      |                             | 
+ 56001 |   1 | Parallel Index Only Scan          | rc_dv1_idx   | (dv1 <= 1)                                                                                             |                      |                             | 
+ 56002 |   1 | Parallel Index Only Scan          | rc_f1000_idx | (f1000 <= 10)                                                                                          |                      |                             | 
+ 56003 |   1 | Parallel Index Only Scan          | rc_f100_idx  | (f100 <= 100)                                                                                          |                      |                             | 
+ 57001 |   1 | Parallel Index Only Scan          | rc_dv1_idx   | (dv1 <= 1)                                                                                             |                      |                             | 
+ 57002 |   1 | Parallel Index Only Scan          | rc_f1000_idx | (f1000 <= 10)                                                                                          |                      |                             | 
+ 57003 |   1 | Parallel Index Only Scan          | rc_f100_idx  | (f100 <= 100)                                                                                          |                      |                             | 
+ 58001 |   1 | Parallel Index Only Scan Backward | rc_dv1_idx   | (dv1 <= 1)                                                                                             |                      |                             | 
+ 58002 |   1 | Parallel Index Only Scan Backward | rc_f1000_idx | (f1000 <= 10)                                                                                          |                      |                             | 
+ 58003 |   1 | Parallel Index Only Scan Backward | rc_f100_idx  | (f100 <= 100)                                                                                          |                      |                             | 
+ 59001 |   1 | Parallel Index Only Scan Backward | rc_dv1_idx   | (dv1 <= 1)                                                                                             |                      |                             | 
+ 59002 |   1 | Parallel Index Only Scan Backward | rc_f1000_idx | (f1000 <= 10)                                                                                          |                      |                             | 
+ 59003 |   1 | Parallel Index Only Scan Backward | rc_f100_idx  | (f100 <= 100)                                                                                          |                      |                             | 
+ 60001 |   1 | Parallel Index Scan               | r_pkey       | (pk <= 1000)                                                                                           |                      |                             | 
+ 61001 |   1 | Parallel Index Scan               | rc_pkey      | (pk <= 1000)                                                                                           |                      |                             | 
 (76 rows)
 
 update explain_query_options set with_analyze = true;
@@ -342,7 +337,6 @@ order by qid, nid;
 -- per-loop roundtrip counters are non-zero and est/act are compared directly.
 set yb_parallel_range_size = 1048576;
 update explain_query_options set with_analyze = false;
--- 2026.1: expected to see some unparallelized nodeds because of lack of yb_test_force_parallel.
 (table baseline_scan_nodes
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
@@ -356,13 +350,9 @@ union all
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid
  except all
  table baseline_scan_nodes);
-  qid  | nid |        Node Type         | Index Name |                                              Index Cond                                               | Storage Index Filter | Storage Filter | Filter 
--------+-----+--------------------------+------------+-------------------------------------------------------------------------------------------------------+----------------------+----------------+--------
- 31002 |   1 | Parallel Index Only Scan | rc_b_idx   | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                | 
- 31003 |   1 | Parallel Index Only Scan | rc_b_idx   | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                | 
- 31002 |   1 | Index Only Scan          | rc_b_idx   | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                | 
- 31003 |   1 | Index Only Scan          | rc_b_idx   | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                | 
-(4 rows)
+ qid | nid | Node Type | Index Name | Index Cond | Storage Index Filter | Storage Filter | Filter 
+-----+-----+-----------+------------+------------+----------------------+----------------+--------
+(0 rows)
 
 update explain_query_options set with_analyze = true;
 -- should not return any row; columns surface per-field counts on failure.
@@ -385,7 +375,6 @@ order by qid, nid;
 -- avoiding the under-population that 1/8x produced for sparse IN-list probes.
 set yb_parallel_range_size = 524288;
 update explain_query_options set with_analyze = false;
--- 2026.1: some unparallelized nodeds expected because of lack of yb_test_force_parallel enforcement.
 (table baseline_scan_nodes
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
@@ -399,13 +388,9 @@ union all
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid
  except all
  table baseline_scan_nodes);
-  qid  | nid |        Node Type         | Index Name |                                              Index Cond                                               | Storage Index Filter | Storage Filter | Filter 
--------+-----+--------------------------+------------+-------------------------------------------------------------------------------------------------------+----------------------+----------------+--------
- 31002 |   1 | Parallel Index Only Scan | rc_b_idx   | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                | 
- 31003 |   1 | Parallel Index Only Scan | rc_b_idx   | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                | 
- 31002 |   1 | Index Only Scan          | rc_b_idx   | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                | 
- 31003 |   1 | Index Only Scan          | rc_b_idx   | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                | 
-(4 rows)
+ qid | nid | Node Type | Index Name | Index Cond | Storage Index Filter | Storage Filter | Filter 
+-----+-----+-----------+------------+------------+----------------------+----------------+--------
+(0 rows)
 
 update explain_query_options set with_analyze = true;
 -- should not return any row; columns surface per-field counts on failure.
@@ -419,9 +404,10 @@ select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
 from check_roundtrip_estimates
 where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
 order by qid, nid;
- qid | nid | Node Type | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
------+-----+-----------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
-(0 rows)
+  qid  | nid |      Node Type      | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
+-------+-----+---------------------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
+ 30001 |   1 | Parallel Index Scan | r_pkey     | pk        | f            |     0 |     7 |     3 |     0 |   7 |   3 |          5 |         5 |        35 |        15 | failed          | passed
+(1 row)
 
 -- Block 3: leader-off isolates parallel_leader_participation from range-size.
 -- Reset range_size to baseline so any new diffs come from leader-off alone.
@@ -447,7 +433,6 @@ union all
 
 update explain_query_options set with_analyze = true;
 -- should not return any row; columns surface per-field counts on failure.
--- 2026.1: some unparallelized nodeds expected because of lack of yb_test_force_parallel enforcement.
 select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
        "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
        "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
@@ -458,40 +443,9 @@ select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
 from check_roundtrip_estimates
 where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
 order by qid, nid;
-  qid  | nid |        Node Type         | Index Name  | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
--------+-----+--------------------------+-------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
- 10101 |   1 | Index Scan               | r_pkey      | pk        | f            |     0 |    10 |    10 |     0 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 10102 |   1 | Seq Scan                 |             | seq       |              |    10 |     0 |    10 |     0 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 10103 |   1 | Seq Scan                 |             | seq       |              |    10 |     0 |    10 |     0 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 10104 |   1 | Index Scan               | r_pkey      | pk        | f            |     0 |    10 |    10 |     0 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 10105 |   1 | Seq Scan                 |             | seq       |              |    10 |     0 |    10 |     0 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 10201 |   1 | Index Scan               | r_pkey      | pk        | f            |     0 |    11 |    11 |     0 |  11 |  11 |          0 |         1 |         0 |        11 | failed          | passed
- 10202 |   1 | Seq Scan                 |             | seq       |              |    11 |     0 |    11 |     0 |  11 |  11 |          0 |         1 |         0 |        11 | failed          | passed
- 10203 |   1 | Seq Scan                 |             | seq       |              |    11 |     0 |    11 |     0 |  11 |  11 |          0 |         1 |         0 |        11 | failed          | passed
- 10204 |   1 | Index Scan               | r_pkey      | pk        | f            |     0 |    11 |    11 |     0 |  11 |  11 |          0 |         1 |         0 |        11 | failed          | passed
- 10205 |   1 | Seq Scan                 |             | seq       |              |    11 |     0 |    11 |     0 |  11 |  11 |          0 |         1 |         0 |        11 | failed          | passed
- 20001 |   1 | Seq Scan                 |             | seq       |              |    13 |     0 |    13 |     0 |  13 |  13 |          0 |         1 |         0 |        13 | failed          | passed
- 20002 |   1 | Seq Scan                 |             | seq       |              |    13 |     0 |    13 |     0 |  13 |  13 |          0 |         1 |         0 |        13 | failed          | passed
- 20101 |   1 | Index Scan               | r_pkey      | pk        | f            |     0 |     4 |     4 |     0 |   4 |   4 |          0 |         1 |         0 |         4 | failed          | passed
- 20102 |   1 | Index Scan               | r_pkey      | pk        | f            |     0 |     4 |     4 |     0 |   4 |   4 |          0 |         1 |         0 |         4 | failed          | passed
- 20201 |   1 | Index Only Scan          | r_b_idx     | ios       | f            |     0 |     4 |     0 |     4 |   4 |   4 |          0 |         1 |         0 |         4 | failed          | passed
- 20202 |   1 | Seq Scan                 |             | seq       |              |     2 |     0 |     2 |     0 |   2 |   2 |          0 |         1 |         0 |         2 | failed          | passed
- 20203 |   1 | Seq Scan                 |             | seq       |              |     2 |     0 |     2 |     0 |   2 |   2 |          0 |         1 |         0 |         2 | failed          | passed
- 20301 |   1 | Index Only Scan          | r_b_idx     | ios       | f            |     0 |     4 |     0 |     4 |   4 |   4 |          0 |         1 |         0 |         4 | failed          | passed
- 20302 |   1 | Index Only Scan          | r_b_idx     | ios       | f            |     0 |     4 |     0 |     4 |   4 |   4 |          0 |         1 |         0 |         4 | failed          | passed
- 51001 |   1 | Seq Scan                 |             | seq       |              |    13 |     0 |    13 |     0 |  13 |  13 |          0 |         1 |         0 |        13 | failed          | passed
- 51002 |   1 | Seq Scan                 |             | seq       |              |    10 |     0 |    10 |     0 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 51003 |   1 | Seq Scan                 |             | seq       |              |    10 |     0 |    10 |     0 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 52001 |   1 | Seq Scan                 |             | seq       |              |    13 |     0 |    13 |     0 |  13 |  13 |          0 |         1 |         0 |        13 | failed          | passed
- 52002 |   1 | Seq Scan                 |             | seq       |              |    10 |     0 |    10 |     0 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 52003 |   1 | Seq Scan                 |             | seq       |              |    10 |     0 |    10 |     0 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 53001 |   1 | Index Only Scan Backward | r_dv1_idx   | ios       | f            |     0 |    13 |     0 |    13 |  13 |  13 |          0 |         1 |         0 |        13 | failed          | passed
- 53002 |   1 | Index Only Scan Backward | r_f1000_idx | ios       | f            |     0 |    10 |     0 |    10 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 53003 |   1 | Index Only Scan Backward | r_f100_idx  | ios       | f            |     0 |    10 |     0 |    10 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 54001 |   1 | Index Only Scan Backward | r_dv1_idx   | ios       | f            |     0 |    13 |     0 |    13 |  13 |  13 |          0 |         1 |         0 |        13 | failed          | passed
- 54002 |   1 | Index Only Scan Backward | r_f1000_idx | ios       | f            |     0 |    10 |     0 |    10 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
- 54003 |   1 | Index Only Scan Backward | r_f100_idx  | ios       | f            |     0 |    10 |     0 |    10 |  10 |  10 |          0 |         1 |         0 |        10 | failed          | passed
-(31 rows)
+ qid | nid | Node Type | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
+-----+-----+-----------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
+(0 rows)
 
 reset parallel_leader_participation;
 drop table baseline_scan_nodes;

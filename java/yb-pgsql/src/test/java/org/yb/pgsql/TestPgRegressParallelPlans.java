@@ -37,7 +37,7 @@ public class TestPgRegressParallelPlans extends BasePgRegressTest {
     flags.put("enable_object_locking_for_table_locks", "false");
     // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
     flags.put("ysql_enable_auto_analyze", "false");
-    flags.put("yb_enable_read_committed_isolation", "true");
+    flags.put("yb_enable_read_committed_isolation", "false");
     return flags;
   }
 
