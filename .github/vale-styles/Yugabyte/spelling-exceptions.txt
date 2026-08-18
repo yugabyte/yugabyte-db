@@ -243,6 +243,7 @@ firewalled
 firewalling
 fixup
 Flawfinder
+Flink
 Flowdock
 Fluentd
 Flycheck
@@ -553,6 +554,10 @@ reauthenticate
 reauthenticated
 reauthenticates
 reauthenticating
+rebalance
+rebalanced
+rebalancer
+rebalances
 rebalancing
 rebar
 rebase
