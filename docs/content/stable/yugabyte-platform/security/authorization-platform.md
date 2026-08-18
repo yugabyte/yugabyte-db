@@ -46,7 +46,7 @@ To disable YSQL or YCQL authorization or rotate the password, you will need your
 
 To modify the endpoint configuration on a running universe, navigate to the universe and do the following:
 
-- New UI: Click **Settings > Database** and under **Interface** click **Edit>Edit YSQL Configuration** or .
+- New UI: Click **Settings > Database** and under **Interface** click **Edit>Edit YSQL Settings** or **Edit>Edit YCQL Settings**.
 - Classic UI: Click **Actions > More** and **Edit YSQL Configuration** or **Edit YCQL Configuration**.
 
 You can change the following settings:

@@ -111,7 +111,7 @@ After the task completes, open **Nodes** (or **Pods** for Kubernetes). Nodes are
 To create a universe with a read replica cluster:
 
 1. Navigate to **Dashboard** and click **Create Universe**.
-1. Use the **Primary Cluster** tab to enter the values to create a primary cluster. Refer to [Create a multi-zone universe](../create-universe-multi-zone/).
+1. Use the **Primary Cluster** tab to enter the values to create a primary cluster. Refer to [Create universes](../create-universes-wizard/).
 
 1. Click **Configure Read Replica**.
 1. Specify the following on the **Read Replica** tab to create a read replica cluster:
