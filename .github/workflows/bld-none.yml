@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review ]
     # Need to catch the case of PRs that have only non-build, non-docs files
     paths:
+      - '.agents/**'
       - '.arc*'
       - '.claude/**'
       - '.cursor/**'

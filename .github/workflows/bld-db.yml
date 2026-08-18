@@ -6,6 +6,7 @@ on:
     # All files should be covered by one of the bld-* workflows.
     # If you add ignored paths here, make sure they are covered by one of the other bld-* workflows.
     paths-ignore:
+      - '.agents/**'
       - '.arc*'
       - '.claude/**'
       - '.cursor/**'
