@@ -263,6 +263,7 @@ YbcMetricsInfo
 YbcObjectLockId
 YbcObjectLockMode
 YbcOrderingMode
+YbcOtelNodeSpan
 YbcOtelSpanContext
 YbcPallocFn
 YbcPgAshConfig
