@@ -148,6 +148,14 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
       createDestroyEncryptionAtRestTask()
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
+      // Release capacity reservations while VMs still hold them. For GCP, deletion only proceeds
+      // when the reservation is fully utilized (inUseCount == count); destroying nodes first would
+      // drop utilization and skip cleanup of shared reservations that are safe to release.
+      if (universe.getUniverseDetails().getCapacityReservationState() != null
+          && !universe.getUniverseDetails().getCapacityReservationState().isEmpty()) {
+        createDeleteCapacityReservationTask();
+      }
+
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Update the DNS entry for primary cluster to mirror creation.
         Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
@@ -187,10 +195,6 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
                 true /* deleteRootVolumes */,
                 true /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-      }
-      if (universe.getUniverseDetails().getCapacityReservationState() != null
-          && !universe.getUniverseDetails().getCapacityReservationState().isEmpty()) {
-        createDeleteCapacityReservationTask();
       }
 
       // Create tasks to remove the universe entry from the Universe table.
