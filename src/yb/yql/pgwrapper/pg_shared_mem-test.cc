@@ -21,6 +21,7 @@
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/backoff_waiter.h"
 
@@ -39,7 +40,7 @@ DECLARE_uint64(TEST_doc_op_next_result_prefetching_delay_ms);
 DECLARE_uint64(TEST_shared_exchange_big_response_delay_ms);
 DECLARE_uint64(big_shared_memory_segment_expiration_time_ms);
 DECLARE_uint64(big_shared_memory_segment_session_expiration_time_ms);
-
+DECLARE_uint64(TEST_big_shared_memory_segment_initial_id);
 
 namespace yb {
 
@@ -411,6 +412,57 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   ASSERT_OK(WaitFor([client_service] {
     return client_service->TEST_SessionsCount() <= 1;
   }, 5s * kTimeMultiplier, "Sessions cleanup"));
+}
+
+class PgSharedMemBigSegmentOverflowTest : public PgSharedMemTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_big_shared_memory_segment_initial_id) =
+        tserver::kBigSharedMemoryMaxId;
+    PgSharedMemTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgSharedMemTest, BigDataOverflow, PgSharedMemBigSegmentOverflowTest) {
+  auto no_allocated_segments_functor = [this] {
+    auto usage = SumBigSharedMemUsage();
+    LOG(INFO) << "Allocated big shared mem bytes: " << usage.first;
+    return usage.first == 0;
+  };
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto value = RandomHumanReadableString(boost::interprocess::mapped_region::get_page_size());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, value) VALUES (1, '$0')", value));
+
+  ASSERT_OK(WaitFor(no_allocated_segments_functor, 5s, "No allocated segments"));
+
+  for (size_t i = 0; i < 2; ++i) {
+    auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+    ASSERT_EQ(result, value);
+
+    auto usage = SumBigSharedMemUsage();
+    ASSERT_GT(usage.first, 0); // allocated big shared memory segment
+    ASSERT_EQ(usage.second, 0); // big shared memory segment in use
+
+    auto segment_in_pool_functor = [this] {
+      auto usage = SumBigSharedMemUsage();
+      LOG(INFO) << "Big shared mem bytes, allocated: " << usage.first << ", available: "
+                << usage.second;
+      return usage.first == usage.second;
+    };
+
+    ASSERT_OK(WaitFor(
+        segment_in_pool_functor, 5s, "Connection released big shared memory segment"));
+    usage = SumBigSharedMemUsage();
+    ASSERT_GT(usage.first, 0); // Check segment still in pool.
+
+    ASSERT_OK(WaitFor(
+        no_allocated_segments_functor,
+        FLAGS_big_shared_memory_segment_expiration_time_ms * 2ms,
+        "Big shared memory segment cleaned up"));
+  }
 }
 
 } // namespace yb::pgwrapper

@@ -283,6 +283,10 @@ Result<InterprocessSharedMemoryObject> InterprocessSharedMemoryObject::Create(
     object.truncate(size);
     return InterprocessSharedMemoryObject(std::move(object));
   } catch (boost::interprocess::interprocess_exception& exc) {
+    if (exc.get_error_code() == boost::interprocess::already_exists_error) {
+      return STATUS_FORMAT(
+          AlreadyPresent, "Segment $0 already exists: $1", name, exc.what());
+    }
     return STATUS_FORMAT(
         RuntimeError, "Failed to create segment $0 of size $1: $2", name, size, exc.what());
   }
