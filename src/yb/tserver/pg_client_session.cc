@@ -12,6 +12,7 @@
 //
 
 #include "yb/tserver/pg_client_session.h"
+#include "yb/tserver/pg_client_session_util.h"
 
 #include <sys/types.h>
 
@@ -215,15 +216,6 @@ constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 const std::string kTxnLogPrefixTagSource("Session ");
 client::LogPrefixName kTxnLogPrefixTag = client::LogPrefixName::Build<&kTxnLogPrefixTagSource>();
 
-struct TabletReadTime {
-  TabletId tablet_id;
-  ReadHybridTime value;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(tablet_id, value);
-  }
-};
-
 using UsedReadTimeApplier = std::function<void(TabletReadTime&&)>;
 
 struct UsedReadTime {
@@ -246,70 +238,6 @@ struct SetupSessionResult {
   SessionData session_data;
   PgClientSessionKind kind = PgClientSessionKind::kPlain;
 };
-
-class PrefixLogger {
- public:
-  explicit PrefixLogger(uint64_t id, pid_t pid = 0) : id_(id), pid_(pid) {}
-
-  friend std::ostream& operator<<(std::ostream&, const PrefixLogger&);
-
- private:
-  const uint64_t id_;
-  const pid_t pid_;
-};
-
-std::ostream& operator<<(std::ostream& str, const PrefixLogger& logger) {
-  if (logger.pid_ != 0) {
-    return str << "Session id " << logger.id_ << " (pid " << logger.pid_ << "): ";
-  }
-  return str << "Session id " << logger.id_ << ": ";
-}
-
-std::string GetStatusStringSet(const client::CollectedErrors& errors) {
-  std::set<std::string> status_strings;
-  for (const auto& error : errors) {
-    status_strings.insert(error->status().ToString());
-  }
-  return RangeToString(status_strings.begin(), status_strings.end());
-}
-
-bool IsHomogeneousErrors(const client::CollectedErrors& errors) {
-  if (errors.size() < 2) {
-    return true;
-  }
-  auto i = errors.begin();
-  const auto& status = (**i).status();
-  const auto codes = status.ErrorCodesSlice();
-  for (++i; i != errors.end(); ++i) {
-    const auto& s = (**i).status();
-    if (s.code() != status.code() || codes != s.ErrorCodesSlice()) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Get a common Postgres error code from the status and all errors, and append it to a previous
-// Status.
-// If any of those have different conflicting error codes, previous result is returned as-is.
-Status AppendPsqlErrorCode(
-    const Status& status, const client::CollectedErrors& errors) {
-  std::optional<YBPgErrorCode> common_psql_error;
-  for(const auto& error : errors) {
-    const auto psql_error = PgsqlError::ValueFromStatus(error->status());
-    if (!common_psql_error) {
-      common_psql_error = psql_error;
-    } else if (psql_error && common_psql_error != psql_error) {
-      common_psql_error.reset();
-      break;
-    }
-  }
-  return common_psql_error ? status.CloneAndAddErrorCode(PgsqlError(*common_psql_error)) : status;
-}
-
-TransactionErrorCode GetTransactionErrorCode(const Status& status) {
-  return status.ok() ? TransactionErrorCode::kNone : TransactionError(status).value();
-}
 
 struct PgClientSessionOperation {
   std::shared_ptr<client::YBPgsqlOp> op;
@@ -349,122 +277,15 @@ Status TryAppendTxnConflictOpIndex(
   return status;
 }
 
-// Get a common transaction error code for all the errors and append it to the previous Status.
-Status AppendTxnErrorCode(const Status& status, const client::CollectedErrors& errors) {
-  // The list of all known TransactionErrorCode (except kNone), ordered in decreasing of priority.
-  static constexpr std::array precedence_list = {
-      TransactionErrorCode::kDeadlock,
-      TransactionErrorCode::kAborted,
-      TransactionErrorCode::kConflict,
-      TransactionErrorCode::kReadRestartRequired,
-      TransactionErrorCode::kSnapshotTooOld,
-      TransactionErrorCode::kSkipLocking,
-      TransactionErrorCode::kLockNotFound};
-  static_assert(precedence_list.size() + 1 == MapSize(static_cast<TransactionErrorCode*>(nullptr)));
+// Bring the shared two-argument overload into this scope alongside the ops-aware one below.
+using tserver::CombineErrorsToStatus;
 
-  static const auto precedence_begin = precedence_list.begin();
-  static const auto precedence_end = precedence_list.end();
-  auto common_txn_error_it = precedence_end;
-  for (const auto& error : errors) {
-    const auto txn_error = GetTransactionErrorCode(error->status());
-    if (txn_error == TransactionErrorCode::kNone ||
-        (common_txn_error_it != precedence_end && *common_txn_error_it == txn_error)) {
-      continue;
-    }
-
-    const auto txn_error_it = std::find(precedence_begin, precedence_end, txn_error);
-    if (PREDICT_FALSE(txn_error_it == precedence_end)) {
-      LOG(DFATAL) << "Unknown transaction error code: " << txn_error;
-      return status;
-    }
-
-    if (txn_error_it < common_txn_error_it) {
-      common_txn_error_it = txn_error_it;
-      VLOG(4) << "updating common_txn_error_idx to: " << *common_txn_error_it;
-    }
-  }
-
-  return common_txn_error_it == precedence_end
-      ? status : status.CloneAndAddErrorCode(TransactionError(*common_txn_error_it));
-}
-
-Status CombineErrorsToStatusImpl(const client::CollectedErrors& errors, const Status& status) {
-  DCHECK(!errors.empty());
-
-  if (status.IsIOError() &&
-      // TODO: move away from string comparison here and use a more specific status than IOError.
-      // See https://github.com/YugaByte/yugabyte-db/issues/702
-      status.message() == client::internal::Batcher::kErrorReachingOutToTServersMsg &&
-      IsHomogeneousErrors(errors)) {
-    const auto& result = errors.front()->status();
-    if (errors.size() == 1) {
-      return result;
-    }
-    return Status(result.code(),
-                  __FILE__,
-                  __LINE__,
-                  GetStatusStringSet(errors),
-                  result.ErrorCodesSlice(),
-                  /* file_name_len= */ size_t(0));
-  }
-
-  const auto result = status.ok()
-      ? STATUS(InternalError, GetStatusStringSet(errors))
-      : status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
-
-  return AppendTxnErrorCode(AppendPsqlErrorCode(result, errors), errors);
-}
-
-// Given a set of errors from operations, this function attempts to combine them into one status
-// that is later passed to PostgreSQL and further converted into a more specific error code.
 Status CombineErrorsToStatus(
     const client::CollectedErrors& errors, const Status& status,
-    const PgClientSessionOperations& ops = {}) {
+    const PgClientSessionOperations& ops) {
   return errors.empty()
       ? status
-      : TryAppendTxnConflictOpIndex(CombineErrorsToStatusImpl(errors, status), errors, ops);
-}
-
-Status ProcessUsedReadTime(uint64_t session_id,
-                           const client::YBPgsqlOp& op,
-                           PgPerformResponseMsg* resp,
-                           TabletReadTime* used_read_time) {
-  if (op.type() != client::YBOperation::PGSQL_READ) {
-    return Status::OK();
-  }
-  const auto& read_op = down_cast<const client::YBPgsqlReadOp&>(op);
-  const auto& op_used_read_time = read_op.used_read_time();
-  if (!op_used_read_time) {
-    return Status::OK();
-  }
-
-  if (op.table()->schema().table_properties().is_ysql_catalog_table()) {
-    // Non empty used_read_time field means read_time for the operation has been chosen by master.
-    // All further reads from catalog must use same read point. Only catalog reads riding the
-    // transactional session (DDL mode, yb_non_ddl_txn_for_sys_tables_allowed) get here; legacy
-    // catalog session reads always carry a read time or a clamp request, and DoPerform reports the
-    // clamped time.
-    auto catalog_read_time = op_used_read_time;
-
-    // We set global limit to read time to avoid read restart errors because they are
-    // disruptive to system catalog reads and it is not always possible to handle them there.
-    // This might lead to reading slightly outdated state of the system catalog if a recently
-    // committed DDL transaction used a transaction status tablet whose leader's clock is skewed
-    // and is in the future compared to the master leader's clock.
-    // TODO(dmitry) This situation will be handled in context of #7964.
-    catalog_read_time.global_limit = catalog_read_time.read;
-    catalog_read_time.ToPB(resp->mutable_catalog_read_time());
-    VLOG(2) << "Got catalog_read_time: " << catalog_read_time.ToString();
-  }
-
-  if (used_read_time) {
-    RSTATUS_DCHECK(
-        !used_read_time->value, IllegalState,
-        "Multiple used_read_time are not expected: $0, $1",
-        used_read_time->value, op_used_read_time);
-    *used_read_time = {.tablet_id = read_op.used_tablet(), .value = op_used_read_time};
-  }
-  return Status::OK();
+      : TryAppendTxnConflictOpIndex(tserver::CombineErrorsToStatus(errors, status), errors, ops);
 }
 
 // Pauses a request which fetches a continuation page of a previous request. Allows tests to
@@ -488,50 +309,6 @@ void MaybePauseReadWithPagingStateForTesting(const PgPerformRequestMsg& req) {
       return;
     }
   }
-}
-
-Status HandleOperationResponse(uint64_t session_id,
-                               const client::YBPgsqlOp& op,
-                               PgPerformResponseMsg* resp,
-                               TabletReadTime* used_read_time) {
-  const auto& response = op.response();
-  if (response.status() == PgsqlResponsePB::PGSQL_STATUS_OK) {
-    return ProcessUsedReadTime(session_id, op, resp, used_read_time);
-  }
-
-  if (response.error_status().size() > 0) {
-    // TODO(14814, 18387):  We do not currently expect more than one status, when we do, we need
-    // to decide how to handle them. Possible options: aggregate multiple statuses into one, discard
-    // all but one, etc. Historically, for the one set of status fields (like error_message), new
-    // error message was overwriting the previous one, that's why let's return the last entry from
-    // error_status to mimic that past behavior, refer AsyncRpc::Finished for details.
-    return StatusFromPB(*response.error_status().rbegin());
-  }
-
-  // Older nodes may still use deprecated fields for status, so keep legacy handling
-  auto status = STATUS(
-      QLError, response.error_message(), Slice(), PgsqlRequestStatus(response.status()));
-
-  if (response.has_pg_error_code()) {
-    status = status.CloneAndAddErrorCode(
-        PgsqlError(static_cast<YBPgErrorCode>(response.pg_error_code())));
-  }
-
-  if (response.has_txn_error_code()) {
-    status = status.CloneAndAddErrorCode(
-        TransactionError(static_cast<TransactionErrorCode>(response.txn_error_code())));
-  }
-
-  return status;
-}
-
-template <class TableProvider>
-Status GetTable(TableIdView table_id, TableProvider& provider, client::YBTablePtr* table) {
-  if (*table && (**table).id() == table_id) {
-    return Status::OK();
-  }
-  *table = VERIFY_RESULT(provider.Get(table_id));
-  return Status::OK();
 }
 
 struct FetchedVector {
@@ -1375,79 +1152,6 @@ Result<PgReplicaIdentity> GetReplicaIdentityEnumValue(
 std::atomic<bool>& InUseAtomic(const SharedMemorySegmentHandle& handle) {
   return *pointer_cast<std::atomic<bool>*>(handle.address() - sizeof(std::atomic<bool>));
 }
-
-constexpr uint64_t kInvalidReadTimeSerialNo = 0;
-
-class ReadPointHistory {
- public:
-  explicit ReadPointHistory(const PrefixLogger& prefix_logger) : prefix_logger_(prefix_logger) {}
-
-  [[nodiscard]] bool Restore(ConsistentReadPoint* read_point, uint64_t read_time_serial_no) {
-    if (read_time_serial_no == kInvalidReadTimeSerialNo) {
-      return false;
-    }
-    auto result = false;
-    if (const auto i = read_points_.find(read_time_serial_no);
-        i != read_points_.end() && read_time_serial_no >= min_) {
-      read_point->SetMomento(i->second);
-      result = true;
-    }
-    VLOG_WITH_PREFIX(4) << "ReadPointHistory::Restore read_time_serial_no=" << read_time_serial_no
-                        << " return " << result
-                        << " read time is " << read_point->GetReadTime();
-    return result;
-  }
-
-  void Save(const ConsistentReadPoint& read_point, uint64_t read_time_serial_no) {
-    if (read_time_serial_no == kInvalidReadTimeSerialNo) {
-      return;
-    }
-    auto momento = read_point.GetMomento();
-    const auto& read_time = momento.read_time();
-    DCHECK(read_time);
-    VLOG_WITH_PREFIX(4) << "ReadPointHistory::Save read_time_serial_no=" << read_time_serial_no
-                        << " read time is " << AsString(read_time);
-    if (read_points_.empty()) {
-      max_ = read_time_serial_no;
-      min_ = read_time_serial_no;
-    } else {
-      min_ = std::min(min_, read_time_serial_no);
-      max_ = std::max(max_, read_time_serial_no);
-    }
-    auto ipair = read_points_.try_emplace(read_time_serial_no, std::move(momento));
-    if (!ipair.second) {
-      // Potentially read time could be set to same read_time_serial_no multiple times.
-      // It is expected that read time is the same or fresher (due to possible restart)
-      // but not older.
-      DCHECK(read_time.read >= ipair.first->second.read_time().read)
-          << "Overwriting read_time_serial_no=" << read_time_serial_no
-          << " with an older read time, given: " << AsString(read_time)
-          << ", existing: " << AsString(ipair.first->second.read_time());
-      ipair.first->second = std::move(momento);
-    }
-  }
-
-  void Cleanup(uint64_t min) {
-    VLOG_WITH_PREFIX(4) << "ReadTimeHistory::Cleanup " << min;
-    if (read_points_.empty()) {
-      return;
-    }
-    if (max_ < min) {
-      VLOG_WITH_PREFIX(4) << "Clearing history [" << min_ << ", " << max_ << "]";
-      read_points_.clear();
-      return;
-    }
-    min_ = std::max(min_, min);
-  }
-
- private:
-  const PrefixLogger& LogPrefix() const { return prefix_logger_; }
-
-  const PrefixLogger prefix_logger_;
-  uint64_t min_ = 0;
-  uint64_t max_ = 0;
-  std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
-};
 
 struct ObjectLockRegistration {
   std::mutex mutex;

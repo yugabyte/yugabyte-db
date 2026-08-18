@@ -87,6 +87,7 @@
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client_service.h"
+#include "yb/tserver/thin_client_service.h"
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
@@ -161,6 +162,11 @@ DEFINE_NON_RUNTIME_int32(pg_client_svc_queue_length,
              yb::tserver::TabletServer::kDefaultSvcQueueLength,
              "RPC queue length for the Pg Client service.");
 TAG_FLAG(pg_client_svc_queue_length, advanced);
+
+DEFINE_NON_RUNTIME_int32(thin_client_svc_queue_length,
+             yb::tserver::TabletServer::kDefaultSvcQueueLength,
+             "RPC queue length for the Thin Client service.");
+TAG_FLAG(thin_client_svc_queue_length, advanced);
 
 DEFINE_NON_RUNTIME_bool(enable_direct_local_tablet_server_call,
             true,
@@ -847,6 +853,13 @@ Status TabletServer::RegisterServices() {
   RETURN_NOT_OK(RegisterService(
       FLAGS_pg_client_svc_queue_length, std::shared_ptr<PgClientServiceIf>(
           std::move(pg_client_service_holder), pg_client_service_if)));
+
+  auto thin_client_service = std::make_shared<ThinClientServiceImpl>(
+      tablet_manager_->client_future(), clock(), metric_entity(), messenger(),
+      &pg_node_level_mutation_counter_);
+  LOG(INFO) << "yb::tserver::ThinClientServiceImpl created at " << thin_client_service.get();
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_thin_client_svc_queue_length, std::move(thin_client_service)));
 
   if (FLAGS_TEST_echo_service_enabled) {
     auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
