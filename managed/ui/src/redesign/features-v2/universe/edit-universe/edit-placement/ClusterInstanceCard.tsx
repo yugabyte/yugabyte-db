@@ -418,7 +418,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
                     {t(isK8s ? 'editPodsAndAvailabilityZones' : 'editNodesAndAvailabilityZones')}
                   </MenuItem>
                 </RbacValidator>,
-                ...(editMasterServerNodeAllocationClicked
+                ...(editMasterServerNodeAllocationClicked && dedicatedFromSpec
                   ? [
                       <RbacValidator
                         accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
