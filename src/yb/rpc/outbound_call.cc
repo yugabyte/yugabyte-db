@@ -277,17 +277,22 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
   IncrementCounter(rpc_metrics_->outbound_calls_created);
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
 
-  // Capture this call's parent before StartClientSpanWithScope makes otel_span_ current;
-  // InvokeCallbackSync restores it around the callback so its follow-on work nests as a sibling.
-  trace_parent_ = dist_trace::GetActiveSpanContext();
+  // Guarded so that with tracing off the span name below is never formatted.
+  if (dist_trace::HasActiveContext()) {
+    // Capture this call's parent; InvokeCallbackSync restores it around the callback so its
+    // follow-on work nests as a sibling.
+    trace_parent_ = dist_trace::GetActiveSpanContext();
 
-  otel_span_ = dist_trace::StartClientSpanWithScope(Format("rpc $0", remote_method_.ToString()));
-  if (otel_span_) {
-    otel_span_->SetAttribute("rpc.system", "outbound_rpc");
-    otel_span_->SetAttribute("rpc.service", remote_method_.service_name());
-    otel_span_->SetAttribute("rpc.method", remote_method_.method_name());
-    otel_span_->SetAttribute("rpc.call_id", call_id_);
-    otel_span_->DropScope();
+    // Not attached: the wire header and the local inbound call both take this span from
+    // GetContext().
+    otel_span_ = dist_trace::StartClientSpanWithScope(
+        Format("rpc $0", remote_method_.ToString()), /*attach=*/false);
+    if (otel_span_) {
+      otel_span_->SetAttribute("rpc.system", "outbound_rpc");
+      otel_span_->SetAttribute("rpc.service", remote_method_.service_name());
+      otel_span_->SetAttribute("rpc.method", remote_method_.method_name());
+      otel_span_->SetAttribute("rpc.call_id", call_id_);
+    }
   }
 }
 
@@ -378,6 +383,33 @@ Status OutboundCall::SetRequestParam(
     metadata_size += 1; // add tag size of RequestHeader::kMetadataFieldNumber
   }
 
+  // Distributed-trace context: extract the outbound span's SpanContext (if any) and pre-compute the
+  // serialized size of the TraceContextPB submessage so it can be folded into the header length.
+  size_t trace_context_size = 0;
+  size_t trace_context_message_size = 0;
+  uint32_t version_and_flags = 0;
+  opentelemetry::trace::TraceId trace_id;
+  opentelemetry::trace::SpanId span_id;
+  if (otel_span_) {
+    auto span_context = otel_span_->GetContext();
+    if (span_context.IsValid()) {
+      trace_id = span_context.trace_id();
+      span_id = span_context.span_id();
+      auto trace_flags = span_context.trace_flags();
+      // TraceContextPB submessage layout:
+      // - trace_id_hi: 1 byte tag + 8 bytes fixed64
+      // - trace_id_lo: 1 byte tag + 8 bytes fixed64
+      // - span_id:     1 byte tag + 8 bytes fixed64
+      // - version_and_flags: 1 byte tag + varint (size depends on the combined value)
+      constexpr uint32_t kVersion = 0;
+      version_and_flags = (kVersion << 8) | trace_flags.flags();
+      size_t version_and_flags_varint_size = Output::VarintSize32(version_and_flags);
+      trace_context_message_size = 3 * 9 + 1 + version_and_flags_varint_size;
+      trace_context_size =
+          1 + Output::VarintSize64(trace_context_message_size) + trace_context_message_size;
+    }
+  }
+
   auto use_crc = FLAGS_rpc_enable_crc;
   size_t header_pb_len = 1 + call_id_size + // int32 call_id = 1
                          serialized_remote_method.size() + // RemoteMethodPB remote_method = 2
@@ -386,6 +418,7 @@ Status OutboundCall::SetRequestParam(
   if (pool_tag) {
     header_pb_len += 1 + Output::VarintSize64(pool_tag); // uint64 pool_tag = 7
   }
+  header_pb_len += trace_context_size; // TraceContext trace_context = 8
   if (use_crc) {
     header_pb_len += 1 + sizeof(uint32_t); // fixed32 crc = 15
   }
@@ -435,6 +468,33 @@ Status OutboundCall::SetRequestParam(
   if (pool_tag) {
     dst = CodedOutputStream::WriteTagToArray(RequestHeader::kPoolTagFieldNumber << 3, dst);
     dst = Output::WriteVarint64ToArray(pool_tag, dst);
+  }
+
+  if (trace_context_size > 0) {
+    // Write the TraceContextPB submessage. Field numbers match yb.rpc.TraceContextPB in
+    // rpc_header.proto.
+    // The 16-byte trace id splits into two big-endian 64-bit halves; the span id is one big-endian
+    // 64-bit.
+    dst = Output::WriteTagToArray(
+        (RequestHeader::kTraceContextFieldNumber << 3) | WireFormatLite::WIRETYPE_LENGTH_DELIMITED,
+        dst);
+    dst = Output::WriteVarint32ToArray(narrow_cast<uint32_t>(trace_context_message_size), dst);
+
+    dst = Output::WriteTagToArray(
+        (TraceContextPB::kTraceIdHiFieldNumber << 3) | WireFormatLite::WIRETYPE_FIXED64, dst);
+    dst = Output::WriteLittleEndian64ToArray(BigEndian::Load64(trace_id.Id().data()), dst);
+
+    dst = Output::WriteTagToArray(
+        (TraceContextPB::kTraceIdLoFieldNumber << 3) | WireFormatLite::WIRETYPE_FIXED64, dst);
+    dst = Output::WriteLittleEndian64ToArray(BigEndian::Load64(trace_id.Id().data() + 8), dst);
+
+    dst = Output::WriteTagToArray(
+        (TraceContextPB::kSpanIdFieldNumber << 3) | WireFormatLite::WIRETYPE_FIXED64, dst);
+    dst = Output::WriteLittleEndian64ToArray(BigEndian::Load64(span_id.Id().data()), dst);
+
+    dst = Output::WriteTagToArray(
+        (TraceContextPB::kVersionAndFlagsFieldNumber << 3) | WireFormatLite::WIRETYPE_VARINT, dst);
+    dst = Output::WriteVarint32ToArray(version_and_flags, dst);
   }
 
   // CRC should be at the end of header, otherwise adjust CRC filling logic below.
@@ -565,7 +625,7 @@ void OutboundCall::InvokeCallbackSync(std::optional<CoarseTimePoint> now_optiona
 
   int64_t start_cycles = CycleClock::Now();
   // Re-activate the call's parent context so RPCs the callback issues nest as siblings, not
-  // parentless roots. No-op when trace_parent_ is invalid; parent_scope drops at block end so it
+  // parentless roots. No-op when trace_parent_ is empty; parent_scope drops at block end so it
   // can't leak.
   {
     auto parent_scope = dist_trace::ActivateParentScope(trace_parent_);
