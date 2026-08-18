@@ -105,6 +105,7 @@ import {
   isVersionConnectionPoolSupported
 } from '../../../redesign/features/universe/universe-form/utils/helpers';
 import { DbUpgradeRollBackModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeRollBackModal';
+import { getAddReadReplicaRoute } from '@app/redesign/features-v2/universe/read-replica/readReplicaUtils';
 
 //icons
 import ClockRewind from '../../../redesign/assets/clock-rewind.svg?img';
@@ -1482,6 +1483,7 @@ class UniverseDetail extends Component {
                         <YBMenuItem
                           disabled={isReadReplicaDisabled}
                           to={
+                            isV2EditUniverseUIEnabled ? getAddReadReplicaRoute(uuid) : 
                             this.isNewUIEnabled()
                               ? `/universes/${uuid}/${
                                   this.hasReadReplica(universeInfo) ? 'edit' : 'create'
