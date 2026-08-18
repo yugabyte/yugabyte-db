@@ -117,7 +117,7 @@ Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
 
 // Parses a RequestHeader.trace_context wire slice into a SpanContext (RPC path). Fails if any field
 // is missing or the trace/span ids are zero.
-Result<opentelemetry::trace::SpanContext> ParseTraceContext(const Slice& buf);
+Result<opentelemetry::trace::SpanContext> ParseTraceContext(Slice buf);
 Status ParseMetadata(Slice buf, AnyMessagePtr out);
 Status ParseMetadataFromSharedMemory(uint8_t** input, size_t length, AnyMessagePtr out);
 
