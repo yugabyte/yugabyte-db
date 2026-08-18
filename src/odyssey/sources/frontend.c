@@ -425,10 +425,10 @@ static inline od_frontend_status_t od_frontend_setup(od_client_t *client)
 
 	if (instance->config.log_session) {
 		client->time_setup = machine_time_us();
-		od_log(&instance->logger, "setup", client, NULL,
+		yb_od_session(&instance->logger, "setup", client, NULL,
 		       "login time: %d microseconds",
 		       (client->time_setup - client->time_accept));
-		od_log(&instance->logger, "setup", client, NULL,
+		yb_od_session(&instance->logger, "setup", client, NULL,
 		       "client connection from %s to route %s.%s accepted",
 		       client->peer, route->rule->db_name,
 		       route->rule->user_name);
@@ -1151,7 +1151,7 @@ static inline od_retcode_t od_frontend_log_query(od_instance_t *instance,
 	if (rc == -1)
 		return NOT_OK_RESPONSE;
 
-	od_log(&instance->logger, "query", client, NULL, "%.*s", query_len,
+	yb_od_query(&instance->logger, "query", client, NULL, "%.*s", query_len,
 	       query);
 	return OK_RESPONSE;
 }
@@ -1186,7 +1186,7 @@ static inline od_retcode_t od_frontend_log_execute(od_instance_t *instance,
 	if (rc == -1)
 		return NOT_OK_RESPONSE;
 
-	od_log(&instance->logger, "execute", client, client->server,
+	yb_od_query(&instance->logger, "execute", client, client->server,
 	       "name: %.*s", name_len, name);
 	return OK_RESPONSE;
 }
@@ -1210,15 +1210,15 @@ static inline od_retcode_t od_frontend_log_close(od_instance_t *instance,
 {
 	switch (type) {
 	case KIWI_FE_CLOSE_PORTAL:
-		od_log(&instance->logger, "close", client, client->server,
+		yb_od_query(&instance->logger, "close", client, client->server,
 		       "portal, name: %.*s", name_len, name);
 		return OK_RESPONSE;
 	case KIWI_FE_CLOSE_PREPARED_STATEMENT:
-		od_log(&instance->logger, "close", client, client->server,
+		yb_od_query(&instance->logger, "close", client, client->server,
 		       "prepared statement, name: %.*s", name_len, name);
 		return OK_RESPONSE;
 	default:
-		od_log(&instance->logger, "close", client, client->server,
+		yb_od_query(&instance->logger, "close", client, client->server,
 		       "unknown close type, name: %.*s", name_len, name);
 		return NOT_OK_RESPONSE;
 	}
@@ -1239,7 +1239,7 @@ static inline od_retcode_t od_frontend_log_parse(od_instance_t *instance,
 	if (rc == -1)
 		return NOT_OK_RESPONSE;
 
-	od_log(&instance->logger, context, client, client->server, "%.*s %.*s",
+	yb_od_query(&instance->logger, context, client, client->server, "%.*s %.*s",
 	       name_len, name, query_len, query);
 	return OK_RESPONSE;
 }
@@ -1255,7 +1255,7 @@ static inline od_retcode_t od_frontend_log_bind(od_instance_t *instance,
 	if (rc == -1)
 		return NOT_OK_RESPONSE;
 
-	od_log(&instance->logger, ctx, client, client->server, "bind %.*s",
+	yb_od_query(&instance->logger, ctx, client, client->server, "bind %.*s",
 	       name_len, name);
 	return OK_RESPONSE;
 }
@@ -2694,7 +2694,7 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 	case OD_OK:
 		/* graceful disconnect or kill */
 		if (instance->config.log_session) {
-			od_log(&instance->logger, context, client, server,
+			yb_od_session(&instance->logger, context, client, server,
 			       "client disconnected (route %s.%s)",
 			       route->rule->db_name, route->rule->user_name);
 		}
@@ -2973,7 +2973,7 @@ void od_frontend(void *arg)
 	if (instance->config.log_session) {
 		od_getpeername(client->io.io, client->peer,
 			       OD_CLIENT_MAX_PEERLEN, 1, 1);
-		od_log(&instance->logger, "startup", client, NULL,
+		yb_od_session(&instance->logger, "startup", client, NULL,
 		       "new client connection %s", client->peer);
 	}
 
@@ -3162,7 +3162,7 @@ void od_frontend(void *arg)
 		 */
 
 		if (instance->config.log_session) {
-			od_log(&instance->logger, "startup", client, NULL,
+			yb_od_session(&instance->logger, "startup", client, NULL,
 			       "route '%s.%s' to '%s.%s'",
 			       client->startup.database.value,
 			       client->startup.user.value, route->rule->db_name,
