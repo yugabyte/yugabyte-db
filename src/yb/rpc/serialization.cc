@@ -406,7 +406,7 @@ Result<opentelemetry::trace::SpanContext> BuildSpanContext(
 
 }  // namespace
 
-Result<opentelemetry::trace::SpanContext> ParseTraceContext(const Slice& buf) {
+Result<opentelemetry::trace::SpanContext> ParseTraceContext(Slice buf) {
   CodedInputStream in(buf.data(), narrow_cast<int>(buf.size()));
   in.PushLimit(narrow_cast<int>(buf.size()));
   uint64_t trace_id_hi = 0, trace_id_lo = 0, span_id = 0;
