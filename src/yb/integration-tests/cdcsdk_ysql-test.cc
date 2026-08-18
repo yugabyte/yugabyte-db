@@ -1604,6 +1604,8 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // Retry a dropped apply notification quickly instead of after the 5s default.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) = 100000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -1625,7 +1627,6 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
   }
   // GetChanges for the stream-1 and stream-2
   vector<GetChangesResponsePB> change_resp_01(2);
-  vector<GetChangesResponsePB> change_resp_02(2);
   uint32_t start = 0;
   uint32_t end = 100;
   for (uint32_t insert_idx = 0; insert_idx < 3; insert_idx++) {
@@ -1635,20 +1636,19 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
         false,              /* timeout_secs = */
         30, /* is_compaction = */ false));
     for (uint32_t stream_idx = 0; stream_idx < 2; stream_idx++) {
-      uint32_t record_size = 0;
-      if (insert_idx == 0) {
-        ASSERT_OK(WaitForGetChangesToFetchRecords(
-            &change_resp_01[stream_idx], stream_ids[stream_idx], tablets, 100,
-            checkpoint_type == CDCCheckpointType::EXPLICIT));
-
-        record_size = change_resp_01[stream_idx].cdc_sdk_proto_records_size();
-      } else {
-        change_resp_02[stream_idx] = ASSERT_RESULT(
-            UpdateCheckpoint(stream_ids[stream_idx], tablets, &change_resp_01[stream_idx]));
-        change_resp_01[stream_idx] = change_resp_02[stream_idx];
-        record_size = change_resp_02[stream_idx].cdc_sdk_proto_records_size();
+      // Copy the checkpoint, since the poll below overwrites the response it points into.
+      std::optional<CDCSDKCheckpointPB> cp;
+      if (insert_idx > 0) {
+        cp = change_resp_01[stream_idx].cdc_sdk_checkpoint();
       }
-      ASSERT_GE(record_size, 100);
+      // CDC withholds records committed after the start time of the oldest running txn, and the
+      // committed txn is applied asynchronously, so poll until the records surface.
+      ASSERT_OK(WaitForGetChangesToFetchRecords(
+          &change_resp_01[stream_idx], stream_ids[stream_idx], tablets, 100,
+          checkpoint_type == CDCCheckpointType::EXPLICIT, cp ? &*cp : nullptr,
+          /* tablet_idx */ 0, /* safe_hybrid_time */ -1, /* wal_segment_index */ 0,
+          /* timeout_secs */ 30));
+      ASSERT_GE(change_resp_01[stream_idx].cdc_sdk_proto_records_size(), 100);
     }
     start = end;
     end = start + 100;
