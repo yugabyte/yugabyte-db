@@ -78,6 +78,7 @@ class CDCSDKVirtualWAL {
   struct GetChangesRequestInfo {
     uint64_t safe_hybrid_time;
     int32_t wal_segment_index;
+    int64_t max_index_in_sort_window;
 
     // The following fields will be used to populate from_cdc_sdk_checkpoint object of the next
     // GetChanges RPC call.

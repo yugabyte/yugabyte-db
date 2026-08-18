@@ -2109,7 +2109,7 @@ Status GetConsistentWALRecords(
     uint64_t* consistent_safe_time, const OpId& historical_max_op_id,
     bool* wait_for_wal_update, OpId* last_seen_op_id, OpId* last_skipped_op_id,
     int64_t& last_readable_opid_index, const int64_t& safe_hybrid_time_req,
-    const CoarseTimePoint& deadline,
+    int64_t max_index_in_sort_window_req, const CoarseTimePoint& deadline,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* consistent_wal_records,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints,
     HybridTime* last_read_wal_op_record_time, bool* is_entire_wal_read) {
@@ -2215,7 +2215,15 @@ Status GetConsistentWALRecords(
       last_read_segment_footer_safe_time = consistent_stream_safe_time_footer;
     }
 
-    if (!consistent_wal_records->empty()) {
+    // In the happy path, where the WAL ops happen to be in sorted order, this condition will be
+    // trivially true, since we will read the WAL beyond the max_index_in_sort_window_req in this
+    // call.
+    // However, in case of out of order applies, we want to ensure that subsequent GetChanges calls
+    // serviced by any peer of the tablet, see the same sorted WAL ops, irrespective of their
+    // segment boundaries.
+    bool reached_max_index = last_seen_op_id->index >= max_index_in_sort_window_req;
+
+    if (reached_max_index && !consistent_wal_records->empty()) {
       auto record = consistent_wal_records->front();
       if (FLAGS_cdc_read_wal_segment_by_segment &&
           GetTransactionCommitTime(record) <= consistent_stream_safe_time_footer.ToUint64()) {
@@ -2231,6 +2239,12 @@ Status GetConsistentWALRecords(
     }
 
   } while (last_seen_op_id->index < last_readable_opid_index);
+
+  // If we could not read far enough to cover the max_index_in_sort_window_req, do not stream
+  // anything in this call.
+  if (last_seen_op_id->index < max_index_in_sort_window_req) {
+    *wait_for_wal_update = true;
+  }
 
   // Skip updating consistent safe time when entire WAL is read and we can ship all records
   // till the consistent safe time computed in cdc producer.
@@ -2670,6 +2684,7 @@ Status GetChangesForCDCSDK(
     int64_t safe_hybrid_time_req,
     std::optional<uint64_t> consistent_snapshot_time,
     int wal_segment_index_req,
+    int64_t max_index_in_sort_window_req,
     int64_t* last_readable_opid_index,
     const TableId& colocated_table_id,
     CoarseTimePoint deadline,
@@ -2682,13 +2697,16 @@ Status GetChangesForCDCSDK(
   auto op_id = OpId::FromPB(from_op_id);
   VLOG(1) << "GetChanges request has from_op_id: " << AsString(from_op_id)
           << ", safe_hybrid_time: " << safe_hybrid_time_req
-          << ", wal_segment_index: " << wal_segment_index_req << " for tablet_id: " << tablet_id;
+          << ", wal_segment_index: " << wal_segment_index_req
+          << ", max_index_in_sort_window: " << max_index_in_sort_window_req
+          << " for tablet_id: " << tablet_id;
   ScopedTrackedConsumption consumption;
   CDCSDKCheckpointPB checkpoint;
   // 'checkpoint_updated' decides if the response checkpoint should be copied from
   // previously declared 'checkpoint' or the 'from_op_id'.
   bool checkpoint_updated = false;
   int wal_segment_index = GetWalSegmentIndex(wal_segment_index_req);
+  int64_t max_wal_op_index_read = op_id.index;
   bool report_tablet_split = false, snapshot_operation = false, pending_intents = false,
        wait_for_wal_update = false, txn_load_in_progress = false;
 
@@ -2743,19 +2761,21 @@ Status GetChangesForCDCSDK(
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>> wal_records, all_checkpoints;
 
     DCHECK(last_readable_opid_index);
-    if (FLAGS_cdc_enable_consistent_records)
+    if (FLAGS_cdc_enable_consistent_records) {
       RETURN_NOT_OK(GetConsistentWALRecords(
           tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
           historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_skipped_op_id,
-          *last_readable_opid_index, safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
-          &last_read_wal_op_record_time, &is_entire_wal_read));
-    else
+          *last_readable_opid_index, safe_hybrid_time_req, max_index_in_sort_window_req, deadline,
+          &wal_records, &all_checkpoints, &last_read_wal_op_record_time, &is_entire_wal_read));
+      max_wal_op_index_read = last_seen_op_id.index;
+    } else {
       // 'skip_intents' is true here because we want the first transaction to be the partially
       // streamed transaction.
       RETURN_NOT_OK(GetWALRecords(
           tablet_peer, mem_tracker, msgs_holder, &consumption, consistent_stream_safe_time,
           &last_seen_op_id, &last_readable_opid_index, safe_hybrid_time_req, deadline, true,
           &wal_records, &all_checkpoints));
+      }
 
     have_more_messages = HaveMoreMessages(true);
 
@@ -2868,19 +2888,21 @@ Status GetChangesForCDCSDK(
       }
 
       DCHECK(last_readable_opid_index);
-      if (FLAGS_cdc_enable_consistent_records)
+      if (FLAGS_cdc_enable_consistent_records) {
         RETURN_NOT_OK(GetConsistentWALRecords(
             tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
             historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_skipped_op_id,
-            *last_readable_opid_index, safe_hybrid_time_req, deadline, &wal_records,
-            &all_checkpoints, &last_read_wal_op_record_time, &is_entire_wal_read));
-      else
+            *last_readable_opid_index, safe_hybrid_time_req, max_index_in_sort_window_req, deadline,
+            &wal_records, &all_checkpoints, &last_read_wal_op_record_time, &is_entire_wal_read));
+        max_wal_op_index_read = last_seen_op_id.index;
+      } else {
         // 'skip_intents' is false otherwise in case the complete wal segment is filled with
         // intents we will break the loop thinking that WAL has no more records.
         RETURN_NOT_OK(GetWALRecords(
             tablet_peer, mem_tracker, msgs_holder, &consumption, consistent_stream_safe_time,
             &last_seen_op_id, &last_readable_opid_index, safe_hybrid_time_req, deadline, false,
             &wal_records, &all_checkpoints));
+        }
 
       if (wait_for_wal_update) {
         VLOG_WITH_FUNC(1)
@@ -3298,6 +3320,11 @@ Status GetChangesForCDCSDK(
                      : resp->mutable_cdc_sdk_checkpoint()->CopyFrom(from_op_id);
   resp->set_wal_segment_index(wal_segment_index);
 
+  // We should never move the max_index_in_sort_window backwards as that could lead to us missing
+  // out on sending data.
+  resp->set_max_index_in_sort_window(
+      std::max<int64_t>(max_wal_op_index_read, max_index_in_sort_window_req));
+
   if (last_streamed_op_id->index > 0) {
     last_streamed_op_id->ToPB(resp->mutable_checkpoint()->mutable_op_id());
   }
@@ -3325,6 +3352,7 @@ Status GetChangesForCDCSDK(
           << resp->cdc_sdk_checkpoint().ShortDebugString()
           << ", safe_hybrid_time: " << resp->safe_hybrid_time()
           << ", wal_segment_index: " << resp->wal_segment_index()
+          << ", max_index_in_sort_window: " << resp->max_index_in_sort_window()
           << ", num_records: " << resp->cdc_sdk_proto_records_size()
           << ", tablet_id: " << tablet_id;
 
