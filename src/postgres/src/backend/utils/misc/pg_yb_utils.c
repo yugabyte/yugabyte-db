@@ -376,7 +376,6 @@ int			ybc_disable_pg_locking = -1;
 
 /* Forward declarations */
 static void YBCInstallTxnDdlHook();
-static void YbMaybeDisableSkipIntentsForCurrentTxn(Relation rel);
 
 bool		yb_enable_docdb_tracing = false;
 bool		yb_enable_spi_dist_tracing = true;
@@ -4591,7 +4590,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 				 */
 				if (!(yb_enable_ddl_savepoint_infra &&
 					  *YBCGetGFlags()->ysql_yb_enable_ddl_savepoint_support) &&
-					YBTransactionContainsNonReadCommittedSavepoint())
+					YBTransactionContainsNonReadCommittedSavepoint(false /* skip_backward_compat_escape_hatch */ ))
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("interleaving SAVEPOINT & DDL in transaction"
@@ -9194,8 +9193,6 @@ YbNewSample(Relation rel,
 YbcPgStatement
 YbNewSelect(Relation rel, const YbcPgPrepareParameters *prepare_params)
 {
-	if (unlikely(skip_intents_txn_state.has_skipped_write))
-		YbMaybeDisableSkipIntentsForCurrentTxn(rel);
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel), prepare_params,
 								  YbBuildTableLocalityInfo(rel),
@@ -9665,7 +9662,7 @@ YbCanSkipIntents(Relation rel, bool is_write)
 	 * retries are blocked if this optimization is active.
 	 */
 	if (GetCurrentSubTransactionId() > TopSubTransactionId &&
-		YBTransactionContainsNonReadCommittedSavepoint())
+		YBTransactionContainsNonReadCommittedSavepoint(true /* skip_backward_compat_escape_hatch */ ))
 	{
 		elog(DEBUG1, "Disable skip intents due to savepoint on relation %u write", rel->rd_id);
 		skip_intents_txn_state.disabled = true;
@@ -9685,81 +9682,10 @@ YbCanSkipIntentsWrite(Relation rel)
 	return YbCanSkipIntents(rel, true /* is_write */ );
 }
 
-void
-YbDisableSkipIntentsIfModifyingCTE(struct QueryDesc *queryDesc)
-{
-	if (skip_intents_txn_state.disabled)
-		return;
-
-	if (queryDesc && queryDesc->plannedstmt && queryDesc->plannedstmt->hasModifyingCTE)
-	{
-		elog(DEBUG1, "Disable skip intents due to modifying CTE");
-		skip_intents_txn_state.disabled = true;
-	}
-}
-
 static bool
 YbCanSkipIntentsRead(Relation rel)
 {
 	return YbCanSkipIntents(rel, false /* is_write */ );
-}
-
-static void
-YbMaybeDisableSkipIntentsForCurrentTxn(Relation rel)
-{
-	/*
-	 * TODO(GH-31588): Track disabling skip intents per table.
-	 * For example, it would be nice if something like below worked:
-	 * begin;
-	 * create table test...;
-	 * create table dummy...;
-	 * insert ... select ... on dummy; ----> This causes disabling the optimization due to halloween problem
-	 * bulk load into table test ----> This should still be able to work.
-	 */
-	if (skip_intents_txn_state.disabled)
-		return;
-
-	if (rel->rd_createSubid == InvalidSubTransactionId)
-		return;
-
-	/* 1. Environment check (functions / triggers only). */
-	int stmt_may_write_reason = 0;
-	if (YbGetSPIStackDepth() > 0)
-		stmt_may_write_reason = 1;
-	else if (YbGetTriggerDepth() > 0)
-		stmt_may_write_reason = 2;
-
-	/*
-	 * 2. Top-level statement shape (Halloween / read-your-writes guard).
-	 * For same-txn-created relations we relax only when we are clearly in a
-	 * plain read-only SELECT (no MERGE/INSERT/...). If portal context is
-	 * missing, stay conservative.
-	 */
-	else
-	{
-		QueryDesc  *qd = ActivePortal ? ActivePortal->queryDesc : NULL;
-
-		if (!qd)
-			stmt_may_write_reason = 3;
-		else if (qd->operation != CMD_SELECT)
-			stmt_may_write_reason = 4;
-	}
-
-	/*
-	 * Unfortunately, we cannot allow skip intents read due to the "Halloween Problem".
-	 * It occurs when a statement's own writes change the result set of its own scan,
-	 * potentially causing an infinite loop or duplicate processing. Here we do not
-	 * have enough context to exactly detect the situation such as
-	 *   INSERT INTO self_insert_test SELECT id + 100 FROM self_insert_test;
-	 * so we simply turn off the optimization entirely once we see a read on a table
-	 * created in the same transaction.
-	 */
-	if (stmt_may_write_reason > 0)
-	{
-		elog(DEBUG1, "Disable skip intents due to relation %u read, reason: %u",
-			 rel->rd_id, stmt_may_write_reason);
-		skip_intents_txn_state.disabled = true;
-	}
 }
 
 /* Session-level cache for YbDatabaseHasPublications(). */
