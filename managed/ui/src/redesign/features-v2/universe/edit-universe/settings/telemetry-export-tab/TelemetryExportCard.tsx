@@ -13,6 +13,7 @@ import {
 import { YBTooltip } from '@app/redesign/components';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
+import { useEditUniverseContext, withUniverseResource } from '../../EditUniverseUtils';
 
 import EditIcon from '@app/redesign/assets/approved/edit.svg';
 import DropdownArrowIcon from '@app/redesign/assets/approved/triangle-arrow-down.svg';
@@ -217,6 +218,8 @@ export const TelemetryExportCard: FC<TelemetryExportCardProps> = (props) => {
   const classes = useStyles();
   const theme = useTheme();
   const { t } = useTranslation('translation', { keyPrefix: props.translationKeyPrefix });
+  const { universeData } = useEditUniverseContext();
+  const universeUUID = universeData?.info?.universe_uuid;
 
   const { icon, title, actionDisabled = false, actionTestId } = props;
   const withActionTooltip = (action: ReactElement) =>
@@ -244,7 +247,7 @@ export const TelemetryExportCard: FC<TelemetryExportCardProps> = (props) => {
       <div className={classes.configuredCard}>
         <div className={classes.header}>
           {titleGroup}
-          <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+          <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
             {withActionTooltip(
               <YBDropdown
                 growDirection="left"
@@ -339,7 +342,7 @@ export const TelemetryExportCard: FC<TelemetryExportCardProps> = (props) => {
           )}
         </div>
       </div>
-      <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+      <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
         {withActionTooltip(
           isLinkAction ? (
             <button

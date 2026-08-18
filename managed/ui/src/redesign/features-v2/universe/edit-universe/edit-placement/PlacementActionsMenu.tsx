@@ -10,7 +10,7 @@ import AddIcon from '@app/redesign/assets/add.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
-import { useIsUniverseReady } from '../EditUniverseUtils';
+import { useIsUniverseReady, withUniverseResource } from '../EditUniverseUtils';
 import {
   AdvancedPlacementPopover,
   useAdvancedPlacementPopover
@@ -97,7 +97,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
         >
           {onEditMasterAllocationClick ? (
             <>
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUuid)} isControl>
                 {useDedicatedNodes ? (
                   <MenuItem
                     data-test-id="edit-placement-clear-affinities"
@@ -167,7 +167,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
           {showAddReadReplica ? (
             <>
               {onEditMasterAllocationClick ? <Divider /> : null}
-              <RbacValidator accessRequiredOn={ApiPermissionMap.ADD_V2_READ_REPLICA} isControl>
+              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.ADD_V2_READ_REPLICA, universeUuid)} isControl>
                 <MenuItem
                   data-test-id="add-read-replica"
                   sx={{ height: 'auto' }}
@@ -219,7 +219,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
           {showAddGeoPartition && (
             <>
               {(onEditMasterAllocationClick !== undefined || showAddReadReplica) && <Divider />}
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUuid)} isControl>
                 <MenuItem
                   data-test-id="add-geo-partition"
                   sx={{ height: 'auto' }}
