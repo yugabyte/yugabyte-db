@@ -205,8 +205,13 @@ RUN set -x; \
       https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-${arch}.sha256sum \
     && egrep $(sha256sum /sbin/tini) /tmp/tini.sha256sum
 
-FROM $BASE_IMAGE as final
-ARG BASE_IMAGE
+# Remove repos for hardened images
+RUN set -x; \
+    if [[ "$BASE_IMAGE" == *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
+      rm -rf /etc/yum.repos.d/rf-*; \
+    fi
+
+FROM scratch
 ARG VERSION=Development
 ARG RELEASE=Unknown
 ARG USER=root
