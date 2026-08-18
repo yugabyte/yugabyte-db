@@ -212,7 +212,6 @@ class Worker : public boost::intrusive::list_base_hook<> {
       }
 #endif
       auto start = MonoTime::NowIf(has_run_metrics);
-      // Re-activate the Enqueue-captured scope. No-op when trace_parent is empty.
       auto parent_scope = dist_trace::ActivateParentScope(task->trace_parent());
       if (!task->run_token()) {
         task->Run();
@@ -649,7 +648,6 @@ YBThreadPool::~YBThreadPool() {
 }
 
 bool YBThreadPool::Enqueue(ThreadPoolTask* task) {
-  // Capture the active trace scope here, on the submitting thread, where it is still live.
   task->set_trace_parent(dist_trace::GetActiveSpanContext());
   return impl_->Enqueue(task);
 }
