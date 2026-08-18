@@ -11,13 +11,15 @@ const POPOVER_OFFSET: [number, number] = [0, 12];
 /** Figma PLG/Purple 300 — primary CTA on this spotlight. */
 const SEE_WHATS_CHANGED_BUTTON_BG = '#7879F1';
 
-export const AFTER_NEW_EXPERIENCE_POPOVER_DISMISS_KEY =
-  'yb_after_new_experience_popover_dismissed';
+export const AFTER_NEW_EXPERIENCE_POPOVER_DISMISS_KEY = 'yb_after_new_experience_popover_dismissed';
 
 interface AfterNewExperiencePopoverProps {
   open: boolean;
   anchorRef: RefObject<HTMLElement>;
+  /** Permanent Hide Tip. */
   onClose: () => void;
+  /** Transient click-away close (no localStorage). */
+  onClickAway: () => void;
   onSeeWhatsChanged: () => void;
 }
 
@@ -74,12 +76,19 @@ export const useAfterNewExperiencePopover = () => {
     requestOpenUniverseCreationPopover();
   }, []);
 
+  const handleClickAway = useCallback(() => {
+    setOpen(false);
+    // Same next-tip handoff as Hide Tip; click-away stays transient (no dismiss key).
+    requestOpenUniverseCreationPopover();
+  }, []);
+
   return {
     open,
     setOpen,
     anchorRef,
     openPopover,
-    handleClose
+    handleClose,
+    handleClickAway
   };
 };
 
@@ -87,6 +96,7 @@ export const AfterNewExperiencePopover: FC<AfterNewExperiencePopoverProps> = ({
   open,
   anchorRef,
   onClose,
+  onClickAway,
   onSeeWhatsChanged
 }) => {
   const { t } = useTranslation('translation', {
@@ -99,6 +109,7 @@ export const AfterNewExperiencePopover: FC<AfterNewExperiencePopoverProps> = ({
       anchorEl={anchorRef.current}
       placement={TourPlacement.BottomStart}
       offset={POPOVER_OFFSET}
+      onClickAway={onClickAway}
     >
       <WideSpotlight
         title={<GradientTitle component="span">{t('title')}</GradientTitle>}

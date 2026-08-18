@@ -13,25 +13,20 @@ import {
   Controller,
   FieldValues,
   Path,
-  PathValue,
-  useFormContext,
-  useWatch
+  useFormContext
 } from 'react-hook-form';
 import { mui, YBAutoComplete, YBLabel, YBSelectProps, YBTooltip } from '@yugabyte-ui-library/core';
-import { api, DBReleasesQueryKey } from '../../../../../features/universe/universe-form/utils/api';
 import { isNonEmptyString } from '../../../../../../utils/ObjectUtils';
-import { isVersionStable } from '../../../../../../utils/universeUtilsTyped';
 import { MAX_RELEASE_TAG_CHAR } from '../../../../../features/releases/helpers/utils';
-import {
-  getActiveDBVersions,
-  sortVersionStrings
-} from '../../../../../features/universe/universe-form/form/fields/DBVersionField/DBVersionHelper';
+import { sortVersionStrings } from '../../../../../features/universe/universe-form/form/fields/DBVersionField/DBVersionHelper';
 import { ReleaseState } from '../../../../../features/releases/components/dtos';
+import { DEFAULT_ADVANCED_CONFIG } from '../../../../../features/universe/universe-form/utils/dto';
+import { isVersionStable } from '../../../../../../utils/universeUtilsTyped';
 import {
-  DEFAULT_ADVANCED_CONFIG,
-  YBSoftwareMetadata
-} from '../../../../../features/universe/universe-form/utils/dto';
-import { PROVIDER_CONFIGURATION } from '../FieldNames';
+  CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY,
+  fetchCreateUniverseDbVersions,
+  transformDbVersionQueryData
+} from '../../helpers/generalSettingsDefaults';
 
 //icons
 import InfoMessageIcon from '../../../../../assets/info-message.svg';
@@ -102,19 +97,6 @@ const renderOption = (
   );
 };
 
-const transformData = (data: string[] | Record<string, YBSoftwareMetadata>) => {
-  if (data && Array.isArray(data)) {
-    return data.map((item) => ({
-      label: item,
-      value: item
-    }));
-  } else if (typeof data === 'object' && data !== null) {
-    return getActiveDBVersions(data);
-  } else {
-    return [];
-  }
-};
-
 export const DatabaseVersionField = <T extends FieldValues>({
   name,
   label,
@@ -122,28 +104,13 @@ export const DatabaseVersionField = <T extends FieldValues>({
   sx,
   disabled
 }: DatabaseVersionFieldProps<T>) => {
-  const { control, getValues, setValue } = useFormContext<T>();
-  const provider = useWatch({ name: PROVIDER_CONFIGURATION });
+  const { control, setValue } = useFormContext<T>();
 
   const { data, isLoading } = useQuery(
-    [DBReleasesQueryKey.provider(provider?.uuid), null],
-    () => api.getDBVersions(true, null, true),
+    CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY,
+    fetchCreateUniverseDbVersions,
     {
-      enabled: !!provider?.uuid,
-      onSuccess: (data) => {
-        //pre-select first available db version
-        const stableSorted: Record<string, string>[] = sortVersionStrings(
-          data?.filter((versionData: any) => {
-            return isVersionStable(versionData.label.version);
-          }),
-          true
-        );
-        // Display the latest stable version on the Create Universe page
-        if (!getValues(name) && stableSorted.length) {
-          setValue(name, stableSorted[0].value as PathValue<T, Path<T>>, { shouldValidate: true });
-        }
-      },
-      select: transformData
+      select: transformDbVersionQueryData
     }
   );
 

@@ -99,12 +99,15 @@ const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
 
   return (
     <Box
+      data-edit-universe-root
       sx={{
         display: 'flex',
         flex: 1,
         width: '100%',
         minHeight: 0,
-        overflow: 'hidden'
+        overflow: 'hidden',
+        // Contain portaled onboarding tips (e.g. Advanced Placement) within this shell.
+        position: 'relative'
       }}
     >
       <Box

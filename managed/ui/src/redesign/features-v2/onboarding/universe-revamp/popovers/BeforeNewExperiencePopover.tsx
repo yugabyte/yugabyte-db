@@ -16,7 +16,10 @@ export const BEFORE_NEW_EXPERIENCE_POPOVER_DISMISS_KEY =
 interface BeforeNewExperiencePopoverProps {
   open: boolean;
   anchorRef: RefObject<HTMLElement>;
+  /** Permanent Hide Tip. */
   onClose: () => void;
+  /** Transient click-away close (no localStorage). */
+  onClickAway: () => void;
   onSeeWhatsChanged: () => void;
 }
 
@@ -72,12 +75,17 @@ export const useBeforeNewExperiencePopover = () => {
     setOpen(false);
   }, []);
 
+  const handleClickAway = useCallback(() => {
+    setOpen(false);
+  }, []);
+
   return {
     open,
     setOpen,
     anchorRef,
     openPopover,
-    handleClose
+    handleClose,
+    handleClickAway
   };
 };
 
@@ -85,6 +93,7 @@ export const BeforeNewExperiencePopover: FC<BeforeNewExperiencePopoverProps> = (
   open,
   anchorRef,
   onClose,
+  onClickAway,
   onSeeWhatsChanged
 }) => {
   const { t } = useTranslation('translation', {
@@ -97,6 +106,7 @@ export const BeforeNewExperiencePopover: FC<BeforeNewExperiencePopoverProps> = (
       anchorEl={anchorRef.current}
       placement={TourPlacement.BottomStart}
       offset={POPOVER_OFFSET}
+      onClickAway={onClickAway}
     >
       <WideSpotlight
         title={<GradientTitle component="span">{t('title')}</GradientTitle>}

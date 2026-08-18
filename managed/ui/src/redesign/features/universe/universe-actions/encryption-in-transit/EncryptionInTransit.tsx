@@ -236,6 +236,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
       setRollingUpgradeModal(false);
     } else {
       try {
+        setRollingUpgradeModal(false);
         let payload = constructPayload(values);
         if (tlsToggled) setTLS.mutateAsync(payload);
         else setCerts.mutateAsync(payload);
@@ -249,6 +250,10 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
     onResource: universeId,
     ...ApiPermissionMap.MODIFY_UNIVERSE_TLS
   });
+  useEffect(() => {
+    if (!open) setRollingUpgradeModal(false);
+  }, [open]);
+
   useEffect(() => {
     if (disableServerCertRotation) setTab(EitTabs.CACert);
   }, [setTab, disableServerCertRotation]);

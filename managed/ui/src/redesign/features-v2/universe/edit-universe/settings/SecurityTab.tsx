@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from 'react-query';
 import { mui, YBButton } from '@yugabyte-ui-library/core';
@@ -14,11 +14,13 @@ import { api, QUERY_KEY } from '@app/redesign/utils/api';
 import { FormProvider, useForm } from 'react-hook-form';
 import { SecuritySettingsProps } from '../../create-universe/steps/security-settings/dtos';
 import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
+import { getGetUniverseQueryKey } from '@app/v2/api/universe/universe';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { EditNetworkAcessModal } from '../edit-security/EditNetworkAcessModal';
 import { getPrimaryCluster } from '@app/utils/universeUtilsTyped';
+import { transitToUniverse } from '@app/redesign/features/universe/universe-form/utils/helpers';
 
 import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
@@ -78,6 +80,26 @@ export const SecurityTab = () => {
   const isItKubernetesUniverse = providerCode === CloudType.kubernetes;
 
   const isUniverseReady = useIsUniverseReady();
+
+  const invalidateUniverseQueries = useCallback(() => {
+    if (!universeUUID) return;
+    void queryClient.invalidateQueries([QUERY_KEY.fetchUniverse, universeUUID]);
+    void queryClient.invalidateQueries(getGetUniverseQueryKey(universeUUID));
+    void queryClient.invalidateQueries(QUERY_KEY.getKMSHistory);
+  }, [queryClient, universeUUID]);
+
+  // set_key is async; v2 kms_config_uuid updates when the task completes. Refetch the
+  // v1 universe + KMS history so EncryptionAtRest shows the new config without a reload.
+  const v2KmsConfigUuid = universeData?.spec?.encryption_at_rest_spec?.kms_config_uuid;
+  const isFirstKmsSync = useRef(true);
+  useEffect(() => {
+    if (isFirstKmsSync.current) {
+      isFirstKmsSync.current = false;
+      return;
+    }
+    invalidateUniverseQueries();
+  }, [v2KmsConfigUuid, invalidateUniverseQueries]);
+
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -223,7 +245,8 @@ export const SecurityTab = () => {
           open={eitModalOpen}
           onClose={() => {
             setEitModalOpen(false);
-            void queryClient.invalidateQueries([QUERY_KEY.fetchUniverse, universeUUID]);
+            invalidateUniverseQueries();
+            if (universeUUID) transitToUniverse(universeUUID);
           }}
           universe={legacyUniverse}
           isItKubernetesUniverse={isItKubernetesUniverse}
@@ -234,7 +257,8 @@ export const SecurityTab = () => {
           open={earModalOpen}
           onClose={() => {
             setEarModalOpen(false);
-            void queryClient.invalidateQueries([QUERY_KEY.fetchUniverse, universeUUID]);
+            invalidateUniverseQueries();
+            if (universeUUID) transitToUniverse(universeUUID);
           }}
           universeDetails={legacyUniverse}
         />

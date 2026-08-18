@@ -1,4 +1,4 @@
-import { FC, MouseEvent, RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { FC, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { mui, TourPlacement, YBTag, YBTourSpotlight } from '@yugabyte-ui-library/core';
 import { DEFAULT_RELEASE_NOTES_URL, GradientTitle } from '../modals/HelperComponent';
@@ -16,7 +16,10 @@ export const GUIDED_EXPERT_MODE_POPOVER_DISMISS_KEY = 'yb_guided_expert_mode_pop
 interface GuidedExpertModePopoverProps {
   open: boolean;
   anchorRef: RefObject<HTMLElement>;
+  /** Permanent Hide Tip. */
   onClose: () => void;
+  /** Transient click-away close (no localStorage). */
+  onClickAway: () => void;
 }
 
 const WideSpotlight = styled(YBTourSpotlight)(() => ({
@@ -110,9 +113,6 @@ export const dismissGuidedExpertModePopover = (): void => {
   localStorage.setItem(GUIDED_EXPERT_MODE_POPOVER_DISMISS_KEY, 'true');
 };
 
-export const shouldInterceptGuidedExpertModeClick = (): boolean =>
-  !isGuidedExpertModePopoverDismissed();
-
 /** Delay before auto-opening the Guided/Expert tip on create-universe. */
 const AUTO_OPEN_DELAY_MS = 700;
 
@@ -136,32 +136,33 @@ export const useGuidedExpertModePopover = () => {
     };
   }, []);
 
-  const handleGuidedExpertModeClick = useCallback((event: MouseEvent) => {
-    if (!shouldInterceptGuidedExpertModeClick()) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    setOpen(true);
-  }, []);
-
   const handleClose = useCallback(() => {
     dismissGuidedExpertModePopover();
     setOpen(false);
   }, []);
 
+  const handleClickAway = useCallback(() => {
+    setOpen(false);
+  }, []);
+
+  const handleOpen = useCallback(() => {
+    setOpen(true);
+  }, []);
+
   return {
     open,
     anchorRef,
-    handleGuidedExpertModeClick,
-    handleClose
+    handleOpen,
+    handleClose,
+    handleClickAway
   };
 };
 
 export const GuidedExpertModePopover: FC<GuidedExpertModePopoverProps> = ({
   open,
   anchorRef,
-  onClose
+  onClose,
+  onClickAway
 }) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'onBoarding.guidedExpertModePopover'
@@ -221,6 +222,7 @@ export const GuidedExpertModePopover: FC<GuidedExpertModePopoverProps> = ({
       placement={TourPlacement.BottomEnd}
       offset={POPOVER_OFFSET}
       zIndex={(theme) => theme.zIndex.modal}
+      onClickAway={onClickAway}
     >
       <WideSpotlight
         title=""

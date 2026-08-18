@@ -59,8 +59,8 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
   const {
     open: isAdvancedPlacementPopoverOpen,
     anchorRef: advancedPlacementAnchorRef,
-    handleAdvancedPlacementClick,
-    handleClose: handleAdvancedPlacementPopoverClose
+    handleClose: handleAdvancedPlacementPopoverClose,
+    handleClickAway: handleAdvancedPlacementPopoverClickAway
   } = useAdvancedPlacementPopover(showAdvancedPlacementTip);
 
   const triggerButton = (
@@ -80,7 +80,6 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
       <span
         ref={showAdvancedPlacementTip ? advancedPlacementAnchorRef : undefined}
         style={{ display: 'inline-block' }}
-        onClickCapture={showAdvancedPlacementTip ? handleAdvancedPlacementClick : undefined}
       >
         <YBDropdown
           dataTestId="edit-placement-actions"
@@ -263,6 +262,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
           open={isAdvancedPlacementPopoverOpen}
           anchorRef={advancedPlacementAnchorRef}
           onClose={handleAdvancedPlacementPopoverClose}
+          onClickAway={handleAdvancedPlacementPopoverClickAway}
         />
       )}
     </>

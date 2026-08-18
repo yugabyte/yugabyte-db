@@ -202,13 +202,15 @@ export const OnBoardingBanner: FC = () => {
     open: isBeforePopoverOpen,
     setOpen: setBeforePopoverOpen,
     anchorRef: seeWhatsChangedAnchorRef,
-    handleClose: handleBeforePopoverClose
+    handleClose: handleBeforePopoverClose,
+    handleClickAway: handleBeforePopoverClickAway
   } = useBeforeNewExperiencePopover();
 
   const {
     open: isAfterPopoverOpen,
     setOpen: setAfterPopoverOpen,
-    handleClose: handleAfterPopoverClose
+    handleClose: handleAfterPopoverClose,
+    handleClickAway: handleAfterPopoverClickAway
   } = useAfterNewExperiencePopover();
 
   const clearAfterTipTimer = useCallback(() => {
@@ -532,6 +534,7 @@ export const OnBoardingBanner: FC = () => {
           open={isBeforePopoverOpen}
           anchorRef={seeWhatsChangedAnchorRef}
           onClose={handleBeforePopoverClose}
+          onClickAway={handleBeforePopoverClickAway}
           onSeeWhatsChanged={handleSeeWhatsChanged}
         />
       )}
@@ -540,6 +543,7 @@ export const OnBoardingBanner: FC = () => {
           open={isAfterPopoverOpen}
           anchorRef={seeWhatsChangedAnchorRef}
           onClose={handleAfterPopoverClose}
+          onClickAway={handleAfterPopoverClickAway}
           onSeeWhatsChanged={handleSeeWhatsChanged}
         />
       )}

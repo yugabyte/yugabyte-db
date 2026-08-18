@@ -39,7 +39,12 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
-import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceFormMode, ResilienceType } from './dtos';
+import {
+  FaultToleranceType,
+  ResilienceAndRegionsProps,
+  ResilienceFormMode,
+  ResilienceType
+} from './dtos';
 import {
   FAULT_TOLERANCE_TYPE,
   REGIONS_FIELD,
@@ -51,7 +56,6 @@ import {
   GuidedExpertModePopover,
   useGuidedExpertModePopover
 } from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/GuidedExpertModePopover';
-import { DEFAULT_RELEASE_NOTES_URL } from '@app/redesign/features-v2/onboarding/universe-revamp/modals/HelperComponent';
 
 //icons
 import MapIcon from '@app/redesign/assets/map.svg';
@@ -86,6 +90,7 @@ const SetupModeCard = styled(Box)(({ theme }) => ({
   justifyContent: 'space-between',
   gap: '16px',
   width: '100%',
+  height: '88px',
   padding: '24px 16px',
   borderRadius: '8px',
   border: `1px solid ${theme.palette.grey[300]}`,
@@ -127,6 +132,10 @@ const SetupModeLearnMore = styled(Link)(({ theme }) => ({
   textDecoration: 'underline',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
+  border: 'none',
+  background: 'none',
+  padding: 0,
+  fontFamily: 'inherit',
   '&:hover': {
     color: theme.palette.grey[900],
     textDecoration: 'underline'
@@ -135,7 +144,7 @@ const SetupModeLearnMore = styled(Link)(({ theme }) => ({
 
 export const ResilienceAndRegions = forwardRef<
   StepsRef,
-  { isGeoPartition?: boolean; hideHelpText?: boolean, disableGuidedMode?: boolean }
+  { isGeoPartition?: boolean; hideHelpText?: boolean; disableGuidedMode?: boolean }
 >(({ isGeoPartition = false, hideHelpText = false, disableGuidedMode = false }, forwardRef) => {
   const [
     { generalSettings, resilienceAndRegionsSettings, nodesAvailabilitySettings },
@@ -146,7 +155,7 @@ export const ResilienceAndRegions = forwardRef<
       moveToNextPage,
       setResilienceType
     }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
+  ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.resilienceAndRegions'
@@ -155,8 +164,9 @@ export const ResilienceAndRegions = forwardRef<
   const {
     open: isGuidedExpertModePopoverOpen,
     anchorRef: guidedExpertModeAnchorRef,
-    handleGuidedExpertModeClick,
-    handleClose: handleGuidedExpertModePopoverClose
+    handleOpen: handleGuidedExpertModePopoverOpen,
+    handleClose: handleGuidedExpertModePopoverClose,
+    handleClickAway: handleGuidedExpertModePopoverClickAway
   } = useGuidedExpertModePopover();
 
   const methods = useForm<ResilienceAndRegionsProps>({
@@ -315,9 +325,7 @@ export const ResilienceAndRegions = forwardRef<
   } | null>(null);
 
   useEffect(() => {
-    const regionSignature = JSON.stringify(
-      (regions ?? []).map((r) => r.uuid ?? r.code).sort()
-    );
+    const regionSignature = JSON.stringify((regions ?? []).map((r) => r.uuid ?? r.code).sort());
     const next = { resilienceFactor, regionSignature };
     if (prevPlacementDriversRef.current === null) {
       prevPlacementDriversRef.current = next;
@@ -460,19 +468,19 @@ export const ResilienceAndRegions = forwardRef<
               <SetupModeDescription>
                 <span>{t('setupMode.description')}</span>
                 <SetupModeLearnMore
-                  href={DEFAULT_RELEASE_NOTES_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  component="button"
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleGuidedExpertModePopoverOpen();
+                  }}
                 >
                   {t('setupMode.learnMore')}
                 </SetupModeLearnMore>
               </SetupModeDescription>
             </SetupModeCopy>
-            <span
-              ref={guidedExpertModeAnchorRef}
-              onClickCapture={handleGuidedExpertModeClick}
-              style={{ display: 'inline-flex', flexShrink: 0 }}
-            >
+            <span ref={guidedExpertModeAnchorRef} style={{ display: 'inline-flex', flexShrink: 0 }}>
               <YBButtonGroup
                 key={modeButtonGroupKey}
                 size="large"
@@ -521,6 +529,7 @@ export const ResilienceAndRegions = forwardRef<
               open={isGuidedExpertModePopoverOpen}
               anchorRef={guidedExpertModeAnchorRef}
               onClose={handleGuidedExpertModePopoverClose}
+              onClickAway={handleGuidedExpertModePopoverClickAway}
             />
           </SetupModeCard>
           {formMode === ResilienceFormMode.GUIDED ? <GuidedMode /> : <ExpertMode />}
