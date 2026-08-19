@@ -1562,6 +1562,10 @@ public class OperatorUtils {
    * @throws RuntimeException if an unknown throttle parameter is encountered.
    */
   public boolean isThrottleParamUpdate(Universe universe, YBUniverse ybUniverse) {
+    // Paused universes have no reachable YBC endpoints; probing them stalls reconcile.
+    if (universe.getUniverseDetails().universePaused) {
+      return false;
+    }
     YbcThrottleParameters specParams = ybUniverse.getSpec().getYbcThrottleParameters();
     YbcThrottleParametersResponse currentParams =
         ybcManager.getThrottleParams(universe.getUniverseUUID());

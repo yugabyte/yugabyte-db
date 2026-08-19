@@ -463,6 +463,44 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testNoOpSkipsThrottleLookupWhenUniversePaused() throws Exception {
+    String universeName = "test-paused-noop-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    ybUniverse.getSpec().setPaused(true);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+
+    UniverseDefinitionTaskParams uTaskParams = universe.getUniverseDetails();
+    uTaskParams.universePaused = true;
+    universe.setUniverseDetails(uTaskParams);
+    universe.save();
+
+    Mockito.clearInvocations(ybcManager);
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.NO_OP);
+
+    Mockito.verify(ybcManager, Mockito.never()).getThrottleParams(any());
+    assertTrue(ybUniverseReconciler.getOperatorWorkQueue().isEmpty());
+  }
+
+  @Test
+  public void testNoOpPerformsThrottleLookupWhenUniverseNotPaused() throws Exception {
+    String universeName = "test-unpaused-noop-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    ybUniverse.getSpec().setPaused(false);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+
+    Mockito.clearInvocations(ybcManager);
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.NO_OP);
+
+    Mockito.verify(ybcManager, Mockito.times(1)).getThrottleParams(eq(universe.getUniverseUUID()));
+  }
+
+  @Test
   public void testCreateOnPreviousCreateTaskFailed() throws Exception {
     String universeName = "test-previous-task-failed-universe";
     YBUniverse ybUniverseOriginal = ModelFactory.createYbUniverse(universeName, defaultProvider);
