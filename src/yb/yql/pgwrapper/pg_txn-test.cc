@@ -1028,6 +1028,8 @@ TEST_F(PgTxnTest, ExpiredSessionAbortRacesFinishTransaction) {
   CountDownLatch commit_parked(1);
   CountDownLatch release_commit(1);
 
+  TestThreadHolder thread_holder;
+
   // Parks this backend's commit until the test releases it. Other sessions on this tserver reach
   // the same sync point, so match on the pid it reports and let them through.
   SyncPoint::GetInstance()->SetCallBack(
@@ -1043,10 +1045,17 @@ TEST_F(PgTxnTest, ExpiredSessionAbortRacesFinishTransaction) {
       });
   SyncPoint::GetInstance()->EnableProcessing();
 
+  // Declared after the thread holder so an early exit releases the commit before joining it.
+  auto sync_point_cleanup = ScopeExit([&release_commit] {
+    release_commit.CountDown();
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+    SyncPoint::GetInstance()->ClearTrace();
+  });
+
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
 
-  TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([&conn] {
     // Expected to fail: the backend is killed while this commit is in flight.
     LOG(INFO) << "COMMIT returned: " << conn.CommitTransaction();
@@ -1064,10 +1073,6 @@ TEST_F(PgTxnTest, ExpiredSessionAbortRacesFinishTransaction) {
 
   release_commit.CountDown();
   thread_holder.JoinAll();
-
-  SyncPoint::GetInstance()->DisableProcessing();
-  SyncPoint::GetInstance()->ClearAllCallBacks();
-  SyncPoint::GetInstance()->ClearTrace();
 
   // Killing a backend makes the postmaster reset the other backends, so retry until a fresh
   // connection is accepted. Whether the row is visible depends on which side of the race won, so
