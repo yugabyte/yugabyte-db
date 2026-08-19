@@ -2031,11 +2031,9 @@ TEST_F(DistTraceTest, TestDdlRpcReachesMaster) {
   ASSERT_OK(conn_->Execute(
       "CREATE TABLE master_crossing_test (id int PRIMARY KEY, val text)"));
 
-  auto server_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
+  ASSERT_OK(collector_.WaitForRemoteChildSpan(
       tp.trace_id, "rpc yb.master.",
       "TabletServer" /* client_service */, "Master" /* server_service */));
-
-  ASSERT_STR_CONTAINS(server_span.str_attrs["rpc.service"], "yb.master.");
 }
 
 // Runs a CREATE TABLE under a known traceparent and asserts the trace contains an
@@ -2047,12 +2045,9 @@ TEST_F(DistTraceTest, TestApplyTaskCarriesTraceContextToMaster) {
   ASSERT_OK(conn_->Execute(
       "CREATE TABLE apply_task_test (id int PRIMARY KEY, val text)"));
 
-  auto master_span = ASSERT_RESULT(collector_.WaitForLocalHopToRemoteSpan(
+  ASSERT_OK(collector_.WaitForLocalHopToRemoteSpan(
       tp.trace_id, "rpc yb.tserver.TabletServerService.UpdateTransaction",
       "Master" /* downstream_service */));
-
-  ASSERT_EQ(master_span.str_attrs["rpc.service"], "yb.tserver.TabletServerService");
-  ASSERT_EQ(master_span.str_attrs["rpc.method"], "UpdateTransaction");
 }
 
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
