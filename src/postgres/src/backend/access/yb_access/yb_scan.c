@@ -65,6 +65,7 @@
 #include "utils/elog.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/resowner_private.h"
 #include "utils/selfuncs.h"
@@ -528,6 +529,15 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 		/* Need to execute the request */
 		if (!ybScan->is_exec_done)
 		{
+			/*
+			 * The caller may run this fetch under a short-lived (e.g.
+			 * per-tuple) memory context.  Request setup happens once per
+			 * scan (or parallel range), not once per tuple, so run it in
+			 * the scan's own context.
+			 */
+			MemoryContext oldcxt =
+				MemoryContextSwitchTo(GetMemoryChunkContext(ybScan));
+
 			/* Parallel mode: pick up parallel block first */
 			if (ybScan->pscan != NULL)
 			{
@@ -556,7 +566,10 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 						pfree((void *) high_bound);
 				}
 				else
+				{
+					MemoryContextSwitchTo(oldcxt);
 					return NULL;
+				}
 				/*
 				 * Use unlimited fetch.
 				 * Parallel scan range is already of limited size, it is
@@ -575,6 +588,7 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 			HandleYBStatus(YBCPgExecSelect(ybScan->handle,
 										   ybScan->exec_params));
 			ybScan->is_exec_done = true;
+			MemoryContextSwitchTo(oldcxt);
 		}
 
 		/* Fetch one row. */
@@ -664,6 +678,15 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 		/* Need to execute the request */
 		if (!ybScan->is_exec_done)
 		{
+			/*
+			 * The caller may run this fetch under a short-lived (e.g.
+			 * per-tuple) memory context.  Request setup happens once per
+			 * scan (or parallel range), not once per tuple, so run it in
+			 * the scan's own context.
+			 */
+			MemoryContext oldcxt =
+				MemoryContextSwitchTo(GetMemoryChunkContext(ybScan));
+
 			/* Parallel mode: pick up parallel block first */
 			if (ybScan->pscan != NULL)
 			{
@@ -692,7 +715,10 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 						pfree((void *) high_bound);
 				}
 				else
+				{
+					MemoryContextSwitchTo(oldcxt);
 					return NULL;
+				}
 				/*
 				 * Use unlimited fetch.
 				 * Parallel scan range is already of limited size, it is
@@ -711,6 +737,7 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 			HandleYBStatus(YBCPgExecSelect(ybScan->handle,
 										   ybScan->exec_params));
 			ybScan->is_exec_done = true;
+			MemoryContextSwitchTo(oldcxt);
 		}
 
 		/* Fetch one row. */

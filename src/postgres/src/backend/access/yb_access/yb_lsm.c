@@ -32,6 +32,7 @@
 #include "executor/ybModifyTable.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 
 static void ybcinendscan(IndexScanDesc scan);
@@ -649,6 +650,15 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 			/* Need to execute the request */
 			if (!ybscan->is_exec_done)
 			{
+				/*
+				 * The caller may run this fetch under a short-lived (e.g.
+				 * per-tuple) memory context.  Request setup happens once per
+				 * scan (or parallel range), not once per tuple, so run it in
+				 * the scan's own context.
+				 */
+				MemoryContext oldcxt =
+					MemoryContextSwitchTo(GetMemoryChunkContext(ybscan));
+
 				/* Parallel mode: pick up parallel block first */
 				if (ybscan->pscan != NULL)
 				{
@@ -677,7 +687,10 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 							pfree((void *) high_bound);
 					}
 					else
+					{
+						MemoryContextSwitchTo(oldcxt);
 						return false;
+					}
 					/*
 					 * Use unlimited fetch.
 					 * Parallel scan range is already of limited size, it is
@@ -692,6 +705,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 				HandleYBStatus(YBCPgExecSelect(ybscan->handle,
 											   ybscan->exec_params));
 				ybscan->is_exec_done = true;
+				MemoryContextSwitchTo(oldcxt);
 			}
 
 			/*
