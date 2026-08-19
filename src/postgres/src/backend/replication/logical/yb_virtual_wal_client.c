@@ -26,12 +26,14 @@
 #include <inttypes.h>
 
 #include "access/xact.h"
+#include "catalog/pg_publication.h"
 #include "catalog/yb_type.h"
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
 #include "replication/walsender_private.h"
 #include "replication/yb_virtual_wal_client.h"
+#include "utils/catcache.h"
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 #include "utils/wait_event.h"
@@ -312,6 +314,15 @@ InitVirtualWal(List *publication_names,
 			 MyReplicationSlot->data.yb_last_pub_refresh_time);
 		YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_last_pub_refresh_time);
 	}
+
+	/*
+	 * Flush the pg_publication syscaches (PUBLICATIONNAME / PUBLICATIONOID) so
+	 * that the by-name publication lookup in YBCGetTablesWithRetryIfNeeded
+	 * below is served from storage at the yb_read_time just set above, rather
+	 * than from a catcache entry that may have been warmed earlier at a
+	 * different (latest) read time.
+	 */
+	CatalogCacheFlushCatalog(PublicationRelationId);
 
 	/*
 	 * We may encounter a failure prompting a retry in 2 cases:
