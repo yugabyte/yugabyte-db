@@ -112,6 +112,7 @@ struct Span {
   std::unordered_map<std::string, bool> bool_attrs;
   uint64_t start_nanos = 0;
   uint64_t end_nanos = 0;
+  int kind = otlp_trace::Span::SPAN_KIND_UNSPECIFIED;
 
   bool operator<(const Span& other) const {
     return std::tie(op_name, service_name, query_text, trace_id, db_id, user_id) <
@@ -491,14 +492,13 @@ class OtlpHttpCollector {
         Format("Child spans of '$0' in trace '$1'", parent_op_name, trace_id));
   }
 
-  // Waits for a cross-boundary pairing in trace_id: a server span (service_name == server_service,
-  // op name starting with op_prefix, rpc.system == expected_rpc_system) whose parent_span_id is the
-  // span_id of a client span (service_name == client_service, same op_prefix). This proves the
-  // query's trace propagated from caller to callee. Returns the server span on success.
+  // Waits for a cross-boundary pairing in trace_id: a server-kind span (service_name ==
+  // server_service, op name starting with op_prefix) whose parent_span_id is the span_id of a
+  // client-kind span (service_name == client_service, same op_prefix). This proves the query's
+  // trace propagated from caller to callee. Returns the server span on success.
   Result<Span> WaitForRemoteChildSpan(
       std::string_view trace_id, std::string_view op_prefix,
-      std::string_view client_service, std::string_view server_service,
-      std::string_view expected_rpc_system) const EXCLUDES(mutex_) {
+      std::string_view client_service, std::string_view server_service) const EXCLUDES(mutex_) {
     Span server_span;
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
@@ -508,17 +508,15 @@ class OtlpHttpCollector {
           const auto& spans = it->second.spans;
           for (const auto& server : spans) {
             if (server.service_name != server_service ||
+                server.kind != otlp_trace::Span::SPAN_KIND_SERVER ||
                 !server.op_name.starts_with(op_prefix) ||
                 server.parent_span_id.empty()) {
-              continue;
-            }
-            auto sys_it = server.str_attrs.find("rpc.system");
-            if (sys_it == server.str_attrs.end() || sys_it->second != expected_rpc_system) {
               continue;
             }
             // The server span's parent must be a client span in the same trace.
             for (const auto& client : spans) {
               if (client.service_name == client_service &&
+                  client.kind == otlp_trace::Span::SPAN_KIND_CLIENT &&
                   client.op_name.starts_with(op_prefix) &&
                   client.span_id == server.parent_span_id) {
                 server_span = server;
@@ -586,6 +584,7 @@ class OtlpHttpCollector {
               .bool_attrs = {},
               .start_nanos = span.start_time_unix_nano(),
               .end_nanos = span.end_time_unix_nano(),
+              .kind = span.kind(),
           };
           for (const auto& attr : span.attributes()) {
             if (attr.value().has_string_value()) {
@@ -1827,9 +1826,9 @@ TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServerAndMaster) {
 
   auto server_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
       tp.trace_id, "rpc yb.tserver.PgClientService.Perform",
-      "ysql" /* client_service */, "TabletServer" /* server_service */,
-      "inbound_rpc" /* expected_rpc_system */));
+      "ysql" /* client_service */, "TabletServer" /* server_service */));
 
+  ASSERT_EQ(server_span.str_attrs["rpc.system"], "yb_rpc");
   ASSERT_EQ(server_span.str_attrs["rpc.service"], "yb.tserver.PgClientService");
   ASSERT_EQ(server_span.str_attrs["rpc.method"], "Perform");
 
@@ -1839,8 +1838,7 @@ TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServerAndMaster) {
 
   auto master_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
       tp.trace_id, "rpc yb.master.",
-      "TabletServer" /* client_service */, "Master" /* server_service */,
-      "inbound_rpc" /* expected_rpc_system */));
+      "TabletServer" /* client_service */, "Master" /* server_service */));
 
   ASSERT_STR_CONTAINS(master_span.str_attrs["rpc.service"], "yb.master.");
 }
