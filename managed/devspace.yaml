@@ -40,7 +40,7 @@ deployments:
     helm:
       releaseName: ${YBA_HELM_RELEASE_NAME}
       chart:
-        name: /home/centos/code/charts/stable/yugaware/
+        name: ${YBA_HELM_CHART_PATH}
       valuesFiles:
         -  ${YBA_ADDITIONAL_VALUES_FILE}
       values:
@@ -155,6 +155,12 @@ vars:
   YBA_HELM_RELEASE_NAME:
     source: env
     default: "yba-${DEVSPACE_NAMESPACE}"
+  # The yugaware chart lives in the separate charts repo, expected to be
+  # cloned next to this one under ~/code. Override with
+  # `export YBA_HELM_CHART_PATH=<path>` if it is checked out elsewhere.
+  YBA_HELM_CHART_PATH:
+    source: env
+    default: "${HOME}/code/charts/stable/yugaware/"
   YBA_IMAGE_REPO:
     source: env
     default: "quay.io/yugabyte/yugaware-itest"
@@ -187,4 +193,4 @@ hooks:
 - name: "build helm dependencies"
   events: ["before:deploy:yba"]
   command: "helm"
-  args: ["dependency", "build", "/home/centos/code/charts/stable/yugaware/"]
+  args: ["dependency", "build", "${YBA_HELM_CHART_PATH}"]
