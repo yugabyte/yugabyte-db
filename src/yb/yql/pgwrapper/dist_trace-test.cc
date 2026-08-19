@@ -579,11 +579,9 @@ class OtlpHttpCollector {
   Result<Span> WaitForLocalHopToRemoteSpan(
       std::string_view trace_id, std::string_view op_prefix,
       std::string_view downstream_service) const EXCLUDES(mutex_) {
-    // True if span is an RPC span of the given direction whose op name starts with op_prefix.
-    auto matches = [&op_prefix](const Span& span, std::string_view rpc_system) {
-      if (!span.op_name.starts_with(op_prefix)) return false;
-      auto it = span.str_attrs.find("rpc.system");
-      return it != span.str_attrs.end() && it->second == rpc_system;
+    // True if span is an RPC span of the given kind whose op name starts with op_prefix.
+    auto matches = [&op_prefix](const Span& span, int kind) {
+      return span.op_name.starts_with(op_prefix) && span.kind == kind;
     };
 
     Span downstream_span;
@@ -595,18 +593,20 @@ class OtlpHttpCollector {
           const auto& spans = it->second.spans;
           for (const auto& downstream : spans) {
             if (downstream.service_name != downstream_service ||
-                !matches(downstream, "inbound_rpc") || downstream.parent_span_id.empty()) {
+                !matches(downstream, otlp_trace::Span::SPAN_KIND_SERVER) ||
+                downstream.parent_span_id.empty()) {
               continue;
             }
             for (const auto& client : spans) {
               if (client.span_id != downstream.parent_span_id ||
-                  !matches(client, "outbound_rpc") || client.parent_span_id.empty()) {
+                  !matches(client, otlp_trace::Span::SPAN_KIND_CLIENT) ||
+                  client.parent_span_id.empty()) {
                 continue;
               }
               for (const auto& server : spans) {
                 if (server.span_id != client.parent_span_id ||
                     server.service_name != client.service_name ||
-                    !matches(server, "inbound_rpc")) {
+                    !matches(server, otlp_trace::Span::SPAN_KIND_SERVER)) {
                   continue;
                 }
                 downstream_span = downstream;
@@ -2033,8 +2033,7 @@ TEST_F(DistTraceTest, TestDdlRpcReachesMaster) {
 
   auto server_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
       tp.trace_id, "rpc yb.master.",
-      "TabletServer" /* client_service */, "Master" /* server_service */,
-      "inbound_rpc" /* expected_rpc_system */));
+      "TabletServer" /* client_service */, "Master" /* server_service */));
 
   ASSERT_STR_CONTAINS(server_span.str_attrs["rpc.service"], "yb.master.");
 }
