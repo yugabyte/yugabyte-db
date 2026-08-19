@@ -1434,11 +1434,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // chart must also inject the collector sidecar into yb-master pods when either metrics
         // export or master log export is active.
         otelOverrides.put(
-            "runOnMaster",
-            OtelCollectorUtil.isMetricsExportEnabledInUniverse(
-                    telemetryConfig.getMetricsExportConfig())
-                || OtelCollectorUtil.isMasterLogExportEnabledInUniverse(
-                    telemetryConfig.getMasterLogConfig()));
+            "runOnMaster", OtelCollectorUtil.isOtelSidecarNeededOnK8sMasterPods(telemetryConfig));
       } else {
         // Older charts assemble the config themselves from structured Helm values.
         otelOverrides =
