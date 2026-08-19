@@ -38,15 +38,18 @@ DEFINE_RUNTIME_uint64(big_shared_memory_segment_expiration_time_ms, 5000,
 DEFINE_NON_RUNTIME_uint64(big_shared_memory_allocated_limit, 128_MB,
     "The limit for all allocated big shared memory segments in bytes.");
 
+DEFINE_test_flag(uint64, big_shared_memory_segment_initial_id, 0,
+    "Initial id to use for big shared memory segment");
+
 namespace yb::tserver {
 
 namespace {
 
 class AllocatedSegment : public boost::intrusive::list_base_hook<> {
  public:
-  explicit AllocatedSegment(uint64_t id)
-      : id_(id) {
-  }
+  AllocatedSegment() = default;
+
+  explicit AllocatedSegment(uint64_t id) : id_(id) {}
 
   AllocatedSegment(AllocatedSegment&& rhs) = default;
 
@@ -60,6 +63,8 @@ class AllocatedSegment : public boost::intrusive::list_base_hook<> {
   ~AllocatedSegment() {
     shared_memory_object_.DestroyAndRemove();
   }
+
+  AllocatedSegment& operator=(AllocatedSegment&& rhs) = default;
 
   uint64_t id() const {
     return id_;
@@ -82,7 +87,7 @@ class AllocatedSegment : public boost::intrusive::list_base_hook<> {
   }
 
  private:
-  const uint64_t id_;
+  uint64_t id_;
   InterprocessSharedMemoryObject shared_memory_object_;
   InterprocessMappedRegion mapped_region_;
   CoarseTimePoint last_access_;
@@ -108,6 +113,7 @@ class PgSharedMemoryPool::Impl : public SharedMemorySegmentHolder {
 
   Impl(const MemTrackerPtr& parent_mem_tracker, const std::string& instance_id)
       : instance_id_(instance_id),
+        id_serial_no_(FLAGS_TEST_big_shared_memory_segment_initial_id),
         allocated_mem_tracker_(
             MemTracker::FindOrCreateTracker(FLAGS_big_shared_memory_allocated_limit,
             kAllocatedMemTrackerId, parent_mem_tracker)),
@@ -134,13 +140,21 @@ class PgSharedMemoryPool::Impl : public SharedMemorySegmentHolder {
     if (!allocated_mem_tracker_->TryConsume(segment_size)) {
       return {};
     }
-    auto id = ++id_serial_no_;
-    AllocatedSegment segment(id);
-    auto status = segment.Init(instance_id_, segment_size);
+
+    size_t id;
+    AllocatedSegment segment;
+    Status status;
+    do {
+      id = id_serial_no_++ % (kBigSharedMemoryMaxId + 1);
+      segment = AllocatedSegment(id);
+      status = segment.Init(instance_id_, segment_size);
+    } while (!status.ok() && !status.IsAlreadyPresent());
+
     if (!status.ok()) {
       LOG(WARNING) << status;
       return {};
     }
+
     SharedMemorySegmentHandle result(*this, segment);
     {
       std::lock_guard lock(mutex_);

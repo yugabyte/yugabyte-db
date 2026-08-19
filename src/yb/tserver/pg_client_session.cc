@@ -1248,12 +1248,12 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
       DCHECK_EQ(out - start, full_size);
       if (shared_memory_segment.second) {
         response_size =
-            kTooBigResponseMask | kBigSharedMemoryMask | full_size |
+            kTooBigResponseMark | kBigSharedMemoryMark | full_size |
             (shared_memory_segment.first << kBigSharedMemoryIdShift);
       }
     } else {
       auto id = locked_session->SaveData(buffer, std::move(sidecars_.buffer()));
-      response_size = kTooBigResponseMask | id;
+      response_size = kTooBigResponseMark | id;
     }
     exchange_.Respond(response_size);
     responded_ = true;
