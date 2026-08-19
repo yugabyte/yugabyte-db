@@ -83,16 +83,16 @@ public class TelemetryProviderCrConverter {
    *
    * @param cr the TelemetryProvider custom resource to convert
    * @param resourceTracker tracker the referenced Secrets are registered with
-   * @param currentReconcileResource the resource the Secrets become dependencies of
-   * @param currentLocalInstanceUuid local PlatformInstance UUID, null when HA is not configured
+   * @param owner the resource the Secrets become dependencies of
+   * @param localInstanceUuid local PlatformInstance UUID, null when HA is not configured
    * @return the config for the provider named by {@code spec.provider}
    * @throws IllegalArgumentException if the spec is incomplete
    */
   public TelemetryProviderConfig toConfig(
       io.yugabyte.operator.v1alpha1.TelemetryProvider cr,
       ResourceTracker resourceTracker,
-      KubernetesResourceDetails currentReconcileResource,
-      UUID currentLocalInstanceUuid) {
+      KubernetesResourceDetails owner,
+      UUID localInstanceUuid) {
     if (cr == null || cr.getSpec() == null) {
       throw new IllegalArgumentException("TelemetryProvider resource has no spec");
     }
@@ -107,57 +107,57 @@ public class TelemetryProviderCrConverter {
             requireSection(spec.getDataDog(), "dataDog", provider),
             defaultNamespace,
             resourceTracker,
-            currentReconcileResource,
-            currentLocalInstanceUuid);
+            owner,
+            localInstanceUuid);
       case SPLUNK:
         return toSplunkConfig(
             requireSection(spec.getSplunk(), "splunk", provider),
             defaultNamespace,
             resourceTracker,
-            currentReconcileResource,
-            currentLocalInstanceUuid);
+            owner,
+            localInstanceUuid);
       case AWS_CLOUDWATCH:
         return toAwsCloudWatchConfig(
             requireSection(spec.getAwsCloudWatch(), "awsCloudWatch", provider),
             defaultNamespace,
             resourceTracker,
-            currentReconcileResource,
-            currentLocalInstanceUuid);
+            owner,
+            localInstanceUuid);
       case GCP_CLOUD_MONITORING:
         return toGcpCloudMonitoringConfig(
             requireSection(spec.getGcpCloudMonitoring(), "gcpCloudMonitoring", provider),
             defaultNamespace,
             resourceTracker,
-            currentReconcileResource,
-            currentLocalInstanceUuid);
+            owner,
+            localInstanceUuid);
       case LOKI:
         return toLokiConfig(
             requireSection(spec.getLoki(), "loki", provider),
             defaultNamespace,
             resourceTracker,
-            currentReconcileResource,
-            currentLocalInstanceUuid);
+            owner,
+            localInstanceUuid);
       case DYNATRACE:
         return toDynatraceConfig(
             requireSection(spec.getDynatrace(), "dynatrace", provider),
             defaultNamespace,
             resourceTracker,
-            currentReconcileResource,
-            currentLocalInstanceUuid);
+            owner,
+            localInstanceUuid);
       case S3:
         return toS3Config(
             requireSection(spec.getS3(), "s3", provider),
             defaultNamespace,
             resourceTracker,
-            currentReconcileResource,
-            currentLocalInstanceUuid);
+            owner,
+            localInstanceUuid);
       case OTLP:
         return toOtlpConfig(
             requireSection(spec.getOtlp(), "otlp", provider),
             defaultNamespace,
             resourceTracker,
-            currentReconcileResource,
-            currentLocalInstanceUuid);
+            owner,
+            localInstanceUuid);
       default:
         throw new IllegalArgumentException(
             "Unsupported telemetry provider: " + provider.getValue());

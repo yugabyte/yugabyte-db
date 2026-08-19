@@ -435,12 +435,13 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
     payload.put("name", provider.getMetadata().getName());
     payload.put("code", "kubernetes");
     addProviderLevelCloudInfoToPayload(
-        payload, objectMapper.valueToTree(provider.getSpec().getCloudInfo()));
-    addRegionsToPayload(payload, objectMapper.valueToTree(provider.getSpec().getRegions()));
+        provider, payload, objectMapper.valueToTree(provider.getSpec().getCloudInfo()));
+    addRegionsToPayload(
+        provider, payload, objectMapper.valueToTree(provider.getSpec().getRegions()));
     return payload;
   }
 
-  private void addRegionsToPayload(ObjectNode payload, JsonNode regions) {
+  private void addRegionsToPayload(YBProvider provider, ObjectNode payload, JsonNode regions) {
     if (regions == null || !regions.isArray() || regions.isEmpty()) {
       log.warn("Regions are null, not an array, or empty. Skipping.");
       return;
@@ -462,14 +463,15 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
           JsonNode cloudInfo = zone.get("cloudInfo");
           if (cloudInfo != null && cloudInfo.isObject()) {
             ObjectNode cloudInfoNode = (ObjectNode) cloudInfo;
-            addZoneLevelCloudInfoToPayload(zoneNode, cloudInfoNode);
+            addZoneLevelCloudInfoToPayload(provider, zoneNode, cloudInfoNode);
           }
         }
       }
     }
   }
 
-  private void addProviderLevelCloudInfoToPayload(ObjectNode targetNode, ObjectNode cloudInfo) {
+  private void addProviderLevelCloudInfoToPayload(
+      YBProvider provider, ObjectNode targetNode, ObjectNode cloudInfo) {
     if (cloudInfo == null || cloudInfo.isEmpty()) {
       log.warn("Cloud info is null or empty, skipping.");
       return;
@@ -477,10 +479,11 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
     cloudInfo.put("kubernetesPullSecretContent", defaultKubernetesPullSecretContent);
     cloudInfo.put("kubernetesImagePullSecretName", defaultKubernetesPullSecretName);
     cloudInfo.put("kubernetesPullSecretName", defaultKubernetesPullSecretName);
-    finalizeCloudInfo(targetNode, cloudInfo);
+    finalizeCloudInfo(provider, targetNode, cloudInfo);
   }
 
-  private void addZoneLevelCloudInfoToPayload(ObjectNode targetNode, ObjectNode cloudInfo) {
+  private void addZoneLevelCloudInfoToPayload(
+      YBProvider provider, ObjectNode targetNode, ObjectNode cloudInfo) {
     if (cloudInfo == null || cloudInfo.isEmpty()) {
       log.warn("Cloud info is null or empty, skipping.");
       return;
@@ -489,19 +492,19 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
     if (kubernetesOverrides != null) {
       cloudInfo.put("overrides", operatorUtils.getKubernetesOverridesString(kubernetesOverrides));
     }
-    finalizeCloudInfo(targetNode, cloudInfo);
+    finalizeCloudInfo(provider, targetNode, cloudInfo);
   }
 
-  private void finalizeCloudInfo(ObjectNode targetNode, ObjectNode cloudInfo) {
+  private void finalizeCloudInfo(YBProvider provider, ObjectNode targetNode, ObjectNode cloudInfo) {
     cloudInfo.put("legacyK8sProvider", false);
     cloudInfo.put("isKubernetesOperatorControlled", true);
-    maybeExtractKubeConfig(cloudInfo);
+    maybeExtractKubeConfig(provider, cloudInfo);
     ObjectNode cloudInfoNode = targetNode.withObject("details").putObject("cloudInfo");
     cloudInfoNode.set("kubernetes", cloudInfo);
   }
 
   @VisibleForTesting
-  void maybeExtractKubeConfig(ObjectNode cloudInfo) {
+  void maybeExtractKubeConfig(YBProvider provider, ObjectNode cloudInfo) {
     JsonNode secretRef = cloudInfo.get("kubeConfigSecret");
     if (secretRef == null || !secretRef.has("name") || !secretRef.has("namespace")) {
       cloudInfo.put("kubeConfig", ""); // empty string to use in-cluster credentials
@@ -524,11 +527,7 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
       log.info("Kubeconfig cache miss for {}, fetching secret", kubeConfigFileName);
       Secret secret = operatorUtils.getSecret(secretName, secretNamespace);
       if (secret != null) {
-        resourceTracker.trackDependency(currentReconcileResource, secret, currentLocalInstanceUuid);
-        log.trace(
-            "Tracking secret {} as dependency of {}",
-            secret.getMetadata().getName(),
-            currentReconcileResource);
+        trackDependency(provider, secret);
         String kubeConfigContent = operatorUtils.parseSecretForKey(secret, "kubeconfig");
         cloudInfo.put("kubeConfigName", kubeConfigFileName);
         cloudInfo.put("kubeConfigContent", kubeConfigContent);
