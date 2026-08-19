@@ -1398,7 +1398,16 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     // the write batch inside the write operation.
     //
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
-    RETURN_NOT_OK(round->NotifyAddedToLeader(op_id, committed_op_id));
+    auto notify_status = round->NotifyAddedToLeader(op_id, committed_op_id);
+    if (!notify_status.ok()) {
+      // Roll back the index allocated by NewIdUnlocked above, mirroring the AddPendingOperation
+      // failure handling below: otherwise the index is silently skipped (the log ends before it
+      // while the next replicate is assigned a later one). Operation::AddedToLeader fails before
+      // it copies the OpId into the replicate message, so the cleanup must use the local op_id
+      // rather than RollbackIdAndDeleteOpId(round->replicate_msg(), ...).
+      state_->CancelPendingOperation(op_id, /* should_exist= */ false);
+      return notify_status;
+    }
 
     auto s = state_->AddPendingOperation(round, OperationMode::kLeader);
     if (!s.ok()) {
