@@ -63,17 +63,15 @@ func (d *Detector) Detect(ctx context.Context) (*pb.CheckYugabyteDbStatusRespons
 	for _, def := range roleDefs {
 		state := &roleState{def: def, ports: make(map[uint32]bool)}
 		pids := d.verifiedPids(ctx, def, selfPid)
+		sort.Ints(pids)
 		state.pids = pids
 		if len(pids) > 0 {
-			// The primary pid is the lowest pid.
-			primary := pids[0]
+			// The primary pid is the lowest pid and is always pids[0]
+			// after sorting, so reported Pid and config stay aligned.
 			for _, pid := range pids {
-				if pid < primary {
-					primary = pid
-				}
 				pidRole[pid] = def.role
 			}
-			if args, err := d.sys.ReadCmdline(primary); err == nil {
+			if args, err := d.sys.ReadCmdline(pids[0]); err == nil {
 				state.primaryArgs = args
 			}
 		}
@@ -81,31 +79,7 @@ func (d *Detector) Detect(ctx context.Context) (*pb.CheckYugabyteDbStatusRespons
 	}
 
 	listeners := d.listeners(ctx)
-	listenedPorts := make(map[uint32]bool)
-	for _, listener := range listeners {
-		listenedPorts[listener.port] = true
-	}
-
-	otherListeners := make([]*pb.ProcessListener, 0)
-	for _, listener := range listeners {
-		role := d.classifyListener(listener, pidRole)
-		if role == pb.YugabyteProcessRole_YB_ROLE_UNKNOWN {
-			continue
-		}
-		if _, isDefault := allDefaultPorts[listener.port]; !isDefault {
-			// A YugabyteDB process listening on a non-default port.
-			otherListeners = append(otherListeners, toProtoListener(listener, role))
-		}
-	}
-
-	// Attribute default ports that are actually being listened on to their role.
-	for _, listener := range listeners {
-		if role, isDefault := allDefaultPorts[listener.port]; isDefault {
-			state := states[role]
-			state.ports[listener.port] = true
-			state.listeners = append(state.listeners, listener)
-		}
-	}
+	otherListeners := d.attributeListeners(states, pidRole, listeners)
 
 	response := &pb.CheckYugabyteDbStatusResponse{
 		OtherListeners: otherListeners,
@@ -172,6 +146,52 @@ func (d *Detector) listeners(ctx context.Context) []ssListener {
 	return parseSsListeners(out)
 }
 
+// attributeListeners assigns listening sockets to roles. A listener is only
+// credited to a role when classifyListener agrees, so an unrelated process on
+// a default YB port (9000, 5433, …) cannot mark that role present. The
+// exception is a pid-less default-port listener (ss -p unavailable) when the
+// role was already confirmed via pgrep.
+func (d *Detector) attributeListeners(
+	states map[pb.YugabyteProcessRole]*roleState,
+	pidRole map[int]pb.YugabyteProcessRole,
+	listeners []ssListener,
+) []*pb.ProcessListener {
+	otherListeners := make([]*pb.ProcessListener, 0)
+	for _, listener := range listeners {
+		classified := d.classifyListener(listener, pidRole)
+		if classified != pb.YugabyteProcessRole_YB_ROLE_UNKNOWN {
+			appendListener(states[classified], listener, classified, &otherListeners)
+			continue
+		}
+		if listener.pid != 0 {
+			continue
+		}
+		role, isDefault := allDefaultPorts[listener.port]
+		if !isDefault || len(states[role].pids) == 0 {
+			continue
+		}
+		appendListener(states[role], listener, role, &otherListeners)
+	}
+	return otherListeners
+}
+
+// appendListener records a listener on its classified role. Default ports for
+// that role are kept on the process status; any other port is also reported in
+// otherListeners.
+func appendListener(
+	state *roleState,
+	listener ssListener,
+	role pb.YugabyteProcessRole,
+	otherListeners *[]*pb.ProcessListener,
+) {
+	if owner, isDefault := allDefaultPorts[listener.port]; isDefault && owner == role {
+		state.ports[listener.port] = true
+		state.listeners = append(state.listeners, listener)
+		return
+	}
+	*otherListeners = append(*otherListeners, toProtoListener(listener, role))
+}
+
 // classifyListener determines the role of a listening socket using the pid to
 // role map, then the process command line and finally the process name.
 func (d *Detector) classifyListener(
@@ -185,9 +205,9 @@ func (d *Detector) classifyListener(
 		return role
 	}
 	if args, err := d.sys.ReadCmdline(listener.pid); err == nil {
-		if role := classifyRole(args); role != pb.YugabyteProcessRole_YB_ROLE_UNKNOWN {
-			return role
-		}
+		// Trust the executable path over the kernel comm, including a
+		// definitive UNKNOWN (e.g. system postgres vs yb-postmaster).
+		return classifyRole(args)
 	}
 	return classifyProcessName(listener.processName)
 }
@@ -198,6 +218,8 @@ func (d *Detector) buildProcessStatus(
 	ctx context.Context,
 	state *roleState,
 ) *pb.ProcessStatus {
+	// Ports are only populated from classified (or pgrep-backed pid-less)
+	// listeners, so a foreign process on a default YB port cannot flip this.
 	running := len(state.pids) > 0 || len(state.ports) > 0
 	status := &pb.ProcessStatus{
 		Role:    state.def.role,

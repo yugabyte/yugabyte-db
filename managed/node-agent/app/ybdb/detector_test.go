@@ -193,6 +193,118 @@ func TestDetectExcludesSelfPid(t *testing.T) {
 	}
 }
 
+func TestDetectIgnoresUnrelatedProcessOnDefaultPort(t *testing.T) {
+	sys := &fakeSystem{
+		selfPid: 999,
+		pgrep:   map[string][]int{},
+		cmdlines: map[int][]string{
+			2001: {"/usr/sbin/nginx"},
+			2002: {"/usr/lib/postgresql/16/bin/postgres", "-D", "/var/lib/postgresql/data"},
+		},
+		ssOutput: `LISTEN 0 4096 0.0.0.0:9000 0.0.0.0:* users:(("nginx",pid=2001,fd=1))
+LISTEN 0 128 127.0.0.1:5433 0.0.0.0:* users:(("postgres",pid=2002,fd=1))
+`,
+	}
+	detector := NewDetectorWithSystem(sys)
+	res, err := detector.Detect(context.Background())
+	if err != nil {
+		t.Fatalf("Detect() error = %v", err)
+	}
+	if res.GetTserverPresent() {
+		t.Errorf("unrelated process on 9000 must not mark tserver present")
+	}
+	if res.GetPostgresPresent() {
+		t.Errorf("system postgres on 5433 must not mark YB postgres present")
+	}
+	tserver := statusForRole(res, pb.YugabyteProcessRole_YB_ROLE_TSERVER)
+	if tserver != nil && len(tserver.GetListeners()) > 0 {
+		t.Errorf("tserver must not inherit foreign listeners, got %+v", tserver.GetListeners())
+	}
+}
+
+func TestDetectPidMatchesPrimaryConfig(t *testing.T) {
+	sys := &fakeSystem{
+		selfPid: 999,
+		pgrep:   map[string][]int{"bin/yb-master": {2002, 1001}},
+		cmdlines: map[int][]string{
+			2002: {
+				"/home/yugabyte/master/bin/yb-master",
+				"--flagfile",
+				"/home/yugabyte/master/conf/newer.conf",
+			},
+			1001: {
+				"/home/yugabyte/master/bin/yb-master",
+				"--flagfile",
+				"/home/yugabyte/master/conf/server.conf",
+			},
+		},
+		files: map[string][]byte{
+			"/home/yugabyte/master/conf/server.conf": []byte("--webserver_port=7000\n"),
+			"/home/yugabyte/master/conf/newer.conf":  []byte("--webserver_port=7001\n"),
+		},
+	}
+	detector := NewDetectorWithSystem(sys)
+	res, err := detector.Detect(context.Background())
+	if err != nil {
+		t.Fatalf("Detect() error = %v", err)
+	}
+	master := statusForRole(res, pb.YugabyteProcessRole_YB_ROLE_MASTER)
+	if master == nil || !master.GetRunning() {
+		t.Fatalf("expected running master, got %+v", master)
+	}
+	if master.GetPid() != 1001 {
+		t.Errorf("Pid = %d, want primary pid 1001", master.GetPid())
+	}
+	if master.GetConfig() == nil ||
+		master.GetConfig().GetFlagfilePath() != "/home/yugabyte/master/conf/server.conf" {
+		t.Errorf("config must come from primary pid, got %+v", master.GetConfig())
+	}
+}
+
+func TestDetectPidlessDefaultPortRequiresVerifiedProcess(t *testing.T) {
+	// ss without -p (pid=0) on a default port must not claim the role unless
+	// pgrep already confirmed a matching process.
+	unrelated := &fakeSystem{
+		selfPid:  999,
+		pgrep:    map[string][]int{},
+		ssOutput: "LISTEN 0 4096 0.0.0.0:9000 0.0.0.0:*\n",
+	}
+	res, err := NewDetectorWithSystem(unrelated).Detect(context.Background())
+	if err != nil {
+		t.Fatalf("Detect() error = %v", err)
+	}
+	if res.GetTserverPresent() {
+		t.Errorf("pid-less listener on 9000 must not mark tserver present")
+	}
+
+	confirmed := &fakeSystem{
+		selfPid: 999,
+		pgrep:   map[string][]int{"bin/yb-tserver": {1002}},
+		cmdlines: map[int][]string{
+			1002: {
+				"/home/yugabyte/tserver/bin/yb-tserver",
+				"--flagfile",
+				"/home/yugabyte/tserver/conf/server.conf",
+			},
+		},
+		ssOutput: "LISTEN 0 4096 0.0.0.0:9000 0.0.0.0:*\n",
+		files: map[string][]byte{
+			"/home/yugabyte/tserver/conf/server.conf": []byte("--webserver_port=9000\n"),
+		},
+	}
+	res, err = NewDetectorWithSystem(confirmed).Detect(context.Background())
+	if err != nil {
+		t.Fatalf("Detect() error = %v", err)
+	}
+	if !res.GetTserverPresent() {
+		t.Fatalf("verified tserver must still be present without ss -p")
+	}
+	tserver := statusForRole(res, pb.YugabyteProcessRole_YB_ROLE_TSERVER)
+	if tserver == nil || !equalPorts(tserver.GetListenPorts(), []uint32{9000}) {
+		t.Errorf("tserver listen ports = %v, want [9000]", tserver.GetListenPorts())
+	}
+}
+
 func TestDeriveFlagfilePath(t *testing.T) {
 	got := deriveFlagfilePath("/home/yugabyte/master/bin/yb-master")
 	want := "/home/yugabyte/master/conf/server.conf"
