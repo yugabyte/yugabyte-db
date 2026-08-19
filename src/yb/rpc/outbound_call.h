@@ -351,9 +351,12 @@ class OutboundCall : public RpcCall {
     hostname_ = hostname;
     if (otel_span_) {
       if (hostname) {
-        otel_span_->SetAttribute("network.peer.name", *hostname);
+        otel_span_->SetAttribute("server.address", *hostname);
       }
-      otel_span_->SetAttribute("network.peer.address", yb::ToString(value.remote()));
+      const auto& remote = value.remote();
+      otel_span_->SetAttribute("server.port", static_cast<int64_t>(remote.port()));
+      otel_span_->SetAttribute("network.peer.address", remote.address().to_string());
+      otel_span_->SetAttribute("network.peer.port", static_cast<int64_t>(remote.port()));
     }
   }
 
