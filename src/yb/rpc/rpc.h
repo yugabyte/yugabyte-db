@@ -42,6 +42,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 
 namespace yb {
 
@@ -281,6 +282,12 @@ class Rpcs {
 
   RpcCommandPtr Unregister(Handle handle) {
     return Unregister(&handle);
+  }
+
+  auto UnregisterOnScopeExit(Handle handle) {
+    return ScopeExit([this, handle]() {
+      Unregister(handle);
+    });
   }
 
   Handle InvalidHandle() { return calls_.end(); }

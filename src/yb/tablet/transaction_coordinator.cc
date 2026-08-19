@@ -73,6 +73,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -1714,10 +1715,16 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       const rpc::Rpcs::Handle& handle, const NotifyApplyingData& action,
       const Status& status, const tserver::UpdateTransactionResponsePB& resp) {
     client::UpdateClock(resp, &context_);
-    rpcs_.Unregister(handle);
+    // Prevent Rpcs::CompleteShutdown from destroying the coordinator while it could be
+    // used through `this`.
+    auto unregister_rpc = rpcs_.UnregisterOnScopeExit(handle);
     if (status.ok()) {
       return;
     }
+
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+        "TransactionCoordinator::Impl::ApplyingReplicated:BeforeUse",
+        const_cast<std::string*>(&context_.tablet_id()));
     LOG_WITH_PREFIX(WARNING)
         << "Failed to send apply for transaction: " << action.transaction << ": "
         << status;
@@ -2052,7 +2059,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                   const Status& status,
                   const tserver::GetTransactionStatusAtParticipantResponsePB& resp) {
                 client::UpdateClock(resp, &context_);
-                rpcs_.Unregister(handle);
+                // Prevent Rpcs::CompleteShutdown from destroying the coordinator while it could be
+                // used through `this`.
+                auto unregister_rpc = rpcs_.UnregisterOnScopeExit(handle);
 
                 VLOG_WITH_PREFIX(4)
                     << "TXN: " << transaction_id << " batch status at " << p.tablet << ": "
