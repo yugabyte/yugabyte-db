@@ -6330,7 +6330,8 @@
             "DATE",
             "TIME",
             "JSONB",
-            "USER_DEFINED_TYPE"
+            "USER_DEFINED_TYPE",
+            "VECTOR"
           ],
           "type" : "string"
         },
@@ -6372,7 +6373,8 @@
             "DATE",
             "TIME",
             "JSONB",
-            "USER_DEFINED_TYPE"
+            "USER_DEFINED_TYPE",
+            "VECTOR"
           ],
           "type" : "string"
         },
@@ -6401,7 +6403,8 @@
             "DATE",
             "TIME",
             "JSONB",
-            "USER_DEFINED_TYPE"
+            "USER_DEFINED_TYPE",
+            "VECTOR"
           ],
           "type" : "string"
         }
