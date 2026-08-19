@@ -4398,6 +4398,8 @@ class PgClientSession::Impl {
     // finishing. This is applicable to both separate DDL transactions or regular transactions with
     // txn ddl enabled.
     client::YBTransactionPtr txn_value;
+    TEST_SYNC_POINT_CALLBACK(
+        "PgClientSession::DoFinishTransaction:BeforeSwap", const_cast<pid_t*>(&pid_));
     txn.swap(txn_value);
     ClearTransaction(*Session(kind));
 

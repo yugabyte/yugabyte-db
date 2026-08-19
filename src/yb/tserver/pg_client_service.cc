@@ -477,8 +477,8 @@ class LockablePgClientSession {
     } else {
       // Session expired (e.g., backend killed). An in-flight Perform RPC
       // (e.g., slow BackfillIndex) may hold mutex_ for an unbounded time.
-      // Defer the drain to the messenger thread pool so session_.StartShutdown()
-      // which aborts the session's transactions is not gated on that RPC.
+      // Defer the drain to the messenger thread pool, along with session_.StartShutdown()
+      // which aborts the session's transactions and so must run under mutex_.
       messenger_.ThreadPool().EnqueueFunctor([shared_this = shared_this_] {
         auto obj = shared_this.lock();
         if (!obj) {
@@ -486,12 +486,16 @@ class LockablePgClientSession {
         }
         std::lock_guard lock(obj->mutex_);
         obj->request_sequencer_.CompleteShutdown();
+        obj->session_.StartShutdown(false);
       });
     }
     if (exchange_runnable_) {
       exchange_runnable_->StartShutdown();
     }
-    session_.StartShutdown(pg_service_shutting_down);
+    if (pg_service_shutting_down) {
+      // The session-expired case is handled by the deferred functor above, under mutex_.
+      session_.StartShutdown(true);
+    }
   }
 
   bool ReadyToShutdown() const {
