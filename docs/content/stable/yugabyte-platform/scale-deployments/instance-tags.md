@@ -25,9 +25,9 @@ You can define user tags when you create a new universe, as well as modify or de
 
 To add or edit user tags, navigate to the universe and do the following:
 
-1. New UI: Click **Settings > Advanced > Other Advanced Settings**, and under **User Tags** click **Edit**.
+1. {{<tags/ui/new>}} Click **Settings > Advanced > Other Advanced Settings**, and under **User Tags** click **Edit**.
 
-    Classic UI: Click **Actions > Edit Universe**, under **User Tags**.
+    {{<tags/ui/classic>}} Click **Actions > Edit Universe**, under **User Tags**.
 
 1. Click **Add User Tag** to add tags.
 

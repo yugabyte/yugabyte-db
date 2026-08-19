@@ -58,9 +58,9 @@ If there are any errors in your overrides definitions, a detailed error message 
 
 To edit Kubernetes overrides on an existing universe, navigate to the universe and do the following:
 
-1. New UI: Click **Settings > Advanced**, and under **Helm Overrides** click **Add Helm Overrides** or **Edit**.
+1. {{<tags/ui/new>}} Click **Settings > Advanced**, and under **Helm Overrides** click **Add Helm Overrides** or **Edit**.
 
-    Classic UI: Click **Actions > Edit Kubernetes Overrides**.
+    {{<tags/ui/classic>}} Click **Actions > Edit Kubernetes Overrides**.
 
     This displays the **Kubernetes Overrides** dialog.
 

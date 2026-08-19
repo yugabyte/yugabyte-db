@@ -50,9 +50,9 @@ You enable Node-to-Node and Client-to-Node encryption in transit when you [creat
 
 To enable and disable encryption in transit for an existing universe, navigate to the universe and do the following:
 
-1. New UI: Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
 
-    Classic UI: Click **Actions > More > Edit Security > Encryption in-Transit**.
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption in-Transit**.
 
     This displays the **Manage encryption in transit** dialog.
 

@@ -2,7 +2,8 @@
 title: Create a universe using YugabyteDB Anywhere
 headerTitle: Create universes
 linkTitle: Create universes
-description: Use YugabyteDB Anywhere to create a YugabyteDB universe that spans multiple availability zones or geographic regions.
+description: Use YugabyteDB Anywhere to create YugabyteDB universes (Classic UI).
+headcontent: Deploy universes on VMs in YugabyteDB Anywhere
 aliases:
   - /stable/yugabyte-platform/create-deployments/create-universe-multi-region/
   - /stable/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/
@@ -32,7 +33,7 @@ type: docs
 
 YugabyteDB Anywhere allows you to create a universe across multiple availability zones in a single geographic region, or spanning multiple regions (for example, Oregon, South Carolina, and Tokyo), using a provider configuration. This includes universes deployed on VMs (AWS, GCP, Azure, or on-premises) and on Kubernetes.
 
-For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
+For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes.
 
 For information on modifying or scaling an existing universe, refer to [Modify universe](../../scale-deployments/edit-universe/).
 

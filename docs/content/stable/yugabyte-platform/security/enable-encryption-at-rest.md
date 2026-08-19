@@ -42,9 +42,9 @@ For information on creating universes, see [Create universes](../../create-deplo
 
 To enable encryption at rest on an existing universe, navigate to the universe and do the following:
 
-1. New UI: Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
 
-    Classic UI: Click **Actions > More > Edit Security > Encryption at Rest**.
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption at Rest**.
 
 1. In the **Manage Encryption at Rest** dialog, toggle **Enable Encryption at Rest for this Universe**.
 
@@ -78,9 +78,9 @@ If your configuration includes AWS KMS, the following occurs: after the universe
 
 To disable encryption at rest for a universe, navigate to the universe and do the following:
 
-1. New UI: Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
 
-    Classic UI: Click **Actions > More > Edit Security > Encryption at Rest**.
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption at Rest**.
 
 1. In the **Manage Encryption at Rest** dialog, toggle **Enable Encryption at Rest for this Universe** and click **Apply**.
 
@@ -111,9 +111,9 @@ You can change KMS configurations, and consequently the master keys used to encr
 1. [Create a new KMS configuration](../create-kms-config/aws-kms/) with the new master key to use.
 1. After the KMS configuration is successfully created, go to the encryption at rest-enabled universe, and do the following:
 
-    - New UI: Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
+    - {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
 
-    - Classic UI: Click **Actions > More > Edit Security > Encryption at Rest**.
+    - {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption at Rest**.
 
 1. In the **Manage Encryption at Rest** dialog, choose the new KMS configuration from the **Key Management Service Config** list.
 1. Click **Apply** to use the new KMS configuration and master key for envelope encryption.
@@ -142,8 +142,8 @@ Once encryption is enabled with a new universe key, only new data is encrypted w
 
 To rotate the universe keys, navigate to the universe and do the following:
 
-1. New UI: Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
 
-    Classic UI: Click **Actions > More > Edit Security > Encryption at Rest**.
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption at Rest**.
 
 1. Select **Rotate Universe key** and click **Apply**.
