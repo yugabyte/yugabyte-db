@@ -142,12 +142,12 @@ RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
                        std::shared_ptr<RpcCallParams> params)
     : call_(std::move(call)),
       params_(std::move(params)) {
+  call_->CreateServerSpan();
   const Status s = call_->ParseParam(params_.get());
   if (PREDICT_FALSE(!s.ok())) {
     RespondRpcFailure(ErrorStatusPB::ERROR_INVALID_REQUEST, s);
     return;
   }
-  call_->CreateServerSpan();
   TRACE_EVENT_ASYNC_BEGIN1("rpc_call", "RPC", this, "call", call_->ToString());
 }
 
