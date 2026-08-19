@@ -38,11 +38,11 @@ Only YSQL database audit logs can be exported, not YCQL.
 
 ## Database audit log
 
-To enable database audit logging for a universe, navigate to the universe and do the following:
-
 {{< tabpane text=true >}}
 
 {{% tab header="New UI" lang="new" %}}
+
+{{<tags/ui/new>}}To enable database audit logging for a universe, navigate to the universe and do the following:
 
 1. Click **Settings > Logs** and under **Compliance Logs** click **Enable Audit Logging**.
 
@@ -57,6 +57,8 @@ To enable database audit logging for a universe, navigate to the universe and do
 {{% /tab %}}
 
 {{% tab header="Classic UI" lang="classic" %}}
+
+{{<tags/ui/classic>}}To enable database audit logging for a universe, navigate to the universe and do the following:
 
 1. On the **Logs** tab, click **Enable Database Audit Logging**.
 
