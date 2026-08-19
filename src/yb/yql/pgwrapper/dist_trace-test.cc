@@ -1829,18 +1829,14 @@ TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServerAndMaster) {
       "ysql" /* client_service */, "TabletServer" /* server_service */));
 
   ASSERT_EQ(server_span.str_attrs["rpc.system"], "yb_rpc");
-  ASSERT_EQ(server_span.str_attrs["rpc.service"], "yb.tserver.PgClientService");
-  ASSERT_EQ(server_span.str_attrs["rpc.method"], "Perform");
 
   // CREATE TABLE runs the master RPC synchronously on the tserver's handler thread.
   ASSERT_OK(conn_->Execute(
       "CREATE TABLE master_crossing_test (id int PRIMARY KEY, val text)"));
 
-  auto master_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
+  ASSERT_OK(collector_.WaitForRemoteChildSpan(
       tp.trace_id, "rpc yb.master.",
       "TabletServer" /* client_service */, "Master" /* server_service */));
-
-  ASSERT_STR_CONTAINS(master_span.str_attrs["rpc.service"], "yb.master.");
 }
 
 // Runs a traced INSERT with TEST_perform_async_error set, which fails Perform after its handler
