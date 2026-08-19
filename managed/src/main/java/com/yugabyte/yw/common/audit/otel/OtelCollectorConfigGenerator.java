@@ -132,6 +132,9 @@ public class OtelCollectorConfigGenerator {
   // Fallback only, for universes created before the port was tracked in communicationPorts.
   private static final int K8S_OTEL_METRICS_PORT_DEFAULT = 8889;
 
+  // Bind address for the collector's own internal-telemetry metrics endpoint.
+  private static final String ALL_INTERFACES_ADDRESS = "0.0.0.0";
+
   // Processor prefixes
   private static final String PROCESSOR_PREFIX_ATTRIBUTES = "attributes/";
   private static final String PROCESSOR_PREFIX_BATCH = "batch/";
@@ -154,7 +157,8 @@ public class OtelCollectorConfigGenerator {
   private static final String EXPORTER_PREFIX_SPLUNK = "splunk_hec/";
   private static final String EXPORTER_PREFIX_AWS_CLOUDWATCH = "awscloudwatchlogs/";
   private static final String EXPORTER_PREFIX_GCP_CLOUD_MONITORING = "googlecloud/";
-  private static final String EXPORTER_PREFIX_LOKI = "loki/";
+  // Loki now exports over OTLP HTTP - the `loki` exporter was removed from contrib in 0.131.0.
+  private static final String EXPORTER_PREFIX_LOKI = "otlphttp/";
   private static final String EXPORTER_PREFIX_DYNATRACE = "otlphttp/";
   private static final String EXPORTER_PREFIX_S3 = "awss3/";
 
@@ -313,13 +317,43 @@ public class OtelCollectorConfigGenerator {
     telemetryConfig.setLogs(logsConfig);
 
     // Add internal otel metrics config
-    OtelCollectorConfigFormat.MetricsConfig metricsConfig =
-        new OtelCollectorConfigFormat.MetricsConfig();
-    metricsConfig.setAddress("0.0.0.0:" + otelColMetricsPort);
-    telemetryConfig.setMetrics(metricsConfig);
+    telemetryConfig.setMetrics(createInternalMetricsConfig(otelColMetricsPort));
 
     // Add service to collector config
     collectorConfigFormat.setService(service);
+  }
+
+  /**
+   * Builds the {@code service::telemetry::metrics} section exposing the collector's own metrics for
+   * scraping on {@code 0.0.0.0:<port>}. Replaces the flat {@code address} field, which was removed
+   * from otel-collector in 0.120.0 in favour of the declarative-config {@code readers} list. The
+   * {@code without_*} flags preserve the pre-0.120.0 metric names - see {@link
+   * OtelCollectorConfigFormat.PrometheusMetricExporter}.
+   */
+  private OtelCollectorConfigFormat.MetricsConfig createInternalMetricsConfig(int metricsPort) {
+    OtelCollectorConfigFormat.PrometheusMetricExporter prometheusExporter =
+        new OtelCollectorConfigFormat.PrometheusMetricExporter();
+    prometheusExporter.setHost(ALL_INTERFACES_ADDRESS);
+    prometheusExporter.setPort(metricsPort);
+    prometheusExporter.setWithout_scope_info(true);
+    prometheusExporter.setWithout_type_suffix(true);
+    prometheusExporter.setWithout_units(true);
+
+    OtelCollectorConfigFormat.MetricReaderExporter readerExporter =
+        new OtelCollectorConfigFormat.MetricReaderExporter();
+    readerExporter.setPrometheus(prometheusExporter);
+
+    OtelCollectorConfigFormat.PullMetricReader pullReader =
+        new OtelCollectorConfigFormat.PullMetricReader();
+    pullReader.setExporter(readerExporter);
+
+    OtelCollectorConfigFormat.MetricReader reader = new OtelCollectorConfigFormat.MetricReader();
+    reader.setPull(pullReader);
+
+    OtelCollectorConfigFormat.MetricsConfig metricsConfig =
+        new OtelCollectorConfigFormat.MetricsConfig();
+    metricsConfig.setReaders(ImmutableList.of(reader));
+    return metricsConfig;
   }
 
   /**
@@ -1013,10 +1047,7 @@ public class OtelCollectorConfigGenerator {
     OtelCollectorConfigFormat.LogsConfig logsConfig = new OtelCollectorConfigFormat.LogsConfig();
     logsConfig.setOutput_paths(ImmutableList.of(K8S_OTEL_DIR + "/logs/otel-collector.logs"));
     telemetry.setLogs(logsConfig);
-    OtelCollectorConfigFormat.MetricsConfig metricsConfig =
-        new OtelCollectorConfigFormat.MetricsConfig();
-    metricsConfig.setAddress("0.0.0.0:" + getK8sOtelMetricsPort(universe));
-    telemetry.setMetrics(metricsConfig);
+    telemetry.setMetrics(createInternalMetricsConfig(getK8sOtelMetricsPort(universe)));
     service.setTelemetry(telemetry);
 
     if (auditActive) {
@@ -2880,7 +2911,7 @@ public class OtelCollectorConfigGenerator {
         }
         s3UploaderConfig.setS3_prefix(s3Prefix);
 
-        s3UploaderConfig.setS3_partition(s3Config.getPartition().getGranularity());
+        s3UploaderConfig.setS3_partition_format(s3Config.getPartition().getPartitionFormat());
         s3UploaderConfig.setRole_arn(s3Config.getRoleArn());
         s3UploaderConfig.setFile_prefix(s3Config.getFilePrefix());
         s3UploaderConfig.setRegion(s3Config.getRegion());
@@ -2911,14 +2942,25 @@ public class OtelCollectorConfigGenerator {
             setExporterCommonConfig(gcpCloudMonitoringExporter, true, false, exportType));
         break;
       case LOKI:
+        // The dedicated `loki` exporter was removed from otel-collector-contrib in 0.131.0, so Loki
+        // log export goes over OTLP HTTP against Loki's native OTLP ingestion path. This requires
+        // Loki 3.0+, which is where OTLP ingestion was introduced. Auth stays header-based rather
+        // than moving to the basicauth extension, so the wire behaviour is unchanged, and TLS
+        // settings are deliberately left unset to keep certificate verification on by default.
         LokiConfig lokiConfig = (LokiConfig) telemetryProvider.getConfig();
-        OtelCollectorConfigFormat.LokiExporter lokiExporter =
-            new OtelCollectorConfigFormat.LokiExporter();
-        String endpoint = lokiConfig.getEndpoint();
-        if (!endpoint.endsWith(TelemetryProviderService.LOKI_PUSH_ENDPOINT)) {
-          endpoint = endpoint + TelemetryProviderService.LOKI_PUSH_ENDPOINT;
+        OtelCollectorConfigFormat.OTLPExporter lokiExporter =
+            new OtelCollectorConfigFormat.OTLPExporter();
+        // validateConfigFields() stores the base URL, but tolerate a persisted push-path suffix so
+        // configs saved before this migration do not produce a doubled-up path.
+        String lokiBaseEndpoint = lokiConfig.getEndpoint();
+        if (lokiBaseEndpoint.endsWith(TelemetryProviderService.LOKI_PUSH_ENDPOINT)) {
+          lokiBaseEndpoint =
+              lokiBaseEndpoint.substring(
+                  0,
+                  lokiBaseEndpoint.length() - TelemetryProviderService.LOKI_PUSH_ENDPOINT.length());
         }
-        lokiExporter.setEndpoint(endpoint);
+        lokiExporter.setLogs_endpoint(
+            lokiBaseEndpoint + TelemetryProviderService.LOKI_OTLP_LOGS_ENDPOINT);
         Map<String, String> headers = new HashMap<>();
         boolean setHeaders = false;
         if (lokiConfig.getOrganizationID() != null && !lokiConfig.getOrganizationID().isEmpty()) {

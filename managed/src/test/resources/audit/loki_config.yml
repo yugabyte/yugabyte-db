@@ -1,7 +1,7 @@
 !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat
 exporters:
-  loki/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$LokiExporter
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$OTLPExporter
+    logs_endpoint: http://loki:3100/otlp/v1/logs
     retry_on_failure: {enabled: true, initial_interval: 1m, max_elapsed_time: 1800m,
       max_interval: 1800m}
     sending_queue: {enabled: true, storage: file_storage/queue}
@@ -71,10 +71,15 @@ service:
   extensions: [file_storage/queue]
   pipelines:
     logs/00000000-0000-0000-0000-000000000000:
-      exporters: [loki/00000000-0000-0000-0000-000000000000]
+      exporters: [otlphttp/00000000-0000-0000-0000-000000000000]
       processors: [attributes/00000000-0000-0000-0000-000000000000, transform/replace]
       receivers: [filelog/ysql]
   telemetry:
     logs:
       output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]
-    metrics: {address: '0.0.0.0:8889'}
+    metrics:
+      readers:
+      - pull:
+          exporter:
+            prometheus: {host: 0.0.0.0, port: 8889, without_scope_info: true, without_type_suffix: true,
+              without_units: true}

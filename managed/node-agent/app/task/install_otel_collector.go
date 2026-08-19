@@ -15,6 +15,17 @@ import (
 
 const OtelCollectorService = "otel-collector.service"
 
+const (
+	// Name of the executable inside the published archive. The YugabyteDB unified collector is a
+	// custom ocb distribution rather than the upstream contrib one, so it does not ship under the
+	// contrib name.
+	otelCollectorPackagedBinary = "otelcol-unified"
+	// Name the executable is installed under on the node. This becomes the running process name,
+	// which the systemd unit, the health check's `ps -C` lookup and the `process` label on the
+	// per-process metrics all key off, so it must stay stable across collector version changes.
+	otelCollectorInstalledBinary = "otelcol-contrib"
+)
+
 type InstallOtelCollector struct {
 	shellTask *ShellTask
 	param     *pb.InstallOtelCollectorInput
@@ -183,10 +194,20 @@ func (h *InstallOtelCollector) execOtelCollectorSetupSteps(
 			),
 		},
 		{
-			"ensure 755 permission for otelcol-contrib",
+			// mv rather than cp: rename(2) succeeds even when the previous binary is still mapped
+			// by a running collector, which overwriting in place would not (ETXTBSY).
+			"rename-otel-collector-binary",
+			fmt.Sprintf(
+				"mv -f %s %s",
+				filepath.Join(otelCollectorDirectory, otelCollectorPackagedBinary),
+				filepath.Join(otelCollectorDirectory, otelCollectorInstalledBinary),
+			),
+		},
+		{
+			fmt.Sprintf("ensure 755 permission for %s", otelCollectorInstalledBinary),
 			fmt.Sprintf(
 				"chmod -R 755 %s",
-				filepath.Join(otelCollectorDirectory, "otelcol-contrib"),
+				filepath.Join(otelCollectorDirectory, otelCollectorInstalledBinary),
 			),
 		},
 		{
