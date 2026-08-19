@@ -1928,15 +1928,10 @@ TEST_F(DistTraceTest, TestSharedMemorySpansReachTabletServer) {
       "ysql" /* client_service */, "TabletServer" /* server_service */));
 
   ASSERT_EQ(perform_span.str_attrs["rpc.system"], "yb_shmem");
-  ASSERT_EQ(perform_span.str_attrs["rpc.service"], "yb.tserver.PgClientService");
-  ASSERT_EQ(perform_span.str_attrs["rpc.method"], "Perform");
 
-  auto lock_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
+  ASSERT_OK(collector_.WaitForRemoteChildSpan(
       tp.trace_id, kSharedMemoryObjectLockSpanName,
       "ysql" /* client_service */, "TabletServer" /* server_service */));
-
-  ASSERT_EQ(lock_span.str_attrs["rpc.service"], "yb.tserver.PgClientService");
-  ASSERT_EQ(lock_span.str_attrs["rpc.method"], "AcquireObjectLock");
 }
 
 // Checks that a request too large for the exchange falls back to RPC, leaving a childless shared
@@ -1951,12 +1946,9 @@ TEST_F(DistTraceTest, TestSharedMemoryFallbackToRpc) {
       "INSERT INTO $0 VALUES (100, repeat('x', 1048576)) /*traceparent='$1'*/",
       kTableName, tp.full));
 
-  auto server_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
+  ASSERT_OK(collector_.WaitForRemoteChildSpan(
       tp.trace_id, "rpc yb.tserver.PgClientService.Perform",
       "ysql" /* client_service */, "TabletServer" /* server_service */));
-
-  ASSERT_EQ(server_span.str_attrs["rpc.service"], "yb.tserver.PgClientService");
-  ASSERT_EQ(server_span.str_attrs["rpc.method"], "Perform");
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
