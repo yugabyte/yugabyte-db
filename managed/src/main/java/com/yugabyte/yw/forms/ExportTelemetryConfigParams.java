@@ -125,11 +125,15 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
     }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    boolean anySimpleServerLogEnabled =
+        OtelCollectorUtil.simpleServerLogConfigs(telemetryConfig).stream()
+            .anyMatch(OtelCollectorUtil::isSimpleServerLogExportEnabledInUniverse);
     boolean wantsLogExport =
         OtelCollectorUtil.isAuditLogExportEnabledInUniverse(getAuditLogConfig())
             || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(getQueryLogConfig())
             || OtelCollectorUtil.isMasterLogExportEnabledInUniverse(getMasterLogConfig())
-            || OtelCollectorUtil.isTserverLogExportEnabledInUniverse(getTserverLogConfig());
+            || OtelCollectorUtil.isTserverLogExportEnabledInUniverse(getTserverLogConfig())
+            || anySimpleServerLogEnabled;
     if (wantsLogExport) {
       if (!KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
         throw new PlatformServiceException(
@@ -172,6 +176,38 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
         "TServer log export",
         universe,
         userIntent);
+    // YSQL Connection Manager and YB-Controller logs are pod-local on K8s (they live in the
+    // yb-tserver pod), so they are supported behind the same passthrough-chart gate as master/
+    // tserver.
+    requirePassthroughForK8s(
+        supportsPassthrough,
+        OtelCollectorUtil.isSimpleServerLogExportEnabledInUniverse(
+            telemetryConfig != null ? telemetryConfig.getYsqlConnMgrLogConfig() : null),
+        "YSQL Connection Manager log export",
+        universe,
+        userIntent);
+    requirePassthroughForK8s(
+        supportsPassthrough,
+        OtelCollectorUtil.isSimpleServerLogExportEnabledInUniverse(
+            telemetryConfig != null ? telemetryConfig.getControllerLogConfig() : null),
+        "YB-Controller log export",
+        universe,
+        userIntent);
+
+    // Block any requested export type whose source is not present in K8s pods (VM-only sources such
+    // as node-agent and YNP). Driven by ExportType.isSupportedOnKubernetes(), so a new VM-only type
+    // is rejected here automatically without editing this method.
+    for (ExportType type : ExportType.values()) {
+      if (!type.isSupportedOnKubernetes()
+          && OtelCollectorUtil.isExportTypeActive(telemetryConfig, type)) {
+        throw new PlatformServiceException(
+            play.mvc.Http.Status.BAD_REQUEST,
+            String.format(
+                "%s export is not supported for kubernetes universe '%s'. It is available only on"
+                    + " VM-based universes.",
+                type, universe.getUniverseUUID()));
+      }
+    }
 
     // Metrics has extra K8s-specific target validation beyond the shared passthrough gate.
     if (metricsEnabled) {

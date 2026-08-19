@@ -1445,6 +1445,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             otelCollectorConfigGenerator.getOtelHelmValues(
                 telemetryConfig.getAuditLogConfig(), logLinePrefix);
       }
+      if (otelOverrides != null) {
+        Map<String, Object> otelResources = getOtelCollectorResources(universeFromDB);
+        if (otelResources != null) {
+          otelOverrides.put("resources", otelResources);
+        }
+      }
       overrides.put("otelCollector", otelOverrides);
     }
 
@@ -1673,6 +1679,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       log.error(e.getMessage());
       throw new RuntimeException("Error writing Helm Override file!");
     }
+  }
+
+  // Same cap the VM path applies as MemoryMax in the otel-collector systemd unit. CPU is left
+  // unset to match the VM unit. 0 means uncapped, as on VMs.
+  private Map<String, Object> getOtelCollectorResources(Universe universe) {
+    int maxMemoryMib =
+        confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorMaxMemory);
+    if (maxMemoryMib <= 0) {
+      return null;
+    }
+    return ImmutableMap.of("limits", ImmutableMap.of("memory", maxMemoryMib + "Mi"));
   }
 
   @SuppressWarnings("unchecked")
