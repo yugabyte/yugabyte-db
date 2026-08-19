@@ -1904,16 +1904,15 @@ TEST_F(DistTraceTest, TestSharedMemorySpansReachTabletServer) {
 
   auto perform_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
       tp.trace_id, kSharedMemoryPerformSpanName,
-      "ysql" /* client_service */, "TabletServer" /* server_service */,
-      "inbound_shmem" /* expected_rpc_system */));
+      "ysql" /* client_service */, "TabletServer" /* server_service */));
 
+  ASSERT_EQ(perform_span.str_attrs["rpc.system"], "yb_shmem");
   ASSERT_EQ(perform_span.str_attrs["rpc.service"], "yb.tserver.PgClientService");
   ASSERT_EQ(perform_span.str_attrs["rpc.method"], "Perform");
 
   auto lock_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
       tp.trace_id, kSharedMemoryObjectLockSpanName,
-      "ysql" /* client_service */, "TabletServer" /* server_service */,
-      "inbound_shmem" /* expected_rpc_system */));
+      "ysql" /* client_service */, "TabletServer" /* server_service */));
 
   ASSERT_EQ(lock_span.str_attrs["rpc.service"], "yb.tserver.PgClientService");
   ASSERT_EQ(lock_span.str_attrs["rpc.method"], "AcquireObjectLock");
@@ -1933,8 +1932,7 @@ TEST_F(DistTraceTest, TestSharedMemoryFallbackToRpc) {
 
   auto server_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
       tp.trace_id, "rpc yb.tserver.PgClientService.Perform",
-      "ysql" /* client_service */, "TabletServer" /* server_service */,
-      "inbound_rpc" /* expected_rpc_system */));
+      "ysql" /* client_service */, "TabletServer" /* server_service */));
 
   ASSERT_EQ(server_span.str_attrs["rpc.service"], "yb.tserver.PgClientService");
   ASSERT_EQ(server_span.str_attrs["rpc.method"], "Perform");
