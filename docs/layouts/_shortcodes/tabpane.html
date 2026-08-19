@@ -129,7 +129,14 @@
             {{ printf "%s=%q " $tpPersistAttrName $persistKey | safeHTMLAttr -}}
           {{ end -}}
           aria-controls="{{- $entryid -}}" aria-selected="{{ $isActive }}">
-        {{ index . "header" | markdownify }}
+        {{- $header := index . "header" | strings.TrimSpace -}}
+        {{- if eq $header "New UI" -}}
+          <span class="tag other new-ui">New UI</span>
+        {{- else if eq $header "Classic UI" -}}
+          <span class="tag other classic-ui">Classic UI</span>
+        {{- else -}}
+          {{ $header | markdownify }}
+        {{- end -}}
       </button>
     </li>
 

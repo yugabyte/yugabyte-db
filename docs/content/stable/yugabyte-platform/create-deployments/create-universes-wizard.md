@@ -17,13 +17,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../create-universes-wizard/" class="nav-link active">
-      New UI
+      {{<tags/ui/new nolink="true">}}
     </a>
   </li>
 
   <li>
     <a href="../create-universe-multi-zone/" class="nav-link">
-      Classic UI
+      {{<tags/ui/classic nolink="true">}}
     </a>
   </li>
 </ul>
@@ -37,6 +37,12 @@ For information on modifying or scaling an existing universe, refer to [Modify u
 ## Prerequisites
 
 Before you start creating a universe, ensure that you have created a provider configuration as described in [Create provider configurations](../../configure-yugabyte-platform/). For Kubernetes universes, see [Create Kubernetes provider configuration](../../configure-yugabyte-platform/kubernetes/).
+
+{{< tip title="Tip" >}}
+
+When creating a geographically distributed universe (for example, multi-region), add the `leader_failure_max_missed_heartbeat_periods` configuration flag for YB-Master and YB-TServer with a value of 10. As the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.
+
+{{< /tip >}}
 
 ## Create a universe
 
