@@ -86,6 +86,10 @@ By default, YB-TServer flags from the primary cluster are applied to the read re
 
 To set different flags for the read replica, enable **Customize Database Config Flags for Read Replica** and add or edit YB-TServer flags. You can also change flags later; refer to [Edit configuration flags](../../scale-deployments/edit-config-flags/).
 
+{{< tip title="Geographically distributed universes" >}}
+When creating a geographically distributed universe, add the `leader_failure_max_missed_heartbeat_periods` configuration flag for YB-Master and YB-TServer with a value of 10. As the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in high-RPC latency deployments.
+{{< /tip >}}
+
 ### Summary and Cost
 
 Review the read replica placement, hardware, and cost summary, then click **Create**.
