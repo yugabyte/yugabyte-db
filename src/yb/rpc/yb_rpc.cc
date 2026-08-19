@@ -308,8 +308,8 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   UpdateWaitStateInfo();
 
   // Extract the propagated distributed-trace parent from the header, if present. The span itself is
-  // created later (CreateServerSpan) once the request params have been parsed. Tracing is
-  // best-effort: a malformed context is logged and dropped, never fails the RPC.
+  // created later, when the RpcContext is constructed (CreateServerSpan). Tracing is best-effort: a
+  // malformed context is logged and dropped, never fails the RPC.
   if (dist_trace::IsDistTraceEnabled() && !header_.trace_context.empty()) {
     auto parsed = ParseTraceContext(header_.trace_context);
     if (parsed.ok()) {
