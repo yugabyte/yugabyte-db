@@ -2684,7 +2684,7 @@ class PgClientSession::Impl {
         if (trace_scope) {
           // Mirror the attributes the RPC inbound span carries (yb_rpc.cc), minus the ones with no
           // shared-memory analog (rpc.call_id).
-          trace_scope->SetAttribute("rpc.system", "inbound_shmem");
+          trace_scope->SetAttribute("rpc.system", "yb_shmem");
           trace_scope->SetAttribute("rpc.service", "yb.tserver.PgClientService");
           trace_scope->SetAttribute("rpc.method", SharedMemMethodName<T>());
         }
