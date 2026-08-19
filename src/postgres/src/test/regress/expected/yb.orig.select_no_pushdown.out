@@ -214,7 +214,7 @@ EXPLAIN (COSTS FALSE) SELECT t.t1 FROM pushdown_test t, pushdown_lookup l WHERE 
                            QUERY PLAN                           
 ----------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (t.k = l.k)
+   Join Filter: (l.k = t.k)
    ->  Seq Scan on pushdown_lookup l
          Filter: (tag = 'foo'::text)
    ->  Index Scan using pushdown_test_pkey on pushdown_test t
@@ -687,11 +687,11 @@ INSERT INTO tmaster VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
 CREATE TABLE tsub(k int primary key, v1 int, v2 int);
 INSERT INTO tsub VALUES (1, 2, 3), (4, 5, 6);
 EXPLAIN (COSTS FALSE) SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
-         QUERY PLAN         
-----------------------------
+               QUERY PLAN                
+-----------------------------------------
  Seq Scan on tmaster
-   Filter: (v1 = $0)
-   InitPlan 1 (returns $0)
+   Filter: (v1 = (InitPlan expr_1).col1)
+   InitPlan expr_1
      ->  Seq Scan on tsub
            Filter: (v2 = 3)
 (5 rows)
@@ -715,7 +715,7 @@ EXPLAIN (COSTS FALSE) SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHE
 -------------------------------------------------------------
  Index Scan using tidxrescan1_pkey on tidxrescan1 t1
    Index Cond: (k1 = 1)
-   SubPlan 1
+   SubPlan expr_1
      ->  Index Scan using tidxrescan2_pkey on tidxrescan2 t2
            Index Cond: (k1 = t1.k2)
            Filter: (v1 = t1.v1)
@@ -740,7 +740,7 @@ EXPLAIN (COSTS FALSE) SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHE
 -----------------------------------------------------------------------
  Index Scan using tidxrescan1_pkey on tidxrescan1 t1
    Index Cond: (k1 = 1)
-   SubPlan 1
+   SubPlan expr_1
      ->  Index Only Scan using tidxrescan3_k1_v1_idx on tidxrescan3 t2
            Index Cond: (k1 = t1.k2)
            Filter: (v1 = t1.v1)
