@@ -20,13 +20,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../create-universes-wizard/" class="nav-link">
-      New UI
+      {{<tags/ui/new nolink="true">}}
     </a>
   </li>
 
   <li>
     <a href="../create-universe-multi-zone/" class="nav-link active">
-      Classic UI
+      {{<tags/ui/classic nolink="true">}}
     </a>
   </li>
 </ul>
@@ -41,6 +41,12 @@ For information on modifying or scaling an existing universe, refer to [Modify u
 
 Before you start creating a universe, ensure that you have created a provider configuration as described in [Create provider configurations](../../configure-yugabyte-platform/). For Kubernetes universes, see [Create Kubernetes provider configuration](../../configure-yugabyte-platform/kubernetes/).
 
+{{< tip title="Tip" >}}
+
+When creating a geographically distributed universe (for example, multi-region), add the `leader_failure_max_missed_heartbeat_periods` configuration flag for YB-Master and YB-TServer with a value of 10. As the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.
+
+{{< /tip >}}
+
 ## Create a universe
 
 To create a universe:
@@ -49,7 +55,7 @@ To create a universe:
 
 1. Enter the universe details. Refer to [Universe settings](#universe-settings).
 
-1. To add a read replica, click **Configure Read Replica**. Refer to [Create a read replica cluster](../read-replicas/).
+1. To add a read replica, click **Configure Read Replica**. Refer to [Create a read replica cluster](../read-replicas-classic/).
 
 1. Click **Create** when you are done and wait for the configuration to complete.
 
