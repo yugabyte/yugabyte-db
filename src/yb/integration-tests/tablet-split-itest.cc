@@ -154,7 +154,7 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_uint64(outstanding_tablet_split_limit);
-DECLARE_uint64(outstanding_tablet_split_limit_per_tserver);
+DECLARE_int64(outstanding_tablet_split_limit_per_tserver);
 DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_double(TEST_fail_tablet_split_probability);
 DECLARE_bool(TEST_skip_post_split_compaction);

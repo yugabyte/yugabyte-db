@@ -274,11 +274,12 @@ DEPRECATE_FLAG(int32, read_pool_max_queue_size, "05_2026");
 DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_threads, "02_2024");
 DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_queue_size, "02_2024");
 
-DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 2,
+DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, -1,
              "The maximum number of threads allowed for full_compaction_pool_. This "
              "pool is used to run full compactions on tablets, either on a scheduled basis "
               "or after they have been split and still contain irrelevant data from the tablet "
-              "they were sourced from.");
+              "they were sourced from. If the value is zero or negative (-1 by default), it is "
+              "derived from the CPU count: 1 for nodes with up to 4 cores, 2 otherwise.");
 
 DEPRECATE_FLAG(int32, full_compaction_pool_max_queue_size, "05_2026");
 
@@ -512,6 +513,26 @@ void TSTabletManager::PollWaitingTxnRegistry() {
   DCHECK_NOTNULL(waiting_txn_registry_)->SendWaitForGraph();
 }
 
+namespace {
+
+// Resolves FLAGS_full_compaction_pool_max_threads: a positive value is used as-is; zero or
+// a negative value means the pool size is derived from the CPU count.
+int32_t GetFullCompactionPoolMaxThreads() {
+  const auto flag_value = FLAGS_full_compaction_pool_max_threads;
+  if (flag_value > 0) {
+    return flag_value;
+  }
+  static const int32_t cpu_based_value = []() -> int32_t {
+    const int32_t value = NumEffectiveCPUs() <= 4 ? 1 : 2;
+    LOG(INFO) << "FLAGS_full_compaction_pool_max_threads was not set, automatically configuring "
+              << "to " << value << " based on the CPU count.";
+    return value;
+  }();
+  return cpu_based_value;
+}
+
+}  // namespace
+
 TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  TabletServer* server,
                                  MetricRegistry* metric_registry)
@@ -591,7 +612,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                    server_->metric_entity(), admin_triggered_compaction_pool))
                .Build(&admin_triggered_compaction_pool_));
   CHECK_OK(ThreadPoolBuilder("full-compaction")
-              .set_max_threads(FLAGS_full_compaction_pool_max_threads)
+              .set_max_threads(GetFullCompactionPoolMaxThreads())
               .set_metrics(THREAD_POOL_METRICS_INSTANCE(
                   server_->metric_entity(), full_compaction_pool))
               .Build(&full_compaction_pool_));
