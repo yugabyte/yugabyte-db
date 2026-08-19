@@ -1062,4 +1062,113 @@ TEST_F(ConsensusQueueDelayedCommitTest, TestReadReplicatedMessagesForXCluster) {
   ASSERT_EQ(received_op_id.index, read_result.majority_replicated_index);
 }
 
+// Leader-side half of the catch-up livelock.
+//
+// PeerMessageQueue::ResponseFromPeer decides where to send from using status().last_received(),
+// preferred but only if IsOpInLog() accepts it, else status().last_received_current_leader(). A
+// follower holding a conflicting entry reports a last_received that exists in no other log, so
+// everything rests on the fallback, which RaftConsensusCatchupProbeTest shows stays frozen.
+//
+// The two tests below pin both directions: the leader's send position never moves while the
+// reported fallback is frozen, and reaches the conflicting index as soon as the fallback
+// advances. That is why no leader-side change is needed.
+
+class ConsensusQueueCatchupTest : public ConsensusQueueTest {
+ public:
+  // Log tail, and the index the follower's conflicting entry sits at.
+  static constexpr int kConflictIndex = kNumMessages;
+
+  // Leader with kNumMessages ops, tracking a peer whose reported watermarks are those of a
+  // wedged follower: a last_received not in the leader's log, and a fallback stuck below it.
+  void SetUpWedgedPeer(LWConsensusRequestPB* request, LWConsensusResponsePB* response,
+                       OpId* conflicting_op, OpId* frozen_fallback) {
+    queue_->Init(OpId::Min());
+    queue_->SetLeaderMode(
+        OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(2));
+    AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, kNumMessages);
+
+    const auto leader_tail = MakeOpIdForIndex(kConflictIndex);
+    *conflicting_op = OpId(leader_tail.term + 1, leader_tail.index);
+    *frozen_fallback = MakeOpIdForIndex(kConflictIndex / 2);
+
+    ASSERT_TRUE(UpdatePeerWatermarkToOp(
+        request, response, *conflicting_op, *frozen_fallback, frozen_fallback->index));
+  }
+};
+
+// With the fallback frozen the leader re-derives the same send position every time, and each
+// exchange succeeds, so nothing else in the system reacts.
+TEST_F(ConsensusQueueCatchupTest, LeaderStaysBelowConflictWhileFollowerFallbackIsFrozen) {
+  ThreadSafeArena arena;
+  LWConsensusRequestPB request(&arena);
+  LWConsensusResponsePB response(&arena);
+  OpId conflicting_op, frozen_fallback;
+  ASSERT_NO_FATALS(SetUpWedgedPeer(&request, &response, &conflicting_op, &frozen_fallback));
+
+  const auto stuck_next_index = frozen_fallback.index + 1;
+  ASSERT_LT(stuck_next_index, kConflictIndex)
+      << "The frozen fallback must sit below the conflicting index, or there is nothing to be "
+      << "stuck behind.";
+
+  // A fixed point, not a slow drift.
+  for (int i = 0; i < 10; ++i) {
+    SCOPED_TRACE(Format("exchange $0", i));
+
+    LWReplicateMsgsHolder refs;
+    bool needs_remote_bootstrap = false;
+    request.mutable_ops()->clear();
+    ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+
+    ASSERT_FALSE(needs_remote_bootstrap)
+        << "Remote bootstrap would have rescued the peer; the livelock depends on it not firing.";
+
+    // The wedged follower answers with the same two watermarks every time.
+    SetLastReceivedAndLastCommitted(
+        &response, conflicting_op, frozen_fallback, frozen_fallback.index);
+    queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+    const auto peer = queue_->GetTrackedPeerForTests(kPeerUuid);
+    ASSERT_EQ(peer.next_index, stuck_next_index)
+        << "Leader moved its send position for the peer; the livelock premise does not hold.";
+    ASSERT_EQ(peer.last_received, frozen_fallback)
+        << "Leader positioned from something other than the frozen fallback.";
+  }
+
+  // The conflicting index, the one thing that would break the deadlock, is still ahead.
+  const auto peer = queue_->GetTrackedPeerForTests(kPeerUuid);
+  ASSERT_LT(peer.next_index, kConflictIndex)
+      << "Leader reached the conflicting index " << kConflictIndex << ", which would have healed "
+      << "the follower.";
+}
+
+// Given a fallback that advances to what the follower verifiably holds, the same leader walks
+// straight to the conflicting index.
+TEST_F(ConsensusQueueCatchupTest, LeaderReachesConflictOnceFollowerFallbackAdvances) {
+  ThreadSafeArena arena;
+  LWConsensusRequestPB request(&arena);
+  LWConsensusResponsePB response(&arena);
+  OpId conflicting_op, frozen_fallback;
+  ASSERT_NO_FATALS(SetUpWedgedPeer(&request, &response, &conflicting_op, &frozen_fallback));
+
+  ASSERT_EQ(queue_->GetTrackedPeerForTests(kPeerUuid).next_index, frozen_fallback.index + 1);
+
+  // A follower reporting the highest op it holds below its conflicting entry.
+  const auto advanced_fallback = MakeOpIdForIndex(kConflictIndex - 1);
+  ASSERT_GT(advanced_fallback, frozen_fallback);
+
+  LWReplicateMsgsHolder refs;
+  bool needs_remote_bootstrap = false;
+  request.mutable_ops()->clear();
+  ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+
+  SetLastReceivedAndLastCommitted(
+      &response, conflicting_op, advanced_fallback, advanced_fallback.index);
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  const auto peer = queue_->GetTrackedPeerForTests(kPeerUuid);
+  ASSERT_EQ(peer.next_index, kConflictIndex)
+      << "Leader did not advance to the conflicting index even though the follower's fallback "
+      << "moved; the follower-side fix alone would not be sufficient.";
+}
+
 } // namespace yb::consensus
