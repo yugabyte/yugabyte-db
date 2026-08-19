@@ -26,7 +26,7 @@ interface RegionCardProps {
   addAzTooltipValues?: Record<string, unknown>;
 }
 
-const { styled, Typography, Box, Link } = mui;
+const { styled, Typography, Box, Link, useTheme } = mui;
 
 const StyledRegionCard = styled('div')(({ theme }) => ({
   background: '#FBFCFD',
@@ -79,6 +79,8 @@ export const RegionCard: FC<RegionCardProps> = ({
     setValue,
     formState: { errors }
   } = useFormContext<NodeAvailabilityProps>();
+
+  const theme = useTheme();
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
@@ -134,7 +136,13 @@ export const RegionCard: FC<RegionCardProps> = ({
         <StyledRegionTagContainer>
           <YBTooltip title={<StyledTooltipText>{t('tooltips.regionTag')}</StyledTooltipText>}>
             <span>
-              <YBTag size="medium">
+              <YBTag
+                size="medium"
+                customSx={{
+                  backgroundColor: theme.palette.primary[200],
+                  color: theme.palette.grey[900]
+                }}
+              >
                 {getFlagFromRegion(region.code)} {region.name} ({region.code})
               </YBTag>
             </span>
@@ -169,61 +177,59 @@ export const RegionCard: FC<RegionCardProps> = ({
           />
         ))}
         {showAddAzButton && (
-            <YBTooltip
-              title={
-                isAddAzDisabled ? (
-                  isAddAzDisabledByAzLevelCap ? (
-                    <StyledTooltipText>
-                      {addAzTooltipKey ? (
-                        <Trans
-                          t={t}
-                          i18nKey={addAzTooltipKey}
-                          values={addAzTooltipValues}
-                          components={{
-                            br: <br />,
-                            a: (
-                              <Link
-                                href={'#'}
-                                rel="noopener noreferrer"
-                                underline="always"
-                                onClick={(e) => e.stopPropagation()}
-                                sx={{ fontSize: '11.5px', lineHeight: '16px' }}
-                              />
-                            )
-                          }}
-                        />
-                      ) : (
-                        addAzTooltip
-                      )}
-                    </StyledTooltipText>
-                  ) : (
-                    <StyledTooltipText>{addAzTooltip}</StyledTooltipText>
-                  )
+          <YBTooltip
+            title={
+              isAddAzDisabled ? (
+                isAddAzDisabledByAzLevelCap ? (
+                  <StyledTooltipText>
+                    {addAzTooltipKey ? (
+                      <Trans
+                        t={t}
+                        i18nKey={addAzTooltipKey}
+                        values={addAzTooltipValues}
+                        components={{
+                          br: <br />,
+                          a: (
+                            <Link
+                              href={'#'}
+                              rel="noopener noreferrer"
+                              underline="always"
+                              onClick={(e) => e.stopPropagation()}
+                              sx={{ fontSize: '11.5px', lineHeight: '16px' }}
+                            />
+                          )
+                        }}
+                      />
+                    ) : (
+                      addAzTooltip
+                    )}
+                  </StyledTooltipText>
                 ) : (
-                  ''
+                  <StyledTooltipText>{addAzTooltip}</StyledTooltipText>
                 )
-              }
-            >
-              <span style={{ width: 'fit-content', marginLeft: '34px' }}>
-                <YBButton
-                  variant="secondary"
-                  onClick={addAvailabilityZone}
-                  disabled={isAddAzDisabled}
-                  startIcon={<AddIcon />}
-                  sx={{ width: 'fit-content' }}
-                  dataTestId="add-availability-zone-button"
-                >
-                  {t('add_button')}
-                </YBButton>
-              </span>
-            </YBTooltip>
-          )}
+              ) : (
+                ''
+              )
+            }
+          >
+            <span style={{ width: 'fit-content', marginLeft: '34px' }}>
+              <YBButton
+                variant="secondary"
+                onClick={addAvailabilityZone}
+                disabled={isAddAzDisabled}
+                startIcon={<AddIcon />}
+                sx={{ width: 'fit-content' }}
+                dataTestId="add-availability-zone-button"
+              >
+                {t('add_button')}
+              </YBButton>
+            </span>
+          </YBTooltip>
+        )}
         {showErrorsAfterSubmit &&
           index === 0 &&
           (errors as any)?.lesserNodes?.message &&
-          ['errMsg.preferredRankRequired'].includes(
-            (errors as any).lesserNodes.message
-          ) && (
+          ['errMsg.preferredRankRequired'].includes((errors as any).lesserNodes.message) && (
             <YBAlert
               open
               variant={AlertVariant.Error}
