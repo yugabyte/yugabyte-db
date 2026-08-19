@@ -55,6 +55,7 @@ import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
+import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -1059,6 +1060,12 @@ public class OperatorUtils {
               Json.fromJson(prevTaskToRerun.getTaskParams(), KubernetesGFlagsUpgradeParams.class);
           return checkIfGFlagsChanged(
               u, gflagParams.getPrimaryCluster().userIntent.specificGFlags, specGFlags);
+        case UpdateProxyConfig:
+          ProxyConfigUpdateParams proxyConfigParams =
+              Json.fromJson(prevTaskToRerun.getTaskParams(), ProxyConfigUpdateParams.class);
+          return !Objects.equals(
+              proxyConfigParams.getPrimaryCluster().userIntent.getProxyConfig(),
+              newPrimaryIntent.getProxyConfig());
         default:
           // Return false for re-run cases.
           return false;
@@ -1083,6 +1090,11 @@ public class OperatorUtils {
             || shouldUpdatePrimaryCluster(
                 u.getUniverseDetails().getPrimaryCluster(), ybUniverse, newPrimaryIntent);
     log.trace("primary cluster mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || !Objects.equals(
+                currentUserIntent.getProxyConfig(), newPrimaryIntent.getProxyConfig());
+    log.trace("proxy config mismatch: {}", mismatch);
     mismatch =
         mismatch || shouldAddReadReplica(u, ybUniverse) || shouldRemoveReadReplica(u, ybUniverse);
     log.trace("read replica count mismatch: {}", mismatch);
