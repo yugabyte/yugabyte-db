@@ -58,6 +58,7 @@
 
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/test_macros.h"
@@ -67,6 +68,7 @@
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_leader_failure_detection);
+DECLARE_bool(raft_monotonic_last_received_current_leader);
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
@@ -1057,6 +1059,188 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ASSERT_TRUE(res.status().has_error());
   ASSERT_EQ(ConsensusErrorPB::INVALID_TERM, res.status().error().code());
   LOG(INFO) << "Follower rejected old heartbeat, as expected: " << res.ShortDebugString();
+}
+
+// A follower that briefly won a term, appended its own leader NO_OP and lost leadership before
+// committing it holds a conflicting uncommitted entry the next leader does not have. To catch it
+// up the leader must eventually offer that index so the follower truncates, but it decides where
+// to send from using two watermarks the follower reports and both are unusable here:
+// last_received names the follower's own overwritten op, which IsOpInLog() rejects, and
+// last_received_current_leader is set once per term and then frozen. The leader keeps re-sending
+// below the conflict while every exchange succeeds.
+//
+// No real election is needed: a request with a higher caller_term makes the follower advance its
+// term, which is enough to impersonate the succession of leaders.
+
+struct CatchupProbeObservation {
+  OpId baseline;
+
+  // The conflicting uncommitted tail, in a later term than anything the impersonated leader has.
+  OpId conflicting_op;
+
+  // Carried by the two fully-deduplicated probes; the second is deliberately higher, and that
+  // advance is what the follower is supposed to reflect back.
+  OpId probe1_preceding;
+  OpId probe2_preceding;
+
+  OpId lrcl_after_probe1;
+  OpId lrcl_after_probe2;
+
+  // Names an op no other replica has, so the leader cannot position from it.
+  OpId last_received_after_probe2;
+
+  // The leader's own log end; the follower's conflicting op lies beyond it.
+  OpId leader_last_received;
+};
+
+class RaftConsensusCatchupProbeTest : public RaftConsensusQuorumTest {
+ public:
+  // Every request here is accepted; the livelock is made of successful exchanges.
+  void SendAndCheck(const std::shared_ptr<RaftConsensus>& follower,
+                    const std::shared_ptr<LWConsensusRequestPB>& req,
+                    LWConsensusResponsePB* resp,
+                    const std::string& what) {
+    ASSERT_OK(follower->Update(req, resp, CoarseBigDeadline()));
+    ASSERT_TRUE(resp->has_status()) << what << ": response carried no status";
+    ASSERT_FALSE(resp->status().has_error())
+        << what << " was rejected: " << resp->ShortDebugString();
+    ASSERT_TRUE(resp->status().has_last_received() &&
+                resp->status().has_last_received_current_leader())
+        << what << ": response is missing a watermark: " << resp->ShortDebugString();
+  }
+
+  void RunScenario(CatchupProbeObservation* out) {
+    const int kFollower0Idx = 0;
+    const int kLeaderIdx = 2;
+
+    ASSERT_OK(BuildAndStartConfig(3));
+
+    // Committed baseline in the original term.
+    OpIdPB last_op_id;
+    vector<scoped_refptr<ConsensusRound>> rounds;
+    REPLICATE_SEQUENCE_OF_MESSAGES(
+        10, kLeaderIdx, WAIT_FOR_ALL_REPLICAS, COMMIT_ONE_BY_ONE, &last_op_id, &rounds);
+    WaitForCommitIfNotAlreadyPresent(last_op_id, kFollower0Idx, kLeaderIdx);
+
+    const auto baseline = OpId::FromPB(last_op_id);
+    out->baseline = baseline;
+    ASSERT_GT(baseline.index, 1) << "Need at least two committed indexes to probe between.";
+
+    shared_ptr<RaftConsensus> leader;
+    ASSERT_OK(peers_->GetPeerByIdx(kLeaderIdx, &leader));
+    shared_ptr<RaftConsensus> follower;
+    ASSERT_OK(peers_->GetPeerByIdx(kFollower0Idx, &follower));
+
+    // Give the follower a conflicting uncommitted tail. Delivering it as a request from term+1
+    // reaches the same state as it winning that term, with no real election.
+    const OpId conflicting_op(baseline.term + 1, baseline.index + 1);
+    out->conflicting_op = conflicting_op;
+    {
+      auto req_ptr = rpc::MakeSharedMessage<LWConsensusRequestPB>();
+      auto& req = *req_ptr;
+      req.ref_caller_uuid(leader->peer_uuid());
+      req.set_caller_term(conflicting_op.term);
+      baseline.ToPB(req.mutable_preceding_id());
+      baseline.ToPB(req.mutable_committed_op_id());
+      auto* replicate = req.add_ops();
+      replicate->set_hybrid_time(clock_->Now().ToUint64());
+      replicate->set_op_type(NO_OP);
+      replicate->mutable_noop_request();
+      conflicting_op.ToPB(replicate->mutable_id());
+
+      LWConsensusResponsePB resp(&req.arena());
+      ASSERT_NO_FATALS(SendAndCheck(follower, req_ptr, &resp, "conflicting tail append"));
+    }
+    ASSERT_EQ(follower->GetLastReceivedOpId(), conflicting_op)
+        << "Follower did not take the conflicting tail.";
+
+    // A new leader without that entry. Its first contact advances the follower's term, clearing
+    // last_received_current_leader. Both probes are ops-empty heartbeats, the simplest shape
+    // reaching the empty-dedup branch, preceded by committed entries the follower holds.
+    const auto probe_term = conflicting_op.term + 1;
+    out->probe1_preceding = OpId(baseline.term, baseline.index - 1);
+    out->probe2_preceding = baseline;
+
+    auto send_probe = [&](const OpId& preceding, const std::string& what, OpId* lrcl,
+                          OpId* last_received) {
+      auto req_ptr = rpc::MakeSharedMessage<LWConsensusRequestPB>();
+      auto& req = *req_ptr;
+      req.ref_caller_uuid(leader->peer_uuid());
+      req.set_caller_term(probe_term);
+      preceding.ToPB(req.mutable_preceding_id());
+      // At or below what the follower already committed, so nothing new applies.
+      preceding.ToPB(req.mutable_committed_op_id());
+
+      LWConsensusResponsePB resp(&req.arena());
+      ASSERT_NO_FATALS(SendAndCheck(follower, req_ptr, &resp, what));
+      *lrcl = OpId::FromPB(resp.status().last_received_current_leader());
+      *last_received = OpId::FromPB(resp.status().last_received());
+    };
+
+    OpId ignored;
+    ASSERT_NO_FATALS(send_probe(
+        out->probe1_preceding, "first deduplicated probe", &out->lrcl_after_probe1, &ignored));
+    ASSERT_NO_FATALS(send_probe(
+        out->probe2_preceding, "second deduplicated probe, advanced preceding",
+        &out->lrcl_after_probe2, &out->last_received_after_probe2));
+
+    out->leader_last_received = leader->GetLastReceivedOpId();
+
+    LOG(INFO) << "Catch-up probe: baseline=" << baseline
+              << " conflicting_op=" << conflicting_op
+              << " probe1_preceding=" << out->probe1_preceding
+              << " lrcl_after_probe1=" << out->lrcl_after_probe1
+              << " probe2_preceding=" << out->probe2_preceding
+              << " lrcl_after_probe2=" << out->lrcl_after_probe2
+              << " last_received_after_probe2=" << out->last_received_after_probe2
+              << " leader_last_received=" << out->leader_last_received;
+  }
+};
+
+// A fully deduplicated request must advance last_received_current_leader to the op the follower
+// just confirmed it holds.
+TEST_F(RaftConsensusCatchupProbeTest, LastReceivedCurrentLeaderAdvancesAcrossDedupedProbes) {
+  CatchupProbeObservation obs;
+  ASSERT_NO_FATALS(RunScenario(&obs));
+
+  // Trigger guard: the probes have to actually advance, or this holds vacuously.
+  ASSERT_LT(obs.probe1_preceding, obs.probe2_preceding)
+      << "The two probes did not carry an advancing preceding op id, so there was nothing "
+      << "for the follower to reflect back.";
+
+  ASSERT_EQ(obs.lrcl_after_probe2, obs.probe2_preceding)
+      << "last_received_current_leader stayed at " << obs.lrcl_after_probe2
+      << " while the leader's probe had advanced to " << obs.probe2_preceding
+      << "; the leader cannot discover the conflicting index from this.";
+
+  // The premise this fix exists for is unchanged: the other watermark still names
+  // an op only this replica ever had, so the leader still cannot position from it
+  // and still depends on the fallback above.
+  ASSERT_EQ(obs.last_received_after_probe2, obs.conflicting_op);
+  ASSERT_GT(obs.conflicting_op.index, obs.leader_last_received.index);
+}
+
+// With the monotonic advance disabled the freeze must come back, proving the flag gates this path.
+TEST_F(RaftConsensusCatchupProbeTest, MonotonicAdvanceDisabledRestoresFreeze) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_monotonic_last_received_current_leader) = false;
+  auto restore = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_monotonic_last_received_current_leader) = true;
+  });
+
+  CatchupProbeObservation obs;
+  ASSERT_NO_FATALS(RunScenario(&obs));
+
+  ASSERT_LT(obs.probe1_preceding, obs.probe2_preceding);
+  ASSERT_EQ(obs.lrcl_after_probe1, obs.probe1_preceding)
+      << "The first probe did not seed last_received_current_leader.";
+
+  // The second probe advanced the preceding op id and the follower kept reporting
+  // the first probe's value.
+  ASSERT_EQ(obs.lrcl_after_probe2, obs.lrcl_after_probe1)
+      << "last_received_current_leader moved from " << obs.lrcl_after_probe1 << " to "
+      << obs.lrcl_after_probe2 << "; the kill switch did not restore the freeze.";
+  ASSERT_LT(obs.lrcl_after_probe2, obs.probe2_preceding);
+  ASSERT_EQ(obs.last_received_after_probe2, obs.conflicting_op);
 }
 
 } // namespace yb::consensus
