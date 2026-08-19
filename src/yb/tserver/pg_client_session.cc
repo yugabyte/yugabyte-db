@@ -672,18 +672,6 @@ std::string_view SharedMemHandlerSpanName<ObjectLockQueryTraits>() {
   return "shmem yb.tserver.PgClientService.AcquireObjectLock";
 }
 
-// Method name attribute for the inbound shared-memory span.
-template <QueryTraitsType T>
-const char* SharedMemMethodName();
-template <>
-const char* SharedMemMethodName<PerformQueryTraits>() {
-  return "Perform";
-}
-template <>
-const char* SharedMemMethodName<ObjectLockQueryTraits>() {
-  return "AcquireObjectLock";
-}
-
 using ResponseSender = std::function<void()>;
 
 template <QueryTraitsType T>
@@ -2685,8 +2673,6 @@ class PgClientSession::Impl {
           // Mirror the attributes the RPC inbound span carries (yb_rpc.cc), minus the ones with no
           // shared-memory analog (rpc.call_id).
           trace_scope->SetAttribute("rpc.system", "yb_shmem");
-          trace_scope->SetAttribute("rpc.service", "yb.tserver.PgClientService");
-          trace_scope->SetAttribute("rpc.method", SharedMemMethodName<T>());
         }
       }
     }
