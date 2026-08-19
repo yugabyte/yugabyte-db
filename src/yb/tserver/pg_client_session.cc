@@ -653,12 +653,12 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
       if (!shared_memory_segment.second) {
         exchange->Respond(full_size);
       } else {
-        exchange->Respond(kTooBigResponseMask | kBigSharedMemoryMask | full_size |
+        exchange->Respond(kTooBigResponseMark | kBigSharedMemoryMark | full_size |
                           (shared_memory_segment.first << kBigSharedMemoryIdShift));
       }
     } else {
       auto id = locked_session->SaveData(buffer, std::move(sidecars.buffer()));
-      exchange->Respond(kTooBigResponseMask | id);
+      exchange->Respond(kTooBigResponseMark | id);
     }
     responded_ = true;
   }

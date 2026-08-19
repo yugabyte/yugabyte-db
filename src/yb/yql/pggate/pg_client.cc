@@ -269,16 +269,16 @@ struct PerformData : public FetchBigDataCallback {
       if (Traits::AllowNotReady()) {
         return Traits::NotReady();
       }
-      data_id = tserver::kTooBigResponseMask;
+      data_id = tserver::kTooBigResponseMark;
     } else {
-      data_id = (**exchange_result).size() ^ tserver::kTooBigResponseMask;
-      if (data_id & tserver::kBigSharedMemoryMask) {
-        return FetchBigSharedMemory<Res>(data_id ^ tserver::kBigSharedMemoryMask);
+      data_id = (**exchange_result).size() ^ tserver::kTooBigResponseMark;
+      if (data_id & tserver::kBigSharedMemoryMark) {
+        return FetchBigSharedMemory<Res>(data_id ^ tserver::kBigSharedMemoryMark);
       }
       fetching_big_data = true;
     }
     lock.unlock();
-    if (data_id != tserver::kTooBigResponseMask) {
+    if (data_id != tserver::kTooBigResponseMark) {
       big_data_fetcher->FetchBigData(data_id, this);
     }
     if (Traits::AllowNotReady()) {

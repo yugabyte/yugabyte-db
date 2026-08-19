@@ -203,9 +203,12 @@ struct SharedExchangeMessage {
   size_t size;
 };
 
-constexpr size_t kTooBigResponseMask = 1ULL << 63;
-constexpr size_t kBigSharedMemoryMask = 1ULL << 62;
+constexpr size_t kTooBigResponseMark = 1ULL << 63;
+constexpr size_t kBigSharedMemoryMarkShift = 62;
+constexpr size_t kBigSharedMemoryMark = 1ULL << kBigSharedMemoryMarkShift;
 constexpr size_t kBigSharedMemoryIdShift = 40;
+constexpr size_t kBigSharedMemoryMaxId =
+    (1ULL << (kBigSharedMemoryMarkShift - kBigSharedMemoryIdShift)) - 1;
 
 std::string MakeSharedMemoryBigSegmentName(const std::string& instance_id, uint64_t id);
 
