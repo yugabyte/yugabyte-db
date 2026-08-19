@@ -14,22 +14,52 @@ export const DEFAULT_CONNECTION_POOLING_PORTS: ConnectionPoolingPortFields = {
 };
 
 /** K8s does not support customizing deployment / connection-pooling ports. */
-export function canOverrideCommunicationPorts(
-  providerCode?: string | CloudType | null
-): boolean {
+export function canOverrideCommunicationPorts(providerCode?: string | CloudType | null): boolean {
   return providerCode !== CloudType.kubernetes;
 }
 
-/** True only when CP + override ports are enabled and the provider allows port overrides. */
+/**
+ * YSQL + Internal YSQL stay in sync between Database Settings and Advanced
+ * whenever the provider allows port customization (not K8s).
+ */
+export function shouldSyncConnectionPoolingPorts(
+  providerCode?: string | CloudType | null
+): boolean {
+  return canOverrideCommunicationPorts(providerCode);
+}
+
+/**
+ * Custom Internal YSQL is kept only while connection pooling is enabled.
+ * Turning CP off resets Internal YSQL to the default.
+ */
+export function shouldKeepCustomInternalYsqlPort(
+  databaseSettings?: Pick<DatabaseSettingsProps, 'enableConnectionPooling'>,
+  providerCode?: string | CloudType | null
+): boolean {
+  return canOverrideCommunicationPorts(providerCode) && !!databaseSettings?.enableConnectionPooling;
+}
+
+/** Alias for shouldKeepCustomInternalYsqlPort. */
 export function shouldApplyConnectionPoolingPortOverrides(
   databaseSettings?: Pick<DatabaseSettingsProps, 'enableConnectionPooling' | 'overrideCPPorts'>,
   providerCode?: string | CloudType | null
 ): boolean {
-  return (
-    canOverrideCommunicationPorts(providerCode) &&
-    !!databaseSettings?.enableConnectionPooling &&
-    !!databaseSettings?.overrideCPPorts
-  );
+  return shouldKeepCustomInternalYsqlPort(databaseSettings, providerCode);
+}
+
+/** Ports to copy between Database and Advanced. Internal YSQL is default when CP is off. */
+export function resolveConnectionPoolingPorts(
+  ports: Partial<ConnectionPoolingPortFields> | undefined,
+  enableConnectionPooling: boolean | undefined
+): ConnectionPoolingPortFields {
+  return {
+    ysqlServerRpcPort:
+      ports?.ysqlServerRpcPort ?? DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort,
+    internalYsqlServerRpcPort: enableConnectionPooling
+      ? (ports?.internalYsqlServerRpcPort ??
+        DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort)
+      : DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+  };
 }
 
 /** Clear CP port overrides (used when provider is K8s or override is unavailable). */
@@ -43,7 +73,7 @@ export function clearConnectionPoolingPortOverrides(
   };
 }
 
-/** Copy CP ports into Advanced deployment ports (caller must gate on CP + override). */
+/** Copy CP ports into Advanced deployment ports. */
 export function applyConnectionPoolingPortsToAdvanced(
   otherAdvancedSettings: OtherAdvancedProps | undefined,
   ports: Partial<ConnectionPoolingPortFields>
@@ -79,7 +109,8 @@ export function getConnectionPoolingPortsFromAdvanced(
 ): ConnectionPoolingPortFields {
   return {
     ysqlServerRpcPort:
-      otherAdvancedSettings?.ysqlServerRpcPort ?? DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort,
+      otherAdvancedSettings?.ysqlServerRpcPort ??
+      DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort,
     internalYsqlServerRpcPort:
       otherAdvancedSettings?.internalYsqlServerRpcPort ??
       DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort

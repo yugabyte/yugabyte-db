@@ -18,7 +18,8 @@ import { DatabaseSettingsProps } from './dtos';
 import {
   canOverrideCommunicationPorts,
   getConnectionPoolingPortsFromAdvanced,
-  shouldApplyConnectionPoolingPortOverrides
+  resolveConnectionPoolingPorts,
+  shouldSyncConnectionPoolingPorts
 } from '../../helpers/syncConnectionPoolingPorts';
 import {
   YSQL_FIELD,
@@ -52,16 +53,15 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     keyPrefix: 'createUniverseV2'
   });
 
-  // Prefer Advanced ports when remounting only if CP + override ports are enabled
-  // and the provider allows port customization (not K8s).
+  // Prefer Advanced ports on remount so Database and Advanced stay in sync.
+  // Internal YSQL falls back to the default when connection pooling is off.
   const providerCode = generalSettings?.providerConfiguration?.code ?? generalSettings?.cloud;
   const hideOverridePorts = !canOverrideCommunicationPorts(providerCode);
-  const shouldSyncCpPorts = shouldApplyConnectionPoolingPortOverrides(
-    databaseSettings,
-    providerCode
-  );
-  const syncedCpPorts = shouldSyncCpPorts
-    ? getConnectionPoolingPortsFromAdvanced(otherAdvancedSettings)
+  const syncedCpPorts = shouldSyncConnectionPoolingPorts(providerCode)
+    ? resolveConnectionPoolingPorts(
+        getConnectionPoolingPortsFromAdvanced(otherAdvancedSettings),
+        databaseSettings?.enableConnectionPooling
+      )
     : {};
   const methods = useForm<DatabaseSettingsProps>({
     resolver: yupResolver(DatabaseValidationSchema()),
