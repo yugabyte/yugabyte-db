@@ -284,8 +284,6 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
   otel_span_ = dist_trace::StartClientSpanWithScope(Format("rpc $0", remote_method_.ToString()));
   if (otel_span_) {
     otel_span_->SetAttribute("rpc.system", "yb_rpc");
-    otel_span_->SetAttribute("rpc.service", remote_method_.service_name());
-    otel_span_->SetAttribute("rpc.method", remote_method_.method_name());
     otel_span_->SetAttribute("rpc.call_id", call_id_);
     otel_span_->DropScope();
   }
