@@ -47,10 +47,18 @@ LWSplitTabletRequestPB* RequestTraits<LWSplitTabletRequestPB>::MutableRequest(
 
 void SplitOperation::AddedAsPending(const TabletPtr& tablet) {
   tablet->RegisterOperationFilter(this);
+  filter_registered_.store(true, std::memory_order_release);
 }
 
 void SplitOperation::RemovedFromPending(const TabletPtr& tablet) {
-  tablet->UnregisterOperationFilter(this);
+  // The operation can be aborted without ever having been added as pending: AddedAsPending runs
+  // at the end of Operation::AddedToLeader, whose earlier steps can fail (e.g. tablet_safe()
+  // while the tablet shuts down), while the abort path infers was_pending from OpId validity,
+  // which the operation driver sets before invoking the operation. Unregistering a
+  // never-registered filter would corrupt the tablet's operation-filter list.
+  if (filter_registered_.exchange(false, std::memory_order_acq_rel)) {
+    tablet->UnregisterOperationFilter(this);
+  }
 }
 
 Status SplitOperation::RejectionStatus(
