@@ -53,11 +53,11 @@ For an existing universe, assigning new YB-Masters will start the new YB-Master 
 
 You can enable dedicated YB-Master nodes when [deploying a universe](../../create-deployments/create-universes-wizard/). You can also enable and disable dedicated masters after deployment.
 
-To modify dedicated masters for a universe, navigate to the universe and do the following:
-
 {{< tabpane text=true >}}
 
 {{% tab header="New UI" lang="new" %}}
+
+{{<tags/ui/new>}}To modify dedicated masters for a universe, navigate to the universe and do the following:
 
 1. Click **Settings > Placement**, click **Advanced Placement Options** and **Master Server Node Allocation**.
 
@@ -68,6 +68,8 @@ To modify dedicated masters for a universe, navigate to the universe and do the 
 {{% /tab %}}
 
 {{% tab header="Classic UI" lang="classic" %}}
+
+{{<tags/ui/classic>}}To modify dedicated masters for a universe, navigate to the universe and do the following:
 
 1. Click **Actions > Edit Universe**.
 

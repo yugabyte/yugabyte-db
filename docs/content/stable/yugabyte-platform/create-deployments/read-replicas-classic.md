@@ -21,16 +21,18 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../read-replicas/" class="nav-link">
-      {{<tags/ui/new nolink="true">}}
+      New UI
     </a>
   </li>
 
   <li>
     <a href="../read-replicas-classic/" class="nav-link active">
-      {{<tags/ui/classic nolink="true">}}
+      Classic UI
     </a>
   </li>
 </ul>
+
+{{<tags/ui/classic>}} If your user base is geographically distributed, you can add a read replica cluster to the universe to improve read latency in regions that are far from your primary region.
 
 {{% includeMarkdown "includes/read-replicas-intro.md" %}}
 

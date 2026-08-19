@@ -45,7 +45,7 @@ To change the number of nodes of universes created with an on-premises provider 
 
 {{% tab header="New UI" lang="new" %}}
 
-To scale a universe horizontally:
+{{<tags/ui/new>}} To scale a universe horizontally:
 
 1. Navigate to the universe, then open **Settings > Placement**.
 
@@ -65,7 +65,7 @@ To scale a universe horizontally:
 
 {{% tab header="Classic UI" lang="classic" %}}
 
-To scale a universe horizontally:
+{{<tags/ui/classic>}} To scale a universe horizontally:
 
 1. Navigate to your universe and choose **Actions > Edit Universe**.
 
@@ -92,7 +92,7 @@ Vertical scaling changes the instance type or storage used by universe nodes. In
 
 {{% tab header="New UI" lang="new" %}}
 
-To scale a universe vertically:
+{{<tags/ui/new>}} To scale a universe vertically:
 
 1. Navigate to the universe, then open **Settings > Hardware**.
 
@@ -103,7 +103,9 @@ To scale a universe vertically:
 1. Update the instance configuration as needed:
 
     - **Instance Type** and volume size - Change instance type and storage volume size as configured in the provider.
-    - Storage type and volume count - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS. For Kubernetes universes on YugabyteDB v2026.1.0.0 or later, you can change storage class and volume count using [full move](../kubernetes-full-move/).
+    - Storage type and volume count - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
+    
+        For Kubernetes universes on YugabyteDB v2026.1.0.0 or later, you can change storage class and volume count using [full move](../kubernetes-full-move/).
     - For Kubernetes, you can also change cores and memory.
 
 1. Click **Review Changes**.
@@ -121,14 +123,16 @@ To scale a universe vertically:
 
 {{% tab header="Classic UI" lang="classic" %}}
 
-To scale a universe vertically:
+{{<tags/ui/classic>}} To scale a universe vertically:
 
 1. Navigate to your universe and choose **Actions > Edit Universe**.
 
 1. Under **Instance Configuration**, update the following as needed:
 
     - **Instance Type** and **Volume Info Size** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
-    - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS. For Kubernetes universes on YugabyteDB v2026.1.0.0 or later, you can change storage class and volume count using [full move](../kubernetes-full-move/).
+    - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
+    
+        For Kubernetes universes on YugabyteDB v2026.1.0.0 or later, you can change storage class and volume count using [full move](../kubernetes-full-move/).
 
 1. Click **Save**.
 

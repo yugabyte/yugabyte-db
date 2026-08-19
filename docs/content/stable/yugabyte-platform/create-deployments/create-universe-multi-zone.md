@@ -20,18 +20,18 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../create-universes-wizard/" class="nav-link">
-      {{<tags/ui/new nolink="true">}}
+      New UI
     </a>
   </li>
 
   <li>
     <a href="../create-universe-multi-zone/" class="nav-link active">
-      {{<tags/ui/classic nolink="true">}}
+      Classic UI
     </a>
   </li>
 </ul>
 
-YugabyteDB Anywhere allows you to create a universe across multiple availability zones in a single geographic region, or spanning multiple regions (for example, Oregon, South Carolina, and Tokyo), using a provider configuration. This includes universes deployed on VMs (AWS, GCP, Azure, or on-premises) and on Kubernetes.
+{{<tags/ui/classic>}} YugabyteDB Anywhere allows you to create a universe across multiple availability zones in a single geographic region, or spanning multiple regions (for example, Oregon, South Carolina, and Tokyo), using a provider configuration. This includes universes deployed on VMs (AWS, GCP, Azure, or on-premises) and on Kubernetes.
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes.
 

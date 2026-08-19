@@ -34,11 +34,11 @@ Full move applies to universes that YugabyteDB Anywhere manages via Helm charts.
 
 ### Modify volume attributes
 
-To change storage class, volume count, or volume size on a running universe, navigate to the universe and do the following:
-
 {{< tabpane text=true >}}
 
 {{% tab header="New UI" lang="new" %}}
+
+{{<tags/ui/new>}}To change storage class, volume count, or volume size on a running universe, navigate to the universe and do the following:
 
 1. Click **Settings > Hardware**, and under **Cluster Instance**, or **TServer Instance** or **Master Server Instance** if the universe has dedicated masters, click **Edit**.
 
@@ -50,6 +50,7 @@ To change storage class, volume count, or volume size on a running universe, nav
 
 {{% tab header="Classic UI" lang="classic" %}}
 
+{{<tags/ui/classic>}}To change storage class, volume count, or volume size on a running universe, navigate to the universe and do the following:
 
 1. Click **Actions > Edit Universe**.
 
