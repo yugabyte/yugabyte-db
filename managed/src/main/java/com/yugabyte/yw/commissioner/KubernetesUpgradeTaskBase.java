@@ -351,6 +351,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             newNamingStyle);
 
     boolean tserverFirst = (upgradeContext != null && upgradeContext.isProcessTServersFirst());
+    this.reconcilePgDataOwnershipToRoot =
+        upgradeContext != null && upgradeContext.isReconcilePgDataOwnershipToRoot();
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState =
         upgradeContext != null ? upgradeContext.getYsqlMajorVersionUpgradeState() : null;
     UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
