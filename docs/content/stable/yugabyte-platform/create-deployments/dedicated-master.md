@@ -73,8 +73,6 @@ To modify dedicated masters for a universe, navigate to the universe and do the 
 
 1. Select the **Place Masters on dedicated nodes** option.
 
-    ![Create dedicated universe](/images/yp/create-deployments/create-dedicated-universe.png)
-
 1. In the **Total Nodes** field, enter the number of **TServer** nodes. The **Master** field is always disabled because the number of master nodes is always equal to the **Replication Factor**.
 
 1. For **Instance Configuration**, you can choose different instance types and volume sizes for the TServers and Masters.

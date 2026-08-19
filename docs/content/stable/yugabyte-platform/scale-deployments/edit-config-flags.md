@@ -31,8 +31,8 @@ If your cluster database version is v2024.2 or later, you can enable early acces
 
 Navigate to the universe and do the following:
 
-- New UI: Click **Settings > Database** and under **Features** click **Edit>Edit Enhanced Postgres Compatibility**.
-- Classic UI: Click **Actions > More > Edit Postgres Compatibility**.
+- {{<tags/ui/new>}} Click **Settings > Database** and under **Features** click **Edit>Edit Enhanced Postgres Compatibility**.
+- {{<tags/ui/classic>}} Click **Actions > More > Edit Postgres Compatibility**.
 
 For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
 
@@ -46,9 +46,9 @@ If your universe is running database v2024.2 or later, you can enable [Built-in 
 
 Navigate to the universe and do the following:
 
-1. New UI: Click **Settings > Database**, and under **Features** click **Edit** and choose **Edit Connection Pooling Settings**.
+1. {{<tags/ui/new>}} Click **Settings > Database**, and under **Features** click **Edit** and choose **Edit Connection Pooling Settings**.
 
-    Classic UI: Click **Actions > More > Connection Pooling**.
+    {{<tags/ui/classic>}} Click **Actions > More > Connection Pooling**.
 
     This displays the **Edit Connection Pooling** dialog.
 
@@ -66,8 +66,8 @@ For information on Connection Manager settings and defaults, refer to [Set up YS
 
 You can add and edit configuration flags by navigating to the universe and doing the following:
 
-- New UI: Click **Settings > Database** and under **Advanced Config Flags** click **Edit**.
-- Classic UI: Click **Actions > Edit Flags**.
+- {{<tags/ui/new>}} Click **Settings > Database** and under **Advanced Config Flags** click **Edit**.
+- {{<tags/ui/classic>}} Click **Actions > Edit Flags**.
 
 To customize flags of the read replica of a universe that has a read replica cluster, deselect the **Apply the same Flags to primary cluster and Read Replica** option. (This option is only available for universes with a read replica.) This displays the **Read Replica** tab. [Add](#add-flags) and [modify](#edit-flags) flags as you would for the primary cluster. Note that read replicas only have YB-TServers.
 
