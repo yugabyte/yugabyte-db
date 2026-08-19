@@ -53,6 +53,11 @@ To create a universe with a read replica cluster:
     - Configure the instance type to use for your read replica cluster.
     - You can choose to use the same flags as the primary cluster, or set custom flags for the read replica cluster. Read replicas only have YB-TServers. You can also set flags after universe creation. Refer to [Edit configuration flags](../../scale-deployments/edit-config-flags/).
 
+        {{< tip title="Geographically distributed universes" >}}
+When creating a geographically distributed universe, add the `leader_failure_max_missed_heartbeat_periods` configuration flag for YB-Master and YB-TServer with a value of 10. As the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in high-RPC latency deployments.
+        {{< /tip >}}
+
+
 1. To finish the process, click **Create**.
 
 To see a list of nodes, navigate to **Nodes**. Notice that the nodes are grouped into primary cluster and read replicas, and read replica nodes have a `readonly1` identifier appended to their name.
