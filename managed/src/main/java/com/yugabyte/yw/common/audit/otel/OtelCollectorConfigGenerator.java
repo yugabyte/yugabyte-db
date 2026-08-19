@@ -1055,6 +1055,8 @@ public class OtelCollectorConfigGenerator {
         addK8sLogPipeline(
             cfg,
             service,
+            universe,
+            podPlacement,
             ec.getExporterUuid(),
             ExportType.AUDIT_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL,
@@ -1070,6 +1072,8 @@ public class OtelCollectorConfigGenerator {
         addK8sLogPipeline(
             cfg,
             service,
+            universe,
+            podPlacement,
             ec.getExporterUuid(),
             ExportType.QUERY_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_QUERY_YSQL,
@@ -1095,6 +1099,8 @@ public class OtelCollectorConfigGenerator {
         addK8sLogPipeline(
             cfg,
             service,
+            universe,
+            podPlacement,
             ec.getExporterUuid(),
             ExportType.MASTER_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_MASTER,
@@ -1110,6 +1116,8 @@ public class OtelCollectorConfigGenerator {
         addK8sLogPipeline(
             cfg,
             service,
+            universe,
+            podPlacement,
             ec.getExporterUuid(),
             ExportType.TSERVER_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_TSERVER,
@@ -1126,6 +1134,8 @@ public class OtelCollectorConfigGenerator {
         addK8sLogPipeline(
             cfg,
             service,
+            universe,
+            podPlacement,
             ec.getExporterUuid(),
             ExportType.YSQL_CONN_MGR_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL_CONN_MGR,
@@ -1142,6 +1152,8 @@ public class OtelCollectorConfigGenerator {
         addK8sLogPipeline(
             cfg,
             service,
+            universe,
+            podPlacement,
             ec.getExporterUuid(),
             ExportType.CONTROLLER_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_CONTROLLER,
@@ -1168,6 +1180,8 @@ public class OtelCollectorConfigGenerator {
   private void addK8sLogPipeline(
       OtelCollectorConfigFormat cfg,
       OtelCollectorConfigFormat.Service service,
+      Universe universe,
+      K8sPodPlacement podPlacement,
       UUID exporterUuid,
       ExportType exportType,
       String receiverName,
@@ -1179,6 +1193,8 @@ public class OtelCollectorConfigGenerator {
     TelemetryProvider tp = telemetryProviderService.getOrBadRequest(exporterUuid);
     List<OtelCollectorConfigFormat.AttributeAction> attrs = new ArrayList<>();
     String exporterName = appendExporterConfig(tp, cfg, attrs, exportType);
+    addK8sCommonRequiredAttributes(
+        attrs, universe, podPlacement, tp, logExportPurposeSuffix(exportType));
     // Merge telemetry-provider tags + the exporter config's additionalTags (parity with VM).
     addCommonAdditionalAttributes(attrs, tp, additionalTags);
     attrs.add(new OtelCollectorConfigFormat.AttributeAction("host", "${POD_NAME}", "upsert", null));

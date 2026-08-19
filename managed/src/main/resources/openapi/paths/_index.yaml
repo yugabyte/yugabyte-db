@@ -185,6 +185,7 @@
     description: |
       Returns backups in the incremental chain for the specified backup, including the full
       (base) backup. Pass either the full backup UUID or any incremental backup UUID in the chain.
+      `pageListBackups` returns only full backups; use this API to retrieve incrementals.
       Rows are ordered by create time. The order is descending by default.
       WARNING: This is a preview API that could change.
     tags:
