@@ -450,7 +450,7 @@ struct PgClientData : public FetchBigDataCallback {
         GetSharedMemSpanName(kSharedExchangeRequestType));
     if (otel_span) {
       // Mirror the attributes the RPC outbound span carries (outbound_call.cc).
-      otel_span->SetAttribute("rpc.system", "outbound_shmem");
+      otel_span->SetAttribute("rpc.system", "yb_shmem");
       otel_span->SetAttribute("rpc.service", "yb.tserver.PgClientService");
       otel_span->SetAttribute("rpc.method", GetSharedMemMethodName(kSharedExchangeRequestType));
       otel_span->DropScope();
