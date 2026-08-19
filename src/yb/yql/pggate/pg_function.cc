@@ -209,6 +209,15 @@ Result<PgTableRow> AddObjectLock(
       schema, &row));
   RETURN_NOT_OK(SetColumnValue("fastpath", transaction_id.IsNil() ? true : false, schema, &row));
 
+  if (lock.blocking_txn_ids_size() > 0) {
+    std::vector<TransactionId> blocking_txn_ids;
+    blocking_txn_ids.reserve(lock.blocking_txn_ids_size());
+    for (const auto& blocking_txn_id : lock.blocking_txn_ids()) {
+      blocking_txn_ids.push_back(VERIFY_RESULT(FullyDecodeTransactionId(blocking_txn_id)));
+    }
+    RETURN_NOT_OK(SetColumnArrayValue("blocked_by", blocking_txn_ids, schema, &row));
+  }
+
   return row;
 }
 

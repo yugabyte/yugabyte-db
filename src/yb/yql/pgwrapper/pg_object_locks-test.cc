@@ -335,6 +335,81 @@ TEST_F(PgObjectLocksTestRF1, TestPgLocks) {
   TestAllBlockingPairs(/*test_pg_locks=*/true);
 }
 
+// Verifies that when an object lock request waits on a
+// conflicting granted object lock, pg_locks surfaces the blocking
+// transaction id via ybdetails->'blocked_by' for the waiting object lock.
+// See issue: https://github.com/yugabyte/yugabyte-db/issues/27398
+
+// Two compatible holders (ROW EXCLUSIVE) block one ACCESS EXCLUSIVE waiter, so blocked_by must
+// list more than one transaction id.
+TEST_F(PgObjectLocksTestRF1, TestPgLocksBlockedByMultipleTransactions) {
+  CreateTestTable();
+
+  auto blocker1_conn = ASSERT_RESULT(Connect());
+  auto blocker2_conn = ASSERT_RESULT(Connect());
+  auto observer_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(observer_conn.Execute("SET yb_locks_min_txn_age='0s'"));
+  // Ensure both blockers and the waiter can appear together in pg_locks.
+  ASSERT_OK(observer_conn.Execute("SET yb_locks_max_transactions=16"));
+
+  // ROW EXCLUSIVE locks do not conflict with each other, so both holders are granted.
+  ASSERT_OK(blocker1_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(blocker1_conn.Execute("INSERT INTO test VALUES (100, 100)"));
+  ASSERT_OK(blocker2_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(blocker2_conn.Execute("INSERT INTO test VALUES (101, 101)"));
+
+  // ACCESS EXCLUSIVE conflicts with both ROW EXCLUSIVE holders and must wait on both.
+  auto waiter_future = std::async(std::launch::async, [&]() -> Status {
+    auto waiter_conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(waiter_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(waiter_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+    return waiter_conn.CommitTransaction();
+  });
+  ASSERT_OK(WaitFor([&]() {
+    return NumWaitingLocks() >= 1;
+  }, 15s * kTimeMultiplier, "Timed out waiting for the ALTER to enqueue a waiting object lock"));
+
+  std::string blocked_by;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto dump = VERIFY_RESULT(observer_conn.FetchAllAsString(
+        "SELECT granted, mode, ybdetails->>'transactionid' AS txn,"
+        " (ybdetails->'blocked_by')::text AS blocked_by FROM pg_locks"
+        " WHERE relation = 'test'::regclass AND locktype = 'relation' ORDER BY granted, mode"));
+    LOG(INFO) << "object locks on test:\n" << dump;
+    blocked_by = VERIFY_RESULT(observer_conn.FetchRow<std::string>(
+        "SELECT COALESCE("
+        "  (SELECT ybdetails->'blocked_by' FROM pg_locks"
+        "     WHERE NOT granted AND relation = 'test'::regclass AND locktype = 'relation'"
+        "       AND mode = 'AccessExclusiveLock'"
+        "       AND ybdetails->'blocked_by' IS NOT NULL"
+        "     LIMIT 1), '[]'::jsonb)::text"));
+    // Require at least two blocker txn ids, both matching the granted RowExclusiveLock holders.
+    return VERIFY_RESULT(observer_conn.FetchRow<bool>(
+        "SELECT EXISTS ("
+        "  SELECT 1 FROM pg_locks w"
+        "  WHERE NOT w.granted AND w.relation = 'test'::regclass AND w.locktype = 'relation'"
+        "    AND w.mode = 'AccessExclusiveLock'"
+        "    AND w.ybdetails->'blocked_by' IS NOT NULL"
+        "    AND jsonb_array_length(w.ybdetails->'blocked_by') >= 2"
+        "    AND (SELECT count(DISTINCT g.ybdetails->>'transactionid')"
+        "         FROM pg_locks g"
+        "         WHERE g.granted AND g.relation = 'test'::regclass AND g.locktype = 'relation'"
+        "           AND g.mode = 'RowExclusiveLock'"
+        "           AND g.ybdetails->>'transactionid' IS NOT NULL"
+        "           AND w.ybdetails->'blocked_by' @> to_jsonb(g.ybdetails->>'transactionid')"
+        "        ) >= 2)"));
+  }, 30s * kTimeMultiplier,
+     "Timed out waiting for blocked_by to list multiple blocking transactions"));
+
+  EXPECT_NE(blocked_by, "[]") << "blocked_by was empty";
+  LOG(INFO) << "blocked_by with multiple transactions: " << blocked_by;
+
+  // Both blockers must be released before the ACCESS EXCLUSIVE waiter can proceed.
+  ASSERT_OK(blocker1_conn.CommitTransaction());
+  ASSERT_OK(blocker2_conn.CommitTransaction());
+  ASSERT_OK(waiter_future.get());
+}
+
 class PgObjectLocksTestRF1Deadlock : public PgObjectLocksTestRF1 {
  protected:
   void SetUp() override {
@@ -1342,6 +1417,70 @@ TEST_F(PgObjectLocksTest, TestGlobalReleaseForFailedDdlsBeforeMetadataIsSet) {
 
 TEST_F(PgObjectLocksTest, TestSyncReleaseForGlobalLocksAndDdls) {
   testSyncReleaseForGlobalLocksAndDdls();
+}
+
+// Multi-node variant: verifies that pg_locks.ybdetails.blocked_by is populated for a waiting object
+// lock even when the blocker, the waiter, and the observer are all on different nodes. This
+// exercises the cross-node blocker aggregation in PgClientService::GetObjectLockStatus (the blocker
+// holds its lock on ts0, the DDL waits there via the global lock, and the observer reads from ts2).
+TEST_F(PgObjectLocksTest, TestPgLocksBlockedByForObjectLocksMultiNode) {
+  auto* ts_blocker = cluster_->tablet_server(0);
+  auto* ts_waiter = cluster_->tablet_server(1);
+  auto* ts_observer = cluster_->tablet_server(2);
+
+  auto setup_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts_blocker));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+
+  auto observer_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts_observer));
+  ASSERT_OK(observer_conn.Execute("SET yb_locks_min_txn_age='0s'"));
+
+  // Blocker on ts0 holds a ROW EXCLUSIVE lock via a write in an explicit transaction. Using a write
+  // (rather than a read-only ACCESS SHARE) ensures the blocker's transaction is registered at a
+  // status tablet and therefore visible in pg_locks with its transaction id.
+  auto blocker_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts_blocker));
+  ASSERT_OK(blocker_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(blocker_conn.Execute("INSERT INTO test VALUES (100, 100)"));
+
+  // Waiter on ts1 issues a DDL needing ACCESS EXCLUSIVE (a global lock), which conflicts with the
+  // blocker's ROW EXCLUSIVE lock held on ts0 and must wait.
+  auto waiter_future = std::async(std::launch::async, [&]() -> Status {
+    auto waiter_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts_waiter));
+    return waiter_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
+  });
+
+  // Poll pg_locks from the observer (ts2) until the waiting object lock reports a blocker.
+  std::string blocked_by;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto dump = VERIFY_RESULT(observer_conn.FetchAllAsString(
+        "SELECT granted, mode, ybdetails->>'transactionid' AS txn,"
+        " (ybdetails->'blocked_by')::text AS blocked_by FROM pg_locks"
+        " WHERE relation = 'test'::regclass AND locktype = 'relation' ORDER BY granted"));
+    LOG(INFO) << "object locks on test:\n" << dump;
+    blocked_by = VERIFY_RESULT(observer_conn.FetchRow<std::string>(
+        "SELECT COALESCE("
+        "  (SELECT ybdetails->'blocked_by' FROM pg_locks"
+        "     WHERE NOT granted AND relation = 'test'::regclass AND locktype = 'relation'"
+        "       AND ybdetails->'blocked_by' IS NOT NULL"
+        "     LIMIT 1), '[]'::jsonb)::text"));
+    return blocked_by != "[]" && !blocked_by.empty();
+  }, 60s * kTimeMultiplier, "Timed out waiting for blocked_by to be populated across nodes"));
+
+  // The blocked_by list should reference the blocker's transaction, which also shows up as a
+  // granted object lock holder on the same table.
+  const auto references_blocker = ASSERT_RESULT(observer_conn.FetchRow<bool>(
+      "SELECT EXISTS ("
+      "  SELECT 1 FROM pg_locks w JOIN pg_locks g"
+      "    ON g.granted AND g.relation = 'test'::regclass AND g.locktype = 'relation'"
+      "       AND g.ybdetails->>'transactionid' IS NOT NULL"
+      "  WHERE NOT w.granted AND w.relation = 'test'::regclass AND w.locktype = 'relation'"
+      "    AND w.ybdetails->'blocked_by' @> to_jsonb(g.ybdetails->>'transactionid'))"));
+  EXPECT_TRUE(references_blocker)
+      << "blocked_by did not reference the granted holder; blocked_by=" << blocked_by;
+
+  // Releasing the blocker should let the waiter's DDL complete.
+  ASSERT_OK(blocker_conn.Execute("COMMIT"));
+  ASSERT_OK(waiter_future.get());
 }
 
 YB_STRONGLY_TYPED_BOOL(DoMasterFailover);

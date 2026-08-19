@@ -214,4 +214,7 @@ message ObjectLockInfoPB {
   optional TableLockType mode = 7;
   optional ObjectLockState lock_state = 8;
   optional fixed64 wait_start_ht = 9;
+  // Transactions blocking this object lock request.
+  // Surfaced through pg_locks.ybdetails.blocked_by.
+  repeated bytes blocking_txn_ids = 10;
 }

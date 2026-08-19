@@ -21,6 +21,7 @@
 #include <optional>
 #include <queue>
 #include <ranges>
+#include <set>
 #include <span>
 #include <unordered_set>
 #include <vector>
@@ -1732,6 +1733,11 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       return Status::OK();
     }
 
+    // Blocker (blocked_by) info is only present on the node(s) where the lock is waiting, and the
+    // merge logic below Swaps whole ObjectLockInfoPBs (which would drop blockers). Accumulate the
+    // union of blocking transactions per lock context here and stamp it onto the final entries.
+    std::unordered_map<ObjectLockContext, std::set<std::string>> blockers_by_context;
+
     // Collect object lock infos from all tservers.
     GetObjectLockStatusRequestPB req;
     std::vector<std::future<Status>> status_futures;
@@ -1783,8 +1789,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       for (int j = 0; j < node_resp->object_lock_infos_size(); j++) {
         auto* lock_infos = node_resp->mutable_object_lock_infos(j);
         auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
-        auto [it, inserted] = object_lock_info_map->try_emplace(
-          ObjectLockContext{
+        ObjectLockContext context{
             txn_id,
             lock_infos->subtransaction_id(),
             lock_infos->database_oid(),
@@ -1792,8 +1797,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             lock_infos->object_oid(),
             lock_infos->object_sub_oid(),
             lock_infos->mode()
-          },
-          LockInfoWithCounter{ObjectLockInfoPB(), 1});
+          };
+        for (const auto& blocker : lock_infos->blocking_txn_ids()) {
+          blockers_by_context[context].insert(blocker);
+        }
+        auto [it, inserted] = object_lock_info_map->try_emplace(
+          context, LockInfoWithCounter{ObjectLockInfoPB(), 1});
         auto& existing_lock_info = it->second.first;
         if (inserted) {
           // First time seeing this lock
@@ -1831,8 +1840,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     for (int i = 0; i < master_resp.object_lock_infos_size(); i++) {
       auto* lock_infos = master_resp.mutable_object_lock_infos(i);
       auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
-      auto [it, inserted] = object_lock_info_map->try_emplace(
-        ObjectLockContext{
+      ObjectLockContext context{
           txn_id,
           lock_infos->subtransaction_id(),
           lock_infos->database_oid(),
@@ -1840,8 +1848,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
           lock_infos->object_oid(),
           lock_infos->object_sub_oid(),
           lock_infos->mode()
-        },
-        LockInfoWithCounter{ObjectLockInfoPB(), 1});
+        };
+      for (const auto& blocker : lock_infos->blocking_txn_ids()) {
+        blockers_by_context[context].insert(blocker);
+      }
+      auto [it, inserted] = object_lock_info_map->try_emplace(
+        context, LockInfoWithCounter{ObjectLockInfoPB(), 1});
       auto& existing_lock_info = it->second.first;
       auto tserver_count = it->second.second;
       if (!inserted && tserver_count == remote_tservers.size() &&
@@ -1853,6 +1865,20 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       // Note: The wait_start timestamp will be from the master(first lock acquisition)
       lock_infos->set_lock_state(ObjectLockState::WAITING);
       existing_lock_info.Swap(lock_infos);
+    }
+
+    // Stamp the unioned blocker info onto the consolidated entries. Swaps above may have carried
+    // over or dropped per-node blockers, so rebuild from the accumulated union to be consistent.
+    for (auto& [context, lock_info_with_counter] : *object_lock_info_map) {
+      auto& lock_info = lock_info_with_counter.first;
+      lock_info.clear_blocking_txn_ids();
+      auto blockers_it = blockers_by_context.find(context);
+      if (blockers_it == blockers_by_context.end()) {
+        continue;
+      }
+      for (const auto& blocker : blockers_it->second) {
+        lock_info.add_blocking_txn_ids(blocker);
+      }
     }
 
     return Status::OK();
