@@ -116,47 +116,50 @@ YbSeqNext(YbSeqScanState *node)
 											  false,	/* is_internal_scan */
 											  false);	/* fetch_ybctids_only */
 		ybScan->pscan = node->pscan;
-	}
-	else
-		ybScan = tsdesc->ybscan;
 
-	/*
-	 * Set up any locking that happens at the time of the scan.
-	 */
-	if (IsYugaByteEnabled() && IsolationIsSerializable())
-	{
 		/*
-		 * In case of SERIALIZABLE isolation level we have to take prefix range
-		 * locks to disallow INSERTion of new rows that satisfy the query
-		 * predicate. So, we set the rowmark on all read requests sent to
-		 * tserver instead of locking each tuple one by one in LockRows node.
+		 * Set up any locking that happens at the time of the scan.
 		 */
-		for (int i = 0; estate->es_rowmarks && i < estate->es_range_table_size;
-			 i++)
+		if (IsolationIsSerializable())
 		{
-			ExecRowMark *erm = estate->es_rowmarks[i];
-
 			/*
-			 * YB_TODO: This block of code is broken on master (GH #20704). With
-			 * PG commit f9eb7c14b08d2cc5eda62ffaf37a356c05e89b93,
-			 * estate->es_rowmarks is an array with
-			 * potentially NULL elements (previously, it was a list). As a
-			 * temporary fix till #20704 is addressed, ignore any NULL element
-			 * in es_rowmarks.
+			 * In case of SERIALIZABLE isolation level we have to take prefix
+			 * range locks to disallow INSERTion of new rows that satisfy the
+			 * query predicate. So, we set the rowmark on all read requests
+			 * sent to tserver instead of locking each tuple one by one in
+			 * LockRows node.
 			 */
-			if (!erm)
-				continue;
-			/* Do not propagate non-row-locking row marks. */
-			if (erm->markType != ROW_MARK_REFERENCE &&
-				erm->markType != ROW_MARK_COPY)
+			for (int i = 0;
+				 estate->es_rowmarks && i < estate->es_range_table_size;
+				 i++)
 			{
-				ybScan->exec_params->rowmark = erm->markType;
-				ybScan->exec_params->pg_wait_policy = erm->waitPolicy;
-				ybScan->exec_params->docdb_wait_policy =
-					YBGetDocDBWaitPolicy(erm->waitPolicy);
+				ExecRowMark *erm = estate->es_rowmarks[i];
+
+				/*
+				 * YB_TODO: This block of code is broken on master (GH
+				 * #20704).  With PG commit
+				 * f9eb7c14b08d2cc5eda62ffaf37a356c05e89b93,
+				 * estate->es_rowmarks is an array with potentially NULL
+				 * elements (previously, it was a list). As a temporary
+				 * fix till #20704 is addressed, ignore any NULL element
+				 * in es_rowmarks.
+				 */
+				if (!erm)
+					continue;
+				/* Do not propagate non-row-locking row marks. */
+				if (erm->markType != ROW_MARK_REFERENCE &&
+					erm->markType != ROW_MARK_COPY)
+				{
+					ybScan->exec_params->rowmark = erm->markType;
+					ybScan->exec_params->pg_wait_policy = erm->waitPolicy;
+					ybScan->exec_params->docdb_wait_policy =
+						YBGetDocDBWaitPolicy(erm->waitPolicy);
+				}
 			}
 		}
 	}
+	else
+		ybScan = tsdesc->ybscan;
 
 	/*
 	 * In the case of parallel scan we need to obtain boundaries from the pscan
