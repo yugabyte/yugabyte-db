@@ -335,6 +335,9 @@ TEST_F(PgGlobalViewsTest, TestGroupByIsNotPushedDown) {
 }
 
 TEST_F(PgGlobalViewsTest, TestJoinsAreNotPushedDown) {
+  // Sample often enough that the short workload below lands in the ASH buffer.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_ash_sampling_interval_ms", "50"));
+
   // add some samples in buffer of each tserver
   for (auto* ts : cluster_->tserver_daemons()) {
     auto conn = ASSERT_RESULT(ConnectToTs(*ts));
@@ -343,6 +346,16 @@ TEST_F(PgGlobalViewsTest, TestJoinsAreNotPushedDown) {
       SleepFor(10ms);
     }
   }
+
+  // The join's ASH side is the outer relation, so an empty gv$partial_ash makes
+  // the executor skip the pg_stat_statements scans entirely and no remote query
+  // for them is ever sent. Wait until at least one sample is visible.
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto count = conn_->FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM gv$partial_ash "
+        "WHERE sample_time >= current_timestamp - interval '20 minutes'");
+    return count.ok() && *count > 0;
+  }, 60s * kTimeMultiplier, "ASH samples visible in the global view"));
 
   // there can only be one log waiter at a time, so we need to run the tests sequentially
   for (const auto& log_pattern : {
