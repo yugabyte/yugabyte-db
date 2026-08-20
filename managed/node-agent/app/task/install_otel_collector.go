@@ -87,6 +87,10 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		"user_name":           h.username,
 		"yb_home_dir":         h.param.GetYbHomeDir(),
 		"otel_col_max_memory": otelColMaxMemory,
+		// Must mirror the conditions the setup steps use to write these credentials.
+		"otel_col_aws_creds_present": h.param.GetOtelColAwsAccessKey() != "" &&
+			h.param.GetOtelColAwsSecretKey() != "",
+		"otel_col_gcp_creds_present": h.param.GetOtelColGcpCredsFile() != "",
 	}
 
 	// Copy otel-collector.service

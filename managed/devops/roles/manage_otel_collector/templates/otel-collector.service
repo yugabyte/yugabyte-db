@@ -30,8 +30,14 @@ LimitNPROC=12000
 # Hard Memory limit
 MemoryMax={{otel_col_max_memory}}M
 
+# Set only when the control tasks actually wrote the credentials: exporters resolve these while
+# building their pipelines, so a dangling value fails collector startup outright.
+{% if otel_col_aws_access_key is defined and otel_col_aws_secret_key is defined %}
 Environment="AWS_PROFILE=otel-collector"
+{% endif %}
+{% if otel_col_gcp_creds_local is defined %}
 Environment="GOOGLE_APPLICATION_CREDENTIALS={{yb_home_dir}}/otel-collector/gcp_creds"
+{% endif %}
 Environment="HOME={{yb_home_dir}}"
 
 [Install]
