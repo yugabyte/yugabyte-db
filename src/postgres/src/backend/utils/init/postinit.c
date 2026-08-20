@@ -1143,10 +1143,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 				 MyProcPort->yb_dist_traceparent);
 
 		/* Warn instead of failing the connection when the value is rejected. */
-		(void) set_config_option("yb_dist_tracecontext", tracecontext,
-								 PGC_BACKEND, PGC_S_SESSION, GUC_ACTION_SET,
-								 true /* changeVal */ , WARNING,
-								 false /* is_reload */ );
+		(void) set_config_option_ext("yb_dist_tracecontext", tracecontext,
+									 PGC_BACKEND, PGC_S_SESSION,
+									 BOOTSTRAP_SUPERUSERID, GUC_ACTION_SET,
+									 true /* changeVal */ , WARNING,
+									 false /* is_reload */ );
 	}
 
 	if (IsYugaByteEnabled() && !bootstrap)
