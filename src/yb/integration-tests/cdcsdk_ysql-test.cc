@@ -11093,9 +11093,14 @@ TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedMultiShardTxn) {
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES (10)"));
   ASSERT_OK(conn.Execute("COMMIT"));
 
-  auto change_resp3 = ASSERT_RESULT(GetChangesFromCDC(
-      stream_id, tablets, &change_resp2.cdc_sdk_checkpoint(), 0, change_resp2.safe_hybrid_time(),
-      change_resp2.wal_segment_index()));
+  // COMMIT returns before the txn's APPLY op is appended and before the consensus queue's
+  // committed_op_id catches up with it, so GetChanges can legitimately respond "wait for WAL
+  // update" with no records. Poll until both txns are shipped.
+  GetChangesResponsePB change_resp3;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp3, stream_id, tablets, num_inserts + 1, /* is_explicit_checkpoint */ true,
+      &change_resp2.cdc_sdk_checkpoint(), /* tablet_idx */ 0, change_resp2.safe_hybrid_time(),
+      change_resp2.wal_segment_index(), /* timeout_secs */ 60));
   // 1 DDL + Txn1 (B + 10 inserts + C) + Txn2 (B + 1 insert + C)
   ASSERT_EQ(change_resp3.cdc_sdk_proto_records_size(), 16);
 }
