@@ -100,7 +100,22 @@ If you have problems, you can [roll back](#roll-back-an-upgrade) during this tim
 
 For upgrades that require finalizing, you can monitor for as long as you need, up to a _maximum recommended limit of two days_ to avoid operator errors that can arise from having to maintain two versions.
 
-A subset of features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have finalized the current one.
+A subset of features that require format changes will not be available until the upgrade is finalized. 
+
+{{< warning title="DDLs remain blocked until the upgrade is finalized" >}}
+If you are performing a [YSQL major upgrade](../ysql-major-upgrade-yba/), DDL statements and other catalog
+modifications continue to be blocked during the monitoring phase, including for validation or test queries. A blocked
+DDL returns the following:
+
+```output
+ERROR: YSQL DDLs, and catalog modifications are not allowed during a major YSQL upgrade
+```
+
+This is expected. DDL support resumes once you finalize or roll back the upgrade. Refer to
+[Limitations](../ysql-major-upgrade-yba/#limitations) for the full list of operations unavailable until then.
+{{< /warning >}}
+
+You cannot perform another upgrade until you have finalized the current one.
 
 If you are satisfied with the upgrade:
 
