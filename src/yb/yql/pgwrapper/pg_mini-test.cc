@@ -1437,7 +1437,10 @@ void PgMiniTest::TestBigInsert(bool restart) {
       auto res = connection.FetchRow<PGUint64>("SELECT SUM(a) FROM t");
       if (!res.ok()) {
         auto msg = res.status().message().ToBuffer();
-        ASSERT_TRUE(msg.find("server closed the connection unexpectedly") != std::string::npos)
+        // With object locking enabled the tserver shuts its object lock manager down before
+        // stopping PG, so an in-flight query may be rejected before the connection is closed.
+        ASSERT_TRUE(msg.find("server closed the connection unexpectedly") != std::string::npos ||
+                    msg.find("Object Lock Manager Shutdown") != std::string::npos)
             << res.status();
         while (!restarted.load() && !stop.load()) {
           std::this_thread::sleep_for(10ms);
