@@ -1,6 +1,5 @@
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.YbaApi;
 import io.swagger.annotations.ApiModel;
@@ -34,10 +33,6 @@ public class UserProfileFormData {
       value = "YbaApi Internal. Whether the new UI tour was completed by particular user")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
   private Boolean newUniverseUiTourCompleted;
-
-  @ApiModelProperty(value = "YbaApi Internal. Per-user key-value settings")
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
-  private JsonNode userSettings;
 
   public String getPassword() {
     return password;
@@ -85,13 +80,5 @@ public class UserProfileFormData {
 
   public void setNewUniverseUiTourCompleted(Boolean newUniverseUiTourCompleted) {
     this.newUniverseUiTourCompleted = newUniverseUiTourCompleted;
-  }
-
-  public JsonNode getUserSettings() {
-    return userSettings;
-  }
-
-  public void setUserSettings(JsonNode userSettings) {
-    this.userSettings = userSettings;
   }
 }

@@ -622,11 +622,12 @@ public class UsersControllerTest extends FakeDBApplication {
     String authTokenTest = testUser1.createAuthToken();
     assertEquals(testUser1.getRole(), Role.Admin);
     ObjectNode settings = Json.newObject();
-    settings.put("obj", Json.newObject());
+    settings.set("obj", Json.newObject());
     settings.put("str", "some string");
     settings.put("int", "100");
 
     ObjectNode params = Json.newObject();
+    params.put("role", "Admin");
     params.set("userSettings", settings);
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result =
@@ -640,7 +641,7 @@ public class UsersControllerTest extends FakeDBApplication {
                 .bodyJson(params));
     assertEquals(result.status(), OK);
     testUser1 = Users.get(testUser1.getUuid());
-    assertEquals(testUser1.getSettings(), settings);
+    assertEquals(settings, testUser1.getSettings());
   }
 
   @Test

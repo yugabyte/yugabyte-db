@@ -579,8 +579,10 @@ public class UsersController extends AuthenticatedController {
     if (formData.getNewUniverseUiTourCompleted() != null) {
       user.setNewUniverseUiTourCompleted(formData.getNewUniverseUiTourCompleted());
     }
-    if (formData.getUserSettings() != null) {
-      user.upsertSettings(formData.getUserSettings());
+    // userSettings is nested JSON, so fetch it from the request body (Play forms cannot bind it).
+    JsonNode requestBody = request.body().asJson();
+    if (requestBody != null && requestBody.has("userSettings")) {
+      user.upsertSettings(requestBody.get("userSettings"));
     }
 
     if (useNewAuthz) {
