@@ -44,6 +44,14 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = getUniverse();
+    if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL
+        && requiresYsql(taskParams().action)) {
+      log.info(
+          "Skipping catalog upgrade superuser {} because YSQL is disabled for universe {}",
+          taskParams().action,
+          universe.getUniverseUUID());
+      return;
+    }
     NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
     String pgPassFileDir =
         (Util.isKubernetesBasedUniverse(universe)
@@ -69,6 +77,12 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
       createPGPassFile(
           universe, masterLeaderNode, pgPassFileDir, pgPassFilePath, taskParams().password);
     }
+  }
+
+  private static boolean requiresYsql(Action action) {
+    return action == Action.CREATE_USER
+        || action == Action.DELETE_USER
+        || action == Action.CREATE_USER_AND_PG_PASS_FILE;
   }
 
   private void dropUser(Universe universe, NodeDetails node) {
