@@ -284,6 +284,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RollbackUpgrade,
           TaskType.RollbackKubernetesUpgrade,
           TaskType.RollbackEditUniverse,
+          TaskType.RollbackEditKubernetesUniverse,
           TaskType.RestartUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
@@ -641,6 +642,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // 1:1 with EditUniverseRollbackComputer / TaskType.EditUniverse.
       if (lockedTaskType == TaskType.EditUniverse) {
         builder.taskTypes(ImmutableSet.of(TaskType.RollbackEditUniverse));
+      }
+      // 1:1 with EditKubernetesUniverseRollbackComputer / TaskType.EditKubernetesUniverse. Additive
+      // with the rerun path below (EditKubernetesUniverse is rerunnable), so both roll back and
+      // rerun are allowed on a failed K8s edit.
+      if (lockedTaskType == TaskType.EditKubernetesUniverse) {
+        builder.taskTypes(ImmutableSet.of(TaskType.RollbackEditKubernetesUniverse));
       }
       if (RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
         builder.rerun(true);

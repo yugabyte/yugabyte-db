@@ -899,6 +899,7 @@ public class CustomerTaskManager {
       case RollbackEditUniverse:
       case InstallYbcSoftwareOnK8s:
       case EditKubernetesUniverse:
+      case RollbackEditKubernetesUniverse:
       case ReadOnlyKubernetesClusterCreate:
       case ReadOnlyClusterCreate:
       case SyncMasterAddresses:

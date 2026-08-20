@@ -201,6 +201,9 @@ public class CustomerTask extends Model {
     @EnumValue("EditKubernetesUniverse")
     EditKubernetesUniverse,
 
+    @EnumValue("RollbackEditKubernetesUniverse")
+    RollbackEditKubernetesUniverse,
+
     @EnumValue("CertsRotate")
     CertsRotate,
 
@@ -523,6 +526,10 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Kubernetes Overrides" : "Upgrading Kubernetes Overrides";
         case EditKubernetesUniverse:
           return completed ? "Edited Kubernetes Universe" : "Editing Kubernetes Universe";
+        case RollbackEditKubernetesUniverse:
+          return completed
+              ? "Rolled back edit Kubernetes universe"
+              : "Rolling back edit Kubernetes universe";
         case CertsRotate:
           return completed ? "Updated Certificates" : "Updating Certificates";
         case TlsToggle:

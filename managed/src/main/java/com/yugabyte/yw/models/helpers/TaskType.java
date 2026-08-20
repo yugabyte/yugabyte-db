@@ -171,6 +171,11 @@ public enum TaskType {
       CustomerTask.TaskType.Update,
       CustomerTask.TargetType.Universe),
 
+  RollbackEditKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.RollbackEditKubernetesUniverse.class,
+      CustomerTask.TaskType.RollbackEditKubernetesUniverse,
+      CustomerTask.TargetType.Universe),
+
   ExternalScript(
       com.yugabyte.yw.commissioner.tasks.ExternalScript.class,
       CustomerTask.TaskType.ExternalScript,
@@ -1405,6 +1410,7 @@ public enum TaskType {
           .put(EditKubernetesUniverse, 7)
           .put(EditUniverse, 8)
           .put(RollbackEditUniverse, 17)
+          .put(RollbackEditKubernetesUniverse, 18)
           .put(PauseUniverse, 9)
           .put(ReadOnlyClusterCreate, 10)
           .put(ReadOnlyClusterDelete, 11)
