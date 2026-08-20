@@ -235,6 +235,16 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   // Rejected updates leave the previously accepted list active.
   ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
 
+  // The limit counts distinct table IDs, so repeating one does not consume the budget twice.
+  req.clear_table_ids();
+  req.add_table_ids(kTableName.table_name());
+  req.add_table_ids(kTableName.table_name());
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
+
   SleepFor(MonoDelta::FromMilliseconds(1));
   req.clear_table_ids();
   resp.Clear();
@@ -245,6 +255,17 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
       ASSERT_RESULT(LastUpdateTime(FilteredScrape())),
       second_update_time);
   ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
+
+  // An empty table ID rejects the whole request, leaving the previously accepted list active.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_active_table_metrics_table_count) = 1000;
+  req.add_table_ids(kTableName.table_name());
+  req.add_table_ids("");
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_TRUE(StatusFromPB(resp.error().status()).IsInvalidArgument());
   ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
 }
 
