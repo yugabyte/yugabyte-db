@@ -174,7 +174,8 @@ class OciCloud(AbstractCloud):
             volume_type=getattr(args, 'volume_type', OCI_VOLUME_TYPE_STANDARD),
             ocpus=ocpus,
             memory_in_gbs=memory_in_gbs,
-            node_uuid=getattr(args, 'node_uuid', None)
+            node_uuid=getattr(args, 'node_uuid', None),
+            instance_template=getattr(args, 'instance_template', None)
         )
         return host_info
 

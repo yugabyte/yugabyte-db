@@ -8,6 +8,7 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.SetMultimap;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.oci.OCICloudImpl;
+import com.yugabyte.yw.cloud.oci.OCICloudUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -15,10 +16,14 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 @Singleton
@@ -70,6 +75,22 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
         validateNTPServers(provider.getDetails().ntpServers);
       } catch (PlatformServiceException e) {
         validationErrorsMap.put("NTP_SERVERS", e.getMessage());
+      }
+    }
+
+    if (provider.getRegions() != null) {
+      for (Region region : provider.getRegions()) {
+        OCIRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(region);
+        if (regionCloudInfo == null) {
+          continue;
+        }
+        String instanceTemplate = regionCloudInfo.getInstanceTemplate();
+        if (StringUtils.isNotEmpty(instanceTemplate)
+            && !OCICloudUtil.isValidInstanceConfigurationOcid(instanceTemplate)) {
+          validationErrorsMap.put(
+              "instanceTemplate",
+              "instanceTemplate must be a valid OCI Instance Configuration OCID");
+        }
       }
     }
 
