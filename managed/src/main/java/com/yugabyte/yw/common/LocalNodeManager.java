@@ -841,7 +841,8 @@ public class LocalNodeManager {
       boolean isDestroy) {
     Process process = nodeInfo.processMap.remove(serverType);
     if (process == null) {
-      throw new IllegalStateException("No process of type " + serverType + " for " + nodeInfo.name);
+      log.info("No process of type {} for {}, nothing to stop", serverType, nodeInfo.name);
+      return;
     }
     log.debug("Killing process {}", process.pid());
 

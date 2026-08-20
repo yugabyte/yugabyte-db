@@ -63,6 +63,7 @@ public class SoftwareUpgradeHelper {
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     return gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, newVersion)
+        && primaryCluster.userIntent.enableYSQL
         && (primaryCluster.userIntent.enableYSQLAuth
             || primaryCluster.userIntent.enableNodeToNodeEncrypt
             || primaryCluster.userIntent.enableClientToNodeEncrypt)

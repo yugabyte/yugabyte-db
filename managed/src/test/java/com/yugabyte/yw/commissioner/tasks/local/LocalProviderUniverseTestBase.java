@@ -1420,10 +1420,16 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   public static String getAllErrorsStr(TaskInfo taskInfo) {
-    StringBuilder sb = new StringBuilder(taskInfo.getErrorMessage());
+    StringBuilder sb = new StringBuilder();
+    if (!StringUtils.isEmpty(taskInfo.getErrorMessage())) {
+      sb.append(taskInfo.getErrorMessage());
+    }
     for (TaskInfo subTask : taskInfo.getSubTasks()) {
       if (!StringUtils.isEmpty(subTask.getErrorMessage())) {
-        sb.append("\n").append(subTask.getErrorMessage());
+        if (sb.length() > 0) {
+          sb.append("\n");
+        }
+        sb.append(subTask.getErrorMessage());
       }
     }
     return sb.toString();
