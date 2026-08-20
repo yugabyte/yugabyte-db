@@ -2590,6 +2590,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Background threadpool, newer features use this (instead of the Background thread)
   // to execute time-lenient catalog manager tasks.
+  //
+  // Warning: this is a limited size thread pool; deadlocks are possible if a task on this pool
+  // needs to wait (indirectly) for another task that needs to run on this pool.
   std::unique_ptr<yb::ThreadPool> background_tasks_thread_pool_;
 
   // TODO: convert this to YB_DEFINE_ENUM for automatic pretty-printing.

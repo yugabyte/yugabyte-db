@@ -302,9 +302,7 @@ TEST_F(XClusterDDLReplicationTest, BasicTestWithMultipleDatabases) {
   }
 }
 
-// We have a temporary fix for this test that we are applying only in non-debug builds.  We do this
-// so we will catch other tests that need the same permanent fix.  See #27622.
-TEST_F(XClusterDDLReplicationTest, YB_NEVER_DEBUG_TEST(CheckpointMultipleDatabases)) {
+TEST_F(XClusterDDLReplicationTest, CheckpointMultipleDatabases) {
   ASSERT_OK(SetUpClusters());
 
   std::vector<NamespaceName> namespaces{namespace_name};
