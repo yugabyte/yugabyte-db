@@ -36,25 +36,25 @@ YugabyteDB provides four complementary ways to work with a point in time:
 | Capability | What it does | Best when |
 | :--- | :--- | :--- |
 | [Inspect at PIT](inspect/) | Query the database as it existed at an earlier time (read-only). | You need to find when or what went wrong, or recover a small amount of data surgically on the production database. |
-| [Clone to PIT](clone/) | Create a fast, lightweight, writable copy of the database as of a point in time on the same cluster. | Recent writes must be preserved; you can perform forensic search and extract/merge on the original cluster. |
+| [Clone to PIT](clone/) | Create a fast, lightweight, writable copy (or branch) of the database as of a point in time on the same cluster. | Recent writes must be preserved; you can perform forensic search and extract/merge on the original cluster. |
 | [Rewind to PIT](rewind/) | Rewind the original database to an earlier point in time. Intervening writes are discarded. | There were no important writes after the error, or those writes can be discarded or replayed from an external log. |
 | [Restore to PIT](restore/) | Restore from a snapshot or backup to a chosen point in time, on the original or an alternate cluster. | Policy requires recovery off the production cluster, or you need a longer retention window on cheaper backup storage. |
 
 ### Choosing an approach
 
-- Start with [Inspect at PIT](inspect/) when you need to determine *when* the error occurred or *what* data changed.
+- Start with [Inspect at PIT](inspect/) when you need to determine *when* the error occurred or *what* data changed. Also referred to as time travel query.
 - Use [Rewind to PIT](rewind/) when intervening writes can be discarded (or replayed from an external application log).
-- Use [Clone to PIT](clone/) when intervening writes must be preserved and forensic recovery is allowed on the production cluster.
+- Use [Clone to PIT](clone/) when intervening writes must be preserved and forensic recovery is allowed on the production cluster. Also referred to as branching.
 - Use [Restore to PIT](restore/) when recovery must happen on an alternate cluster, or you need a longer retention window from backup storage.
 
 Use the following comparison when deciding:
 
-| | Inspect at PIT | Clone to PIT | Rewind to PIT | Restore to PIT |
-| :--- | :--- | :--- | :--- | :--- |
+|      | Inspect at PIT | Clone to PIT | Rewind to PIT | Restore to PIT |
+| :--- | :------------- | :----------- | :------------ | :------------- |
 | Target cluster | Original | Original | Original | Original or alternate |
 | Database affected | Original (read-only view) | New cloned database | Original database | Restored database |
 | Crosses DDL boundaries | No | Yes | Yes | No (current limitation) |
-| Newest recoverable time | Seconds ago | Seconds ago | Seconds ago | Time of last snapshot/backup |
+| Newest recoverable time | Seconds ago | Seconds ago | Seconds ago | Time of last [snapshot/backup](../snapshot-ysql/) |
 | Typical retention | Hours (primary storage) | Hours to days (primary storage) | Hours to days (primary storage) | Hours to months (backup storage) |
 | APIs | YSQL | YSQL and YCQL | YSQL and YCQL | YSQL and YCQL |
 

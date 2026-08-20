@@ -3,6 +3,7 @@ title: Rewind to a point in time
 headerTitle: Rewind to PIT
 linkTitle: Rewind to PIT
 description: Rewind a YugabyteDB database to a specific point in time
+headcontent: Rewind a database to a specific point in time
 menu:
   stable:
     identifier: pitr-rewind
@@ -10,6 +11,10 @@ menu:
     weight: 40
 type: docs
 ---
+
+{{< tip title="Which PITR method should I use?" >}}
+To decide which point-in-time feature is right for your use case, refer to [The PIT recovery family](../#the-pit-recovery-family).
+{{< /tip >}}
 
 Rewind to PIT rewinds a database or keyspace to an earlier point in time on the original cluster. The entire contents of the database (schema, table data, and more) are rewound. After a rewind, data written in the intervening period is permanently discarded from that database.
 

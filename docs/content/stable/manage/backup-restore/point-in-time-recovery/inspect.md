@@ -3,6 +3,7 @@ title: Inspect at a point in time
 headerTitle: Inspect at PIT
 linkTitle: Inspect at PIT
 description: Read data at a specific point in time for data recovery and analysis.
+headcontent: Query data as it was at a specific point in time
 aliases:
   - /stable/manage/backup-restore/time-travel-query/
 menu:
@@ -12,6 +13,10 @@ menu:
     weight: 20
 type: docs
 ---
+
+{{< tip title="Which PITR method should I use?" >}}
+To decide which point-in-time feature is right for your use case, refer to [The PIT recovery family](../#the-pit-recovery-family).
+{{< /tip >}}
 
 Inspect at PIT (also known as time travel queries) lets you read data as it was at a specific point in time, within a configurable retention period. This includes reading data that has been changed or deleted. Use Inspect at PIT for the following:
 

@@ -3,6 +3,7 @@ title: Restore to a point in time
 headerTitle: Restore to PIT
 linkTitle: Restore to PIT
 description: Restore a YugabyteDB snapshot or backup to a specific point in time
+headcontent: Restore a YugabyteDB snapshot to a specific point in time
 menu:
   stable:
     identifier: pitr-restore
@@ -10,6 +11,10 @@ menu:
     weight: 50
 type: docs
 ---
+
+{{< tip title="Which PITR method should I use?" >}}
+To decide which point-in-time feature is right for your use case, refer to [The PIT recovery family](../#the-pit-recovery-family).
+{{< /tip >}}
 
 Restore to PIT restores from a [distributed snapshot](../../snapshot-ysql/) or backup to a user-specified point in time. Unlike [Rewind to PIT](../rewind/), which rewinds the live database in place using a snapshot schedule, Restore to PIT starts from a snapshot (in-cluster or imported from external storage) and applies flashback to the chosen time.
 

@@ -3,7 +3,7 @@ title: Clone to a point in time
 headerTitle: Clone to PIT
 linkTitle: Clone to PIT
 description: Clone your database in YugabyteDB for data recovery, development, and testing.
-headcontent: Clone a database at a point in time for recovery, development, and testing
+headcontent: Branch your database at a point in time for recovery, development, and testing
 aliases:
   - /stable/manage/backup-restore/instant-db-cloning/
 menu:
@@ -16,7 +16,11 @@ rightNav:
   hideH4: true
 ---
 
-Clone to PIT creates a zero-copy, independent writable clone of your database as of the current time or any time in the recent past (within the configured retention window). The clone always resides on the same physical cluster as the source.
+{{< tip title="Which PITR method should I use?" >}}
+To decide which point-in-time feature is right for your use case, refer to [The PIT recovery family](../#the-pit-recovery-family).
+{{< /tip >}}
+
+Clone to PIT creates a zero-copy, independent writable clone of your database as of the current time or any time in the recent past (within the configured retention window). The clone always resides on the same physical cluster as the source. This capability is also known as branching.
 
 Cloning is fast and efficient because when initially created, the clone shares the same data files with the original database. Subsequently, as data is written to the clone, the clone stores its own changes as separate and independent delta files. Although they physically share some files, the two databases are logically isolated, which means you can freely use the clone database, perform DDLs, read and write data, and delete it without affecting the original database.
 
@@ -85,7 +89,7 @@ SELECT * FROM yb_database_clones();
 (1 row)
 ```
 
-This shows that a new database named `staging_db` with db_oid 16386 is created as a clone of the database `src_db`. The clone is `COMPLETE` and created as of time `2026-05-12 21:10:19.191239+00`.
+This shows that a new database named `staging_db` with `db_oid` 16386 is created as a clone of the database `src_db`. The clone is `COMPLETE` and created as of time `2026-05-12 21:10:19.191239+00`.
 
 #### Using yb-admin
 
