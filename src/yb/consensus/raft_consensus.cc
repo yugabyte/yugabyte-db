@@ -125,6 +125,12 @@ DEFINE_UNKNOWN_bool(evict_failed_followers, true,
             "follower_unavailable_considered_failed_sec");
 TAG_FLAG(evict_failed_followers, advanced);
 
+DEFINE_RUNTIME_bool(raft_monotonic_last_received_current_leader, true,
+    "Whether a replica advances the last received op id from the current leader monotonically on "
+    "fully-deduplicated requests, rather than only setting it once per term. Kill switch; a "
+    "watermark frozen at its first value can leave a lagging follower permanently uncatchable.");
+TAG_FLAG(raft_monotonic_last_received_current_leader, advanced);
+
 DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
                  "Whether a follower will return an error for all UpdateConsensus() requests.");
 
@@ -811,6 +817,12 @@ Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool gracefu
       graceful ? std::string() : peer.permanent_uuid(), MonoDelta());
 }
 
+bool RaftConsensus::ProtegeSynchronizedUnlocked() const {
+  DCHECK(state_->IsLocked());
+  return queue_->PeerLastReceivedOpId(delayed_step_down_.protege) >=
+         state_->GetLastReceivedOpIdUnlocked();
+}
+
 void RaftConsensus::CheckDelayedStepDown(const Status& status) {
   if (!status.ok()) {
     return;  // Scheduled task was aborted.
@@ -1046,7 +1058,16 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
     LOG_WITH_PREFIX(WARNING) << "Tablet error from RunLeaderElection() call to peer "
                              << election_state->req.dest_uuid() << ": "
                              << StatusFromPB(election_state->resp.error().status());
+  } else {
+    // The protege accepted the request and started an election, so it reports a loss back to us
+    // via NotifyOriginatorAboutLostElection.
+    return;
   }
+  // The protege did not even start an election, so it will never report the loss back to us.
+  // Handle it here, otherwise this tablet stays leaderless until the post stepdown election delay
+  // expires.
+  WARN_NOT_OK(ElectionLostByProtege(election_state->req.dest_uuid()),
+              "Failed to handle stepdown election request failure");
 }
 
 void RaftConsensus::ReportFailureDetectedTask() {
@@ -1471,9 +1492,9 @@ void RaftConsensus::UpdateMajorityReplicated(
 
   majority_num_sst_files_.store(majority_replicated_data.num_sst_files, std::memory_order_release);
 
-  if (!majority_replicated_data.peer_got_all_ops.empty() &&
-      delayed_step_down_.term == state_->GetCurrentTermUnlocked() &&
-      majority_replicated_data.peer_got_all_ops == delayed_step_down_.protege) {
+  // Complete a pending step down once the protege has received every op in our log.
+  if (delayed_step_down_.term == state_->GetCurrentTermUnlocked() &&
+      ProtegeSynchronizedUnlocked()) {
     LOG_WITH_PREFIX(INFO) << "Protege synchronized: " << delayed_step_down_.ToString();
     const auto* peer = FindPeer(state_->GetActiveConfigUnlocked(), delayed_step_down_.protege);
     if (peer) {
@@ -2351,7 +2372,12 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const LWConsensusRequest
                           deduped_req.preceding_op_id,
                           state_->GetLastReceivedOpIdUnlocked());
     }
-    state_->UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(deduped_req.preceding_op_id);
+    if (PREDICT_TRUE(FLAGS_raft_monotonic_last_received_current_leader)) {
+      state_->UpdateLastReceivedOpIdFromCurrentLeaderMonotonicUnlocked(
+          deduped_req.preceding_op_id);
+    } else {
+      state_->UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(deduped_req.preceding_op_id);
+    }
   }
 
   VLOG_WITH_PREFIX(1) << "Marking committed up to " << apply_up_to;
@@ -3129,8 +3155,10 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
           // ReplicaState lock and re-checking, here we simply block for up to 100ms in that case,
           // because this function is currently (08/14/2017) only used in a context when it is OK,
           // such as catalog manager initialization.
+          // The wait is capped at 100ms because the condition variable is not signalled when we
+          // lose leadership or shut down, so we must re-check the replica state periodically.
           leader_lease_wait_cond_.wait_for(
-              lock, std::max<MonoDelta>(100ms, deadline - now).ToSteadyDuration());
+              lock, std::min<MonoDelta>(100ms, deadline - now).ToSteadyDuration());
         }
         continue;
       case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE: {

@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <thread>
 #include <string_view>
@@ -30,6 +31,7 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -92,6 +94,8 @@ DECLARE_bool(TEST_fail_batcher_rpc);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_no_schedule_remove_intents);
 DECLARE_bool(TEST_request_unknown_tables_during_perform);
+DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_tablet_pause_apply_write_ops);
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_tracing);
@@ -113,9 +117,11 @@ DECLARE_double(TEST_transaction_ignore_applying_probability);
 
 DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(gzip_stream_compression_level);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(sampled_trace_1_in_n);
 DECLARE_int32(stream_compression_algo);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
@@ -573,6 +579,9 @@ class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterfac
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
+    // Disable probabilistic tracing. Otherwise a sampled trace of an unrelated background RPC
+    // (e.g. a slow remote bootstrap) is dumped into the log and counted by the test's log sink.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sampled_trace_1_in_n) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = GetParam();
     // Disable auto analyze because it introduces flakiness for query plans and metrics.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
@@ -586,7 +595,12 @@ TEST_P(PgMiniTestTracing, Tracing) {
     void send(
         google::LogSeverity severity, const char* full_filename, const char* base_filename,
         int line, const struct ::tm* tm_time, const char* message, size_t message_len) {
-      if (strcmp(base_filename, "trace.cc") == 0) {
+      // Count only traces of PG session RPCs. Traces of unrelated background RPCs (e.g. a slow
+      // remote bootstrap of a system tablet) are dumped to the same log and would otherwise be
+      // attributed to the queries below.
+      if (strcmp(base_filename, "trace.cc") == 0 &&
+          std::string_view(message, message_len).find("pg_client_session.cc") !=
+              std::string_view::npos) {
         last_logged_bytes_ = message_len;
       }
     }
@@ -860,6 +874,73 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSerializableDefer
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSnapshot),
           PgMiniLargeClockSkewTest) {
   TestReadRestart(false /* deferrable */);
+}
+
+class PgMiniSingleTserverTest : public PgMiniTest {
+ public:
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+// Reproduces https://github.com/yugabyte/yugabyte-db/issues/33107.
+// When the read time is picked on the tserver and the read is restarted in place because of an
+// intent of a transaction committed above the picked read time, the retried read must not be
+// performed until the tablet safe time reaches the restart read time.
+// Otherwise it can miss a write that is replicated but not yet applied, even though this write
+// has a hybrid time below the restart read time. The restart read time is returned as
+// used_read_time and becomes the transaction read point, so the next statement of the same
+// transaction sees this write appear at the same read point - a repeatable read violation.
+TEST_F_EX(PgMiniTest, ReadRestartWaitsForSafeTime, PgMiniSingleTserverTest) {
+  auto txn_conn = ASSERT_RESULT(Connect());
+  auto write_conn = ASSERT_RESULT(Connect());
+  auto read_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  // Warm up catalog caches, so the read below does not need any writes.
+  ASSERT_RESULT((read_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t")));
+
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(txn_conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+  // Keep intents of the committed transaction in intents db, so the read below resolves its
+  // commit time via the transaction status path and gets restarted.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = true;
+  // Pause write apply after replication, pinning the tablet safe time below the write hybrid
+  // time.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_pause_apply_write_ops) = true;
+
+  TestThreadHolder thread_holder;
+  StringWaiterLogSink pause_log_sink("Pausing due to flag TEST_tablet_pause_apply_write_ops");
+  thread_holder.AddThreadFunctor([&write_conn] {
+    ASSERT_OK(write_conn.Execute("INSERT INTO t VALUES (2, 2)"));
+  });
+  ASSERT_OK(pause_log_sink.WaitFor(60s * kTimeMultiplier));
+
+  // The paused write already has a hybrid time, so the transaction commit time is above it.
+  ASSERT_OK(txn_conn.CommitTransaction());
+
+  // Keep the apply paused long enough for the read below to pick its read time and restart
+  // while the safe time is still pinned below the paused write.
+  thread_holder.AddThreadFunctor([] {
+    SleepFor(3s * kTimeMultiplier);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_pause_apply_write_ops) = false;
+  });
+
+  // The read picks read time = safe time, which is below the hybrid time of the paused write,
+  // then hits the intent committed above it and restarts in place at the commit time.
+  // Run it as the first statement of a repeatable read transaction, so the restart read time
+  // becomes the transaction read point.
+  ASSERT_OK(read_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  const auto rows = ASSERT_RESULT(
+      (read_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t ORDER BY k")));
+  // Wait for the paused write to complete.
+  thread_holder.JoinAll();
+  // Re-read at the same read point, the result must be the same.
+  const auto reread_rows = ASSERT_RESULT(
+      (read_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t ORDER BY k")));
+  ASSERT_OK(read_conn.CommitTransaction());
+
+  ASSERT_EQ(rows, reread_rows);
 }
 
 TEST_F_EX(PgMiniTest, SerializableReadOnly, PgMiniTestFailOnConflict) {
@@ -3012,12 +3093,33 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
   ASSERT_OK(tablet_server->Restart());
   ASSERT_OK(tablet_server->WaitStarted());
 
-  ASSERT_OK(conn1.CommitTransaction());
-  ASSERT_OK(conn2.CommitTransaction());
-  ASSERT_OK(conn3.CommitTransaction());
+  // The recently applied transactions map only retains a staircase of (first_write_ht,
+  // apply_op_id) pairs, so an apply landing out of first write order subsumes the entry of an
+  // earlier transaction. Applies are asynchronous with respect to commit, so let each transaction
+  // apply, i.e. leave the participant, before committing the next one.
+  const auto& tablet_id = tablet_peer->tablet_id();
+  auto commit_and_wait_apply = [this, tablet_id, kApplyWait](
+      PGConn* conn, size_t expected_running) -> Status {
+    RETURN_NOT_OK(conn->CommitTransaction());
+    return WaitFor([this, &tablet_id, expected_running]() -> Result<bool> {
+      size_t running = 0;
+      for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+        if (peer->tablet_id() != tablet_id) {
+          continue;
+        }
+        auto peer_tablet = peer->shared_tablet_maybe_null();
+        if (!peer_tablet) {
+          return false;
+        }
+        running += peer_tablet->transaction_participant()->GetNumRunningTransactions();
+      }
+      return running <= expected_running;
+    }, kApplyWait, Format("$0 running transactions left", expected_running));
+  };
 
-  // Wait for apply.
-  SleepFor(kApplyWait);
+  ASSERT_OK(commit_and_wait_apply(&conn1, 6));
+  ASSERT_OK(commit_and_wait_apply(&conn2, 3));
+  ASSERT_OK(commit_and_wait_apply(&conn3, 0));
 
   std::unordered_map<std::string, uint64_t> metric_values;
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
@@ -3489,11 +3591,14 @@ TEST_F(PgMiniTest, TabletMetadataStateColumn) {
   ASSERT_EQ(peers.size(), 1);
   auto deleted_tablet_id = peers[0]->tablet_id();
 
+  // CleanUpDeletedTables marks the table DELETED on one cycle and erases it from tablet_map_ on
+  // the next, so DELETED is observable for a single cycle only. Stretch the cycle so that window
+  // outlives DROP, whose PG-side commit work is slow under sanitizers.
+  const auto bg_task_wait_ms = FLAGS_catalog_manager_bg_task_wait_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 5000 * kTimeMultiplier;
+
   ASSERT_OK(pg_conn.Execute("DROP TABLE delete_test"));
 
-  // DROP returns once the tablets are deleted, but the master keeps the tablet in
-  // tablet_map_ in DELETED state until the background CleanUpDeletedTables task erases
-  // it on its next cycle. Poll within that window to observe the DELETED state.
   ASSERT_OK(LoggedWaitFor(
       [&pg_conn, &deleted_tablet_id]() -> Result<bool> {
         auto count = VERIFY_RESULT(pg_conn.FetchRow<int64_t>(Format(
@@ -3503,6 +3608,8 @@ TEST_F(PgMiniTest, TabletMetadataStateColumn) {
       },
       30s * kTimeMultiplier, "Wait for DELETED tablet state after DROP TABLE"));
   LOG(INFO) << "DELETED state verified for tablet " << deleted_tablet_id;
+  // The REPLACED phase below needs the background task back at its normal cadence.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = bg_task_wait_ms;
 
   // ======== REPLACED via creation timeout ========
   // Set a very low creation timeout, shut down 2 of 3 tservers so new tablets can't
@@ -3642,6 +3749,138 @@ $procedure$
 
   thread_holder.WaitAndStop(kWaitTime);
   ASSERT_GT(num_read_restarts, 0);
+}
+
+class PgMiniKeyRangesTest : public PgMiniTest {
+ protected:
+  static constexpr auto kDecodingFailedMessage = "Failed to get encoded size of key";
+
+  size_t NumTabletServers() override { return 1; }
+
+  void SetUp() override {
+    // Use small data blocks so vector index reverse mapping entries span multiple data blocks and
+    // SST index entries point inside the regular DB metadata section.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 4_KB;
+    PgMiniTest::SetUp();
+  }
+
+  // Runs GetTabletKeyRanges with empty bounds in both directions on every tablet of the test
+  // table and verifies returned boundaries are valid user doc keys and the iterator never visited
+  // regular DB metadata records.
+  void VerifyKeyRangesSkipRegularDbMetadataSection(size_t expected_num_tablets) {
+    auto peers = ASSERT_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+    ASSERT_EQ(peers.size(), expected_num_tablets);
+
+    StringWaiterLogSink log_sink(kDecodingFailedMessage);
+
+    for (const auto& peer : peers) {
+      auto tablet = ASSERT_RESULT(peer->shared_tablet());
+      for (auto direction : {tablet::Direction::kForward, tablet::Direction::kBackward}) {
+        LOG(INFO) << "tablet: " << peer->tablet_id() << " direction: " << AsString(direction);
+        std::vector<std::string> boundaries;
+        ASSERT_OK(tablet->TEST_GetTabletKeyRanges(
+            /* lower_bound_key = */ Slice(), /* upper_bound_key = */ Slice(),
+            /* max_num_ranges = */ std::numeric_limits<uint64_t>::max(),
+            /* range_size_bytes = */ 4_KB, direction, /* max_key_length = */ 1024,
+            [&boundaries](Slice key) { boundaries.push_back(key.ToBuffer()); }));
+        ASSERT_GT(boundaries.size(), 1);
+        for (const auto& key : boundaries) {
+          if (key.empty()) {
+            continue;
+          }
+          ASSERT_FALSE(dockv::IsRegularDBMetaKeyType(dockv::DecodeKeyEntryType(key[0])))
+              << "Range boundary inside regular DB metadata section: "
+              << Slice(key).ToDebugHexString();
+          ASSERT_OK(dockv::DocKey::EncodedSize(key, dockv::DocKeyPart::kWholeDocKey));
+        }
+      }
+    }
+
+    ASSERT_EQ(log_sink.GetEventCount(), 0)
+        << "GetTabletKeyRanges iterated over regular DB metadata records";
+  }
+
+  // End-to-end variant: drives GetTabletKeyRanges through actual parallel scans (PG parallel
+  // workers -> pggate GetTableKeyRanges -> PgClientService -> Read RPC) in both directions and
+  // verifies query results are correct and the scans never visited regular DB metadata records.
+  void VerifyParallelScanSkipsRegularDbMetadataSection(int64_t expected_num_rows) {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("ANALYZE test"));
+    ASSERT_OK(conn.Execute("SET yb_enable_parallel_scan_range_sharded = true"));
+    ASSERT_OK(conn.Execute("SET yb_enable_cbo = on"));
+    // Produce more parallel ranges from the small test table.
+    ASSERT_OK(conn.Execute("SET yb_parallel_range_rows = 1"));
+    ASSERT_OK(conn.Execute("SET yb_parallel_range_size = 1024"));
+
+    StringWaiterLogSink log_sink(kDecodingFailedMessage);
+
+    // Forward parallel scan. The plan check makes sure the query actually runs in parallel,
+    // otherwise the test is vacuously green.
+    ASSERT_STR_CONTAINS(
+        ASSERT_RESULT(conn.FetchAllAsString(
+            "/*+ Parallel(test 2 hard) */ EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM test")),
+        "Parallel");
+    const auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+        "/*+ Parallel(test 2 hard) */ SELECT COUNT(*) FROM test"));
+    ASSERT_EQ(count, expected_num_rows);
+
+    // Backward parallel scan. Also verifies ranges don't overlap or miss rows: a duplicate or
+    // lost range boundary would show up as a duplicate or missing id.
+    ASSERT_STR_CONTAINS(
+        ASSERT_RESULT(conn.FetchAllAsString(
+            "/*+ Parallel(test 2 hard) */ EXPLAIN (COSTS OFF)"
+            " SELECT id FROM test ORDER BY id DESC")),
+        "Parallel Index Scan Backward");
+    const auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(
+        "/*+ Parallel(test 2 hard) */ SELECT id FROM test ORDER BY id DESC"));
+    ASSERT_EQ(ids.size(), static_cast<size_t>(expected_num_rows));
+    for (int64_t i = 0; i < expected_num_rows; ++i) {
+      ASSERT_EQ(ids[i], expected_num_rows - i);
+    }
+
+    ASSERT_EQ(log_sink.GetEventCount(), 0)
+        << "Parallel scan iterated over regular DB metadata records";
+  }
+
+  // Creates a range-sharded table with a vector index, fills it with num_rows rows and flushes
+  // reverse mapping entries to SSTs. The index is created before inserting rows, so reverse
+  // mapping entries are written by the DML path and no backfill is involved.
+  Status CreateIndexedTableAndFill(const std::string& create_table_suffix, int64_t num_rows) {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE test (id bigint, embedding vector(3), PRIMARY KEY (id ASC))$0",
+        create_table_suffix));
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO test SELECT i, ARRAY[i, i + 1, i + 2]::vector"
+        " FROM generate_series(1, $0) i",
+        num_rows));
+    // Wait for all intents are applied and flush tablets.
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    return cluster_->FlushTablets();
+  }
+};
+
+TEST_F_EX(PgMiniTest, GetTabletKeyRangesSkipsRegularDbMetadataSection, PgMiniKeyRangesTest) {
+  // Single-tablet table: partition key start is empty, so the forward scan starts from the very
+  // beginning of the regular DB.
+  constexpr auto kNumRows = 2000;
+  ASSERT_OK(CreateIndexedTableAndFill(/* create_table_suffix = */ "", kNumRows));
+  ASSERT_NO_FATALS(VerifyParallelScanSkipsRegularDbMetadataSection(kNumRows));
+  ASSERT_NO_FATALS(VerifyKeyRangesSkipRegularDbMetadataSection(/* expected_num_tablets = */ 1));
+}
+
+TEST_F_EX(
+    PgMiniTest, GetTabletKeyRangesSkipsRegularDbMetadataSectionPreSplit, PgMiniKeyRangesTest) {
+  // Pre-split table: middle/last tablets have a non-empty partition key start, but each tablet's
+  // regular DB still has its own metadata section below the partition start. The backward scan
+  // shouldn't go below the partition start.
+  constexpr auto kNumRows = 2000;
+  ASSERT_OK(CreateIndexedTableAndFill(" SPLIT AT VALUES ((700), (1400))", kNumRows));
+  ASSERT_NO_FATALS(VerifyParallelScanSkipsRegularDbMetadataSection(kNumRows));
+  ASSERT_NO_FATALS(VerifyKeyRangesSkipRegularDbMetadataSection(/* expected_num_tablets = */ 3));
 }
 
 }  // namespace yb::pgwrapper

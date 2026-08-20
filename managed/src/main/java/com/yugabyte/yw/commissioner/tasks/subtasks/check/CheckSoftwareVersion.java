@@ -14,7 +14,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class CheckSoftwareVersion extends ServerSubTaskBase {
@@ -38,7 +38,7 @@ public class CheckSoftwareVersion extends ServerSubTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     String address = node.cloudInfo.private_ip;
-    try (YBClient client = getClient()) {
+    try (YBClientApi client = getClient()) {
       if (node.isMaster) {
         checkSoftwareVersion(client, node, address, node.masterRpcPort);
       }
@@ -51,7 +51,8 @@ public class CheckSoftwareVersion extends ServerSubTaskBase {
     }
   }
 
-  private void checkSoftwareVersion(YBClient client, NodeDetails node, String address, int port) {
+  private void checkSoftwareVersion(
+      YBClientApi client, NodeDetails node, String address, int port) {
     Optional<String> versionInfo = ybService.getServerVersion(client, address, port);
     if (!versionInfo.isPresent()) {
       throw new PlatformServiceException(

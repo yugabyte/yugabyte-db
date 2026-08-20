@@ -53,7 +53,7 @@ import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 public class PitrConfigHelperTest extends FakeDBApplication {
@@ -68,7 +68,7 @@ public class PitrConfigHelperTest extends FakeDBApplication {
   private YBClientService mockYbClientService;
   private YbClientConfigFactory mockYbClientConfigFactory;
   private RuntimeConfGetter mockConfGetter;
-  private YBClient mockYbClient;
+  private YBClientApi mockYbClient;
   private ListSnapshotSchedulesResponse mockListSnapshotSchedulesResponse;
   private PitrConfigHelper helper;
   private ExecutorService executor;
@@ -89,7 +89,7 @@ public class PitrConfigHelperTest extends FakeDBApplication {
     mockYbClientService = mock(YBClientService.class);
     mockYbClientConfigFactory = mock(YbClientConfigFactory.class);
     mockConfGetter = mock(RuntimeConfGetter.class);
-    mockYbClient = mock(YBClient.class);
+    mockYbClient = mock(YBClientApi.class);
     YbClientConfig mockYbClientConfig = mock(YbClientConfig.class);
     mockListSnapshotSchedulesResponse = mock(ListSnapshotSchedulesResponse.class);
 

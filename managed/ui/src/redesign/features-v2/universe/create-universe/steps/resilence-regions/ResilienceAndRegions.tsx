@@ -39,7 +39,12 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
-import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceFormMode, ResilienceType } from './dtos';
+import {
+  FaultToleranceType,
+  ResilienceAndRegionsProps,
+  ResilienceFormMode,
+  ResilienceType
+} from './dtos';
 import {
   FAULT_TOLERANCE_TYPE,
   REGIONS_FIELD,
@@ -47,14 +52,20 @@ import {
   RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE
 } from '../../fields/FieldNames';
+import {
+  GuidedExpertModePopover,
+  useGuidedExpertModePopover
+} from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/GuidedExpertModePopover';
 
 //icons
 import MapIcon from '@app/redesign/assets/map.svg';
 import MapIconSelected from '@app/redesign/assets/map_selected.svg';
 import MapDisabled from '@app/redesign/assets/map_disabled.svg';
+import CommandIcon from '@app/redesign/assets/guided-expert-mode/command.svg';
+import CommandIconSelected from '@app/redesign/assets/guided-expert-mode/command-selected.svg';
 import Flash from '@app/redesign/assets/flash_transparent.svg';
 
-const { Grid2: Grid, Collapse, styled, Box } = mui;
+const { Collapse, styled, Box, Link, Typography } = mui;
 
 const StyledHelpText = styled('div')(({ theme }) => ({
   padding: '16px 24px',
@@ -73,9 +84,67 @@ const StyledHelpText = styled('div')(({ theme }) => ({
   }
 }));
 
+const SetupModeCard = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '16px',
+  width: '100%',
+  height: '88px',
+  padding: '24px 16px',
+  borderRadius: '8px',
+  border: `1px solid ${theme.palette.grey[300]}`,
+  backgroundColor: '#FBFCFD',
+  boxSizing: 'border-box'
+}));
+
+const SetupModeCopy = styled(Box)(() => ({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '8px',
+  minWidth: 0,
+  flex: 1
+}));
+
+const SetupModeTitle = styled(Typography)(({ theme }) => ({
+  fontSize: 15,
+  fontWeight: 600,
+  lineHeight: '16px',
+  color: theme.palette.grey[900]
+}));
+
+const SetupModeDescription = styled(Typography)(({ theme }) => ({
+  fontSize: 13,
+  fontWeight: 400,
+  lineHeight: '16px',
+  color: theme.palette.grey[900],
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'flex-start',
+  gap: '4px'
+}));
+
+const SetupModeLearnMore = styled(Link)(({ theme }) => ({
+  fontSize: 13,
+  fontWeight: 400,
+  lineHeight: '16px',
+  color: theme.palette.grey[900],
+  textDecoration: 'underline',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  border: 'none',
+  background: 'none',
+  padding: 0,
+  fontFamily: 'inherit',
+  '&:hover': {
+    color: theme.palette.grey[900],
+    textDecoration: 'underline'
+  }
+}));
+
 export const ResilienceAndRegions = forwardRef<
   StepsRef,
-  { isGeoPartition?: boolean; hideHelpText?: boolean, disableGuidedMode?: boolean }
+  { isGeoPartition?: boolean; hideHelpText?: boolean; disableGuidedMode?: boolean }
 >(({ isGeoPartition = false, hideHelpText = false, disableGuidedMode = false }, forwardRef) => {
   const [
     { generalSettings, resilienceAndRegionsSettings, nodesAvailabilitySettings },
@@ -86,11 +155,19 @@ export const ResilienceAndRegions = forwardRef<
       moveToNextPage,
       setResilienceType
     }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
+  ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.resilienceAndRegions'
   });
+
+  const {
+    open: isGuidedExpertModePopoverOpen,
+    anchorRef: guidedExpertModeAnchorRef,
+    handleOpen: handleGuidedExpertModePopoverOpen,
+    handleClose: handleGuidedExpertModePopoverClose,
+    handleClickAway: handleGuidedExpertModePopoverClickAway
+  } = useGuidedExpertModePopover();
 
   const methods = useForm<ResilienceAndRegionsProps>({
     defaultValues: resilienceAndRegionsSettings,
@@ -248,9 +325,7 @@ export const ResilienceAndRegions = forwardRef<
   } | null>(null);
 
   useEffect(() => {
-    const regionSignature = JSON.stringify(
-      (regions ?? []).map((r) => r.uuid ?? r.code).sort()
-    );
+    const regionSignature = JSON.stringify((regions ?? []).map((r) => r.uuid ?? r.code).sort());
     const next = { resilienceFactor, regionSignature };
     if (prevPlacementDriversRef.current === null) {
       prevPlacementDriversRef.current = next;
@@ -387,39 +462,76 @@ export const ResilienceAndRegions = forwardRef<
       )}
       {resilienceType === ResilienceType.REGULAR && (
         <>
-          <Grid alignItems={'center'} justifyContent={'flex-end'} container width="100%">
-            <YBButtonGroup
-              key={modeButtonGroupKey}
-              size="large"
-              dataTestId="yb-button-group-multiselect-normal"
-              value={formMode}
-              buttons={[
-                {
-                  value: ResilienceFormMode.GUIDED,
-                  label: t('formType.guidedMode'),
-                  icon: disableGuidedMode ? <MapDisabled /> : formMode === ResilienceFormMode.GUIDED ? <MapIconSelected /> : <MapIcon />,
-                  onClick: handleGuidedModeClick,
-                  buttonProps: {
-                    dataTestId: 'guided-mode-button',
-                    disabled: disableGuidedMode
+          <SetupModeCard data-testid="setup-mode-card">
+            <SetupModeCopy>
+              <SetupModeTitle>{t('setupMode.title')}</SetupModeTitle>
+              <SetupModeDescription>
+                <span>{t('setupMode.description')}</span>
+                <SetupModeLearnMore
+                  component="button"
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleGuidedExpertModePopoverOpen();
+                  }}
+                >
+                  {t('setupMode.learnMore')}
+                </SetupModeLearnMore>
+              </SetupModeDescription>
+            </SetupModeCopy>
+            <span ref={guidedExpertModeAnchorRef} style={{ display: 'inline-flex', flexShrink: 0 }}>
+              <YBButtonGroup
+                key={modeButtonGroupKey}
+                size="large"
+                dataTestId="yb-button-group-multiselect-normal"
+                value={formMode}
+                buttons={[
+                  {
+                    value: ResilienceFormMode.GUIDED,
+                    label: t('formType.guidedMode'),
+                    icon: disableGuidedMode ? (
+                      <MapDisabled />
+                    ) : formMode === ResilienceFormMode.GUIDED ? (
+                      <MapIconSelected />
+                    ) : (
+                      <MapIcon />
+                    ),
+                    onClick: handleGuidedModeClick,
+                    buttonProps: {
+                      dataTestId: 'guided-mode-button',
+                      disabled: disableGuidedMode
+                    },
+                    tooltip: disableGuidedMode ? t('guidedModeNotSupported') : undefined
                   },
-                  tooltip: disableGuidedMode ? t('guidedModeNotSupported') : undefined
-                },
-                {
-                  value: ResilienceFormMode.EXPERT_MODE,
-                  label: t('formType.expertMode'),
-                  onClick: () => {
-                    methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.EXPERT_MODE, {
-                      shouldValidate: true
-                    });
-                  },
-                  buttonProps: {
-                    dataTestId: 'expert-mode-button'
+                  {
+                    value: ResilienceFormMode.EXPERT_MODE,
+                    label: t('formType.expertMode'),
+                    icon:
+                      formMode === ResilienceFormMode.EXPERT_MODE ? (
+                        <CommandIconSelected />
+                      ) : (
+                        <CommandIcon />
+                      ),
+                    onClick: () => {
+                      methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.EXPERT_MODE, {
+                        shouldValidate: true
+                      });
+                    },
+                    buttonProps: {
+                      dataTestId: 'expert-mode-button'
+                    }
                   }
-                }
-              ]}
+                ]}
+              />
+            </span>
+            <GuidedExpertModePopover
+              open={isGuidedExpertModePopoverOpen}
+              anchorRef={guidedExpertModeAnchorRef}
+              onClose={handleGuidedExpertModePopoverClose}
+              onClickAway={handleGuidedExpertModePopoverClickAway}
             />
-          </Grid>
+          </SetupModeCard>
           {formMode === ResilienceFormMode.GUIDED ? <GuidedMode /> : <ExpertMode />}
         </>
       )}

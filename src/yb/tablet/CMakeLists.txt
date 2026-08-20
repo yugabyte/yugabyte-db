@@ -158,6 +158,7 @@ set(YB_TEST_LINK_LIBS tablet tablet_test_util yb_common_test_util ${YB_MIN_TEST_
 ADD_YB_TEST(tablet-test)
 ADD_YB_TEST(tablet-split-test)
 ADD_YB_TEST(tablet-metadata-test)
+ADD_YB_TEST(tablet_snapshots-test)
 ADD_YB_TEST(verifyrows-tablet-test)
 ADD_YB_TEST(tablet-pushdown-test)
 ADD_YB_TEST(tablet-schema-test)

@@ -220,6 +220,11 @@ Clusters are secure by default. You need to explicitly allow access to clusters 
 
 If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. If you are using peering (AWS and GCP), you also need to add the CIDR ranges of peered application VPCs to your cluster IP allow list. If you are using a private link (AWS and Azure), you do not need to add addresses to the IP allow list.
 
+{{< note title="Note" >}}
+Currently, VPC peering in YugabyteDB Aeon only supports VPCs with a single CIDR block. If your VPCs have multiple CIDR blocks, use a private service endpoint.
+{{< /note >}}
+
+
 Multi-region clusters, or clusters in Azure, must be deployed in VPCs; in AWS, each region or read replica must be deployed in its own VPC.
 
 You need to create VPCs before you deploy the cluster. YugabyteDB Aeon supports AWS, Azure, and GCP for VPCs. Refer to [VPC network](../cloud-vpcs/).

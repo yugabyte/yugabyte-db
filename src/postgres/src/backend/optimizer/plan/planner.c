@@ -9542,7 +9542,7 @@ ybBuildRtIndexMap(List *rtable, List *sortedRtable)
 
 		ListCell *lc;
 		int sortedRtIndex = 1;
-		bool found = false;
+		bool found PG_USED_FOR_ASSERTS_ONLY = false;
 		foreach(lc, sortedRtable)
 		{
 			RangeTblEntry *rte2 = (RangeTblEntry *) lfirst(lc);

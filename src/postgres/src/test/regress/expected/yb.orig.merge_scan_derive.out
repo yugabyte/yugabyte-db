@@ -823,10 +823,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 -- (Drop this index)
 DROP INDEX r5n_expr_r2_r3_r4_idx;
 --
--- Derive from secondary index expression, expression not being a prefix,
--- modulus being negative.
+-- Derive from secondary index expression, expression not being a prefix
 --
-CREATE INDEX NONCONCURRENTLY ON r5n (r1 ASC, (yb_hash_code(r1, r3, r4) % -5) ASC, r3, r4)
+CREATE INDEX NONCONCURRENTLY r5n_r1_expr_r3_r4_idx ON r5n (r1 ASC, (yb_hash_code(r1, r3, r4) % 5) ASC, r3, r4)
 SPLIT AT VALUES (
     (1),
     (2),
@@ -836,22 +835,22 @@ SPLIT AT VALUES (
     (3));
 -- Expression in sort, so not derived
 -- Merge scan should not be used.
-\set query ':explain :Q SELECT r1, yb_hash_code(r1, r3, r4) % -5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;'
+\set query ':explain :Q SELECT r1, yb_hash_code(r1, r3, r4) % 5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, yb_hash_code(r1, r3, r4) % -5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, yb_hash_code(r1, r3, r4) % 5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: r1, ((yb_hash_code(r1, r3, r4) % '-5'::integer)), r3, n
+   Output: r1, ((yb_hash_code(r1, r3, r4) % 5)), r3, n
    ->  Incremental Sort (actual rows=5 loops=1)
-         Output: r1, ((yb_hash_code(r1, r3, r4) % '-5'::integer)), r3, n
-         Sort Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer)), r5n.r3, r5n.n
-         Presorted Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer)), r5n.r3
+         Output: r1, ((yb_hash_code(r1, r3, r4) % 5)), r3, n
+         Sort Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5)), r5n.r3, r5n.n
+         Presorted Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5)), r5n.r3
          Full-sort Groups: 1  Sort Method: top-N heapsort
          ->  Index Scan using r5n_r1_expr_r3_r4_idx on public.r5n (actual rows=19 loops=1)
-               Output: r1, (yb_hash_code(r1, r3, r4) % '-5'::integer), r3, n
+               Output: r1, (yb_hash_code(r1, r3, r4) % 5), r3, n
                Index Cond: (r5n.r1 = 1)
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
@@ -861,44 +860,44 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Index Rows Scanned: 492
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, yb_hash_code(r1, r3, r4) % -5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, yb_hash_code(r1, r3, r4) % 5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
 (output identical to previous)
 -- Expression in sort, so not derived (v2)
-\set query ':P :Q SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;'
+\set query ':P :Q SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
-                                        QUERY PLAN                                         
--------------------------------------------------------------------------------------------
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: ((yb_hash_code(r1, r3, r4) % '-5'::integer)), r3, n, r1
+   Output: ((yb_hash_code(r1, r3, r4) % 5)), r3, n, r1
    ->  Sort (actual rows=5 loops=1)
-         Output: ((yb_hash_code(r1, r3, r4) % '-5'::integer)), r3, n, r1
-         Sort Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer)), r5n.r3, r5n.n
+         Output: ((yb_hash_code(r1, r3, r4) % 5)), r3, n, r1
+         Sort Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5)), r5n.r3, r5n.n
          Sort Method: top-N heapsort
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=1489 loops=1)
-               Output: (yb_hash_code(r1, r3, r4) % '-5'::integer), r3, n, r1
+               Output: (yb_hash_code(r1, r3, r4) % 5), r3, n, r1
                Index Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 7
                Storage Table Rows Scanned: 1489
 (12 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
-                                          QUERY PLAN                                          
-----------------------------------------------------------------------------------------------
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: ((yb_hash_code(r1, r3, r4) % '-5'::integer)), r3, n, r1
+   Output: ((yb_hash_code(r1, r3, r4) % 5)), r3, n, r1
    ->  Incremental Sort (actual rows=5 loops=1)
-         Output: ((yb_hash_code(r1, r3, r4) % '-5'::integer)), r3, n, r1
-         Sort Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer)), r5n.r3, r5n.n
-         Presorted Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer)), r5n.r3
+         Output: ((yb_hash_code(r1, r3, r4) % 5)), r3, n, r1
+         Sort Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5)), r5n.r3, r5n.n
+         Presorted Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5)), r5n.r3
          Full-sort Groups: 1  Sort Method: top-N heapsort
          ->  Index Scan using r5n_r1_expr_r3_r4_idx on public.r5n (actual rows=37 loops=1)
-               Output: (yb_hash_code(r1, r3, r4) % '-5'::integer), r3, n, r1
+               Output: (yb_hash_code(r1, r3, r4) % 5), r3, n, r1
                Index Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
-               Merge Sort Key: (yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer), r5n.r3
+               Merge Sort Key: (yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5), r5n.r3
                Merge Stream Key: r5n.r1
                Merge Streams: 3
                Merge Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
@@ -910,7 +909,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Index Rows Scanned: 1165
 (20 rows)
 
-/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
  ?column? | r3 |   n   | r1 
 ----------+----+-------+----
         0 |  0 |  3030 |  0
@@ -920,7 +919,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
         0 |  0 | 16071 |  1
 (5 rows)
 
-/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
 (output identical to previous)
 -- Derived
 -- Third hint is to use the expression index.
@@ -947,8 +946,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
-                                                               QUERY PLAN                                                               
-----------------------------------------------------------------------------------------------------------------------------------------
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r1, r3, r4, n
    ->  Incremental Sort (actual rows=5 loops=1)
@@ -958,11 +957,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
          Full-sort Groups: 1  Sort Method: quicksort
          ->  Index Scan using r5n_r1_expr_r3_r4_idx on public.r5n (actual rows=10 loops=1)
                Output: r1, r3, r4, n
-               Index Cond: ((r5n.r1 = 1) AND ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer) = ANY ('{0,1,2,3,4}'::integer[])))
+               Index Cond: ((r5n.r1 = 1) AND ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5) = ANY ('{0,1,2,3,4}'::integer[])))
                Merge Sort Key: r5n.r3, r5n.r4
-               Merge Stream Key: (yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer)
+               Merge Stream Key: (yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5)
                Merge Streams: 5
-               Merge Cond: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer) = ANY ('{0,1,2,3,4}'::integer[]))
+               Merge Cond: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5) = ANY ('{0,1,2,3,4}'::integer[]))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 492
@@ -1012,8 +1011,8 @@ EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_par
 (9 rows)
 
 EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;
-                                                                           QUERY PLAN                                                                            
------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                     QUERY PLAN                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r3, r4, n, r1
    ->  Incremental Sort (actual rows=5 loops=1)
@@ -1023,11 +1022,11 @@ EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_par
          Full-sort Groups: 1  Sort Method: top-N heapsort
          ->  Index Scan using r5n_r1_expr_r3_r4_idx on public.r5n (actual rows=26 loops=1)
                Output: r3, r4, n, r1
-               Index Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer) = ANY ('{0,1,2,3,4}'::integer[])))
+               Index Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5) = ANY ('{0,1,2,3,4}'::integer[])))
                Merge Sort Key: r5n.r3, r5n.r4
-               Merge Stream Key: r5n.r1, (yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer)
+               Merge Stream Key: r5n.r1, (yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5)
                Merge Streams: 15
-               Merge Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer) = ANY ('{0,1,2,3,4}'::integer[])))
+               Merge Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % 5) = ANY ('{0,1,2,3,4}'::integer[])))
 (14 rows)
 
 /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;

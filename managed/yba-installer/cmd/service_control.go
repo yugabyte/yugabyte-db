@@ -21,8 +21,9 @@ var startCmd = &cobra.Command{
     running of YugabyteDB Anywhere. Can be invoked without any arguments to start all
     services, or invoked with a specific service name to start only that service.
     Valid service names: postgres, prometheus, yb-platform, yb-perf-advisor`,
-	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
-	ValidArgs: []string{YbPlatformServiceName, PostgresServiceName, PrometheusServiceName, PerfAdvisorServiceName},
+	Args: cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
+	ValidArgs: []string{YbPlatformServiceName, PostgresServiceName, PrometheusServiceName,
+		PerfAdvisorServiceName, ByocApiProxyServiceName},
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if !common.RunFromInstalled() {
 			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
@@ -105,7 +106,8 @@ var stopCmd = &cobra.Command{
     Valid service names: postgres, prometheus, yb-platform, yb-perf-advisor`,
 	Args: cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
 	// TODO: This should be populated from the service manager.
-	ValidArgs: []string{YbPlatformServiceName, PostgresServiceName, PrometheusServiceName, PerfAdvisorServiceName},
+	ValidArgs: []string{YbPlatformServiceName, PostgresServiceName, PrometheusServiceName,
+		PerfAdvisorServiceName, ByocApiProxyServiceName},
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if !common.RunFromInstalled() {
 			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
@@ -137,8 +139,9 @@ var restartCmd = &cobra.Command{
     running of YugabyteDB Anywhere. Can be invoked without any arguments to restart all
     services, or invoked with a specific service name to restart only that service.
     Valid service names: postgres, prometheus, yb-platform, yb-perf-advisor`,
-	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
-	ValidArgs: []string{YbPlatformServiceName, PostgresServiceName, PrometheusServiceName, PerfAdvisorServiceName},
+	Args: cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
+	ValidArgs: []string{YbPlatformServiceName, PostgresServiceName, PrometheusServiceName,
+		PerfAdvisorServiceName, ByocApiProxyServiceName},
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if !common.RunFromInstalled() {
 			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")

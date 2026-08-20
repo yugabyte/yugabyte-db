@@ -53,13 +53,19 @@
 #include "yb/master/master_client.pb.h"
 
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/tools/admin-test-base.h"
 
+#include "yb/common/hybrid_time.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/date_time.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/test_thread_holder.h"
 
 using std::string;
 using std::vector;
@@ -1269,6 +1275,400 @@ TEST_F_EX(YBTsCliTest, TestDumpTabletData, YBTsCliIntegrationTest) {
         TestWorkloadOptions::kDefaultPayload, pos + TestWorkloadOptions::kDefaultPayload.length());
   }
   ASSERT_EQ(payload_count, row_count);
+}
+
+namespace {
+
+// The hybrid time for "now", from this machine's wall clock.
+uint64_t NowHybridTime(MonoDelta offset = MonoDelta::kZero) {
+  return HybridTime::FromMicros(DateTime::TimestampNow().ToInt64() + offset.ToMicroseconds())
+      .ToUint64();
+}
+
+// Pulls one of dump_tablet_data's "<prefix>: <number>" output lines out of its stdout.
+Result<uint64_t> ExtractDumpValue(const std::string& output, const std::string& prefix) {
+  auto pos = output.find(prefix);
+  SCHECK_NE(
+      pos, std::string::npos, NotFound, Format("'$0' missing from output: $1", prefix, output));
+  return std::stoull(output.substr(pos + prefix.size()));
+}
+
+}  // namespace
+
+// Tests for dump_tablet_data against a replica that has not reached the requested read time. It
+// must report the shortfall rather than hash only what it has applied.
+class YBTsCliDumpReadTimeTest : public YBTsCliIntegrationTest {
+ protected:
+  const MonoDelta kTimeout = MonoDelta::FromSeconds(30);
+
+  // Brings up the cluster with a populated tablet and resolves its leader and followers.
+  void StartClusterWithData() {
+    ASSERT_NO_FATALS(BuildAndStart());
+
+    TestYcqlWorkload workload(cluster_.get());
+    workload.Setup();
+    workload.set_table_name(kTableName);
+    workload.set_num_write_threads(1);
+    workload.set_write_batch_size(1);
+    workload.Start();
+    workload.WaitInserted(10);
+    workload.StopAndJoin();
+
+    auto range = tablet_replicas_.equal_range(tablet_id_);
+    for (auto it = range.first; it != range.second; ++it) {
+      InsertOrDie(&active_tablet_servers_, it->second->uuid(), it->second);
+    }
+    ASSERT_OK(FindTabletLeader(active_tablet_servers_, tablet_id_, kTimeout, &leader_));
+    ASSERT_OK(FindTabletFollowers(active_tablet_servers_, tablet_id_, kTimeout, &followers_));
+    ASSERT_FALSE(followers_.empty());
+  }
+
+  ExternalTabletServer* Server(TServerDetails* details) {
+    return cluster_->tablet_server_by_uuid(details->uuid());
+  }
+
+  // Runs `dump_tablet_data <tablet_id> HASH_ONLY <read_ht>` against one replica. read_ht 0 sends no
+  // read time; a nullopt read_time_wait_ms sends no bound.
+  Result<std::string> DumpHash(
+      TServerDetails* target, uint64_t read_ht, std::optional<uint32_t> read_time_wait_ms,
+      std::optional<int64_t> rpc_timeout_ms = std::nullopt) {
+    std::vector<std::string> argv = {
+        GetTsCliToolPath(), "-server_address", yb::ToString(Server(target)->bound_rpc_addr())};
+    if (read_time_wait_ms) {
+      argv.push_back(Format("-read_time_wait_ms=$0", *read_time_wait_ms));
+    }
+    if (rpc_timeout_ms) {
+      argv.push_back(Format("-timeout_ms=$0", *rpc_timeout_ms));
+    }
+    argv.insert(
+        argv.end(), {"dump_tablet_data", tablet_id_, "HASH_ONLY", std::to_string(read_ht)});
+    return CallAdminVec(argv);
+  }
+
+  // Same dump over the RPC, where the structured error is visible.
+  Result<tserver::DumpTabletDataResponsePB> DumpViaRpc(
+      TServerDetails* target, uint64_t read_ht, std::optional<uint32_t> max_wait_ms,
+      std::optional<MonoDelta> rpc_timeout = std::nullopt) {
+    tserver::DumpTabletDataRequestPB req;
+    tserver::DumpTabletDataResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(rpc_timeout.value_or(kTimeout));
+    req.set_tablet_id(tablet_id_);
+    if (read_ht) {
+      req.set_read_ht(read_ht);
+    }
+    if (max_wait_ms) {
+      req.set_max_wait_ms(*max_wait_ms);
+    }
+    RETURN_NOT_OK(target->tserver_proxy->DumpTabletData(req, &resp, &rpc));
+    return resp;
+  }
+
+  // The bound a dump waits under when the request does not carry one of its own.
+  Status SetServerWaitBound(TServerDetails* target, int64_t wait_ms) {
+    return cluster_->SetFlag(
+        Server(target), "dump_tablet_data_max_read_time_wait_ms", std::to_string(wait_ms));
+  }
+
+  // How far ahead of the server's clock a read time may be before it is rejected outright.
+  Status SetServerMaxReadTimeAhead(TServerDetails* target, int64_t ahead_ms) {
+    return cluster_->SetFlag(
+        Server(target), "dump_tablet_data_max_read_time_ahead_ms", std::to_string(ahead_ms));
+  }
+
+  // Freezes a follower's safe time. The leader keeps its majority through the other follower, so
+  // the group makes progress and the frozen replica falls behind.
+  Status SetFollowerFrozen(TServerDetails* follower, bool frozen) {
+    return cluster_->SetFlag(
+        Server(follower), "TEST_follower_reject_update_consensus_requests",
+        frozen ? "true" : "false");
+  }
+
+  // Freezes a follower, then pauses so a read time taken afterwards is clearly past its safe time.
+  void FreezeAndLetFallBehind(TServerDetails* follower) {
+    ASSERT_OK(SetFollowerFrozen(follower, true));
+    SleepFor(MonoDelta::FromSeconds(2) * kTimeMultiplier);
+  }
+
+  itest::TabletServerMapUnowned active_tablet_servers_;
+  TServerDetails* leader_ = nullptr;
+  std::vector<TServerDetails*> followers_;
+};
+
+// A read time every replica has passed is answered right away, and they agree on the hash.
+TEST_F_EX(YBTsCliTest, DumpTabletDataReadTimeAlreadySafe, YBTsCliDumpReadTimeTest) {
+  ASSERT_NO_FATALS(StartClusterWithData());
+
+  const auto read_ht = NowHybridTime();
+  const auto leader_output = ASSERT_RESULT(DumpHash(leader_, read_ht, std::nullopt));
+  const auto leader_hash = ASSERT_RESULT(ExtractDumpValue(leader_output, "XOR hash: "));
+  const auto leader_rows = ASSERT_RESULT(ExtractDumpValue(leader_output, "Row count: "));
+
+  for (auto* follower : followers_) {
+    const auto output = ASSERT_RESULT(DumpHash(follower, read_ht, std::nullopt));
+    ASSERT_EQ(ASSERT_RESULT(ExtractDumpValue(output, "XOR hash: ")), leader_hash);
+    ASSERT_EQ(ASSERT_RESULT(ExtractDumpValue(output, "Row count: ")), leader_rows);
+  }
+}
+
+// With a wait of zero, a replica behind the read time reports the shortfall instead of answering
+// with a partial view.
+TEST_F_EX(YBTsCliTest, DumpTabletDataReadTimeNotReachedFailsFast, YBTsCliDumpReadTimeTest) {
+  ASSERT_NO_FATALS(StartClusterWithData());
+
+  auto* lagging = followers_[0];
+  ASSERT_NO_FATALS(FreezeAndLetFallBehind(lagging));
+
+  const auto read_ht = NowHybridTime();
+  const auto start = MonoTime::Now();
+  const auto result = DumpHash(lagging, read_ht, /* read_time_wait_ms= */ 0);
+  ASSERT_NOK(result);
+  const auto message = result.status().ToString();
+  ASSERT_STR_CONTAINS(message, "is not yet safe on this replica");
+  ASSERT_STR_CONTAINS(message, "behind by");
+  // A wait of zero means exactly that.
+  ASSERT_LT(MonoTime::Now() - start, MonoDelta::FromSeconds(10) * kTimeMultiplier);
+
+  // The leader, which is caught up, still answers for the same read time.
+  ASSERT_RESULT(DumpHash(leader_, read_ht, std::nullopt));
+}
+
+// Given time to wait, a replica that is behind catches up and answers instead of failing. Waiting
+// is the default: callers ask for "now", which safe time always trails.
+TEST_F_EX(YBTsCliTest, DumpTabletDataWaitsForReadTime, YBTsCliDumpReadTimeTest) {
+  ASSERT_NO_FATALS(StartClusterWithData());
+
+  auto* lagging = followers_[0];
+  ASSERT_NO_FATALS(FreezeAndLetFallBehind(lagging));
+  const auto read_ht = NowHybridTime();
+
+  // Unfreeze only after the dump is in flight, so the request has to wait rather than find the
+  // replica caught up on the first look.
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, lagging] {
+    SleepFor(MonoDelta::FromSeconds(2) * kTimeMultiplier);
+    EXPECT_OK(SetFollowerFrozen(lagging, false));
+  });
+
+  const auto output = ASSERT_RESULT(DumpHash(lagging, read_ht, /* read_time_wait_ms= */ 60000));
+  thread_holder.JoinAll();
+
+  // Having waited, it answers for read_ht with the same data the leader reports.
+  const auto leader_output = ASSERT_RESULT(DumpHash(leader_, read_ht, std::nullopt));
+  ASSERT_EQ(
+      ASSERT_RESULT(ExtractDumpValue(output, "XOR hash: ")),
+      ASSERT_RESULT(ExtractDumpValue(leader_output, "XOR hash: ")));
+}
+
+// A read time far beyond the server's clock is a caller mistake, not replica lag.
+// dump_tablet_data_max_read_time_ahead_ms alone decides that, so neither the requested wait nor
+// --timeout_ms can change the answer.
+TEST_F_EX(YBTsCliTest, DumpTabletDataReadTimeTooFarInFuture, YBTsCliDumpReadTimeTest) {
+  ASSERT_NO_FATALS(StartClusterWithData());
+
+  // Set explicitly, so this case does not move with the flag's default.
+  ASSERT_OK(SetServerMaxReadTimeAhead(leader_, 10000));
+  // Well past that, yet well inside every timeout below.
+  const auto kGap = MonoDelta::FromSeconds(60);
+
+  // Waits and RPC timeouts either side of each other, scaled together so their ordering holds under
+  // sanitizers. The last two cases are where a deadline-relative or a wait-relative rule would give
+  // the retryable error instead.
+  const std::pair<uint32_t, int64_t> kCases[] = {
+      {1000, 5000}, {1000, 60000}, {10000, 5000}, {0, 30000}};
+  for (const auto& [wait_ms, rpc_timeout_ms] : kCases) {
+    const auto start = MonoTime::Now();
+    const auto result = DumpHash(
+        leader_, NowHybridTime(kGap), wait_ms * kTimeMultiplier,
+        rpc_timeout_ms * kTimeMultiplier);
+    SCOPED_TRACE(Format("wait_ms: $0, rpc_timeout_ms: $1", wait_ms, rpc_timeout_ms));
+    ASSERT_NOK(result);
+    ASSERT_STR_CONTAINS(result.status().ToString(), "ahead of this server's clock");
+    ASSERT_STR_NOT_CONTAINS(result.status().ToString(), "is not yet safe on this replica");
+    // Rejected on sight, without sitting out even the wait it asked for.
+    ASSERT_LT(MonoTime::Now() - start, MonoDelta::FromSeconds(30) * kTimeMultiplier);
+  }
+
+  // The error code says permanent, so a caller retrying on READ_TIME_NOT_REACHED stops.
+  const auto resp = ASSERT_RESULT(DumpViaRpc(leader_, NowHybridTime(kGap), /* max_wait_ms= */ 0));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_NE(resp.error().code(), tserver::TabletServerErrorPB::READ_TIME_NOT_REACHED);
+  ASSERT_TRUE(StatusFromPB(resp.error().status()).IsInvalidArgument())
+      << StatusFromPB(resp.error().status());
+}
+
+// A read time the clock will reach shortly is ordinary lag, however short the wait. It stays
+// retryable. Only a gap past dump_tablet_data_max_read_time_ahead_ms is a caller mistake.
+TEST_F_EX(YBTsCliTest, DumpTabletDataReadTimeModestlyInFuture, YBTsCliDumpReadTimeTest) {
+  ASSERT_NO_FATALS(StartClusterWithData());
+
+  ASSERT_OK(SetServerMaxReadTimeAhead(leader_, 60000));
+  // Inside that, so not a caller mistake. Past both waits below, so not yet safe either.
+  const auto kGap = MonoDelta::FromSeconds(10);
+
+  for (const uint32_t wait_ms : {0, 1000}) {
+    const auto result = DumpHash(leader_, NowHybridTime(kGap), wait_ms);
+    SCOPED_TRACE(Format("wait_ms: $0", wait_ms));
+    ASSERT_NOK(result);
+    ASSERT_STR_CONTAINS(result.status().ToString(), "is not yet safe on this replica");
+    ASSERT_STR_NOT_CONTAINS(result.status().ToString(), "ahead of this server's clock");
+  }
+
+  const auto resp = ASSERT_RESULT(DumpViaRpc(leader_, NowHybridTime(kGap), /* max_wait_ms= */ 0));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_EQ(resp.error().code(), tserver::TabletServerErrorPB::READ_TIME_NOT_REACHED);
+  ASSERT_TRUE(StatusFromPB(resp.error().status()).IsTryAgain())
+      << StatusFromPB(resp.error().status());
+}
+
+// A dump with no read time reads at the replica's own safe time, so it must neither wait nor fail.
+// That holds on a frozen replica and with a zero wait: the wait only governs an explicit read time.
+TEST_F_EX(YBTsCliTest, DumpTabletDataWithoutReadTimeNeverWaits, YBTsCliDumpReadTimeTest) {
+  ASSERT_NO_FATALS(StartClusterWithData());
+
+  auto* lagging = followers_[0];
+  // Leaves this replica behind the present, so a dump that compared against the present would wait.
+  ASSERT_NO_FATALS(FreezeAndLetFallBehind(lagging));
+
+  const auto start = MonoTime::Now();
+
+  auto output = ASSERT_RESULT(DumpHash(lagging, /* read_ht= */ 0, std::nullopt));
+  // Only safe time is frozen, so the replica still hashes the data it holds. Not compared against
+  // the leader: without an explicit read time each answers at its own safe time.
+  ASSERT_GT(ASSERT_RESULT(ExtractDumpValue(output, "Row count: ")), 0ULL);
+
+  output = ASSERT_RESULT(DumpHash(lagging, /* read_ht= */ 0, /* read_time_wait_ms= */ 0));
+  ASSERT_GT(ASSERT_RESULT(ExtractDumpValue(output, "Row count: ")), 0ULL);
+
+  // Neither call had anything to wait for.
+  ASSERT_LT(MonoTime::Now() - start, MonoDelta::FromSeconds(30) * kTimeMultiplier);
+
+  // The caught-up leader behaves the same way, wait bound or not.
+  ASSERT_RESULT(DumpHash(leader_, /* read_ht= */ 0, /* read_time_wait_ms= */ 0));
+}
+
+// The wait a request asks for is the wait it gets. A replica that stays behind fails on that
+// schedule, not at the RPC deadline.
+TEST_F_EX(YBTsCliTest, DumpTabletDataReadTimeWaitBoundedByRequest, YBTsCliDumpReadTimeTest) {
+  ASSERT_NO_FATALS(StartClusterWithData());
+
+  auto* lagging = followers_[0];
+  // Park the server-side default above both the bound under test and the RPC deadline. Only the
+  // bound the request carries can then end the wait early.
+  ASSERT_OK(SetServerWaitBound(lagging, 120000));
+  ASSERT_NO_FATALS(FreezeAndLetFallBehind(lagging));
+
+  constexpr uint32_t kWaitMs = 1000;
+  const auto start = MonoTime::Now();
+  auto result = DumpHash(lagging, NowHybridTime(), kWaitMs);
+  const auto elapsed = MonoTime::Now() - start;
+  ASSERT_NOK(result);
+  // An unrelated failure could take about the right amount of time.
+  ASSERT_STR_CONTAINS(result.status().ToString(), "is not yet safe on this replica");
+
+  // Well short of the 120s server default and the 60s RPC deadline, either of which would apply if
+  // the request's bound were dropped. Not scaled by kTimeMultiplier: the server's wait is
+  // wall-clock.
+  ASSERT_GE(elapsed, MonoDelta::FromMilliseconds(kWaitMs) / 2);
+  ASSERT_LT(elapsed, MonoDelta::FromSeconds(30));
+}
+
+// A wait far beyond the RPC deadline is clamped to it, less dump_tablet_data_deadline_margin_ms.
+// The margin is what lets the caller see the shortfall instead of a generic RPC timeout.
+TEST_F_EX(YBTsCliTest, DumpTabletDataReadTimeWaitClampedToDeadline, YBTsCliDumpReadTimeTest) {
+  ASSERT_NO_FATALS(StartClusterWithData());
+
+  auto* lagging = followers_[0];
+  // As above, park the server-side default out of the way. Only the deadline can then end the wait
+  // before the ten minutes the request asks for.
+  ASSERT_OK(SetServerWaitBound(lagging, 120000));
+  ASSERT_NO_FATALS(FreezeAndLetFallBehind(lagging));
+
+  constexpr int64_t kRpcTimeoutMs = 5000;
+  auto start = MonoTime::Now();
+  const auto result = DumpHash(
+      lagging, NowHybridTime(), /* read_time_wait_ms= */ 600000, kRpcTimeoutMs);
+  auto elapsed = MonoTime::Now() - start;
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "is not yet safe on this replica");
+  // It waited out most of the 5s deadline rather than the ten minutes it asked for. The lower
+  // bound also rules out a margin so wide the wait never happens.
+  ASSERT_GE(elapsed, MonoDelta::FromSeconds(2));
+  ASSERT_LT(elapsed, MonoDelta::FromSeconds(20));
+
+  // The same over the RPC, where the error code is visible.
+  start = MonoTime::Now();
+  const auto resp = ASSERT_RESULT(DumpViaRpc(
+      lagging, NowHybridTime(), /* max_wait_ms= */ 600000,
+      MonoDelta::FromMilliseconds(kRpcTimeoutMs)));
+  elapsed = MonoTime::Now() - start;
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_EQ(resp.error().code(), tserver::TabletServerErrorPB::READ_TIME_NOT_REACHED);
+  ASSERT_GE(elapsed, MonoDelta::FromSeconds(2));
+  ASSERT_LT(elapsed, MonoDelta::FromSeconds(20));
+}
+
+// A request that carries no bound of its own is governed by the server's
+// dump_tablet_data_max_read_time_wait_ms. The CLI always sends a bound, so this goes over the RPC.
+TEST_F_EX(YBTsCliTest, DumpTabletDataReadTimeWaitBoundedByServerDefault, YBTsCliDumpReadTimeTest) {
+  ASSERT_NO_FATALS(StartClusterWithData());
+
+  auto* lagging = followers_[0];
+  ASSERT_OK(SetServerWaitBound(lagging, 1000));
+  ASSERT_NO_FATALS(FreezeAndLetFallBehind(lagging));
+
+  auto start = MonoTime::Now();
+  auto resp = ASSERT_RESULT(DumpViaRpc(lagging, NowHybridTime(), /* max_wait_ms= */ std::nullopt));
+  auto elapsed = MonoTime::Now() - start;
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_EQ(resp.error().code(), tserver::TabletServerErrorPB::READ_TIME_NOT_REACHED);
+  // Ignoring the flag returns the same error code, just after the 30s RPC deadline, so only the
+  // elapsed time tells the two apart. Not scaled by kTimeMultiplier: that would put the bound back
+  // above the deadline.
+  ASSERT_GE(elapsed, MonoDelta::FromMilliseconds(500));
+  ASSERT_LT(elapsed, MonoDelta::FromSeconds(10));
+
+  // Zero on the server means the same fail-fast that zero in the request does.
+  ASSERT_OK(SetServerWaitBound(lagging, 0));
+  start = MonoTime::Now();
+  resp = ASSERT_RESULT(DumpViaRpc(lagging, NowHybridTime(), /* max_wait_ms= */ std::nullopt));
+  elapsed = MonoTime::Now() - start;
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_EQ(resp.error().code(), tserver::TabletServerErrorPB::READ_TIME_NOT_REACHED);
+  // Nothing to wait for at zero, so this is round-trip time. A bound as loose as the one above
+  // would pass even if zero started waiting.
+  ASSERT_LT(elapsed, MonoDelta::FromSeconds(3));
+}
+
+// The failure is structured, not just prose: TryAgain plus READ_TIME_NOT_REACHED is how a caller
+// tells "this replica is behind" from "these replicas have diverged".
+TEST_F_EX(YBTsCliTest, DumpTabletDataReadTimeNotReachedErrorCode, YBTsCliDumpReadTimeTest) {
+  ASSERT_NO_FATALS(StartClusterWithData());
+
+  auto* lagging = followers_[0];
+  ASSERT_NO_FATALS(FreezeAndLetFallBehind(lagging));
+
+  const auto read_ht = NowHybridTime();
+  const auto resp = ASSERT_RESULT(DumpViaRpc(lagging, read_ht, /* max_wait_ms= */ 0));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_EQ(resp.error().code(), tserver::TabletServerErrorPB::READ_TIME_NOT_REACHED);
+  const auto status = StatusFromPB(resp.error().status());
+  ASSERT_TRUE(status.IsTryAgain()) << status;
+
+  // Everything a consistency checker keys off: the requested time, where this replica stood, the
+  // gap, and how long it waited. Labels only: the hybrid times render differently per build.
+  const auto message = status.ToString();
+  ASSERT_STR_CONTAINS(message, "Requested read time");
+  ASSERT_STR_CONTAINS(message, "is not yet safe on this replica");
+  ASSERT_STR_CONTAINS(message, "safe time");
+  ASSERT_STR_CONTAINS(message, "behind by");
+  ASSERT_STR_CONTAINS(message, "waited");
+
+  // The caught-up leader answers the same read time, so the error above is about that replica. It
+  // sends no bound: safe time trails the present even on a healthy leader.
+  const auto leader_resp = ASSERT_RESULT(DumpViaRpc(leader_, read_ht, std::nullopt));
+  ASSERT_FALSE(leader_resp.has_error()) << leader_resp.ShortDebugString();
+  ASSERT_GT(leader_resp.row_count(), 0ULL);
 }
 
 } // namespace tools

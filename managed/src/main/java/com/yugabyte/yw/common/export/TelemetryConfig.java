@@ -5,8 +5,12 @@ package com.yugabyte.yw.common.export;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ControllerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.NodeAgentLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YnpLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YsqlConnMgrLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -43,6 +47,14 @@ public class TelemetryConfig {
 
   private TServerLogConfig tserverLogConfig = null;
 
+  private YsqlConnMgrLogConfig ysqlConnMgrLogConfig = null;
+
+  private NodeAgentLogConfig nodeAgentLogConfig = null;
+
+  private YnpLogConfig ynpLogConfig = null;
+
+  private ControllerLogConfig controllerLogConfig = null;
+
   /**
    * The config section for a given export type, or null when that type is disabled. This is the one
    * place that maps an {@link ExportType} to its backing field: {@link #diff} and {@link
@@ -61,6 +73,14 @@ public class TelemetryConfig {
         return masterLogConfig;
       case TSERVER_LOGS:
         return tserverLogConfig;
+      case YSQL_CONN_MGR_LOGS:
+        return ysqlConnMgrLogConfig;
+      case NODE_AGENT_LOGS:
+        return nodeAgentLogConfig;
+      case YNP_LOGS:
+        return ynpLogConfig;
+      case CONTROLLER_LOGS:
+        return controllerLogConfig;
       default:
         throw new IllegalArgumentException("Unhandled export type: " + type);
     }

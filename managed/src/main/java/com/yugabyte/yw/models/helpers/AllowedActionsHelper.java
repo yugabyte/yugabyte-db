@@ -130,9 +130,10 @@ public class AllowedActionsHelper {
             .filter(n -> node.dedicatedTo == null || n.dedicatedTo == node.dedicatedTo)
             .filter(additionalFilter)
             .count();
-    LOG.debug(
+    LOG.trace(
         "Found {} nodes equivalent to current node {} (dedicatedTo={}, isMaster={}, isTserver={})",
         numNodesToCheck,
+        node.nodeName,
         node.dedicatedTo,
         node.isMaster,
         node.isTserver);

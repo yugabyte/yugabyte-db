@@ -197,6 +197,8 @@ class PgClient {
 
   uint64_t SessionID() const;
 
+  void PublishOldestReadPointSerialNo(uint64_t serial_no);
+
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, uint64_t min_ysql_catalog_version,
       master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);

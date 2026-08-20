@@ -162,7 +162,7 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
         onClose={handleClose}
         onSubmit={handleSubmit((data) => onApply(data, pendingInstanceSettings))}
         title={t('title')}
-        submitLabel={t('save', { keyPrefix: 'applyChanges' })}
+        submitLabel={t('applyChanges', { keyPrefix: 'common' })}
         cancelLabel={t('cancel', { keyPrefix: 'common' })}
         size="md"
         titleSeparator

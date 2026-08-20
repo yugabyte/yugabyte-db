@@ -144,13 +144,17 @@ export const ConfigureRegionModal = ({
           ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
           : 'Custom Machine Image ID (Optional)',
     sharedSubnet: 'Shared Subnet',
-    instanceTemplate: 'Instance Template (Optional)',
+    instanceTemplate:
+      providerCode === ProviderCode.OCI
+        ? 'Instance Configuration OCID (Optional)'
+        : 'Instance Template (Optional)',
     azuNetworkRGOverride: 'Network Resource Group (Optional)',
     azuRGOverride: 'Resource Group (Optional)'
   };
   const shouldExposeField: Record<keyof ConfigureRegionFormValues, boolean> = {
     fieldId: false,
-    instanceTemplate: providerCode === ProviderCode.GCP,
+    instanceTemplate:
+      providerCode === ProviderCode.GCP || providerCode === ProviderCode.OCI,
     regionData: true,
     securityGroupId:
       providerCode !== ProviderCode.GCP &&

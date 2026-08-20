@@ -811,20 +811,26 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertWithPKInSetEmitsDeleteAndIn
   const uint32_t expected_count[] = {0, 1, 0, 1, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
-  // Expected records: BEGIN, DELETE(key=1), INSERT(key=1, value_1=10), COMMIT.
-  ExpectedRecord expected_records[] = {{0, 0}, {1, 0}, {1, 10}, {0, 0}};
+  // Expected DML records: DELETE(key=1) followed by INSERT(key=1, value_1=10).
+  ExpectedRecord expected_records[] = {{1, 0}, {1, 10}};
 
   GetChangesResponsePB upsert_resp;
+  // Every retry re-reads from the same checkpoint, so count the records of the last response only.
   ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &upsert_resp, stream_id, tablets, 2, /* is_explicit_checkpoint */ false,
+      &upsert_resp, stream_id, tablets, 2, /* is_explicit_checkpoint */ true,
       &change_resp.cdc_sdk_checkpoint()));
 
-  uint32_t record_size = upsert_resp.cdc_sdk_proto_records_size();
-  ASSERT_EQ(record_size, 4);  // BEGIN, DELETE, INSERT, COMMIT
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = upsert_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count);
+  const size_t kNumExpectedDmlRecords = 2;
+  size_t seen_dml_records = 0;
+  for (const auto& record : upsert_resp.cdc_sdk_proto_records()) {
+    auto op = record.row_message().op();
+    if (op != RowMessage::INSERT && op != RowMessage::UPDATE && op != RowMessage::DELETE) {
+      continue;
+    }
+    ASSERT_LT(seen_dml_records, kNumExpectedDmlRecords);
+    CheckRecord(record, expected_records[seen_dml_records++], count);
   }
+  ASSERT_EQ(seen_dml_records, kNumExpectedDmlRecords);
   CheckCount(expected_count, count);
 }
 
@@ -1598,6 +1604,8 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // Retry a dropped apply notification quickly instead of after the 5s default.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) = 100000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -1619,7 +1627,6 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
   }
   // GetChanges for the stream-1 and stream-2
   vector<GetChangesResponsePB> change_resp_01(2);
-  vector<GetChangesResponsePB> change_resp_02(2);
   uint32_t start = 0;
   uint32_t end = 100;
   for (uint32_t insert_idx = 0; insert_idx < 3; insert_idx++) {
@@ -1629,20 +1636,19 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
         false,              /* timeout_secs = */
         30, /* is_compaction = */ false));
     for (uint32_t stream_idx = 0; stream_idx < 2; stream_idx++) {
-      uint32_t record_size = 0;
-      if (insert_idx == 0) {
-        ASSERT_OK(WaitForGetChangesToFetchRecords(
-            &change_resp_01[stream_idx], stream_ids[stream_idx], tablets, 100,
-            checkpoint_type == CDCCheckpointType::EXPLICIT));
-
-        record_size = change_resp_01[stream_idx].cdc_sdk_proto_records_size();
-      } else {
-        change_resp_02[stream_idx] = ASSERT_RESULT(
-            UpdateCheckpoint(stream_ids[stream_idx], tablets, &change_resp_01[stream_idx]));
-        change_resp_01[stream_idx] = change_resp_02[stream_idx];
-        record_size = change_resp_02[stream_idx].cdc_sdk_proto_records_size();
+      // Copy the checkpoint, since the poll below overwrites the response it points into.
+      std::optional<CDCSDKCheckpointPB> cp;
+      if (insert_idx > 0) {
+        cp = change_resp_01[stream_idx].cdc_sdk_checkpoint();
       }
-      ASSERT_GE(record_size, 100);
+      // CDC withholds records committed after the start time of the oldest running txn, and the
+      // committed txn is applied asynchronously, so poll until the records surface.
+      ASSERT_OK(WaitForGetChangesToFetchRecords(
+          &change_resp_01[stream_idx], stream_ids[stream_idx], tablets, 100,
+          checkpoint_type == CDCCheckpointType::EXPLICIT, cp ? &*cp : nullptr,
+          /* tablet_idx */ 0, /* safe_hybrid_time */ -1, /* wal_segment_index */ 0,
+          /* timeout_secs */ 30));
+      ASSERT_GE(change_resp_01[stream_idx].cdc_sdk_proto_records_size(), 100);
     }
     start = end;
     end = start + 100;
@@ -1695,9 +1701,17 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestMultipleActiveStreamOnSameTablet);
 
 void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType checkpoint_type) {
+  // The test freezes the cdc_state checkpoints below by raising
+  // cdc_state_checkpoint_update_interval_ms. A load balancer leader move defeats that: the new
+  // leader's CDC service has no cached checkpoint for the stream, so its first GetChanges writes a
+  // fresh checkpoint to cdc_state regardless of the interval, and the checkpoints read here would
+  // never match the retention barriers on the peers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 20000;
+  // Stream-2 stays inactive for the whole test, so its retention must outlive the test. Otherwise
+  // its cdc_state entry is cleaned up as expired and the barriers verified below are released.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 120000;
   uint32_t num_tservers = 3;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
@@ -1788,8 +1802,13 @@ void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType c
 
     GetChangesResponsePB latest_change_resp = ASSERT_RESULT(
         GetChangesFromCDC(stream_id[0], tablets, &change_resp[0].cdc_sdk_checkpoint()));
-    if (row.key.tablet_id == tablets[0].tablet_id() &&
-        stream_id[0] == row.key.stream_id) {
+    // Only the entries of this tablet hold its retention barriers. Entries of other tablets, in
+    // particular the sys catalog entry created for every stream, keep an OpId::Invalid() checkpoint
+    // until they are first polled, which no peer ever reports as its retained op id.
+    if (row.key.tablet_id != tablets[0].tablet_id() || !row.checkpoint) {
+      continue;
+    }
+    if (stream_id[0] == row.key.stream_id) {
       LOG(INFO) << "Read cdc_state table with tablet_id: " << row.key.tablet_id
                 << " stream_id: " << row.key.stream_id << " checkpoint is: " << *row.checkpoint;
       active_stream_checkpoint = *row.checkpoint;
@@ -1797,6 +1816,10 @@ void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType c
       overall_min_checkpoint = min(overall_min_checkpoint, *row.checkpoint);
     }
   }
+  // A failed scan silently ends the iteration, leaving the checkpoints below unpopulated.
+  ASSERT_OK(s);
+  LOG(INFO) << "Overall minimum checkpoint: " << overall_min_checkpoint
+            << ", active stream checkpoint: " << active_stream_checkpoint;
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -1809,7 +1832,9 @@ void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType c
               auto tablet = VERIFY_RESULT(peer->shared_tablet());
               if (tablet->transaction_participant()->GetRetainOpId() != overall_min_checkpoint &&
                   tablet->transaction_participant()->GetRetainOpId() != active_stream_checkpoint) {
-                SleepFor(MonoDelta::FromMilliseconds(2));
+                // Retry through WaitFor, so that a barrier that never converges times out instead
+                // of spinning here forever.
+                return false;
               } else {
                 i += 1;
                 LOG(INFO) << "In tserver: " << i
@@ -5628,6 +5653,122 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDDLRecordValidationWithColoca
           FAIL();
         }
       }
+    }
+  }
+}
+
+// Colocated CREATE TABLE and DROP TABLE write ADD_TABLE and REMOVE_TABLE change metadata ops
+// to the shared tablet's WAL.  These ops carry no schema, so GetChanges must skip them without
+// emitting DDL records and without disturbing schema tracking of the streamed tables.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaLessChangeMetadataOpsWithColocation)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  ASSERT_OK(CreateColocatedObjects(&test_cluster_));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  const int insert_count = 10;
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  for (int i = 0; i < insert_count; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0)", i));
+  }
+
+  // Add and drop a colocated table while the stream is active.
+  ASSERT_OK(AddColocatedTable(&test_cluster_, "test3"));
+  TableId table_id_3 = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, "test3"));
+
+  // Wait for the ADD_TABLE change metadata op to apply.  This pins the test's premise: test3
+  // shares the streamed tablet, so the schema-less ops are known to be in its WAL.  Without
+  // this, a setup change that breaks colocation would make the waits and DDL record
+  // assertions below pass vacuously.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+          for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+            if (peer->tablet_id() != tablets[0].tablet_id()) {
+              continue;
+            }
+            auto table_info = peer->tablet_metadata()->GetTableInfo(table_id_3);
+            if (!table_info.ok()) {
+              // Absence from the metadata surfaces as NotFound.  Any other error is a real
+              // failure.
+              if (!table_info.status().IsNotFound()) {
+                return table_info.status();
+              }
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Waiting for the added colocated table to appear in tablet metadata"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE test3"));
+
+  // Wait for the REMOVE_TABLE change metadata op to apply so that it is in the WAL before the
+  // GetChanges call below reads it.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+          for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+            if (peer->tablet_id() != tablets[0].tablet_id()) {
+              continue;
+            }
+            auto table_info = peer->tablet_metadata()->GetTableInfo(table_id_3);
+            if (table_info.ok()) {
+              return false;
+            }
+            // Removal from the metadata surfaces as NotFound.  Any other error is a real failure.
+            if (!table_info.status().IsNotFound()) {
+              return table_info.status();
+            }
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Waiting for the dropped colocated table to be removed from tablet metadata"));
+
+  for (int i = insert_count; i < 2 * insert_count; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0)", i));
+  }
+
+  // Consume the stream until all inserts arrive, collecting every record on the way so that
+  // the assertions below cover records regardless of how GetChanges batches them.
+  std::vector<CDCSDKProtoRecordPB> records;
+  CDCSDKCheckpointPB checkpoint;
+  bool have_checkpoint = false;
+  int insert_records = 0;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto change_resp = VERIFY_RESULT(GetChangesFromCDC(
+            stream_id, tablets, have_checkpoint ? &checkpoint : nullptr));
+        for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+          records.push_back(record);
+          if (record.row_message().op() == RowMessage::INSERT) {
+            ++insert_records;
+          }
+        }
+        checkpoint = change_resp.cdc_sdk_checkpoint();
+        have_checkpoint = true;
+        return insert_records >= 2 * insert_count;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier, "Waiting for all insert records"));
+
+  ASSERT_EQ(insert_records, 2 * insert_count);
+  for (const auto& record : records) {
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().table(), "test1");
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      // The schema-less ops must not surface as DDL records for the added and dropped table,
+      // and no DDL record may carry an empty schema.
+      ASSERT_NE(record.row_message().table(), "test3");
+      ASSERT_GT(record.row_message().schema().column_info_size(), 0);
     }
   }
 }
@@ -14106,22 +14247,26 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
       "Timed out waiting for CDCMasterBgTask to move ahead history retention barrier on sys "
       "catalog"));
 
-  // We will now check that even after a stream expiry, the history retention barrier on the sys
-  // catalog tablet will not be lifted. This is because stream expiry ligic will delete the
-  // sys_catalog tablet-stream entry in cdc_state table. But it doesn't act upon such stream's slot
-  // entry. In the next run of CDCMasterBgTask, it will use the slot entry's restart time to set the
-  // history barrier.
-  // Since current stream 'stream_without_sys_catalog_poll' doesn't poll sys_catalog
-  // tablet, there's no sys_catalog tablet-stream entry in cdc_state table. Thus, the logic of
-  // deleting tablet-stream entry on stream expiry will not be triggered by CDCMasterBgTask. So, we
-  // will create a new stream which will poll sys_catalog tablet for changes.
+  // In this step we will now check that even after a stream expiry, the history retention barrier
+  // on the sys catalog tablet will not be lifted. This is because stream expiry logic will delete
+  // the sys_catalog tablet-stream entry in cdc_state table. But it doesn't act upon such stream's
+  // slot entry. In the next run of CDCMasterBgTask, it will use the slot entry's restart time to
+  // set the history barrier.
+  // However since current stream was created before FLAGS_cdc_enable_dynamic_schema_changes was set
+  // to true, it doesn't poll sys_catalog tablet. Thus there's no sys_catalog tablet-stream entry in
+  // cdc_state table for this stream. And so consequently the logic of deleting tablet-stream entry
+  // on such stream's expiry will not be triggered by CDCMasterBgTask.
+  // So to check the consequences of stream expiry we will create a new stream which will poll
+  // sys_catalog tablet for changes.
   ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   ASSERT_NE(metadata->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
 
-  // Verify that the history barrier gets set to current time by CDCMasterBgTask and intents
-  // retention barrier gets lifted due to stream expiry.
+  // Verify that CDCMasterBgTask only moves history barrier to current time and do not move intent
+  // barrier. The ResetStaleRetentionBarriersOp will release the intent barrier once it becomes
+  // stale.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto cutoff_after_bg_task = cm.AllowedHistoryCutoffProvider(metadata.get());
@@ -14359,8 +14504,13 @@ TEST_F(CDCSDKYsqlTest, TestgRPCStreamBoundToSpecificTables) {
       1 /* start */, 2 /* end */, &test_cluster_, true, 2,
       (kTableName + std::string("_1")).c_str()));
 
-  // GetChanges on the bound table's tablet should succeed.
-  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_0));
+  // GetChanges on the bound table's tablet should succeed. The committed transaction is applied to
+  // the tablet asynchronously, so poll until its record surfaces.
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets_0, /* expected_count */ 1,
+      /* is_explicit_checkpoint */ true, /* cp */ nullptr, /* tablet_idx */ 0,
+      /* safe_hybrid_time */ -1, /* wal_segment_index */ 0, /* timeout_secs */ 30));
   ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
 
   // GetChanges on the unbound table's tablet errors out.

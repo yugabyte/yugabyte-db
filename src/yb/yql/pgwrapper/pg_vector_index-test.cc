@@ -79,12 +79,14 @@ DECLARE_bool(TEST_vector_index_exact);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(max_nexts_to_avoid_seek);
 DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
@@ -93,10 +95,11 @@ DECLARE_string(vector_index_backend);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_bool(vector_index_allow_parallel_compactions);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
+DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
 DECLARE_uint32(vector_index_concurrent_reads);
-DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
+DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
@@ -179,6 +182,11 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
+
+    // Preserve the existing test assumption that each compaction produces one output chunk.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
 
     auto packing_mode = GetPackingMode();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
@@ -2413,8 +2421,9 @@ TEST_P(PgVectorIndexSingleServerTest, ConcurrentDeleteApplyDuringSearch) {
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
   ASSERT_OK(conn.Execute("COMMIT"));
 
-  // Same connection: read-your-writes puts the read time at/after the commit. Before the fix this
-  // fails with "Vector not found"; after it, Search reuses the filter reader and excludes row 1.
+  // Same connection: read-your-writes puts the read time at/after the commit. Without fast next
+  // disabled for the reverse mapping reader this could fail with "Vector not found"; with it,
+  // resolution stays on the filter's snapshot and row 1 is excluded when its ybctid is fetched.
   const auto query = "SELECT id FROM test AS t" + IndexQuerySuffix("[0.0, 0.0, 0.0]", kQueryLimit);
   auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
 
@@ -2423,6 +2432,70 @@ TEST_P(PgVectorIndexSingleServerTest, ConcurrentDeleteApplyDuringSearch) {
   for (auto id : ids) {
     ASSERT_NE(id, 1);
   }
+}
+
+// Stress version of ConcurrentDeleteApplyDuringSearch. Instead of pinning one interleaving with
+// sync points, it repeatedly deletes the nearest neighbors while searches run, widening the race
+// window. The filter may accept a live reverse mapping, but before resolving its ybctid, the search
+// may observe the delete tombstone and fail with "Vector not found". This inconsistency occurs when
+// DBIter::FastNext exposes records written after the reverse mapping iterator's snapshot; a high
+// max_nexts_to_avoid_seek makes this path easy to hit. With FastNext disabled for reverse mapping
+// reads, filtering and resolution stay on the same snapshot. Each query must return a full page
+// and exclude rows deleted before it started.
+TEST_P(PgVectorIndexSingleServerTest, ConcurrentDeleteApplyDuringSearchStress) {
+  constexpr int64_t kNumRows = 200;
+  constexpr size_t kQueryLimit = 10;
+  // Keep at least 2 * kQueryLimit rows live so every query can fill a full page.
+  constexpr int64_t kMaxDeletes = kNumRows - 2 * kQueryLimit;
+  static constexpr uint64_t kApplyDelayMs = 100;
+  const size_t kNumQueries = RegularBuildVsSanitizers<size_t>(15, 8);
+
+  // Keep the filter active from the first query, before any delete has applied.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_no_deletions_skip_filter_check) = false;
+  // Make forward fetches step to the target instead of seeking, so freshly applied tombstones are
+  // visible to the resolution reader (see the comment above).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_nexts_to_avoid_seek) = 100000;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+
+  // Delay applies so deletes committed shortly before a query stay unapplied when its filter runs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_sleep_before_applying_intents_ms) = kApplyDelayMs;
+
+  auto* sync_point = SyncPoint::GetInstance();
+  // Sleep long enough for every apply pending at the filter read to land before resolution.
+  sync_point->SetCallBack("DocVectorIndexImpl::Search:BeforeResolve", [](void*) {
+    std::this_thread::sleep_for(3ms * kApplyDelayMs * kTimeMultiplier);
+  });
+  sync_point->EnableProcessing();
+
+  std::atomic<int64_t> deleted{0};
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this, &deleted, &stop_flag = threads.stop_flag()] {
+    auto delete_conn = ASSERT_RESULT(Connect());
+    for (int64_t id = 1; id <= kMaxDeletes && !stop_flag.load(std::memory_order_acquire); ++id) {
+      // Explicit transaction: a fast-path delete writes its reverse-mapping tombstone inline
+      // instead of at apply time, so it cannot race with a search.
+      ASSERT_OK(delete_conn.Execute("BEGIN"));
+      ASSERT_OK(delete_conn.ExecuteFormat("DELETE FROM test WHERE id = $0", id));
+      ASSERT_OK(delete_conn.Execute("COMMIT"));
+      deleted.store(id, std::memory_order_release);
+      std::this_thread::sleep_for(30ms * kTimeMultiplier);
+    }
+  });
+
+  const auto query = "SELECT id FROM test AS t" + IndexQuerySuffix("[0.0, 0.0, 0.0]", kQueryLimit);
+  for (size_t i = 0; i != kNumQueries; ++i) {
+    auto deleted_before = deleted.load(std::memory_order_acquire);
+    auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+    // Rows 1..deleted_before are deleted at the query read time and at least 2 * kQueryLimit rows
+    // stay live, so a full page of rows above deleted_before is expected.
+    ASSERT_EQ(ids.size(), kQueryLimit);
+    for (auto id : ids) {
+      ASSERT_GT(id, deleted_before);
+    }
+  }
+  threads.Stop();
 }
 
 TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {

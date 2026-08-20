@@ -34,7 +34,8 @@ import (
 var (
 	// Enforcement policy for keepalive.
 	// Clients should set keepalive time to a value greater than this minimum.
-	MinKeepaliveTime = 30 * time.Second
+	minKeepaliveTime           = 30 * time.Second
+	loadedCertExpirySecs int64 = 1
 )
 
 // RPCServer is the struct for gRPC server.
@@ -77,6 +78,14 @@ func NewRPCServer(
 			util.FileLogger().Errorf(ctx, "Error in loading TLS credentials: %s", err)
 			return nil, err
 		}
+		// Find the expiry seconds for the server certificate on startup.
+		certExpirySecs, err := util.CertExpirySecs(&config.Certificates[0])
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in getting server cert expiry: %s", err)
+			return nil, err
+		}
+		// Store it globally for the RPC server to use.
+		loadedCertExpirySecs = certExpirySecs
 		tlsConfig = config
 	}
 	listener, err := net.Listen("tcp", serverConfig.Address)
@@ -105,7 +114,7 @@ func NewRPCServer(
 	mListener := mux.Match(cmux.HTTP1())
 	gListener := mux.Match(cmux.Any())
 	serverOpts = append(serverOpts, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-		MinTime:             MinKeepaliveTime,
+		MinTime:             minKeepaliveTime,
 		PermitWithoutStream: false,
 	}))
 	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(unaryInterceptors...))
@@ -235,10 +244,11 @@ func (server *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.Ping
 	config := util.CurrentConfig()
 	return &pb.PingResponse{
 		ServerInfo: &pb.ServerInfo{
-			Version:       config.String(util.PlatformVersionKey),
-			RestartNeeded: config.Bool(util.NodeAgentRestartKey),
-			Offloadable:   util.IsPexEnvAvailable(),
-			Compressor:    gzip.Name,
+			Version:        config.String(util.PlatformVersionKey),
+			RestartNeeded:  config.Bool(util.NodeAgentRestartKey),
+			Offloadable:    util.IsPexEnvAvailable(),
+			Compressor:     gzip.Name,
+			CertExpirySecs: loadedCertExpirySecs,
 		},
 	}, nil
 }

@@ -53,6 +53,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_aggregate.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
@@ -97,7 +98,7 @@
 #include "commands/yb_cmds.h"
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
-#include "common/pg_yb_param_status_flags.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/execdesc.h"
 #include "executor/spi.h"
 #include "executor/ybExpr.h"
@@ -1118,14 +1119,10 @@ YBOnPostgresBackendShutdown()
 void
 YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 {
-	if (!YbIsInvalidationMessageEnabled())
-		return;
-
 	/*
-	 * When incremental catalog cache is enabled, we want to wait
-	 * for the yb_new_catalog_version to propagate to shared
-	 * memory of this node to allow proper ordering of the following
-	 * scenario:
+	 * We want to wait for 'version' to propagate to shared memory of this
+	 * node. One reason is to allow proper ordering of the following
+	 * scenario when incremental catalog cache refresh is enabled:
 	 * SELECT * FROM foo;
 	 * \! ysqlsh -f ddl_script.sql
 	 * SELECT * FROM foo;
@@ -1147,6 +1144,11 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 	 * we avoid the above ERROR because now we ask for inval messages
 	 * of version 2, 3, 4, 5 and the read RPC of the second SELECT will
 	 * not see the ERROR as described above.
+	 *
+	 * Another reason is YSQL connection manager: a logical connection can
+	 * run its next statement on a different physical backend of this node,
+	 * and that backend learns about catalog changes from shared memory. See
+	 * the caller in YBCommitTransactionContainingDDL.
 	 */
 	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
 
@@ -1186,11 +1188,14 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 		shared_catalog_version = YbGetSharedCatalogVersion();
 	}
 	if (shared_catalog_version >= version)
-		ereport(LOG,
-				(errmsg("shared catalog version has reached %" PRIu64,
-						shared_catalog_version),
-				 errhidestmt(true),
-				 errhidecontext(true)));
+	{
+		if (count > 0)
+			ereport(LOG,
+					(errmsg("shared catalog version has reached %" PRIu64,
+							shared_catalog_version),
+					 errhidestmt(true),
+					 errhidecontext(true)));
+	}
 	else
 		ereport(WARNING,
 				(errmsg("shared catalog version %" PRIu64 " has not reached %" PRIu64,
@@ -1250,6 +1255,22 @@ typedef struct
 	NodeTag		current_stmt_node_tag;
 	CommandTag	current_stmt_ddl_command_tag;
 	CommandTag	last_stmt_ddl_command_tag;
+	/*
+	 * Command tag of the last top-level DDL statement of this DDL transaction.
+	 * Unlike current_stmt_ddl_command_tag, this is only set for DDL statements
+	 * arriving with context PROCESS_UTILITY_TOPLEVEL, so subcommands that the
+	 * statement executes through SPI (for example the DDLs issued by an event
+	 * trigger function) do not overwrite it. Used for reporting only.
+	 */
+	CommandTag	top_level_stmt_ddl_command_tag;
+	/*
+	 * Command tags of the statements that first made this DDL transaction a
+	 * global-impact DDL and a breaking change. A top-level statement can
+	 * acquire either aspect from a subcommand it executes, so these record
+	 * which statement is responsible. Used for reporting only.
+	 */
+	CommandTag	global_ddl_command_tag;
+	CommandTag	breaking_ddl_command_tag;
 	Oid			database_oid;
 	int			num_committed_pg_txns;
 
@@ -2222,7 +2243,7 @@ YbQpmConfiguration yb_qpm_configuration = {
 	.plan_format = EXPLAIN_FORMAT_JSON,
 	.verbose_plans = false,
 	.compress_text = true,
-	.show_max_exec_params = false
+	.show_max_exec_params = true
 };
 
 bool		yb_speculatively_execute_pl_statements = false;
@@ -2579,6 +2600,24 @@ YBGetCurrentStmtDdlCommandTag()
 	return ddl_transaction_state.current_stmt_ddl_command_tag;
 }
 
+CommandTag
+YBGetTopLevelStmtDdlCommandTag()
+{
+	return ddl_transaction_state.top_level_stmt_ddl_command_tag;
+}
+
+CommandTag
+YBGetGlobalDdlCommandTag()
+{
+	return ddl_transaction_state.global_ddl_command_tag;
+}
+
+CommandTag
+YBGetBreakingDdlCommandTag()
+{
+	return ddl_transaction_state.breaking_ddl_command_tag;
+}
+
 bool
 YBIsCurrentStmtDdl()
 {
@@ -2617,6 +2656,14 @@ void
 YbSetIsGlobalDDL()
 {
 	ddl_transaction_state.is_global_ddl = true;
+	/*
+	 * Remember which statement made this DDL global-impact. Only the first one
+	 * is recorded: that is the statement that introduced the global impact,
+	 * the ones after it merely inherit it.
+	 */
+	if (ddl_transaction_state.global_ddl_command_tag == CMDTAG_UNKNOWN)
+		ddl_transaction_state.global_ddl_command_tag =
+			ddl_transaction_state.current_stmt_ddl_command_tag;
 }
 
 static bool
@@ -2979,7 +3026,8 @@ YbCheckNewLocalCatalogVersionOptimization()
 		 * latest version is >= x + 2, let's wait for shared memory to catch up
 		 * to x + 2.
 		 */
-		YbWaitForSharedCatalogVersionToCatchup(new_version);
+		if (YbIsInvalidationMessageEnabled())
+			YbWaitForSharedCatalogVersionToCatchup(new_version);
 	}
 }
 
@@ -3251,9 +3299,19 @@ YBCommitTransactionContainingDDL()
 		if (currentInvalMessages && log_min_messages <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 
+		/*
+		 * Report the tag of the statement that caused this increment, which may
+		 * be a subcommand executed through SPI, for example by an event trigger
+		 * function. When that tag is not available -- YbGetDdlMode clears it for
+		 * statements that do not increment the catalog version -- prefer the
+		 * top-level statement the user ran over last_stmt_ddl_command_tag, which
+		 * may hold the tag of an unrelated sibling subcommand.
+		 */
 		CommandTag ddl_cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
 		if (ddl_cmdtag == CMDTAG_UNKNOWN)
-			 ddl_cmdtag = ddl_transaction_state.last_stmt_ddl_command_tag;
+			ddl_cmdtag = ddl_transaction_state.top_level_stmt_ddl_command_tag;
+		if (ddl_cmdtag == CMDTAG_UNKNOWN)
+			ddl_cmdtag = ddl_transaction_state.last_stmt_ddl_command_tag;
 		const char *command_tag_name = GetCommandTagName(ddl_cmdtag);
 
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
@@ -3290,6 +3348,7 @@ YBCommitTransactionContainingDDL()
 
 	Oid			database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
 	bool		use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
+	bool		is_global_ddl = ddl_transaction_state.is_global_ddl;
 
 	YBClearDdlTransactionState();
 
@@ -3329,11 +3388,19 @@ YBCommitTransactionContainingDDL()
 			 * That is even if the DDL has global impact, we only set the new
 			 * catalog version of MyDatabaseId in shared memory because we do
 			 * not know the new catalog version of any other databases for a
-			 * global impact DDL.
+			 * global impact DDL. For a breaking global impact DDL that is not
+			 * enough: a session on another database of this node would still
+			 * see its own database's stale shared catalog version, would not
+			 * refresh, and its next statement would fail with an invalidated
+			 * catalog snapshot. Wait for the heartbeat instead, it brings the
+			 * new catalog versions of all the databases.
 			 */
-			YbCheckNewSharedCatalogVersionOptimization(is_breaking_change,
-													   currentInvalMessages,
-													   nmsgs);
+			if (is_global_ddl && is_breaking_change)
+				YbWaitForSharedCatalogVersionToCatchup(YbGetNewCatalogVersion());
+			else
+				YbCheckNewSharedCatalogVersionOptimization(is_breaking_change,
+														   currentInvalMessages,
+														   nmsgs);
 			YbCheckNewLocalCatalogVersionOptimization();
 		}
 		else if (database_oid == MyDatabaseId || !YBIsDBCatalogVersionMode())
@@ -3350,23 +3417,52 @@ YBCommitTransactionContainingDDL()
 			 YbCheckTserverResponseCacheForAuthGflags()))
 		{
 			/*
-			 * Wait for tserver heartbeat in case this was a conn mgr backend or
-			 * if conn mgr is enabled and tserver response cache is used for
-			 * auth processing to allow heartbeat to signal cache invalidation.
+			 * A conn mgr logical connection may run its next statement on a
+			 * different physical backend, so we want to make sure that the new
+			 * catalog version is available in local shared mem, so that the next
+			 * physical backend is aware of this DDL.
 			 *
-			 * YbIsClientYsqlConnMgr() is false if any DDL (which might change
-			 * authorization/login privileges) was triggered by a direct-to-PG
-			 * connection. This would be a vulnerability if a stale tserver
-			 * response cache is used for auth processing, hence the extra
-			 * condition to allow wait.
+			 * If a ROLE DDL was run against a direct PG conn, we also want to try
+			 * and ensure that the conn mgr auth backends see it across all nodes.
+			 * That is why we also check for conn mgr being enabled, not just a conn
+			 * mgr client active.
 			 */
-			int32_t		sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
+			uint64_t	target_version = YbGetNewCatalogVersion();
 
-			elog(LOG_SERVER_ONLY,
-				 "connection manager: adding sleep of %d microseconds "
-				 "after DDL commit",
-				 sleep);
-			pg_usleep(sleep);
+			bool		auth_may_be_stale =
+				!*YBCGetGFlags()->ysql_conn_mgr_use_auth_backend ||
+				YbCheckTserverResponseCacheForAuthGflags();
+
+			if (!(is_global_ddl && auth_may_be_stale) &&
+				target_version != YB_CATCACHE_VERSION_UNINITIALIZED)
+			{
+				YbWaitForSharedCatalogVersionToCatchup(target_version);
+			}
+			else
+			{
+				/*
+				 * For a ROLE DDL like DROP ROLE, regular YSQL
+				 * usually guarantees that a new physical backend will fail to connect
+				 * to this role. In conn mgr case, this may not be guaranteed in two
+				 * cases
+				 * 1. Auth passthrough, where auth is performed against a pool of
+				 * control backends
+				 * 2. Auth backend, but using the tserver response cache for auth
+				 * In these, cases, given we are using cached auth, maintaining this
+				 * guarantee requires that we ensure this catalog version is propagated
+				 * to all other nodes.
+				 *
+				 * TODO(#33073): Note: The sleep below is a hack that ideally needs to
+				 * be replaced with an equivalent of WaitForYsqlBackendsCatalogVersions check.
+				 */
+				int32_t		sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
+
+				elog(LOG_SERVER_ONLY,
+					 "connection manager: adding sleep of %d microseconds "
+					 "after global impact DDL commit",
+					 sleep);
+				pg_usleep(sleep);
+			}
 		}
 	}
 
@@ -4245,6 +4341,20 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	if (YbIsTopLevelOrAtomicStatement(context))
 		ddl_transaction_state.is_top_level_ddl_active = is_ddl;
 
+	/*
+	 * Remember the command tag of the top-level DDL statement. Subcommands
+	 * executed through SPI (for example the DDLs issued by an event trigger
+	 * function) arrive with context PROCESS_UTILITY_QUERY, which
+	 * YbIsTopLevelOrAtomicStatement treats as top-level, so they overwrite
+	 * current_stmt_ddl_command_tag above. Keeping the top-level tag separately
+	 * lets catalog version increments report the statement the user ran. This
+	 * is only used for reporting, and is cleared with the rest of the DDL
+	 * transaction state.
+	 */
+	if (is_top_level && is_ddl)
+		ddl_transaction_state.top_level_stmt_ddl_command_tag =
+			ddl_transaction_state.current_stmt_ddl_command_tag;
+
 	if (!is_ddl)
 	{
 		/*
@@ -4308,7 +4418,18 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		aspects |= YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT;
 
 	if (is_breaking_change)
+	{
 		aspects |= YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
+		/*
+		 * Remember which statement made this DDL a breaking change, for the
+		 * same reason as global_ddl_command_tag above. This is past the
+		 * yb_make_next_ddl_statement_nonbreaking handling, so it reflects the
+		 * final decision.
+		 */
+		if (ddl_transaction_state.breaking_ddl_command_tag == CMDTAG_UNKNOWN)
+			ddl_transaction_state.breaking_ddl_command_tag =
+				ddl_transaction_state.current_stmt_ddl_command_tag;
+	}
 
 	*requires_autonomous_transaction = YBIsDdlTransactionBlockEnabled() &&
 		should_run_in_autonomous_transaction;
@@ -4383,6 +4504,8 @@ CheckAlterDatabaseDdl(PlannedStmt *pstmt)
 		 */
 		ddl_transaction_state.database_oid = get_database_oid(dbname, false);
 		ddl_transaction_state.is_global_ddl = false;
+		/* The global impact is cleared, so is its attribution. */
+		ddl_transaction_state.global_ddl_command_tag = CMDTAG_UNKNOWN;
 	}
 	else
 		ddl_transaction_state.database_oid = InvalidOid;
@@ -6786,6 +6909,9 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			break;
 
 			/* MyDb tables */
+		case AggregateRelationId:	/* pg_aggregate */
+			sys_only_filter_attr = Anum_pg_aggregate_aggfnoid;
+			break;
 		case AccessMethodProcedureRelationId:	/* pg_amproc */
 			sys_table_index_id = AccessMethodProcedureIndexId;
 			sys_only_filter_attr = Anum_pg_amproc_oid;

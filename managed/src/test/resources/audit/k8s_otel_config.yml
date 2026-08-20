@@ -1,0 +1,127 @@
+receivers:
+  filelog/ysql:
+    include: [/mnt/disk0/yb-data/tserver/logs/postgresql-*.log]
+    exclude: [/mnt/disk0/yb-data/tserver/logs/*.gz]
+    start_at: beginning
+    storage: file_storage/queue
+    multiline: {line_start_pattern: '([A-Z]\d{4})|((?P<timestamp_with_ms>\d{4}-\d{2}-\d{2}
+        \d{2}:\d{2}:\d{2}[.]\d{3} \w{3})[ ][[](?P<process_id>\d+)[]][ ])'}
+    operators:
+    - {type: filter, expr: 'body not matches "^.*\\w+:  AUDIT:(.|\\n|\\r|\\s)*$"'}
+    - type: regex_parser
+      regex: '(?P<timestamp_with_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[.]\d{3} \w{3})[
+        ][[](?P<process_id>\d+)[]][ ](?P<log_level>\w+):  AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\n|\r|\s)*)'
+      on_error: drop
+      timestamp: {parse_from: attributes.timestamp_with_ms, layout: '%Y-%m-%d %H:%M:%S.%L
+          %Z'}
+    attributes: {audit_log_type: ysql, yugabyte.audit_log_type: ysql}
+  prometheus/yugabyte:
+    config:
+      global: {scrape_interval: 15s, scrape_timeout: 10s}
+      scrape_configs:
+      - job_name: yugabyte
+        scheme: http
+        metrics_path: /prometheus-metrics
+        static_configs:
+        - targets: ['127.0.0.1:7000']
+          labels: {export_type: master_export, __param_show_help: 'true', service: yb-master,
+            __param_priority_regex: 'rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_Tablets_overhead_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|consumer_safe_time_[^_]+|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader|ts_live_tablet_peers|xcluster_consumer_replication_error_count|rpc_inbound_calls_rejected_because_memory_pressure'}
+        - targets: ['127.0.0.1:9000']
+          labels: {export_type: tserver_export, __param_show_help: 'true', service: yb-tserver,
+            __param_priority_regex: 'rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_Tablets_overhead_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|consumer_safe_time_[^_]+|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader|ts_live_tablet_peers|xcluster_consumer_replication_error_count|rpc_inbound_calls_rejected_because_memory_pressure'}
+        - targets: ['127.0.0.1:13000']
+          labels: {export_type: ysql_export, __param_show_help: 'true', service: yb-tserver}
+        - targets: ['127.0.0.1:12000']
+          labels: {export_type: cql_export, __param_show_help: 'true', service: yb-tserver}
+        metric_relabel_configs:
+        - source_labels: [__name__]
+          regex: (.*)
+          target_label: saved_name
+          replacement: $$1
+        - source_labels: [__name__]
+          regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)
+          target_label: server_type
+          replacement: $$1
+        - source_labels: [__name__]
+          regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)
+          target_label: service_type
+          replacement: $$2
+        - source_labels: [__name__]
+          regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?
+          target_label: service_method
+          replacement: $$3
+        - source_labels: [__name__]
+          regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?
+          target_label: __name__
+          replacement: rpc_latency$$4
+        tls_config: {insecure_skip_verify: true}
+      - job_name: otel-collector
+        scheme: http
+        metrics_path: /metrics
+        static_configs:
+        - targets: ['127.0.0.1:8889']
+          labels: {export_type: otel_export, service: otel-collector}
+        tls_config: {insecure_skip_verify: true}
+processors:
+  transform/replace:
+    log_statements:
+    - context: log
+      statements: ['replace_pattern(body, "^otho8Aut", "")']
+  attributes/awss3/00000000-0000-0000-0000-000000000000:
+    actions:
+    - {key: host, value: '${POD_NAME}', action: upsert}
+    - {key: yugabyte.node_name, value: '${POD_NAME}', action: upsert}
+    - {key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000, action: upsert}
+    - {key: yugabyte.purpose, value: S3_LOG_EXPORT, action: upsert}
+    - {key: tag, value: value, action: upsert}
+    - {key: additionalTag, value: otherValue, action: upsert}
+    - {key: host, value: '${POD_NAME}', action: upsert}
+  attributes/metrics_00000000-0000-0000-0000-000000000000:
+    actions:
+    - {key: host, value: '${POD_NAME}', action: upsert}
+    - {key: yugabyte.node_name, value: '${POD_NAME}', action: upsert}
+    - {key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000, action: upsert}
+    - {key: yugabyte.purpose, value: S3_METRICS_EXPORT, action: upsert}
+    - {key: tag, value: value, action: upsert}
+    - {key: env, value: prod, action: upsert}
+  memory_limiter/metrics_00000000-0000-0000-0000-000000000000: {check_interval: 10s,
+    limit_mib: 2048}
+  batch/metrics_00000000-0000-0000-0000-000000000000: {send_batch_max_size: 1000,
+    send_batch_size: 100, timeout: 10s}
+exporters:
+  awss3/00000000-0000-0000-0000-000000000000:
+    marshaler: otlp_json
+    s3uploader: {s3_bucket: bucket, region: us-west2, s3_prefix: yb-logs/, s3_partition_format: year=%Y/month=%m/day=%d/hour=%H/minute=%M,
+      file_prefix: yb-otel-, s3_force_path_style: false, disable_ssl: false}
+  awss3/metrics_00000000-0000-0000-0000-000000000000:
+    marshaler: otlp_json
+    s3uploader: {s3_bucket: bucket, region: us-west2, s3_prefix: yb-logs/, s3_partition_format: year=%Y/month=%m/day=%d/hour=%H/minute=%M,
+      file_prefix: yb-otel-, s3_force_path_style: false, disable_ssl: false}
+extensions:
+  file_storage/queue:
+    directory: /mnt/disk0/otel-collector/queue
+    create_directory: true
+    compaction: {directory: /mnt/disk0/otel-collector/queue, on_start: true, on_rebound: true,
+      rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
+  health_check: {endpoint: '0.0.0.0:13133', path: /health}
+service:
+  extensions: [file_storage/queue, health_check]
+  pipelines:
+    logs/00000000-0000-0000-0000-000000000000:
+      receivers: [filelog/ysql]
+      processors: [transform/replace, attributes/awss3/00000000-0000-0000-0000-000000000000]
+      exporters: [awss3/00000000-0000-0000-0000-000000000000]
+    metrics/metrics_00000000-0000-0000-0000-000000000000:
+      receivers: [prometheus/yugabyte]
+      processors: [attributes/metrics_00000000-0000-0000-0000-000000000000, memory_limiter/metrics_00000000-0000-0000-0000-000000000000,
+        batch/metrics_00000000-0000-0000-0000-000000000000]
+      exporters: [awss3/metrics_00000000-0000-0000-0000-000000000000]
+  telemetry:
+    logs:
+      output_paths: [/mnt/disk0/otel-collector/logs/otel-collector.logs]
+    metrics:
+      readers:
+      - pull:
+          exporter:
+            prometheus: {host: 0.0.0.0, port: 8889, without_scope_info: true, without_type_suffix: true,
+              without_units: true}

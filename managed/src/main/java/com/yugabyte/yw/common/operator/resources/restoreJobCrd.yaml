@@ -56,6 +56,12 @@ spec:
                     Name of the backup to be restored,
                     refers to a backup CR name.
                   type: string
+                kmsConfig:
+                  description: >
+                    Optional. Name of the KMSConfig CR to use when restoring an
+                    encryption-at-rest (EAR) backup, used to decrypt the backup's universe keys.
+                    Required only when the backup is encrypted; leave unset for plaintext backups.
+                  type: string
                 keyspace:
                   description: Name of the keyspace to be restored.
                   type: string

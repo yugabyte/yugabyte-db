@@ -1,0 +1,13 @@
+title: TaskRollbackSpec
+description: |
+  TaskRollbackSpec
+
+  Options for rolling back a failed task. The rollback parameters themselves are reconstructed
+  by YBA from the failed task and the current universe state; this payload only carries optional
+  metadata for the rollback request.
+type: object
+properties:
+  reason:
+    description: 'Optional human-readable reason for the rollback, recorded in the audit log.'
+    type: string
+    example: Rolling back failed edit universe operation

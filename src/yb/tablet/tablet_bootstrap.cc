@@ -1156,6 +1156,12 @@ class TabletBootstrap {
             << ", apply_to_storages: " << apply_to_storages.ToString();
         return {true, apply_to_storages};
       }
+      // We need promotions to persist to intents RocksDB before we can skip it.
+      if (txn_status == TransactionStatus::PROMOTING) {
+        VLOG_WITH_PREFIX_AND_FUNC(3)
+            << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+        return {index > flushed_op_ids.intents.index};
+      }
       // For other types of transaction updates, we ignore them if they have been flushed to the
       // regular RocksDB.
       VLOG_WITH_PREFIX_AND_FUNC(3)
@@ -1992,12 +1998,15 @@ class TabletBootstrap {
           const string snapshot_dir = JoinPathSegments(top_snapshots_dir, dir_name);
 
           if (TabletSnapshots::IsTempSnapshotDir(snapshot_dir)) {
-            LOG_WITH_PREFIX(INFO) << "Deleting old temporary snapshot directory " << snapshot_dir;
+            const auto snapshot_dir_type =
+                TabletSnapshots::IsDeletedSnapshotDir(snapshot_dir) ? "tombstoned" : "temporary";
+            LOG_WITH_PREFIX(INFO) << "Deleting old " << snapshot_dir_type
+                                  << " snapshot directory " << snapshot_dir;
 
             s = meta_->fs_manager()->env()->DeleteRecursively(snapshot_dir);
             if (!s.ok()) {
-              LOG_WITH_PREFIX(WARNING) << "Cannot delete old temporary snapshot directory "
-                                       << snapshot_dir << ": " << s;
+              LOG_WITH_PREFIX(WARNING) << "Cannot delete old " << snapshot_dir_type
+                                       << " snapshot directory " << snapshot_dir << ": " << s;
             }
 
             s = meta_->fs_manager()->env()->SyncDir(top_snapshots_dir);

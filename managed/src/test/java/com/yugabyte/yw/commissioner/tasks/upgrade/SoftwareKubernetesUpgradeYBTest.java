@@ -12,6 +12,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -38,7 +39,7 @@ import org.mockito.junit.MockitoRule;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.UpgradeYsqlResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 
 public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
@@ -104,7 +105,8 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(9))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
@@ -140,7 +142,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
     IsInitDbDoneResponse mockIsInitDbDoneResponse =
         new IsInitDbDoneResponse(1000, "", true, true, null, null);
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
 
     try {
@@ -176,7 +178,8 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(9))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
@@ -229,7 +232,8 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(9))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());

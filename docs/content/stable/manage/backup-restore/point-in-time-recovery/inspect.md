@@ -3,8 +3,6 @@ title: Inspect at a point in time
 headerTitle: Inspect at PIT
 linkTitle: Inspect at PIT
 description: Read data at a specific point in time for data recovery and analysis.
-tags:
-  feature: early-access
 aliases:
   - /stable/manage/backup-restore/time-travel-query/
 menu:

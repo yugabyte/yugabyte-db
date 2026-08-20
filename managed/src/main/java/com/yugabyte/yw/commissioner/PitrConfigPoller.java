@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Singleton
 @Slf4j
@@ -87,7 +87,7 @@ public class PitrConfigPoller {
         Map<UUID, PitrConfig> snapshotScheduleMap = entry.getValue();
         Set<UUID> snapshotScheduleUUIDs = snapshotScheduleMap.keySet();
         log.info("Universe uuid: {}, schedule uuid: {}", universeUUID, snapshotScheduleUUIDs);
-        try (YBClient client = ybClientService.getUniverseClient(universe)) {
+        try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
           scheduleResp = client.listSnapshotSchedules(null);
           scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
         } catch (Exception ex) {

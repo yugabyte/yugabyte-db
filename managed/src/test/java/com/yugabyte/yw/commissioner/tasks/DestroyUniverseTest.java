@@ -69,7 +69,7 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
 import play.libs.Json;
@@ -87,7 +87,7 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
 
   private File certFolder;
 
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Override
   @Before
@@ -124,7 +124,7 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
               ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */).run(u);
               u.getUniverseDetails().rootCA = certInfo.getUuid();
             });
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {

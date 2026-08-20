@@ -347,7 +347,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
           },
       .is_automatic_mode_switchover_func = [](const NamespaceId&) { return false; },
       .create_xcluster_streams_func =
-          [this](const std::vector<TableId>& table_ids, const LeaderEpoch&) {
+          [this](const std::vector<TableId>& table_ids, const LeaderEpoch&,
+                 bool /*automatic_ddl_mode*/) {
             auto create_context = std::make_unique<XClusterCreateStreamsContext>();
             for (const auto& table_id : table_ids) {
               create_context->streams_.emplace_back(CreateXClusterStream(table_id));

@@ -18,6 +18,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/dockv_test_util.h"
 #include "yb/dockv/intent.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/rocksdb/table.h"
 
@@ -216,6 +217,60 @@ void TestDocOrSubDocKeyComparison() {
 }
 
 }  // unnamed namespace
+
+// The result of HashedOrFirstRangeComponentsExistAndEqual is used to decide whether a scan bounded
+// by [lhs, rhs] is a fixed point get, i.e. whether data sources may be filtered out based on lhs's
+// bloom filter key - so a false positive here leads to silently skipping data the scan should
+// have returned (see BloomFilterOptions::Make).
+TEST_F(DocKeyTest, HashedOrFirstRangeComponentsExistAndEqual) {
+  // The encoded empty DocKey - the lower bound of an unbounded scan that has to include static
+  // columns.
+  const auto kEncodedEmptyDocKey = DocKey().Encode();
+  // The empty slice - the upper bound of an unbounded YCQL scan.
+  const auto kEmpty = Slice();
+
+  // A key with no hash code and no range components carries no components a bloom filter key
+  // could be built from, so it never compares equal to anything, including itself.
+  ASSERT_FALSE(ASSERT_RESULT(
+      HashedOrFirstRangeComponentsExistAndEqual(kEncodedEmptyDocKey, kEmpty)));
+  ASSERT_FALSE(ASSERT_RESULT(
+      HashedOrFirstRangeComponentsExistAndEqual(kEmpty, kEncodedEmptyDocKey)));
+  ASSERT_FALSE(ASSERT_RESULT(
+      HashedOrFirstRangeComponentsExistAndEqual(kEncodedEmptyDocKey, kEncodedEmptyDocKey)));
+  ASSERT_FALSE(ASSERT_RESULT(HashedOrFirstRangeComponentsExistAndEqual(kEmpty, kEmpty)));
+
+  // Hash-partitioned point get: lower = key, upper = key + kHighest appended before group end.
+  const DocKey hashed_key(0x1234, MakeKeyEntryValues("hashed_key", 123), MakeKeyEntryValues(10));
+  auto lower = hashed_key.Encode();
+  auto upper = lower;
+  upper.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+  ASSERT_TRUE(ASSERT_RESULT(HashedOrFirstRangeComponentsExistAndEqual(lower, upper)));
+
+  // Different hash codes / hashed components do not compare equal.
+  const DocKey other_hashed_key(
+      0x4321, MakeKeyEntryValues("other_hashed_key", 321), MakeKeyEntryValues(10));
+  ASSERT_FALSE(ASSERT_RESULT(
+      HashedOrFirstRangeComponentsExistAndEqual(hashed_key.Encode(), other_hashed_key.Encode())));
+
+  // Range-partitioned point get: equal first range components.
+  const auto range_key = MakeDocKey("range_key", 1000);
+  lower = range_key.Encode();
+  upper = lower;
+  upper.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+  ASSERT_TRUE(ASSERT_RESULT(HashedOrFirstRangeComponentsExistAndEqual(lower, upper)));
+
+  // Same first range component, different rest - still the same bloom filter key.
+  ASSERT_TRUE(ASSERT_RESULT(HashedOrFirstRangeComponentsExistAndEqual(
+      MakeDocKey("range_key", 1000).Encode(), MakeDocKey("range_key", 2000).Encode())));
+
+  // Different first range components do not compare equal.
+  ASSERT_FALSE(ASSERT_RESULT(HashedOrFirstRangeComponentsExistAndEqual(
+      MakeDocKey("range_key", 1000).Encode(), MakeDocKey("other_range_key", 1000).Encode())));
+
+  // The empty DocKey does not compare equal to a key that has components either.
+  ASSERT_FALSE(ASSERT_RESULT(
+      HashedOrFirstRangeComponentsExistAndEqual(kEncodedEmptyDocKey, range_key.Encode())));
+}
 
 TEST_F(DocKeyTest, TestDocKeyToString) {
   ASSERT_EQ(

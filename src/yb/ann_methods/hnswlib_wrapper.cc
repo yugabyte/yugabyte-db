@@ -205,12 +205,25 @@ class HnswlibIndex :
         hnsw_->vectors_end(), options_.dimensions);
   }
 
-  Status Reserve(size_t num_vectors, size_t, size_t) override {
+  Status Reserve(
+      size_t num_vectors, size_t, size_t,
+      rocksdb::Cache::ReservationMode reservation_mode) override {
     if (hnsw_) {
       return STATUS_FORMAT(
           IllegalState, "Cannot reserve space for $0 vectors: Hnswlib index already initialized",
           num_vectors);
     }
+    // Reserve block cache space before allocating the index to reject the operation in
+    // strict mode without first allocating the memory it is intended to control.
+    // TODO(vector_index): a specific signal may be needed to indicate that it would be not
+    // possible to reserve the space even with empty block cache.
+    RETURN_NOT_OK(this->ReserveBlockCacheSpace(
+        block_cache_ ? &block_cache_->cache() : nullptr,
+        HNSWImpl::estimateBytesForNumVectors(
+            num_vectors, options_.num_neighbors_per_vertex,
+            options_.num_neighbors_per_vertex_base, options_.dimensions * sizeof(Scalar)),
+        reservation_mode));
+
     // Both data and search-context allocations are sized off max_elements at construction.
     auto se = UpdateAllConsumptionOnExit();
     // TODO(vector_index): each HierarchicalNSW instance owns its own VisitedListPool sized to
@@ -231,14 +244,6 @@ class HnswlibIndex :
         /* random_seed= */ 100,              // Default value from hnswalg.h
         /* allow_replace_deleted= */ false,  // Default value from hnswalg.h
         /* ef= */ 128);
-    // Reserve block cache space for this chunk's full footprint so the index is accounted within
-    // the block cache budget (#32357): the cache evicts other blocks instead of letting the index
-    // grow total memory consumption past the limits.
-    this->ReserveBlockCacheSpace(
-        block_cache_ ? &block_cache_->cache() : nullptr,
-        HNSWImpl::estimateBytesForNumVectors(
-            num_vectors, options_.num_neighbors_per_vertex, options_.num_neighbors_per_vertex_base,
-            options_.dimensions * sizeof(Scalar)));
     return Status::OK();
   }
 
@@ -287,7 +292,7 @@ class HnswlibIndex :
 
   Status DoLoadFromFile(const std::string& path, size_t) {
     // Create hnsw_ before loading from file.
-    RETURN_NOT_OK(Reserve(0, 0, 0));
+    RETURN_NOT_OK(Reserve(0, 0, 0, rocksdb::Cache::ReservationMode::kAlways));
     try {
       hnsw_->loadIndex(path, space_.get());
     } catch (std::exception& e) {

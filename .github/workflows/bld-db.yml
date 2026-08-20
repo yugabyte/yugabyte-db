@@ -1,0 +1,43 @@
+name: "bld-db"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review ]
+    # All files should be covered by one of the bld-* workflows.
+    # If you add ignored paths here, make sure they are covered by one of the other bld-* workflows.
+    paths-ignore:
+      - '.agents/**'
+      - '.arc*'
+      - '.claude/**'
+      - '.cursor/**'
+      - '.git/**'
+      - '.github/**'
+      - '.gitignore'
+      - 'architecture/**'
+      - 'arcanist/**'
+      - CONTRIBUTORS.md
+      - 'cloud/**'
+      - code_style
+      - 'community/**'
+      - java/yb-client
+      - 'docs/**'
+      - LICENSE.md
+      - 'license/**'
+      - 'managed/**'
+      - '!managed/src/main/resources/ybc_version.conf'
+      - NOTICE.txt
+      - '**/README*'
+      - 'sample/**'
+      - 'src/lint/**'
+
+# Can be skipped if PR is draft or the commit message contains [skip ci] or [ci skip]
+jobs:
+  bld-db:
+    if: github.event.pull_request.draft == false
+    runs-on: ybdbghr
+    steps:
+      - name: Build Trigger
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ybbld "$PR_NUMBER" "$PR_SHA" DB

@@ -21,7 +21,7 @@ import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.IsServerReadyResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class WaitForServerReady extends ServerSubTaskBase {
@@ -66,7 +66,7 @@ public class WaitForServerReady extends ServerSubTaskBase {
     // Max timeout to wait for check to complete.
     Stopwatch stopwatch = Stopwatch.createStarted();
     Duration maxSubtaskTimeout = Duration.ofMillis(taskParams().waitTimeMs);
-    try (YBClient client = getClient()) {
+    try (YBClientApi client = getClient()) {
       while (true) {
         shouldLog = (numIters % LOG_EVERY_NUM_ITERS) == 0;
         if (stopwatch.elapsed().compareTo(maxSubtaskTimeout) > 0) {

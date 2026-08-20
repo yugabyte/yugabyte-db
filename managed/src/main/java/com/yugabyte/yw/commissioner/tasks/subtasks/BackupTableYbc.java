@@ -219,7 +219,7 @@ public class BackupTableYbc extends YbcTaskBase {
     } catch (CancellationException ce) {
       if (!taskExecutor.isShutdown()
           || !getRunnableTask().getTaskInfo().getTaskType().equals(TaskType.CreateBackup)) {
-        if (ce.getMessage().contains("Task aborted on YB-Controller")) {
+        if (StringUtils.contains(ce.getMessage(), "Task aborted on YB-Controller")) {
           // Remove task on YB-Controller server.
           ybcManager.deleteYbcBackupTask(taskParams().taskID, ybcClient);
         } else {

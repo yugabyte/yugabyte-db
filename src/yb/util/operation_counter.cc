@@ -238,11 +238,9 @@ Status RWOperationCounter::WaitForOpsToFinish(
 }
 
 ScopedRWOperation::ScopedRWOperation(
-    RWOperationCounter* counter, const StatusHolder* abort_status_holder,
-    const CoarseTimePoint& deadline)
+    RWOperationCounter* counter, const CoarseTimePoint& deadline)
     : data_{
         .counter_ = counter,
-        .abort_status_holder_ = abort_status_holder,
         .resource_name_ = ""
 #ifndef NDEBUG
         , .long_operation_tracker_ = counter
@@ -258,7 +256,6 @@ ScopedRWOperation::ScopedRWOperation(
       auto result = counter->WaitMutexAndIncrement(deadline);
       if (result != RWOperationCounter::IncrementResult::kSuccess) {
         data_.counter_ = nullptr;
-        data_.abort_status_holder_ = nullptr;
         data_.resource_name_ = counter->resource_name();
         data_.stopped_ = result == RWOperationCounter::IncrementResult::kStopped;
       }
@@ -276,7 +273,6 @@ void ScopedRWOperation::Reset() {
     data_.counter_->Decrement();
     data_.counter_ = nullptr;
   }
-  data_.abort_status_holder_ = nullptr;
 }
 
 std::string ScopedRWOperation::resource_name() const {
@@ -287,10 +283,6 @@ std::string ScopedRWOperation::resource_name() const {
     return data_.resource_name_;
   }
   return "null";
-}
-
-Status ScopedRWOperation::GetAbortedStatus() const {
-  return data_.abort_status_holder_ ? data_.abort_status_holder_->GetStatus() : Status::OK();
 }
 
 ScopedRWOperationPause::ScopedRWOperationPause(
@@ -327,15 +319,14 @@ void ScopedRWOperationPause::ReleaseMutexButKeepDisabled() {
   data_.counter_ = nullptr;
 }
 
-Status MoveStatus(const ScopedRWOperation& scoped) {
-  if (scoped.ok()) {
+Status ScopedRWOperation::CreateStatus() const {
+  if (ok()) {
     return Status::OK();
   }
-  if (scoped.stopped()) {
-    return STATUS_FORMAT(
-        ShutdownInProgress, "$0 is shutting down", scoped.resource_name());
+  if (stopped()) {
+    return STATUS_FORMAT(ShutdownInProgress, "$0 is shutting down", resource_name());
   }
-  return STATUS_FORMAT(TryAgain, "Resource unavailable: $0", scoped.resource_name());
+  return STATUS_FORMAT(TryAgain, "Resource unavailable: $0", resource_name());
 }
 
 }  // namespace yb

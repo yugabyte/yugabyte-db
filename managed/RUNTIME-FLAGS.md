@@ -214,9 +214,11 @@
 | "Allow Duplicates in Existing AZs" | "yb.provider.allow_existing_duplicate_az" | "GLOBAL" | "Allow duplicates in already existing availability zones" | "Boolean" |
 | "Disable YNP Node Preflight Check" | "yb.node_agent.disable_ynp_node_preflight_check" | "GLOBAL" | "Disable preflight check in YNP node agent provision" | "Boolean" |
 | "Enable YNP Version Check" | "yb.node_agent.enable_ynp_version_check" | "GLOBAL" | "Enable YNP version check when adding nodes to a universe. When enabled, the node's YNP major version must match the expected version." | "Boolean" |
+| "Enable new Universe experience" | "yb.ui.feature_flags.enable_new_universe_experience" | "GLOBAL" | "Enable new Universe experience in UI" | "Boolean" |
 | "Memory per node for advanced observability" | "yb.pa.memory_per_node_advanced_observability_mb" | "GLOBAL" | "Estimated memory usage per node when advanced observability is enabled (in MB). Used to precheck YBA node memory headroom before enabling advanced observability." | "Integer" |
 | "Memory per node for PA collector" | "yb.pa.memory_per_node_pa_collector_mb" | "GLOBAL" | "Estimated memory usage per node when PA collector is enabled without advanced observability (in MB). Used to precheck YBA node memory headroom before enabling PA collection." | "Integer" |
 | "Skip PA Collector memory validation" | "yb.pa.skip_memory_validation" | "GLOBAL" | "Skip memory availability validation when enabling Performance Advisor Collection" | "Boolean" |
+| "Whether to enable new universe experience for all users" | "yb.ui.enable_new_universe_experience_for_all_users" | "GLOBAL" | "Whether to enable new universe experience for all users" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -248,6 +250,7 @@
 | "Max Thread Count" | "yb.perf_advisor.max_threads" | "UNIVERSE" | "Max number of threads to support parallel querying of nodes" | "Integer" |
 | "Allow Scheduled YBC Upgrades" | "ybc.upgrade.allow_scheduled_upgrade" | "UNIVERSE" | "Enable Scheduled upgrade of ybc on the universe" | "Boolean" |
 | "Allow User Gflags Override" | "yb.gflags.allow_user_override" | "UNIVERSE" | "Allow users to override default Gflags values" | "Boolean" |
+| "Skip Prechecks for Non-Rolling GFlags Upgrade" | "yb.gflags.skip_prechecks_for_non_rolling_upgrade" | "UNIVERSE" | "Skip cluster consistency, node data directory disk space, consistency table, and ValidateGFlags checks during a non-rolling gflags upgrade" | "Boolean" |
 | "Enable Trigger API" | "yb.health.trigger_api.enabled" | "UNIVERSE" | "Allow trigger_health_check API to be called" | "Boolean" |
 | "Verbose Backup Log" | "yb.backup.log.verbose" | "UNIVERSE" | "Enable verbose backup logging" | "Boolean" |
 | "Wait for LB for Added Nodes" | "yb.wait_for_lb_for_added_nodes" | "UNIVERSE" | "Wait for Load Balancer for added nodes" | "Boolean" |
@@ -318,6 +321,7 @@
 | "The delay before the next poll of the PITR config creation status" | "yb.pitr.create_poll_delay" | "UNIVERSE" | "It is the delay after which the create PITR config subtask rechecks the status of the PITR config creation in each iteration" | "Duration" |
 | "The delay before the next poll of the PITR config restore status" | "yb.pitr.restore_poll_delay" | "UNIVERSE" | "It is the delay after which the restore PITR config subtask rechecks the status of the restore operation" | "Duration" |
 | "The timeout for restoring a universe using a PITR config" | "yb.pitr.restore_timeout" | "UNIVERSE" | "It is the maximum time that the restore PITR config subtask waits for the restore operation using PITR to be completed; otherwise, it will fail the operation" | "Duration" |
+| "YB client timeout for restoring a snapshot schedule" | "yb.client.restore_snapshot_schedule_timeout" | "UNIVERSE" | "The admin operation and socket read timeout used by the YB client when restoring a snapshot schedule" | "Duration" |
 | "The timeout for creating a PITR config" | "yb.pitr.create_timeout" | "UNIVERSE" | "It is the maximum time that the create PITR config subtask waits for the PITR config to be created; otherwise, it will fail the operation" | "Duration" |
 | "Enable network connectivity check for xCluster" | "yb.xcluster.network_connectivity_check.enabled" | "UNIVERSE" | "If this flag is true on the source universe, a ping and port accessibility check from each node of the target universe to all the source universe nodes will be performed" | "Boolean" |
 | "The timeout used for network connectivity check for xCluster setup" | "yb.xcluster.network_connectivity_check.ping_command_timeout" | "UNIVERSE" | "The network connectivity check for xCluster ping all the source nodes from the target nodes; this is the timeout used to indicate how long the ping command should wait for the response" | "Duration" |
@@ -366,7 +370,7 @@
 | "Common Name Required for Certificates" | "yb.tls.cert_manager.common_name_required" | "UNIVERSE" | "If true, YBA will add commonName to the CertificateRequest sent to cert manager." | "Boolean" |
 | "Skip OpenTelemetry Operator Check" | "yb.universe.skip_otel_operator_check" | "UNIVERSE" | "If true, YBA will skip checking for Opentelemetry operator installation on the cluster." | "Boolean" |
 | "Skip CPU Cgroup Precheck" | "yb.universe.skip_cpu_cgroup_check" | "UNIVERSE" | "If true, YBA will skip the on-prem CPU cgroup precheck that verifies the yb-tserver is in the yugabyte-db cgroup and that the yugabyte user can create child cgroups. This precheck runs during ConfigureDBApis when enabling multi-tenancy QoS on an on-prem universe." | "Boolean" |
-| "Max memory for OpenTelemetry Collector process." | "yb.universe.otel_collector_max_memory" | "UNIVERSE" | "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file." | "Integer" |
+| "Max memory for OpenTelemetry Collector process." | "yb.universe.otel_collector_max_memory" | "UNIVERSE" | "Hard memory limit in MiB for the OpenTelemetry Collector process. Applied as MemoryMax in the systemd unit file on VM universes and as the container memory limit on the collector sidecar for Kubernetes universes. Set to 0 to leave the collector uncapped." | "Integer" |
 | "Allow disable master on non-master node subtask" | "yb.universe.allow_disable_master_on_non_master_node_subtask" | "UNIVERSE" | "If true, YBA runs the subtask that stops the YB-Master process on nodes that are not master nodes in the cluster configuration or YBA configuration." | "Boolean" |
 | "Wait Attempts for major catalog upgrade" | "yb.upgrade.wait_attempts_for_major_catalog_upgrade" | "UNIVERSE" | "Wait Attempts for major catalog upgrade" | "Integer" |
 | "PG Upgrade Check Timeout" | "yb.upgrade.pg_upgrade_check_timeout_secs" | "UNIVERSE" | "Timeout for pg_upgrade check in seconds" | "Integer" |
@@ -394,7 +398,6 @@
 | "Upgrade TServer Sleep Time Per AZ" | "yb.upgrade.upgrade_tserver_stage_pause_duration_ms" | "UNIVERSE" | "Time to sleep after upgrading tservers in each AZ" | "Long" |
 | "Delay between master restarts in rolling operations" | "yb.upgrade.sleep_after_master_restart_ms" | "UNIVERSE" | "Default delay (ms) between master restarts in rolling operations (Delay Between Servers). Used when task params do not override." | "Integer" |
 | "Delay between tserver restarts in rolling operations" | "yb.upgrade.sleep_after_tserver_restart_ms" | "UNIVERSE" | "Default delay (ms) between tserver restarts in rolling operations (Delay Between Servers). Used when task params do not override." | "Integer" |
-| "Enables new Performance Monitoring UI via Performance Tab if universe is registered with Perf Advisor Service" | "yb.ui.feature_flags.enable_new_perf_advisor_ui" | "UNIVERSE" | "Enables new Performance Monitoring UI via Performance Tab" | "Boolean" |
 | "Enable All Nodes Script APIs" | "yb.node_script.enabled" | "UNIVERSE" | "Enables the all node script APIs for this universe" | "Boolean" |
 | "Enable Canary Upgrade" | "yb.upgrade.enable_canary_upgrade" | "UNIVERSE" | "Enable canary upgrade for the universe" | "Boolean" |
 | "Number of nodes to move in a given batch during full move" | "yb.task.full_move.roll_batch_size" | "UNIVERSE" | "Set numer of nodes to move in a given batch during full move. Default is 0 which means no batching, i.e. move all pods in a single go" | "Long" |
@@ -402,3 +405,4 @@
 | "Allow users to enable multi-tenancy" | "yb.universe.allow_multi_tenancy" | "UNIVERSE" | "If this flag is enabled, user will be able to enable the multi-tenancy QoS feature on universes." | "Boolean" |
 | "Flush Tablets Timeout on Stop TServer" | "yb.task.flush_tablets_timeout_on_stop_tserver" | "UNIVERSE" | "Timeout for flushing tablets when stopping tserver" | "Duration" |
 | "Skip YCQL precheck when enabling multi-tenancy" | "yb.universe.multitenancy_skip_ycql_precheck" | "UNIVERSE" | "If this flag is enabled, the precheck that requires YCQL to be disabled is skipped" | "Boolean" |
+| "Node Agent Server Wait Timeout" | "yb.node_agent.server.wait_timeout" | "UNIVERSE" | "Timeout for waiting for node agent server to be ready" | "Duration" |

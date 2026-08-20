@@ -246,6 +246,36 @@ db_exists() {
   [[ "${probe_out}" = "1" ]]
 }
 
+pa_config_schema_present() {
+  local db_name="$1"
+  local db_username="$2"
+  local db_host="$3"
+  local db_port="$4"
+  local yba_installer="$5"
+  local ybdb="$6"
+  local pg_helper_path="$7"
+  local ysql_dump_path="$8"
+
+  local probe="psql"
+  if [[ "$ybdb" = true ]]; then
+    probe="ysqlsh"
+    if [[ "${ysql_dump_path}" != "" ]] && [[ -f "${ysql_dump_path}" ]]; then
+      probe="$(dirname "${ysql_dump_path}")/ysqlsh"
+    fi
+  elif [[ "${yba_installer}" = true ]] && [[ "${pg_helper_path}" != "" ]] && \
+       [[ -f "${pg_helper_path}" ]]; then
+    probe="$(dirname "${pg_helper_path}")/psql"
+  fi
+
+  # to_regclass() returns NULL when the relation does not exist (instead of erroring), so a
+  # single query safely distinguishes "table present" from "empty database".
+  local probe_cmd="${probe} -h ${db_host} -p ${db_port} -U ${db_username} -d ${db_name} -tAc \
+\"SELECT to_regclass('public.customer_metadata') IS NOT NULL\""
+  local probe_out
+  probe_out=$(docker_aware_cmd "postgres" "${probe_cmd}" 2>/dev/null) || return 1
+  [[ "${probe_out}" = "t" ]]
+}
+
 # Creates a Postgres DB backup of the given database.
 # When ensure_db_exists is true, no special platform-specific behavior is applied;
 # the database name and target file are the only data points that vary across callers.
@@ -739,7 +769,6 @@ create_backup() {
   if [[ "$exclude_pa_database" = false ]]; then
     if db_exists "${PA_DB_NAME}" "${db_username}" "${db_host}" "${db_port}" \
                  "${yba_installer}" "${ybdb}" "${pgdump_path}" "${ysql_dump_path}"; then
-      pa_db_present=true
       if [[ "$include_pa_config_only" = true ]]; then
         # HA-sync path: dump only the whitelisted PA "configuration" tables (data-only)
         # so the standby PA gets customer / universe metadata and runtime config without
@@ -748,14 +777,28 @@ create_backup() {
           echo "Error: --include_pa_config_only is not supported with --ybdb" >&2
           exit 1
         fi
-        create_include_pa_config_only_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" \
-          "${db_port}" "${verbose}" "${yba_installer}" "${pgdump_path}"
-        # Drop a marker so the restore side knows to use the data-only restore path.
-        touch "${include_pa_config_only_marker_path}"
+        # The 'ts' database can exist while empty (yba-installer's createTSDatabase creates it
+        # unconditionally; the schema only appears once the embedded PA collector migrates it).
+        # A data-only dump of the whitelisted tables would fail against an empty database, so
+        # only produce the config dump + marker when the schema is actually present.
+        if pa_config_schema_present "${PA_DB_NAME}" "${db_username}" "${db_host}" "${db_port}" \
+                                    "${yba_installer}" "${ybdb}" "${pgdump_path}" \
+                                    "${ysql_dump_path}"; then
+          pa_db_present=true
+          create_include_pa_config_only_backup "${pa_db_backup_path}" "${db_username}" \
+            "${db_host}" "${db_port}" "${verbose}" "${yba_installer}" "${pgdump_path}"
+          # Drop a marker so the restore side knows to use the data-only restore path.
+          touch "${include_pa_config_only_marker_path}"
+        else
+          echo "Performance Advisor database '${PA_DB_NAME}' exists but has no PA schema" \
+            "- skipping PA config backup."
+        fi
       elif [[ "$ybdb" = true ]]; then
+        pa_db_present=true
         create_ybdb_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
                            "${verbose}" "${yba_installer}" "${ysql_dump_path}" "${PA_DB_NAME}"
       else
+        pa_db_present=true
         create_postgres_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
                                "${verbose}" "${yba_installer}" "${pgdump_path}" \
                                "${plain_sql}" "${PA_DB_NAME}"
@@ -1021,6 +1064,8 @@ restore_backup() {
       run_sudo_cmd "rm -f ${destination}/prometheus/targets/* ${destination}/prometheus/targets/*"
     fi
 
+    rm -f "${destination}/${PA_DUMP_FNAME}" "${destination}/${INCLUDE_PA_CONFIG_ONLY_MARKER_FNAME}"
+
     $tar_cmd "${input_path}" --directory "${destination}" "${skip_old_files}"
   fi
 
@@ -1062,15 +1107,27 @@ restore_backup() {
           exit 1
         fi
         # On the restore path we don't have pgdump_path. psql lives next to pg_restore in the
-        # yba-installer layout, so pass pgrestore_path in the "helper" slot - db_exists uses
-        # it purely to derive the psql directory.
-        if db_exists "${PA_DB_NAME}" "${db_username}" "${db_host}" "${db_port}" \
-                     "${yba_installer}" "${ybdb}" "${pgrestore_path}" "${ysqlsh_path}"; then
-          restore_include_pa_config_only_backup "${pa_db_backup_path}" "${db_username}" \
-            "${db_host}" "${db_port}" "${verbose}" "${yba_installer}" "${pgrestore_path}"
-        else
+        # yba-installer layout, so pass pgrestore_path in the "helper" slot - db_exists /
+        # pa_config_schema_present use it purely to derive the psql directory.
+        #
+        # Two independent guards, both required. The 'ts' database existing is NOT sufficient:
+        # yba-installer always provisions an empty 'ts' (createTSDatabase), so on an instance
+        # where PA is/was disabled the database is present but has no schema. Restoring a
+        # data-only config dump into it (TRUNCATE + COPY) would fail and abort the whole HA
+        # restore, so skip unless the collector has already migrated its schema. The standby
+        # PA's own Flyway migrations run on first start and the next HA sync then populates it.
+        if ! db_exists "${PA_DB_NAME}" "${db_username}" "${db_host}" "${db_port}" \
+                       "${yba_installer}" "${ybdb}" "${pgrestore_path}" "${ysqlsh_path}"; then
           echo "Performance Advisor database '${PA_DB_NAME}' not found" \
             "- skipping PA config restore."
+        elif ! pa_config_schema_present "${PA_DB_NAME}" "${db_username}" "${db_host}" \
+                       "${db_port}" "${yba_installer}" "${ybdb}" "${pgrestore_path}" \
+                       "${ysqlsh_path}"; then
+          echo "Performance Advisor database '${PA_DB_NAME}' exists but has no PA schema" \
+            "(the embedded collector has not migrated it yet) - skipping PA config restore."
+        else
+          restore_include_pa_config_only_backup "${pa_db_backup_path}" "${db_username}" \
+            "${db_host}" "${db_port}" "${verbose}" "${yba_installer}" "${pgrestore_path}"
         fi
         rm -f "${include_pa_config_only_marker_path}"
       else

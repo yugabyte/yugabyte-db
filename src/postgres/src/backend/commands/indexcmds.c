@@ -127,7 +127,9 @@ static void update_relispartition(Oid relationId, bool newval);
 static inline void set_indexsafe_procflags(void);
 
 /* YB function declarations. */
-static void YbWaitForBackendsCatalogVersion();
+static void YbWaitForBackendsCatalogVersion(bool error_on_timeout);
+static void YbWaitForLockersOrBackendsCatalogVersion(LOCKTAG *heaplocktag,
+													 LOCKMODE lockmode);
 static void YbDefineIndexHelper(Oid relationId, Oid indexRelationId, Oid databaseId);
 
 /*
@@ -603,6 +605,8 @@ DefineIndex(Oid relationId,
 	Oid			colocation_id = InvalidOid;
 	bool		is_colocated = false;
 	bool		yb_skip_index_creation;
+	/* Use PG catalog snapshot for catalog reads */
+	const bool 	yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
 
 	root_save_nestlevel = NewGUCNestLevel();
 
@@ -1743,7 +1747,7 @@ DefineIndex(Oid relationId,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
 					 !concurrent, is_colocated, tablegroupId, colocation_id,
-					 yb_skip_index_creation);
+					 yb_skip_index_creation, stmt->yb_index_old_relfilenode);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
@@ -2098,8 +2102,7 @@ DefineIndex(Oid relationId,
 
 	/* save lockrelid and locktag for below, then close rel */
 	heaprelid = rel->rd_lockInfo.lockRelId;
-	if (!IsYBRelation(rel))
-		SET_LOCKTAG_RELATION(heaplocktag, heaprelid.dbId, heaprelid.relId);
+	SET_LOCKTAG_RELATION(heaplocktag, heaprelid.dbId, heaprelid.relId);
 	table_close(rel, NoLock);
 
 	/*
@@ -2308,6 +2311,66 @@ DefineIndex(Oid relationId,
 				yb_type_changed = true;
 			}
 			YbDefineIndexHelper(relationId, indexRelationId, databaseId);
+
+			/*
+			 * YB: With object locking on, execute a timed wait on backends
+			 * with older snapshots, similar to PG's WaitForOlderSnapshots
+			 * before marking the index as valid.
+			 *
+			 * If backends with older snapshots exist after the timed wait,
+			 * ignore them and continue with the index creation, as docdb has
+			 * logic to reject reads arriving at index with a read time earlier
+			 * than the index birth time.
+			 *
+			 * On xCluster automatic-mode target, WaitForLockers optimization
+			 * is disabled until GH #33155 is addressed, as a result of which
+			 * YbWaitForLockersOrBackendsCatalogVersion falls back to
+			 * WaitForBackendsCatalogVersion. Hence this additional phase
+			 * isn't necessary on the target.
+			 */
+			if (YBCIsObjectLockingEnabled() && !yb_xcluster_automatic_mode_target_ddl)
+			{
+				/*
+				 * YB: Invalidate the relcache for the parent table as backfill
+				 * does a schema version increment on the base table. Otherwise
+				 * existing sessions might face schema version mismatch.
+				 * TODO(#33037): Cache invalidation can be removed once we get
+				 * rid of schema version increments for the base table.
+				 */
+				CacheInvalidateRelcacheByRelid(relationId);
+				YbForceSendInvalMessages();
+
+				/*
+				 * YB: No need to break (abort) ongoing txns since this is an
+				 * online schema change.
+				 * TODO(jason): handle nested CREATE INDEX (this assumes we're
+				 * at nest level 1).
+				 */
+				if (yb_should_run_in_autonomous_transaction)
+					YBDecrementDdlNestingLevel();
+
+				/* YB: Commit this phase/txn so as to release all held object
+				 * locks before executing timed wait for backends in the next
+				 * phase/txn.
+				 */
+				CommitTransactionCommand();
+				StartTransactionCommand();
+
+				if (yb_should_run_in_autonomous_transaction)
+					YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+				else
+					YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+
+				/* YB: Short wait for backends on older catalog versions. */
+				YbWaitForBackendsCatalogVersion(false);
+
+				/*
+				 * YB: Acquire ShareUpdateExclusiveLock on the parent table to
+				 * further prevent concurrent schema changes until the end of
+				 * this txn, as the session object lock is released early.
+				 */
+				LockRelationOid(relationId, ShareUpdateExclusiveLock);
+			}
 		}
 		PG_FINALLY();
 		{
@@ -2322,6 +2385,10 @@ DefineIndex(Oid relationId,
 		PG_END_TRY();
 	}
 
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"indisvalid",
+									"index state change indisvalid=true");
 	/*
 	 * Index can now be marked valid -- update its pg_index entry
 	 */
@@ -2352,7 +2419,10 @@ YbDefineIndexHelper(Oid relationId,
 					Oid indexRelationId,
 					Oid databaseId)
 {
-	bool yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+	LOCKTAG		heaplocktag;
+	bool		yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+
+	SET_LOCKTAG_RELATION(heaplocktag, MyDatabaseId, relationId);
 
 	elog(LOG, "committing pg_index tuple with indislive=true");
 	if (yb_test_block_index_phase[0] != '\0')
@@ -2365,7 +2435,7 @@ YbDefineIndexHelper(Oid relationId,
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 	 * level 1).
 	 */
-	 if (yb_should_run_in_autonomous_transaction)
+	if (yb_should_run_in_autonomous_transaction)
 		YBDecrementDdlNestingLevel();
 
 	CommitTransactionCommand();
@@ -2390,8 +2460,7 @@ YbDefineIndexHelper(Oid relationId,
 	else
 		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
 
-	/* Wait for all backends to have up-to-date version. */
-	YbWaitForBackendsCatalogVersion();
+	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
 
 	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
 
@@ -2426,8 +2495,7 @@ YbDefineIndexHelper(Oid relationId,
 	else
 		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
 
-	/* Wait for all backends to have up-to-date version. */
-	YbWaitForBackendsCatalogVersion();
+	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
 
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 								 YB_PROGRESS_CREATEIDX_BACKFILLING);
@@ -5311,13 +5379,24 @@ set_indexsafe_procflags(void)
 	LWLockRelease(ProcArrayLock);
 }
 
+/*
+ * Wait for backends to catch up to the desired catalog version.
+ *
+ * When error_on_timeout is true, retry until all backends catch up or
+ * yb_wait_for_backends_catalog_version_timeout expires (then ERROR).
+ * When false (short wait), retry retryable errors until
+ * wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms expires,
+ * then return without ERROR.  Non-retryable failures after exhausting retries
+ * also free the status and return, a genuine issue surfaces on a subsequent
+ * commit.
+ */
 static void
-YbWaitForBackendsCatalogVersion()
+YbWaitForBackendsCatalogVersion(bool error_on_timeout)
 {
 	if (yb_disable_wait_for_backends_catalog_version)
 		return;
 
-	const bool enable_inval_messages = YbIsInvalidationMessageEnabled();
+	const bool	enable_inval_messages = YbIsInvalidationMessageEnabled();
 	uint64_t	new_catalog_version =
 		enable_inval_messages ? YbGetNewCatalogVersion() : YbGetMasterCatalogVersion();
 
@@ -5332,14 +5411,20 @@ YbWaitForBackendsCatalogVersion()
 	int			num_lagging_backends = -1;
 	int			retries_left = 10;
 	const TimestampTz start = GetCurrentTimestamp();
+	const int	timeout_ms = error_on_timeout
+		? yb_wait_for_backends_catalog_version_timeout
+		: (int) *YBCGetGFlags()->wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms;
 
 	while (num_lagging_backends != 0)
 	{
-		if (yb_wait_for_backends_catalog_version_timeout > 0 &&
+		if (timeout_ms > 0 &&
 			TimestampDifferenceExceeds(start,
 									   GetCurrentTimestamp(),
-									   yb_wait_for_backends_catalog_version_timeout))
+									   timeout_ms))
 		{
+			if (!error_on_timeout)
+				return;
+
 			if (num_lagging_backends > 0)
 				/*
 				 * Note: keep the errhint query in sync with the actual query
@@ -5411,6 +5496,28 @@ YbWaitForBackendsCatalogVersion()
 				continue;
 			}
 		}
+		if (!error_on_timeout)
+		{
+			YBCFreeStatus(s);
+			return;
+		}
 		HandleYBStatus(s);
 	}
+}
+
+static void
+YbWaitForLockersOrBackendsCatalogVersion(LOCKTAG *heaplocktag,
+										 LOCKMODE lockmode)
+{
+	if (yb_disable_wait_for_backends_catalog_version)
+		return;
+
+	/*
+	 * YB: Skip WaitForLockers optimization on xCluster automatic-mode target
+	 * until GH #33155 is addressed.
+	 */
+	if (YBCIsObjectLockingEnabled() && !yb_xcluster_automatic_mode_target_ddl)
+		WaitForLockers(*heaplocktag, lockmode, false);
+	else
+		YbWaitForBackendsCatalogVersion(true);	/* error on timeout */
 }

@@ -52,6 +52,8 @@ struct VectorLSMInsertEntry {
 struct VectorLSMInsertContext {
   const storage::UserFrontiers* frontiers = nullptr;
   size_t chunk_size = 0;
+  rocksdb::Cache::ReservationMode reservation_mode =
+      rocksdb::Cache::ReservationMode::kAlways;
 };
 
 template<IndexableVectorType Vector,
@@ -91,6 +93,7 @@ struct VectorLSMOptions {
   MergeFilterFactory vector_merge_filter_factory;
   std::string file_extension;
   MetricEntityPtr metric_entity;
+  size_t block_cache_capacity = 0;
 };
 
 YB_DEFINE_ENUM(CompactionType, (kBackground)(kManual));
@@ -208,7 +211,8 @@ class VectorLSM {
   friend struct MutableChunk;
 
   // Saves the current mutable chunk to disk and creates a new one.
-  Status RollChunk(size_t min_vectors) REQUIRES(mutex_);
+  Status RollChunk(
+      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
 
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
@@ -235,7 +239,8 @@ class VectorLSM {
   Result<uint64_t> GetChunkFileSize(uint64_t serial_no) const;
 
   // Creates vector index and reserve at least for `min_vectors` entries.
-  Result<VectorIndexPtr> CreateVectorIndex(size_t min_vectors) const;
+  Result<VectorIndexPtr> CreateVectorIndex(
+      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) const;
 
   // Returns an index instance suitable for queries that don't depend on chunk contents
   // (e.g. Distance). Reuses an existing chunk's index when available (including immutable on-disk
@@ -248,7 +253,8 @@ class VectorLSM {
   // TODO(#32369): Replace GetProbeIndex/GetInMemoryProbeIndex with index traits.
   VectorIndexPtr GetInMemoryProbeIndex() const EXCLUDES(mutex_);
 
-  Status CreateNewMutableChunk(size_t min_vectors) REQUIRES(mutex_);
+  Status CreateNewMutableChunk(
+      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
 
   Result<std::vector<VectorIndexPtr>> AllIndexes() const EXCLUDES(mutex_);
 
@@ -382,5 +388,8 @@ void MergeChunkResults(
     std::vector<VectorWithDistance<DistanceResult>>& combined_results,
     std::vector<VectorWithDistance<DistanceResult>>& chunk_results,
     size_t max_num_results);
+
+// Resolves max mem-store size for a Vector LSM compaction output chunk. Returns 0 for no limit.
+size_t TEST_GetCompactionChunkMaxMemStoreBytes(size_t block_cache_capacity);
 
 }  // namespace yb::vector_index

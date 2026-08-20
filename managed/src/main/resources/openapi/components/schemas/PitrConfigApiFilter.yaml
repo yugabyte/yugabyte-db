@@ -8,3 +8,4 @@ properties:
     type: string
     format: uuid
     example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("drConfigUuid")'

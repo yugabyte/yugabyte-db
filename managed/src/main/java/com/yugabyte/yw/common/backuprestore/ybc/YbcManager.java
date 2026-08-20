@@ -68,6 +68,8 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -705,35 +707,63 @@ public class YbcManager {
       BackupServiceTaskCreateRequest downloadSuccessMarkerRequest,
       String taskID,
       YbcClient ybcClient) {
-    String successMarker = null;
     try {
       BackupServiceTaskCreateResponse downloadSuccessMarkerResponse =
           ybcClient.restoreNamespace(downloadSuccessMarkerRequest);
-      if (!downloadSuccessMarkerResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
-        throw new Exception(
+      if (downloadSuccessMarkerResponse == null) {
+        throw new RuntimeException(
+            "No response from YB-Controller for the download success marker request");
+      }
+      ControllerStatus createStatus = downloadSuccessMarkerResponse.getStatus().getCode();
+      // EXISTS means an earlier submit of this same task id already registered the task on
+      // YB-Controller. YbcClient retries UNAVAILABLE/DEADLINE_EXCEEDED internally, so the same
+      // request can reach the server more than once, and the result of the already registered
+      // task is still fetchable.
+      if (!(createStatus.equals(ControllerStatus.OK)
+          || createStatus.equals(ControllerStatus.EXISTS))) {
+        throw new RuntimeException(
             String.format(
                 "Failed to send download success marker request, failure status: %s",
-                downloadSuccessMarkerResponse.getStatus().getCode().name()));
+                createStatus.name()));
       }
       BackupServiceTaskResultRequest downloadSuccessMarkerResultRequest =
           BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
-      BackupServiceTaskResultResponse downloadSuccessMarkerResultResponse = null;
       Integer timeoutSecs =
           confGetter.getGlobalConf(GlobalConfKeys.ybcSuccessMarkerDownloadTimeoutSecs);
       // RetryTaskUntilCondition
+      AtomicReference<BackupServiceTaskResultResponse> lastResult = new AtomicReference<>();
       Supplier<BackupServiceTaskResultResponse> dsmResponseSupplier =
-          () -> ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
+          () -> {
+            BackupServiceTaskResultResponse dsmResponse =
+                ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
+            if (dsmResponse != null) {
+              lastResult.set(dsmResponse);
+            }
+            return dsmResponse;
+          };
+      // A null response means the result RPC itself failed, keep polling until the timeout.
       Predicate<BackupServiceTaskResultResponse> stopRetries =
           (dsmResponse) ->
-              !(dsmResponse.getTaskStatus().equals(ControllerStatus.IN_PROGRESS)
-                  || dsmResponse.getTaskStatus().equals(ControllerStatus.NOT_STARTED));
+              dsmResponse != null
+                  && !(dsmResponse.getTaskStatus().equals(ControllerStatus.IN_PROGRESS)
+                      || dsmResponse.getTaskStatus().equals(ControllerStatus.NOT_STARTED));
       RetryTaskUntilCondition<BackupServiceTaskResultResponse> pollSuccessMarkerDownloadProgress =
           new RetryTaskUntilCondition<>(dsmResponseSupplier, stopRetries);
-      pollSuccessMarkerDownloadProgress.retryUntilCond(
-          WAIT_EACH_SHORT_ATTEMPT_MS / 1000, timeoutSecs);
-
-      downloadSuccessMarkerResultResponse =
-          ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
+      boolean downloadCompleted =
+          pollSuccessMarkerDownloadProgress.retryUntilCond(
+              WAIT_EACH_SHORT_ATTEMPT_MS / 1000, timeoutSecs);
+      if (!downloadCompleted) {
+        BackupServiceTaskResultResponse lastSeenResponse = lastResult.get();
+        throw new RuntimeException(
+            String.format(
+                "Timed out after %d seconds waiting for success marker download, last known"
+                    + " status: %s",
+                timeoutSecs,
+                lastSeenResponse == null
+                    ? "no response from YB-Controller"
+                    : lastSeenResponse.getTaskStatus().name()));
+      }
+      BackupServiceTaskResultResponse downloadSuccessMarkerResultResponse = lastResult.get();
       if (!downloadSuccessMarkerResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
         throw new RuntimeException(
             String.format(
@@ -741,15 +771,23 @@ public class YbcManager {
                 downloadSuccessMarkerResultResponse.getTaskStatus().name()));
       }
       LOG.info("Task {} on YB-Controller to fetch success marker is successful", taskID);
-      successMarker = downloadSuccessMarkerResultResponse.getMetadataJson();
-      deleteYbcBackupTask(taskID, ybcClient);
-      return successMarker;
+      return downloadSuccessMarkerResultResponse.getMetadataJson();
+    } catch (CancellationException ce) {
+      LOG.warn("Task {} on YB-Controller to fetch success marker was aborted.", taskID);
+      // Rethrown with a non-null message, callers inspect the cancellation message.
+      throw new CancellationException(
+          String.format("Success marker download aborted for task %s", taskID));
     } catch (Exception e) {
       LOG.error(
-          "Task {} on YB-Controller to fetch success marker for restore failed. Error: {}",
+          "Task {} on YB-Controller to fetch success marker failed. Error: {}",
           taskID,
-          e.getMessage());
-      return successMarker;
+          e.getMessage(),
+          e);
+      return null;
+    } finally {
+      // A task left registered on YB-Controller makes every subsequent attempt with the same
+      // task id fail with EXISTS, so clean up on all paths.
+      deleteYbcBackupTask(taskID, ybcClient);
     }
   }
 

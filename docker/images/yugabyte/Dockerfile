@@ -5,7 +5,7 @@ ARG BASE_IMAGE=docker.io/library/almalinux:8
 # Use following command to create UBI-8 based docker image
 # docker build --build-arg BASE_IMAGE=registry.access.redhat.com/ubi8/ubi
 
-FROM $BASE_IMAGE as intermediate
+FROM $BASE_IMAGE as stage1
 
 ENV YB_HOME=/home/yugabyte
 WORKDIR $YB_HOME
@@ -26,7 +26,7 @@ EOF
 RUN tar -xvf share/ybc-*.tar.gz \
     && rm -rf ybc-*/conf/
 
-FROM $BASE_IMAGE
+FROM $BASE_IMAGE as stage2
 ARG BASE_IMAGE
 ARG VERSION=Development
 ARG RELEASE=Unknown
@@ -152,7 +152,7 @@ RUN mkdir -p $YB_HOME/openssl-config \
     && chown -R 10001:0 $YB_HOME/openssl-config \
     && chmod -R g=u $YB_HOME/openssl-config
 
-COPY --from=intermediate $YB_HOME $YB_HOME
+COPY --from=stage1 $YB_HOME $YB_HOME
 
 # Create with correct permissions the openssl-config directory which will be used for fips
 # credentials generated via post-install.sh
@@ -204,6 +204,37 @@ RUN set -x; \
     && curl -L -o /tmp/tini.sha256sum \
       https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-${arch}.sha256sum \
     && egrep $(sha256sum /sbin/tini) /tmp/tini.sha256sum
+
+# Remove repos for hardened images
+RUN set -x; \
+    if [[ "$BASE_IMAGE" == *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
+      rm -rf /etc/yum.repos.d/rf-*; \
+    fi
+
+FROM scratch
+ARG VERSION=Development
+ARG RELEASE=Unknown
+ARG USER=root
+ARG YBC_VERSION=Unknown
+
+LABEL name="YugabyteDB" \
+    maintainer="YugaByte" \
+    vendor="YugabyteDB, Inc" \
+    release=$RELEASE \
+    version=$VERSION \
+    summary="YugabytDB Image" \
+    description="YugabyteDB is a free and open-source, distributed, relational, NewSQL database \
+        management system designed to handle large amounts of data spanning across multiple \
+        availability zones and geographic regions while providing single-digit latency, \
+        high availability, and no single point of failure."
+
+ENV container=yugabyte-db
+ENV YB_HOME=/home/yugabyte
+ENV YB_MANAGED_DEVOPS_USE_PYTHON3=1
+ENV YB_DEVOPS_USE_PYTHON3=1
+WORKDIR $YB_HOME
+
+COPY --from=stage2 / /
 
 # Expose the required ports.
 EXPOSE 7000 7100 7200 9000 9100 12000 11000 6379 9042 5433 10100 18018

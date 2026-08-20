@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/util/drive_io_stats_fwd.h"
 #include "yb/util/file_system.h"
 
 struct iovec;
@@ -137,6 +138,32 @@ class PosixWritableFile : public WritableFile {
   uint64_t filesize_;
   uint64_t pre_allocated_size_;
   std::atomic<bool> pending_sync_;
+
+  // Per-drive IO counters for the drive this file lives on, resolved once at construction by
+  // path prefix, or null when the file is under no registered drive root. Owned by the process-
+  // global DriveIoStatsRegistry, so this pointer stays valid for the life of the file.
+  DriveIoStats* const drive_stats_;
+
+  // Bytes appended since the last sync of this file, used to walk the drive's approximate
+  // unsynced-bytes gauge back down. Atomic because Sync() is documented thread-safe with respect
+  // to Append() (see IsSyncThreadSafe()). Maintained even when drive_stats_ is null, because the
+  // slow-sync log line reports it.
+  //
+  // Deliberately approximate, and the approximation is what keeps it cheap. Sync() zeroes this
+  // and then calls fsync, so an Append() landing in between is counted as still unsynced even
+  // though that fsync almost certainly pushed it out. Making the number exact would mean holding
+  // a lock across the append and the fsync together, i.e. serializing the two operations that
+  // IsSyncThreadSafe() exists to let run concurrently, and on the WAL that is the hot path. An
+  // upper bound is all the gauge claims to be (see the drive_bytes_unsynced description).
+  //
+  // Accessed with memory_order_relaxed, like the drive counters it feeds. It publishes no other
+  // memory, and every update is a read-modify-write on this one variable, so concurrent updates
+  // still compose correctly without any barrier.
+  std::atomic<uint64_t> unsynced_bytes_{0};
+
+  // Hands whatever this file still holds unsynced back to the drive gauge without counting a
+  // sync. Closing without syncing is the normal case, so without this the gauge only climbs.
+  void ReleaseUnsyncedBytes();
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   bool allow_fallocate_;
   bool fallocate_with_keep_size_;

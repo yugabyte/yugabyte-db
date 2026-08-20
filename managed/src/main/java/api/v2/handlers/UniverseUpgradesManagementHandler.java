@@ -507,6 +507,16 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     ExportTelemetryConfigMapper.fillParams(telemetryConfig, params);
     ExportTelemetryConfigMapper.applyUpgradeOptions(reqBody.getUpgradeOptions(), params);
 
+    TelemetryConfig currentTelemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    if (TelemetryConfig.diff(params.getTelemetryConfig(), currentTelemetryConfig).isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Telemetry export config is same as existing config on universe '%s'. No changes to"
+                  + " apply.",
+              universe.getUniverseUUID()));
+    }
+
     // Verify if the exporter credentials are consistent on the universe.
     Set<UUID> auditUuids = extractAuditLogExporterUuids(params);
     Set<UUID> queryUuids = extractQueryLogExporterUuids(params);

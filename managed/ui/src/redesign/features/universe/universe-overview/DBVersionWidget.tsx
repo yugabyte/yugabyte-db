@@ -4,7 +4,9 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
+import { YBTooltip } from '@yugabyte-ui-library/core';
 
+import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '@app/actions/customers';
 import { YBWidget } from '@app/components/panels';
 import {
   getUniverseStatus,
@@ -14,7 +16,8 @@ import { getLatestSoftwareUpgradeLockingTaskForUniverse } from '@app/redesign/fe
 import { DBUpgradeModal as LegacyDBUpgradeModal } from '@app/redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
 import { DbUpgradeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModal';
 import { Universe } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { universeQueryKey } from '@app/redesign/helpers/api';
+import { api, runtimeConfigQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
+import { isK8OperatorApiBlocked } from '@app/redesign/helpers/k8OperatorResourceUtils';
 import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
 import { getUniverse } from '@app/v2/api/universe/universe';
 import { UniverseInfoSoftwareUpgradeState } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -54,6 +57,9 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
       enabled: !!universeUuid
     }
   );
+  const runtimeConfigsQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
+    api.fetchRuntimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE)
+  );
 
   const v2UniverseInfo = universeQuery.data?.info;
   const v2UniverseSpec = universeQuery.data?.spec;
@@ -63,6 +69,10 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
     : '';
 
   const softwareUpgradeState = v2UniverseInfo?.software_upgrade_state;
+  const isK8OperatorUpgradeBlocked = isK8OperatorApiBlocked(
+    v2UniverseInfo?.is_kubernetes_operator_controlled,
+    runtimeConfigsQuery.data?.configEntries
+  );
 
   const universeStatus = getUniverseStatus(
     v2UniverseInfo
@@ -93,6 +103,26 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
     higherVersionCount > 0 &&
     softwareUpgradeState === UniverseInfoSoftwareUpgradeState.Ready;
 
+  const upgradeAvailableLink = (
+    <div className={classes.upgradeAvailableLinkContainer}>
+      <img src={UpgradeArrow} height="14px" width="14px" alt="--" /> &nbsp;
+      <Link
+        component="button"
+        underline="always"
+        aria-disabled={isK8OperatorUpgradeBlocked}
+        onClick={() => {
+          if (isK8OperatorUpgradeBlocked) {
+            return;
+          }
+          setIsDbUpgradeModalOpen(true);
+        }}
+        className={clsx(classes.upgradeLink, isK8OperatorUpgradeBlocked && classes.upgradeLinkDisabled)}
+      >
+        {t('upgradeAvailable')}
+      </Link>
+    </div>
+  );
+
   const statusDisplay = (
     <Box display="flex" gridGap={8} alignItems="center">
       {shouldShowDbVersionLabel && (
@@ -101,17 +131,22 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
         </Typography>
       )}
       {shouldShowUpgradeAvailableLink && (
-        <div className={classes.upgradeAvailableLinkContainer}>
-          <img src={UpgradeArrow} height="14px" width="14px" alt="--" /> &nbsp;
-          <Link
-            component="button"
-            underline="always"
-            onClick={() => setIsDbUpgradeModalOpen(true)}
-            className={classes.upgradeLink}
+        <YBTooltip
+          title={
+            isK8OperatorUpgradeBlocked
+              ? t('blockedByKubernetesOperator', { keyPrefix: 'universeActions' })
+              : ''
+          }
+        >
+          <span
+            className={clsx(
+              classes.upgradeAvailableLinkTarget,
+              isK8OperatorUpgradeBlocked && classes.upgradeAvailableLinkTargetDisabled
+            )}
           >
-            {t('upgradeAvailable')}
-          </Link>
-        </div>
+            {upgradeAvailableLink}
+          </span>
+        </YBTooltip>
       )}
       {universeStatus.state !== UniverseState.PAUSED && (
         <DbVersionWidgetTag

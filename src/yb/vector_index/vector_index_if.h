@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "yb/rocksdb/cache.h"
+
 #include "yb/util/polymorphic_iterator.h"
 #include "yb/util/result.h"
 
@@ -73,7 +75,8 @@ class VectorIndexWriterIf {
 
   // Reserves capacity for this number of vectors.
   virtual Status Reserve(
-      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) = 0;
+      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads,
+      rocksdb::Cache::ReservationMode reservation_mode) = 0;
 
   // Returns current number of vectors.
   virtual size_t Size() const = 0;

@@ -11,6 +11,7 @@ import {
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 import { getPreservedTelemetrySections } from '../../shared/telemetryConfigPreserveUtils';
+import { K8S_SUPPORTED_SCRAPE_CONFIG_TARGETS } from '../k8sTelemetrySupport';
 
 export const METRICS_EXPORT_TRANSLATION_KEY_PREFIX =
   'editUniverse.telemetryExport.metricsExportSettings';
@@ -57,6 +58,18 @@ export const SCRAPE_CONFIG_TARGET_OPTIONS: ScrapeConfigTargetOption[] =
     label: target
   }));
 
+export const getScrapeConfigTargetOptions = (
+  isKubernetes: boolean
+): ScrapeConfigTargetOption[] => {
+  const targets = isKubernetes
+    ? K8S_SUPPORTED_SCRAPE_CONFIG_TARGETS
+    : ALL_SCRAPE_CONFIG_TARGETS;
+  return targets.map((target) => ({
+    value: target,
+    label: target
+  }));
+};
+
 export interface MetricsExportFormValues {
   telemetryConfigUuid: string;
   scrapeIntervalSeconds: number;
@@ -89,9 +102,19 @@ export const getMetricsExportDisplayInfo = (
 };
 
 export const getDefaultFormValues = (
-  metrics?: MetricsTelemetrySpec | null
+  metrics?: MetricsTelemetrySpec | null,
+  options?: { isKubernetes?: boolean }
 ): MetricsExportFormValues => {
   const existingExporter = metrics?.exporters?.[0];
+  const defaultTargets = options?.isKubernetes
+    ? [...K8S_SUPPORTED_SCRAPE_CONFIG_TARGETS]
+    : [...ALL_SCRAPE_CONFIG_TARGETS];
+  const existingTargets = metrics?.scrape_config_targets ?? [];
+  const filteredExistingTargets = options?.isKubernetes
+    ? existingTargets.filter((target) =>
+        K8S_SUPPORTED_SCRAPE_CONFIG_TARGETS.includes(target)
+      )
+    : existingTargets;
 
   return {
     telemetryConfigUuid: existingExporter?.exporter_uuid ?? '',
@@ -99,9 +122,7 @@ export const getDefaultFormValues = (
     scrapeTimeoutSeconds: metrics?.scrape_timeout_seconds ?? DEFAULT_SCRAPE_TIMEOUT_SECONDS,
     collectionLevel: metrics?.collection_level ?? MetricsExportConfigBaseCollectionLevel.NORMAL,
     scrapeConfigTargets:
-      metrics?.scrape_config_targets && metrics.scrape_config_targets.length > 0
-        ? metrics.scrape_config_targets
-        : [...ALL_SCRAPE_CONFIG_TARGETS]
+      filteredExistingTargets.length > 0 ? filteredExistingTargets : defaultTargets
   };
 };
 

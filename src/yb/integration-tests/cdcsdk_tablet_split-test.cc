@@ -548,6 +548,9 @@ void CDCSDKTabletSplitTest::TestGetChangesAfterTabletSplitWithMasterShutdown(
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(WriteRowsHelper(0, 200, &test_cluster_, true));
+  // Intents are applied to the regular DB asynchronously. Wait for the apply to finish, otherwise
+  // the flush below produces no SST file and the split cannot pick a split key.
+  ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ true));

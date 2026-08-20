@@ -1,0 +1,57 @@
+@use '../../../../../_style/variables.scss';
+
+/* Full-bleed strip above NavBar / sidebar / page chrome. */
+$onboarding-banner-height: 48px;
+
+.onboarding-banner-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  overflow: visible;
+  z-index: 1031;
+}
+
+body.onboarding-banner-visible {
+  .yb-nav-bar .navbar,
+  .navbar-fixed-top,
+  .navbar-static-top {
+    top: $onboarding-banner-height;
+  }
+
+  .side-nav-container {
+    top: calc(#{variables.$YB_HEADER_HEIGHT} + #{$onboarding-banner-height});
+  }
+
+  .container-body {
+    padding-top: calc(#{variables.$YB_HEADER_HEIGHT} + #{$onboarding-banner-height});
+
+    & > *:first-child:before {
+      top: $onboarding-banner-height;
+    }
+  }
+
+  .dashboard-stats {
+    top: $onboarding-banner-height;
+  }
+
+  /* Universe Detail header chrome sits in the fixed top bar. */
+  .universe-detail-status-container,
+  .content-title {
+    top: calc(#{$onboarding-banner-height} + 8px);
+  }
+
+  .page-action-buttons {
+    top: calc(#{variables.$YB_HEADER_HEIGHT} + #{$onboarding-banner-height});
+  }
+
+  .standby-instance-overlay,
+  .standby-instance-text {
+    top: calc(#{variables.$YB_HEADER_HEIGHT} + #{$onboarding-banner-height});
+    height: calc(
+      100% - #{variables.$YB_HEADER_HEIGHT} - #{$onboarding-banner-height} -
+        #{variables.$YB_FOOTER_HEIGHT}
+    );
+  }
+}

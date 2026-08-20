@@ -157,7 +157,6 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       expectedCommandArgs.add("--exclude_prometheus");
       expectedCommandArgs.add("--exclude_releases");
       // HA sync backup includes PA "configuration" tables via --include_pa_config_only so
-      // the standby PA sees the same customer / universe metadata as the active PA.
       expectedCommandArgs.add("--exclude_pa_files");
       expectedCommandArgs.add("--include_pa_config_only");
       expectedCommandArgs.add("--disable_version_check");
@@ -243,6 +242,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
         .thenReturn(new ShellResponse());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(runtimeConfGetter.getStaticConf()).thenReturn(mockConfig);
+    when(mockConfig.getString("yb.pa.url")).thenReturn("http://localhost:9000");
     when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.disablePlatformHARestoreTransaction)))
         .thenReturn(false);
     doCallRealMethod()

@@ -4,8 +4,6 @@ type: object
 required:
   - cluster_type
   - num_nodes
-  - node_spec
-  - provider_spec
 properties:
   uuid:
     description: System generated cluster uuid used to lookup corresponding ClusterInfo. This is not a user input.
@@ -34,6 +32,19 @@ properties:
     example: 3
     default: 3
     minimum: 1
+  dedicated_nodes:
+    description: |
+      Whether to run tserver and master processes in dedicated nodes in this cluster.
+      Prefer this over deprecated node_spec.dedicated_nodes. If omitted, falls back to
+      node_spec.dedicated_nodes when present; otherwise defaults to false on create and
+      leaves the existing value unchanged on edit.
+    type: boolean
+    example: false
+  provider_specs:
+    description: Per-provider specs for multicloud clusters. For single-provider clusters use provider_spec and node_spec.
+    type: array
+    items:
+      $ref: "./ClusterPerProviderSpec.yaml"
   node_spec:
     $ref: "./ClusterNodeSpec.yaml"
   networking_spec:

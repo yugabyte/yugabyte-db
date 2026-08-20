@@ -1,0 +1,10 @@
+x-yba-api-visibility: internal
+title: ControllerLogsTelemetrySpec
+type: object
+description: YB-Controller logs. Omit or set to null to disable.
+properties:
+  exporters:
+    description: List of exporters. Empty = no export.
+    type: array
+    items:
+      $ref: "./UniverseServerLogsExporterConfig.yaml"

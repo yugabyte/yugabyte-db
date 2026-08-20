@@ -40,6 +40,7 @@
 
 #include "yb/gutil/strings/util.h"
 
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/metrics.h"
 #include "yb/util/multi_drive_test_env.h"
 #include "yb/util/status.h"
@@ -54,6 +55,7 @@ using std::vector;
 DECLARE_string(fs_data_dirs);
 DECLARE_string(fs_wal_dirs);
 DECLARE_bool(TEST_fail_write_pb_container);
+DECLARE_bool(export_drive_io_metrics);
 
 namespace yb {
 
@@ -653,5 +655,68 @@ TEST_F(FsManagerTestDriveFault, SingleDriveFault) {
   EXPECT_TRUE(Slice(dirs[0]).starts_with(Slice(GetTestPath(kOkDrive))));
 }
 
+// A drive that failed the startup write check must not be registered for IO metrics: it has been
+// dropped from the root lists, nothing will be written to it, and it already reports drive_fault.
+TEST_F(FsManagerTestDriveFault, FaultyDriveIsNotRegisteredForIoMetrics) {
+  // The fixture's SetUp only gets as far as creating the layout; the first
+  // CheckAndOpenFileSystemRoots returns NotFound and returns before reaching registration. Real
+  // startup re-opens after creating (server_base.cc), so do the same here.
+  ASSERT_OK(fs_manager()->CheckAndOpenFileSystemRoots());
+
+  ASSERT_NE(nullptr, DriveIoStatsRegistry::Instance().Find(GetTestPath(kOkDrive)));
+  ASSERT_EQ(nullptr, DriveIoStatsRegistry::Instance().Find(GetTestPath(kFailedDrive)));
+}
+
+// Coverage for FsManager::SetUpDriveIoMetrics: which roots get registered, and the flag that
+// turns the whole thing off. Roots are GetTestPath-derived and so unique per test, which is what
+// lets these tests share the process-global registry.
+class FsManagerTestDriveIoMetrics : public YBTest {
+ public:
+  void ReinitFsManager(const vector<string>& wal_paths, const vector<string>& data_paths) {
+    fs_manager_.reset();
+    FsManagerOpts opts;
+    opts.wal_paths = wal_paths;
+    opts.data_paths = data_paths;
+    opts.server_type = kServerType;
+    opts.metric_registry = &metric_registry_;
+    fs_manager_ = std::make_unique<FsManager>(env_.get(), opts);
+  }
+
+  Status OpenFileSystem(const vector<string>& wal_paths, const vector<string>& data_paths) {
+    ReinitFsManager(wal_paths, data_paths);
+    RETURN_NOT_OK(fs_manager_->CreateInitialFileSystemLayout());
+    return fs_manager_->CheckAndOpenFileSystemRoots();
+  }
+
+  const char* kServerType = "tserver_test";
+
+ private:
+  std::unique_ptr<FsManager> fs_manager_;
+  MetricRegistry metric_registry_;
+};
+
+// The WAL and data roots can be different devices, and both must be attributed.
+TEST_F(FsManagerTestDriveIoMetrics, RegistersWalAndDataRoots) {
+  const auto wal = GetTestPath("wal_root");
+  const auto data = GetTestPath("data_root");
+  ASSERT_OK(OpenFileSystem({ wal }, { data }));
+
+  auto& registry = DriveIoStatsRegistry::Instance();
+  ASSERT_NE(nullptr, registry.Find(wal)) << "WAL root should be registered";
+  ASSERT_NE(nullptr, registry.Find(data)) << "data root should be registered";
+  ASSERT_NE(registry.Find(wal), registry.Find(data)) << "and they are distinct drives";
+
+  // A file under a root resolves to that root's counters, which is the whole attribution path.
+  ASSERT_EQ(registry.Find(wal), registry.Find(wal + "/yb-data/tserver_test/wals/x/wal-000001"));
+}
+
+TEST_F(FsManagerTestDriveIoMetrics, FlagOffRegistersNothing) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_export_drive_io_metrics) = false;
+  const auto root = GetTestPath("fs_root");
+  ASSERT_OK(OpenFileSystem({ root }, { root }));
+
+  ASSERT_EQ(nullptr, DriveIoStatsRegistry::Instance().Find(root))
+      << "with --export_drive_io_metrics off, the write path must see no drive at all";
+}
 
 } // namespace yb

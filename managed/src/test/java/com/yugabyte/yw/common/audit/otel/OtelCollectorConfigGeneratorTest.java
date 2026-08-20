@@ -44,10 +44,14 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterC
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ControllerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.NodeAgentLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.ServerLogLevel;
 import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.UniverseServerLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YnpLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YsqlConnMgrLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.*;
 import com.yugabyte.yw.models.helpers.telemetry.AuthCredentials.AuthType;
 import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
@@ -651,6 +655,133 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
         "audit/dd_tserver_log_config.yml");
   }
 
+  // --- Internal-only diagnostic log sources (conn-mgr, node-agent, YNP, YB-Controller). ---
+
+  private UniverseServerLogsExporterConfig singleServerExporter(
+      UUID exporterUuid, Map<String, String> additionalTags) {
+    UniverseServerLogsExporterConfig exporter = new UniverseServerLogsExporterConfig();
+    exporter.setExporterUuid(exporterUuid);
+    exporter.setAdditionalTags(additionalTags);
+    return exporter;
+  }
+
+  private TelemetryProvider datadogProvider() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    return createTelemetryProvider(new UUID(0, 0), "DD", ImmutableMap.of("tag", "value"), config);
+  }
+
+  @Test
+  public void generateOtelColConfigYsqlConnMgrLogsPlusDatadog() {
+    TelemetryProvider tp = datadogProvider();
+    YsqlConnMgrLogConfig cfg = new YsqlConnMgrLogConfig();
+    cfg.setUniverseLogsExporterConfig(
+        ImmutableList.of(
+            singleServerExporter(tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"))));
+    generateAndAssertConfig(
+        TelemetryConfig.builder().ysqlConnMgrLogConfig(cfg).build(),
+        "audit/dd_ysql_conn_mgr_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigNodeAgentLogsPlusDatadog() {
+    TelemetryProvider tp = datadogProvider();
+    NodeAgentLogConfig cfg = new NodeAgentLogConfig();
+    cfg.setUniverseLogsExporterConfig(
+        ImmutableList.of(
+            singleServerExporter(tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"))));
+    generateAndAssertConfig(
+        TelemetryConfig.builder().nodeAgentLogConfig(cfg).build(),
+        "audit/dd_node_agent_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigYnpLogsPlusDatadog() {
+    TelemetryProvider tp = datadogProvider();
+    YnpLogConfig cfg = new YnpLogConfig();
+    cfg.setUniverseLogsExporterConfig(
+        ImmutableList.of(
+            singleServerExporter(tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"))));
+    generateAndAssertConfig(
+        TelemetryConfig.builder().ynpLogConfig(cfg).build(), "audit/dd_ynp_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigControllerLogsPlusDatadog() {
+    TelemetryProvider tp = datadogProvider();
+    ControllerLogConfig cfg = new ControllerLogConfig();
+    cfg.setUniverseLogsExporterConfig(
+        ImmutableList.of(
+            singleServerExporter(tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"))));
+    generateAndAssertConfig(
+        TelemetryConfig.builder().controllerLogConfig(cfg).build(),
+        "audit/dd_controller_log_config.yml");
+  }
+
+  // conn-mgr + YB-Controller are pod-local on K8s (yb-tserver pod); assert they render receivers on
+  // the K8s mount paths with their own pipelines.
+  @Test
+  public void getOtelColConfigK8sYsqlConnMgrAndController() {
+    TelemetryProvider tp = datadogProvider();
+    YsqlConnMgrLogConfig connMgr = new YsqlConnMgrLogConfig();
+    connMgr.setUniverseLogsExporterConfig(
+        ImmutableList.of(singleServerExporter(tp.getUuid(), ImmutableMap.of())));
+    ControllerLogConfig controller = new ControllerLogConfig();
+    controller.setUniverseLogsExporterConfig(
+        ImmutableList.of(singleServerExporter(tp.getUuid(), ImmutableMap.of())));
+
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder()
+                .ysqlConnMgrLogConfig(connMgr)
+                .controllerLogConfig(controller)
+                .build(),
+            null,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    String config = result.getConfig();
+    // Receivers rendered on the K8s pod mount paths.
+    assertThat(config, containsString("filelog/ysql_conn_mgr"));
+    assertThat(config, containsString("/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-*"));
+    assertThat(config, containsString("filelog/controller"));
+    assertThat(
+        config, containsString("/mnt/disk0/ybc-data/controller/logs/yb-controller-server.INFO"));
+    // Each gets its own pipeline keyed by export-type prefix + exporter UUID.
+    assertThat(config, containsString("logs/ysql_conn_mgr_logs_" + tp.getUuid()));
+    assertThat(config, containsString("logs/controller_logs_" + tp.getUuid()));
+    assertThat(config, not(containsString("!!com.yugabyte")));
+  }
+
+  // node-agent and YNP are node-only: getOtelColConfigK8s must not render them even if configured.
+  @Test
+  public void getOtelColConfigK8sSkipsNodeAgentAndYnp() {
+    TelemetryProvider tp = datadogProvider();
+    NodeAgentLogConfig nodeAgent = new NodeAgentLogConfig();
+    nodeAgent.setUniverseLogsExporterConfig(
+        ImmutableList.of(singleServerExporter(tp.getUuid(), ImmutableMap.of())));
+    YnpLogConfig ynp = new YnpLogConfig();
+    ynp.setUniverseLogsExporterConfig(
+        ImmutableList.of(singleServerExporter(tp.getUuid(), ImmutableMap.of())));
+
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().nodeAgentLogConfig(nodeAgent).ynpLogConfig(ynp).build(),
+            null,
+            "%m [%p] ");
+
+    // No pod-local source enabled -> nothing to render on K8s.
+    assertFalse("node-agent/YNP must not enable a K8s collector", result.isEnabled());
+    assertThat(result.getConfig(), not(containsString("filelog/node_agent")));
+    assertThat(result.getConfig(), not(containsString("filelog/ynp")));
+  }
+
   @Test
   public void generateOtelColConfigYsqlPlusLoki() {
     LokiConfig config = new LokiConfig();
@@ -1140,6 +1271,47 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   @Test
+  public void getOtelColConfigK8sGoldenFile() {
+    // Golden file for the K8s collector config. The K8s and VM paths share one generator but pin
+    // their collector versions independently - a Java constant here, a Helm image tag in the charts
+    // repo - so a change valid on one side can silently be rejected by the other. Only the VM
+    // output was golden-tested, which is how the awss3 s3_partition -> s3_partition_format rename
+    // reached the K8s path unnoticed. S3 and metrics export are covered here specifically because
+    // they carry the keys that moved: s3_partition_format and service::telemetry::metrics::readers.
+    S3Config s3Config = new S3Config();
+    s3Config.setType(ProviderType.S3);
+    s3Config.setBucket("bucket");
+    s3Config.setAccessKey("access_key");
+    s3Config.setSecretKey("secret_key");
+    s3Config.setRegion("us-west2");
+
+    TelemetryProvider s3Tp =
+        createTelemetryProvider(new UUID(0, 0), "S3", ImmutableMap.of("tag", "value"), s3Config);
+    when(mockTelemetryProviderService.getOrBadRequest(s3Tp.getUuid())).thenReturn(s3Tp);
+
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            s3Tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"));
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            s3Tp.getUuid(), ImmutableMap.of("env", "prod"), 15, 10, MetricCollectionLevel.NORMAL);
+
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder()
+                .auditLogConfig(auditLogConfig)
+                .metricsExportConfig(metricsExportConfig)
+                .build(),
+            null,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    assertThat(result.getConfig(), equalTo(TestUtils.readResource("audit/k8s_otel_config.yml")));
+  }
+
+  @Test
   public void getOtelColConfigK8sTserverLogs() {
     TelemetryProvider awsTp =
         createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of(), awsCloudWatch());
@@ -1196,6 +1368,57 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     assertThat(config, not(containsString("filelog/tserver")));
     assertThat(config, containsString("mTag"));
     assertThat(config, not(containsString("!!com.yugabyte")));
+  }
+
+  // K8s log pipelines must carry the same node identity / placement / purpose attributes as the
+  // metrics pipelines - downstream consumers filter log records on universe_uuid and purpose.
+  @Test
+  public void getOtelColConfigK8sLogsCarryCommonRequiredAttributes() {
+    TelemetryProvider awsTp =
+        createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of(), awsCloudWatch());
+    TServerLogConfig tserverLogConfig =
+        createTserverLogConfig(awsTp.getUuid(), ImmutableMap.of("tTag", "tVal"));
+
+    OtelCollectorConfigGenerator.K8sPodPlacement podPlacement =
+        new OtelCollectorConfigGenerator.K8sPodPlacement(
+            "kubernetes",
+            "us-west1",
+            "us-west1-a",
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().tserverLogConfig(tserverLogConfig).build(),
+            podPlacement,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    String config = result.getConfig();
+    assertThat(config, containsString("{key: host, value: '${POD_NAME}', action: upsert}"));
+    assertThat(
+        config, containsString("{key: yugabyte.node_name, value: '${POD_NAME}', action: upsert}"));
+    assertThat(
+        config,
+        containsString(
+            "{key: yugabyte.universe_uuid, value: "
+                + universe.getUniverseUUID()
+                + ", action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.cloud, value: kubernetes, action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.region, value: us-west1, action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.zone, value: us-west1-a, action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.node_type, value: PRIMARY, action: upsert}"));
+    assertThat(
+        config,
+        containsString(
+            "{key: yugabyte.purpose, value: AWS_CLOUDWATCH_TSERVER_LOG_EXPORT, action: upsert}"));
+    // Backward compat: host keeps its pre-existing position after the tag actions, so a tag keyed
+    // "host" still loses to ${POD_NAME}.
+    assertThat(
+        config,
+        containsString(
+            "- {key: tTag, value: tVal, action: upsert}\n"
+                + "    - {key: host, value: '${POD_NAME}', action: upsert}"));
   }
 
   @Test
@@ -1348,6 +1571,10 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     config.setType(ProviderType.OTLP);
     config.setEndpoint("http://otlp:3100");
     config.setAuthType(AuthType.NoAuth);
+    // Per-signal endpoints are HTTP-only - the gRPC exporter has no logs_endpoint/metrics_endpoint
+    // fields and rejects a config carrying them. OTLPConfig#validateConfigFields enforces this, so
+    // leaving the default gRPC protocol here would build a combination the API cannot produce.
+    config.setProtocol(OTLPConfig.Protocol.HTTP);
     config.setLogsEndpoint("http://otlp:3000/logs");
     config.setMetricsEndpoint("http://otlp:3000/metrics");
 

@@ -34,10 +34,17 @@
     } \
     typedef class yb::pggate::name *Ybc##name;
 
+#define YB_DEFINE_YB_HANDLE_TYPE(name) \
+    namespace yb { \
+    class name; \
+    } \
+    typedef class yb::name *Ybc##name;
+
 #define YB_PGGATE_IDENTIFIER(name) yb::pggate::name
 
 #else
 #define YB_DEFINE_HANDLE_TYPE(name) typedef struct name *Ybc##name;
+#define YB_DEFINE_YB_HANDLE_TYPE(name) typedef struct name *Ybc##name;
 #define YB_PGGATE_IDENTIFIER(name) name
 #endif  // __cplusplus
 
@@ -65,6 +72,9 @@ YB_DEFINE_HANDLE_TYPE(PgMemctx);
 
 // Handle to a global view read scan.
 YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
+
+// Handle to a PgResultPB protobuf message.
+YB_DEFINE_YB_HANDLE_TYPE(PgResultPB);
 
 // Handle to a distributed trace span context.
 YB_DEFINE_HANDLE_TYPE(OtelSpanContext);
@@ -213,7 +223,9 @@ typedef enum {
 typedef enum {
   kLowerPriorityRange,
   kHigherPriorityRange,
-  kHighestPriority
+  kHighestPriority,
+  // Pre-empted by any conflicting transaction, whichever priority range it belongs to.
+  kLowestPriority
 } YbcTxnPriorityRequirement;
 
 // Single key column value for YBCGetTabletForKey (used by yb_get_tablet_for_key).
@@ -306,6 +318,10 @@ typedef struct YbcPgExecOutParamValue {
 #endif
 } YbcPgExecOutParamValue;
 
+// Value of a rowmark field when no row mark is set.  A sentinel outside
+// RowMarkType is needed because 0 is a valid value (ROW_MARK_EXCLUSIVE).
+#define YBC_NO_ROW_MARK (-1)
+
 // Structure to hold the execution-control parameters.
 typedef struct YbcPgExecParameters {
   // TODO(neil) Move forward_scan flag here.
@@ -331,7 +347,7 @@ typedef struct YbcPgExecParameters {
   uint64_t limit_count = 0;
   uint64_t limit_offset = 0;
   bool limit_use_default = true;
-  int rowmark = -1;
+  int rowmark = YBC_NO_ROW_MARK;
   // Cast these *_wait_policy fields to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
   // Please see the WaitPolicy enum in common.proto for details.
@@ -1093,17 +1109,6 @@ typedef struct {
   int (*comparator)(uint64_t datum1, bool isnull1, uint64_t datum2, bool isnull2, void *sortstate);
   void *sortstate;
 } YbcSortKey;
-
-typedef struct {
-  // We cannot use the PGresult symbol inside pggate because of circular dependency.
-  // So the response PB is stored in this uint8_t* and later converted to PGresult.
-  uint8_t* pgresult;
-  size_t pgresult_size;
-  // Human-readable error description when the remote query failed.
-  // NULL when the query succeeded. Owned by PgGlobalViewRead and valid
-  // until the next ExecScan call on the same handle.
-  const char* error_message;
-} YbcRemotePgExecResult;
 
 typedef struct YbcCloudInfo {
   const char *cloud;

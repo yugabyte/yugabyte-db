@@ -59,6 +59,7 @@ DECLARE_bool(xcluster_ddl_queue_enable_transactional_ddl);
 DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
+DECLARE_bool(xcluster_enable_target_applied_filter);
 DECLARE_bool(xcluster_target_manual_override);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 DECLARE_string(ysql_cron_database_name);
@@ -5525,6 +5526,177 @@ TEST_F(XClusterDDLReplicationTest, CreateMultiTabletTableDoesNotScheduleDuplicat
       },
       180s * kTimeMultiplier, "CREATE TABLE replicates to target"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
+// Tests for replicating index backfill writes from the source instead of rerunning the backfill
+// locally on the target, gated by the xcluster_use_target_applied_filter autoflag
+class XClusterDDLReplicationIndexBackfillTest : public XClusterDDLReplicationTest {
+ protected:
+  static constexpr auto kTableName = "idx_backfill_src";
+  static constexpr auto kIndexName = "idx_backfill_src_idx";
+  static constexpr auto kIndexName2 = "idx_backfill_src_idx2";
+  static constexpr auto kCol = "val";
+  static constexpr int kNumRows = 500;
+
+  Status CreateBaseTable() {
+    RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+        "CREATE TABLE $0(key int PRIMARY KEY, $1 int)", kTableName, kCol));
+    RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+        "INSERT INTO $0 SELECT i, i % 7 FROM generate_series(1, $1) AS i", kTableName, kNumRows));
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+    return VerifyWrittenRecords(std::vector<TableName>{kTableName});
+  }
+
+  // Verifies the new filter bit set on the index table's stream, both on the source
+  // SysCDCStreamEntryPB and mirrored onto the target's consumer registry cdc::StreamEntryPB.
+  void VerifyFilterTargetAppliedBit(bool expected, const std::string& index_name = kIndexName) {
+    auto producer_table = ASSERT_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", index_name));
+    master::ListCDCStreamsResponsePB stream_resp;
+    ASSERT_OK(GetCDCStreamForTable(producer_table.table_id(), &stream_resp));
+    ASSERT_EQ(stream_resp.streams_size(), 1);
+    EXPECT_EQ(stream_resp.streams(0).xcluster_use_target_applied_filter(), expected);
+
+    auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table.table_id()));
+    auto producer_map = ASSERT_RESULT(GetClusterConfig(consumer_cluster_))
+                            .consumer_registry().producer_map();
+    ASSERT_TRUE(ContainsKey(producer_map, kReplicationGroupId.ToString()));
+    const auto& stream_map = producer_map.at(kReplicationGroupId.ToString()).stream_map();
+    ASSERT_TRUE(ContainsKey(stream_map, stream_id.ToString()));
+    EXPECT_EQ(stream_map.at(stream_id.ToString()).xcluster_use_target_applied_filter(), expected);
+  }
+
+  std::string IndexCountStmt(const std::string& index_name = kIndexName) const {
+    return Format(
+        "/*+ IndexScan($0) */ SELECT COUNT(*) FROM $1 WHERE $2 >= 0", index_name, kTableName, kCol);
+  }
+
+  void VerifyIndex(const std::string& description, const std::string& index_name = kIndexName) {
+    const auto index_count_stmt = IndexCountStmt(index_name);
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> { return consumer_conn_->HasIndexScan(index_count_stmt); },
+        kTimeout, description));
+    ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(index_count_stmt)), kNumRows);
+    ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
+  }
+};
+
+// Base case, flag on, and index backfill replicated from source.
+TEST_F(XClusterDDLReplicationIndexBackfillTest, ReplicatedFromSource) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(CreateBaseTable());
+
+  StringWaiterLogSink source_checkpoint_skip_log(
+      "Skipping past-backfill checkpoint of xCluster stream");
+  StringWaiterLogSink target_defer_backfill_log(
+      "Skipping local index backfill for indexed_table");
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1($2 ASC)", kIndexName, kTableName, kCol));
+
+  // Verify target local backfill is skipped.
+  ASSERT_OK(source_checkpoint_skip_log.WaitFor(kTimeout));
+  ASSERT_OK(target_defer_backfill_log.WaitFor(kTimeout));
+  // Verify both producer and consumer are using the new filter.
+  VerifyFilterTargetAppliedBit(/*expected=*/true);
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  VerifyIndex("Replicated backfill index ready on consumer");
+
+  const auto full_scan = Format(
+      "/*+ IndexScan($0) */ SELECT key, $1 FROM $2 WHERE $1 >= 0 ORDER BY $1, key", kIndexName,
+      kCol, kTableName);
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(full_scan)),
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(full_scan)));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i % 7 FROM generate_series(501, 550) AS i", kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(IndexCountStmt())), 550);
+}
+
+// Flag off, so the target falls back to the legacy behavior of running its own local backfill.
+// Also verify changing the flag after the stream is created does not affect the backfill decision.
+TEST_F(XClusterDDLReplicationIndexBackfillTest, LegacyLocalBackfill) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_target_applied_filter) = false;
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(CreateBaseTable());
+
+  StringWaiterLogSink target_local_backfill_log(
+      "Using provided xcluster_backfill_hybrid_time");
+
+  // Pause the replication to the target, and the source creates the index's stream first
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1($2 ASC)", kIndexName, kTableName, kCol));
+
+  // Promote the flag after the stream already exists, which should not affect backfill decision.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_target_applied_filter) = true;
+
+  // Unblock the replication to the target and the target takes the local backfill path.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_OK(target_local_backfill_log.WaitFor(kTimeout));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  VerifyFilterTargetAppliedBit(/*expected=*/false);
+  VerifyIndex("Local-backfill index ready on consumer");
+
+  // New index should use the new setting.
+  StringWaiterLogSink source_checkpoint_skip_log(
+      "Skipping past-backfill checkpoint of xCluster stream");
+  StringWaiterLogSink target_defer_backfill_log(
+      "Skipping local index backfill for indexed_table");
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1($2 DESC)", kIndexName2, kTableName, kCol));
+
+  ASSERT_OK(source_checkpoint_skip_log.WaitFor(kTimeout));
+  ASSERT_OK(target_defer_backfill_log.WaitFor(kTimeout));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  VerifyFilterTargetAppliedBit(/*expected=*/true, kIndexName2);
+  VerifyIndex("Replicated-backfill index ready on consumer", kIndexName2);
+}
+
+// Ensure target must not finalize a replicated index backfill until the source's backfill writes
+// has actually been replicated.
+TEST_F(XClusterDDLReplicationIndexBackfillTest, TargetWaitsForReplicatedBackfill) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(CreateBaseTable());
+
+  // Pause the replication to the target, and the source creates the index first.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1($2 ASC)", kIndexName, kTableName, kCol));
+
+  // Lag only the index's tablets. The base table and ddl_queue keep replicating, so the target runs
+  // CREATE INDEX, but the index's backfill writes stay blocked.
+  auto index_table = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", kIndexName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> index_tablets;
+  ASSERT_OK(producer_client()->GetTabletsFromTableId(index_table.table_id(), 0, &index_tablets));
+  std::string index_tablet_filter;
+  for (const auto& tablet : index_tablets) {
+    if (!index_tablet_filter.empty()) {
+      index_tablet_filter += ",";
+    }
+    index_tablet_filter += tablet.tablet_id();
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = index_tablet_filter;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+
+  // The target blocks in AddTableToXClusterTargetTask waiting for the index's backfill writes.
+  StringWaiterLogSink target_wait_backfill_log("Waiting for xCluster safe time");
+  ASSERT_OK(target_wait_backfill_log.WaitFor(kTimeout));
+
+  // The index is not usable on the target while its backfill is still blocked.
+  ASSERT_FALSE(ASSERT_RESULT(consumer_conn_->HasIndexScan(IndexCountStmt())));
+
+  // Unblock the index's backfill writes; it catches up, is finalized, and is correct.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  VerifyFilterTargetAppliedBit(/*expected=*/true);
+  VerifyIndex("Replicated backfill index ready on consumer after backfill unblocked");
 }
 
 }  // namespace yb

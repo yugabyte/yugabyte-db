@@ -77,6 +77,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -124,6 +125,7 @@ public class Util {
 
   public static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
   public static final String YSQL_PASSWORD_KEYWORD = "PASSWORD";
+  public static final String REDACTED_YSQL_QUERY = "<YSQL query>";
   public static final String DEFAULT_YSQL_USERNAME = "yugabyte";
   public static final String DEFAULT_YSQL_PASSWORD = "yugabyte";
   public static final String DEFAULT_YSQL_ADMIN_ROLE_NAME = "yb_superuser";
@@ -155,6 +157,9 @@ public class Util {
   public static final String UNIVERSE_UUID = "universeUUID";
   public static final String SOURCE_UNIVERSE_UUID = "sourceUniverseUUID";
   public static final String TARGET_UNIVERSE_UUID = "targetUniverseUUID";
+  // Nested path into TaskInfo.taskParams used by the V2 task rollback authz to resolve the
+  // universe from a failed task (mirrors the V1 rollback @Resource path).
+  public static final String TASK_PARAMS_UNIVERSE_UUID = "taskParams.universeUUID";
 
   public static final String AVAILABLE_MEMORY = "MemAvailable";
 
@@ -864,15 +869,26 @@ public class Util {
     return "";
   }
 
+  /**
+   * Private IP from {@code node}, or from the on-disk universe row if the passed details have none.
+   * Returns {@code null} when unresolved (blank IP, or node already removed from universe details).
+   */
   public static String getNodeIp(Universe universe, NodeDetails node) {
-    String ip = null;
-    if (node.cloudInfo == null || node.cloudInfo.private_ip == null) {
-      NodeDetails onDiskNode = universe.getNode(node.nodeName);
-      ip = onDiskNode.cloudInfo.private_ip;
-    } else {
-      ip = node.cloudInfo.private_ip;
+    if (node != null
+        && node.cloudInfo != null
+        && StringUtils.isNotBlank(node.cloudInfo.private_ip)) {
+      return node.cloudInfo.private_ip;
     }
-    return ip;
+    if (universe == null || node == null || node.nodeName == null) {
+      return null;
+    }
+    NodeDetails onDiskNode = universe.getNode(node.nodeName);
+    if (onDiskNode != null
+        && onDiskNode.cloudInfo != null
+        && StringUtils.isNotBlank(onDiskNode.cloudInfo.private_ip)) {
+      return onDiskNode.cloudInfo.private_ip;
+    }
+    return null;
   }
 
   public static String getIpToUse(Universe universe, String nodeName, boolean cloudEnabled) {
@@ -1070,6 +1086,41 @@ public class Util {
               return cluster.getProviderCloudType(n) == expectedType;
             })
         .collect(Collectors.toSet());
+  }
+
+  /**
+   * Filling old fields from provider specifications if not present (for compatibility with old UI)
+   *
+   * @param userIntent
+   */
+  public static void fillIntentFromProviderSpecifications(UserIntent userIntent) {
+    if (userIntent == null) {
+      return;
+    }
+    if (userIntent.isMulticloudSupport() && userIntent.provider == null) {
+      // Filling with the first provider from the list.
+      UniverseDefinitionTaskParams.ProviderSpecification firstSpec =
+          userIntent.providerSpecifications.stream()
+              .sorted(Comparator.comparing(p -> p.getProviderUUID().toString()))
+              .findFirst()
+              .get();
+      firstSpec.validate(false);
+      userIntent.provider = firstSpec.getProviderUUID().toString();
+      userIntent.providerType = firstSpec.getProviderType();
+      userIntent.accessKeyCode = firstSpec.getAccessKeyCode();
+      userIntent.deviceInfo = userIntent.getBaseDeviceInfo(firstSpec.getProviderUUID());
+      userIntent.imageBundleUUID = firstSpec.getImageBundleUUID();
+      userIntent.instanceTags = new HashMap<>(firstSpec.getInstanceTags());
+      userIntent.awsArnString = firstSpec.getAwsInstanceProfile();
+      if (userIntent.dedicatedNodes) {
+        HierarchicalNodesSpec.NodeSpec masterSpecification =
+            firstSpec.getNodesSpecs().getMasterSpecification();
+        if (masterSpecification != null) {
+          userIntent.masterInstanceType = masterSpecification.getInstanceType();
+          userIntent.masterDeviceInfo = masterSpecification.getDeviceInfo();
+        }
+      }
+    }
   }
 
   /**

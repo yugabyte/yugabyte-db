@@ -143,7 +143,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       osPatchingEnabled ? cpuArch : null
     ],
     () => api.getInstanceTypes(provider?.uuid, zoneNames, osPatchingEnabled ? cpuArch : null),
-    { enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones }
+    { enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones, refetchOnWindowFocus: false }
   );
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);
 

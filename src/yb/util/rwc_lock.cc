@@ -32,6 +32,8 @@
 
 #include "yb/util/rwc_lock.h"
 
+#include <algorithm>
+
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/thread.h"
@@ -75,7 +77,7 @@ RWCLock::~RWCLock() {
   CHECK_EQ(reader_counter_.load(), 0);
 }
 
-void RWCLock::ReadLock() {
+bool RWCLock::DoReadLock(CoarseTimePoint deadline) {
   // We assume committing is very fast so we do not call ThreadRestrictions::AssertWaitAllowed()
   // here.
 #if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
@@ -87,26 +89,48 @@ void RWCLock::ReadLock() {
 #endif
   for (;;) {
     if (!(reader_counter_.fetch_add(1) & kCommitActive)) {
-      return;
+      return true;
     }
     if (!(reader_counter_.fetch_sub(1) & kCommitActive)) {
       continue;
     }
     std::unique_lock lock(commit_mutex_);
-    auto value = reader_counter_.load();
-    if (!(value & kCommitActive)) {
+    if (!(reader_counter_.load() & kCommitActive)) {
       continue;
     }
-    if (no_committer_.wait_for(lock, FLAGS_slow_rwc_lock_log_ms * 1ms) == std::cv_status::timeout) {
+
+    // wait for lock until it is time to log slow lock or until deadline
+    const auto slow_log_deadline = CoarseMonoClock::now() + FLAGS_slow_rwc_lock_log_ms * 1ms;
+    const auto first_deadline = std::min(deadline, slow_log_deadline);
+    if (no_committer_.wait_until(lock, first_deadline) == std::cv_status::timeout) {
+      if (deadline <= first_deadline) {
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+        --rwc_read_lock_counter;  // Balance the increment above; we did not acquire.
+#endif
+        return false;
+      }
       LOG(WARNING) << "Long time waiting for read lock due to committers holding lock";
       // Is the blocking lock eventually released?  If so, log so the reader knows that lock was not
       // held forever.
       auto start = CoarseMonoClock::now();
-      no_committer_.wait(lock);
-      MonoDelta passed = CoarseMonoClock::now() - start;
-      LOG(INFO) << "Committers no longer holding lock after " << passed;
+      // wait until actual deadline
+      if (no_committer_.wait_until(lock, deadline) == std::cv_status::timeout) {
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+        --rwc_read_lock_counter;  // Balance the increment above; we did not acquire.
+#endif
+        return false;
+      }
+      LOG(INFO) << "Committers no longer holding lock after " << (CoarseMonoClock::now() - start);
     }
   }
+}
+
+void RWCLock::ReadLock() {
+  DoReadLock(CoarseTimePoint::max());
+}
+
+bool RWCLock::ReadLock(CoarseTimePoint deadline) {
+  return DoReadLock(deadline);
 }
 
 #if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
@@ -148,12 +172,18 @@ bool RWCLock::DEBUG_HasWriteLock() const {
   return write_lock_holder_thread_id_ == Thread::CurrentThreadId();
 }
 
-void RWCLock::WriteLock() NO_THREAD_SAFETY_ANALYSIS {
+bool RWCLock::DoWriteLock(CoarseTimePoint deadline) NO_THREAD_SAFETY_ANALYSIS {
   ThreadRestrictions::AssertWaitAllowed();
 #if defined(THREAD_SANITIZER)
   write_mutex_.lock();
 #else
-  if (!write_mutex_.try_lock_for(1ms * FLAGS_slow_rwc_lock_log_ms)) {
+  const auto slow_log_deadline = CoarseMonoClock::now() + 1ms * FLAGS_slow_rwc_lock_log_ms;
+  const auto first_deadline = std::min(deadline, slow_log_deadline);
+  // wait until it is time to log slow lock or until actual deadline
+  if (!write_mutex_.try_lock_until(first_deadline)) {
+    if (deadline <= first_deadline) {
+      return false;
+    }
     {
       std::lock_guard lock(write_lock_holder_info_mutex_);
       std::string message =
@@ -170,10 +200,11 @@ void RWCLock::WriteLock() NO_THREAD_SAFETY_ANALYSIS {
       LOG(WARNING) << message;
     }
     auto start = CoarseMonoClock::now();
-    write_mutex_.lock();
+    if (!write_mutex_.try_lock_until(deadline)) {
+      return false;
+    }
     // Do we eventually get the lock?  If so, log so the reader knows lock was not held forever.
-    MonoDelta passed = CoarseMonoClock::now() - start;
-    LOG(INFO) << "Finally got write lock after additional " << passed;
+    LOG(INFO) << "Finally got write lock after additional " << (CoarseMonoClock::now() - start);
   }
 #endif
 
@@ -194,6 +225,15 @@ void RWCLock::WriteLock() NO_THREAD_SAFETY_ANALYSIS {
     }
   }
 #endif
+  return true;
+}
+
+void RWCLock::WriteLock() NO_THREAD_SAFETY_ANALYSIS {
+  DoWriteLock(CoarseTimePoint::max());
+}
+
+bool RWCLock::WriteLock(CoarseTimePoint deadline) NO_THREAD_SAFETY_ANALYSIS {
+  return DoWriteLock(deadline);
 }
 
 void RWCLock::WriteUnlock() NO_THREAD_SAFETY_ANALYSIS {

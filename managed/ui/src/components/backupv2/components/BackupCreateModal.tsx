@@ -757,10 +757,7 @@ function BackupConfigurationForm({
             onChange={(_: any, val: any) => {
               setFieldValue('db_to_backup', val);
               setFieldValue('backup_tables', Backup_Options_Type.ALL);
-              if (
-                values['api_type'].value === BACKUP_API_TYPES.YCQL ||
-                values['api_type'].value === BACKUP_API_TYPES.YEDIS
-              ) {
+              if (values['api_type'].value === BACKUP_API_TYPES.YCQL) {
                 setFieldValue('selected_ycql_tables', []);
                 //All keyspace selected
                 if (val.value === null) {
@@ -772,8 +769,7 @@ function BackupConfigurationForm({
           />
         </Col>
       </Row>
-      {(values['api_type'].value === BACKUP_API_TYPES.YCQL ||
-        values['api_type'].value === BACKUP_API_TYPES.YEDIS) && (
+      {values['api_type'].value === BACKUP_API_TYPES.YCQL && (
         <Row>
           <Col lg={12} className="no-padding">
             {TABLE_BACKUP_OPTIONS.map((target) => (

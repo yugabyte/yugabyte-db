@@ -666,12 +666,6 @@
         },
         {
           "properties" : {
-            "apiKey" : {
-              "description" : "API key",
-              "maxLength" : 2147483647,
-              "minLength" : 1,
-              "type" : "string"
-            },
             "routingKey" : {
               "description" : "Routing key",
               "maxLength" : 2147483647,
@@ -680,7 +674,6 @@
             }
           },
           "required" : [
-            "apiKey",
             "routingKey"
           ],
           "type" : "object"
@@ -2617,6 +2610,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -2944,6 +2938,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -4067,6 +4063,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
@@ -4521,6 +4518,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
@@ -5517,6 +5515,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -5844,6 +5843,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -6283,7 +6284,8 @@
             "DATE",
             "TIME",
             "JSONB",
-            "USER_DEFINED_TYPE"
+            "USER_DEFINED_TYPE",
+            "VECTOR"
           ],
           "type" : "string"
         },
@@ -6325,7 +6327,8 @@
             "DATE",
             "TIME",
             "JSONB",
-            "USER_DEFINED_TYPE"
+            "USER_DEFINED_TYPE",
+            "VECTOR"
           ],
           "type" : "string"
         },
@@ -6354,7 +6357,8 @@
             "DATE",
             "TIME",
             "JSONB",
-            "USER_DEFINED_TYPE"
+            "USER_DEFINED_TYPE",
+            "VECTOR"
           ],
           "type" : "string"
         }
@@ -6611,7 +6615,17 @@
         "serverCert" : {
           "type" : "string"
         },
+        "serverCertExpirySecs" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
         "serverKey" : {
+          "type" : "string"
+        },
+        "signerPrivateKey" : {
+          "type" : "string"
+        },
+        "signerPublicKey" : {
           "type" : "string"
         }
       },
@@ -6620,7 +6634,10 @@
         "compressor",
         "offloadable",
         "serverCert",
-        "serverKey"
+        "serverCertExpirySecs",
+        "serverKey",
+        "signerPrivateKey",
+        "signerPublicKey"
       ],
       "type" : "object"
     },
@@ -8661,6 +8678,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -8988,6 +9006,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -9492,6 +9512,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -9819,6 +9840,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -11030,6 +11053,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -11357,6 +11381,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -11774,6 +11800,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -12101,6 +12128,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -13074,6 +13103,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
@@ -14428,6 +14458,10 @@
     },
     "OCIRegionCloudInfo" : {
       "properties" : {
+        "instanceTemplate" : {
+          "type" : "string",
+          "description" : "The OCI Instance Configuration OCID to use for nodes created in this region."
+        },
         "vnet" : {
           "type" : "string"
         }
@@ -16563,6 +16597,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -16890,6 +16925,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -17261,6 +17298,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -17588,6 +17626,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -18344,6 +18384,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -18671,6 +18712,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -19198,6 +19241,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -19525,6 +19569,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -20750,6 +20796,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -21077,6 +21124,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -21440,6 +21489,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -21767,6 +21817,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -21868,6 +21920,7 @@
               "DeletePitrConfig",
               "RestoreSnapshotSchedule",
               "EditUniverse",
+              "RollbackEditUniverse",
               "EditKubernetesUniverse",
               "ExternalScript",
               "ImportIntoTable",
@@ -22195,6 +22248,8 @@
               "UpdateConsistencyCheck",
               "FreezeUniverse",
               "MarkRollbackUnsafe",
+              "RestoreUniverseDetailsFromDelta",
+              "ConfirmEditRollbackMembership",
               "QueryLdapServer",
               "DbLdapSync",
               "CheckForClusterServers",
@@ -22379,6 +22434,11 @@
           ],
           "type" : "string"
         },
+        "isKubernetesOperatorControlled" : {
+          "description" : "True if this schedule is controlled by the Kubernetes operator",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "nextExpectedTask" : {
           "description" : "Next expected task time",
           "example" : "2022-12-12T13:07:18Z",
@@ -22445,6 +22505,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -22772,6 +22833,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -23235,6 +23298,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -23562,6 +23626,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -24405,6 +24471,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -24732,6 +24799,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -25236,6 +25305,7 @@
               "SoftwareUpgradeYB",
               "FinalizeUpgrade",
               "RollbackUpgrade",
+              "RollbackEditUniverse",
               "GFlagsUpgrade",
               "KubernetesOverridesUpgrade",
               "EditKubernetesUniverse",
@@ -25750,6 +25820,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -26077,6 +26148,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -26447,6 +26520,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -26774,6 +26848,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -27285,6 +27361,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -27612,6 +27689,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -27947,6 +28026,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -28274,6 +28354,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -28609,6 +28691,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -28936,6 +29019,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -29787,6 +29872,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -30114,6 +30200,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -30946,6 +31034,7 @@
             "DeletePitrConfig",
             "RestoreSnapshotSchedule",
             "EditUniverse",
+            "RollbackEditUniverse",
             "EditKubernetesUniverse",
             "ExternalScript",
             "ImportIntoTable",
@@ -31273,6 +31362,8 @@
             "UpdateConsistencyCheck",
             "FreezeUniverse",
             "MarkRollbackUnsafe",
+            "RestoreUniverseDetailsFromDelta",
+            "ConfirmEditRollbackMembership",
             "QueryLdapServer",
             "DbLdapSync",
             "CheckForClusterServers",
@@ -43267,6 +43358,15 @@
             "name" : "uniUUID",
             "required" : true,
             "type" : "string"
+          },
+          {
+            "default" : 10,
+            "description" : "Maximum number of most recent health check entries to return. Defaults to 10.",
+            "format" : "int32",
+            "in" : "query",
+            "name" : "limit",
+            "required" : false,
+            "type" : "integer"
           }
         ],
         "responses" : {

@@ -890,6 +890,7 @@ class ShardedLRUCache : public Cache {
   uint64_t last_id_;
   size_t num_shard_bits_;
   size_t capacity_;
+  size_t space_consumed_ = 0;
   bool strict_capacity_limit_;
   shared_ptr<yb::CacheMetrics> metrics_;
 
@@ -937,19 +938,26 @@ class ShardedLRUCache : public Cache {
     capacity_ = capacity;
   }
 
-  void ConsumeSpace(size_t bytes) override {
+  yb::Result<bool> ConsumeSpace(size_t bytes, ReservationMode mode) override {
     int num_shards = 1 << num_shard_bits_;
     const size_t per_shard = (bytes + (num_shards - 1)) / num_shards;
     MutexLock l(&capacity_mutex_);
+    const bool within_capacity = bytes <= capacity_ - std::min(capacity_, space_consumed_);
+    if (!within_capacity && mode == ReservationMode::kStrict) {
+      return STATUS(TryAgain, "Block cache reservation would exceed capacity");
+    }
+    space_consumed_ += bytes;
     for (int s = 0; s < num_shards; s++) {
       shards_[s].ConsumeSpace(per_shard);
     }
+    return within_capacity;
   }
 
   void ReleaseSpace(size_t bytes) override {
     int num_shards = 1 << num_shard_bits_;
     const size_t per_shard = (bytes + (num_shards - 1)) / num_shards;
     MutexLock l(&capacity_mutex_);
+    space_consumed_ = space_consumed_ > bytes ? space_consumed_ - bytes : 0;
     for (int s = 0; s < num_shards; s++) {
       shards_[s].ReleaseSpace(per_shard);
     }

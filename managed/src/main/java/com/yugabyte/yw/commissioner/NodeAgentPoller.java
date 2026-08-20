@@ -33,7 +33,6 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -210,18 +209,18 @@ public class NodeAgentPoller {
       // it is very rare because this happens if YBA has not been upgraded for almost a year and
       // every API call first checks if node agent needs an upgrade and waits if an upgrade is
       // currently running.
-      Date expiresAt = nodeAgent.getServerCertExpiry();
-      Duration duration = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerCertExpiryNotice);
-      boolean expiring =
-          Instant.now()
-              .plus(duration.getSeconds(), ChronoUnit.SECONDS)
-              .isAfter(nodeAgent.getServerCertExpiry().toInstant());
-      publishMetric(nodeAgent, NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE, expiring ? 0 : 1);
-      if (expiring) {
-        log.debug("Node agent server cert is expiring soon on {}", expiresAt);
-        return true;
+      boolean expiring = false;
+      long expiresAt = nodeAgent.getServerCertExpirySecs();
+      if (expiresAt > 0) {
+        Duration duration =
+            confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerCertExpiryNotice);
+        expiring = expiresAt < Instant.now().plus(duration).getEpochSecond();
+        publishMetric(nodeAgent, NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE, expiring ? 0 : 1);
+        if (expiring) {
+          log.debug("Node agent server cert is expiring soon on {}", expiresAt);
+        }
       }
-      return false;
+      return expiring;
     }
 
     @VisibleForTesting

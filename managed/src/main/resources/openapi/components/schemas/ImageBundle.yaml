@@ -3,7 +3,7 @@ description: |
   Image bundle for a provider.
 
   Contains the user-provided `spec` and system-generated `info`.
-  Returned as response payload for image bundle list APIs.
+  Returned as response payload for image bundle APIs.
 type: object
 properties:
   spec:

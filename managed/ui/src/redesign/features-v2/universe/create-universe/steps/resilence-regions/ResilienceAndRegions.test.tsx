@@ -44,6 +44,21 @@ vi.mock('@app/redesign/assets/map.svg', () => ({ default: () => null }));
 vi.mock('@app/redesign/assets/map_selected.svg', () => ({ default: () => null }));
 vi.mock('@app/redesign/assets/flash_transparent.svg', () => ({ default: () => null }));
 
+// Onboarding tip auto-opens and needs YB theme (palette.purple); out of scope for these unit tests.
+vi.mock(
+  '@app/redesign/features-v2/onboarding/universe-revamp/popovers/GuidedExpertModePopover',
+  () => ({
+    GuidedExpertModePopover: () => null,
+    useGuidedExpertModePopover: () => ({
+      open: false,
+      anchorRef: { current: null },
+      handleOpen: () => undefined,
+      handleClose: () => undefined,
+      handleClickAway: () => undefined
+    })
+  })
+);
+
 const mockMoveToNextPage = vi.fn();
 const mockSaveResilienceAndRegionsSettings = vi.fn();
 const mockSaveNodesAvailabilitySettings = vi.fn();
@@ -74,13 +89,8 @@ function makeRegion(code: string, zoneCount = 0): RegionLike {
 }
 
 /** Build N regions; optionally each with zonesPerRegion zones (for AZ_LEVEL). */
-function makeRegions(
-  count: number,
-  zonesPerRegion: number = 0
-): RegionLike[] {
-  return Array.from({ length: count }, (_, i) =>
-    makeRegion(`r${i}`, zonesPerRegion)
-  );
+function makeRegions(count: number, zonesPerRegion: number = 0): RegionLike[] {
+  return Array.from({ length: count }, (_, i) => makeRegion(`r${i}`, zonesPerRegion));
 }
 
 /** Regions with total AZ count = totalZones (one region with that many zones). */
@@ -116,10 +126,8 @@ function getContextValue(overrides?: {
     {
       ...methods,
       moveToNextPage: () => mockMoveToNextPage(),
-      saveResilienceAndRegionsSettings: (data: any) =>
-        mockSaveResilienceAndRegionsSettings(data),
-      saveNodesAvailabilitySettings: (data: any) =>
-        mockSaveNodesAvailabilitySettings(data),
+      saveResilienceAndRegionsSettings: (data: any) => mockSaveResilienceAndRegionsSettings(data),
+      saveNodesAvailabilitySettings: (data: any) => mockSaveNodesAvailabilitySettings(data),
       moveToPreviousPage: () => mockMoveToPreviousPage(),
       setResilienceType: (t: ResilienceType) => mockSetResilienceType(t)
     }
@@ -654,7 +662,10 @@ describe('ResilienceAndRegions', () => {
     });
 
     it.each([
-      ['rf', (ref: { setValue: (n: string, v: unknown) => void }) => ref.setValue(RESILIENCE_FACTOR, 2)],
+      [
+        'rf',
+        (ref: { setValue: (n: string, v: unknown) => void }) => ref.setValue(RESILIENCE_FACTOR, 2)
+      ],
       [
         'regions',
         (ref: { setValue: (n: string, v: unknown) => void }) =>

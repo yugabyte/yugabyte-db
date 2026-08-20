@@ -49,6 +49,7 @@
 #include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
 #include "commands/yb_tablegroup.h"
+#include "lib/qunique.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -64,6 +65,7 @@
 #include "utils/elog.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/resowner_private.h"
 #include "utils/selfuncs.h"
@@ -315,7 +317,8 @@ ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum,
 										 attcollation, NULL);
 
 	int			total_num_values = nvalues + (bind_to_null ? 1 : 0);
-	YbcPgExpr	ybc_exprs[total_num_values];	/* VLA - scratch space */
+	Assert(total_num_values > 0);
+	YbcPgExpr  *ybc_exprs = palloc(sizeof(YbcPgExpr) * total_num_values);
 
 	/* First, create expr for non-null values. */
 	for (int i = 0; i < nvalues; i++)
@@ -330,6 +333,7 @@ ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum,
 
 	HandleYBStatus(YBCPgDmlBindColumnCondIn(ybScan->handle, colref,
 											total_num_values, ybc_exprs));
+	pfree(ybc_exprs);
 }
 
 /*
@@ -344,7 +348,7 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 					   Datum *values)
 {
 	Assert(nvalues > 0);
-	YbcPgExpr	ybc_rhs_exprs[nvalues];
+	YbcPgExpr  *ybc_rhs_exprs = palloc(sizeof(YbcPgExpr) * nvalues);
 	YbcPgExpr	ybc_elems_exprs[n_attnum_values];	/* VLA - scratch space */
 	Oid			tupType =
 		HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(values[0]));
@@ -399,6 +403,7 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 
 	HandleYBStatus(YBCPgDmlBindColumnCondIn(ybScan->handle, lhs, nvalues,
 											ybc_rhs_exprs));
+	pfree(ybc_rhs_exprs);
 
 	ReleaseTupleDesc(tupdesc);
 }
@@ -524,6 +529,15 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 		/* Need to execute the request */
 		if (!ybScan->is_exec_done)
 		{
+			/*
+			 * The caller may run this fetch under a short-lived (e.g.
+			 * per-tuple) memory context.  Request setup happens once per
+			 * scan (or parallel range), not once per tuple, so run it in
+			 * the scan's own context.
+			 */
+			MemoryContext oldcxt =
+				MemoryContextSwitchTo(GetMemoryChunkContext(ybScan));
+
 			/* Parallel mode: pick up parallel block first */
 			if (ybScan->pscan != NULL)
 			{
@@ -552,7 +566,10 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 						pfree((void *) high_bound);
 				}
 				else
+				{
+					MemoryContextSwitchTo(oldcxt);
 					return NULL;
+				}
 				/*
 				 * Use unlimited fetch.
 				 * Parallel scan range is already of limited size, it is
@@ -571,6 +588,7 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 			HandleYBStatus(YBCPgExecSelect(ybScan->handle,
 										   ybScan->exec_params));
 			ybScan->is_exec_done = true;
+			MemoryContextSwitchTo(oldcxt);
 		}
 
 		/* Fetch one row. */
@@ -660,6 +678,15 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 		/* Need to execute the request */
 		if (!ybScan->is_exec_done)
 		{
+			/*
+			 * The caller may run this fetch under a short-lived (e.g.
+			 * per-tuple) memory context.  Request setup happens once per
+			 * scan (or parallel range), not once per tuple, so run it in
+			 * the scan's own context.
+			 */
+			MemoryContext oldcxt =
+				MemoryContextSwitchTo(GetMemoryChunkContext(ybScan));
+
 			/* Parallel mode: pick up parallel block first */
 			if (ybScan->pscan != NULL)
 			{
@@ -688,7 +715,10 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 						pfree((void *) high_bound);
 				}
 				else
+				{
+					MemoryContextSwitchTo(oldcxt);
 					return NULL;
+				}
 				/*
 				 * Use unlimited fetch.
 				 * Parallel scan range is already of limited size, it is
@@ -707,6 +737,7 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 			HandleYBStatus(YBCPgExecSelect(ybScan->handle,
 										   ybScan->exec_params));
 			ybScan->is_exec_done = true;
+			MemoryContextSwitchTo(oldcxt);
 		}
 
 		/* Fetch one row. */
@@ -1299,18 +1330,25 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	}
 
 	/*
-	 * If hash key is not fully set and ybctid is not set either, we must do a
-	 * full-table scan so clear all the scan keys if the hash code was
-	 * explicitly specified as a scan key then we also shouldn't be clearing the
-	 * scan keys.
+	 * TODO(#30756): currently, conditions on hash keys are all or nothing:
+	 * either all hash keys have a condition bound or none of them.
 	 */
-	if (ybScan->hash_code_keys == NIL &&
-		!bms_is_subset(scan_plan->hash_key_cols,
-					   scan_plan->qualified_scan_key_cols) &&
-		!qualified_scan_key_cols_has_ybctid)
+	if (!bms_is_subset(scan_plan->hash_key_cols,
+					   scan_plan->qualified_scan_key_cols))
 	{
-		bms_free(scan_plan->qualified_scan_key_cols);
-		scan_plan->qualified_scan_key_cols = NULL;
+		/* TODO(#11881): delete only hash key cols in all cases. */
+		if (ybScan->hash_code_keys != NIL ||
+			qualified_scan_key_cols_has_ybctid)
+		{
+			scan_plan->qualified_scan_key_cols =
+				bms_del_members(scan_plan->qualified_scan_key_cols,
+								scan_plan->hash_key_cols);
+		}
+		else
+		{
+			bms_free(scan_plan->qualified_scan_key_cols);
+			scan_plan->qualified_scan_key_cols = NULL;
+		}
 	}
 }
 
@@ -1739,6 +1777,27 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 
 		if (strategy != BTEqualStrategyNumber && asc != is_direction_asc)
 			break;
+
+		/*
+		 * The pushed-down subkey bound constant is re-encoded using the index
+		 * column's type (see YBCNewConstant below).  A cross-type comparison
+		 * whose argument does not fit that column type (e.g. an out-of-int4
+		 * range int8 constant against an int4 column) would be silently
+		 * truncated, producing a wrong bound for the DocDB scan.
+		 * This mirrors the YbCheckScanTypes guard applied to scalar keys.
+		 */
+		{
+			AttrNumber	attnum =
+				scan_plan->bind_key_attnums[skey_index + 1 + pushdown_subkey_count];
+			Oid			col_typid =
+				ybc_get_atttypid(scan_plan->bind_desc, attnum);
+
+			if (OidIsValid(key->sk_subtype) &&
+				!YbIsScanCompatible(col_typid, key->sk_subtype,
+									true /* is_value_scalar */ ,
+									key->sk_argument))
+				break;
+		}
 	}
 
 	bool		needs_recheck = true;
@@ -1926,6 +1985,45 @@ ybIsValueInArray(Datum value, ScanKey saop_key, Datum array_const)
 	return found;
 }
 
+typedef struct
+{
+	FmgrInfo   *cmp_fn;
+	Oid			collation;
+} YbSortArrayContext;
+
+/* qsort_arg comparator for ybSortAndUniqArrayElements */
+static int
+ybCompareArrayElements(const void *a, const void *b, void *arg)
+{
+	Datum		da = *((const Datum *) a);
+	Datum		db = *((const Datum *) b);
+	YbSortArrayContext *cxt = (YbSortArrayContext *) arg;
+
+	return DatumGetInt32(FunctionCall2Coll(cxt->cmp_fn,
+										   cxt->collation,
+										   da, db));
+}
+
+/*
+ * Sort array elements ascending and eliminate duplicates.  Returns the
+ * resulting number of elements.  Based on _bt_sort_array_elements.
+ */
+static int
+ybSortAndUniqArrayElements(Datum *elems, int nelems,
+						   FmgrInfo *cmp_fn, Oid collation)
+{
+	YbSortArrayContext cxt;
+
+	if (nelems <= 1)
+		return nelems;			/* no work to do */
+
+	cxt.cmp_fn = cmp_fn;
+	cxt.collation = collation;
+	qsort_arg(elems, nelems, sizeof(Datum), ybCompareArrayElements, &cxt);
+	return qunique_arg(elems, nelems, sizeof(Datum),
+					   ybCompareArrayElements, &cxt);
+}
+
 /*
  * Given an array, cull it by removing unsatisfiable and duplicate elements.
  *
@@ -1936,9 +2034,10 @@ ybIsValueInArray(Datum value, ScanKey saop_key, Datum array_const)
  * - culled_num_elems: culled array size
  *
  * Notable params:
- * - fold_state: accumulated bounds and saop indices used to truncate
- *   and merge SAOP element arrays. NULL when the key is a row array,
- *   or if there were no accumulated fold information.
+ * - cmp_fn: element comparator.  Must be valid.
+ * - fold_state: accumulated bounds and saop indices used to truncate and merge
+ *   SAOP element arrays.  NULL when the key is a row array, or if there were
+ *   no accumulated fold information.
  *
  * Returns false if the array is culled to zero elements and NULL is not bound.
  * Caller is still expected to pfree culled_elem_values in this case.
@@ -1947,7 +2046,7 @@ static bool
 YbCullArray(ArrayType *arrayval,
 			ScanKey key,
 			TupleDesc bind_desc,
-			Relation index,
+			FmgrInfo *cmp_fn,
 			bool is_row,
 			int row_nkeys, AttrNumber *row_attnums,
 			Oid scalar_col_typid, Oid scalar_val_typid,
@@ -2081,20 +2180,17 @@ YbCullArray(ArrayType *arrayval,
 	if (num_valid == 0 && !(!is_row && *scalar_null_bound))
 		return false;
 
-	/* Build temporary vars */
-	IndexScanDescData tmp_scan_desc;
-
-	memset(&tmp_scan_desc, 0, sizeof(IndexScanDescData));
-	tmp_scan_desc.indexRelation = index;
-
 	/*
-	 * Sort the non-null elements and eliminate any duplicates.  We must
-	 * sort in the same ordering used by the index column, so that the
-	 * successive primitive indexscans produce data in index order.
+	 * Sort the non-null elements and eliminate any duplicates.  A scalar IN
+	 * bind reaches DocDB's scan options as given, and DocDB requires those
+	 * sorted and duplicate-free.  The caller's intersection also requires all
+	 * arrays in the same order.  Sort ascending whatever the column's ASC or
+	 * DESC sorting type is, since DocDB derives the physical option order
+	 * itself from that sorting type and the scan direction.
 	 */
-	*culled_num_elems = _bt_sort_array_elements(&tmp_scan_desc, key,
-												false,	/* reverse */
-												elem_values, num_valid);
+	*culled_num_elems = ybSortAndUniqArrayElements(elem_values, num_valid,
+												   cmp_fn,
+												   key->sk_collation);
 
 	return true;
 }
@@ -2111,9 +2207,9 @@ YbCullArray(ArrayType *arrayval,
  *
  * Notable params:
  * - skey_index: the scan key index we are focusing on
- * - fold_state: accumulated bounds and saop indices used to truncate
- *   and merge SAOP element arrays. NULL when the key is a row array,
- *   or if there were no accumulated fold information.
+ * - fold_state: accumulated bounds and saop indices used to truncate and merge
+ *   SAOP element arrays.  NULL when the key is a row array, or if there were
+ *   no accumulated fold information.
  */
 static void
 YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
@@ -2187,6 +2283,31 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 		is_column_bound[YBAttnumToBmsIndex(relation, scalar_attnum)] = true;
 	}
 
+	/*
+	 * Resolve the element comparator once for this key: the per-array sort in
+	 * YbCullArray and the SAOP intersection below must use the same ordering.
+	 * Key it off the element type (sk_subtype) instead of the index opfamily
+	 * because DocDB needs the array in the order its own key encoding induces,
+	 * and that encoding follows the type, the column collation (which index
+	 * collation matching keeps equal to sk_collation), and the column's
+	 * sorting type, with no notion of opclasses.
+	 */
+	TypeCacheEntry *typentry = lookup_type_cache(key->sk_subtype,
+												 TYPECACHE_CMP_PROC_FINFO);
+	FmgrInfo   *cmp_fn = &typentry->cmp_proc_finfo;
+
+	/*
+	 * A type with no default comparator leaves cmp_fn invalid.  Such a key is
+	 * recheck-only: its arrays cannot be sorted for binding nor intersected,
+	 * so bind nothing and let recheck enforce the whole condition.  This is
+	 * decided before the precheck return, so precheck and execution agree.
+	 */
+	if (!OidIsValid(cmp_fn->fn_oid))
+	{
+		ybScan->needs_recheck = true;
+		return;
+	}
+
 	if (is_for_precheck)
 		return;
 
@@ -2195,7 +2316,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	if (!YbCullArray(arrayval,
 					 key,
 					 scan_plan->bind_desc,
-					 ybScan->index,
+					 cmp_fn,
 					 is_row,
 					 row_nkeys, row_attnums,
 					 scalar_col_typid, scalar_val_typid,
@@ -2217,75 +2338,49 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	 */
 	if (!is_row && fold_state != NULL && fold_state->saop_count > 1)
 	{
-		FmgrInfo   *cmp_fn = NULL;
-		Oid			cmp_collation = key->sk_collation;
-		TypeCacheEntry *typentry;
-
-		typentry = lookup_type_cache(key->sk_subtype,
-									 TYPECACHE_BTREE_OPFAMILY);
-		if (OidIsValid(typentry->btree_opf))
+		for (int j = 0; j < fold_state->saop_count - 1 && num_elems > 0; j++)
 		{
-			Oid			cmp_proc;
+			ScanKey		fold_key = ybScan->keys[fold_state->saop_extra_idxs[j]];
+			ArrayType  *fold_arrayval;
+			int			fold_nelems;
+			Datum	   *fold_elems;
+			bool		fold_null = false;
 
-			cmp_proc = get_opfamily_proc(typentry->btree_opf,
-										 typentry->btree_opintype,
-										 typentry->btree_opintype,
-										 BTORDER_PROC);
-			if (OidIsValid(cmp_proc))
-			{
-				cmp_fn = (FmgrInfo *) palloc0(sizeof(FmgrInfo));
-				fmgr_info(cmp_proc, cmp_fn);
-			}
-		}
+			fold_arrayval = DatumGetArrayTypeP(YbGetArrayConst(&fold_key));
 
-		if (cmp_fn)
-		{
-			for (int j = 0; j < fold_state->saop_count - 1 && num_elems > 0; j++)
-			{
-				ScanKey		fold_key = ybScan->keys[fold_state->saop_extra_idxs[j]];
-				ArrayType  *fold_arrayval;
-				int			fold_nelems;
-				Datum	   *fold_elems;
-				bool		fold_null;
-
-				fold_arrayval = DatumGetArrayTypeP(YbGetArrayConst(&fold_key));
-
-				if (!YbCullArray(fold_arrayval,
-								 fold_key,
-								 scan_plan->bind_desc,
-								 ybScan->index,
-								 false,
-								 0, NULL,
-								 scalar_col_typid, scalar_val_typid,
-								 fold_state,
-								 &fold_null,
-								 &fold_elems,
-								 &fold_nelems))
-				{
-					*bail_out = true;
-					pfree(elem_values);
-					pfree(fold_elems);
-					return;
-				}
-
-				num_elems = ybIntersectSortedArrays(elem_values,
-													num_elems,
-													fold_elems,
-													fold_nelems,
-													cmp_fn,
-													cmp_collation);
-
-				pfree(fold_elems);
-			}
-
-			pfree(cmp_fn);
-
-			if (num_elems == 0)
+			if (!YbCullArray(fold_arrayval,
+							 fold_key,
+							 scan_plan->bind_desc,
+							 cmp_fn,
+							 false,
+							 0, NULL,
+							 scalar_col_typid, scalar_val_typid,
+							 fold_state,
+							 &fold_null,
+							 &fold_elems,
+							 &fold_nelems))
 			{
 				*bail_out = true;
 				pfree(elem_values);
+				pfree(fold_elems);
 				return;
 			}
+
+			num_elems = ybIntersectSortedArrays(elem_values,
+												num_elems,
+												fold_elems,
+												fold_nelems,
+												cmp_fn,
+												key->sk_collation);
+
+			pfree(fold_elems);
+		}
+
+		if (num_elems == 0)
+		{
+			*bail_out = true;
+			pfree(elem_values);
+			return;
 		}
 	}
 
@@ -5221,7 +5316,7 @@ ybBeginSample(Relation rel, int targrows)
 
 	ybSample->exec_params.yb_fetch_row_limit = yb_fetch_row_limit;
 	ybSample->exec_params.yb_fetch_size_limit = yb_fetch_size_limit;
-	ybSample->exec_params.rowmark = -1;
+	ybSample->exec_params.rowmark = YBC_NO_ROW_MARK;
 
 	return ybSample;
 }

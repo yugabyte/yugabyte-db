@@ -845,6 +845,11 @@ class ExternalTabletServer : public ExternalDaemon {
 
   Status SetNumDrives(uint16_t num_drives);
 
+  // In addition to stopping the tablet server, waits for its postgres child to exit.
+  void Shutdown(
+      SafeShutdown safe_shutdown = SafeShutdown::kFalse,
+      RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse) override;
+
   // IP addresses to bind to.
   const std::string& bind_host() const {
     return bind_host_;

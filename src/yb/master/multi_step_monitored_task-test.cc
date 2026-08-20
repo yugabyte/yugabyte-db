@@ -11,12 +11,19 @@
 // under the License.
 //
 
+#include <atomic>
+#include <future>
+#include <thread>
+
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
 #include "yb/master/catalog_entity_base.h"
 #include "yb/master/multi_step_monitored_task.h"
 #include "yb/master/tasks_tracker.h"
+#include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/rpc/messenger.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
@@ -170,6 +177,137 @@ TEST(CatalogEntityTaskTest, TestEpochChanges) {
   ASSERT_FALSE(catalog_entity.HasTasks());
   ASSERT_EQ(catalog_entity.NumTasks(), 0);
   ASSERT_EQ(catalog_entity.HasTasks(kTaskType), 0);
+}
+
+// Mirrors the shape of NamespaceVerificationTask and TableSchemaVerificationTask.
+class PollTransactionStatusTestTask : public MultiStepCatalogEntityTask,
+                                      public PollTransactionStatusBase {
+ public:
+  PollTransactionStatusTestTask(
+      CatalogEntityWithTasks& catalog_entity, ThreadPool& async_task_pool,
+      rpc::Messenger& messenger, const LeaderEpoch& epoch,
+      std::shared_future<client::YBClient*> client_future)
+      : MultiStepCatalogEntityTask(
+            [](const LeaderEpoch&) { return Status::OK(); }, async_task_pool, messenger,
+            catalog_entity, epoch),
+        PollTransactionStatusBase(TransactionMetadata(), std::move(client_future), "test task") {}
+
+  ~PollTransactionStatusTestTask() = default;
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::TableSchemaVerification;
+  }
+
+  std::string type_name() const override { return "Poll transaction status test task"; }
+
+  std::string description() const override { return "Poll transaction status test task"; }
+
+  Status poll_step_status_;
+
+ private:
+  Status FirstStep() override {
+    ScheduleNextStep(std::bind(&PollTransactionStatusTestTask::PollStep, this), "poll step");
+    return Status::OK();
+  }
+
+  // Runs while holding step_execution_mutex_, which is the mutex AbortAndReturnPrevState waits on.
+  Status PollStep() {
+    TEST_SYNC_POINT("PollTransactionStatusTestTask::PollStepEntered");
+    TEST_SYNC_POINT("PollTransactionStatusTestTask::ResumePollStep");
+    poll_step_status_ = VerifyTransaction();
+    return poll_step_status_;
+  }
+
+  // AbortAndReturnPrevState invokes it.
+  void PerformAbort() override {
+    MultiStepCatalogEntityTask::PerformAbort();
+    Shutdown();
+    TEST_SYNC_POINT("PollTransactionStatusTestTask::PerformAbortDone");
+  }
+
+  void TaskCompleted(const Status& status) override {
+    MultiStepCatalogEntityTask::TaskCompleted(status);
+    Shutdown();
+  }
+
+  // Only reachable from the RPC callback, which never fires in this test.
+  void TransactionPending() override {}
+  void FinishPollTransaction(bool aborted) override {}
+};
+
+// Aborting a task while one of its steps is polling the transaction status must not strand the
+// task's Synchronizer signal.
+TEST(CatalogEntityTaskTest, TestAbortWithInFlightTransactionPoll) {
+  google::SetVLOGLevel("multi_step*", 4);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  yb::SyncPoint::GetInstance()->LoadDependency(
+      {{"PollTransactionStatusTestTask::PollStepEntered", "Test::ReachedPollStep"},
+       {"PollTransactionStatusTestTask::PerformAbortDone",
+        "PollTransactionStatusTestTask::ResumePollStep"}});
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  std::shared_ptr<ThreadPool> thread_pool;
+  {
+    std::unique_ptr<ThreadPool> thread_pool_holder;
+    ThreadPoolBuilder thread_pool_builder("Test");
+    ASSERT_OK(thread_pool_builder.Build(&thread_pool_holder));
+    thread_pool = std::move(thread_pool_holder);
+  }
+
+  rpc::MessengerBuilder messenger_builder("Test");
+  std::shared_ptr<rpc::Messenger> messenger(ASSERT_RESULT(messenger_builder.Build()).release());
+
+  auto catalog_entity = std::make_shared<CatalogEntityWithTasksMock>();
+
+  auto client = std::make_shared<client::MockYBClient>();
+  std::promise<client::YBClient*> client_promise;
+  client_promise.set_value(client.get());
+
+  auto task = std::make_shared<PollTransactionStatusTestTask>(
+      *catalog_entity, *thread_pool, *messenger, LeaderEpoch(1, 1),
+      client_promise.get_future().share());
+  task->Start();
+
+  // Wait until the poll step is running and holding step_execution_mutex_.
+  TEST_SYNC_POINT("Test::ReachedPollStep");
+
+  // At this point, the poll thread is parked on the sync point, ResumePollStep.
+  // We are going to start an abort thread, which will call AbortAndReturnPrevState.
+  // That will call PerformAbort and release the poll step.
+
+  auto abort_returned = std::make_shared<std::atomic<bool>>(false);
+  std::thread abort_thread([task, abort_returned, catalog_entity]() {
+    task->AbortAndReturnPrevState(STATUS(Aborted, "Test abort"));
+    abort_returned->store(true);
+  });
+
+  auto wait_status = WaitFor(
+      [abort_returned]() -> Result<bool> { return abort_returned->load(); },
+      MonoDelta::FromSeconds(30), "abort to complete");
+
+  if (!wait_status.ok()) {
+    // Record the failure first, so the diagnostic lands even if the cleanup below blocks.
+    ADD_FAILURE() << wait_status.CloneAndPrepend(
+        "Abort deadlocked on the transaction status poll Synchronizer");
+    abort_thread.detach();
+    yb::SyncPoint::GetInstance()->DisableProcessing();
+    messenger->Shutdown();
+    thread_pool->Shutdown();
+    return;
+  }
+
+  abort_thread.join();
+
+  // Three exits in VerifyTransaction return IllegalState. Match the message so this fails if the
+  // step took any exit other than the shutdown check, the only one that strands the signal.
+  ASSERT_TRUE(task->poll_step_status_.IsIllegalState()) << task->poll_step_status_;
+  ASSERT_STR_CONTAINS(task->poll_step_status_.ToString(), "Task has been shut down");
+  ASSERT_FALSE(catalog_entity->HasTasks());
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  messenger->Shutdown();
+  thread_pool->Shutdown();
 }
 
 }  // namespace yb::master

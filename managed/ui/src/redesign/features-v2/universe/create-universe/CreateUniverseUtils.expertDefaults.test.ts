@@ -604,6 +604,65 @@ describe('getNodeSpec / mapCreateUniversePayload (K8s as dedicated)', () => {
     expect(spec.k8s_master_resource_spec?.cpu_core_count).toBe(4);
   });
 
+  it('getNodeSpec includes master.storage_spec for K8s from deviceInfo when keepMasterTserverSame', () => {
+    const form = k8sForm();
+    form.instanceSettings!.deviceInfo = {
+      numVolumes: 1,
+      volumeSize: 50,
+      storageClass: 'standard',
+      storageType: null,
+      mountPoints: null,
+      diskIops: null,
+      throughput: null
+    };
+    const spec = getNodeSpec(form);
+    expect(spec.storage_spec).toEqual({
+      num_volumes: 1,
+      volume_size: 50,
+      storage_class: 'standard'
+    });
+    expect(spec.master?.storage_spec).toEqual({
+      num_volumes: 1,
+      volume_size: 50,
+      storage_class: 'standard'
+    });
+  });
+
+  it('getNodeSpec uses masterDeviceInfo for K8s master.storage_spec when different from tserver', () => {
+    const form = k8sForm();
+    form.instanceSettings!.keepMasterTserverSame = false;
+    form.instanceSettings!.deviceInfo = {
+      numVolumes: 1,
+      volumeSize: 100,
+      storageClass: 'ssd',
+      storageType: null,
+      mountPoints: null,
+      diskIops: null,
+      throughput: null
+    };
+    form.instanceSettings!.masterDeviceInfo = {
+      numVolumes: 1,
+      volumeSize: 50,
+      storageClass: 'standard',
+      storageType: null,
+      mountPoints: null,
+      diskIops: null,
+      throughput: null
+    };
+    form.instanceSettings!.masterK8SNodeResourceSpec = { cpuCoreCount: 2, memoryGib: 4 };
+    const spec = getNodeSpec(form);
+    expect(spec.storage_spec).toEqual({
+      num_volumes: 1,
+      volume_size: 100,
+      storage_class: 'ssd'
+    });
+    expect(spec.master?.storage_spec).toEqual({
+      num_volumes: 1,
+      volume_size: 50,
+      storage_class: 'standard'
+    });
+  });
+
   it('mapCreateUniversePayload sets dedicated_nodes true for K8s when toggle is false', () => {
     const payload = mapCreateUniversePayload(k8sForm() as createUniverseFormProps);
     expect(payload.spec?.clusters?.[0]?.node_spec?.dedicated_nodes).toBe(true);

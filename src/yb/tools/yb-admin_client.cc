@@ -57,6 +57,7 @@
 #include "yb/client/xcluster_client.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/redis_constants_common.h"
@@ -90,13 +91,14 @@
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
 
+#include "yb/server/server_base.proxy.h"
+
 #include "yb/tools/tools_utils.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/encryption/encryption_util.h"
 
-#include "yb/util/date_time.h"
 #include "yb/util/format.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
@@ -108,6 +110,7 @@
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
+#include "yb/util/timestamp.h"
 #include "yb/util/tostring.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/doc_key.h"
@@ -121,6 +124,10 @@ DEFINE_NON_RUNTIME_bool(wait_if_no_leader_master, false,
 DEFINE_NON_RUNTIME_bool(disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
+
+DEFINE_NON_RUNTIME_uint32(read_time_wait_ms, kDumpTabletDataMaxReadTimeWaitMsDefault,
+    "get_table_hash: how long each tablet may wait for safe time to reach read_ht before failing. "
+    "0 fails immediately.");
 
 DEFINE_test_flag(int32, metadata_file_format_version, 0,
     "Used in 'export_snapshot' metadata file format (0 means using latest format).");
@@ -5012,7 +5019,20 @@ Status ClusterAdminClient::GetTableXorHash(
 
   HybridTime ht;
   if (!read_ht) {
-    ht = HybridTime::FromMicros(DateTime::TimestampNow().ToInt64());
+    // Ask the cluster for the time, not this machine. yb-admin runs anywhere, and a fast local
+    // clock would name a read time no replica has reached.
+    server::ServerClockRequestPB clock_req;
+    server::ServerClockResponsePB clock_resp;
+    RpcController clock_rpc;
+    clock_rpc.set_timeout(timeout_);
+    server::GenericServiceProxy generic_proxy(proxy_cache_.get(), leader_addr_);
+    RETURN_NOT_OK_PREPEND(
+        generic_proxy.ServerClock(clock_req, &clock_resp, &clock_rpc),
+        Format("Unable to read the cluster clock from master $0", leader_addr_));
+    SCHECK_FORMAT(
+        clock_resp.has_hybrid_time(), IllegalState, "Master $0 returned no hybrid time",
+        leader_addr_);
+    RETURN_NOT_OK(ht.FromUint64(clock_resp.hybrid_time()));
   } else {
     RETURN_NOT_OK(ht.FromUint64(read_ht));
   }
@@ -5046,6 +5066,7 @@ Status ClusterAdminClient::GetTableXorHash(
     req.set_tablet_id(location.tablet_id());
     req.set_read_ht(ht.ToUint64());
     req.set_table_id(table_id);
+    req.set_max_wait_ms(FLAGS_read_time_wait_ms);
     // The same global bounds are passed to every overlapping tablet unchanged: each tablet's scan
     // only sees rows within its own partition, so the bounds effectively clamp to that tablet.
     if (!start_key.empty()) {
@@ -5056,7 +5077,9 @@ Status ClusterAdminClient::GetTableXorHash(
     }
     RETURN_NOT_OK(tserver_proxy->DumpTabletData(req, &resp, &rpc));
     if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
+      // The server's message does not say which tablet or which server it came from.
+      return StatusFromPB(resp.error().status())
+          .CloneAndPrepend(Format("Tablet $0 on $1", location.tablet_id(), addr));
     }
     std::cout << "Tablet ID: " << location.tablet_id() << std::endl;
     std::cout << "\tRow count: " << resp.row_count() << std::endl;

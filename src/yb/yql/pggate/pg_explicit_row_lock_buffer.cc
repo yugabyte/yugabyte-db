@@ -62,6 +62,7 @@ class ExplicitRowLockBuffer::Impl {
   void Clear() {
     ClearIntents();
     skipped_.clear();
+    latest_known_check_handle_.reset();
   }
 
   bool HasPendingLocks() const {
@@ -109,12 +110,19 @@ class ExplicitRowLockBuffer::Impl {
       // It is expected that all the ybctids for same handle are added one after another,
       // so only the latest handle is valid.
       if (handle->has_value()) {
-          RSTATUS_DCHECK(
-              !skippable_.empty() && **handle == skippable_.back().handle,
-              IllegalState, "Latest known skip locked handle is only expected");
+        RSTATUS_DCHECK(
+            *handle == latest_known_check_handle_, IllegalState,
+            "Latest known skip locked handle is only expected (got $0 instead of $1)",
+            *handle, latest_known_check_handle_);
+        // Skippable candidates could be empty because of previous flush.
+        DCHECK(skippable_.empty() || **handle == skippable_.back().handle);
+        if (!skippable_.empty()) [[likely]] {
           handle_idx = skippable_.back().handle_idx + 1;
+        }
       } else {
-        handle->emplace(next_check_handle_++);
+        latest_known_check_handle_ =
+            latest_known_check_handle_.has_value() ? (*latest_known_check_handle_ + 1) : 0;
+        handle->emplace(*latest_known_check_handle_);
       }
       skippable_.emplace_back(**handle, *ipair.first, handle_idx);
     }
@@ -211,7 +219,7 @@ class ExplicitRowLockBuffer::Impl {
   MemoryOptimizedTableYbctidSet intents_;
   TableLocalityMap table_locality_map_;
 
-  YbcIsExplicitlyLockedRowSkippedCheckHandle next_check_handle_{0};
+  std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> latest_known_check_handle_;
   LightweightYbctidSet ybctids_set_;
   std::unordered_set<YbcIsExplicitlyLockedRowSkippedCheckHandle> skipped_;
   std::vector<SkippableLockInfo> skippable_;

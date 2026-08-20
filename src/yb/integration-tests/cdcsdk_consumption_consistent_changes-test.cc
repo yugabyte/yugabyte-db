@@ -2490,12 +2490,13 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
 
   // Calculate the difference between commit time and consistent snapshot time. We need to set out
   // refresh interval equal to this difference so as to create commit time ties of special record
-  // with txn 2
-  auto delta = commit_time.PhysicalDiff(cdcsdk_consistent_snapshot_time).ToMicroseconds();
+  // with txn 2. The difference is taken on the raw HybridTime, since a microseconds based interval
+  // would drop the logical component of the commit time and place the publication refresh record
+  // just before txn 2 instead of tying with it.
+  auto delta = commit_time.ToUint64() - cdcsdk_consistent_snapshot_time.ToUint64();
 
   ASSERT_OK(DestroyVirtualWAL());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros) = delta;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_publication_list_refresh_interval_ht_delta) = delta;
   ASSERT_OK(InitVirtualWAL(stream_2, {table_1.table_id()}));
 
   if (pub_refresh_record_in_separate_response) {
@@ -2988,7 +2989,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetryableErrorsNotSentToWalse
       TestSimulateErrorCode::PeerNotLeader,
       TestSimulateErrorCode::PeerNotReadyToServe,
       TestSimulateErrorCode::LogSegmentFooterNotFound,
-      TestSimulateErrorCode::LogIndexCacheEntryNotFound,
       TestSimulateErrorCode::LogReaderNotInitialized};
 
   for (auto error_code : error_codes) {
@@ -4366,12 +4366,23 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAdditionAfterHid
   ASSERT_OK(conn.Execute("INSERT INTO test_table_2 values (9999999,1)"));
   ASSERT_OK(conn.Execute("COMMIT;"));
 
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
-  ASSERT_TRUE(
-      change_resp.has_needs_publication_table_list_refresh() &&
-      change_resp.needs_publication_table_list_refresh() &&
-      change_resp.has_publication_refresh_time());
+  // A poll issued while the above txn is still being applied finds replicated but uncommitted
+  // records in the WAL, so the tablet echoes back the previously known safe time. The VWAL cannot
+  // ship the pub refresh record until the tablet's safe time moves past it, hence keep polling for
+  // the pub refresh record while asserting that no record is shipped before it.
+  GetConsistentChangesResponsePB change_resp;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() != 0) {
+          return STATUS(IllegalState, "Received records before the pub refresh record");
+        }
+        return change_resp.has_needs_publication_table_list_refresh() &&
+               change_resp.needs_publication_table_list_refresh() &&
+               change_resp.has_publication_refresh_time();
+      },
+      MonoDelta::FromSeconds(60 * kTimeMultiplier),
+      "Timed out waiting for the publication refresh record"));
   ASSERT_GT(change_resp.publication_refresh_time(), 0);
 
   // Update the publication's tables list.
@@ -6697,8 +6708,14 @@ void CDCSDKConsumptionConsistentChangesTest::TestSysCatalogRetentionBarriers(
     ASSERT_GT(tablet_peer->get_cdc_min_replicated_index(), initial_wal_barrier);
     ASSERT_GT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), initial_intent_barrier);
   } else {
+    // With only gRPC streams, the sys_catalog tablet is never polled, so CDCMasterBgTask never
+    // advances its WAL and intent retention barriers; they stay at their initial (untouched)
+    // values. Those defaults differ but both mean "no retention": the WAL barrier defaults to
+    // OpId::Max().index, while the intent barrier defaults to OpId::Invalid() (which
+    // TransactionParticipant::GetLatestCheckPoint() treats as OpId::Max(), i.e. intents can be
+    // GCed freely).
     ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
-    ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+    ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
   }
 
   if (initial_history_barrier != HybridTime::kInvalid) {
@@ -6975,6 +6992,52 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAbortedTxnDoesntMoveCheckpoin
   tablet::RemoveIntentsData data;
   ASSERT_OK(tablet_peer->GetLastReplicatedData(&data));
   ASSERT_GT(data.op_id, row.op_id);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoLossWithInvalidConsistentStreamSafeTime) {
+  // Disabling the implicit dynamic table addition in this test to make the outcome of each
+  // GetConsistentChanges call deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create two single tablet tables.
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_2"));
+
+  // Create a replication slot.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id(), table_2.table_id()}));
+
+  // This GetConsistentChanges call would bring in safepoint records from both the tablets. One of
+  // the safepoint will be popped and its tablet queue will be emptied resulting in the end of this
+  // GetConsistentChanges call.
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().size(), 0);
+
+  // The next GetConsistentChanges call with TEST_cdc_make_consistent_stream_safe_time_invalid would
+  // return a safepoint record with invalid safe time without the fix for #32847. With the fix, the
+  // underlying GetChanges call would be a No op, i.e it will not move the opid / cdcsdk_safe_time.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_make_consistent_stream_safe_time_invalid) = true;
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().size(), 0);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO table_1 values (1,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO table_2 values (2,2)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // The next GetConsistentChanges calls without TEST_cdc_make_consistent_stream_safe_time_invalid
+  // should stream the above txn fully without missing records.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_make_consistent_stream_safe_time_invalid) = false;
+  ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_1.table_id(), table_2.table_id()}, 2 /* expected_dml_records */,
+      false /* init_virtual_wal */));
 }
 
 }  // namespace cdc

@@ -34,7 +34,7 @@ interface DeploymentPortsProps {
 const PortContainer = styled(Box)(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
-  width: '800px',
+  width: '734px',
   padding: theme.spacing(3),
   gap: theme.spacing(4),
   borderRadius: '8px',
@@ -68,7 +68,9 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
   enableConnectionPooling,
   isEditMode
 }) => {
-  const { control } = useFormContext<OtherAdvancedProps>();
+  const {
+    formState: { errors, isSubmitted }
+  } = useFormContext<OtherAdvancedProps>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.otherAdvancedSettings.deployPortsFeild'
   });
@@ -102,8 +104,11 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                   <Controller
                     name={item.id}
                     render={({ field: { value, onChange } }) => {
+                      const fieldError = errors[item.id as keyof OtherAdvancedProps];
+                      const showError = isSubmitted && !!fieldError;
                       return (
                         <YBInput
+                          sx={{ width: 180 }}
                           value={value}
                           onChange={onChange}
                           label={
@@ -112,18 +117,23 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                               {/* <InfoIcon /> */}
                             </StyledLabelIcon>
                           }
+                          error={showError}
                           helperText={
-                            <>
-                              {'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[item.id])}{' '}
-                              {item?.helperText ? (
-                                <>
-                                  <br />
-                                  <Trans i18nKey={`${item.id}Helper`} t={t} />
-                                </>
-                              ) : (
-                                <></>
-                              )}
-                            </>
+                            showError ? (
+                              (fieldError as { message?: string })?.message
+                            ) : (
+                              <>
+                                {'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[item.id])}{' '}
+                                {item?.helperText ? (
+                                  <>
+                                    <br />
+                                    <Trans i18nKey={`${item.id}Helper`} t={t} />
+                                  </>
+                                ) : (
+                                  <></>
+                                )}
+                              </>
+                            )
                           }
                           dataTestId={`deployment-ports-field-${item.id}`}
                           onBlur={(event) => {
@@ -135,7 +145,6 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                           }}
                           defaultValue={DEFAULT_COMMUNICATION_PORTS[item.id]}
                           disabled={item.disabled}
-                          // trimWhitespace={false}
                         />
                       );
                     }}

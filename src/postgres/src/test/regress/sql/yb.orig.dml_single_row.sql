@@ -504,6 +504,8 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v2 = v2 + null 
 -- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v2 = v2 + 3 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v1 = abs(v1), v2 = power(v2,2) WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v1 = 2, v2 = v2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v2 = NULL WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_check_constraints SET v1 = 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_check_constraints SET v2 = 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_check_constraints2 SET v1 = 2 WHERE k = 1;
@@ -517,12 +519,16 @@ DELETE FROM single_row_not_null_constraints where k = 3;
 SELECT * FROM single_row_not_null_constraints ORDER BY k;
 UPDATE single_row_not_null_constraints SET v1 = abs(v1), v2 = power(v2,2) WHERE k = 1;
 SELECT * FROM single_row_not_null_constraints ORDER BY k;
+-- Identity SET on NOT NULL must succeed via non-single-row path (GH-32716).
+UPDATE single_row_not_null_constraints SET v1 = 3, v2 = v2 WHERE k = 1;
+-- Should fail constraint check.
+UPDATE single_row_not_null_constraints SET v2 = NULL WHERE k = 1;
+SELECT * FROM single_row_not_null_constraints ORDER BY k;
 -- Should fail constraint check.
 UPDATE single_row_not_null_constraints SET v2 = v2 + null WHERE k = 1;
 -- Should update 0 rows (non-existent key).
 UPDATE single_row_not_null_constraints SET v2 = v2 + 2 WHERE k = 4;
 SELECT * FROM single_row_not_null_constraints ORDER BY k;
-
 
 INSERT INTO single_row_check_constraints(k,v1, v2) values (1,1,1), (2,2,2), (3,3,3);
 UPDATE single_row_check_constraints SET v1 = 2 WHERE k = 1;
@@ -1054,6 +1060,18 @@ COMMIT;
 
 SELECT * FROM t_simple ORDER BY k;
 SELECT * FROM t_temp ORDER BY k;
+
+-- Test to validate that NOT NULL constraints are enforced for partitioned tables.
+CREATE TABLE single_row_not_null_constraints_partitioned (k int PRIMARY KEY, v1 int NOT NULL, v2 int NOT NULL) PARTITION BY RANGE (k);
+CREATE TABLE not_null_constraints_partitioned_1 PARTITION OF single_row_not_null_constraints_partitioned FOR VALUES FROM (1) TO (10);
+CREATE TABLE not_null_constraints_partitioned_default PARTITION OF single_row_not_null_constraints_partitioned DEFAULT;
+INSERT INTO not_null_constraints_partitioned_1 VALUES (1, 1, 1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints_partitioned SET v1 = v1 + 1, v2 = v2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints_partitioned SET v2 = NULL WHERE k = 1;
+UPDATE single_row_not_null_constraints_partitioned SET v1 = v1 + 1, v2 = v2 WHERE k = 1;
+-- Should fail constraint check.
+UPDATE single_row_not_null_constraints_partitioned SET v2 = NULL WHERE k = 1;
+SELECT * FROM single_row_not_null_constraints_partitioned ORDER BY k;
 
 -- Cleanup.
 DROP FUNCTION next_v3;

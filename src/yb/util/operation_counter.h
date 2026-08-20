@@ -182,24 +182,13 @@ class ScopedRWOperation {
   void operator=(const ScopedRWOperation&) = delete;
   ScopedRWOperation(const ScopedRWOperation&) = delete;
 
-  ScopedRWOperation()
-      : ScopedRWOperation(
-            /* counter = */ nullptr,
-            /* abort_status_holder = */ nullptr,
-            /* deadline = */ CoarseTimePoint()) {}
+  ScopedRWOperation() : ScopedRWOperation(/* counter = */ nullptr, CoarseTimePoint()) {}
 
   explicit ScopedRWOperation(
-      RWOperationCounter* counter, const CoarseTimePoint& deadline = CoarseTimePoint())
-      : ScopedRWOperation(counter, /* abort_status_holder = */ nullptr, deadline) {}
-
-  explicit ScopedRWOperation(
-      RWOperationCounter* counter, const StatusHolder& abort_status_holder,
-      const CoarseTimePoint& deadline = CoarseTimePoint())
-      : ScopedRWOperation(counter, &abort_status_holder, deadline) {}
+      RWOperationCounter* counter, const CoarseTimePoint& deadline = CoarseTimePoint());
 
   ScopedRWOperation(ScopedRWOperation&& op) : data_{std::move(op.data_)} {
     op.data_.counter_ = nullptr;  // Moved ownership.
-    op.data_.abort_status_holder_ = nullptr;
   }
 
   ~ScopedRWOperation();
@@ -208,14 +197,15 @@ class ScopedRWOperation {
     Reset();
     data_ = std::move(op.data_);
     op.data_.counter_ = nullptr;
-    op.data_.abort_status_holder_ = nullptr;
   }
 
   bool ok() const {
     return data_.counter_ != nullptr;
   }
 
-  Status GetAbortedStatus() const;
+  // Status describing why the operation failed to be acquired: ShutdownInProgress when the
+  // resource is stopped, TryAgain when it is temporarily unavailable, OK when acquired.
+  Status CreateStatus() const;
 
   void Reset();
 
@@ -226,13 +216,8 @@ class ScopedRWOperation {
   static ScopedRWOperation TEST_Create() { return ScopedRWOperation(); }
 
  private:
-  explicit ScopedRWOperation(
-      RWOperationCounter* counter, const StatusHolder* abort_status_holder,
-      const CoarseTimePoint& deadline);
-
   struct Data {
     RWOperationCounter* counter_ = nullptr;
-    const StatusHolder* abort_status_holder_ = nullptr;
     std::string resource_name_;
 #ifndef NDEBUG
     LongOperationTracker long_operation_tracker_;
@@ -244,7 +229,9 @@ class ScopedRWOperation {
 };
 
 // RETURN_NOT_OK macro support.
-Status MoveStatus(const ScopedRWOperation& scoped);
+inline Status MoveStatus(const ScopedRWOperation& scoped) {
+  return scoped.CreateStatus();
+}
 
 // A convenience class to automatically pause/resume/stop a RWOperationCounter.
 class ScopedRWOperationPause {

@@ -654,7 +654,7 @@ public class NodeAgentClient {
   }
 
   public static String getNodeAgentJWT(NodeAgent nodeAgent, Duration tokenLifetime) {
-    PrivateKey privateKey = nodeAgent.getPrivateKey();
+    PrivateKey privateKey = nodeAgent.getSignerPrivateKey();
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject("Platform")

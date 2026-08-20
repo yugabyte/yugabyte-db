@@ -1053,12 +1053,29 @@ TEST_F(PgLibPqTest, InTxnDelete) {
   ASSERT_NO_FATALS(AssertRows(&conn, 1));
 }
 
+namespace {
+
+void AddSysCatalogTombstoneGcFlags(ExternalMiniClusterOptions* options) {
+  // Too little data written by DDLs to flush to SSTs with default memstore size.
+  // This helps compaction since compaction only happens on SST files.
+  options->extra_master_flags.emplace_back("--memstore_size_mb=1");
+  // Increase frequency of compaction.
+  options->extra_master_flags.emplace_back("--rocksdb_level0_file_num_compaction_trigger=2");
+  // Reduce history retention interval to remove tombstones.
+  options->extra_master_flags.emplace_back(
+      "--timestamp_syscatalog_history_retention_interval_sec=1");
+  options->extra_master_flags.emplace_back("--timestamp_history_retention_interval_sec=1");
+}
+
+}  // namespace
+
 class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgLibPqTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.emplace_back(
         "--TEST_get_ysql_catalog_version_from_sys_catalog=true");
+    AddSysCatalogTombstoneGcFlags(options);
     // Disable auto analyze for catalog version tests.
     options->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");
   }
@@ -1080,7 +1097,12 @@ class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
       num_iter /= 1.2;
     }
     LOG(INFO) << "num_iter: " << num_iter;
+    const auto deadline = CoarseMonoClock::Now() + 15min;
     for (int i = 1; i <= num_iter; i++) {
+      if (CoarseMonoClock::Now() >= deadline) {
+        LOG(INFO) << "Ending after " << i - 1 << " iterations to stay within the test time budget";
+        break;
+      }
       LOG(INFO) << "ITERATION " << i;
       RETURN_NOT_OK(BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER"));
       LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
@@ -4244,7 +4266,7 @@ TEST_F(PgLibPqTest, TempTableMultiNodeNamespaceConflict) {
 }
 
 TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
-  FLAGS_vmodule = "libpq_utils*=1";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils*=1";
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
   ASSERT_OK(conn1.Execute("SET log_statement='ALL';"));
@@ -5462,15 +5484,17 @@ class PgPostmasterExitTest : public PgLibPqTest {
     SCHECK_EQ(ret, 0, IllegalState, "Failed to kill postmaster");
 
     // Give the backend enough time to ensure that it has received and processed
-    // the PDEATH_SIG. The sleep time is set to a generous 500ms to ensure that in the future,
-    // the backend has enough time to cleanup and gracefully exit if PDEATH_SIG is changed from
-    // SIGKILL to a signal that can be caught and handled.
+    // the PDEATH_SIG. The timeout is generous to ensure that in the future, the backend has
+    // enough time to cleanup and gracefully exit if PDEATH_SIG is changed from SIGKILL to a
+    // signal that can be caught and handled. Sanitizer builds need a much larger budget: tearing
+    // down the instrumented postmaster and then the backend address spaces alone takes ~600ms.
+    const auto kExitTimeout = RegularBuildVsSanitizers(500ms, 5000ms);
     RETURN_NOT_OK(WaitFor(
         [&backend_pid]() -> Result<bool> {
           // Ensure that the backend is no longer running.
           return !RunShellProcess(Format("ps -p $0", backend_pid)).ok();
         },
-        500ms, "Backend still running, should have exited"));
+        kExitTimeout, "Backend still running, should have exited"));
 
     thread_holder.Stop();
     return Status::OK();
@@ -6231,6 +6255,45 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
   // The fact that this SELECT succeeds proves that the table exists in BOTH
   // the PostgreSQL catalog and DocDB (no split-brain corruption).
   ASSERT_OK(conn.FetchMatrix("SELECT * FROM drop_retry_test_crash", 0, 1));
+}
+
+class PgMinimalPrefetchStaleRelcacheTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_minimal_catalog_caches_preload=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_relcache_init_optimization=false");
+    // Force relcache rebuild by disabling revalidation, to ensure we test the rebuild path.
+    options->extra_tserver_flags.push_back("--ysql_max_invalidation_message_queue_size=0");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, StaleRelcacheNegativeCacheBug, PgMinimalPrefetchStaleRelcacheTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // 1. Create a user and a schema with the same name.
+  ASSERT_OK(conn.Execute("CREATE ROLE test_user LOGIN"));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA test_user AUTHORIZATION test_user"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_user.my_table (id INT)"));
+  ASSERT_OK(conn.Execute("GRANT SELECT ON test_user.my_table TO test_user"));
+
+  // 2. Run ANALYZE to increment the catalog version and make the relcache init file stale.
+  ASSERT_OK(conn.Execute("ANALYZE test_user.my_table"));
+
+  // 3. Connect as the new user.
+  // Because the init file is stale and optimization is off, this connection will rebuild
+  // the relcache. Because minimal prefetch is on, it will prefetch only system tables.
+  // During rebuild, it will call get_namespace_oid("test_user").
+  // The active prefetcher will intercept this, find nothing (since it's a user schema),
+  // and create a negative cache entry for the "test_user" namespace.
+  auto conn2 = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+
+  // 4. Try to query the table.
+  // The parser will look up the "test_user" namespace.
+  // Before the fix, this would hit the negative cache entry and fail to resolve the table.
+  // After the fix, it should succeed.
+  auto res = ASSERT_RESULT(conn2.Fetch("SELECT * FROM test_user.my_table"));
+  ASSERT_EQ(PQntuples(res.get()), 0);
 }
 
 } // namespace yb::pgwrapper

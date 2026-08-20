@@ -4,7 +4,6 @@ package com.yugabyte.yw.commissioner;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.UniverseArchitectureResolver;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -64,15 +63,6 @@ public class UniverseArchitectureBackfill {
   }
 
   private List<UUID> fetchUniverseUuidsWithMissingArch() {
-    if (AppInit.isH2Db()) {
-      // H2 does not support PostgreSQL jsonb operators used in unit tests.
-      return Universe.getAllUUIDs().stream()
-          .map(Universe::maybeGet)
-          .flatMap(Optional::stream)
-          .filter(u -> isArchUnpopulated(u.getUniverseDetails().arch))
-          .map(Universe::getUniverseUUID)
-          .collect(Collectors.toList());
-    }
     return DB.sqlQuery(UNIVERSES_WITH_MISSING_ARCH_QUERY).findList().stream()
         .map(row -> (UUID) row.get("universe_uuid"))
         .collect(Collectors.toList());

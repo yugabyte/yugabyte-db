@@ -379,7 +379,8 @@ class BenchmarkTool {
     RETURN_NOT_OK(vector_index_->Reserve(
         num_points_to_insert(),
         std::thread::hardware_concurrency(),
-        std::thread::hardware_concurrency()));
+        std::thread::hardware_concurrency(),
+        rocksdb::Cache::ReservationMode::kAlways));
     if (!args_.load_index_from_path.empty()) {
       LOG(INFO) << "Loading index from " << args_.load_index_from_path;
       auto load_start_time = MonoTime::Now();

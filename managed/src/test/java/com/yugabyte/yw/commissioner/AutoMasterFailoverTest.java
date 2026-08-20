@@ -39,7 +39,7 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.GetMasterHeartbeatDelaysResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.PeerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -47,7 +47,7 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
   @Mock private RuntimeConfGetter mockRuntimeConfGetter;
   @Mock private YBClientService mockYbClientService;
   @Mock private NodeUIApiHelper mockApiHelper;
-  @Mock private YBClient mockYbClient;
+  @Mock private YBClientApi mockYbClient;
   @Mock private Commissioner mockCommissioner;
   @Mock private BaseTaskDependencies mockBaseTaskDependencies;
   @Mock private CustomerTaskManager mockCustomerTaskManager;
@@ -69,7 +69,7 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
   @Before
   public void setUp() throws Exception {
     setupMockUniverse();
-    mockYbClient = mock(YBClient.class);
+    mockYbClient = mock(YBClientApi.class);
     mockApiHelper = mock(NodeUIApiHelper.class);
     mockMasterHeartbeatDelaysResponse = mock(GetMasterHeartbeatDelaysResponse.class);
     mockMasterHeartbeatDelays = new HashMap<>();

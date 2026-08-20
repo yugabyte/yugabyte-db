@@ -132,6 +132,19 @@ class PostApplyMetadataWriter : public rocksdb::DirectWriter {
   std::span<const PostApplyTransactionMetadata> metadatas_;
 };
 
+class TransactionMetadataUpdateWriter : public rocksdb::DirectWriter {
+ public:
+  TransactionMetadataUpdateWriter(
+      Slice transaction_id, HybridTime update_time, const LWTransactionMetadataPB& metadata_update);
+
+  Status Apply(rocksdb::DirectWriteHandler& handler) override;
+
+ private:
+  Slice transaction_id_;
+  HybridTime update_time_;
+  const LWTransactionMetadataPB& metadata_update_;
+};
+
 YB_STRONGLY_TYPED_BOOL(IgnoreMaxApplyLimit);
 
 // Base class used by IntentsWriter to handle found intents.

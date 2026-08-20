@@ -722,7 +722,8 @@ class YBClient {
       std::optional<ReplicationSlotOrderingMode>* ordering_mode = nullptr,
       std::optional<bool>* detect_publication_changes_implicitly = nullptr,
       std::optional<std::string>* replication_slot_plugin_name = nullptr,
-      bool* is_notification_slot = nullptr);
+      bool* is_notification_slot = nullptr,
+      std::optional<bool>* xcluster_use_target_applied_filter = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,
@@ -732,7 +733,8 @@ class YBClient {
       const xrepl::StreamId& stream_id,
       std::shared_ptr<TableId> table_id,
       std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-      StdStatusCallback callback);
+      StdStatusCallback callback,
+      std::shared_ptr<bool> xcluster_use_target_applied_filter = nullptr);
 
   // List all the CDCSDK streams skipping the ones which do not have a replication slot name.
   Result<std::vector<CDCSDKStreamInfo>> ListCDCSDKStreams();

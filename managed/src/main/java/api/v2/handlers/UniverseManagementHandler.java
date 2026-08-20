@@ -52,6 +52,7 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
@@ -84,6 +85,8 @@ import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.AttachDetachSpec;
 import com.yugabyte.yw.models.AttachDetachSpec.PlatformPaths;
@@ -343,13 +346,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
     for (Cluster cluster : v1Params.clusters) {
-      if (!cluster.userIntent.dedicatedNodes) {
-        // Since in V2 API is based on partial updates,
-        // we cannot detect the case when these fields are removed (during dedicated mode switch)
-        // Keeping these fields will lead to error in validation.
-        cluster.userIntent.masterInstanceType = null;
-        cluster.userIntent.masterDeviceInfo = null;
-      }
+      // Since in V2 API is based on partial updates,
+      // we cannot detect the case when these fields are removed (during dedicated mode switch)
+      // Keeping these fields will lead to error in validation.
+      clearMasterFieldsIfNotDedicated(cluster.userIntent);
     }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
@@ -425,11 +425,15 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // overwrite the copy of primary cluster with user provided spec for read replica
     newReadReplica.setUuid(UUID.randomUUID());
     newReadReplica = ClusterMapper.INSTANCE.overwriteClusterAddSpec(clusterAddSpec, newReadReplica);
-    if (!newReadReplica.userIntent.dedicatedNodes) {
-      // Copied from a dedicated primary; clear master fields for non-dedicated RR.
-      newReadReplica.userIntent.masterInstanceType = null;
-      newReadReplica.userIntent.masterDeviceInfo = null;
+    // Intent is cloned from primary. Omitted dedicated_nodes must default to false (schema),
+    // not inherit dedicated mode from the primary cluster.
+    if (clusterAddSpec.getDedicatedNodes() == null
+        && (clusterAddSpec.getNodeSpec() == null
+            || clusterAddSpec.getNodeSpec().getDedicatedNodes() == null)) {
+      newReadReplica.userIntent.dedicatedNodes = false;
     }
+    // Copied from a dedicated primary; clear master fields for non-dedicated RR.
+    clearMasterFieldsIfNotDedicated(newReadReplica.userIntent);
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
@@ -446,6 +450,19 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // start the add cluster task
     UUID taskUUID = universeCRUDHandler.createCluster(customer, dbUniverse, v1Params);
     return new YBATask().resourceUuid(newReadReplica.uuid).taskUuid(taskUUID);
+  }
+
+  // Drop master settings cloned from a dedicated primary onto a non-dedicated cluster.
+  private static void clearMasterFieldsIfNotDedicated(UserIntent userIntent) {
+    if (userIntent == null || userIntent.dedicatedNodes) {
+      return;
+    }
+    userIntent.masterInstanceType = null;
+    userIntent.masterDeviceInfo = null;
+    UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
+    if (overrides != null && overrides.getPerProcess() != null) {
+      overrides.getPerProcess().remove(ServerType.MASTER);
+    }
   }
 
   public YBATask deleteReadReplicaCluster(
@@ -1564,11 +1581,17 @@ public class UniverseManagementHandler extends ApiControllerUtils {
           BAD_REQUEST,
           String.format("Cluster with UUID '%s' does not exist.", spec.getClusterUuid()));
     }
-    UserIntentMapper.INSTANCE.fillUserIntentFromClusterNodeSpec(
-        spec.getNodeSpec(), cluster.userIntent);
-    log.debug(
-        "Spec {} userIntent {}", Json.toJson(spec.getNodeSpec()), Json.toJson(cluster.userIntent));
-
+    if (CollectionUtils.isNotEmpty(spec.getProviderNodesSpecs())) {
+      if (!cluster.userIntent.isMulticloudSupport()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "provider_nodes_specs is only supported for multicloud clusters");
+      }
+      UserIntentMapper.INSTANCE.applyPerProviderResizeNodesSpecsToUserIntent(
+          spec.getProviderNodesSpecs(), cluster.userIntent);
+    } else if (spec.getNodeSpec() != null) {
+      UserIntentMapper.INSTANCE.fillUserIntentFromClusterNodeSpec(
+          spec.getNodeSpec(), cluster.userIntent);
+    }
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID, customer);
 
     PlacementInfoUtil.updateUniverseDefinitionV2(
@@ -1591,6 +1614,16 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       } catch (Exception ignored) {
         log.error("Incorrect option: " + updateOption);
       }
+    }
+    // Kubernetes hardware/instance edits are reported by getUpdateOptions as UPDATE (rather than
+    // one of the ResizeUpdateOption values) because k8s resizes are applied by recreating the
+    // StatefulSet pods rather than doing a smart resize. There is no UPDATE member in
+    // ResizeUpdateOption, so without this the endpoint would report no available options for k8s.
+    // Surface it as FULL_MOVE, which is the only strategy supported for k8s resizes.
+    if (Util.isKubernetesBasedUniverse(dbUniverse)
+        && !res.contains(ResizeUpdateOption.FULL_MOVE)
+        && updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)) {
+      res.add(ResizeUpdateOption.FULL_MOVE);
     }
     return new CheckResizeOptionsResp().options(res);
   }

@@ -83,7 +83,7 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
   }
 
   Result<Slice> Fetch(Slice key) override {
-    return std::get<docdb::IntentAwareIteratorPtr>(iter_holder_)->FetchValue(key);
+    return iter_holder_.iter->FetchValue(key);
   }
 
  private:
@@ -291,7 +291,7 @@ Status TabletVectorIndexes::DoCreateIndex(
           std::make_shared<ScopedRWOperation>(std::move(read_op)));
     } else {
       LOG_WITH_PREFIX_AND_FUNC(WARNING)
-          << "Failed to create operation for backfill: " << read_op.GetAbortedStatus();
+          << "Failed to create operation for backfill: " << read_op.CreateStatus();
     }
   }
 
@@ -409,6 +409,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
     docdb::InsertOptions options {
       .frontiers = &frontiers,
       .chunk_size = chunk_size_,
+      .reservation_mode = rocksdb::Cache::ReservationMode::kAlways,
     };
     auto num_entries = entries().size();
     RETURN_NOT_OK_PREPEND(index.Insert(entries(), options), "Insert entries");
@@ -541,15 +542,17 @@ Status TabletVectorIndexes::Backfill(
   LOG_WITH_PREFIX_AND_FUNC(INFO)
       << "Backfilled " << AsString(*vector_index) << " in " << helper.num_chunks() << " chunks";
 
-  // The backfill task holds only a non-blocking ScopedRWOperation, so RocksDB shutdown may already
-  // have started by the time we reach the final regular DB flush. Acquire a blocking operation here
-  // ourselves: if it fails, shutdown is in progress and we abort the backfill gracefully (the
-  // ScheduleBackfill handler treats ShutdownInProgress as expected) instead of hitting the DFATAL
-  // inside Tablet::Flush. On success, hold it across the flush and skip Flush's own scoped
-  // operation via kNoScopedOperation.
+  // Hold a blocking operation across both flushes below. Tablet::Flush releases its own one before
+  // the vector index flush, so acquire it here and pass kNoScopedOperation.
   auto flush_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
   if (!flush_op.ok()) {
-    return flush_op.GetAbortedStatus();
+    // Only StartShutdownStorages disables blocking operations, and it holds the pause while
+    // draining the non-blocking operation this task holds, so waiting here would block that drain.
+    // The storages are going away in any case, so abort the backfill like on shutdown.
+    auto status = flush_op.CreateStatus();
+    return status.IsTryAgain()
+        ? STATUS_FORMAT(ShutdownInProgress, "Storages are being replaced: $0", status)
+        : status;
   }
   // TODO(vector_index) Need to handle scenario when regular db was not flushed before restart.
   RETURN_NOT_OK_PREPEND(
@@ -613,7 +616,7 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
     }
     if (!read_op->ok()) {
       LOG_WITH_PREFIX_AND_FUNC(WARNING)
-          << "Failed to create operation for backfill: " << read_op->GetAbortedStatus();
+          << "Failed to create operation for backfill: " << read_op->CreateStatus();
       continue;
     }
 
@@ -860,10 +863,18 @@ Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMe
   RETURN_NOT_OK(tablet().GetSafeTimeReadOperationData(read_ht, read_operation_data));
   read_operation_data.statistics = statistics;
 
+  // Reverse mappings are not intent tracked: a concurrent DELETE writes its tombstone at intent
+  // apply time, potentially in the middle of a vector index search. Fast next skips sequence
+  // number filtering and could expose such a tombstone to ybctid resolution while the search
+  // filter saw the live mapping, failing the search with "Vector not found". kNoFastNext keeps
+  // all reads on the iterator's creation-time snapshot; row visibility is still decided by the
+  // intent-aware fetch of the returned ybctids.
   // TODO(vector_index): do we need to specify bloom filter options?
   auto iter = docdb::CreateIntentAwareIterator(
       tablet().doc_db().FromRegularUnbounded(), docdb::BloomFilterOptions::Inactive(),
-      rocksdb::kDefaultQueryId, TransactionOperationContext{}, read_operation_data);
+      rocksdb::kDefaultQueryId, TransactionOperationContext{}, read_operation_data,
+      /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
+      docdb::IntentAwareIteratorFlag::kNoFastNext);
   auto bounds = std::make_unique<docdb::IntentAwareIteratorBoundsScope>(
       Slice{&dockv::KeyEntryTypeAsChar::kVectorIndexMetadata, 1}, Slice{upper_bound}, iter.get()
   );

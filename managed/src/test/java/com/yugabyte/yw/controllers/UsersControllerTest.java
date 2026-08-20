@@ -473,6 +473,30 @@ public class UsersControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpdateUserProfileNewUniverseUiTourCompleted() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    assertNull(testUser1.getNewUniverseUiTourCompleted());
+    String authTokenTest = testUser1.createAuthToken();
+    ObjectNode params = Json.newObject();
+    params.put("newUniverseUiTourCompleted", true);
+    params.put("role", "Admin");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertOk(result);
+    testUser1 = Users.get(testUser1.getUuid());
+    assertEquals(Boolean.TRUE, testUser1.getNewUniverseUiTourCompleted());
+    assertAuditEntry(1, customer1.getUuid());
+  }
+
+  @Test
   public void testUpdateUserProfileValidOnlyTimezone() throws IOException {
     Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
     String testTimezone1 = "America/Toronto";
@@ -588,6 +612,36 @@ public class UsersControllerTest extends FakeDBApplication {
         String.format(
             "API does not support password change. Use /customers/%s/reset_password",
             customer1.getUuid()));
+  }
+
+  @Test
+  public void testUpdateUserProfileUserSettings() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    String testTimezone1 = "America/Toronto";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode settings = Json.newObject();
+    settings.set("obj", Json.newObject());
+    settings.put("str", "some string");
+    settings.put("int", "100");
+
+    ObjectNode params = Json.newObject();
+    params.put("role", "Admin");
+    params.set("userSettings", settings);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(result.status(), OK);
+    testUser1 = Users.get(testUser1.getUuid());
+    assertEquals(settings, testUser1.getSettings());
   }
 
   @Test

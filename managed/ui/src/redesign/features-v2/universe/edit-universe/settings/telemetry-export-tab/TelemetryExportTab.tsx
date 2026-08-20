@@ -25,6 +25,14 @@ import { TelemetryConfigConfirmationModal } from '../shared/TelemetryConfigConfi
 import { useExportTelemetryConfigTaskStatus } from '../useExportTelemetryConfigTaskStatus';
 import { NavigateToLogsConfirmationModal } from './NavigateToLogsConfirmationModal';
 import { TelemetryExportCard } from './TelemetryExportCard';
+import {
+  isK8sAuditLogExportSupported,
+  isK8sPassthroughTelemetryExportSupported,
+  K8S_AUDIT_LOG_EXPORT_PREVIEW_VERSION,
+  K8S_AUDIT_LOG_EXPORT_STABLE_VERSION,
+  K8S_PASSTHROUGH_TELEMETRY_EXPORT_PREVIEW_VERSION,
+  K8S_PASSTHROUGH_TELEMETRY_EXPORT_STABLE_VERSION
+} from './k8sTelemetrySupport';
 import { MetricsExportSettingsModal } from './metrics-export/MetricsExportSettingsModal';
 import {
   buildDisableTelemetryConfig as buildDisableMetricsExportTelemetryConfig,
@@ -92,6 +100,7 @@ export const TelemetryExportTab = () => {
 
   const universeUuid = universeData?.info?.universe_uuid ?? '';
   const universeName = universeData?.spec?.name ?? '';
+  const dbVersion = universeData?.spec?.yb_software_version;
   const isKubernetes = universeData ? isKubernetesUniverse(universeData) : false;
   const primaryCluster = universeData
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
@@ -119,7 +128,29 @@ export const TelemetryExportTab = () => {
     isQueryLogConfiguring,
     isAuditLogConfiguring
   } = useExportTelemetryConfigTaskStatus(universeUuid);
-  const actionDisabled = !isUniverseReady || isTelemetryConfigTaskInProgress || isKubernetes;
+  const baseActionDisabled = !isUniverseReady || isTelemetryConfigTaskInProgress;
+  // Version gates apply to K8s only (backend ExportTelemetryConfigParams returns early for VM).
+  const isPassthroughExportSupportedOnK8s =
+    !isKubernetes || isK8sPassthroughTelemetryExportSupported(dbVersion);
+  const isAuditExportSupportedOnK8s =
+    !isKubernetes || isK8sAuditLogExportSupported(dbVersion);
+  const isMetricsExportActionDisabled =
+    baseActionDisabled || !isPassthroughExportSupportedOnK8s;
+  const isQueryLogExportActionDisabled =
+    baseActionDisabled || !isPassthroughExportSupportedOnK8s;
+  const isAuditLogExportActionDisabled = baseActionDisabled || !isAuditExportSupportedOnK8s;
+  const passthroughVersionHelperText = !isPassthroughExportSupportedOnK8s
+    ? t('k8sUnsupportedPassthroughExportVersion', {
+        stableVersion: K8S_PASSTHROUGH_TELEMETRY_EXPORT_STABLE_VERSION,
+        previewVersion: K8S_PASSTHROUGH_TELEMETRY_EXPORT_PREVIEW_VERSION
+      })
+    : undefined;
+  const auditVersionHelperText = !isAuditExportSupportedOnK8s
+    ? t('k8sUnsupportedAuditExportVersion', {
+        stableVersion: K8S_AUDIT_LOG_EXPORT_STABLE_VERSION,
+        previewVersion: K8S_AUDIT_LOG_EXPORT_PREVIEW_VERSION
+      })
+    : undefined;
 
   const metricsExportDisplayInfo = useMemo(
     () => getMetricsExportDisplayInfo(telemetryConfigQuery.data, telemetryProvidersQuery.data),
@@ -204,7 +235,8 @@ export const TelemetryExportTab = () => {
                 metricsExportDisplayInfo?.exportConfigurationName ?? NO_METADATA_FALLBACK
               }
               exportingTo={metricsExportDisplayInfo?.exportingTo ?? NO_METADATA_FALLBACK}
-              actionDisabled={actionDisabled}
+              actionDisabled={isMetricsExportActionDisabled}
+              actionTooltip={passthroughVersionHelperText}
               actionTestId="TelemetryExportTab-EditMetricsExportButton"
               onEditClick={() => setIsMetricsExportModalOpen(true)}
               onDisableClick={() => setDisableConfigType('metricsExport')}
@@ -218,7 +250,8 @@ export const TelemetryExportTab = () => {
               description={t('metricsExport.description')}
               statusLabel={t('metricsExport.exportOff')}
               actionLabel={t('metricsExport.actionLabel')}
-              actionDisabled={actionDisabled}
+              actionDisabled={isMetricsExportActionDisabled}
+              actionTooltip={passthroughVersionHelperText}
               actionTestId="TelemetryExportTab-ExportMetricsButton"
               onActionClick={() => setIsMetricsExportModalOpen(true)}
             />
@@ -235,7 +268,8 @@ export const TelemetryExportTab = () => {
                 queryLogExportDisplayInfo?.exportConfigurationName ?? NO_METADATA_FALLBACK
               }
               exportingTo={queryLogExportDisplayInfo?.exportingTo ?? NO_METADATA_FALLBACK}
-              actionDisabled={actionDisabled}
+              actionDisabled={isQueryLogExportActionDisabled}
+              actionTooltip={passthroughVersionHelperText}
               actionTestId="TelemetryExportTab-EditQueryLogExportButton"
               onEditClick={() => setOpenLogExportType('query')}
               onDisableClick={() => setDisableConfigType('queryLogExport')}
@@ -258,7 +292,10 @@ export const TelemetryExportTab = () => {
                   : t('queryLogExport.enableLoggingAction')
               }
               actionVariant={isQueryLogEnabled ? 'button' : 'link'}
-              actionDisabled={actionDisabled}
+              actionDisabled={
+                isQueryLogEnabled ? isQueryLogExportActionDisabled : baseActionDisabled
+              }
+              actionTooltip={isQueryLogEnabled ? passthroughVersionHelperText : undefined}
               actionTestId={
                 isQueryLogEnabled
                   ? 'TelemetryExportTab-ExportQueryLogButton'
@@ -283,7 +320,8 @@ export const TelemetryExportTab = () => {
                 auditLogExportDisplayInfo?.exportConfigurationName ?? NO_METADATA_FALLBACK
               }
               exportingTo={auditLogExportDisplayInfo?.exportingTo ?? NO_METADATA_FALLBACK}
-              actionDisabled={actionDisabled}
+              actionDisabled={isAuditLogExportActionDisabled}
+              actionTooltip={auditVersionHelperText}
               actionTestId="TelemetryExportTab-EditAuditLogExportButton"
               onEditClick={() => setOpenLogExportType('audit')}
               onDisableClick={() => setDisableConfigType('auditLogExport')}
@@ -306,7 +344,10 @@ export const TelemetryExportTab = () => {
                   : t('auditLogExport.enableLoggingAction')
               }
               actionVariant={isAuditLogEnabled ? 'button' : 'link'}
-              actionDisabled={actionDisabled}
+              actionDisabled={
+                isAuditLogEnabled ? isAuditLogExportActionDisabled : baseActionDisabled
+              }
+              actionTooltip={isAuditLogEnabled ? auditVersionHelperText : undefined}
               actionTestId={
                 isAuditLogEnabled
                   ? 'TelemetryExportTab-ExportAuditLogButton'
@@ -329,6 +370,7 @@ export const TelemetryExportTab = () => {
           universeUuid={universeUuid}
           universeName={universeName}
           replicationFactor={replicationFactor}
+          isKubernetes={isKubernetes}
           onClose={() => setIsMetricsExportModalOpen(false)}
         />
       )}

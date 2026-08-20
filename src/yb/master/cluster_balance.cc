@@ -1718,9 +1718,12 @@ TabletServerId ClusterLoadBalancer::SelectBestLeaderAfterStepdown(
   };
 
   // Find all running replicas of this tablet (excluding the one we're removing).
+  // Never nominate a blacklisted tserver: it has no leaders, so it always wins the leader load tie
+  // break, yet its replica may lag, and a nominated peer that is not caught up fails the stepdown
+  // outright instead of falling back to another peer.
   std::vector<std::pair<TabletServerId, size_t>> ts_and_priority;
   for (const auto& [ts_uuid, ts_meta] : state_->per_ts_meta_) {
-    if (ts_uuid == ts_to_exclude) {
+    if (ts_uuid == ts_to_exclude || global_state_->blacklisted_servers_.contains(ts_uuid)) {
       continue;
     }
     if (ts_meta.running_tablets.count(tablet_id) > 0) {

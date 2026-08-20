@@ -17,6 +17,11 @@ import org.apache.commons.lang3.ObjectUtils;
 public class ProxyConfigUpdateParams extends UpgradeTaskParams {
 
   @Override
+  public boolean isKubernetesUpgradeSupported() {
+    return true;
+  }
+
+  @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
     boolean changed = false;

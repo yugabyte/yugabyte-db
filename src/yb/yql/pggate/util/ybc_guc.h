@@ -298,6 +298,19 @@ typedef enum {
 /* GUC for the enum above. */
 extern int yb_read_after_commit_visibility;
 
+/*
+ * Controls which transactions publish a per-database history retention pin, protecting their
+ * read snapshot from history cutoff advancement cluster-wide.
+ */
+typedef enum {
+  YB_DB_HISTORY_RETENTION_PIN_MODE_NONE = 0,
+  YB_DB_HISTORY_RETENTION_PIN_MODE_DDL_ONLY = 1,
+  YB_DB_HISTORY_RETENTION_PIN_MODE_ALL = 2,
+} YbcDbHistoryRetentionPinModeEnum;
+
+/* GUC for the enum above. */
+extern int yb_db_history_retention_pin_mode;
+
 extern bool yb_allow_block_based_sampling_algorithm;
 
 extern bool yb_allow_separate_requests_for_sampling_stages;

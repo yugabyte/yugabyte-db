@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -777,7 +778,7 @@ public class SessionController extends AbstractPlatformController {
           "Created new system role binding for user '{}' (email '{}') of new customer '{}', "
               + "with role '{}' (name '{}'), and default role binding '{}'.",
           user.getUuid(),
-          user.getEmail(),
+          RedactingService.SECRET_REPLACEMENT,
           cust.getUuid(),
           newRbacRole.getRoleUUID(),
           newRbacRole.getName(),

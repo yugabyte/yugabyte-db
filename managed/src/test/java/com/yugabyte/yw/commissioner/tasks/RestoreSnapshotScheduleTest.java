@@ -14,25 +14,29 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.services.config.YbClientConfig;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.yb.client.ListSnapshotRestorationsResponse;
 import org.yb.client.RestoreSnapshotScheduleResponse;
 import org.yb.client.SnapshotRestorationInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 public class RestoreSnapshotScheduleTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   private static final long RESTORE_TIME_IN_MILLIS = 1700000000000L;
 
@@ -40,7 +44,7 @@ public class RestoreSnapshotScheduleTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUpBase();
     defaultUniverse = ModelFactory.createUniverse();
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }
 
@@ -64,7 +68,7 @@ public class RestoreSnapshotScheduleTest extends CommissionerBaseTest {
 
   private TaskInfo submitTask(RestoreSnapshotScheduleParams params) {
     try {
-      when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
+      when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       UUID taskUUID = commissioner.submit(TaskType.RestoreSnapshotSchedule, params);
       CustomerTask.create(
           defaultCustomer,
@@ -116,6 +120,12 @@ public class RestoreSnapshotScheduleTest extends CommissionerBaseTest {
     verify(mockClient, times(1))
         .restoreSnapshotSchedule(eq(pitrConfigUUID), eq(RESTORE_TIME_IN_MILLIS));
     verify(mockClient).listSnapshotRestorations(eq(restorationUuid));
+
+    ArgumentCaptor<YbClientConfig> clientConfigCaptor =
+        ArgumentCaptor.forClass(YbClientConfig.class);
+    verify(mockYBClient).getClientWithConfig(clientConfigCaptor.capture());
+    assertEquals(Duration.ofMinutes(2), clientConfigCaptor.getValue().getAdminOperationTimeout());
+    assertEquals(Duration.ofMinutes(2), clientConfigCaptor.getValue().getSocketReadTimeout());
   }
 
   @Test
@@ -123,6 +133,9 @@ public class RestoreSnapshotScheduleTest extends CommissionerBaseTest {
     UUID pitrConfigUUID = UUID.randomUUID();
     UUID existingRestorationUuid = UUID.randomUUID();
     RestoreSnapshotScheduleParams params = createParams(pitrConfigUUID);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.restoreSnapshotScheduleTimeout.getKey(), "3 minutes");
 
     // Mock existing restoration matching schedule UUID and restore time
     SnapshotRestorationInfo existingRestoration =
@@ -149,6 +162,12 @@ public class RestoreSnapshotScheduleTest extends CommissionerBaseTest {
 
     // Verify restoreSnapshotSchedule was NOT called
     verify(mockClient, times(0)).restoreSnapshotSchedule(any(UUID.class), any(Long.class));
+
+    ArgumentCaptor<YbClientConfig> clientConfigCaptor =
+        ArgumentCaptor.forClass(YbClientConfig.class);
+    verify(mockYBClient).getClientWithConfig(clientConfigCaptor.capture());
+    assertEquals(Duration.ofMinutes(3), clientConfigCaptor.getValue().getAdminOperationTimeout());
+    assertEquals(Duration.ofMinutes(3), clientConfigCaptor.getValue().getSocketReadTimeout());
   }
 
   @Test

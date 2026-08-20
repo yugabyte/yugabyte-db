@@ -4,22 +4,22 @@ CREATE TABLE abcd(a int primary key, b int, c int, d int) SPLIT INTO 1 TABLETS;
 CREATE INDEX abcd_b_c_d_idx ON abcd (b ASC) INCLUDE (c, d);
 INSERT INTO abcd SELECT i, i, i, i FROM generate_series(1, 10) i;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
-               QUERY PLAN                
------------------------------------------
- Result *RESULT* (actual rows=1 loops=1)
-   Storage Table Read Requests: 5
-   Storage Table Read Ops: 5
-   Storage Table Rows Scanned: 20
-   Storage Index Read Requests: 1
-   Storage Index Read Ops: 1
-   Storage Index Rows Scanned: 10
-(7 rows)
+                  QUERY PLAN                   
+-----------------------------------------------
+ ProjectSet (actual rows=0 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
+         Storage Table Read Requests: 5
+         Storage Table Read Ops: 5
+         Storage Table Rows Scanned: 20
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
+         Storage Index Rows Scanned: 10
+(8 rows)
 
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 DROP TABLE abcd;
 -- Set up
@@ -31,8 +31,7 @@ CREATE INDEX abcd_b_c_idx ON abcd(b) INCLUDE (c) WHERE d > 5;
 SELECT yb_index_check('abcd_b_c_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 CREATE OR REPLACE FUNCTION double_value(input_value NUMERIC)
 RETURNS NUMERIC AS $$
@@ -44,39 +43,34 @@ CREATE INDEX abcd_b_c_idx1 ON abcd(b) INCLUDE (c) WHERE double_value(d) > 5;
 SELECT yb_index_check('abcd_b_c_idx1'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Expression index
 CREATE INDEX abcd_expr_expr1_d_idx ON abcd ((2*c) ASC, (2*b) ASC) INCLUDE (d);
 SELECT yb_index_check('abcd_expr_expr1_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 CREATE INDEX abcd_double_value_d_idx ON abcd (double_value(c) ASC) INCLUDE (d);
 SELECT yb_index_check('abcd_double_value_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Unique index
 CREATE UNIQUE INDEX abcd_b_c_d_idx1 ON abcd (b ASC) INCLUDE (c, d);
 SELECT yb_index_check('abcd_b_c_d_idx1'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- NULLS NOT DISTINCT
 CREATE UNIQUE INDEX abcd_b_c_d_idx2 ON abcd (b ASC) INCLUDE (c, d) NULLS NOT DISTINCT;
 SELECT yb_index_check('abcd_b_c_d_idx2'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Index does not exist
 SELECT yb_index_check('nonexisting_idx'::regclass::oid);
@@ -87,8 +81,7 @@ LINE 1: SELECT yb_index_check('nonexisting_idx'::regclass::oid);
 SELECT yb_index_check('abcd_pkey'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Non-LSM index
 CREATE TEMP TABLE mytemp(a int unique);
@@ -104,10 +97,13 @@ INSERT INTO json_table VALUES ('test', '{"test1":"test2", "test3": 4}', 1);
 SELECT yb_index_check('json_table_a_b_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Inconsistent Indexes
+\i yb_commands/yb_index_check_setup.sql
+-- Helper shared by yb.orig.yb_index_check*.sql tests.
+-- Defines :force_cache_refresh for invalidating catalog caches after
+-- changes to pg_index which are used to induce index inconsistencies.
 SELECT oid AS db_oid FROM pg_database WHERE datname = (
     SELECT CASE
         WHEN COUNT(*) = 1 THEN 'template1'
@@ -136,14 +132,13 @@ ERROR:  Index 'abcd_b_c_d_idx' is marked invalid
 UPDATE pg_index SET indisready = TRUE, indisvalid = TRUE, indislive = TRUE WHERE indexrelid = 'abcd_b_c_d_idx'::regclass;
 :force_cache_refresh
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
-ERROR:  index is missing some rows: expected 11, actual 10
-DETAIL:  index: 'abcd_b_c_d_idx'
+ERROR:  index row count does not match base table
+DETAIL:  Index: 'abcd_b_c_d_idx'; expected 11 rows, actual 10
 DELETE FROM abcd WHERE a = 11; -- Reset
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Spurious Index Row
 UPDATE pg_index SET indisready = FALSE, indisvalid = FALSE, indislive = FALSE WHERE indexrelid = 'abcd_b_c_d_idx'::regclass;
@@ -158,8 +153,7 @@ INSERT INTO abcd VALUES (1, 1, 1, 1);
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Spurious Index Row with NULL Index Attributes
 INSERT INTO abcd VALUES (11, NULL, NULL, NULL);
@@ -175,8 +169,7 @@ INSERT INTO abcd VALUES (11, NULL, NULL, NULL); -- Reset
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Inconsistent Non-Key Column
 UPDATE pg_index SET indisready = FALSE, indisvalid = FALSE, indislive = FALSE WHERE indexrelid = 'abcd_b_c_d_idx'::regclass;
@@ -191,8 +184,7 @@ UPDATE abcd SET d = 1 WHERE a = 1;
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Inconsistent Key Column
 UPDATE pg_index SET indisready = FALSE, indisvalid = FALSE, indislive = FALSE WHERE indexrelid = 'abcd_b_c_d_idx'::regclass;
@@ -207,8 +199,7 @@ UPDATE abcd SET b = 1 WHERE a = 1;
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Spurious Row Due to Partial Index
 UPDATE pg_index SET indisready = FALSE, indisvalid = FALSE, indislive = FALSE WHERE indexrelid = 'abcd_b_c_idx'::regclass;
@@ -223,8 +214,7 @@ UPDATE abcd SET d = 6 WHERE a = 6;
 SELECT yb_index_check('abcd_b_c_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Index of a partitioned table
 CREATE TABLE part(a int, b int, c int, d int) PARTITION BY RANGE(a);
@@ -237,32 +227,27 @@ INSERT INTO part SELECT i, i, i, i FROM generate_series(1, 59) i;
 SELECT yb_index_check('part_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT yb_index_check('part_1_20_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT yb_index_check('part_2_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT yb_index_check('part_20_40_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT yb_index_check('part_40_60_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Index of materialized view
 CREATE MATERIALIZED VIEW matview AS SELECT * FROM abcd;
@@ -270,16 +255,14 @@ CREATE INDEX matview_b_idx ON matview (b);
 SELECT yb_index_check('matview_b_idx'::regclass);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Execute the same command second time to check if the dummy index fields are free'd up.
 -- See yb_dummy_baserel_index_open()/yb_free_dummy_baserel_index().
 SELECT yb_index_check('matview_b_idx'::regclass);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- GIN indexes (not support yet)
 CREATE TABLE vectors (i serial PRIMARY KEY, v tsvector);
@@ -295,23 +278,20 @@ INSERT INTO test_bytea (a, b, c)  VALUES (2, 42, 'test');
 SELECT yb_index_check('test_bytea_b_c_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT yb_index_check('test_bytea_c_b_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Inside a transaction block
 BEGIN;
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
-NOTICE:  yb_index_check() is prone to 'Restart read required' erorrs when executed from within a transaction block.
+NOTICE:  yb_index_check() is prone to 'Restart read required' errors when executed from within a transaction block.
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 COMMIT;
 -- Test with more data
@@ -322,8 +302,7 @@ INSERT INTO abcd values (2004, 2004, NULL, 4);
 SELECT yb_index_check('abcd_b_c_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Index and base table in a schema not on search_path, with single-snapshot
 -- mode. The base table must be resolved by its schema-qualified name in the
@@ -344,8 +323,7 @@ SET search_path = public;
 SELECT yb_index_check('idx_check_schema.idx_check_b_idx'::regclass::oid, true);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- A same-named table earlier on search_path must not be counted instead.
 CREATE TABLE idx_check_tbl (a int PRIMARY KEY, b int, c int);
@@ -354,28 +332,24 @@ INSERT INTO idx_check_tbl SELECT i, i, i FROM generate_series(1, 100) i;
 SELECT yb_index_check('idx_check_schema.idx_check_b_idx'::regclass::oid, true);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Index of a relation in multisnapshot mode
 SELECT yb_index_check('idx_check_schema.idx_check_b_idx'::regclass::oid, false);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 -- Index on same-named table on search_path
 SELECT yb_index_check('idx_check_b_idx'::regclass::oid, true);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT yb_index_check('idx_check_b_idx'::regclass::oid, false);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 DROP TABLE idx_check_tbl;
 RESET search_path;
@@ -394,12 +368,10 @@ INSERT INTO abcd2 SELECT i, i, i, i FROM generate_series(1, 1000) i;
 SELECT yb_index_check('abcd1_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT yb_index_check('abcd2_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 

@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -16,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 
 /** Kubernetes counterpart of {@link ConfigureExportTelemetryConfig}. */
 @Slf4j
+@ITask.Retryable
 public class KubernetesConfigureExportTelemetryConfig extends KubernetesUpgradeTaskBase {
 
   @Inject
@@ -71,6 +73,10 @@ public class KubernetesConfigureExportTelemetryConfig extends KubernetesUpgradeT
               universe.getUniverseDetails().getYbcSoftwareVersion());
 
           updateAndPersistExportTelemetryConfigTask();
+
+          // Update the swamper target file. Must run after the persist task above, since the
+          // otel targets are gated on universeDetails.otelCollectorEnabled which it sets.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         });
   }
 }

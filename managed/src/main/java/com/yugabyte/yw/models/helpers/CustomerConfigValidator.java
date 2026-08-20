@@ -79,7 +79,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
         new CustomerConfigStorageAzureValidator(beanValidator, factory, storageUtilFactory));
     validators.put(
         CustomerConfigStorageOCIData.class,
-        new CustomerConfigStorageOCIValidator(beanValidator, ociUtil));
+        new CustomerConfigStorageOCIValidator(beanValidator, awsUtil, ociUtil));
     validators.put(
         CustomerConfigStorageGCSData.class,
         new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));

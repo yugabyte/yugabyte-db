@@ -1708,7 +1708,6 @@ ExecutePlan(QueryDesc *queryDesc,
 		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
 		yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
 	}
-		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
 	queryDesc->already_executed = true;
 
 	estate->es_use_parallel_mode = use_parallel_mode;
@@ -2025,7 +2024,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		bool		yb_skip_unmodified = (mtstate &&
 										  (mtstate->operation == CMD_UPDATE ||
 										   mtstate->operation == CMD_DELETE) &&
-										  !mtstate->yb_fetch_target_tuple);
+										  mtstate->yb_skip_fetch_target_tuple);
 		Bitmapset  *yb_modifiedCols = NULL;
 
 		if (yb_skip_unmodified)
