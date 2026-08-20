@@ -2847,6 +2847,14 @@ bool CatalogManager::IsCdcLogicalReplicationStream(const CDCStreamInfo& stream) 
          l->pb.cdcsdk_ysql_replication_slot_plugin_name() != kYbGrpcStreamIndicator;
 }
 
+bool CatalogManager::StreamRequiresReplicaIdentityMap(const CDCStreamInfo& stream) const {
+  if (IsCdcLogicalReplicationStream(stream)) {
+    return true;
+  }
+  auto l = stream.LockForRead();
+  return l->pb.cdcsdk_ysql_replication_slot_plugin_name() == kYbGrpcStreamIndicator;
+}
+
 /*
  * Processing for relevant tables that have been added after the creation of a stream
  * This involves
@@ -2907,9 +2915,17 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
     // A namespace hosts either logical-replication or gRPC streams, never both, so the first stream
     // tells us which model applies to the whole namespace.
     bool is_logical_replication;
+    // Whether each stream resolves record types through the replica identity map. Evaluated per
+    // stream, since gRPC streams that need the map can coexist with ones that don't.
+    std::vector<bool> stream_requires_replica_identity_map;
+    stream_requires_replica_identity_map.reserve(streams.size());
     {
       SharedLock lock(mutex_);
       is_logical_replication = IsCdcLogicalReplicationStream(*streams.front());
+      for (const auto& stream : streams) {
+        stream_requires_replica_identity_map.push_back(
+            PREDICT_TRUE(stream != nullptr) && StreamRequiresReplicaIdentityMap(*stream));
+      }
     }
     if (!FLAGS_ysql_yb_enable_replication_slot_consumption || !is_logical_replication) {
       // Set the WAL retention for this new table
@@ -2928,7 +2944,9 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
     NamespaceId namespace_id;
     bool stream_pending = false;
     Status status;
+    size_t stream_idx = 0;
     for (const auto& stream : streams) {
+      const bool requires_replica_identity_map = stream_requires_replica_identity_map[stream_idx++];
       if PREDICT_FALSE (stream == nullptr) {
         LOG(WARNING) << "Could not find CDC stream: " << stream->id();
         continue;
@@ -2977,9 +2995,7 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
 
       stream_lock.mutable_data()->pb.add_table_id(table_id);
 
-      // Store the replica identity information of the table in the stream metadata for logical
-      // replication stream.
-      if (FLAGS_ysql_yb_enable_replica_identity && is_logical_replication) {
+      if (FLAGS_ysql_yb_enable_replica_identity && requires_replica_identity_map) {
         auto table = VERIFY_RESULT(FindTableById(table_id));
         auto schema = VERIFY_RESULT(table->GetSchema());
         PgReplicaIdentity replica_identity = schema.table_properties().replica_identity();

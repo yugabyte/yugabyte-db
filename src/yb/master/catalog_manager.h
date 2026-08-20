@@ -1682,6 +1682,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Returns true if the given CDCSDK stream is a logical replication stream.
   bool IsCdcLogicalReplicationStream(const CDCStreamInfo& stream) const REQUIRES_SHARED(mutex_);
 
+  // Returns true if the given CDCSDK stream resolves per-table record types through the replica
+  // identity map instead of the record_type option. Logical replication streams and PG-syntax
+  // gRPC streams (with yb_grpc plugin) are such streams.
+  bool StreamRequiresReplicaIdentityMap(const CDCStreamInfo& stream) const REQUIRES_SHARED(mutex_);
+
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
   void FindAllTablesMissingInCDCSDKStream(
