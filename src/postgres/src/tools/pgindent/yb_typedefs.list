@@ -149,6 +149,7 @@ YbPFetchTableState
 YbParentScan
 YbParentScanData
 YbParitionedTableOptions
+YbParseType
 YbPartitionPruneStepFuncOp
 YbPathInfo
 YbPgAttributeRow

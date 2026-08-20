@@ -34,6 +34,13 @@ is_yb_file() {
   fi
 }
 
+has_yb_marker() {
+  case "$1" in
+    *YB* | *Yb* | *yb*) return 0 ;;
+  esac
+  return 1
+}
+
 # Includes
 if is_yb_file "$1"; then
   if grep -iqE '(yb|yugabyte) includes' "$1"; then
@@ -340,6 +347,7 @@ if [[ "$1" =~ /[^/]*Yb[^/]+\.[ch]$ &&
 'Filenames with "Yb" should only be the case for nodeYb* files:1:'"$(head -1 "$1")"
 fi
 check_ctags
+yb_typedefs=$(cat "$yb_typedefs_list")
 echo "$1" \
   | ctags_types \
   | while read -r line; do
@@ -357,11 +365,15 @@ echo "$1" \
       # "yb", but it is not possible to determine which are YB-added or not.
       # So as a best effort, at least we know YB files contain only YB code, so
       # whatever types they produce should have "yb".
-      if is_yb_file "$1" &&
-         [[ "$symbol" != *YB* &&
-            "$symbol" != *Yb* &&
-            "$symbol" != *yb* ]]; then
+      if is_yb_file "$1" && ! has_yb_marker "$symbol"; then
         echo 'error:missing_yb_prefix:This type should have "yb" prefix:'\
+"$lineno:$(sed -n "$lineno"p "$1")"
+      fi
+
+      if has_yb_marker "$symbol" &&
+         [[ $'\n'"$yb_typedefs"$'\n' != *$'\n'"$symbol"$'\n'* ]]; then
+        echo 'error:missing_yb_typedef:'\
+'This YB type should be added to yb_typedefs.list:'\
 "$lineno:$(sed -n "$lineno"p "$1")"
       fi
     done

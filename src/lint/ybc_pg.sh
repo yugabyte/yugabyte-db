@@ -22,7 +22,6 @@ set -euo pipefail
 # Missing handle types.  typedefs_list.sh has the same rule, but it only runs
 # when yb_typedefs.list is in the lint set, so a change confined to this header
 # would go unreported.
-yb_typedefs_list=src/postgres/src/tools/pgindent/yb_typedefs.list
 macros=$(handle_type_macros)
 { grep -noE "($macros)\([A-Z][a-zA-Z0-9_]*\)" "$1" || true; } \
   | while IFS=: read -r lineno macro; do
@@ -35,6 +34,7 @@ Ybc$handle_type for $macro:$lineno:$(sed -n "$lineno"p "$1")"
     done
 
 check_ctags
+yb_typedefs=$(cat "$yb_typedefs_list")
 echo "$1" \
   | ctags_types \
   | while read -r line; do
@@ -43,6 +43,12 @@ echo "$1" \
 
       if [[ "$symbol" != Ybc* ]]; then
         echo 'error:missing_ybc_prefix:This type should have "Ybc" prefix:'\
+"$lineno:$(sed -n "$lineno"p "$1")"
+      fi
+
+      if [[ $'\n'"$yb_typedefs"$'\n' != *$'\n'"$symbol"$'\n'* ]]; then
+        echo 'error:missing_yb_typedef:'\
+'This YB type should be added to yb_typedefs.list:'\
 "$lineno:$(sed -n "$lineno"p "$1")"
       fi
 
