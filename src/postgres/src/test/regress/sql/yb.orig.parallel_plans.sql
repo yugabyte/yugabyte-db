@@ -251,6 +251,35 @@ SELECT 0 FROM t1m t;
 
 
 --
+-- Should choose SERIAL batched nested loop join.  A parallel BNL divides
+-- the outer row estimate, and with it the inner batch count, by the
+-- parallel divisor (#32653); at this size that win does not pay for
+-- parallel_setup_cost, which #33413 calibrated against the division.
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(160/2-1) AND 5000+(160/2);
+
+-- Undercharging the setup cost (the pre-#33413 default of 1700) flips it.
+/*+ Set(parallel_setup_cost 1700) */
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(160/2-1) AND 5000+(160/2);
+
+
+--
+-- Should choose PARALLEL batched nested loop join: with twice the rows the
+-- divided batch work exceeds the setup cost.  Flips serial if the outer
+-- row estimate loses its parallel-divisor division.
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(330/2-1) AND 5000+(330/2);
+
+
+--
 -- Correctness tests
 --
 
