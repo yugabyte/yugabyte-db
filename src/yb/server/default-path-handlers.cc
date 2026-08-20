@@ -702,6 +702,11 @@ void ParseRequestOptions(
       }
     }
 
+    // Parsed argument names are lower cased by the webserver, so callers may spell this parameter
+    // with any casing.
+    arg = FindWithDefault(req.parsed_args, "apply_table_ids_filter", "false");
+    prometheus_opts->apply_table_ids_filter = ParseLeadingBoolValue(arg.c_str(), false);
+
     prometheus_opts->version = FindWithDefault(req.parsed_args, "version", kFilterVersionOne);
 
     if (prometheus_opts->version == kFilterVersionTwo) {

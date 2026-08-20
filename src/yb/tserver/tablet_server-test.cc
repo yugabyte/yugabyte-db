@@ -153,11 +153,12 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   const auto url = Format(
       "http://$0/prometheus-metrics?show_help=false",
       yb::ToString(mini_server_->bound_http_addr()));
-  auto Scrape = [&]() {
+  auto Scrape = [&](const std::string& extra_args = "") {
     faststring buffer;
-    CHECK_OK(curl.FetchURL(url, &buffer));
+    CHECK_OK(curl.FetchURL(url + extra_args, &buffer));
     return buffer.ToString();
   };
+  auto FilteredScrape = [&]() { return Scrape("&apply_table_IDs_filter=true"); };
   const auto table_label = Format(R"#(table_id="$0")#", kTableName.table_name());
   auto LastUpdateTime = [](const std::string& scrape) -> Result<uint64_t> {
     constexpr std::string_view kMetricName = "active_table_metrics_last_update_time";
@@ -176,13 +177,17 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
     return CheckedStoull(scrape.substr(value_pos + 1, value_end - value_pos - 1));
   };
 
-  // Filtering is opt-in. A fresh process exports all table metrics while the flag is disabled.
+  // Both the runtime flag and the scrape URL parameter must opt in to filtering.
   auto scrape = Scrape();
   ASSERT_STR_CONTAINS(scrape, table_label);
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
   ASSERT_EQ(0, ASSERT_RESULT(LastUpdateTime(scrape)));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = true;
-  // Once enabled, a fresh process exports no table metrics until it receives its first list.
-  ASSERT_STR_NOT_CONTAINS(Scrape(), table_label);
+  // Existing scrape URLs retain their behavior, while opted-in scrapes emit no table metrics
+  // until the process receives its first list.
+  ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_CONTAINS(Scrape("&apply_table_IDs_filter=false"), table_label);
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
 
   SetActiveTableMetricsRequestPB req;
   SetActiveTableMetricsResponsePB resp;
@@ -190,14 +195,16 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   RpcController controller;
   ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
-  const auto first_update_time = ASSERT_RESULT(LastUpdateTime(Scrape()));
+  const auto first_update_time =
+      ASSERT_RESULT(LastUpdateTime(FilteredScrape()));
   ASSERT_GT(first_update_time, 0);
-  ASSERT_STR_NOT_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = false;
-  ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = true;
-  ASSERT_STR_NOT_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
 
   SleepFor(MonoDelta::FromMilliseconds(1));
   req.clear_table_ids();
@@ -206,13 +213,14 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   controller.Reset();
   ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
-  const auto second_update_time = ASSERT_RESULT(LastUpdateTime(Scrape()));
+  const auto second_update_time =
+      ASSERT_RESULT(LastUpdateTime(FilteredScrape()));
   ASSERT_GT(second_update_time, first_update_time);
-  ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
 
   // The most recently received list remains active indefinitely.
   SleepFor(MonoDelta::FromMilliseconds(100 * kTimeMultiplier));
-  ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_active_table_metrics_table_count) = 1;
   req.add_table_ids("another-table");
@@ -221,9 +229,11 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
   ASSERT_TRUE(resp.has_error());
   ASSERT_TRUE(StatusFromPB(resp.error().status()).IsInvalidArgument());
-  ASSERT_EQ(ASSERT_RESULT(LastUpdateTime(Scrape())), second_update_time);
+  ASSERT_EQ(
+      ASSERT_RESULT(LastUpdateTime(FilteredScrape())),
+      second_update_time);
   // Rejected updates leave the previously accepted list active.
-  ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
 
   SleepFor(MonoDelta::FromMilliseconds(1));
   req.clear_table_ids();
@@ -231,8 +241,11 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   controller.Reset();
   ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
-  ASSERT_GT(ASSERT_RESULT(LastUpdateTime(Scrape())), second_update_time);
-  ASSERT_STR_NOT_CONTAINS(Scrape(), table_label);
+  ASSERT_GT(
+      ASSERT_RESULT(LastUpdateTime(FilteredScrape())),
+      second_update_time);
+  ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
 }
 
 TEST_F(TabletServerTest, TestServerClock) {

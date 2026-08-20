@@ -21,8 +21,15 @@ namespace yb {
 
 class PrometheusMetricFilter {
  public:
+  explicit PrometheusMetricFilter(const MetricPrometheusOptions& opts);
+
   virtual AggregationLevels GetAggregationLevels(
       const std::string& metric_name, AggregationLevels default_aggregation_levels) = 0;
+
+  // Returns whether an entry with the given attributes passes the active-table list, if one was
+  // supplied. Entries without a table id, and entries of stream-level entities, always pass.
+  bool ShouldExportTableMetrics(
+      const MetricEntity::AttributeMap& attributes, const std::string& metric_entity_type) const;
 
   virtual std::string Version() const = 0;
 
@@ -34,6 +41,9 @@ class PrometheusMetricFilter {
 
  protected:
   MetricAggregationMap metric_filter_;
+
+ private:
+  const std::shared_ptr<const std::unordered_set<std::string>> active_table_ids_;
 };
 
 std::unique_ptr<PrometheusMetricFilter> CreatePrometheusMetricFilter(

@@ -474,7 +474,7 @@ Status TabletServer::SetActiveTableMetrics(std::unordered_set<std::string> table
 }
 
 void TabletServer::ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const {
-  if (!FLAGS_enable_active_table_metrics_filtering) {
+  if (!FLAGS_enable_active_table_metrics_filtering || !options->apply_table_ids_filter) {
     return;
   }
   static const auto kNoActiveTables =
