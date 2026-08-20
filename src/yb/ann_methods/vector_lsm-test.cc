@@ -348,24 +348,16 @@ class VectorLSMUsearchTest : public VectorLSMTestBase {
         }) {}
 };
 
-auto GetVectorIndexFactory(const ParamType& param, const hnsw::BlockCachePtr& block_cache) {
+Result<vector_index::VectorIndexTraitsPtr<std::vector<float>, float>> GetVectorIndexTraits(
+    const ParamType& param, const vector_index::HNSWOptions& options,
+    const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker = {}) {
   switch (GetANNMethodKind(param)) {
     case ANNMethodKind::kUsearch:
-      return std::function<vector_index::VectorIndexIfPtr<std::vector<float>, float>(
-          vector_index::FactoryMode, const vector_index::HNSWOptions&)>(
-          [block_cache](
-              vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
-            return UsearchIndexFactory<std::vector<float>, float>::Create(
-                mode, block_cache, options, nullptr);
-          });
+      return CreateUsearchIndexTraits<std::vector<float>, float>(
+          block_cache, options, mem_tracker);
     case ANNMethodKind::kHnswlib:
-      return std::function<vector_index::VectorIndexIfPtr<std::vector<float>, float>(
-          vector_index::FactoryMode, const vector_index::HNSWOptions&)>(
-          [block_cache](
-              vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
-            return HnswlibIndexFactory<std::vector<float>, float>::Create(
-                mode, block_cache, options, nullptr);
-          });
+      return CreateHnswlibIndexTraits<std::vector<float>, float>(
+          block_cache, options, mem_tracker);
   }
   FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(param));
 }
@@ -498,17 +490,15 @@ Status VectorLSMTestBase::OpenVectorLSM(
         test_dir, "vector_lsm_test_" + Uuid::Generate().ToString(), "vector_lsm");
   }
 
-  auto factory = GetVectorIndexFactory(backend_param(), block_cache_);
+  vector_index::HNSWOptions hnsw_options = {
+    .dimensions = dimensions,
+    .distance_kind = distance_kind,
+  };
   FloatVectorLSM::Options options = {
     .log_prefix = "Test: ",
     .storage_dir = dir,
-    .vector_index_factory = [factory, dimensions, distance_kind](vector_index::FactoryMode mode) {
-      vector_index::HNSWOptions hnsw_options = {
-        .dimensions = dimensions,
-        .distance_kind = distance_kind,
-      };
-      return factory(mode, hnsw_options);
-    },
+    .vector_index_traits = VERIFY_RESULT(GetVectorIndexTraits(
+        backend_param(), hnsw_options, block_cache_)),
     .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
     .insert_thread_pool = &thread_pool_,

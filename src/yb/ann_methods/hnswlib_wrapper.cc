@@ -102,14 +102,14 @@ class YbSpace : public hnswlib::SpaceInterface<DistanceResult> {
 };
 
 template <vector_index::CoordinateScalarType CoordinateType, ValidDistanceResultType DistanceResult>
-Result<std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>>> CreateSpace(
+Result<std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>>> CreateSpace(
     const HNSWOptions& options) {
   switch (options.distance_kind) {
     case DistanceKind::kL2Squared: {
       if constexpr (std::is_same<CoordinateType, float>::value) {
-        return std::make_unique<hnswlib::L2Space>(options.dimensions);
+        return std::make_shared<hnswlib::L2Space>(options.dimensions);
       } else if constexpr (std::is_same<CoordinateType, uint8_t>::value) {
-        return std::make_unique<hnswlib::L2SpaceI>(options.dimensions);
+        return std::make_shared<hnswlib::L2SpaceI>(options.dimensions);
       } else {
         // Actually underlying code does not compile, because CoordinateTypeTraits does not have
         // Kind. So when we instantiate CreateSpace with unsupported coordiate type build will fail.
@@ -121,14 +121,14 @@ Result<std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>>> CreateSpace(
     }
     case DistanceKind::kInnerProduct:
       if constexpr (std::is_same<CoordinateType, float>::value) {
-        return std::make_unique<hnswlib::InnerProductSpace>(options.dimensions);
+        return std::make_shared<hnswlib::InnerProductSpace>(options.dimensions);
       } else {
-        return std::make_unique<YbSpace<
+        return std::make_shared<YbSpace<
             CoordinateType, DistanceResult, unum::usearch::metric_kind_t::ip_k>>(
                 options.dimensions);
       }
     case DistanceKind::kCosine:
-      return std::make_unique<YbSpace<
+      return std::make_shared<YbSpace<
           CoordinateType, DistanceResult, unum::usearch::metric_kind_t::cos_k>>(options.dimensions);
   }
 
@@ -173,10 +173,11 @@ class HnswlibIndex :
 
   HnswlibIndex(
       const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
-      const MemTrackerPtr& mem_tracker)
+      const MemTrackerPtr& mem_tracker,
+      std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>> space)
       : block_cache_(block_cache),
         options_(options),
-        space_(CHECK_RESULT((CreateSpace<Scalar, DistanceResult>(options)))) {
+        space_(std::move(space)) {
     consumption_.Init(mem_tracker);
     static std::once_flag once_flag;
     std::call_once(once_flag, [func = space_->get_dist_func()]() {
@@ -263,7 +264,7 @@ class HnswlibIndex :
   }
 
   Status DoLoadFromFile(const std::string& path, size_t) {
-    // Saved chunks are always loaded as YbHnsw, see HnswlibIndexFactory::Create.
+    // Saved chunks are always loaded as YbHnsw, see HnswlibIndexTraits::Create.
     return STATUS_FORMAT(NotSupported, "Hnswlib index cannot be loaded from file: $0", path);
   }
 
@@ -357,7 +358,8 @@ class HnswlibIndex :
 
   const hnsw::BlockCachePtr block_cache_;
   const HNSWOptions options_;
-  std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
+  // Shared with HnswlibIndexTraits and all indexes it created.
+  const std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
   IndexMemoryConsumption consumption_;
 };
@@ -393,19 +395,75 @@ class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
   int dimensions_;
 };
 
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class HnswlibIndexTraits :
+    public vector_index::VectorIndexTraitsIf<Vector, DistanceResult> {
+ public:
+  using Scalar = typename Vector::value_type;
+  using HNSWImpl = typename HnswlibIndex<Vector, DistanceResult>::HNSWImpl;
+
+  vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
+      vector_index::FactoryMode mode) const override {
+    if (mode == vector_index::FactoryMode::kLoad) {
+      return CreateYbHnsw<Vector, DistanceResult>(block_cache_, options_);
+    }
+    return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(
+        block_cache_, options_, mem_tracker_, space_);
+  }
+
+  DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
+    return space_->get_dist_func()(lhs.data(), rhs.data(), space_->get_dist_func_param());
+  }
+
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return HNSWImpl::estimateNumVectorsForBytes(
+        bytes_limit, options_.num_neighbors_per_vertex, options_.num_neighbors_per_vertex_base,
+        options_.dimensions * sizeof(Scalar));
+  }
+
+ private:
+  // Only CreateHnswlibIndexTraits is allowed to instantiate this class, since Init must be
+  // called after construction.
+  HnswlibIndexTraits(
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
+      const MemTrackerPtr& mem_tracker)
+      : block_cache_(block_cache), options_(options), mem_tracker_(mem_tracker) {
+  }
+
+  Status Init() {
+    space_ = VERIFY_RESULT((CreateSpace<Scalar, DistanceResult>(options_)));
+    return Status::OK();
+  }
+
+  template <IndexableVectorType FriendVector, ValidDistanceResultType FriendDistanceResult>
+  friend Result<vector_index::VectorIndexTraitsPtr<FriendVector, FriendDistanceResult>>
+      ann_methods::CreateHnswlibIndexTraits(
+          const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+          const MemTrackerPtr& mem_tracker);
+
+  const hnsw::BlockCachePtr block_cache_;
+  const HNSWOptions options_;
+  const MemTrackerPtr mem_tracker_;
+  // Shared with all created indexes, see Create. Safe to share: the space is immutable after
+  // creation and only provides data sizes and a stateless distance function.
+  std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
+};
+
 }  // namespace
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-VectorIndexIfPtr<Vector, DistanceResult> HnswlibIndexFactory<Vector, DistanceResult>::Create(
-    vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
-    const vector_index::HNSWOptions& options, const std::shared_ptr<MemTracker>& mem_tracker) {
-  if (mode == vector_index::FactoryMode::kLoad) {
-    return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
-  }
-  return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(
-      block_cache, options, mem_tracker);
+Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateHnswlibIndexTraits(
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+    const MemTrackerPtr& mem_tracker) {
+  std::shared_ptr<HnswlibIndexTraits<Vector, DistanceResult>> traits(
+      new HnswlibIndexTraits<Vector, DistanceResult>(block_cache, options, mem_tracker));
+  RETURN_NOT_OK(traits->Init());
+  return traits;
 }
 
-template class HnswlibIndexFactory<FloatVector, float>;
+template Result<vector_index::VectorIndexTraitsPtr<FloatVector, float>>
+    CreateHnswlibIndexTraits<FloatVector, float>(
+        const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+        const MemTrackerPtr& mem_tracker);
 
 }  // namespace yb::ann_methods
