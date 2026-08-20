@@ -16,6 +16,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
 
 #include "yb/dockv/doc_vector_id.h"
@@ -109,46 +110,35 @@ vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& optio
   };
 }
 
-template <class LSM, template<class, class> class Factory>
-typename LSM::Options::VectorIndexFactory VectorLSMFactoryImpl(
+template<vector_index::IndexableVectorType Vector,
+         vector_index::ValidDistanceResultType DistanceResult>
+Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
     const MemTrackerPtr& mem_tracker) {
   auto hnsw_options = ConvertToHnswOptions(options);
-  using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
-  return [block_cache, hnsw_options,
-          backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
-    return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
-  };
-}
-
-template <class LSM>
-typename LSM::Options::VectorIndexFactory VectorLSMFactory(
-    const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
-    const MemTrackerPtr& mem_tracker) {
-  switch (options.hnsw().backend()) {
+  auto backend = options.hnsw().backend();
+  switch (backend) {
     case HnswBackend::USEARCH: [[fallthrough]];
     case HnswBackend::YB_HNSW_USEARCH:
-      return VectorLSMFactoryImpl<LSM, ann_methods::UsearchIndexFactory>(
-          block_cache, options, mem_tracker);
+      return ann_methods::CreateUsearchIndexTraits<Vector, DistanceResult>(
+          block_cache, hnsw_options, backend, mem_tracker);
     case HnswBackend::HNSWLIB: [[fallthrough]];
-    case HnswBackend::YB_HNSW_HNSWLIB: {
-      return VectorLSMFactoryImpl<LSM, ann_methods::HnswlibIndexFactory>(
-          block_cache, options, mem_tracker);
-    }
+    case HnswBackend::YB_HNSW_HNSWLIB:
+      return ann_methods::CreateHnswlibIndexTraits<Vector, DistanceResult>(
+          block_cache, hnsw_options, backend, mem_tracker);
   }
-  FATAL_INVALID_PB_ENUM_VALUE(HnswBackend, options.hnsw().backend());
+  FATAL_INVALID_PB_ENUM_VALUE(HnswBackend, backend);
 }
 
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
-auto GetVectorLSMFactory(
+auto GetVectorLSMTraits(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
     const MemTrackerPtr& mem_tracker)
-    -> Result<vector_index::VectorIndexFactory<Vector, DistanceResult>> {
-  using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
+    -> Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> {
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
-      return VectorLSMFactory<LSM>(block_cache, options, mem_tracker);
+      return HnswTraits<Vector, DistanceResult>(block_cache, options, mem_tracker);
     case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
@@ -306,7 +296,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
     typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
       .storage_dir = storage_dir,
-      .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
+      .vector_index_traits = VERIFY_RESULT((GetVectorLSMTraits<Vector, DistanceResult>(
           block_cache_, options_, mem_tracker_))),
       .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = thread_pools.thread_pool,

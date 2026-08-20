@@ -29,6 +29,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
@@ -307,7 +308,7 @@ std::unique_ptr<FloatVectorSource> CreateRandomFloatVectorSource(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-using PreVectorIndexFactory = std::function<VectorIndexFactory<Vector, DistanceResult>(
+using PreVectorIndexFactory = std::function<VectorIndexTraitsPtr<Vector, DistanceResult>(
     const HNSWOptions& options)>;
 
 // We instantiate this template as soon as we determine what coordinate type and distance result
@@ -366,15 +367,14 @@ class BenchmarkTool {
 
     if (args_.num_index_shards > 1) {
       index_pre_factory_ = [pre_factory = index_pre_factory_, num_shards = args_.num_index_shards](
-          const HNSWOptions& options) {
-        return [factory = pre_factory(options), num_shards](FactoryMode) {
-          return std::make_unique<ShardedVectorIndex<IndexedVector, IndexedDistanceResult>>(
-              factory, num_shards);
-        };
+          const HNSWOptions& options)
+          -> VectorIndexTraitsPtr<IndexedVector, IndexedDistanceResult> {
+        return std::make_shared<ShardedVectorIndexTraits<IndexedVector, IndexedDistanceResult>>(
+            pre_factory(options), num_shards);
       };
     }
 
-    vector_index_ = index_pre_factory_(hnsw_options())(FactoryMode::kCreate);
+    vector_index_ = index_pre_factory_(hnsw_options())->Create(FactoryMode::kCreate);
 
     RETURN_NOT_OK(vector_index_->Reserve(
         num_points_to_insert(),
@@ -773,13 +773,10 @@ std::optional<Status> BenchmarkExecuteHelper(
   if (args.ann_method == ann_method_kind &&
       args.hnsw_options.distance_kind == distance_kind &&
       input_coordinate_kind == CoordinateTypeTraits<typename InputVector::value_type>::kKind) {
-    using FactoryType = typename ann_methods::ANNMethodTraits<ann_method_kind>::template
-        FactoryType<IndexedVector,
-                    typename DistanceTraits<IndexedVector, distance_kind>::Result>;
     PreVectorIndexFactory<IndexedVector, IndexedDistanceResult> pre_index_factory =
-        [](const HNSWOptions& options) -> VectorIndexFactory<IndexedVector, IndexedDistanceResult> {
-      using namespace std::placeholders;
-      return std::bind(&FactoryType::Create, _1, options);
+        [](const HNSWOptions& options) {
+      return CHECK_RESULT((ann_methods::ANNMethodTraits<ann_method_kind>::template
+          CreateIndexTraits<IndexedVector, IndexedDistanceResult>(options)));
     };
     return BenchmarkTool<InputVector, InputDistanceResult, IndexedVector, IndexedDistanceResult>(
         args, pre_index_factory).Execute();

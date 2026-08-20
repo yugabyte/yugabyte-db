@@ -132,7 +132,25 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
 
 YB_DEFINE_ENUM(FactoryMode, (kCreate)(kLoad));
 
+// Instance independent functionality of a vector index implementation.
+// Also acts as the factory for vector index instances.
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-using VectorIndexFactory = std::function<VectorIndexIfPtr<Vector, DistanceResult>(FactoryMode)>;
+class VectorIndexTraitsIf {
+ public:
+  virtual ~VectorIndexTraitsIf() = default;
+
+  // Creates a vector index instance.
+  virtual VectorIndexIfPtr<Vector, DistanceResult> Create(FactoryMode mode) const = 0;
+
+  virtual DistanceResult Distance(const Vector& lhs, const Vector& rhs) const = 0;
+
+  // Estimates the number of vectors that fit into the specified amount of memory.
+  // Always reflects the in-memory representation used to build chunks, see
+  // VectorIndexWriterIf::EstimateNumVectorsForBytes.
+  virtual size_t EstimateNumVectorsForBytes(size_t bytes_limit) const = 0;
+};
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+using VectorIndexTraitsPtr = std::shared_ptr<VectorIndexTraitsIf<Vector, DistanceResult>>;
 
 }  // namespace yb::vector_index

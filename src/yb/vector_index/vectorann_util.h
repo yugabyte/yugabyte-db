@@ -121,10 +121,10 @@ std::vector<VectorWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbor
 // Draft of a function that returns a pointer to a merged index
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<VectorIndexIfPtr<Vector, DistanceResult>> Merge(
-    VectorIndexFactory<Vector, DistanceResult> index_factory,
+    const VectorIndexTraitsPtr<Vector, DistanceResult>& index_traits,
     const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& indexes,
     size_t min_capacity = 0) {
-  VectorIndexIfPtr<Vector, DistanceResult> merged_index = index_factory(FactoryMode::kCreate);
+  auto merged_index = index_traits->Create(FactoryMode::kCreate);
 
   size_t total_capacity = 0;
   for (const auto& index : indexes) {

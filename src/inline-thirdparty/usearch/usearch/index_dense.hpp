@@ -797,28 +797,40 @@ class index_dense_gt {
     // returns `node_head + neighbors_base`, and the expected number of additional levels is governed
     // by the geometric distribution with parameter `inverse_log_connectivity` (see
     // `index_gt::choose_random_level_`).
-    double per_vector_bytes_estimate() const noexcept {
-        const std::size_t bytes_per_vector_data = bytes_per_vector();
+    static double per_vector_bytes_estimate(metric_t const& metric,
+                                             index_dense_config_t const& config) noexcept {
+        const std::size_t bytes_per_vector_data = metric.bytes_per_vector();
         const std::size_t bytes_per_vector_lookup = sizeof(byte_t*);
         const std::size_t bytes_per_node_handle = sizeof(byte_t*);
-        const double level0_bytes = static_cast<double>(typed_->memory_usage_per_node(0));
+        const double level0_bytes = static_cast<double>(index_t::memory_usage_per_node(config, 0));
         const double avg_node_bytes =
             level0_bytes +
-            static_cast<double>(typed_->neighbors_bytes()) * typed_->inverse_log_connectivity();
+            static_cast<double>(index_t::neighbors_bytes(config)) *
+                config.inverse_log_connectivity();
         return static_cast<double>(bytes_per_vector_data + bytes_per_vector_lookup +
                                    bytes_per_node_handle) +
                avg_node_bytes;
     }
 
-    std::size_t estimate_num_vectors_for_bytes(std::size_t bytes_limit) const noexcept {
+    double per_vector_bytes_estimate() const noexcept {
+        return per_vector_bytes_estimate(metric_, config_);
+    }
+
+    static std::size_t estimate_num_vectors_for_bytes(std::size_t bytes_limit,
+                                                      metric_t const& metric,
+                                                      index_dense_config_t const& config) noexcept {
         if (bytes_limit == 0) {
             return 0;
         }
-        const double per_vector_bytes = per_vector_bytes_estimate();
+        const double per_vector_bytes = per_vector_bytes_estimate(metric, config);
         if (per_vector_bytes <= 0) {
             return 0;
         }
         return static_cast<std::size_t>(static_cast<double>(bytes_limit) / per_vector_bytes);
+    }
+
+    std::size_t estimate_num_vectors_for_bytes(std::size_t bytes_limit) const noexcept {
+        return estimate_num_vectors_for_bytes(bytes_limit, metric_, config_);
     }
 
     // Inverse of estimate_num_vectors_for_bytes: the byte budget required to hold num_vectors.
