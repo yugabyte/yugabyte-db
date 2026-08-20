@@ -65,8 +65,33 @@ function regionCodesMatchAvailabilityZones(
 }
 
 /**
+ * Expert RF buttons: 1, 3, 5, 7. An option is disabled when it is below region
+ * count (see ExpertNodesReplicationSection).
+ */
+const EXPERT_RF_OPTIONS = [1, 3, 5, 7] as const;
+
+export function minExpertRfForRegionCount(regionCount: number): number | undefined {
+  return EXPERT_RF_OPTIONS.find((rf) => rf >= regionCount);
+}
+
+function resolveExpertEditReplicationFactor(
+  regionCount: number,
+  currentRf: number | undefined,
+  expertDefaultRf: number | undefined,
+  resilienceFactor: number | undefined
+): number {
+  const seeded = currentRf ?? expertDefaultRf ?? resilienceFactor ?? 1;
+  const minRf = minExpertRfForRegionCount(regionCount);
+  if (minRf !== undefined && seeded < minRf) {
+    return minRf;
+  }
+  return seeded;
+}
+
+/**
  * Prefer existing (universe) AZ rows for regions that stay selected; only fill
  * missing/new regions from expert defaults (never guided assign).
+ * Keep the seeded universe RF unless it is below region count (disabled in the UI).
  */
 function recalculateExpertNodesAvailability(
   resilience: ResilienceAndRegionsProps,
@@ -97,11 +122,12 @@ function recalculateExpertNodesAvailability(
     ...nodesAndAvailability,
     useDedicatedNodes: nodesAndAvailability.useDedicatedNodes,
     availabilityZones: mergedZones,
-    [REPLICATION_FACTOR]:
-      expertPlacement.replicationFactor ??
-      nodesAndAvailability[REPLICATION_FACTOR] ??
-      resilience.resilienceFactor ??
-      1
+    [REPLICATION_FACTOR]: resolveExpertEditReplicationFactor(
+      (resilience.regions ?? []).length,
+      nodesAndAvailability[REPLICATION_FACTOR],
+      expertPlacement.replicationFactor,
+      resilience.resilienceFactor
+    )
   };
 }
 
