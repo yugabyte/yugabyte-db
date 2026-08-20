@@ -113,9 +113,11 @@ constexpr int32 kDefaultRpcPort = 9100;
 const string kMinus = "minus";
 
 const std::string namespace_expression =
-    "<namespace>:\n [(ycql|ysql).]<namespace_name> (default ycql.)";
-const std::string table_expression = "<table>:\n <namespace> <table_name> | tableid.<table_id>";
-const std::string index_expression = "<index>:\n  <namespace> <index_name> | tableid.<index_id>";
+    "<namespace>\n  [(ycql|ysql).]<namespace_name> (default: ycql.)";
+const std::string table_expression =
+    "<table>\n  <namespace> <table_name> | tableid.<table_id>";
+const std::string index_expression =
+    "<index>\n  <namespace> <index_name> | tableid.<index_id>";
 
 Status GetUniverseConfig(ClusterAdminClient* client, const ClusterAdminCli::CLIArguments&) {
   RETURN_NOT_OK_PREPEND(client->GetUniverseConfig(), "Unable to get universe config");
@@ -430,11 +432,21 @@ std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arg
   std::stringstream ss(usage_arguments);
   std::string next_argument;
   while (ss >> next_argument) {
-    if (next_argument == "<namespace>" || next_argument == "<source_namespace>") {
+    // usage_arguments_ marks optional arguments with surrounding '[' ']' and repeated ones with
+    // a trailing "...", e.g. "[<namespace> <table_name> [<table_name>]...]". Strip those
+    // decorations before comparing, otherwise a placeholder inside brackets never matches and its
+    // definition is silently omitted.
+    const auto begin = next_argument.find_first_not_of('[');
+    const auto end = next_argument.find_last_not_of("].");
+    const std::string token = (begin == std::string::npos || end == std::string::npos ||
+                                begin > end)
+                                   ? std::string()
+                                   : next_argument.substr(begin, end - begin + 1);
+    if (token == "<namespace>" || token == "<source_namespace>") {
       expressions += namespace_expression + '\n';
-    } else if (next_argument == "<table>") {
+    } else if (token == "<table>") {
       expressions += table_expression + '\n';
-    } else if (next_argument == "<index>") {
+    } else if (token == "<index>") {
       expressions += index_expression + '\n';
     }
   }
@@ -595,32 +607,42 @@ void ClusterAdminCli::Register(
 void ClusterAdminCli::SetUsage(const string& prog_name) {
   ostringstream str;
 
-  str << prog_name << " [--master_addresses server1:port,server2:port,server3:port,...] "
-      << " [--timeout_ms <millisec>] [--certs_dir_name <dir_name>]" << endl
-      << "  [--flagfile <path/to/master/conf/server.conf>]" << endl
-      << "  <operation>" << endl
+  str << "Usage:" << endl
+      << "  " << prog_name << " [global flags] <operation> [args]" << endl
       << endl
-      << "Tip: Use --flagfile with the master's server.conf to automatically pick up" << endl
-      << "master_addresses and certs_dir, avoiding manual flag entry." << endl
-      << "Example: " << prog_name
-      << " --flagfile master/conf/server.conf list_all_masters" << endl
+      << "Common global flags:" << endl
+      << "  --master_addresses host:port[,host:port,...]  (default: localhost:7100)" << endl
+      << "  --init_master_addrs host:port                 (alternative to --master_addresses)"
       << endl
-      << "<operation> must be one of:" << endl;
+      << "  --timeout_ms <millisec>                       (default: 60000)" << endl
+      << "  --certs_dir_name <dir>" << endl
+      << "  --flagfile <path>" << endl
+      << endl
+      << "Tip:" << endl
+      << "  Use --flagfile with the master's server.conf to automatically pick up" << endl
+      << "  master_addresses and certs_dir, avoiding manual flag entry." << endl
+      << endl
+      << "Example:" << endl
+      << "  " << prog_name << " --flagfile /path/to/master/conf/server.conf list_all_masters"
+      << endl
+      << endl
+      << "Operations:" << endl;
 
-  for (size_t i = 0; i < commands_.size(); ++i) {
-    const auto& command = commands_[i];
+  // Number only the operations actually printed, so a hidden command's slot in commands_ doesn't
+  // leave a gap in the visible list (e.g. "85. ..." followed by "87. ..." with no "86.").
+  size_t visible_number = 0;
+  for (const auto& command : commands_) {
     if (command.hidden_) {
       continue;
     }
-    str << ' ' << i + 1 << ". " << command.name_ << (command.usage_arguments_.empty() ? "" : " ")
-        << command.usage_arguments_ << endl;
+    str << "  " << ++visible_number << ". " << command.name_
+        << (command.usage_arguments_.empty() ? "" : " ") << command.usage_arguments_ << endl;
   }
 
-  str << endl;
-  str << namespace_expression << endl;
-  str << table_expression << endl;
-  str << index_expression << endl;
-
+  // Argument placeholders like <namespace>/<table>/<index> are defined per-command instead of
+  // in a global footer here: only a minority of operations use them (see GetArgumentExpressions),
+  // and RunCommand() already prints the relevant definition alongside a specific command's usage
+  // when that command's arguments are invalid.
   google::SetUsageMessage(str.str());
 }
 
@@ -3312,7 +3334,11 @@ int main(int argc, char** argv) {
   }
 
   if (s.IsInvalidArgument()) {
-    google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
+    // Print the usage message set up by ClusterAdminCli::SetUsage directly, rather than
+    // google::ShowUsageWithFlagsRestrict(argv[0], __FILE__), which additionally dumps every gflag
+    // defined in this file with its build-relative source path, type, and default -- noise that
+    // buries the operation catalog the usage message already lists in full.
+    std::cout << google::ProgramUsage();
   }
 
   return 1;

@@ -254,12 +254,12 @@ TEST_F(AdminCliTest, UnsupportedRpcErrorDetection) {
 // cluster (the operation is checked before yb-admin connects to the master): prefix matches,
 // fuzzy (edit-distance) matches, and that an invalid operation no longer dumps the full command
 // list (the original complaint in the issue) while running with no operation still prints the
-// full usage as help.
+// full usage as help, structured into sections and without the raw gflags dump.
 TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
   const auto exe_path = GetAdminToolPath();
   constexpr auto kUnusedMasterAddress = "127.0.0.1:0";
   // This marker only appears in the full usage/command listing (which is printed to stdout).
-  constexpr auto kFullUsageMarker = "<operation> must be one of";
+  constexpr auto kFullUsageMarker = "Operations:";
   std::string output;
   std::string error;
 
@@ -307,10 +307,38 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
       nullptr, &error));
   ASSERT_STR_NOT_CONTAINS(error, "Did you mean one of these?");
 
-  // Running with no operation at all should still print the full usage as help on stdout.
+  // Running with no operation at all should still print the full usage as help on stdout,
+  // structured with clear sections, and without leaking the raw gflags dump (source path, flag
+  // types/defaults) that google::ShowUsageWithFlagsRestrict used to append.
   ASSERT_NOK(Subprocess::Call(
       ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress), &output, &error));
+  ASSERT_STR_CONTAINS(output, "Usage:");
+  ASSERT_STR_CONTAINS(output, "Common global flags:");
+  ASSERT_STR_CONTAINS(output, "Tip:");
+  ASSERT_STR_CONTAINS(output, "Example:");
   ASSERT_STR_CONTAINS(output, kFullUsageMarker);
+  // The <namespace>/<table>/<index> placeholder definitions are no longer dumped in a global
+  // footer here -- only a minority of operations use them, and RunCommand() already surfaces the
+  // relevant definition alongside a specific command's usage on a bad-arguments error instead
+  // (see PrintArgumentExpressions below).
+  ASSERT_STR_NOT_CONTAINS(output, "Argument definitions:");
+  ASSERT_STR_NOT_CONTAINS(output, "Flags from");
+  ASSERT_STR_NOT_CONTAINS(output, "yb-admin_cli.cc:");
+
+  // The Operations: list must number only the entries it actually prints. It used to number by
+  // each command's index in the full (including hidden) command table, so a hidden command's slot
+  // left a gap in the visible numbering, e.g. "85. ..." followed directly by "87. ...".
+  std::vector<int> operation_numbers;
+  std::regex operation_number_re(R"(\n\s*(\d+)\. \S)");
+  for (std::sregex_iterator it(output.begin(), output.end(), operation_number_re), end; it != end;
+       ++it) {
+    operation_numbers.push_back(std::stoi((*it)[1].str()));
+  }
+  ASSERT_FALSE(operation_numbers.empty());
+  for (size_t idx = 0; idx < operation_numbers.size(); ++idx) {
+    ASSERT_EQ(operation_numbers[idx], static_cast<int>(idx) + 1)
+        << "gap or duplicate in operation numbering at position " << idx;
+  }
 }
 
 // Test yb-admin config change while running a workload.
@@ -2191,9 +2219,10 @@ TEST_F(AdminCliTest, TestListNamespaces) {
 }
 
 TEST_F(AdminCliTest, PrintArgumentExpressions) {
-  const auto namespace_expression = "<namespace>:\n [(ycql|ysql).]<namespace_name> (default ycql.)";
-  const auto table_expression = "<table>:\n <namespace> <table_name> | tableid.<table_id>";
-  const auto index_expression = "<index>:\n  <namespace> <index_name> | tableid.<index_id>";
+  const auto namespace_expression =
+      "<namespace>\n  [(ycql|ysql).]<namespace_name> (default: ycql.)";
+  const auto table_expression = "<table>\n  <namespace> <table_name> | tableid.<table_id>";
+  const auto index_expression = "<index>\n  <namespace> <index_name> | tableid.<index_id>";
 
   BuildAndStart();
   auto status = CallAdmin("delete_table");
@@ -2213,6 +2242,19 @@ TEST_F(AdminCliTest, PrintArgumentExpressions) {
   ASSERT_EQ(status.ToString().find(namespace_expression), std::string::npos);
   ASSERT_EQ(status.ToString().find(table_expression), std::string::npos);
   ASSERT_EQ(status.ToString().find(index_expression), std::string::npos);
+
+  // import_snapshot's usage_arguments_ is "<file_name> [<namespace> <table_name>
+  // [<table_name>]...]" -- <namespace> only ever appears bracketed. Called with no arguments at
+  // all, it fails argument-count validation before touching the placeholder, so this only
+  // exercises the bracket-stripping fix, not a namespace-specific error.
+  status = CallAdmin("import_snapshot");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
+
+  // list_change_data_streams' usage_arguments_ is "[<namespace>]" -- also always bracketed.
+  status = CallAdmin("list_change_data_streams", "extra_arg_1", "extra_arg_2");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
 }
 
 TEST_F(AdminCliTest, TestCompactionStatusBeforeCompaction) {
