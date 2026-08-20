@@ -207,7 +207,7 @@ class UsearchIndex :
   }
 
   Status DoLoadFromFile(const std::string& path, size_t) {
-    // Saved chunks are always loaded as YbHnsw, see UsearchIndexFactory::Create.
+    // Saved chunks are always loaded as YbHnsw, see UsearchIndexTraits::Create.
     return STATUS_FORMAT(NotSupported, "Usearch index cannot be loaded from file: $0", path);
   }
 
@@ -311,21 +311,59 @@ class UsearchIndex :
   IndexMemoryConsumption consumption_;
 };
 
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class UsearchIndexTraits :
+    public vector_index::VectorIndexTraitsIf<Vector, DistanceResult> {
+ public:
+  using IndexImpl = index_dense_gt<VectorId>;
+
+  UsearchIndexTraits(
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
+      const MemTrackerPtr& mem_tracker)
+      : block_cache_(block_cache), options_(options), mem_tracker_(mem_tracker),
+        metric_(options.CreateMetric<Vector>()) {
+  }
+
+  vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
+      vector_index::FactoryMode mode) const override {
+    if (mode == vector_index::FactoryMode::kLoad) {
+      return CreateYbHnsw<Vector, DistanceResult>(block_cache_, options_);
+    }
+    return std::make_shared<UsearchIndex<Vector, DistanceResult>>(
+        block_cache_, options_, mem_tracker_);
+  }
+
+  DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
+    return metric_(
+        pointer_cast<const byte_t*>(lhs.data()), pointer_cast<const byte_t*>(rhs.data()));
+  }
+
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return IndexImpl::estimate_num_vectors_for_bytes(
+        bytes_limit, metric_, CreateIndexDenseConfig(options_));
+  }
+
+ private:
+  const hnsw::BlockCachePtr block_cache_;
+  const HNSWOptions options_;
+  const MemTrackerPtr mem_tracker_;
+  const metric_punned_t metric_;
+};
+
 }  // namespace
 
 template <vector_index::IndexableVectorType Vector,
           vector_index::ValidDistanceResultType DistanceResult>
-vector_index::VectorIndexIfPtr<Vector, DistanceResult>
-    UsearchIndexFactory<Vector, DistanceResult>::Create(
-    vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
-    const HNSWOptions& options, const MemTrackerPtr& mem_tracker) {
-  if (mode == vector_index::FactoryMode::kLoad) {
-    return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
-  }
-  return std::make_shared<UsearchIndex<Vector, DistanceResult>>(
+Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateUsearchIndexTraits(
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+    const MemTrackerPtr& mem_tracker) {
+  return std::make_shared<UsearchIndexTraits<Vector, DistanceResult>>(
       block_cache, options, mem_tracker);
 }
 
-template class UsearchIndexFactory<FloatVector, float>;
+template Result<vector_index::VectorIndexTraitsPtr<FloatVector, float>>
+    CreateUsearchIndexTraits<FloatVector, float>(
+        const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+        const MemTrackerPtr& mem_tracker);
 
 }  // namespace yb::ann_methods
