@@ -743,6 +743,13 @@ def get_url_from_ip(ip):
         return "[" + str(ip) + "]"
     return str(ip)
 
+# Split a comma separated list of master addresses, dropping empty entries. "".split(",")
+# returns [""], and a host-less address makes the tserver block in ResolveMasterAddresses().
+def parse_master_addrs_csv(master_addrs_csv):
+    if not master_addrs_csv:
+        return []
+    return [ addr.strip() for addr in master_addrs_csv.split(",") if addr.strip() ]
+
 class ControlScript(object):
     def __init__(self):
         self.configs = None
@@ -6738,7 +6745,8 @@ class ControlScript(object):
     def update_tserver_master_addrs(self):
         tserver_cmd = self.processes["tserver"].cmd
         master_flag = [ flag for flag in tserver_cmd if flag.find(TS_MASTER_ADDRS_FLAG) >= 0 ]
-        full_master_list = self.configs.saved_data.get("current_masters").split(",")
+        full_master_list = parse_master_addrs_csv(
+            self.configs.saved_data.get("current_masters"))
 
         if not full_master_list:
             Output.log("Unable to get all masters list, keeping tserver flag: {}".format(
@@ -6804,8 +6812,15 @@ class ControlScript(object):
         if not master_addrs:
             master_web_addrs_ip = advertise_ip
             master_addrs = self.get_current_masters_from_api(advertise_ip)
-        self.configs.saved_data["current_masters"] = master_addrs
-        Output.log("Master address list updated, new list: {}".format(master_addrs))
+        # Both lookups go through the tserver web server, so they return empty while the
+        # tserver is down. Persisting that would lose the master list for every later start.
+        if master_addrs:
+            self.configs.saved_data["current_masters"] = master_addrs
+            Output.log("Master address list updated, new list: {}".format(master_addrs))
+        else:
+            master_addrs = self.configs.saved_data.get("current_masters")
+            Output.log("Unable to query master address list, keeping known list: {}".format(
+                master_addrs))
 
         master_web_addrs = "{}:{}".format(get_url_from_ip(master_web_addrs_ip),
                                           self.configs.saved_data.get("master_webserver_port"))
@@ -8049,7 +8064,8 @@ class ControlScript(object):
     def update_master_list_on_background_thread(self):
 
         # global _global_current_list_of_masters
-        current_master_list = self.configs.saved_data.get("current_masters").split(",")
+        current_master_list = parse_master_addrs_csv(
+            self.configs.saved_data.get("current_masters"))
         Output.log("thread-uml: current masters {}".format(current_master_list))
 
         # thread for updating the master address list in the background
@@ -8063,10 +8079,11 @@ class ControlScript(object):
                     "keeping masters list: {}".format(current_master_list))
                 return
 
-        full_master_list = masters_csv.split(",")
-        # check if masters have changed since last refresh, if not return
-        if_any_new_masters = set(full_master_list).difference(current_master_list)
-        if if_any_new_masters:
+        full_master_list = parse_master_addrs_csv(masters_csv)
+        # Check if masters have changed since last refresh. Compare both ways so that
+        # addresses which went away are picked up too.
+        if set(full_master_list) != set(current_master_list):
+            masters_csv = ",".join(full_master_list)
             self.configs.saved_data["current_masters"] = masters_csv
             Output.log("thread-uml: master list updated, old list: {} ".format(
                 current_master_list) + "new list: {}".format(full_master_list))
@@ -10626,6 +10643,14 @@ class Configs(object):
             except ValueError as e:
                 Output.log_error_and_exit(
                     "Failed to read config file {}: {}".format(config_file, str(e)))
+            # Older versions could persist a host-less entry here (e.g. ",host:7100"). Drop it
+            # so that such a config recovers on the next start.
+            saved_masters = configs.saved_data.get("current_masters")
+            normalized_masters = ",".join(parse_master_addrs_csv(saved_masters))
+            if normalized_masters != saved_masters:
+                Output.log("Dropped empty master addresses from saved config: {} -> {}".format(
+                    saved_masters, normalized_masters))
+                configs.saved_data["current_masters"] = normalized_masters
 
         configs.saved_data = Configs.expand_path_variables(configs.saved_data)
 
