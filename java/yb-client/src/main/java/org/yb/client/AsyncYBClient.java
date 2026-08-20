@@ -65,7 +65,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.ssl.SslHandler;
-import io.netty.handler.timeout.ReadTimeoutHandler;
+import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
@@ -3717,12 +3717,17 @@ public class AsyncYBClient implements AutoCloseable {
                         }
                       }
                       if (defaultSocketReadTimeoutMs > 0) {
+                        // All-idle (no read *and* no write) rather than read-only idle: a request
+                        // written on a connection that has been idle for almost the whole timeout
+                        // must still get a full timeout window to receive its response, otherwise
+                        // the idle timer kills the connection right after the write and the RPC
+                        // fails with a spurious ConnectionResetException.
                         channel
                             .pipeline()
                             .addLast(
                                 "timeout-handler",
-                                new ReadTimeoutHandler(
-                                    defaultSocketReadTimeoutMs, TimeUnit.MILLISECONDS));
+                                new IdleStateHandler(
+                                    0, 0, defaultSocketReadTimeoutMs, TimeUnit.MILLISECONDS));
                       }
                       channel.pipeline().addLast("yb-handler", newClient);
                       channel
