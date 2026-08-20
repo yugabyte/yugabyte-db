@@ -55,8 +55,8 @@ import { useYBToast } from '@app/redesign/features-v2/universe/create-universe/h
 const { Box, styled, Typography } = mui;
 
 const StyledOuterPanel = styled('div')(({ theme }) => ({
-  width: '100%',
-  maxWidth: '720px',
+  width: '718px',
+  maxWidth: '718px',
   borderRadius: '8px',
   border: `1px solid ${theme.palette.grey[200]}`,
   overflow: 'hidden',
@@ -66,9 +66,7 @@ const StyledOuterPanel = styled('div')(({ theme }) => ({
 const StyledPanelHeader = styled('div')(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
-  height: '64px',
-  padding: `${theme.spacing(1.25)} ${theme.spacing(3)}`,
-  borderBottom: `1px solid ${theme.palette.grey[200]}`,
+  padding: theme.spacing(3),
   backgroundColor: theme.palette.common.white
 }));
 
@@ -90,7 +88,7 @@ const StyledBanner = styled(Box)(({ theme }) => ({
 
 type MapPin = { key: string; lat: number; lng: number; name: string };
 
-function getPrimaryMapPins(
+export function getPrimaryMapPins(
   universeData: UniverseRespResponse | undefined,
   providerRegions: Region[]
 ): MapPin[] {
@@ -362,8 +360,8 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '24px',
-                pt: 1,
+                gap: '16px',
+                pt: 0,
                 px: 3,
                 pb: 3
               }}
@@ -443,7 +441,13 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                   disabled={
                     !regionsList.length || regionFields.length >= (regionsList as Region[]).length
                   }
-                  onClick={() => appendRegion(getEmptyRRPlacementRegion({ isNew: true }))}
+                  onClick={() =>
+                    appendRegion(
+                      getEmptyRRPlacementRegion(
+                        isEditPlacementOnly ? { isNew: true } : undefined
+                      )
+                    )
+                  }
                   dataTestId="rr-add-region"
                 >
                   {t('addRegion')}

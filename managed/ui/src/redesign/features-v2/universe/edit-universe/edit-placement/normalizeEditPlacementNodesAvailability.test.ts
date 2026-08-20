@@ -182,6 +182,28 @@ describe('normalizeEditPlacementNodesAvailability', () => {
 
     expect(result?.availabilityZones.r0).toHaveLength(3);
     expect(result?.availabilityZones.r0.map((zone) => zone.name)).toEqual(['Z0', 'Z1', 'Z2']);
+    // Existing AZ keeps its preferred; newly filled AZs default to not preferred.
+    expect(result?.availabilityZones.r0.map((zone) => zone.preffered)).toEqual([0, 0, 0]);
+  });
+
+  it('preserves existing preferred ranks and defaults newly filled AZs to not preferred', () => {
+    const resilience = guidedBase({
+      faultToleranceType: FaultToleranceType.AZ_LEVEL,
+      resilienceFactor: 1,
+      regions: [makeRegion('r0', 5)]
+    });
+    const nodesAndAvailability: NodeAvailabilityProps = {
+      availabilityZones: {
+        r0: [{ uuid: 'r0-z0', name: 'Z0', nodeCount: 2, preffered: 1 }]
+      },
+      useDedicatedNodes: false
+    };
+
+    const result = normalizeEditPlacementNodesAvailability({ resilience, nodesAndAvailability });
+
+    expect(result?.availabilityZones.r0).toHaveLength(3);
+    expect(result?.availabilityZones.r0[0].preffered).toBe(1);
+    expect(result?.availabilityZones.r0.slice(1).map((zone) => zone.preffered)).toEqual([0, 0]);
   });
 
   it('preserves existing non-first AZ by identity when expanding regions (no duplicate names)', () => {

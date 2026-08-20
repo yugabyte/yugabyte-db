@@ -49,6 +49,14 @@ export const EditPlacementNodesAndAvailability = () => {
     )
   );
 
+  const baselineRegionCodes = useMemo(
+    () =>
+      getResilienceAndRegionsProps(universeData!, providerRegions, selectedPartitionUUID).regions.map(
+        (r) => r.code
+      ),
+    [universeData, providerRegions, selectedPartitionUUID]
+  );
+
   const calculateNodesandAvailability = useMemo(
     () => normalizeEditPlacementNodesAvailability(addEditPlacementData),
     [addEditPlacementData]
@@ -108,7 +116,12 @@ export const EditPlacementNodesAndAvailability = () => {
           subTitle={<>{t(isK8s ? 'podsAndAvailabilityZone' : 'nodesAndAvailabilityZone')}</>}
         />
         <Box sx={{ display: 'flex', gap: '24px', flexDirection: 'column', mb: 3 }}>
-          <NodesAvailability ref={nodesAndAvailabilityRef} isGeoPartition hideDedicatedNodes />
+          <NodesAvailability
+            ref={nodesAndAvailabilityRef}
+            isGeoPartition
+            hideDedicatedNodes
+            baselineRegionCodes={baselineRegionCodes}
+          />
         </Box>
         <UniverseActionButtons
           prevButton={{

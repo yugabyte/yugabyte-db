@@ -24,6 +24,7 @@ interface RegionCardProps {
   addAzTooltip: string;
   addAzTooltipKey?: string;
   addAzTooltipValues?: Record<string, unknown>;
+  isNewRegion?: boolean;
 }
 
 const { styled, Typography, Box, Link, useTheme } = mui;
@@ -71,7 +72,8 @@ export const RegionCard: FC<RegionCardProps> = ({
   isAddAzDisabledByAzLevelCap,
   addAzTooltip,
   addAzTooltipKey,
-  addAzTooltipValues
+  addAzTooltipValues,
+  isNewRegion = false
 }) => {
   const {
     control,
@@ -111,7 +113,7 @@ export const RegionCard: FC<RegionCardProps> = ({
           }
         : { ...azToAdd, nodeCount: nodeCountFromConfig, preffered: AZ_NOT_PREFERRED };
 
-    setValue(`availabilityZones.${region.code}`, [...az, newZone], { shouldValidate: true });
+    setValue(`availabilityZones.${region.code}`, [...(az ?? []), newZone], { shouldValidate: true });
   };
 
   const updatePreferredRanks = (azs: ZoneType[], removedPreferredRank: number) => {
@@ -129,6 +131,13 @@ export const RegionCard: FC<RegionCardProps> = ({
 
   return (
     <StyledRegionCard>
+      {isNewRegion ? (
+        <Box sx={{ px: 3, pt: 1.25, pb: 0, mb: -1 }} data-testid={`region-card-new-badge-${index}`}>
+          <YBTag size="small" variant="light" color='success' customSx={{ color: '#13A768'}}>
+            {t('newRegionBadge')}
+          </YBTag>
+        </Box>
+      ) : null}
       <StyledRegionHeader>
         <Typography color="textSecondary" variant="body1">
           {t('region', { region_count: index + 1 })}

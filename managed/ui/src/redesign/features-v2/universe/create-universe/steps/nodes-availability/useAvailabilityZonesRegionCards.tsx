@@ -11,12 +11,14 @@ type Args = {
   mode: ResilienceFormMode;
   showErrorsAfterSubmit: boolean;
   resilienceAndRegionsSettings?: ResilienceAndRegionsProps;
+  baselineRegionCodes?: string[];
 };
 
 export function useAvailabilityZonesRegionCards({
   mode,
   showErrorsAfterSubmit,
-  resilienceAndRegionsSettings
+  resilienceAndRegionsSettings,
+  baselineRegionCodes
 }: Args) {
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
@@ -83,6 +85,8 @@ export function useAvailabilityZonesRegionCards({
             ? ''
             : t('tooltips.regionNoMoreAz', { count: region.zones.length })
           : '';
+        const isNewRegion =
+          Array.isArray(baselineRegionCodes) && !baselineRegionCodes.includes(region.code);
 
         return (
           <RegionCard
@@ -97,6 +101,7 @@ export function useAvailabilityZonesRegionCards({
             addAzTooltip={addAzTooltip}
             addAzTooltipKey={addAzTooltipKey}
             addAzTooltipValues={addAzTooltipValues}
+            isNewRegion={isNewRegion}
           />
         );
       });
@@ -114,6 +119,7 @@ export function useAvailabilityZonesRegionCards({
       watchedReplicationFactor,
       showErrorsAfterSubmit,
       showAddAzButton,
+      baselineRegionCodes,
       t
     ]
   );
