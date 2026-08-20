@@ -994,6 +994,14 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
             << " ops_read_time: " << ops_read_time.ToString();
     if (const auto read_time = ops_read_time ? ops_read_time : catalog_read_time_; read_time) {
       read_time.ToPB(options.mutable_read_time());
+    } else {
+      // No read time from the ops or catalog_read_time_ => a fresh catalog snapshot is required.
+      // It must be picked from the local clock instead of by the storage layer, which uses the sys
+      // catalog tablet's safe time: concurrent in-flight sys catalog writes hold that safe time
+      // back below the commit time of a DDL this session has just committed, hiding the session's
+      // own catalog changes. Catalog reads also force global_limit == read, so no read restart
+      // would correct it.
+      options.set_clamp_uncertainty_window(true);
     }
     options.set_use_catalog_session(true);
   } else {
