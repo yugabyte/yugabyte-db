@@ -436,9 +436,11 @@ Status ProcessUsedReadTime(uint64_t session_id,
   }
 
   if (op.table()->schema().table_properties().is_ysql_catalog_table()) {
-    // Non empty used_read_time field in catalog read operation means this is the very first
-    // catalog read operation after catalog read time resetting. read_time for the operation
-    // has been chosen by master. All further reads from catalog must use same read point.
+    // Non empty used_read_time field means read_time for the operation has been chosen by master.
+    // All further reads from catalog must use same read point. Only catalog reads riding the
+    // transactional session (DDL mode, yb_non_ddl_txn_for_sys_tables_allowed) get here; legacy
+    // catalog session reads always carry a read time or a clamp request, and DoPerform reports the
+    // clamped time.
     auto catalog_read_time = op_used_read_time;
 
     // We set global limit to read time to avoid read restart errors because they are
@@ -3577,6 +3579,16 @@ class PgClientSession::Impl {
       transaction->SetOriginId(options.xrepl_origin_id());
     }
 
+    // A catalog read time picked here rather than by the storage layer is not echoed back via
+    // used_read_time, so report it explicitly to keep all further catalog reads of the session on
+    // the same snapshot. See ProcessUsedReadTime for the other case.
+    if (options.use_legacy_catalog_session() && !options.read_time_options().has_read_time()) {
+      const auto read_time = session->read_point()->GetReadTime();
+      if (read_time) {
+        read_time.ToPB(data->resp.mutable_catalog_read_time());
+      }
+    }
+
     TracePtr trace = Trace::CurrentTrace();
     bool trace_created_locally = false;
     MonoTime start_time = MonoTime::kUninitialized;
@@ -3961,7 +3973,6 @@ class PgClientSession::Impl {
             << session.read_point()->GetReadTime();
       }
 
-      // Do not clamp uncertainty window for legacy catalog reads.
       // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
       if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
         RSTATUS_DCHECK(
