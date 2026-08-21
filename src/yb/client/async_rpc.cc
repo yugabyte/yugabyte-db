@@ -745,13 +745,14 @@ WriteRpc::WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag)
     // request ID and details (see https://github.com/yugabyte/yugabyte-db/issues/14005).
     if (first_yb_op->request_id()) {
       const auto& request_detail = batcher_->GetRequestDetails(*first_yb_op->request_id());
-      req_.set_request_id(*first_yb_op->request_id());
-      req_.set_min_running_request_id(request_detail.min_running_request_id);
+      req_.set_request_id(request_detail.registration.request_id());
+      req_.set_min_running_request_id(
+          request_detail.registration.min_running_request_id());
     } else {
-      const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
-      req_.set_request_id(request_pair.first);
-      req_.set_min_running_request_id(request_pair.second);
-      batcher_->RegisterRequest(request_pair.first, request_pair.second);
+      const auto& request_detail = batcher_->RegisterRequest();
+      req_.set_request_id(request_detail.registration.request_id());
+      req_.set_min_running_request_id(
+          request_detail.registration.min_running_request_id());
     }
     FillRequestIds(req_.request_id(), &ops_);
   }

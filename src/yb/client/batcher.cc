@@ -689,12 +689,22 @@ server::Clock* Batcher::Clock() const {
   return client_->Clock();
 }
 
-std::pair<RetryableRequestId, RetryableRequestId> Batcher::NextRequestIdAndMinRunningRequestId() {
-  return client_->NextRequestIdAndMinRunningRequestId();
+const RequestDetails& Batcher::RegisterRequest() {
+  auto registration = client_->data_->retryable_request_tracker_.Register();
+  const auto request_id = registration.request_id();
+  auto [it, inserted] = retryable_requests_.emplace(
+      request_id, RequestDetails(std::move(registration)));
+  CHECK(inserted) << "Duplicate retryable request ID: " << request_id;
+  return it->second;
 }
 
 void Batcher::RequestsFinished() {
-  client_->RequestsFinished(retryable_requests_ | boost::adaptors::map_keys);
+  std::vector<RetryableRequestTracker::Registration*> registrations;
+  registrations.reserve(retryable_requests_.size());
+  for (auto& entry : retryable_requests_) {
+    registrations.push_back(&entry.second.registration);
+  }
+  client_->data_->retryable_request_tracker_.Unregister(registrations);
 }
 
 void Batcher::MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id) {
