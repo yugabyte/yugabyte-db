@@ -669,6 +669,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     // Now roll all the old pods that haven't been removed and aren't newly added.
     // This will update the master addresses as well as the instance type changes.
+    // A HELM_UPGRADE re-renders the whole per-AZ release (both the master and tserver
+    // StatefulSets), so the storage stanza it generates must reflect the target device info -
+    // which is what the cluster has already converged to after the disk-resize / move steps above.
+    // If we let it render the still-stale persisted intent, Kubernetes rejects the resulting
+    // immutable volumeClaimTemplates update on the (master) StatefulSet. Passing the "use new
+    // device info" flags keeps the rendered storage in sync with the live StatefulSets. Full-move
+    // AZs are excluded via skipAZs, so this only affects the in-place edited AZs.
     if (restartAllPods) {
       upgradePodsTask(
           universe.getName(),
@@ -687,7 +694,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           PodUpgradeParams.DEFAULT,
           null /* ysqlMajorVersionUpgradeState */,
           null /* rootCAUUID */,
-          fullMoveMasterAZs);
+          fullMoveMasterAZs,
+          true /* useNewMasterDeviceInfo */,
+          true /* useNewTserverDeviceInfo */);
 
       upgradePodsTask(
           universe.getName(),
@@ -706,7 +715,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           PodUpgradeParams.DEFAULT,
           null /* ysqlMajorVersionUpgradeState */,
           null /* rootCAUUID */,
-          fullMoveTserverAZs);
+          fullMoveTserverAZs,
+          true /* useNewMasterDeviceInfo */,
+          true /* useNewTserverDeviceInfo */);
     } else if (instanceTypeChanged) {
       upgradePodsTask(
           universe.getName(),
@@ -725,7 +736,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           PodUpgradeParams.DEFAULT,
           null /* ysqlMajorVersionUpgradeState */,
           null /* rootCAUUID */,
-          fullMoveTserverAZs);
+          fullMoveTserverAZs,
+          true /* useNewMasterDeviceInfo */,
+          true /* useNewTserverDeviceInfo */);
     } else if (masterAddressesChanged) {
       // Update master_addresses flag on Master
       // and tserver_master_addrs flag on tserver without restart.

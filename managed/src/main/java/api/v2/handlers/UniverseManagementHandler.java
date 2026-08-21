@@ -99,6 +99,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.ebean.annotation.Transactional;
@@ -284,6 +285,22 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       taskType = TaskType.EditKubernetesUniverse;
       universeCRUDHandler.notHelm2LegacyOrBadRequest(dbUniverse);
       universeCRUDHandler.checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
+      // Unlike the v1 flow, the v2 edit path submits the task directly instead of going through
+      // UniverseCRUDHandler.update() -> updatePrimaryCluster()/updateCluster(). Replicate the
+      // K8s-specific pre-submit placement finalization those methods perform. In particular,
+      // applyK8sStsIndexIncrement() bumps the per-AZ statefulset index whenever configure() marked
+      // nodes as both ToBeAdded and ToBeRemoved in the same AZ; EditKubernetesUniverse relies on
+      // that index change (via getPodsToAdd/getPodsToRemove) to detect and trigger a full move.
+      // Without this, a v2 full move (e.g. instance type / storage class change) would silently
+      // become a no-op.
+      //
+      // Note: userIntent volume overrides are already generated per-cluster inside configure() for
+      // EDIT (see UniverseCRUDHandler.configure), and they are keyed only on the AZ set, not on the
+      // statefulset index, so there is no need to regenerate them here.
+      applyK8sPlacementFinalization(dbUniverse, v1Params, primaryCluster);
+      if (isRREdited && !v1Params.getReadOnlyClusters().isEmpty()) {
+        applyK8sPlacementFinalization(dbUniverse, v1Params, v1Params.getReadOnlyClusters().get(0));
+      }
     } else {
       universeCRUDHandler.mergeNodeExporterInfo(dbUniverse, v1Params);
     }
@@ -314,6 +331,87 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             taskUUID,
             dbUniverseJson);
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+  }
+
+  /**
+   * Finalizes a Kubernetes cluster's placement before submitting an edit task, mirroring the
+   * K8s-specific handling in {@code UniverseCRUDHandler.updatePrimaryCluster()} / {@code
+   * updateCluster()}. This is required because the v2 edit path submits the task directly rather
+   * than routing through {@code UniverseCRUDHandler.update()}.
+   *
+   * <p>First, the persisted per-AZ statefulset indices are re-hydrated from the existing universe
+   * (see {@link #reconcileK8sStsIndicesFromExisting}). This is required because the v2 API is
+   * spec-based and the placement schema ({@code PlacementAZ.yaml}) does not carry these
+   * server-managed indices; any edit that reconstructs the placement (or partition placements) from
+   * the spec would otherwise reset them to 0 and diverge from the deployed statefulset generation.
+   *
+   * <p>Then {@link PlacementInfoUtil#applyK8sStsIndexIncrement} bumps the per-AZ statefulset index
+   * for AZs undergoing a full move (nodes both ToBeAdded and ToBeRemoved), which is the signal
+   * {@code EditKubernetesUniverse} uses (via getPodsToAdd/getPodsToRemove) to trigger a full move.
+   *
+   * @param dbUniverse the existing universe, source of truth for the current statefulset indices
+   * @param taskParams the configured v1 edit params
+   * @param cluster the Kubernetes cluster (primary or read-replica) to finalize
+   */
+  private void applyK8sPlacementFinalization(
+      Universe dbUniverse, UniverseDefinitionTaskParams taskParams, Cluster cluster) {
+    reconcileK8sStsIndicesFromExisting(dbUniverse, cluster);
+    PlacementInfoUtil.applyK8sStsIndexIncrement(
+        cluster, taskParams.getNodesInCluster(cluster.uuid));
+  }
+
+  /**
+   * Restores the server-managed Kubernetes statefulset indices ({@code masterStsIndex} / {@code
+   * tsStsIndex}) onto the configured cluster placement (and every partition placement) from the
+   * existing universe, matched by AZ UUID.
+   *
+   * <p>These indices are internal bookkeeping that must stay in sync with the physically-deployed
+   * statefulsets, and they are deliberately absent from the v2 API schema. Since a v2 edit may
+   * rebuild {@link PlacementInfo} or partition placements from the request spec, the indices can be
+   * silently reset to 0 during mapping/configure. Re-hydrating them here (before applying the
+   * full-move increment) keeps the persisted state aligned with reality for every edit, not just
+   * full moves. AZs absent from the existing placement (newly added) correctly retain the default
+   * 0.
+   *
+   * @param dbUniverse the existing universe, source of truth for the current statefulset indices
+   * @param cluster the configured cluster whose placement/partitions should be reconciled
+   */
+  private void reconcileK8sStsIndicesFromExisting(Universe dbUniverse, Cluster cluster) {
+    Cluster dbCluster = dbUniverse.getUniverseDetails().getClusterByUuid(cluster.uuid);
+    if (dbCluster == null) {
+      // Newly added cluster: there is no prior statefulset generation to preserve.
+      return;
+    }
+    PlacementInfo dbPlacement = dbCluster.getOverallPlacement();
+    if (dbPlacement == null) {
+      return;
+    }
+    Map<UUID, PlacementInfo.PlacementAZ> dbAzByUuid =
+        dbPlacement.azStream().collect(Collectors.toMap(az -> az.uuid, az -> az, (a, b) -> a));
+    if (cluster.placementInfo != null) {
+      restoreStsIndices(cluster.placementInfo, dbAzByUuid);
+    }
+    if (!CollectionUtils.isEmpty(cluster.getPartitions())) {
+      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+        if (partition.getPlacement() != null) {
+          restoreStsIndices(partition.getPlacement(), dbAzByUuid);
+        }
+      }
+    }
+  }
+
+  private static void restoreStsIndices(
+      PlacementInfo placementInfo, Map<UUID, PlacementInfo.PlacementAZ> dbAzByUuid) {
+    placementInfo
+        .azStream()
+        .forEach(
+            az -> {
+              PlacementInfo.PlacementAZ dbAz = dbAzByUuid.get(az.uuid);
+              if (dbAz != null) {
+                az.masterStsIndex = dbAz.masterStsIndex;
+                az.tsStsIndex = dbAz.tsStsIndex;
+              }
+            });
   }
 
   public YBATask addCluster(
