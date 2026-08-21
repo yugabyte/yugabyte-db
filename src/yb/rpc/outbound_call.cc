@@ -277,15 +277,18 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
   IncrementCounter(rpc_metrics_->outbound_calls_created);
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
 
-  // Capture this call's parent before StartClientSpanWithScope makes otel_span_ current;
-  // InvokeCallbackSync restores it around the callback so its follow-on work nests as a sibling.
-  trace_parent_ = dist_trace::GetActiveSpanContext();
+  // Guarded so that with tracing off the span name below is never formatted.
+  if (dist_trace::HasActiveContext()) {
+    // Save this call's traceparent before StartClientSpanWithScope makes otel_span_ current.
+    // InvokeCallbackSync restores it around the callback so follow-on work nests as a sibling.
+    trace_parent_ = dist_trace::GetActiveSpanContext();
 
-  otel_span_ = dist_trace::StartClientSpanWithScope(Format("rpc $0", remote_method_.ToString()));
-  if (otel_span_) {
-    otel_span_->SetAttribute("rpc.system", "yb_rpc");
-    otel_span_->SetAttribute("rpc.call_id", call_id_);
-    otel_span_->DropScope();
+    otel_span_ = dist_trace::StartClientSpanWithScope(Format("rpc $0", remote_method_.ToString()));
+    if (otel_span_) {
+      otel_span_->SetAttribute("rpc.system", "yb_rpc");
+      otel_span_->SetAttribute("rpc.call_id", call_id_);
+      otel_span_->DropScope();
+    }
   }
 }
 
