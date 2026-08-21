@@ -438,32 +438,53 @@ TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
   }
 }
 
+class TestLogSink : public google::LogSink {
+ public:
+  void send(google::LogSeverity severity, const char* full_filename,
+            const char* base_filename, int line,
+            const struct ::tm* tm_time,
+            const char* message, size_t message_len) override {
+    std::lock_guard lock(mutex_);
+    log_messages_.emplace_back(message, message_len);
+  }
+
+  size_t MessagesSize() {
+    std::lock_guard lock(mutex_);
+    return log_messages_.size();
+  }
+
+  std::string MessageAt(size_t idx) {
+    std::lock_guard lock(mutex_);
+    return log_messages_[idx];
+  }
+
+  size_t CountMessagesContaining(const std::string& substring) {
+    std::lock_guard lock(mutex_);
+    size_t result = 0;
+    for (const auto& message : log_messages_) {
+      if (message.find(substring) != std::string::npos) {
+        ++result;
+      }
+    }
+    return result;
+  }
+
+  std::string FirstMessageContaining(const std::string& substring) {
+    std::lock_guard lock(mutex_);
+    for (const auto& message : log_messages_) {
+      if (message.find(substring) != std::string::npos) {
+        return message;
+      }
+    }
+    return std::string();
+  }
+
+ private:
+  std::mutex mutex_;
+  std::vector<std::string> log_messages_;
+};
+
 TEST_F(DebugUtilTest, LongOperationTracker) {
-  class TestLogSink : public google::LogSink {
-   public:
-    void send(google::LogSeverity severity, const char* full_filename,
-              const char* base_filename, int line,
-              const struct ::tm* tm_time,
-              const char* message, size_t message_len) override {
-      std::lock_guard lock(mutex_);
-      log_messages_.emplace_back(message, message_len);
-    }
-
-    size_t MessagesSize() {
-      std::lock_guard lock(mutex_);
-      return log_messages_.size();
-    }
-
-    std::string MessageAt(size_t idx) {
-      std::lock_guard lock(mutex_);
-      return log_messages_[idx];
-    }
-
-   private:
-    std::mutex mutex_;
-    std::vector<std::string> log_messages_;
-  };
-
 #ifndef NDEBUG
   const auto kTimeMultiplier = RegularBuildVsSanitizers(3, 10);
 #else
@@ -503,6 +524,122 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
     ASSERT_STR_CONTAINS(log_sink.MessageAt(1), "Op2");
     ASSERT_STR_CONTAINS(log_sink.MessageAt(2), "Op4");
     ASSERT_STR_CONTAINS(log_sink.MessageAt(3), "Op4");
+  }
+}
+
+// Stress concurrent registration and completion of tracked operations to exercise the
+// lock-free intake path of LongOperationTrackerHelper and reference transfer to the checker
+// thread.
+TEST_F(DebugUtilTest, LongOperationTrackerStress) {
+  constexpr int kNumThreads = 8;
+  const auto kRunTime = 3s;
+  // Deadline long enough that operations normally complete in time, short enough that the
+  // checker thread pops expired entries while the test is running.
+  const auto kDeadline = 500ms;
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i != kNumThreads; ++i) {
+    thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag(), kDeadline] {
+      while (!stop.load(std::memory_order_acquire)) {
+        LongOperationTracker tracker("StressOp", kDeadline);
+        // Cover move construction and move assignment while the operation is registered.
+        LongOperationTracker moved(std::move(tracker));
+        tracker = std::move(moved);
+        std::this_thread::sleep_for(100us);
+      }
+    });
+  }
+  thread_holder.WaitAndStop(kRunTime);
+}
+
+// Verifies that the checker thread keeps detecting overdue operations while registration
+// traffic is running, and that operations completing before their deadline are not reported.
+// A synchronous burst larger than the checker's per-iteration drain bound guarantees that the
+// bounded-drain path runs repeatedly while the overdue operations are pending. A genuine
+// indefinite overload, with producers outpacing the checker forever, cannot be reproduced
+// deterministically, so this test exercises the bounded-drain code path rather than proving
+// starvation freedom.
+//
+// Also verifies that move construction and move assignment clear the moved-from tracker: the
+// moved-from trackers are destroyed after the deadline has passed, so a stale reference left
+// behind by either move would produce an extra "took a long time" warning and fail the exact
+// count checks below.
+TEST_F(DebugUtilTest, LongOperationTrackerUnderLoad) {
+#ifndef NDEBUG
+  const auto kTimeMultiplier = RegularBuildVsSanitizers(3, 10);
+#else
+  const auto kTimeMultiplier = 1;
+#endif
+
+  const auto kOverdueDuration = 100ms * kTimeMultiplier;
+  // Long enough that traffic operations never expire, even on heavily loaded test hosts.
+  const auto kTrafficDuration = 60s;
+  constexpr int kNumThreads = 8;
+  // Significantly more than the checker's drain bound of 1000 registrations per iteration.
+  constexpr int kBurstSize = 50000;
+
+  TestLogSink log_sink;
+  google::AddLogSink(&log_sink);
+  auto se = ScopeExit([&log_sink] {
+    google::RemoveLogSink(&log_sink);
+  });
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i != kNumThreads; ++i) {
+    thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag(), kTrafficDuration] {
+      while (!stop.load(std::memory_order_acquire)) {
+        LongOperationTracker tracker("TrafficOp", kTrafficDuration);
+        std::this_thread::sleep_for(10us);
+      }
+    });
+  }
+
+  {
+    LongOperationTracker move_ctor_source("MoveCtorOp", kOverdueDuration);
+    LongOperationTracker move_ctor_target(std::move(move_ctor_source));
+
+    LongOperationTracker move_assign_source("MoveAssignOp", kOverdueDuration);
+    LongOperationTracker move_assign_target;
+    move_assign_target = std::move(move_assign_source);
+
+    for (int i = 0; i != kBurstSize; ++i) {
+      LongOperationTracker tracker("TrafficOp", kTrafficDuration);
+    }
+
+    // The checker thread must report both overdue operations while traffic is still running.
+    const auto deadline = CoarseMonoClock::now() + 10s * kTimeMultiplier;
+    while (!IsSanitizer() &&
+           (log_sink.CountMessagesContaining("MoveCtorOp") == 0 ||
+            log_sink.CountMessagesContaining("MoveAssignOp") == 0)) {
+      ASSERT_LT(CoarseMonoClock::now(), deadline)
+          << "Timed out waiting for the overdue operation warnings";
+      std::this_thread::sleep_for(10ms);
+    }
+    // All four trackers are destroyed here, after the deadline has passed. Only the two
+    // targets hold operations, so exactly one destructor warning per operation is expected.
+  }
+
+  thread_holder.Stop();
+
+  if (IsSanitizer()) {
+    ASSERT_EQ(log_sink.CountMessagesContaining("MoveCtorOp"), 0);
+    ASSERT_EQ(log_sink.CountMessagesContaining("MoveAssignOp"), 0);
+    ASSERT_EQ(log_sink.CountMessagesContaining("TrafficOp"), 0);
+  } else {
+    for (const auto* operation : {"MoveCtorOp", "MoveAssignOp"}) {
+      // Exactly two warnings per overdue operation: the stack trace warning from the checker
+      // thread and the "took a long time" warning from the destructor of the move target.
+      ASSERT_EQ(log_sink.CountMessagesContaining(std::string(operation) + " running for"), 1)
+          << operation;
+      ASSERT_EQ(log_sink.CountMessagesContaining(std::string(operation) + " took a long time"), 1)
+          << operation;
+      ASSERT_EQ(log_sink.CountMessagesContaining(operation), 2) << operation;
+      // The checker thread warning identifies the thread that registered the operation.
+      ASSERT_STR_CONTAINS(
+          log_sink.FirstMessageContaining(std::string(operation) + " running for"), "in thread");
+    }
+    // Operations that completed before their deadline must not be reported.
+    ASSERT_EQ(log_sink.CountMessagesContaining("TrafficOp"), 0);
   }
 }
 
