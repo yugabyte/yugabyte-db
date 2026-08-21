@@ -737,11 +737,9 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
   }
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
-  // YB_TODO_PG19MERGE: pg_hint_plan and yb_xcluster_ddl_replication are not
-  // currently built in the YB PG19 tree.
-  // Uncomment these lines when they are available.
+  // YB_TODO_PG19MERGE: pg_hint_plan is not currently built in the YB PG19 tree.
   // metricsLibs.push_back("pg_hint_plan");
-  // metricsLibs.push_back("yb_xcluster_ddl_replication");
+  metricsLibs.push_back("yb_xcluster_ddl_replication");
 
   if (FLAGS_enable_pg_cron) {
     metricsLibs.push_back("pg_cron");
