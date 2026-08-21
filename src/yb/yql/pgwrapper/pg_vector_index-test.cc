@@ -63,6 +63,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_table_owned_vector_reverse_mapping);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
@@ -4345,6 +4346,10 @@ class PgVectorValueFormatTest :
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
+    // CollectTypePrefixes dumps leader peers only, so a load balancer leader stepdown racing the
+    // dump would leave it with nothing to read.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
     const auto packing_mode = GetParam();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
