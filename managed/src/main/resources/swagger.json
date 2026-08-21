@@ -2757,6 +2757,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -3003,7 +3004,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -5778,6 +5780,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -6024,7 +6027,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -6754,9 +6758,6 @@
         "compressor" : {
           "type" : "string"
         },
-        "offloadable" : {
-          "type" : "boolean"
-        },
         "serverCert" : {
           "type" : "string"
         },
@@ -6764,7 +6765,13 @@
           "format" : "int64",
           "type" : "integer"
         },
+        "serverCertLocalPath" : {
+          "type" : "string"
+        },
         "serverKey" : {
+          "type" : "string"
+        },
+        "serverKeyLocalPath" : {
           "type" : "string"
         },
         "signerPrivateKey" : {
@@ -6777,10 +6784,11 @@
       "required" : [
         "certPath",
         "compressor",
-        "offloadable",
         "serverCert",
         "serverCertExpirySecs",
+        "serverCertLocalPath",
         "serverKey",
+        "serverKeyLocalPath",
         "signerPrivateKey",
         "signerPublicKey"
       ],
@@ -8979,6 +8987,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -9225,7 +9234,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -9822,6 +9832,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -10068,7 +10079,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -11372,6 +11384,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -11618,7 +11631,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -12136,6 +12150,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -12382,7 +12397,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -13563,6 +13579,12 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "certificateUuid" : {
+          "description" : "WARNING: This is a preview API that could change. Custom certificate UUID.",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "config" : {
           "$ref" : "#/definitions/Config",
           "description" : "Node agent configuration",
@@ -13774,6 +13796,12 @@
             "ARM64",
             "AMD64"
           ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "certificateUuid" : {
+          "description" : "WARNING: This is a preview API that could change. Custom certificate UUID.",
+          "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         },
@@ -16991,6 +17019,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17237,7 +17266,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -17697,6 +17727,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17943,7 +17974,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -18801,6 +18833,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -19047,7 +19080,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -19663,6 +19697,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -19909,7 +19944,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -21231,6 +21267,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -21477,7 +21514,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -21925,6 +21963,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22171,7 +22210,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -22357,6 +22397,7 @@
               "OperatorImportUniverse",
               "RegisterUniverseWithPACollector",
               "UnregisterUniverseFromPACollector",
+              "UpgradeNodeAgent",
               "KubernetesCheckVolumeExpansion",
               "KubernetesPostExpansionCheckVolume",
               "NodeCertReloadTask",
@@ -22603,7 +22644,8 @@
               "OperatorImportResource",
               "UpdateParentTaskParams",
               "SaveSoftwareUpgradeProgress",
-              "CheckDuplicateInstance"
+              "CheckDuplicateInstance",
+              "RunUpgradeNodeAgent"
             ],
             "type" : "string"
           },
@@ -22943,6 +22985,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -23189,7 +23232,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -23741,6 +23785,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -23987,7 +24032,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -24925,6 +24971,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -25171,7 +25218,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -26280,6 +26328,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26526,7 +26575,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -26985,6 +27035,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -27231,7 +27282,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -27831,6 +27883,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -28077,7 +28130,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -28501,6 +28555,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -28747,7 +28802,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -29171,6 +29227,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -29417,7 +29474,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -30357,6 +30415,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -30603,7 +30662,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -31599,6 +31659,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -31845,7 +31906,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },

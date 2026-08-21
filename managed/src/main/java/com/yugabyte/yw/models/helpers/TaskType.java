@@ -756,6 +756,11 @@ public enum TaskType {
       CustomerTask.TaskType.UnregisterFromPACollector,
       CustomerTask.TargetType.Universe),
 
+  UpgradeNodeAgent(
+      com.yugabyte.yw.commissioner.tasks.UpgradeNodeAgent.class,
+      CustomerTask.TaskType.Update,
+      CustomerTask.TargetType.NodeAgent),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -1363,7 +1368,9 @@ public enum TaskType {
   SaveSoftwareUpgradeProgress(
       com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress.class),
 
-  CheckDuplicateInstance(com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance.class);
+  CheckDuplicateInstance(com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance.class),
+
+  RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1483,6 +1490,7 @@ public enum TaskType {
           .put(MasterFailover, 139)
           .put(SyncMasterAddresses, 140)
           .put(OperatorImportUniverse, 141)
+          .put(UpgradeNodeAgent, 142)
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {

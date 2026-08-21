@@ -2427,7 +2427,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createInstallNodeAgentTasks(
       Universe universe, Collection<NodeDetails> nodes, boolean reinstall) {
-    Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(InstallNodeAgent.class.getSimpleName(), SubTaskGroupType.Provisioning);
     String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
@@ -2468,6 +2467,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               task.initialize(params);
               subTaskGroup.addSubTask(task);
             });
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates tasks to perform upgrade of node agents. Optionally, only the certs can be replaced
+   * without upgrading the node agent binary.
+   *
+   * @param universe the universe to which the nodes belong.
+   * @param nodes the nodes in the universe.
+   * @param certificateUuid the optional certificate to be used for the node agent.
+   * @param certsOnly if true, only the certs are replaced when the node agent version already
+   *     matches YBA; otherwise a full upgrade is performed so RPC stays compatible.
+   * @return the subtask group.
+   */
+  public SubTaskGroup createRunUpgradeNodeAgentTasks(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      @Nullable UUID certificateUuid,
+      boolean certsOnly) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            RunUpgradeNodeAgent.class.getSimpleName(), SubTaskGroupType.Provisioning);
+    getInstanceOf(NodeAgentEnabler.class).cancelForUniverse(universe.getUniverseUUID());
+    for (NodeDetails node : nodes) {
+      RunUpgradeNodeAgent.Params params = new RunUpgradeNodeAgent.Params();
+      params.nodeIp = node.cloudInfo.private_ip;
+      params.certificateUuid = certificateUuid;
+      params.certsOnly = certsOnly;
+      params.azUuid = node.azUuid;
+      params.placementUuid = node.placementUuid;
+      params.setUniverseUUID(universe.getUniverseUUID());
+      RunUpgradeNodeAgent task = createTask(RunUpgradeNodeAgent.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }

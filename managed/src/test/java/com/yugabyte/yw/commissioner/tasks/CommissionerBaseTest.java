@@ -409,7 +409,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     builder.packagePath(Paths.get("/opt/yugabyte"));
     builder.certDir("/opt/yugabyte/certs");
     lenient()
-        .when(mockNodeAgentManager.getInstallerFiles(any(), any(), anyBoolean()))
+        .when(mockNodeAgentManager.getInstallerFiles(any(), any()))
         .thenReturn(builder.build());
     lenient()
         .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
@@ -446,10 +446,20 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                       })
                   .when(nodeAgent)
                   .saveState(any());
+              lenient()
+                  .doAnswer(
+                      inv1 -> {
+                        NodeAgent.DeployContext ctx = inv1.getArgument(0);
+                        nodeAgent.setState(NodeAgent.State.REGISTERED);
+                        nodeAgent.setCertificateUuid(ctx.getCertificateUuid());
+                        return null;
+                      })
+                  .when(nodeAgent)
+                  .finalizeRegistration(any());
               return nodeAgent;
             })
         .when(mockNodeAgentManager)
-        .create(any(), anyBoolean());
+        .create(any(), any(), anyBoolean());
     Map<String, Set<String>> reservationsByGroup = new HashMap<>();
     lenient()
         .when(
