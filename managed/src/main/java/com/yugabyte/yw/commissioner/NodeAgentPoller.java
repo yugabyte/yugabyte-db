@@ -32,6 +32,7 @@ import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -71,6 +72,7 @@ public class NodeAgentPoller {
           .name(NODE_AGENT_VERSION_MISMATCH_NAME)
           .help("Has Node Agent version mismatched")
           .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
               KnownAlertLabels.NODE_AGENT_UUID.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
           .register(PrometheusRegistry.defaultRegistry);
@@ -80,8 +82,9 @@ public class NodeAgentPoller {
   private static final Gauge NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE =
       Gauge.builder()
           .name(NODE_AGENT_SERVER_CERT_EXPIRING_NAME)
-          .help("Is Node Agent server cert expiring")
+          .help("Node Agent server cert expiry time in unix seconds (0 if unknown)")
           .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
               KnownAlertLabels.NODE_AGENT_UUID.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
           .register(PrometheusRegistry.defaultRegistry);
@@ -92,6 +95,7 @@ public class NodeAgentPoller {
           .name(NODE_AGENT_CONNECTION_NAME)
           .help("Is Node Agent connection successful")
           .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
               KnownAlertLabels.NODE_AGENT_UUID.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
           .register(PrometheusRegistry.defaultRegistry);
@@ -201,26 +205,28 @@ public class NodeAgentPoller {
     }
 
     private boolean needsUpgrade(NodeAgent nodeAgent) {
+      boolean upgradeNeeded = false;
       if (!versionMatched(nodeAgent)) {
-        return true;
+        upgradeNeeded = true;
       }
       // This handles the rare case where YBA has never been upgraded close to a year.
       // There is a chance that while an ongoing API call is made, upgrade starts kicking in, but
       // it is very rare because this happens if YBA has not been upgraded for almost a year and
       // every API call first checks if node agent needs an upgrade and waits if an upgrade is
       // currently running.
-      boolean expiring = false;
       long expiresAt = nodeAgent.getServerCertExpirySecs();
       if (expiresAt > 0) {
+        publishMetric(nodeAgent, NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE, expiresAt);
         Duration duration =
             confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerCertExpiryNotice);
-        expiring = expiresAt < Instant.now().plus(duration).getEpochSecond();
-        publishMetric(nodeAgent, NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE, expiring ? 0 : 1);
-        if (expiring) {
-          log.debug("Node agent server cert is expiring soon on {}", expiresAt);
+        if (expiresAt < Instant.now().plus(duration).getEpochSecond()) {
+          log.debug(
+              "Node agent server cert is expiring soon on {}",
+              Instant.ofEpochSecond(expiresAt).atZone(ZoneId.systemDefault()));
+          upgradeNeeded = true;
         }
       }
-      return expiring;
+      return upgradeNeeded;
     }
 
     @VisibleForTesting
@@ -498,6 +504,7 @@ public class NodeAgentPoller {
   private static void publishMetric(NodeAgent nodeAgent, Gauge guage, double value) {
     guage
         .labelValues(
+            nodeAgent.getCustomerUuid().toString(),
             nodeAgent.getUuid().toString(),
             String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()))
         .set(value);

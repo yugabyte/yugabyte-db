@@ -13,7 +13,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -53,6 +52,7 @@ import java.util.Date;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.io.FileUtils;
 import org.junit.Before;
 import org.junit.Test;
@@ -81,6 +81,14 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentPollerInterval)))
         .thenReturn(Duration.ofSeconds(3));
+    lenient()
+        .when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentServerCertExpiryNotice)))
+        .thenReturn(Duration.ofDays(30));
+    // Zero so waitForServerRestart returns on the first restartNeeded ping instead of looping
+    // into the next stub (which would complete the upgrade in a single poller cycle).
+    lenient()
+        .when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentUpgradeRestartWaitTime)))
+        .thenReturn(Duration.ZERO);
     // Defensive setUp stub only exercised by a subset of the tests; declared lenient so
     // MockitoJUnitRunner's strict-stub check does not fail on runs whose ordering leaves it unused.
     lenient()
@@ -191,20 +199,19 @@ public class NodeAgentPollerTest extends FakeDBApplication {
 
   @Test
   public void testUpgrade() throws Exception {
-    PingResponse pingResponse1 = mock(PingResponse.class);
-    PingResponse pingResponse2 = mock(PingResponse.class);
     ShellResponse shellResponse = ShellResponse.create(0, "Done!");
     Path nodeAgentPackage = Paths.get("/tmp/node_agent-2.13.0.0-b12-linux-amd64.tar.gz");
     FileUtils.touch(nodeAgentPackage.toFile());
-    ServerInfo serverInfo1 = ServerInfo.newBuilder().setRestartNeeded(true).build();
-    ServerInfo serverInfo2 = ServerInfo.newBuilder().setRestartNeeded(false).build();
-    when(pingResponse1.getServerInfo()).thenReturn(serverInfo1);
-    when(pingResponse2.getServerInfo()).thenReturn(serverInfo2);
-    when(mockNodeAgentClient.executeCommand(any(), any())).thenReturn(shellResponse);
+    // Return restart is needed initially.
+    AtomicBoolean restartNeeded = new AtomicBoolean(true);
     when(mockNodeAgentClient.waitForServerReady(any(), any()))
-        .thenReturn(pingResponse2 /* heartbeat call */)
-        .thenReturn(pingResponse1 /* after upgrade */)
-        .thenReturn(pingResponse2 /* after restart */);
+        .thenAnswer(
+            inv ->
+                PingResponse.newBuilder()
+                    .setServerInfo(
+                        ServerInfo.newBuilder().setRestartNeeded(restartNeeded.get()).build())
+                    .build());
+    when(mockNodeAgentClient.executeCommand(any(), any())).thenReturn(shellResponse);
     when(mockNodeAgentClient.finalizeUpgrade(any())).thenReturn("/home/yugabyte/node-agent");
     when(mockConfigHelper.getConfig(eq(ConfigType.SoftwareVersion)))
         .thenReturn(ImmutableMap.of("version", "2.13.0.0"));
@@ -237,6 +244,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     // Restart was set, it is not live yet.
     assertEquals(State.UPGRADED, nodeAgent.getState());
     assertTrue("Merged cert file does not exist", mergedCertFile.toFile().exists());
+    restartNeeded.set(false);
     pollerTask.setState(PollerTaskState.SCHEDULED);
     pollerTask.run();
     pollerTask.waitForUpgrade();
