@@ -83,7 +83,7 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [aegershman](https://github.com/aegershman)
 * [hasheddan](https://github.com/hasheddan)
 * [ameyb](https://github.com/ameyb)
-* [fastest963](https://github.com/fastest963)
+* [jameshartig](https://github.com/jameshartig)
 * [eliahburns](https://github.com/eliahburns)
 * [bhavin192](https://github.com/bhavin192)
 * [graffido](https://github.com/graffido)
