@@ -167,6 +167,12 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   const std::vector<IndexInfoPB>& index_infos() const { return index_infos_; }
 
+  // Immutable per-job uniqueness-check mode; set in the constructor (persisted value for a
+  // resumed job, freshly selected for a new one) and persisted by Launch().
+  UniqueIndexBackfillMode unique_index_backfill_mode() const {
+    return unique_index_backfill_mode_;
+  }
+
   const std::unordered_set<TableId> indexes_to_build() const;
 
   const TableId& indexed_table_id() const { return indexed_table_->id(); }
@@ -240,6 +246,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   const scoped_refptr<TableInfo> indexed_table_;
   const std::vector<IndexInfoPB> index_infos_;
   int32_t schema_version_;
+  UniqueIndexBackfillMode unique_index_backfill_mode_ =
+      UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_CHECK_ALL;
 
   std::atomic<State> state_{State::kRunning};
   std::atomic_bool timestamp_chosen_{false};
@@ -316,6 +324,10 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   }
   const TableId& indexed_table_id() { return backfill_table_->indexed_table_id(); }
   const std::vector<IndexInfoPB>& index_infos() const { return backfill_table_->index_infos(); }
+
+  UniqueIndexBackfillMode unique_index_backfill_mode() const {
+    return backfill_table_->unique_index_backfill_mode();
+  }
 
   const std::string& requested_index_names() { return backfill_table_->requested_index_names(); }
 

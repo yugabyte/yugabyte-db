@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <optional>
+
+#include "yb/common/common.pb.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 
@@ -29,6 +32,13 @@ namespace yb {
 // handle this case by itself.
 int GetInitialNumTabletsPerTable(YQLDatabase db_type, size_t tserver_count);
 int GetInitialNumTabletsPerTable(TableType table_type, size_t tserver_count);
+
+// Reads the TEST_ysql_index_backfill_unique_check_mode override. The flag is a runtime
+// string flag, so it is copied under the gflags lock, never read raw (flag_tags.h: a raw
+// read can tear while a test rewrites the flag). Returns the parsed mode when the override
+// is set to a known value; nullopt when unset -- or, after a DFATAL, when set to an unknown
+// value, so every caller falls back to its own fail-closed default.
+std::optional<UniqueIndexBackfillMode> GetUniqueIndexBackfillModeTestOverride();
 
 // Returns true if YSQL DDL rollback is enabled.
 bool YsqlDdlRollbackEnabled();

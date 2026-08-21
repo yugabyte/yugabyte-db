@@ -679,6 +679,17 @@ YbcStatus YBCPgInsertStmtSetWriteTime(YbcPgStatement handle, const uint64_t writ
 
 YbcStatus YBCPgInsertStmtSetIsBackfill(YbcPgStatement handle, const bool is_backfill);
 
+// Set the uniqueness-check mode on a unique-index backfill insert. Only meaningful together
+// with YBCPgInsertStmtSetIsBackfill(handle, true).
+YbcStatus YBCPgInsertStmtSetUniqueIndexBackfillMode(YbcPgStatement handle,
+                                                    YbcPgUniqueIndexBackfillMode mode);
+
+// Parse the uniqueness-check mode out of a hex-encoded backfill spec (the bfinstr of a
+// BACKFILL INDEX statement). A missing or unset mode resolves to
+// YB_UNIQUE_INDEX_BACKFILL_CHECK_ALL.
+YbcStatus YBCPgGetUniqueIndexBackfillMode(const char *bfinstr,
+                                          YbcPgUniqueIndexBackfillMode *mode);
+
 // UPDATE ------------------------------------------------------------------------------------------
 YbcStatus YBCPgNewUpdate(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
