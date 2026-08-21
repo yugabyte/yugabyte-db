@@ -5631,6 +5631,128 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDDLRecordValidationWithColoca
   }
 }
 
+// Colocated CREATE TABLE and DROP TABLE write ADD_TABLE and REMOVE_TABLE change metadata ops
+// to the shared tablet's WAL.  These ops carry no schema, so GetChanges must skip them without
+// emitting DDL records and without disturbing schema tracking of the streamed tables.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaLessChangeMetadataOpsWithColocation)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  ASSERT_OK(CreateColocatedObjects(&test_cluster_));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  const int insert_count = 10;
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  for (int i = 0; i < insert_count; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0)", i));
+  }
+
+  // Add and drop a colocated table while the stream is active.
+  ASSERT_OK(AddColocatedTable(&test_cluster_, "test3"));
+  TableId table_id_3 = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, "test3"));
+
+  // Wait for the ADD_TABLE change metadata op to apply.  This pins the test's premise: test3
+  // shares the streamed tablet, so the schema-less ops are known to be in its WAL.  Without
+  // this, a setup change that breaks colocation would make the waits and DDL record
+  // assertions below pass vacuously.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+          for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+            if (peer->tablet_id() != tablets[0].tablet_id()) {
+              continue;
+            }
+            auto table_info = peer->tablet_metadata()->GetTableInfo(table_id_3);
+            if (!table_info.ok()) {
+              // Absence from the metadata surfaces as NotFound.  Any other error is a real
+              // failure.
+              if (!table_info.status().IsNotFound()) {
+                return table_info.status();
+              }
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Waiting for the added colocated table to appear in tablet metadata"));
+
+  // Write a schema-carrying alter op for test3 to the shared tablet's WAL before the drop.
+  // Without this, the only source of such an op is the wal_retention_secs AlterTable sent by
+  // the CDCSDK dynamic table addition background task, which races with test3's sub-second
+  // lifetime, so the dropped-table alter op path below would usually go unexercised.
+  ASSERT_OK(conn.Execute("ALTER TABLE test3 ADD COLUMN extra INT"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE test3"));
+
+  // Wait for the REMOVE_TABLE change metadata op to apply so that it is in the WAL before the
+  // GetChanges call below reads it.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+          for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+            if (peer->tablet_id() != tablets[0].tablet_id()) {
+              continue;
+            }
+            auto table_info = peer->tablet_metadata()->GetTableInfo(table_id_3);
+            if (table_info.ok()) {
+              return false;
+            }
+            // Removal from the metadata surfaces as NotFound.  Any other error is a real failure.
+            if (!table_info.status().IsNotFound()) {
+              return table_info.status();
+            }
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Waiting for the dropped colocated table to be removed from tablet metadata"));
+
+  for (int i = insert_count; i < 2 * insert_count; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0)", i));
+  }
+
+  // Consume the stream until all inserts arrive, collecting every record on the way so that
+  // the assertions below cover records regardless of how GetChanges batches them.
+  std::vector<CDCSDKProtoRecordPB> records;
+  CDCSDKCheckpointPB checkpoint;
+  bool have_checkpoint = false;
+  int insert_records = 0;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto change_resp = VERIFY_RESULT(GetChangesFromCDC(
+            stream_id, tablets, have_checkpoint ? &checkpoint : nullptr));
+        for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+          records.push_back(record);
+          if (record.row_message().op() == RowMessage::INSERT) {
+            ++insert_records;
+          }
+        }
+        checkpoint = change_resp.cdc_sdk_checkpoint();
+        have_checkpoint = true;
+        return insert_records >= 2 * insert_count;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier, "Waiting for all insert records"));
+
+  ASSERT_EQ(insert_records, 2 * insert_count);
+  for (const auto& record : records) {
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().table(), "test1");
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      // The schema-less ops must not surface as DDL records for the added and dropped table,
+      // and no DDL record may carry an empty schema.
+      ASSERT_NE(record.row_message().table(), "test3");
+      ASSERT_GT(record.row_message().schema().column_info_size(), 0);
+    }
+  }
+}
+
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeginCommitRecordValidationWithColocation)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ASSERT_OK(SetUpWithParams(3, 1, false));

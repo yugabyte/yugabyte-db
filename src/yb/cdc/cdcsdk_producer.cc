@@ -948,19 +948,26 @@ Result<tablet::TableInfoPtr> WarnIfNotFoundOrReturn(
     return result;
   }
 
-  LOG(WARNING) << "Did not find table info for table with colocation / cotable id: " << id
+  LOG(WARNING) << "Did not find table info for table with colocation / cotable / table id: " << id
                << " and tablet id: " << tablet_id
-               << ". This could be because the object corresponding to colocation id has "
-                  "been deleted.";
+               << ". This could be because the object corresponding to the id has been deleted.";
+  // TODO(#31908): callers treat this nullptr as a dropped or rewritten colocated table and skip the
+  // record, which is safe only while a lagging stream cannot stream such a table's remaining
+  // events.  Once that is supported, callers must resolve the table as of the record instead.
   return nullptr;
+}
+
+// The id is either a ColocationId or a TableId, matching the GetTableInfo overloads.
+template <class Id>
+Result<tablet::TableInfoPtr> GetTableInfoForColocatedTable(
+    const Id& id, tablet::TabletPtr tablet_ptr) {
+  auto table_info_result = tablet_ptr->metadata()->GetTableInfo(id);
+  return WarnIfNotFoundOrReturn(table_info_result, AsString(id), tablet_ptr->tablet_id());
 }
 
 Result<tablet::TableInfoPtr> GetTableInfoForColocatedTable(
     const dockv::SubDocKey& decoded_key, tablet::TabletPtr tablet_ptr) {
-  const auto& colocation_id = decoded_key.doc_key().colocation_id();
-  auto table_info_result = tablet_ptr->metadata()->GetTableInfo(colocation_id);
-  return WarnIfNotFoundOrReturn(
-      table_info_result, std::to_string(colocation_id), tablet_ptr->tablet_id());
+  return GetTableInfoForColocatedTable(decoded_key.doc_key().colocation_id(), tablet_ptr);
 }
 
 Result<tablet::TableInfoPtr> GetTableInfoForSysCatalogTable(
@@ -3106,12 +3113,41 @@ Status GetChangesForCDCSDK(
 
           case consensus::OperationType::CHANGE_METADATA_OP: {
             VLOG(3) << "Will stream a DDL record. " << msg->ShortDebugString();
+            if (!msg->change_metadata_request().has_schema()) {
+              // A change metadata op without a schema (for example a mark_backfill_done op
+              // or a colocated table add_table/remove_table_id) carries no schema change to
+              // stream.  Skip it instead of running the schema path below, which would cache
+              // an empty schema under version 0 and emit an empty schema DDL record if the
+              // sys catalog lookup fails.
+              VLOG(3) << "Skipping schema-less CHANGE_METADATA_OP. " << msg->ShortDebugString();
+              AcknowledgeStreamedMsg(
+                  msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                  &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                  &safe_hybrid_time_resp, &wal_segment_index);
+              checkpoint_updated = true;
+              break;
+            }
             RETURN_NOT_OK(SchemaFromPB(
                 msg->change_metadata_request().schema().ToGoogleProtobuf(), &current_schema));
             TabletId table_id = tablet_ptr->metadata()->table_id();
             if (tablet_ptr->metadata()->colocated()) {
-              auto table_info = CHECK_RESULT(tablet_ptr->metadata()->GetTableInfo(
-                  msg->change_metadata_request().alter_table_id().ToBuffer()));
+              auto table_info = VERIFY_RESULT(GetTableInfoForColocatedTable(
+                  msg->change_metadata_request().alter_table_id().ToBuffer(), tablet_ptr));
+              if (!table_info) {
+                // The table this op alters is no longer in the tablet metadata.  This happens
+                // when a colocated table is dropped after writing this op but before the
+                // stream reads it, since the lookup above reflects the current metadata and
+                // not the metadata as of the op.  The table is gone, so there is nothing to
+                // stream for it.
+                LOG(INFO) << "Skipping CHANGE_METADATA_OP for a table that is no longer in the "
+                          << "tablet metadata. " << msg->ShortDebugString();
+                AcknowledgeStreamedMsg(
+                    msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                    &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                    &safe_hybrid_time_resp, &wal_segment_index);
+                checkpoint_updated = true;
+                break;
+              }
               table_id = table_info->table_id;
               table_name = table_info->table_name;
             }
