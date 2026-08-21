@@ -540,6 +540,16 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
     std::vector<HostPort> init_master_addrs;
     RETURN_NOT_OK(HostPort::ParseStrings(
         FLAGS_init_master_addrs, master::kMasterDefaultPort, &init_master_addrs));
+    // ParseStrings() splits with SkipEmpty(), so a value of "," parses to zero addresses and
+    // returns OK; indexing that is out of bounds (#33435). Not InvalidArgument: SetUsage() has
+    // not run yet, so main()'s InvalidArgument branch would print an unset
+    // google::ProgramUsage() -- "Warning: SetUsageMessage() never called" as the entire error
+    // message.
+    if (init_master_addrs.empty()) {
+      cerr << "Invalid --init_master_addrs '" << FLAGS_init_master_addrs
+           << "': no addresses found" << endl;
+      return STATUS(RuntimeError, "Invalid --init_master_addrs");
+    }
     client_.reset(new ClusterAdminClient(
         init_master_addrs[0], MonoDelta::FromMilliseconds(FLAGS_timeout_ms)));
   } else {
