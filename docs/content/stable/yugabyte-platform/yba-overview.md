@@ -140,9 +140,20 @@ To enable the new experience, set the **Enable new Universe experience** Global 
 
     Set up and manage universes using a wizard in Guided or Expert mode to help you build the right topology. In Guided mode, choose Region, Zone, Node, or None resilience; Expert mode gives you full control over replication factor and per-zone node counts. [Learn more](../create-deployments/create-universes-wizard/).
 
-- Centralized Settings
+- Centralized universe settings
 
-    Access all your universe configuration settings from a single **Settings** tab, organized as Placement, Hardware, Database, Security, Logs, Telemetry Export, and Advanced. [Learn more](../create-deployments/create-universes-wizard/#examine-the-universe).
+    Access all your universe configuration settings from a single **Settings** tab, organized as follows:
+    
+    - General: Cluster information
+    - Placement: Manage cluster resilience/replication factor, regions, availability zones, and preferred regions
+    - Hardware: Manage cluster instance types and disk
+    - Security: Network access, encryption in transit, and encryption at rest
+    - Database: API endpoints and authentication (YSQL/YCQL), additional features, and configuration flags
+    - Advanced: Proxy settings, ports, node access, and Kubernetes overrides
+    - Logs: Database query and audit log settings
+    - Telemetry Export: Log and metrics export
+
+    See [Where did features move](#where-did-features-move).
 
 - Preferred availability zone ranking
 
