@@ -748,10 +748,10 @@ WriteRpc::WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag)
       req_.set_request_id(*first_yb_op->request_id());
       req_.set_min_running_request_id(request_detail.min_running_request_id);
     } else {
-      const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
-      req_.set_request_id(request_pair.first);
-      req_.set_min_running_request_id(request_pair.second);
-      batcher_->RegisterRequest(request_pair.first, request_pair.second);
+      const auto allocation = batcher_->NextRequestIdAndMinRunningRequestId();
+      req_.set_request_id(allocation.id);
+      req_.set_min_running_request_id(allocation.min_running);
+      batcher_->RegisterRequest(allocation);
     }
     FillRequestIds(req_.request_id(), &ops_);
   }

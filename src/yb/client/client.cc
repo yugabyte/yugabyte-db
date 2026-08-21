@@ -2625,33 +2625,12 @@ const CloudInfoPB& YBClient::cloud_info() const {
   return data_->cloud_info_pb_;
 }
 
-std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId() {
-  std::lock_guard lock(data_->tablet_requests_mutex_);
-  auto& requests = data_->requests_;
-  auto id = requests.request_id_seq++;
-  requests.running_requests.insert(id);
-  return std::make_pair(id, *requests.running_requests.begin());
+internal::RequestIdAllocation YBClient::NextRequestIdAndMinRunningRequestId() {
+  return data_->request_id_allocator_.Next();
 }
 
 void YBClient::AddMetaCacheInfo(JsonWriter* writer) const {
   data_->meta_cache_->AddAllTabletInfo(writer);
-}
-
-void YBClient::RequestsFinished(const RetryableRequestIdRange& request_id_range) {
-  if (request_id_range.empty()) {
-    return;
-  }
-  std::lock_guard lock(data_->tablet_requests_mutex_);
-  for (const auto& id : request_id_range) {
-    auto& requests = data_->requests_.running_requests;
-    auto it = requests.find(id);
-    if (it != requests.end()) {
-      requests.erase(it);
-    } else {
-      LOG_WITH_PREFIX(DFATAL) << "RequestsFinished called for an unknown request: "
-                              << id;
-    }
-  }
 }
 
 void YBClient::LookupTabletByKey(

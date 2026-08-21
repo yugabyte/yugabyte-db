@@ -41,7 +41,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/range/adaptors.hpp>
 
 #include "yb/ash/wait_state.h"
 
@@ -689,12 +688,14 @@ server::Clock* Batcher::Clock() const {
   return client_->Clock();
 }
 
-std::pair<RetryableRequestId, RetryableRequestId> Batcher::NextRequestIdAndMinRunningRequestId() {
+RequestIdAllocation Batcher::NextRequestIdAndMinRunningRequestId() {
   return client_->NextRequestIdAndMinRunningRequestId();
 }
 
 void Batcher::RequestsFinished() {
-  client_->RequestsFinished(retryable_requests_ | boost::adaptors::map_keys);
+  for (const auto& entry : retryable_requests_) {
+    RequestIdAllocator::Finished(entry.second.block);
+  }
 }
 
 void Batcher::MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id) {
