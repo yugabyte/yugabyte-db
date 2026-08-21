@@ -142,6 +142,12 @@ DEFINE_test_flag(bool, simulate_cannot_enable_compactions, false,
 DEFINE_test_flag(int32, delay_clearing_fully_applied_ms, 0,
     "Amount of time to delay clearing the fully applied schema.");
 
+DEFINE_test_flag(string, ysql_index_backfill_unique_check_mode, "",
+    "Test-only override of the uniqueness-check mode selected and persisted for new "
+    "unique-index backfill jobs. Values: check_all (run forward and backward duplicate checks "
+    "on every backfill write), skip_all (run none). Empty (default) selects the production "
+    "mode. Tservers act only on the mode carried by each write request.");
+
 namespace yb {
 namespace master {
 
@@ -151,6 +157,43 @@ using strings::b2a_hex;
 using tserver::TabletServerErrorPB;
 
 namespace {
+
+// Reads the TEST_ysql_index_backfill_unique_check_mode override. The flag is a runtime
+// string flag, so it is copied under the gflags lock rather than read raw (a raw read can
+// tear while a test rewrites it). Returns nullopt when unset -- or, after a DFATAL, when set
+// to an unknown value -- so the caller falls back to its fail-closed default.
+std::optional<UniqueIndexBackfillMode> GetUniqueIndexBackfillModeTestOverride() {
+  const auto test_mode =
+      google::GetCommandLineFlagInfoOrDie("TEST_ysql_index_backfill_unique_check_mode")
+          .current_value;
+  if (test_mode.empty()) {
+    return std::nullopt;
+  }
+  if (test_mode == "skip_all") {
+    return UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL;
+  }
+  if (test_mode == "check_all") {
+    return UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_CHECK_ALL;
+  }
+  LOG(DFATAL) << "Unknown TEST_ysql_index_backfill_unique_check_mode value: " << test_mode;
+  return std::nullopt;
+}
+
+// Selects the uniqueness-check mode persisted for a new backfill job. The mode is chosen
+// exactly once per job and is immutable afterwards: reloads (master failover, retries) must
+// read the persisted value instead of re-selecting, so later runtime flag changes cannot
+// reinterpret an active job.
+UniqueIndexBackfillMode SelectUniqueIndexBackfillMode() {
+  // Unknown override values select CHECK_ALL (fail closed for the job).
+  if (const auto test_mode = GetUniqueIndexBackfillModeTestOverride()) {
+    return *test_mode;
+  }
+  // Deferred verification is not yet selectable in production: SKIP_ALL requires the
+  // marked-write ordering and verification machinery from later parts of #33444. The
+  // activation work adds the production selection together with the capability AutoFlag
+  // that must gate it, so the flag cannot ship ahead of the behavior it protects.
+  return UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_CHECK_ALL;
+}
 
 // Before advancing index permissions, we need to make sure Postgres side has advanced sufficiently
 // - that the state tracked in pg_index haven't fallen behind from the desired permission
@@ -783,6 +826,14 @@ BackfillTable::BackfillTable(
   schema_version_ = indexed_table_->metadata().state().pb.version();
 
   const auto& pb = indexed_table_->metadata().state().pb;
+  // The uniqueness-check mode is immutable per job: reuse the persisted value when resuming
+  // an existing job (missing means CHECK_ALL); select it only for a brand-new job. Launch()
+  // persists the selection together with the job.
+  if (pb.backfill_jobs_size() > 0) {
+    unique_index_backfill_mode_ = pb.backfill_jobs(0).unique_index_backfill_mode();
+  } else {
+    unique_index_backfill_mode_ = SelectUniqueIndexBackfillMode();
+  }
   if (pb.backfill_jobs_size() > 0 && pb.backfill_jobs(0).has_backfilling_timestamp() &&
       read_time_for_backfill_.FromUint64(pb.backfill_jobs(0).backfilling_timestamp()).ok()) {
     DCHECK(pb.backfill_jobs_size() == 1) << "Expect only 1 outstanding backfill job";
@@ -850,6 +901,10 @@ Status BackfillTable::Launch() {
         backfill_job->mutable_backfill_state()->insert(
             {idx_info.table_id(), BackfillJobPB::IN_PROGRESS});
       }
+      backfill_job->set_unique_index_backfill_mode(unique_index_backfill_mode_);
+      LOG_WITH_PREFIX(INFO) << "Selected unique-index backfill mode "
+                            << UniqueIndexBackfillMode_Name(unique_index_backfill_mode_)
+                            << " for backfill job";
       RETURN_NOT_OK_PREPEND(
           master_->catalog_manager_impl()->sys_catalog_->Upsert(
               epoch_, indexed_table_),
@@ -1819,6 +1874,7 @@ bool BackfillChunk::SendRequest(int attempt) {
   req.set_indexed_table_id(backfill_tablet_->indexed_table_id());
   if (GetTableType() == TableType::PGSQL_TABLE_TYPE) {
     req.set_namespace_name(backfill_tablet_->GetNamespaceName());
+    req.set_unique_index_backfill_mode(backfill_tablet_->unique_index_backfill_mode());
   }
   std::unordered_set<TableId> found_idxs;
   for (const IndexInfoPB& idx_info : backfill_tablet_->index_infos()) {

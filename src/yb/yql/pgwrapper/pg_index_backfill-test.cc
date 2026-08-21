@@ -2641,6 +2641,51 @@ TEST_P(PgIndexBackfillMultiMaster, BackfillResumesAfterMasterFailover) {
   ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int32_t>(query)), 1);
 }
 
+// The uniqueness-check mode is selected once, persisted in BackfillJobPB, and immutable for
+// the job's lifetime. Select SKIP_ALL via the master-side test override, verify the persisted
+// job carries it, then clear the override and fail the leader over while backfill is blocked.
+// The new leader resumes the job from persisted state: if it wrongly re-selected the mode it
+// would now pick CHECK_ALL and fail the build on the pre-existing duplicates.
+TEST_P(PgIndexBackfillMultiMaster, UniqueCheckModePersistedAcrossMasterFailover) {
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_ysql_index_backfill_unique_check_mode", "skip_all"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1), (2, 1)", kTableName));
+
+  // conn_ should be used by at most one thread for thread safety.
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create thread";
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    // Succeeds only if the resumed job still runs SKIP_ALL after failover.
+    ASSERT_OK(create_conn.ExecuteFormat(
+        "CREATE UNIQUE INDEX $0 ON $1 (b ASC)", kIndexName, kTableName));
+  });
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin master leader stepdown thread";
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+    // The selected mode is persisted with the job.
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+    const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
+        client.get(), kYBTableName.namespace_name(), kYBTableName.table_name()));
+    auto job = ASSERT_RESULT(GetBackfillJobs(cluster_.get(), table_id));
+    ASSERT_EQ(job.unique_index_backfill_mode(),
+              UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL);
+
+    // Clear the selection override everywhere before the failover, so a (wrong) re-selection
+    // on the new leader would produce CHECK_ALL.
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_ysql_index_backfill_unique_check_mode", ""));
+
+    LOG(INFO) << "Doing master leader stepdown";
+    tserver::TabletServerErrorPB::Code error_code;
+    ASSERT_OK(cluster_->StepDownMasterLeader(&error_code));
+
+    // Unblock DoBackfill.
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  });
+  thread_holder_.JoinAll();
+}
+
 // Override the index backfill test class to use colocated tables.
 class PgIndexBackfillColocated : public PgIndexBackfillTest {
  public:
@@ -3227,6 +3272,28 @@ TEST_P(PgIndexBackfillBlockDoBackfill, DuplicatesExistBeforeBackfill) {
     ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   });
   thread_holder_.JoinAll();
+}
+
+// The job mode selected and persisted by the master must ride the whole backfill path:
+// BackfillJobPB -> BackfillIndex RPC -> backfill spec -> BACKFILL INDEX statement -> pggate
+// -> PgsqlWriteRequestPB -> DocDB. The override exists on the master only, so tservers act
+// on the mode carried by the write request: pre-existing duplicates (which fail the backfill
+// under CHECK_ALL, see DuplicatesExistBeforeBackfill) are admitted only if SKIP_ALL arrived
+// at the DocDB write path through every hop. The resulting index is intentionally
+// inconsistent: without the later verification layers the override is a plumbing test only.
+TEST_P(PgIndexBackfillTest, UniqueCheckModePlumbedFromMasterToWritePath) {
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_ysql_index_backfill_unique_check_mode", "skip_all"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1), (2, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b ASC)", kIndexName, kTableName));
+
+  // Foreground writes never carry the mode, so their uniqueness checks stay active: a new
+  // duplicate through the now-live index must still be rejected.
+  auto status = conn_->ExecuteFormat("INSERT INTO $0 VALUES (3, 1)", kTableName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "duplicate");
 }
 
 // Override to use YSQL backends manager.
