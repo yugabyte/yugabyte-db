@@ -216,7 +216,7 @@ SELECT pg_class.relname
 
 This affects only YSQL databases. For YCQL, YugabyteDB automatically restarts index backfill after the restore.
 
-This limitation will be removed in an upcoming release, and is tracked in issue [12672](https://github.com/yugabyte/yugabyte-db/issues/12672).
+See issue {{<issue 12940>}} for details.
 
 {{< /note >}}
 

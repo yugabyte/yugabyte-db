@@ -25,7 +25,7 @@ showRightNav: true
 
 Point-in-time (PIT) recovery in YugabyteDB is a set of capabilities for recovering from human or logical errors at the SQL or CQL level. For example, a mistyped `UPDATE`, an accidental `DROP TABLE`, or a bad application write.
 
-These scenarios are different from hardware failure or disk corruption. Failed or corrupted disks typically require a full [backup and restore](../), which moves large amounts of data and can involve significant downtime. PIT recovery instead aims to get you back to a known-good state **quickly**, often with little or no data movement and without taking the cluster offline for a bulk restore.
+These scenarios are different from hardware failure or disk corruption. Failed or corrupted disks typically require a full [backup and restore](../), which moves large amounts of data and can involve significant downtime. PIT recovery instead aims to get you back to a known-good state quickly, often with little or no data movement and without taking the cluster offline for a bulk restore.
 
 You recover to a user-specified moment (up to microsecond precision) within a configured retention window. To use most of these capabilities, you first [enable PITR](enable-pitr/) by creating a snapshot schedule for the database or keyspace.
 
@@ -62,9 +62,9 @@ Use the following comparison when deciding:
 
 PIT capabilities rely on retained change history, typically provided by:
 
-1. **Flashback / history retention** — YugabyteDB retains recent versions of data for a configurable period so the database can be read or rewound to any microsecond in that window. The default history retention is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec).
+1. **Flashback / history retention**: YugabyteDB retains recent versions of data for a configurable period so the database can be read or rewound to any microsecond in that window. The default history retention is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec).
 
-1. **Periodic distributed snapshots** — [Distributed snapshots](../snapshot-ysql/) capture a lightweight copy of database data files. A [snapshot schedule](enable-pitr/) takes snapshots periodically and retains them for a configured duration, extending the continuous history window beyond a single flashback interval.
+1. **Periodic distributed snapshots**: [Distributed snapshots](../snapshot-ysql/) capture a lightweight copy of database data files. A [snapshot schedule](enable-pitr/) takes snapshots periodically and retains them for a configured duration, extending the continuous history window beyond a single flashback interval.
 
 For example, if your overall retention target is three days, you can take snapshots daily and retain each for three days. That configuration keeps a continuous change history for the last three days. When you rewind or restore to a point in time, YugabyteDB selects the closest suitable snapshot and uses flashback within that snapshot.
 

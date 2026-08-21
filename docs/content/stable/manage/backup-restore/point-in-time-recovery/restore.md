@@ -2,8 +2,8 @@
 title: Restore to a point in time
 headerTitle: Restore to PIT
 linkTitle: Restore to PIT
-description: Restore a YugabyteDB snapshot or backup to a specific point in time
-headcontent: Restore a YugabyteDB snapshot to a specific point in time
+description: Restore from a YugabyteDB snapshot or backup to a specific point in time
+headcontent: Restore from a YugabyteDB snapshot to a specific point in time
 menu:
   stable:
     identifier: pitr-restore
@@ -34,7 +34,7 @@ You cannot restore to a point in time earlier than the most recent DDL change th
 
 ## Prerequisites
 
-- A completed [distributed snapshot](../../snapshot-ysql/#create-a-snapshot) of the database or keyspace. For off-cluster restore, [export the snapshot](../../snapshot-ysql/#move-a-snapshot-to-external-storage) and [import](../../snapshot-ysql/) it on the target cluster first.
+- A completed [distributed snapshot](../../snapshot-ysql/#create-a-snapshot) of the database or keyspace. For off-cluster restore, [export the snapshot](../../snapshot-ysql/#move-a-snapshot-to-external-storage) and [import](../../snapshot-ysql/#restore-a-snapshot-from-external-storage) it on the target cluster first.
 - The target restore time must fall within the history retained by that snapshot (the snapshot's creation time and the history retention covering times before it, subject to the DDL boundary).
 
 ## Restore a snapshot to a point in time
@@ -50,7 +50,7 @@ yb-admin \
 - *snapshot-id*: The identifier for the snapshot.
 - *restore-target*: The time to which to restore. This can be an absolute Unix timestamp in microseconds, or a relative time such as `minus 5m`. Optional; omit to restore to the snapshot's creation time.
 
-### Absolute time
+The following example uses an absolute time:
 
 ```sh
 ./bin/yb-admin \
@@ -58,7 +58,7 @@ yb-admin \
     restore_snapshot 72ad2eb1-65a2-4e88-a448-7ef4418bc469 1681964544554620
 ```
 
-### Relative time
+The following example uses a relative time:
 
 ```sh
 ./bin/yb-admin \
@@ -66,7 +66,9 @@ yb-admin \
     restore_snapshot 72ad2eb1-65a2-4e88-a448-7ef4418bc469 minus 5m
 ```
 
-When the restore starts, the `snapshot_id` and a generated `restoration_id` are displayed. Check progress with [list_snapshots](../../../../admin/yb-admin/#list-snapshots) or [list_snapshot_restorations](../../../../admin/yb-admin/#list-snapshot-restorations).
+When the restore starts, the `snapshot_id` and a generated `restoration_id` are displayed.
+
+Check progress using [list_snapshots](../../../../admin/yb-admin/#list-snapshots) or [list_snapshot_restorations](../../../../admin/yb-admin/#list-snapshot-restorations).
 
 For restoring to the snapshot creation time only (no point-in-time target), see also [Restore a snapshot](../../snapshot-ysql/#restore-a-snapshot).
 
@@ -89,9 +91,3 @@ YugabyteDB Anywhere provides a managed experience for Restore to PIT using PITR-
 1. [Restore the backup](../../../../yugabyte-platform/back-up-restore-universes/restore-universe-data/#restore-a-pitr-enabled-backup) and select **An earlier point in time** to choose any moment in the backup's restore window.
 
 You can restore to the original universe or to an alternate universe, and optionally rename databases or keyspaces. The same DDL boundary limitation applies.
-
-## See also
-
-- [Rewind to PIT](../rewind/) — rewind the live database in place via a snapshot schedule.
-- [Clone to PIT](../clone/) — lightweight in-cluster clone for surgical recovery on the original cluster.
-- [Distributed snapshots](../../snapshot-ysql/) — create, export, and import snapshots.
