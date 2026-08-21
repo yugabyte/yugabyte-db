@@ -38,6 +38,28 @@ using master::ListTabletServersResponsePB;
 
 namespace {
 
+std::vector<string> SplitOnUnderscore(const string& s) {
+  std::vector<string> tokens;
+  size_t start = 0;
+  while (start <= s.size()) {
+    auto end = s.find('_', start);
+    if (end == string::npos) {
+      end = s.size();
+    }
+    if (end > start) {
+      tokens.push_back(s.substr(start, end - start));
+    }
+    start = end + 1;
+  }
+  return tokens;
+}
+
+bool EitherIsPrefix(const string& a, const string& b) {
+  const auto& shorter = a.size() <= b.size() ? a : b;
+  const auto& longer = a.size() <= b.size() ? b : a;
+  return longer.compare(0, shorter.size(), shorter) == 0;
+}
+
 int GetTabletServerAliveRank(const ListTabletServersResponsePB::Entry& server) {
   if (!server.has_alive()) {
     return 2;
@@ -89,6 +111,49 @@ bool IsUnsupportedRpcError(const Status& s) {
   const auto rpc_error = rpc::RpcError(s);
   return rpc_error == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD ||
          rpc_error == rpc::ErrorStatusPB::ERROR_NO_SUCH_SERVICE;
+}
+
+std::vector<string> SuggestByNameTokens(
+    const string& op, const std::vector<string>& names, size_t max_results) {
+  const auto op_tokens = SplitOnUnderscore(op);
+  if (op_tokens.empty()) {
+    return {};
+  }
+  // Rank is the number of name tokens no typed token covers; sorting the (rank, name) pairs
+  // orders the most fully covered names first and breaks ties alphabetically.
+  std::vector<std::pair<size_t, string>> ranked;
+  for (const auto& name : names) {
+    const auto name_tokens = SplitOnUnderscore(name);
+    std::vector<bool> covered(name_tokens.size(), false);
+    bool all_op_tokens_covered = true;
+    for (const auto& op_token : op_tokens) {
+      bool op_token_covered = false;
+      for (size_t i = 0; i < name_tokens.size(); ++i) {
+        if (EitherIsPrefix(op_token, name_tokens[i])) {
+          covered[i] = true;
+          op_token_covered = true;
+        }
+      }
+      if (!op_token_covered) {
+        all_op_tokens_covered = false;
+        break;
+      }
+    }
+    if (!all_op_tokens_covered) {
+      continue;
+    }
+    ranked.emplace_back(std::count(covered.begin(), covered.end(), false), name);
+  }
+  std::sort(ranked.begin(), ranked.end());
+  if (ranked.size() > max_results) {
+    ranked.resize(max_results);
+  }
+  std::vector<string> result;
+  result.reserve(ranked.size());
+  for (auto& [_, name] : ranked) {
+    result.push_back(std::move(name));
+  }
+  return result;
 }
 
 string SnapshotIdToString(const SnapshotId& snapshot_id) {
