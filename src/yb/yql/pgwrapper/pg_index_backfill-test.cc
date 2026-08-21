@@ -2261,6 +2261,81 @@ TEST_P(PgIndexBackfillMultiMaster, MasterLeaderStepdown) {
   thread_holder_.JoinAll();
 }
 
+// Make sure that a tablet schema version report arriving during backfill does not strand the
+// backfill across a master leader change.  The report moves the indexed table out of ALTERING, and
+// the new master leader has to resume the backfill anyway.  Simulate the following:
+//   Session A                                    Session B
+//   --------------------------                   ----------------------
+//   CREATE INDEX
+//   - indislive
+//   - indisready
+//   - backfill
+//     - get safe time for read
+//                                                tablet leader stepdown
+//                                                - new leader reports schema version
+//                                                master leader stepdown
+TEST_P(PgIndexBackfillMultiMaster, BackfillResumesAfterMasterFailover) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // 1. Create a single-tablet table and start CREATE INDEX on a separate thread.
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (i int, PRIMARY KEY (i)) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
+
+  const auto table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kDatabaseName, kTableName));
+
+  // conn_ should be used by at most one thread for thread safety.
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create thread";
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
+    LOG(INFO) << "Done create thread";
+  });
+
+  // 2. Wait for backfill safe time, at which point the backfill is blocked by
+  //    TEST_block_do_backfill.
+  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+  // 3. Step down the tablet leader so the new leader reports its schema version to the master
+  //    while the backfill is in progress.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto tablet_id = tablets[0].tablet_id();
+  const auto old_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  ASSERT_OK(cluster_->CallYbAdmin({"leader_stepdown", tablet_id}));
+  ASSERT_OK(WaitFor(
+      [this, &tablet_id, old_leader_idx]() -> Result<bool> {
+        auto leader_idx = cluster_->GetTabletLeaderIndex(tablet_id);
+        return leader_idx.ok() && *leader_idx != old_leader_idx;
+      },
+      30s * kTimeMultiplier, "Wait for tablet leader to change"));
+
+  // 4. Wait for the report to take the indexed table out of ALTERING.  This is the precondition
+  //    for the bug: the state that the resume path used to key off of is gone.
+  ASSERT_OK(WaitFor(
+      [&client, &table_id]() -> Result<bool> {
+        bool alter_in_progress = true;
+        RETURN_NOT_OK(client->IsAlterTableInProgress(kYBTableName, table_id, &alter_in_progress));
+        return !alter_in_progress;
+      },
+      60s * kTimeMultiplier, "Wait for indexed table to leave ALTERING"));
+
+  // 5. Fail the backfill over to a new master leader.
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+
+  // 6. Unblock the backfill and join the create thread.  The new master leader has to resume the
+  //    backfill for CREATE INDEX to return.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  thread_holder_.JoinAll();
+
+  // 7. The index is usable.
+  const std::string query = Format("SELECT i FROM $0 WHERE i = 1", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
+  ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int32_t>(query)), 1);
+}
+
 // Override the index backfill test class to use colocated tables.
 class PgIndexBackfillColocated : public PgIndexBackfillTest {
  public:
