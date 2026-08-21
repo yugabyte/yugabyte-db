@@ -89,6 +89,9 @@ typedef struct AnlIndexData
 /* Default statistics target (GUC parameter) */
 int			default_statistics_target = 100;
 
+/* YB: Hook fired at the end of analyze_rel(), see vacuum.h. */
+YbAnalyzeRelEnd_hook_type YbAnalyzeRelEnd_hook = NULL;
+
 /* A few variables that don't seem worth passing around as parameters */
 static MemoryContext anl_context = NULL;
 static BufferAccessStrategy vac_strategy;
@@ -291,6 +294,14 @@ analyze_rel(Oid relid, RangeVar *relation,
 	 * expose us to concurrent-update failures in update_attstats.)
 	 */
 	relation_close(onerel, NoLock);
+
+	/*
+	 * YB: Notify any extension that this relation's statistics were refreshed.
+	 * Done while we still hold the ANALYZE lock and inside the same transaction
+	 * that wrote the new statistics.
+	 */
+	if (YbAnalyzeRelEnd_hook)
+		YbAnalyzeRelEnd_hook(relid);
 
 	pgstat_progress_end_command();
 }
