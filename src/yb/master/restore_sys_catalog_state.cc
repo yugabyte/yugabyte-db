@@ -406,6 +406,32 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
   if (it != existing_objects_.namespaces.end()) {
     pb->set_clone_request_seq_no(std::max(
         pb->clone_request_seq_no(), it->second.clone_request_seq_no()));
+    // Do not let the restore move the next-OID counters backwards. They record which OIDs master
+    // has already given out, and a TServer can still be holding a cached batch of OIDs that the
+    // counter has already moved past. So a counter that moves backwards makes master give those
+    // same OIDs to the next TServer that asks for more, while the first TServer is still handing
+    // out its batch. DocDB table ids and PG relfilenodes both derive from these OIDs, so the
+    // duplicate surfaces as CreateTable "Already present" ("Duplicate table" in PG). The cost of
+    // not rewinding them is that the OIDs master has given out to TServers between the restore
+    // time and the restore are never reused, out of a ~2.2 billion per-database space.
+    if (it->second.has_next_normal_pg_oid()) {
+      LOG_IF(DFATAL, pb->next_normal_pg_oid() > it->second.next_normal_pg_oid())
+          << "Database " << id << " had given out OIDs up to " << pb->next_normal_pg_oid()
+          << " at the restore time but only up to " << it->second.next_normal_pg_oid()
+          << " now: something moved the counter backwards earlier, which is what a master "
+          << "prior to this fix does on every restore";
+      pb->set_next_normal_pg_oid(std::max(
+          pb->next_normal_pg_oid(), it->second.next_normal_pg_oid()));
+    }
+    if (it->second.has_next_secondary_pg_oid()) {
+      LOG_IF(DFATAL, pb->next_secondary_pg_oid() > it->second.next_secondary_pg_oid())
+          << "Database " << id << " had given out secondary space OIDs up to "
+          << pb->next_secondary_pg_oid() << " at the restore time but only up to "
+          << it->second.next_secondary_pg_oid() << " now: something moved the counter backwards "
+          << "earlier, which is what a master prior to this fix does on every restore";
+      pb->set_next_secondary_pg_oid(std::max(
+          pb->next_secondary_pg_oid(), it->second.next_secondary_pg_oid()));
+    }
   }
   return true;
 }
