@@ -1377,16 +1377,18 @@ TEST_F(AdminCliTest, TestModifyPlacementPolicy) {
   BuildAndStart();
 
   // Modify the cluster placement policy to consist of 2 zones.
-  ASSERT_OK(CallAdmin("modify_placement_info", "c.r.z0,c.r.z1:2,c.r.z0:2", 5, ""));
+  ASSERT_OK(CallAdmin("modify_placement_info", "c.r.z0:1:2,c.r.z1:2,c.r.z0:2:3", 5, ""));
 
   auto output = ASSERT_RESULT(CallAdmin("get_universe_config"));
 
   std::string expected_placement_blocks =
       "[{\"cloudInfo\":{\"placementCloud\":\"c\",\"placementRegion\":\"r\","
       "\"placementZone\":\"z1\"},\"minNumReplicas\":2},{\"cloudInfo\":{\"placementCloud\":\"c\","
-      "\"placementRegion\":\"r\",\"placementZone\":\"z0\"},\"minNumReplicas\":3}]";
+      "\"placementRegion\":\"r\",\"placementZone\":\"z0\"},\"minNumReplicas\":3,"
+      "\"maxNumReplicas\":5}]";
 
   ASSERT_NE(output.find(expected_placement_blocks), string::npos);
+  ASSERT_NOK(CallAdmin("modify_placement_info", "c.r.z0::2", 2, ""));
 }
 
 TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {

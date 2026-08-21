@@ -221,6 +221,10 @@ class ClusterLoadBalancer {
   Result<bool> HandleAddIfWrongPlacement(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
+  // Moves a replica from a placement block above its maximum to one with remaining capacity.
+  Result<bool> HandleAddIfOverMaxPlacement(
+      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
+
   // If we find a tablet with peers that violate the placement information, we first over-replicate
   // the peer group, in the add portion of the algorithm. We then eventually remove extra replicas
   // on the remove path, here.
