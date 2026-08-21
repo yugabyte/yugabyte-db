@@ -193,6 +193,25 @@ export default class NodeDetailsTable extends Component {
               {cell}
             </a>
           );
+        } else if (row.cloudInfo.cloud === 'oci') {
+          const azMatch = /^(.*)-AD-\d+$/i.exec(row.azItem ?? '');
+          const region = azMatch ? azMatch[1] : row.cloudInfo.region;
+          const compartmentId = providerConfig?.['OCI_COMPARTMENT_ID'];
+          let ociURI;
+          if (isNonEmptyString(row.cloudInfo?.id) && isNonEmptyString(region)) {
+            ociURI = `https://cloud.oracle.com/compute/instances/${row.cloudInfo.id}?region=${region}`;
+          } else if (isNonEmptyString(region)) {
+            ociURI = isNonEmptyString(compartmentId)
+              ? `https://cloud.oracle.com/compute/instances?region=${region}&compartmentId=${compartmentId}`
+              : `https://cloud.oracle.com/compute/instances?region=${region}`;
+          }
+          if (ociURI) {
+            nodeName = (
+              <a href={ociURI} target="_blank" rel="noopener noreferrer">
+                {cell}
+              </a>
+            );
+          }
         }
       }
 
