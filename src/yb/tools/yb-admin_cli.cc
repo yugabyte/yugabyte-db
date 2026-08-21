@@ -542,7 +542,7 @@ Status ClusterAdminCli::RunCommand(
       // unknown operation); prefixing it with "Error running ..." would bury it.
       return s;
     }
-    if (s.IsRemoteError() && s.ToString().find("rpc error 2")) {
+    if (IsNoSuchMethodError(s)) {
       cerr << "The cluster doesn't support " << command.name_ << ": " << s << std::endl;
     } else {
       cerr << "Error running " << command.name_ << ": " << s << endl;
