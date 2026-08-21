@@ -33,9 +33,30 @@
 #include "utils/snapmgr.h"
 #include "utils/tuplestore.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 static char *flatten_set_variable_args(const char *name, List *args);
 static void ShowGUCConfigOption(const char *name, DestReceiver *dest);
 static void ShowAllGUCConfig(DestReceiver *dest);
+
+/*
+ * YB: Contains list of GUC variables that both fall under PGC_SUSET context
+ * and can be modified by the yb_db_admin role. This is needed to allow
+ * yb_db_admin to modify PG_SUSET variables without being a superuser itself.
+ */
+static const char *const YbDbAdminVariables[] = {
+	"backtrace_functions",
+	"session_replication_role",
+	"yb_make_next_ddl_statement_nonbreaking",
+	"yb_make_next_ddl_statement_nonincrementing",
+	"yb_tcmalloc_sample_period",
+	"yb_binary_restore",
+	"yb_speculatively_execute_pl_statements",
+	"yb_whitelist_extra_statements_for_pl_speculative_execution",
+	"yb_test_make_all_ddl_statements_incrementing",
+	"yb_pg_stat_plans_show_max_exec_params",
+};
 
 
 /*
@@ -45,6 +66,21 @@ void
 ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 {
 	GucAction	action = stmt->is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET;
+	bool		YbDbAdminCanSet = false;
+
+	if (IsYbDbAdminUser(GetUserId()))
+	{
+		for (size_t i = 0;
+			 i < sizeof(YbDbAdminVariables) / sizeof(YbDbAdminVariables[0]);
+			 i++)
+		{
+			if (stmt->name && strcmp(YbDbAdminVariables[i], stmt->name) == 0)
+			{
+				YbDbAdminCanSet = true;
+				break;
+			}
+		}
+	}
 
 	/*
 	 * Workers synchronize these parameters at the start of the parallel
@@ -63,7 +99,8 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 				WarnNoTransactionBlock(isTopLevel, "SET LOCAL");
 			(void) set_config_option(stmt->name,
 									 ExtractSetVariableArgs(stmt),
-									 (superuser() ? PGC_SUSET : PGC_USERSET),
+									 (superuser() || YbDbAdminCanSet
+									  ? PGC_SUSET : PGC_USERSET),
 									 PGC_S_SESSION,
 									 action, true, 0, false);
 			break;
@@ -145,7 +182,8 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 		case VAR_RESET:
 			(void) set_config_option(stmt->name,
 									 NULL,
-									 (superuser() ? PGC_SUSET : PGC_USERSET),
+									 (superuser() || YbDbAdminCanSet
+									  ? PGC_SUSET : PGC_USERSET),
 									 PGC_S_SESSION,
 									 action, true, 0, false);
 			break;
