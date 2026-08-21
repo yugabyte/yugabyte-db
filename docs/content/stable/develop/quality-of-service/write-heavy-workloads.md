@@ -63,7 +63,8 @@ Stop writes trigger is activated in one of the following scenarios:
 
   Total memstore size is the minimum of the following two flags:
 
-  * `global_memstore_size_mb_max` (default value is 2GB)
+  * `global_memstore_size_mb_max` (defaults to 4 GiB on YB-TServers with at least 64 GiB of
+    available RAM, and 2 GiB otherwise)
   * `global_memstore_size_percentage` (defaults to 10% of total YB-TServer memory allocated)
 
   There are 2 different options for controlling how much memory is allocated to YB-TServer:

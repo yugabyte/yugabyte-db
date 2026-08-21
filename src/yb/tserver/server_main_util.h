@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <string>
 
 #include "yb/util/status_fwd.h"
@@ -30,6 +31,12 @@ namespace yb {
 #define DB_CACHE_SIZE_USE_PERCENTAGE -1
 #define DB_CACHE_SIZE_CACHE_DISABLED -2
 #define DB_CACHE_SIZE_USE_DEFAULT -3
+
+namespace internal {
+
+void AdjustMemoryLimits(bool is_master, size_t total_ram);
+
+}  // namespace internal
 
 Status MasterTServerParseFlagsAndInit(
     const std::string& server_type, bool is_master, int* argc, char*** argv);
