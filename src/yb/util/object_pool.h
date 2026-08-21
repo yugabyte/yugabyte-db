@@ -250,9 +250,8 @@ class ThreadSafeObjectPool {
     if (PREDICT_FALSE(cpu < 0)) {
       return PoolIndexForThread();
     }
-    auto index = static_cast<size_t>(cpu);
-    DCHECK_LT(index, pools_.size());
-    return index;
+    // Pools are thread-safe and interchangeable, so wrap a CPU id beyond the cached MaxCPUIndex().
+    return static_cast<size_t>(cpu) % pools_.size();
 #endif // defined(__APPLE__)
   }
 
