@@ -1,0 +1,76 @@
+CALL TEST_reset();
+
+CREATE TABLE analyze_foo(i int PRIMARY KEY, j text);
+-- The captured query embeds column values, which can be any text at all,
+-- including something that looks like the dollar quoting tag used to wrap the
+-- generated statements. Such a value must not be able to close the block early.
+INSERT INTO analyze_foo
+  SELECT g, '$yb_xcluster_analyze$ value' || (g % 3) FROM generate_series(1, 20) g;
+CREATE TEMP TABLE analyze_temp_foo(i int PRIMARY KEY);
+
+ANALYZE analyze_foo;
+ANALYZE analyze_temp_foo;  -- temp relations are not replicated
+
+-- Only the permanent relation should have been captured, and the captured query
+-- should be the statistics import statement rather than the ANALYZE itself.
+-- The quote tag must have been extended, since the plain one occurs in the data.
+SELECT yb_data->>'command_tag' AS command_tag,
+       yb_data->>'query' LIKE '%pg_restore_relation_stats%' AS has_relation_stats,
+       yb_data->>'query' LIKE '%pg_restore_attribute_stats%' AS has_attribute_stats,
+       yb_data->>'query' LIKE '%analyze_temp_foo%' AS has_temp_relation,
+       yb_data->>'query' LIKE 'DO $yb_xcluster_analyzex$%' AS has_extended_quote_tag
+  FROM yb_xcluster_ddl_replication.ddl_queue
+  WHERE yb_data->>'command_tag' = 'ANALYZE'
+  ORDER BY ddl_end_time;
+
+SELECT TEST_verify_replicated_ddls();
+
+-- Now verify that replaying the captured query reproduces the statistics, which
+-- is what the target universe does. The values themselves are not printed since
+-- they depend on the sample ANALYZE happened to take.
+CREATE TEMP TABLE saved_stats AS
+  SELECT attname, inherited, null_frac, avg_width, n_distinct,
+         most_common_vals::text AS most_common_vals,
+         most_common_freqs,
+         histogram_bounds::text AS histogram_bounds,
+         correlation
+    FROM pg_stats WHERE schemaname = 'public' AND tablename = 'analyze_foo';
+
+CREATE TEMP TABLE saved_relstats AS
+  SELECT relpages, reltuples, relallvisible
+    FROM pg_class WHERE oid = 'public.analyze_foo'::regclass;
+
+SELECT pg_catalog.pg_clear_attribute_stats('public', 'analyze_foo', attname, inherited)
+  FROM saved_stats;
+SELECT pg_catalog.pg_clear_relation_stats('public', 'analyze_foo');
+SELECT count(*) AS remaining_stats
+  FROM pg_stats WHERE schemaname = 'public' AND tablename = 'analyze_foo';
+
+DO $$
+DECLARE
+  captured_query text;
+BEGIN
+  SELECT yb_data->>'query' INTO STRICT captured_query
+    FROM yb_xcluster_ddl_replication.ddl_queue
+    WHERE yb_data->>'command_tag' = 'ANALYZE';
+  EXECUTE captured_query;
+END
+$$;
+
+SELECT s.attname, s.inherited,
+       (s.null_frac IS NOT DISTINCT FROM p.null_frac AND
+        s.avg_width IS NOT DISTINCT FROM p.avg_width AND
+        s.n_distinct IS NOT DISTINCT FROM p.n_distinct AND
+        s.most_common_vals IS NOT DISTINCT FROM p.most_common_vals::text AND
+        s.most_common_freqs IS NOT DISTINCT FROM p.most_common_freqs AND
+        s.histogram_bounds IS NOT DISTINCT FROM p.histogram_bounds::text AND
+        s.correlation IS NOT DISTINCT FROM p.correlation) AS stats_match
+  FROM saved_stats s
+  JOIN pg_stats p ON p.schemaname = 'public' AND p.tablename = 'analyze_foo'
+                 AND p.attname = s.attname AND p.inherited = s.inherited
+  ORDER BY s.attname, s.inherited;
+
+SELECT s.relpages IS NOT DISTINCT FROM c.relpages AND
+       s.reltuples IS NOT DISTINCT FROM c.reltuples AND
+       s.relallvisible IS NOT DISTINCT FROM c.relallvisible AS relstats_match
+  FROM saved_relstats s, pg_class c WHERE c.oid = 'public.analyze_foo'::regclass;

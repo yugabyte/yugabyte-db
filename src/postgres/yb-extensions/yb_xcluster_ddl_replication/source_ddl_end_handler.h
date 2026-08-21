@@ -51,4 +51,10 @@ extern void ProcessSourceEventTriggerTableRewrite();
 
 extern void ClearRewrittenTableOidList();
 
+/*
+ * Record the session variables that are known to meaningfully affect how a
+ * replicated query is executed under a "variables" key.
+ */
+extern void PushVariableMap(JsonbParseState *state);
+
 #endif

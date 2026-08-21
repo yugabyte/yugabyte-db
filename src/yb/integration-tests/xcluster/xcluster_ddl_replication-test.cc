@@ -4036,6 +4036,64 @@ TEST_F(XClusterDDLReplicationTest, TruncateTable) {
   ASSERT_OK(verify_data());
 }
 
+// ANALYZE is not a DDL, but the statistics it computes are replicated so that the target ends up
+// with the same statistics without having to sample any data itself.
+TEST_F(XClusterDDLReplicationTest, AnalyzeTable) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(id int PRIMARY KEY, col1 int, col2 text)"));
+  // The replicated statement embeds column values, which can be any text at all, including
+  // something that looks like the dollar quoting tag used to wrap it. Such a value must not be able
+  // to close that block early and change what the target ends up executing.
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO tbl1 SELECT g, g % 5, '$yb_xcluster_analyze$ value' || (g % 7) "
+      "FROM generate_series(1, 100) g"));
+  // Expression indexes get their own pg_statistic rows, so they exercise the index path.
+  ASSERT_OK(producer_conn_->Execute("CREATE INDEX tbl1_expr_idx ON tbl1((col1 + 1))"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto stats_query =
+      "SELECT tablename, attname, inherited, null_frac, avg_width, n_distinct, "
+      "most_common_vals::text, most_common_freqs::text, histogram_bounds::text, correlation "
+      "FROM pg_stats WHERE schemaname = 'public' ORDER BY tablename, attname, inherited";
+  const auto relstats_query =
+      "SELECT relname, relpages, reltuples, relallvisible FROM pg_class "
+      "WHERE relname IN ('tbl1', 'tbl1_expr_idx') ORDER BY relname";
+
+  // Neither side has any column statistics yet.
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchAllAsString(stats_query)), "");
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchAllAsString(stats_query)), "");
+
+  ASSERT_OK(producer_conn_->Execute("ANALYZE tbl1"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto producer_stats = ASSERT_RESULT(producer_conn_->FetchAllAsString(stats_query));
+  ASSERT_FALSE(producer_stats.empty());
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchAllAsString(stats_query)), producer_stats);
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(relstats_query)),
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(relstats_query)));
+
+  // Re-analyzing after the data changed should refresh the target's statistics as well.
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO tbl1 SELECT g, g % 5, '$yb_xcluster_analyze$ value' || (g % 7) "
+      "FROM generate_series(101, 500) g"));
+  ASSERT_OK(producer_conn_->Execute("ANALYZE"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto new_producer_stats = ASSERT_RESULT(producer_conn_->FetchAllAsString(stats_query));
+  ASSERT_NE(new_producer_stats, producer_stats);
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchAllAsString(stats_query)), new_producer_stats);
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(relstats_query)),
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(relstats_query)));
+
+  // Analyzing a temp table is a no-op for replication and must not break either side.
+  ASSERT_OK(producer_conn_->Execute("CREATE TEMP TABLE tbl_tmp(id int)"));
+  ASSERT_OK(producer_conn_->Execute("ANALYZE tbl_tmp"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
 // Make sure we can run a variety of DDLs related to temp tables on both clusters.
 TEST_F(XClusterDDLReplicationTest, TempTableDDLs) {
   ASSERT_OK(SetUpClustersAndReplication());

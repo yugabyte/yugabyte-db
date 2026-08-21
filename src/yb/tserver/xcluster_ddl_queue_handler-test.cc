@@ -573,7 +573,7 @@ TEST_F(XClusterTransactionalDDLQueueHandlerMockedTest, TransactionalDDLMixedManu
   // The manual EXECUTE should be issued first, then the auto queries wrapped in BEGIN/COMMIT.
   ASSERT_EQ(ddl_queue_handler.txn_control_queries_.size(), 3);
   ASSERT_STR_CONTAINS(
-      ddl_queue_handler.txn_control_queries_[0], "EXECUTE manual_replication_insert");
+      ddl_queue_handler.txn_control_queries_[0], "EXECUTE replicated_ddls_insert");
   ASSERT_EQ(ddl_queue_handler.txn_control_queries_[1], "BEGIN");
   ASSERT_EQ(ddl_queue_handler.txn_control_queries_[2], "COMMIT");
 }

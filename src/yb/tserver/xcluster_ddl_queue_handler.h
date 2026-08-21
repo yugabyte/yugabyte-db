@@ -132,6 +132,9 @@ class XClusterDDLQueueHandler {
 
   Status ProcessManualExecutionQuery(const XClusterDDLQueryInfo& query_info);
 
+  // Records the query in the replicated_ddls table so that it is not processed again.
+  Status InsertIntoReplicatedDDLs(const XClusterDDLQueryInfo& query_info, bool is_manual_execution);
+
   virtual Status InitPGConnection();
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace();
 

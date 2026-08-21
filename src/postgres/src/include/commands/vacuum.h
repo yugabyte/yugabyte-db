@@ -332,6 +332,16 @@ extern void analyze_rel(Oid relid, RangeVar *relation,
 						BufferAccessStrategy bstrategy);
 extern bool std_typanalyze(VacAttrStats *stats);
 
+/*
+ * YB: Hook fired once per relation whose statistics were just refreshed by
+ * ANALYZE, after pg_statistic and pg_class have been updated but while we still
+ * hold the ANALYZE locks. ANALYZE is not a DDL, so it does not fire the
+ * ddl_command_end event trigger; this hook lets yb_xcluster_ddl_replication
+ * capture the resulting statistics for replication to the target universe.
+ */
+typedef void (*YbAnalyzeRelEnd_hook_type) (Oid relid);
+extern PGDLLIMPORT YbAnalyzeRelEnd_hook_type YbAnalyzeRelEnd_hook;
+
 /* in utils/misc/sampling.c --- duplicate of declarations in utils/sampling.h */
 extern double anl_random_fract(void);
 extern double anl_init_selection_state(int n);

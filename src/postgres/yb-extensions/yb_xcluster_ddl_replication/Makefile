@@ -11,6 +11,7 @@ OBJS = \
 	yb_xcluster_ddl_replication.o \
 	extension_util.o \
 	json_util.o \
+	source_analyze_handler.o \
 	source_ddl_end_handler.o
 
 ifdef USE_PGXS
