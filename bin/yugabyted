@@ -3124,9 +3124,12 @@ class ControlScript(object):
         status_details = [(Output.make_yellow("Admin operation"),
                            "Find the response below."),]
         Output.print_out(self.get_status_string_common(status_details))
-        if 0 == ret_code:
+        # yb-admin writes usage and help text to stdout even when it exits non-zero, so show
+        # stdout unconditionally; discarding it on failure rendered usage errors as an empty red
+        # block (#33433).
+        if out:
           Output.print_out(out)
-        else:
+        if 0 != ret_code:
           Output.log(err)
           Output.print_out(Output.make_red(err))
 
