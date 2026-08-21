@@ -341,6 +341,32 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
   }
 }
 
+// An --init_master_addrs value that splits to nothing ("," -- ParseStrings uses SkipEmpty) used
+// to parse as OK with zero addresses, and indexing the empty vector crashed with SIGSEGV
+// (#33435).
+TEST_F(AdminCliTest, MalformedInitMasterAddrs) {
+  const auto exe_path = GetAdminToolPath();
+  std::string output;
+  std::string error;
+
+  for (const auto& bad_value : {",", ",,"}) {
+    output.clear();
+    error.clear();
+    ASSERT_NOK(Subprocess::Call(
+        ToStringVector(exe_path, "--init_master_addrs", bad_value, "list_tables"), &output,
+        &error))
+        << "--init_master_addrs=" << bad_value << " unexpectedly succeeded";
+    // Naming the flag proves we took the targeted path: a crash prints no such line, and the
+    // pre-SetUsage InvalidArgument path printed only the gflags warning.
+    ASSERT_STR_CONTAINS(error, "Invalid --init_master_addrs");
+    ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
+    ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
+    // A bad flag value is not a usage error, so neither stream gets the operation catalog.
+    ASSERT_STR_NOT_CONTAINS(output, "Operations:");
+    ASSERT_STR_NOT_CONTAINS(error, "Operations:");
+  }
+}
+
 // Test yb-admin config change while running a workload.
 // 1. Instantiate external mini cluster with 3 TS.
 // 2. Create table with 2 replicas.
