@@ -324,6 +324,11 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
   ASSERT_STR_NOT_CONTAINS(output, "Argument definitions:");
   ASSERT_STR_NOT_CONTAINS(output, "Flags from");
   ASSERT_STR_NOT_CONTAINS(output, "yb-admin_cli.cc:");
+  // google::ProgramUsage() emits this when SetUsageMessage() has not been called. Any path that
+  // prints usage before SetUsage() runs shows it as the entire message -- see the
+  // --init_master_addrs test below.
+  ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
+  ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
 
   // The Operations: list must number only the entries it actually prints. It used to number by
   // each command's index in the full (including hidden) command table, so a hidden command's slot
@@ -334,22 +339,26 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
        ++it) {
     operation_numbers.push_back(std::stoi((*it)[1].str()));
   }
-  ASSERT_FALSE(operation_numbers.empty());
+  // A floor, not just non-empty: the whole point of this test is that the visible list is
+  // numbered 1..N with no gap, and ASSERT_FALSE(empty()) would pass a build that printed one line.
+  ASSERT_GE(operation_numbers.size(), 100);
   for (size_t idx = 0; idx < operation_numbers.size(); ++idx) {
     ASSERT_EQ(operation_numbers[idx], static_cast<int>(idx) + 1)
         << "gap or duplicate in operation numbering at position " << idx;
   }
 }
 
-// An --init_master_addrs value that splits to nothing ("," -- ParseStrings uses SkipEmpty) used
-// to parse as OK with zero addresses, and indexing the empty vector crashed with SIGSEGV
-// (#33435).
+// A malformed --init_master_addrs must be reported on its own terms. The flag is read in Run()
+// before SetUsage() has been called, so returning InvalidArgument here makes main() print an unset
+// google::ProgramUsage() -- the user's entire error message becomes "Warning: SetUsageMessage()
+// never called". A value that splits to nothing ("," -- ParseStrings uses SkipEmpty) used to index
+// an empty vector and crash (#33435).
 TEST_F(AdminCliTest, MalformedInitMasterAddrs) {
   const auto exe_path = GetAdminToolPath();
   std::string output;
   std::string error;
 
-  for (const auto& bad_value : {",", ",,"}) {
+  for (const auto& bad_value : {"host:99999", "host:abc", ",", ",,"}) {
     output.clear();
     error.clear();
     ASSERT_NOK(Subprocess::Call(

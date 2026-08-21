@@ -107,6 +107,14 @@ const Status ClusterAdminCli::kInvalidArguments =
 
 namespace {
 
+// Read a flag's compiled-in default so the usage text cannot drift from the DEFINE_ that sets
+// it. yb::ParseCommandLineFlags() rewrites a flag's default only when the program set it
+// programmatically before parsing, so this returns the DEFINE_'d value on either side of the parse.
+std::string FlagDefault(const char* flag_name) {
+  google::CommandLineFlagInfo info;
+  return google::GetCommandLineFlagInfo(flag_name, &info) ? info.default_value : "";
+}
+
 constexpr auto kBlacklistAdd = "ADD";
 constexpr auto kBlacklistRemove = "REMOVE";
 constexpr int32 kDefaultRpcPort = 9100;
@@ -538,16 +546,17 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   const string addrs = FLAGS_master_addresses;
   if (!FLAGS_init_master_addrs.empty()) {
     std::vector<HostPort> init_master_addrs;
-    RETURN_NOT_OK(HostPort::ParseStrings(
-        FLAGS_init_master_addrs, master::kMasterDefaultPort, &init_master_addrs));
-    // ParseStrings() splits with SkipEmpty(), so a value of "," parses to zero addresses and
-    // returns OK; indexing that is out of bounds (#33435). Not InvalidArgument: SetUsage() has
-    // not run yet, so main()'s InvalidArgument branch would print an unset
-    // google::ProgramUsage() -- "Warning: SetUsageMessage() never called" as the entire error
-    // message.
-    if (init_master_addrs.empty()) {
-      cerr << "Invalid --init_master_addrs '" << FLAGS_init_master_addrs
-           << "': no addresses found" << endl;
+    const auto parse_status = HostPort::ParseStrings(
+        FLAGS_init_master_addrs, master::kMasterDefaultPort, &init_master_addrs);
+    // Neither failure may return InvalidArgument: SetUsage() has not run yet, so main()'s
+    // InvalidArgument branch would print an unset google::ProgramUsage() -- "Warning:
+    // SetUsageMessage() never called" as the entire error message. ParseStrings() also splits with
+    // SkipEmpty(), so a value of "," parses to zero addresses and returns OK; indexing that is out
+    // of bounds (#33435).
+    if (!parse_status.ok() || init_master_addrs.empty()) {
+      cerr << "Invalid --init_master_addrs '" << FLAGS_init_master_addrs << "': "
+           << (parse_status.ok() ? "no addresses found" : parse_status.message().ToBuffer())
+           << endl;
       return STATUS(RuntimeError, "Invalid --init_master_addrs");
     }
     client_.reset(new ClusterAdminClient(
@@ -621,10 +630,12 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
       << "  " << prog_name << " [global flags] <operation> [args]" << endl
       << endl
       << "Common global flags:" << endl
-      << "  --master_addresses host:port[,host:port,...]  (default: localhost:7100)" << endl
+      << "  --master_addresses host:port[,host:port,...]  (default: "
+      << FlagDefault("master_addresses") << ")" << endl
       << "  --init_master_addrs host:port                 (alternative to --master_addresses)"
       << endl
-      << "  --timeout_ms <millisec>                       (default: 60000)" << endl
+      << "  --timeout_ms <millisec>                       (default: "
+      << FlagDefault("timeout_ms") << ")" << endl
       << "  --certs_dir_name <dir>" << endl
       << "  --flagfile <path>" << endl
       << endl
