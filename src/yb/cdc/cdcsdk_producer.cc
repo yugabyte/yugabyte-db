@@ -3017,14 +3017,46 @@ Status GetChangesForCDCSDK(
 
           case consensus::OperationType::CHANGE_METADATA_OP: {
             VLOG(3) << "Will stream a DDL record. " << msg->ShortDebugString();
+            if (!msg->change_metadata_request().has_schema()) {
+              // A change metadata op without a schema (for example a mark_backfill_done op
+              // or a colocated table add_table/remove_table_id) carries no schema change to
+              // stream.  Skip it instead of running the schema path below, which would cache
+              // an empty schema under version 0 and emit an empty schema DDL record if the
+              // sys catalog lookup fails.
+              VLOG(3) << "Skipping schema-less CHANGE_METADATA_OP. " << msg->ShortDebugString();
+              AcknowledgeStreamedMsg(
+                  msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                  &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                  &safe_hybrid_time_resp, &wal_segment_index);
+              checkpoint_updated = true;
+              break;
+            }
             RETURN_NOT_OK(SchemaFromPB(
                 msg->change_metadata_request().schema().ToGoogleProtobuf(), &current_schema));
             TabletId table_id = tablet_ptr->metadata()->table_id();
             if (tablet_ptr->metadata()->colocated()) {
-              auto table_info = CHECK_RESULT(tablet_ptr->metadata()->GetTableInfo(
-                  msg->change_metadata_request().alter_table_id().ToBuffer()));
-              table_id = table_info->table_id;
-              table_name = table_info->table_name;
+              auto table_info = tablet_ptr->metadata()->GetTableInfo(
+                  msg->change_metadata_request().alter_table_id().ToBuffer());
+              if (!table_info.ok()) {
+                if (!table_info.status().IsNotFound()) {
+                  return table_info.status();
+                }
+                // The table this op alters is no longer in the tablet metadata.  This happens
+                // when a colocated table is dropped after writing this op but before the
+                // stream reads it, since the lookup above reflects the current metadata and
+                // not the metadata as of the op.  The table is gone, so there is nothing to
+                // stream for it.
+                LOG(INFO) << "Skipping CHANGE_METADATA_OP for a table that is no longer in the "
+                          << "tablet metadata. " << msg->ShortDebugString();
+                AcknowledgeStreamedMsg(
+                    msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                    &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                    &safe_hybrid_time_resp, &wal_segment_index);
+                checkpoint_updated = true;
+                break;
+              }
+              table_id = (*table_info)->table_id;
+              table_name = (*table_info)->table_name;
             }
 
             // We cross-verify the scheam details from the replicated message with the schema
