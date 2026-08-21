@@ -6,11 +6,13 @@ description: Modify storage class, volume count, and volume size on running Yuga
 tags:
   feature: early-access
 headcontent: Change volume attributes on operator and non-operator Kubernetes universes
+aliases:
+  - /stable/yugabyte-platform/manage-deployments/kubernetes-full-move/
 menu:
   stable_yugabyte-platform:
     identifier: kubernetes-full-move
-    parent: edit-universe
-    weight: 85
+    parent: scale-deployments
+    weight: 40
 type: docs
 ---
 
@@ -23,27 +25,48 @@ Full move for Kubernetes universes requires YugabyteDB v2026.1.0.0 or later on t
 {{< /note >}}
 Use this page based on how your universe is managed:
 
-- [Non-operator universes](#non-operator-universes): Universes created and managed through the YugabyteDB Anywhere UI or API using [Helm charts](../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides). Change volumes using [Edit Universe](../edit-universe/).
+- [Non-operator universes](#non-operator-universes): Universes created and managed through the YugabyteDB Anywhere UI or API using [Helm charts](../edit-helm-overrides/).
 - [Operator universes](#operator-universes): Universes managed with the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/). Change volumes by updating the `YBUniverse` CRD. If you [imported a Helm-managed universe](../../anywhere-automation/yb-kubernetes-operator/#import-universe) to the Operator, use the Operator workflow going forward.
 
 ## Non-operator universes
 
-Full move applies to universes that YugabyteDB Anywhere manages via Helm charts. For information on creating these universes and setting initial volume configuration, refer to [Create a multi-zone universe](../../create-deployments/create-universe-multi-zone-kubernetes/) and [Configure a Kubernetes provider](../../configure-yugabyte-platform/kubernetes/).
+Full move applies to universes that YugabyteDB Anywhere manages via Helm charts. For information on creating these universes and setting initial volume configuration, refer to [Create universes](../../create-deployments/create-universes-wizard/) and [Configure a Kubernetes provider](../../configure-yugabyte-platform/kubernetes/).
 
 ### Modify volume attributes
 
-To change storage class, volume count, or volume size on a running universe:
+{{< tabpane text=true >}}
 
-1. Navigate to your universe and choose **Actions > Edit Universe**. For general edit-universe options, refer to [Modify universe](../edit-universe/).
-2. Edit the volume fields under **Instance Configuration** for TServer and Master as needed.
+{{% tab header="New UI" lang="new" %}}
 
-   ![Create instance tags](/images/ee/fm-instance-config.png)
+{{<tags/ui/new>}}To change storage class, volume count, or volume size on a running universe, navigate to the universe and do the following:
 
-3. To edit per-AZ storage overrides, use **Edit storage overrides** in the UI.
+1. Click **Settings > Hardware**, and under **Cluster Instance**, or **TServer Instance** or **Master Server Instance** if the universe has dedicated masters, click **Edit**.
 
-   ![Create instance tags](/images/ee/edit-storage-overrides.png)
+1. Edit the volume and storage fields as needed.
 
-4. Click **Save**, confirm the placement summary, and monitor the **Edit Kubernetes Universe** task on the universe [Tasks](../retry-failed-task/) page.
+1. To edit per-AZ storage overrides, under **Storage Overrides** click **Add Storage Overrides** or **Edit**. 
+
+{{% /tab %}}
+
+{{% tab header="Classic UI" lang="classic" %}}
+
+{{<tags/ui/classic>}}To change storage class, volume count, or volume size on a running universe, navigate to the universe and do the following:
+
+1. Click **Actions > Edit Universe**.
+
+1. Edit the volume fields for TServer and Master as needed.
+
+   ![Edit instance configuration](/images/ee/fm-instance-config.png)
+
+1. To edit per-AZ storage overrides, use **Edit storage overrides** in the UI.
+
+   ![Storage overrides](/images/ee/edit-storage-overrides.png)
+
+{{% /tab %}}
+
+{{< /tabpane >}}
+
+Monitor the **Edit Kubernetes Universe** task on the universe [Tasks](../retry-failed-task/) page.
 
 To change other Helm chart settings (resources, labels, and so on) without changing storage class or volume count, use [Edit Kubernetes overrides](../edit-helm-overrides/) instead.
 
@@ -53,16 +76,16 @@ _Existing universes_ are migrated so that the volume attributes in use are store
 
 _New universes_ maintain backward compatibility. When deciding per-AZ volume attributes, YugabyteDB Anywhere considers all sources, including [provider per-AZ storage class](../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones) and [provider overrides](../../configure-yugabyte-platform/kubernetes/#overrides). For storage class recommendations, refer to [Hardware requirements for pods](../../prepare/server-nodes-hardware/).
 
-When you add a new AZ through **Actions > Edit Universe**, volume attributes for that zone are populated from the same sources the first time. After that, persisted attributes are used.
+When you add a new AZ, volume attributes for that zone are populated from the same sources the first time. After that, persisted attributes are used.
 
 For each AZ, the effective volume attributes are the merge of that AZ's overrides and the base fields `deviceInfo` (TServer) and `masterDeviceInfo` (Master), with AZ overrides taking precedence.
 
 The UI may show `standard` for the storage class in base volume attributes when the field was not populated. The values in use come from AZ overrides merged with the base values.
 
 {{< note title="Modifying base volume settings when AZ overrides exist" >}}
-Because AZ overrides take complete precedence, changes to base volume fields through **Edit Universe > Instance Configuration** only affect AZs that _do not_ have their own overrides configured. If an AZ already has volume overrides defined, the base change has no effect on that zone.
+Because AZ overrides take complete precedence, changes to base volume fields when modifying universe settings only affect AZs that _do not_ have their own overrides configured. If an AZ already has volume overrides defined, the base change has no effect on that zone.
 
-If all AZs in the universe have volume overrides configured, modifying base volume values has no effect, that is, no AZ uses the base settings. To change volume attributes in that case, use **Edit Universe > Edit Storage Overrides** to update the per-AZ overrides directly.
+If all AZs in the universe have volume overrides configured, modifying base volume values has no effect. That is, no AZ uses the base settings. To change volume attributes in that case, edit the storage overrides to update the per-AZ overrides directly.
 {{< /note >}}
 
 ### Example

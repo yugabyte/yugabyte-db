@@ -36,20 +36,15 @@ For more information on the features, assumptions, design, data key management, 
 
 You can enable encryption at rest when creating a universe, and enable and disable encryption at rest on existing universes.
 
-### Enable encryption at rest during universe creation
-
-You enable encryption at rest during universe creation as follows:
-
-1. Navigate to **Universes** and click **Create Universe** to open the **Create Universe** page.
-1. Under **Security Configurations > Encryption Settings**, select the **Enable Encryption at Rest** option to display the **Key Management Service Config** option.
-1. Select your KMS configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration](../create-kms-config/aws-kms/).
-1. Continue with your universe creation, then click **Create**.
+For information on creating universes, see [Create universes](../../create-deployments/create-universes-wizard/).
 
 ### Enable encryption at rest on an existing universe
 
-You enable encryption at rest on an existing universe as follows:
+To enable encryption at rest on an existing universe, navigate to the universe and do the following:
 
-1. Navigate to your universe, click **Actions**, and choose **More > Edit Security > Encryption at Rest**.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
+
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption at Rest**.
 
 1. In the **Manage Encryption at Rest** dialog, toggle **Enable Encryption at Rest for this Universe**.
 
@@ -81,11 +76,13 @@ If your configuration includes AWS KMS, the following occurs: after the universe
 
 ### Disable encryption at rest
 
-You can disable encryption at rest for a universe as follows:
+To disable encryption at rest for a universe, navigate to the universe and do the following:
 
-1. Navigate to the universe for which you want to rotate the keys.
-2. Select **Actions > More > Edit Security > Encryption-at-Rest**.
-3. In the **Manage Encryption at Rest** dialog, toggle **Enable Encryption at Rest for this Universe** and click **Apply**.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
+
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption at Rest**.
+
+1. In the **Manage Encryption at Rest** dialog, toggle **Enable Encryption at Rest for this Universe** and click **Apply**.
 
 To verify that encryption at rest is disabled, check the current cluster configuration for each node to see that it contains `encryption_enabled: false`.
 
@@ -112,7 +109,12 @@ YugabyteDB Anywhere uses a KMS configuration to house the information about the 
 You can change KMS configurations, and consequently the master keys used to encrypt the universe key, at any time. To accomplish this, do the following:
 
 1. [Create a new KMS configuration](../create-kms-config/aws-kms/) with the new master key to use.
-1. After the KMS configuration is successfully created, go to the encryption at rest-enabled universe, and select **Actions > More > Edit Security > Encryption at Rest**.
+1. After the KMS configuration is successfully created, go to the encryption at rest-enabled universe, and do the following:
+
+    - {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
+
+    - {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption at Rest**.
+
 1. In the **Manage Encryption at Rest** dialog, choose the new KMS configuration from the **Key Management Service Config** list.
 1. Click **Apply** to use the new KMS configuration and master key for envelope encryption.
 
@@ -138,8 +140,10 @@ The cluster configuration change does the following:
 
 Once encryption is enabled with a new universe key, only new data is encrypted with this new key. Old data remains unencrypted, or encrypted with an older universe key, until compaction churn triggers a re-encryption with the new key.
 
-To rotate the universe keys, perform the following:
+To rotate the universe keys, navigate to the universe and do the following:
 
-1. Navigate to the universe for which you want to rotate the keys.
-2. Select **Actions > More > Edit Security > Encryption at Rest**.
-3. Select **Rotate Universe key** and click **Apply**.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption at Rest** click **Edit**.
+
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption at Rest**.
+
+1. Select **Rotate Universe key** and click **Apply**.
