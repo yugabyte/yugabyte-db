@@ -6297,6 +6297,10 @@
           "description" : "The node's cloud provider",
           "type" : "string"
         },
+        "id" : {
+          "description" : "The cloud provider's instance identifier",
+          "type" : "string"
+        },
         "instance_type" : {
           "description" : "The node's instance type",
           "type" : "string"
