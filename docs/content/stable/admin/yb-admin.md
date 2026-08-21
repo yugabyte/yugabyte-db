@@ -59,10 +59,22 @@ yb-admin \
 
 ### Online help
 
-To display the online help, run `yb-admin --help` from the YugabyteDB home directory.
+To list all operations, run `yb-admin help` from the YugabyteDB home directory.
 
 ```sh
-./bin/yb-admin --help
+./bin/yb-admin help
+```
+
+To display the usage of a single operation, pass its name to `help`:
+
+```sh
+./bin/yb-admin help delete_table
+```
+
+You can also pass any text to list the operations whose name contains it. For example, to list all snapshot operations:
+
+```sh
+./bin/yb-admin help snapshot
 ```
 
 ## Commands
