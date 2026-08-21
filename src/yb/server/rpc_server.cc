@@ -146,7 +146,7 @@ Status RpcServer::RegisterService(size_t queue_limit,
         return messenger_->ThreadPoolPtr(priority);
       },
       &messenger_->scheduler(), std::move(service), metric_entity));
-  RETURN_NOT_OK(messenger_->RegisterService(service_name, service_pool));
+  RETURN_NOT_OK(messenger_->RegisterService(service_name, service_pool, priority));
   return Status::OK();
 }
 

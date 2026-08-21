@@ -103,6 +103,7 @@ set(YRPC_SRCS
     serialization.cc
     service_if.cc
     service_pool.cc
+    service_queue_monitor.cc
     sidecars.cc
     stream.cc
     tcp_stream.cc
