@@ -368,6 +368,313 @@ TEST_P(SkipIntentsBasicTest, TestIsolationLevelBehavior) {
   }
 }
 
+TEST_P(SkipIntentsBasicTest, TestChainedOperationsInTxnBlock) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // 1. CREATE TABLE
+  ASSERT_OK(conn.Execute("CREATE TABLE chained_tb (id INT PRIMARY KEY, val INT)"));
+
+  // 2. INSERT
+  ASSERT_OK(conn.Execute("INSERT INTO chained_tb SELECT g, g % 10 FROM generate_series(1, 100) g"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 3. CREATE MV
+  ASSERT_OK(conn.Execute(
+      "CREATE MATERIALIZED VIEW chained_mv AS SELECT val, count(*) FROM chained_tb GROUP BY val"));
+  auto writes_after_create_mv = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 4. More INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_tb SELECT g, g % 10 FROM generate_series(101, 150) g"));
+  auto writes_after_dml = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 5. REFRESH MV
+  ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW chained_mv"));
+  auto writes_after_refresh = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << ", after insert: " << writes_after_insert
+            << ", after create mv: " << writes_after_create_mv
+            << ", after dml: " << writes_after_dml
+            << ", after refresh mv: " << writes_after_refresh;
+
+  if (strcmp(isolation_level, "READ COMMITTED") == 0) {
+    ASSERT_GT(writes_after_insert, baseline_writes);
+    ASSERT_GT(writes_after_create_mv, writes_after_insert);
+    ASSERT_GT(writes_after_dml, writes_after_create_mv);
+    ASSERT_GT(writes_after_refresh, writes_after_dml);
+  } else {
+    ASSERT_EQ(writes_after_insert, baseline_writes);
+    ASSERT_EQ(writes_after_create_mv, baseline_writes);
+    ASSERT_EQ(writes_after_dml, baseline_writes);
+    ASSERT_EQ(writes_after_refresh, baseline_writes);
+  }
+
+  auto tb_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM chained_tb"));
+  ASSERT_EQ(tb_count, 150);
+
+  auto mv_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT sum(count)::bigint FROM chained_mv"));
+  ASSERT_EQ(mv_count, 150);
+}
+
+TEST_P(SkipIntentsBasicTest, TestChainedCreateIndexInTxnBlock) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // 1. CREATE TABLE
+  ASSERT_OK(conn.Execute("CREATE TABLE chained_idx_tb (id INT, val INT)"));
+
+  // 2. INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_idx_tb SELECT g, g % 10 FROM generate_series(1, 100) g"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 3. CREATE INDEX
+  ASSERT_OK(conn.Execute("CREATE INDEX ON chained_idx_tb(val)"));
+  auto writes_after_create_idx = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 4. More INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_idx_tb SELECT g, g % 10 FROM generate_series(101, 150) g"));
+  auto writes_after_dml = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << " -> after_insert: " << writes_after_insert
+            << " -> after_create_idx: " << writes_after_create_idx
+            << " -> after_dml: " << writes_after_dml;
+
+  if (strcmp(isolation_level, "READ COMMITTED") == 0) {
+    ASSERT_GT(writes_after_insert, baseline_writes);
+    // Inside a transaction block an implicitly concurrent CREATE INDEX is transparently
+    // turned into a non-concurrent one (see ProcessUtilitySlow's T_IndexStmt case). A
+    // non-concurrent build populates the index from this backend through ybcinbuild, and
+    // those writes target an index relation created by this transaction, so they take the
+    // skip intents path. (A concurrent build would instead be backfilled by DocDB itself
+    // and would contribute nothing to this metric.)
+    ASSERT_GT(writes_after_create_idx, writes_after_insert);
+    ASSERT_GT(writes_after_dml, writes_after_create_idx);
+  } else {
+    ASSERT_EQ(writes_after_insert, baseline_writes);
+    ASSERT_EQ(writes_after_create_idx, baseline_writes);
+    ASSERT_EQ(writes_after_dml, baseline_writes);
+  }
+
+  auto tb_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM chained_idx_tb"));
+  ASSERT_EQ(tb_count, 150);
+}
+
+TEST_P(SkipIntentsBasicTest, TestChainedAlterTableInTxnBlock) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // 1. CREATE TABLE
+  ASSERT_OK(conn.Execute("CREATE TABLE chained_alter_tb (id INT, val INT)"));
+
+  // 2. INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_alter_tb SELECT g, g % 10 FROM generate_series(1, 100) g"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 3. ALTER TABLE
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE chained_alter_tb ADD COLUMN gen_val INT GENERATED ALWAYS AS (val * 2) STORED"));
+  auto writes_after_alter = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 4. More INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_alter_tb (id, val) SELECT g, g % 10 FROM generate_series(101, 150) g"));
+  auto writes_after_dml = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << " -> after_insert: " << writes_after_insert
+            << " -> after_alter: " << writes_after_alter
+            << " -> after_dml: " << writes_after_dml;
+
+  if (strcmp(isolation_level, "READ COMMITTED") == 0) {
+    ASSERT_GT(writes_after_insert, baseline_writes);
+    // Adding a stored generated column rewrites the table into a new relfilenode created by
+    // this same transaction, so every copied row is written via the fastpath.
+    ASSERT_GT(writes_after_alter, writes_after_insert);
+    ASSERT_GT(writes_after_dml, writes_after_alter);
+  } else {
+    ASSERT_EQ(writes_after_insert, baseline_writes);
+    ASSERT_EQ(writes_after_alter, baseline_writes);
+    ASSERT_EQ(writes_after_dml, baseline_writes);
+  }
+
+  auto tb_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM chained_alter_tb"));
+  ASSERT_EQ(tb_count, 150);
+}
+
+TEST_P(SkipIntentsBasicTest, TestChainedDropIdentityInTxnBlock) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // 1. CREATE TABLE
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE chained_ident_tb (id INT GENERATED ALWAYS AS IDENTITY, val INT)"));
+
+  // 2. INSERT
+  ASSERT_OK(conn.Execute("INSERT INTO chained_ident_tb (val) SELECT generate_series(1, 100)"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 3. ALTER TABLE DROP IDENTITY
+  // ADD IDENTITY, SET IDENTITY, and DROP IDENTITY do NOT cause a table rewrite.
+  // They are purely metadata operations (catalog changes) that create/drop/modify
+  // the internal sequence and update the pg_attribute catalog entry.
+  // Because they don't cause a table rewrite, they neither create a new relfilenode
+  // nor write any row of the user table, so the INSERT that follows still targets a
+  // relfilenode created earlier in this transaction and stays on the fastpath.
+  ASSERT_OK(conn.Execute("ALTER TABLE chained_ident_tb ALTER COLUMN id DROP IDENTITY"));
+  auto writes_after_alter = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 4. More INSERT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_ident_tb (id, val) SELECT g, g FROM generate_series(101, 150) g"));
+  auto writes_after_dml = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << " -> after_insert: " << writes_after_insert
+            << " -> after_alter: " << writes_after_alter
+            << " -> after_dml: " << writes_after_dml;
+
+  if (strcmp(isolation_level, "READ COMMITTED") == 0) {
+    ASSERT_GT(writes_after_insert, baseline_writes);
+    // DROP IDENTITY writes no row of the user table, so the count is unchanged.
+    ASSERT_EQ(writes_after_alter, writes_after_insert);
+    ASSERT_GT(writes_after_dml, writes_after_alter);
+  }
+
+  auto tb_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM chained_ident_tb"));
+  ASSERT_EQ(tb_count, 150);
+}
+
+TEST_P(SkipIntentsBasicTest, TestChainedForeignKeyInTxnBlock) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+
+  // 1. CREATE TABLES
+  ASSERT_OK(conn.Execute("CREATE TABLE chained_fk_parent (id INT PRIMARY KEY, val INT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE chained_fk_child (id INT PRIMARY KEY, "
+      "parent_id INT REFERENCES chained_fk_parent(id), val INT)"));
+
+  // 2. INSERT INTO PARENT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_fk_parent SELECT g, g FROM generate_series(1, 100) g"));
+  auto writes_after_parent_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 3. INSERT INTO CHILD (triggers a referential integrity read on parent)
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_fk_child SELECT g, g, g FROM generate_series(1, 50) g"));
+  auto writes_after_child_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 4. More INSERT INTO PARENT
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO chained_fk_parent SELECT g, g FROM generate_series(101, 150) g"));
+  auto writes_after_second_parent_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << " -> after_parent_insert: " << writes_after_parent_insert
+            << " -> after_child_insert: " << writes_after_child_insert
+            << " -> after_second_parent_insert: " << writes_after_second_parent_insert;
+
+  if (strcmp(isolation_level, "READ COMMITTED") == 0) {
+    ASSERT_GT(writes_after_parent_insert, baseline_writes);
+    // The child insert's foreign key check reads the parent rows that were written via
+    // the fastpath, and its own writes still take the fastpath.
+    ASSERT_GT(writes_after_child_insert, writes_after_parent_insert);
+    ASSERT_GT(writes_after_second_parent_insert, writes_after_child_insert);
+  } else {
+    ASSERT_EQ(writes_after_parent_insert, baseline_writes);
+    ASSERT_EQ(writes_after_child_insert, baseline_writes);
+    ASSERT_EQ(writes_after_second_parent_insert, baseline_writes);
+  }
+
+  auto tb_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM chained_fk_child"));
+  ASSERT_EQ(tb_count, 50);
+}
+
+TEST_P(SkipIntentsBasicTest, TestPartitionedTableMetrics) {
+  const char* isolation_level = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("SET default_transaction_isolation TO '$0'", isolation_level));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE part_tb (id INT, val INT) PARTITION BY RANGE (id)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE part_tb_p1 PARTITION OF part_tb FOR VALUES FROM (1) TO (100)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE part_tb_p2 PARTITION OF part_tb FOR VALUES FROM (100) TO (200)"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO part_tb SELECT g, g FROM generate_series(1, 199) g"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Isolation: " << isolation_level
+            << " | baseline: " << baseline_writes
+            << " -> writes_after_insert: " << writes_after_insert;
+
+  if (strcmp(isolation_level, "READ COMMITTED") == 0) {
+    ASSERT_GT(writes_after_insert, baseline_writes);
+  } else {
+    ASSERT_EQ(writes_after_insert, baseline_writes);
+  }
+
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM part_tb"));
+  ASSERT_EQ(count, 199);
+}
+
 INSTANTIATE_TEST_SUITE_P(, SkipIntentsBasicTest,
     ::testing::Values("READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE")
 );
@@ -1070,6 +1377,317 @@ TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
   auto val4 = ASSERT_RESULT(conn.FetchRow<std::string>(
       "SHOW yb_enable_new_relation_fastpath_write_in_txn_blocks"));
   ASSERT_EQ(val4, "off");
+}
+
+TEST_F(SkipIntentsMetricTest, TestSkipIntentsInDoBlock) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'read committed'"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // Execute a DO block that creates a table and inserts multiple rows.
+  // We expect this to use skip-intents.
+  ASSERT_OK(conn.Execute(
+      "DO $$ BEGIN\n"
+      "  CREATE TABLE do_block_test (id INT PRIMARY KEY);\n"
+      "  INSERT INTO do_block_test SELECT generate_series(1, 100);\n"
+      "END $$;"));
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+}
+
+TEST_F(SkipIntentsMetricTest, TestSkipIntentsInCallProcedure) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'read committed'"));
+
+  // Create the procedure outside
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE PROCEDURE my_procedure() AS $$\n"
+      "BEGIN\n"
+      "  CREATE TABLE call_proc_test (id INT PRIMARY KEY);\n"
+      "  INSERT INTO call_proc_test SELECT generate_series(1, 100);\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql;"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // Execute the CALL statement. We expect this to use skip-intents.
+  ASSERT_OK(conn.Execute("CALL my_procedure()"));
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+}
+
+TEST_F(SkipIntentsMetricTest, TestSkipIntentsInNestedDoBlock) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'read committed'"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE PROCEDURE inner_procedure_for_do() AS $$\n"
+      "BEGIN\n"
+      "  CREATE TABLE nested_do_test (id INT PRIMARY KEY);\n"
+      "  INSERT INTO nested_do_test SELECT generate_series(1, 100);\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql;"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // Execute a DO block that calls the procedure, so the CREATE TABLE and the INSERT run
+  // two SPI levels deep. Nesting does not disable the optimization: the inner INSERT is a
+  // statement of its own and reads/writes at its own in_txn_limit.
+  ASSERT_OK(conn.Execute(
+      "DO $$ BEGIN\n"
+      "  CALL inner_procedure_for_do();\n"
+      "END $$;"));
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+}
+
+TEST_F(SkipIntentsMetricTest, TestSkipIntentsInNestedCallProcedure) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'read committed'"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE PROCEDURE inner_procedure_for_call() AS $$\n"
+      "BEGIN\n"
+      "  CREATE TABLE nested_call_test (id INT PRIMARY KEY);\n"
+      "  INSERT INTO nested_call_test SELECT generate_series(1, 100);\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql;"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE PROCEDURE outer_procedure_for_call() AS $$\n"
+      "BEGIN\n"
+      "  CALL inner_procedure_for_call();\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql;"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // Execute the CALL statement, which calls the inner procedure, so the CREATE TABLE and the
+  // INSERT run two SPI levels deep and must still use the optimization.
+  ASSERT_OK(conn.Execute("CALL outer_procedure_for_call()"));
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+}
+
+TEST_F(SkipIntentsMetricTest, TestSkipIntentsWithBuiltinVolatileFunctions) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'read committed'"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE new_table_builtin (id UUID PRIMARY KEY, "
+      "created_at TIMESTAMP, random_val DOUBLE PRECISION)"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO new_table_builtin (id, created_at, random_val)\n"
+      "SELECT gen_random_uuid(), clock_timestamp(), random()\n"
+      "FROM generate_series(1, 10000)"));
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+TEST_F(SkipIntentsMetricTest, TestSkipIntentsWithUserVolatileFunctionInReturning) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'read committed'"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE new_table_user_vol (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE FUNCTION my_func_that_reads_new_table() RETURNS INT AS $$\n"
+      "BEGIN\n"
+      "  RETURN (SELECT count(*) FROM new_table_user_vol);\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql VOLATILE;"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // INSERT with a user-defined volatile function in the RETURNING clause that reads the
+  // table just written via the fastpath. The read is the first read operation of the
+  // statement, so the in_txn_limit is picked only after the buffered INSERT has been
+  // flushed and the read observes the inserted row (see the in_txn_limit section of
+  // src/yb/yql/pggate/README and GHI #10142).
+  auto res = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "INSERT INTO new_table_user_vol VALUES (1) RETURNING my_func_that_reads_new_table()"));
+  ASSERT_EQ(res, 1); // RETURNING is evaluated after the tuple is inserted
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_GT(final_writes, initial_writes);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+TEST_F(SkipIntentsMetricTest, TestAlterTableRewriteWithTrigger) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'read committed'"));
+
+  // 1. Setup: Create a table with a trigger and populate it
+  ASSERT_OK(conn.Execute("CREATE TABLE rewrite_trigger_test (id INT PRIMARY KEY, val INT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE FUNCTION dummy_trigger_func() RETURNS TRIGGER AS $$\n"
+      "BEGIN\n"
+      "  RETURN NEW;\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql;"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TRIGGER my_dummy_trigger BEFORE INSERT ON rewrite_trigger_test "
+      "FOR EACH ROW EXECUTE PROCEDURE dummy_trigger_func()"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO rewrite_trigger_test SELECT g, g FROM generate_series(1, 100) g"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 2. Trigger Rewrite: Add a new column with a volatile default
+  // This requires a table rewrite. The original relation has a trigger, and the
+  // DEFAULT expression uses a volatile function (random()).
+  //
+  // During an ALTER TABLE rewrite (ATRewriteTable), PostgreSQL creates a *transient*
+  // physical heap to copy the data into, and that heap is created by this transaction,
+  // so its rows are written via the fastpath. Neither the trigger on the original
+  // relation nor the volatile default can observe an inconsistent state, because the
+  // rewrite scan reads the original relation while the writes go to the transient heap.
+  auto s = conn.Execute(
+      "ALTER TABLE rewrite_trigger_test "
+      "ADD COLUMN rand_val DOUBLE PRECISION DEFAULT random()");
+
+  // Verify the statement succeeded
+  ASSERT_OK(s);
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  LOG(INFO) << CURRENT_TEST_NAME() << " | Writes: "
+            << initial_writes << " -> " << final_writes;
+
+  ASSERT_GT(final_writes, initial_writes);
+}
+
+TEST_F(SkipIntentsMetricTest, TestAlterTableRewriteWithUserVolatileFunction) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'read committed'"));
+
+  // 1. Setup: Create a table
+  ASSERT_OK(conn.Execute("CREATE TABLE rewrite_user_vol_test (id INT PRIMARY KEY, val INT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO rewrite_user_vol_test SELECT g, g FROM generate_series(1, 100) g"));
+
+  // Create a user-defined volatile function
+  ASSERT_OK(conn.Execute(
+      "CREATE OR REPLACE FUNCTION my_volatile_func() RETURNS DOUBLE PRECISION AS $$\n"
+      "BEGIN\n"
+      "  RETURN random();\n"
+      "END;\n"
+      "$$ LANGUAGE plpgsql VOLATILE;"));
+
+  auto initial_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // 2. Trigger Rewrite: Add a new column whose default calls a user-defined volatile
+  // function. The rewrite must still use the optimization for the transient heap.
+  auto s = conn.Execute(
+      "ALTER TABLE rewrite_user_vol_test "
+      "ADD COLUMN rand_val DOUBLE PRECISION DEFAULT my_volatile_func()");
+
+  // Verify the statement succeeded
+  ASSERT_OK(s);
+
+  auto final_writes = ASSERT_RESULT(GetSkipIntentsCount());
+  LOG(INFO) << CURRENT_TEST_NAME() << " | Writes: "
+            << initial_writes << " -> " << final_writes;
+
+  // The rewrite copies all 100 rows into the transient heap created by ATRewriteTable in
+  // this transaction, so each of them is written via the fastpath.
+  ASSERT_EQ(final_writes, initial_writes + 100);
+}
+
+TEST_F(SkipIntentsMetricTest, TestCursorOnFastpathRelation) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'read committed'"));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE cursor_tb (id INT PRIMARY KEY)"));
+
+  // The cursor is declared before any row exists. The portal picks the in_txn_limit for
+  // its reads at the first FETCH rather than at DECLARE, so the rows written below are
+  // visible to it.
+  ASSERT_OK(conn.Execute("DECLARE cur CURSOR FOR SELECT id FROM cursor_tb ORDER BY id"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO cursor_tb SELECT generate_series(1, 100)"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  auto first_batch = ASSERT_RESULT(conn.FetchRows<int32_t>("FETCH 10 FROM cur"));
+  ASSERT_EQ(first_batch.size(), 10);
+  ASSERT_EQ(first_batch.front(), 1);
+  ASSERT_EQ(first_batch.back(), 10);
+
+  // Reading a fastpath relation through a cursor must not disable the optimization, so
+  // the writes of this second INSERT still take the fastpath.
+  ASSERT_OK(conn.Execute("INSERT INTO cursor_tb SELECT generate_series(101, 150)"));
+  auto writes_after_second_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // The portal's in_txn_limit was frozen by the first FETCH, so the rows written after
+  // that FETCH are not visible to the remaining FETCHes.
+  auto rest = ASSERT_RESULT(conn.FetchRows<int32_t>("FETCH ALL FROM cur"));
+  ASSERT_EQ(rest.size(), 90);
+  ASSERT_EQ(rest.front(), 11);
+  ASSERT_EQ(rest.back(), 100);
+
+  ASSERT_OK(conn.Execute("CLOSE cur"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << " | Writes: " << baseline_writes
+            << " -> after_insert: " << writes_after_insert
+            << " -> after_second_insert: " << writes_after_second_insert;
+
+  ASSERT_GT(writes_after_insert, baseline_writes);
+  ASSERT_GT(writes_after_second_insert, writes_after_insert);
+
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM cursor_tb"));
+  ASSERT_EQ(count, 150);
+}
+
+TEST_F(SkipIntentsMetricTest, TestCursorWithHoldOnFastpathRelation) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'read committed'"));
+
+  auto baseline_writes = ASSERT_RESULT(GetSkipIntentsCount());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE cursor_hold_tb (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO cursor_hold_tb SELECT generate_series(1, 100)"));
+  auto writes_after_insert = ASSERT_RESULT(GetSkipIntentsCount());
+
+  // COMMIT converts the holdable portal into a static one: PersistHoldablePortal runs the
+  // cursor's query and drains every row into the portal's tuplestore. That run happens
+  // inside CommitTransaction, while the transaction that created the relation is still
+  // open, so it reads the rows written via the fastpath. The FETCH below then only reads
+  // back the tuplestore.
+  ASSERT_OK(conn.Execute(
+      "DECLARE cur_hold CURSOR WITH HOLD FOR SELECT id FROM cursor_hold_tb ORDER BY id"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  LOG(INFO) << CURRENT_TEST_NAME() << " | Writes: " << baseline_writes << " -> "
+            << writes_after_insert;
+
+  ASSERT_GT(writes_after_insert, baseline_writes);
+
+  // This FETCH runs after COMMIT and serves entirely from the tuplestore, so it issues no
+  // DocDB read. It is a plain PostgreSQL check that materialization preserved every row,
+  // not a check of the optimization: the rows are ordinary committed rows by now.
+  auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>("FETCH ALL FROM cur_hold"));
+  ASSERT_EQ(rows.size(), 100);
+  ASSERT_EQ(rows.front(), 1);
+  ASSERT_EQ(rows.back(), 100);
+  ASSERT_OK(conn.Execute("CLOSE cur_hold"));
 }
 
 TEST_F(SkipIntentsMetricTest, TestAbortedSubtxnWrite) {
