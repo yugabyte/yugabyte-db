@@ -38,6 +38,8 @@
 #include <utility>
 #include <vector>
 
+#include "opentelemetry/context/runtime_context.h"
+
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
@@ -257,6 +259,9 @@ void Peer::DumpToHtml(std::ostream& out) const {
 }
 
 void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
+  // Not traced yet: a follow-up gives consensus its own root trace.
+  auto detach_token =
+      opentelemetry::context::RuntimeContext::Attach(opentelemetry::context::Context{});
   auto retain_self = shared_from_this();
   DCHECK(performing_update_mutex_.is_locked()) << "Cannot send request";
 
