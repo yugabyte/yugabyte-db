@@ -35,6 +35,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.PlatformInstance.State;
+import com.zaxxer.hikari.HikariDataSource;
 import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import io.prometheus.metrics.core.metrics.Gauge;
@@ -61,6 +62,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.sql.DataSource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pekko.actor.Cancellable;
@@ -1055,6 +1057,10 @@ public class PlatformReplicationManager {
     } else {
       log.info("Platform backup restored successfully");
       DB.cacheManager().clearAll();
+      DataSource ds = DB.getDefault().dataSource();
+      if (ds instanceof HikariDataSource hds && hds.getHikariPoolMXBean() != null) {
+        hds.getHikariPoolMXBean().softEvictConnections();
+      }
       // Wait for DB connection to be available after restore.
       // Restore wipes out tables, invalidating the underlying connections.
       Util.waitForDBConnection(5);
