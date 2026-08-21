@@ -69,6 +69,8 @@ DEFINE_RUNTIME_int64(outstanding_tablet_split_limit_per_tserver, -1,
 
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 
+DECLARE_bool(ysql_yb_enable_follow_table_index);
+
 DEFINE_RUNTIME_bool(enable_tablet_split_of_pitr_tables, true,
     "When set, it enables automatic tablet splitting of tables covered by "
     "Point In Time Restore schedules.");
@@ -260,7 +262,8 @@ Status TabletSplitManager::ValidatePartitioningVersion(const TableInfo& table) {
 Status TabletSplitManager::ValidateSplitCandidateTable(
     const TableInfoPtr& table,
     const IgnoreDisabledList ignore_disabled_lists,
-    const IgnoreVectorIndexesValidation ignore_vector_indexes_validation) {
+    const IgnoreVectorIndexesValidation ignore_vector_indexes_validation,
+    const IgnoreFollowTableExclusion ignore_follow_table_exclusion) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
@@ -281,6 +284,28 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for vector index tables, table: $0",
+        *table);
+  }
+
+  // Prototype: a follow-table index (SPLIT FOLLOWING TABLE) never splits on its own
+  // SST size. Its tablet splits are driven to match the base table by the follow-table
+  // split reconciler, which issues them as manual/forced splits. ignore_disabled_lists is
+  // set exactly for such forced splits, so we exclude the follow-table index only from the
+  // automatic (non-forced) candidate path and let the reconciler's forced split through.
+  //
+  // The reconciler also calls this as a pre-check, to confirm the index would be splittable
+  // on every other ground before it forces a split; that call passes
+  // IgnoreFollowTableExclusion::kTrue to suppress just this check.
+  //
+  // This is gated on the same flag as the reconciler (ReconcileFollowTableIndexSplits).
+  // Otherwise turning the feature off would leave already-created follow-table indexes
+  // frozen: no reconciler to split them to match the base, and no automatic splitting
+  // either. With the gate, disabling the flag makes them behave as ordinary indexes.
+  if (!ignore_disabled_lists && !ignore_follow_table_exclusion &&
+      FLAGS_ysql_yb_enable_follow_table_index && table_lock->follows_table()) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Independent tablet splitting is disabled for follow-table indexes, table: $0",
         *table);
   }
 

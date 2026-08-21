@@ -210,6 +210,30 @@ Status PgCreateTable::Exec(
     if (req_.skip_index_backfill()) {
       table_creator->skip_index_backfill(true);
     }
+    // Prototype: forward the follow-table mode (SPLIT FOLLOWING TABLE) to the master.
+    // req_ carries a proto3 mirror enum (tserver::YbFollowTableMode); map it to the
+    // proto2 master::YbFollowTableMode expected by the master. A proto3 message may not
+    // reference a proto2 enum, so the two definitions are kept in sync by hand; these
+    // assertions fail the build if one is changed without the other.
+    static_assert(
+        static_cast<int>(YbFollowTableMode::FOLLOW_TABLE_NONE) ==
+            static_cast<int>(master::YbFollowTableMode::FOLLOW_TABLE_NONE),
+        "tserver and master YbFollowTableMode enums have diverged");
+    static_assert(
+        static_cast<int>(YbFollowTableMode::FOLLOW_TABLE_EVENTUAL) ==
+            static_cast<int>(master::YbFollowTableMode::FOLLOW_TABLE_EVENTUAL),
+        "tserver and master YbFollowTableMode enums have diverged");
+
+    if (req_.follow_table_mode() != YbFollowTableMode::FOLLOW_TABLE_NONE) {
+      // proto3 enums are open: a newer or mismatched client can send a value this build
+      // does not know. Reject it rather than static_cast-ing it into a master enum that
+      // has no such value, which would be undefined behavior downstream.
+      SCHECK(
+          master::YbFollowTableMode_IsValid(req_.follow_table_mode()), InvalidArgument,
+          Format("Unknown follow_table_mode: $0", req_.follow_table_mode()));
+      table_creator->follow_table_mode(
+          static_cast<master::YbFollowTableMode>(req_.follow_table_mode()));
+    }
   }
 
   // If the table was created in the xCluster DDL replication extension.

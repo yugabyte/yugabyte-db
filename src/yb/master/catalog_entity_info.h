@@ -524,6 +524,12 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   bool is_index() const;
   bool is_vector_index() const;
 
+  // Prototype: whether this is a follow-table index (SPLIT FOLLOWING TABLE). Lives on the
+  // persistent state rather than on TableInfo so that callers use the lock they already
+  // hold instead of taking a second read lock.
+  YbFollowTableMode follow_table_mode() const { return pb.follow_table_mode(); }
+  bool follows_table() const { return follow_table_mode() != FOLLOW_TABLE_NONE; }
+
   SchemaPB* mutable_schema() {
     return pb.mutable_schema();
   }

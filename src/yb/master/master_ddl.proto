@@ -152,6 +152,10 @@ message CreateTableRequestPB {
 
   // For YSQL tables, the sub-transaction used by this DDL. If aborted, table will be removed.
   optional uint32 sub_transaction_id = 35;
+
+  // Prototype: when set to a non-NONE mode, this index follows its base table's
+  // tablet split mapping and placement (SPLIT FOLLOWING TABLE).
+  optional YbFollowTableMode follow_table_mode = 36 [ default = FOLLOW_TABLE_NONE ];
 }
 
 message CreateTableResponsePB {

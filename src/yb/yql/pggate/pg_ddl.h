@@ -114,6 +114,10 @@ class PgCreateTableBase : public PgDdl {
 
   Status SetNumTablets(int32_t num_tablets);
 
+  // Prototype: mark this table (index) to follow its base table's split mapping
+  // and placement (SPLIT FOLLOWING TABLE).
+  Status SetFollowTable();
+
   Status SetHnswOptions(int m, int m0, int ef_construction);
 
   Status SetVectorOptions(YbcPgVectorIdxOptions* options);

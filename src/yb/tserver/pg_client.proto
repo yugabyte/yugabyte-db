@@ -476,6 +476,19 @@ message PgCreateTableRequestPB {
   // Used to setup the session in case the table is being created in a
   // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
   PgPerformOptionsPB options = 27;
+
+  // Prototype: when set to a non-NONE mode, this index follows its base table's
+  // tablet split mapping and placement (SPLIT FOLLOWING TABLE). This is a proto3
+  // mirror of master.YbFollowTableMode (a proto2 enum, which a proto3 message may
+  // not reference directly); the integer values are kept in sync and mapped in
+  // pg_create_table.cc.
+  YbFollowTableMode follow_table_mode = 28;
+}
+
+// Proto3 mirror of master.YbFollowTableMode; values must match.
+enum YbFollowTableMode {
+  FOLLOW_TABLE_NONE = 0;
+  FOLLOW_TABLE_EVENTUAL = 1;
 }
 
 message PgCreateTableResponsePB {
