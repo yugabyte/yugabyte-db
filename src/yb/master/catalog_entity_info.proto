@@ -51,6 +51,11 @@ message BackfillJobPB {
   map<string, double> num_rows_backfilled_in_index = 5;
 
   optional uint64 backfilling_timestamp = 3;
+
+  // Uniqueness-check mode for this job's backfill writes. Selected once when the job is
+  // created and immutable for the job's lifetime, across master failover, retries, and
+  // runtime flag changes. Missing means UNIQUE_INDEX_BACKFILL_CHECK_ALL.
+  optional UniqueIndexBackfillMode unique_index_backfill_mode = 6;
 }
 
   message YsqlDdlTxnVerifierStatePB {
