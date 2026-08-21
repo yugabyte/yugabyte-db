@@ -14,6 +14,8 @@
 #include <memory>
 #include <thread>
 
+#include "opentelemetry/context/runtime_context.h"
+
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_meta.h"
@@ -136,6 +138,9 @@ void MultiRaftHeartbeatBatcher::SendBatchRequest(std::shared_ptr<MultiRaftConsen
   if (!data) {
     return;
   }
+  // Not traced yet: a follow-up gives consensus its own root trace.
+  auto detach_token =
+      opentelemetry::context::RuntimeContext::Attach(opentelemetry::context::Context{});
 
   data->controller.Reset();
   data->controller.set_timeout(MonoDelta::FromMilliseconds(
