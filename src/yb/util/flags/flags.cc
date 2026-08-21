@@ -227,7 +227,8 @@ DECLARE_bool(help);
 TAG_FLAG(help, stable);
 
 DECLARE_bool(helpfull);
-// We hide --helpfull because it's the same as --help for now.
+// Hidden from YB's own flag listings; servers still render --help as the full dump, while
+// yb-admin intercepts --help and advertises --helpfull from its own overview instead.
 TAG_FLAG(helpfull, stable);
 TAG_FLAG(helpfull, hidden);
 
