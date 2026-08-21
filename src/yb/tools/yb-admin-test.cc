@@ -299,6 +299,15 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
       &error));
   ASSERT_STR_CONTAINS(error, "list_tables");
 
+  // Token match: an abbreviation ("list_server") is neither a prefix of any command nor within
+  // edit-distance tolerance of one, but its tokens pick out the tablet-server listings.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "list_server"), nullptr,
+      &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_STR_CONTAINS(error, "list_tablet_servers");
+  ASSERT_STR_CONTAINS(error, "list_all_tablet_servers");
+
   // An empty operation is a prefix of every command, but should not list all of them.
   ASSERT_NOK(Subprocess::Call(
       ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, ""), nullptr, &error));
@@ -577,6 +586,42 @@ TEST_F(AdminCliTest, HelpNeedsNoCluster) {
       ToStringVector(exe_path, "--flagfile", flagfile_path, "delete_table", "--help"), &output,
       &error));
   ASSERT_STR_CONTAINS(output, "Usage: yb-admin delete_table <table>");
+}
+
+// The token tier of suggestion matching (#32640 phase 1c). Semantics pinned here: every typed
+// token must cover some name token (either being a prefix of the other), ranking is fewest
+// uncovered name tokens then alphabetical, and the result is capped.
+TEST_F(AdminCliTest, TokenMatchSuggestions) {
+  const std::vector<std::string> names = {
+      "compact_table", "list_all_masters", "list_all_tablet_servers", "list_tables",
+      "list_tablet_server_log_locations", "list_tablet_servers", "master_leader_stepdown"};
+
+  // "server" covers both "servers" and "server"; names with an uncovered token like "masters"
+  // are excluded. list_tablet_servers wins the ranking with one uncovered token ("tablet").
+  const std::vector<std::string> expected = {
+      "list_tablet_servers", "list_all_tablet_servers", "list_tablet_server_log_locations"};
+  ASSERT_EQ(SuggestByNameTokens("list_server", names, 5), expected);
+
+  // Token order in the typed operation does not matter, and plural typed tokens still cover
+  // singular name tokens ("servers" covers "server").
+  ASSERT_EQ(SuggestByNameTokens("servers_list", names, 5), expected);
+
+  // The cap keeps the best-ranked names.
+  ASSERT_EQ(
+      SuggestByNameTokens("list_server", names, 2),
+      (std::vector<std::string>{"list_tablet_servers", "list_all_tablet_servers"}));
+
+  // A single token is enough to qualify a name.
+  ASSERT_EQ(
+      SuggestByNameTokens("leader", names, 5),
+      (std::vector<std::string>{"master_leader_stepdown"}));
+
+  // One token nothing covers disqualifies the name even when the others match.
+  ASSERT_TRUE(SuggestByNameTokens("list_server_zzz", names, 5).empty());
+
+  // No tokens (empty or all underscores) suggests nothing rather than everything.
+  ASSERT_TRUE(SuggestByNameTokens("", names, 5).empty());
+  ASSERT_TRUE(SuggestByNameTokens("___", names, 5).empty());
 }
 
 // `help <operation>`, `<operation> --help`, and RunCommand()'s bad-argument error all print one
