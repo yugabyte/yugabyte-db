@@ -95,6 +95,7 @@ extern bool indexcol_is_bool_constant_for_query(PlannerInfo *root,
 extern bool match_index_to_operand(Node *operand, int indexcol,
 								   IndexOptInfo *index);
 extern void check_index_predicates(PlannerInfo *root, RelOptInfo *rel);
+extern bool yb_hash_code_match_index(Node *expr, IndexOptInfo *index);
 
 /*
  * tidpath.c
@@ -216,6 +217,7 @@ extern bool is_redundant_with_indexclauses(RestrictInfo *rinfo,
 										   List *indexclauses);
 extern void ec_clear_derived_clauses(EquivalenceClass *ec);
 extern EquivalenceMember *yb_find_ec_member_for_var(PlannerInfo *root, Var *var, Index relid, Index target_relid);
+extern EquivalenceClass *yb_get_eclass_for_hash_code(PlannerInfo *root, IndexOptInfo *index);
 
 /*
  * pathkeys.c
@@ -321,5 +323,8 @@ extern bool yb_has_sufficient_uniqkeys(PlannerInfo *root, Path *pathnode);
 extern List *yb_get_ecs_for_query_uniqkeys(PlannerInfo *root);
 extern Path *get_singleton_append_subpath(Path *path,
 										  List **child_append_relid_sets);
+extern List *yb_convert_subquery_uniqkeys(RelOptInfo *rel,
+										  List *subquery_uniqkeys,
+										  List *subquery_tlist);
 
 #endif							/* PATHS_H */

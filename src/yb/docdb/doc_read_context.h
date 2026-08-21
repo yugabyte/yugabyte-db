@@ -103,6 +103,8 @@ struct DocReadContext {
   Result<bool> HaveEqualBloomFilterKey(Slice lhs, Slice rhs) const;
   size_t NumColumnsUsedByBloomFilterKey() const;
 
+  dockv::VectorValueFormat vector_value_format() const;
+
   void TEST_SetDefaultTimeToLive(uint64_t ttl_msec) {
     schema_.SetDefaultTimeToLive(ttl_msec);
   }

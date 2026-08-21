@@ -16,7 +16,6 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -24,14 +23,18 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.filters.PACollectorFilter;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -39,15 +42,20 @@ import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Slf4j
 @Abortable
 @Retryable
 public class CreateUniverse extends UniverseDefinitionTaskBase {
 
+  private final PerfAdvisorService perfAdvisorService;
+
   @Inject
-  protected CreateUniverse(BaseTaskDependencies baseTaskDependencies) {
+  protected CreateUniverse(
+      BaseTaskDependencies baseTaskDependencies, PerfAdvisorService perfAdvisorService) {
     super(baseTaskDependencies);
+    this.perfAdvisorService = perfAdvisorService;
   }
 
   // In-memory password store for ysqlPassword and ycqlPassword.
@@ -66,18 +74,14 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     if (isFirstTry) {
       // Verify the task params.
       verifyParams(UniverseOpType.CREATE);
-      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      Customer customer = Customer.get(universe.getCustomerId());
-      if (!confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)) {
-        for (Cluster cluster : taskParams().clusters) {
-          // Local provider can still use cron.
-          if (!cluster.userIntent.useSystemd
-              && cluster.userIntent.providerType != CloudType.local) {
-            log.warn(
-                "cron based universe cannot be created with YNP, will fallback to ansible "
-                    + "provisioning");
-            break;
-          }
+
+      for (Cluster cluster : taskParams().clusters) {
+        // Local provider can still use cron.
+        if (!cluster.userIntent.useSystemd) {
+          log.warn(
+              "cron based universe cannot be created with YNP, will fallback to ansible "
+                  + "provisioning");
+          break;
         }
       }
     }
@@ -110,7 +114,44 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                       "Error while checking preview flags on cluster: " + cluster.uuid);
                 }
               });
+      // If PA auto-registration is enabled for the customer, make sure there is enough free YBA
+      // memory before we start creating the universe (registration runs as a subtask later in
+      // the flow and would otherwise leave the universe up but unregistered).
+      validatePaAutoRegistrationMemory(universe);
     }
+  }
+
+  /**
+   * Mirrors the resolution logic in {@link
+   * com.yugabyte.yw.commissioner.tasks.subtasks.RegisterUniverseWithPaCollector#run()} so the
+   * precheck reflects the exact mode the auto-registration subtask would apply. No-op when auto
+   * registration is disabled for the customer or no PA Collector is configured (both cases also
+   * short-circuit the subtask, so no PA memory will be consumed).
+   */
+  private void validatePaAutoRegistrationMemory(Universe universe) {
+    Customer customer = Customer.get(universe.getCustomerId());
+    if (!confGetter.getConfForScope(customer, CustomerConfKeys.paAutoRegistrationEnabled)) {
+      return;
+    }
+    List<PACollector> collectors =
+        perfAdvisorService.list(
+            PACollectorFilter.builder().customerUuid(customer.getUuid()).build());
+    if (CollectionUtils.isEmpty(collectors)) {
+      return;
+    }
+    boolean advancedObservability =
+        confGetter.getConfForScope(
+            customer, CustomerConfKeys.paAutoRegistrationAdvancedObservability);
+    PerfAdvisorService.PaMemoryMode targetMode =
+        advancedObservability
+            ? PerfAdvisorService.PaMemoryMode.ADVANCED
+            : PerfAdvisorService.PaMemoryMode.COLLECTOR_ONLY;
+    // CreateUniverse always starts from an unregistered universe, so current PA footprint is NONE.
+    perfAdvisorService.validatePerfAdvisorMemory(
+        universe,
+        PerfAdvisorService.PaMemoryMode.NONE,
+        targetMode,
+        "Cannot create universe with Performance Advisor auto-registration enabled");
   }
 
   // This is invoked only on first try.
@@ -230,6 +271,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), universe.getNodes());
 
+      createPersistCpuCgroupConfiguredTask(universe);
+
       boolean deleteCapacityReservation =
           createCapacityReservationsIfNeeded(
               taskParams().nodeDetailsSet,
@@ -252,6 +295,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             gFlagsParams.resetMasterState = true;
             gFlagsParams.masterJoinExistingCluster = false;
           });
+
       if (deleteCapacityReservation) {
         createDeleteCapacityReservationTask();
       }
@@ -281,8 +325,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Start ybc process on all the nodes
       if (taskParams().isEnableYbc()) {
-        createStartYbcProcessTasks(
-            taskParams().nodeDetailsSet, taskParams().getPrimaryCluster().userIntent.useSystemd);
+        createStartYbcProcessTasks(taskParams().nodeDetailsSet);
         createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
@@ -307,7 +350,16 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
+      // This also flips universeDetails.creationSucceeded to true (see UniverseUpdateSucceeded)
+      // which is what gates health checks and alert definition creation for this universe.
       createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Alert definitions are created only after the universe is fully up and marked as
+      // successfully created. Running this earlier would either produce definitions for
+      // universes whose creation later fails, or need the creationSucceeded flag flipped too
+      // early. Any exception here still fails the task, but the universe itself is already up
+      // and the operator can retry to reconcile the missing definitions.
+      createUnivCreateAlertDefinitionsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       // Run all the tasks.
       getRunnableTask().runSubTasks();

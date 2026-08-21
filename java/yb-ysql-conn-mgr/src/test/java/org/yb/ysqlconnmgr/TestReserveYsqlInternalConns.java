@@ -24,11 +24,14 @@ import com.google.gson.JsonObject;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestReserveYsqlInternalConns extends BaseYsqlConnMgr {
 
     private static final int TOTAL_CONNECTIONS = 30;

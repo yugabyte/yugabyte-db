@@ -13,6 +13,8 @@
 
 #include "yb/storage/frontier.h"
 
+#include "yb/util/format.h"
+
 namespace yb::storage {
 
 void UserFrontier::Update(const UserFrontier* rhs, UpdateUserValueType type, UserFrontierPtr* out) {

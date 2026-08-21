@@ -255,7 +255,7 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		// Restore data using yugabundle method, pass in ybai data dir so that data can be copied over
 		log.Info("Restoring data to newly installed YBA.")
 		RestoreBackupScript(common.FindRecentBackup(replBackupDir), common.GetBaseInstall(), false,
-			true, plat, true, false, true)
+			true, plat, true, false, true, true, true)
 
 		// Start YBA once postgres is fully ready.
 		if err := plat.Start(); err != nil {

@@ -25,6 +25,11 @@ public abstract class UniverseRespDecorator implements UniverseRespMapper {
     // Same source as v1 UniverseResp.platformVersion (injected since platformVersion is no longer
     // in universe details).
     v2Universe.getInfo().setPlatformVersion(v1UniverseResp.platformVersion);
+    // Use the platformUrl already resolved on the v1 wrapper (which prefers the local HA instance
+    // address) so ybaUrl matches the YBA serving the request after any switchover.
+    if (v1UniverseResp.universeDetails != null) {
+      v2Universe.getInfo().setYbaUrl(v1UniverseResp.universeDetails.getPlatformUrl());
+    }
     // Creation date is not mapped by fillV2UniverseInfoFromV1UniverseResp as v1UniverseResp returns
     // the date as a string. To avoid parsing the date string and assuming some specific locale,
     // we just set the date directly from the Date object.

@@ -15,11 +15,11 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
@@ -107,7 +107,7 @@ public class BackupUniverse extends UniverseTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
-    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
     MetricLabelsBuilder metricLabelsBuilder =
         MetricLabelsBuilder.create().fromUniverse(customer, universe);
 
@@ -132,15 +132,15 @@ public class BackupUniverse extends UniverseTaskBase {
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         }
 
-        if (cloudType != CloudType.kubernetes) {
-          // Ansible Configure Task for copying xxhsum binaries from
-          // third_party directory to the DB nodes.
-          installThirdPartyPackagesTask(universe)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
-        } else {
+        if (isK8s) {
           installThirdPartyPackagesTaskK8s(
                   universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
+        } else {
+          // Skip the backup tools installation as it depends on the removed ansible dependency
+          log.warn(
+              "YB Controller backup is not enabled. Assuming legacy backups tools are already"
+                  + " installed");
         }
 
         UserTaskDetails.SubTaskGroupType groupType;

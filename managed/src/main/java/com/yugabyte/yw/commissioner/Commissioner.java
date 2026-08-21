@@ -213,8 +213,7 @@ public class Commissioner {
         String taskParamsString = taskParams.toString();
         redactedTaskParams = RedactingService.redactSensitiveInfoInString(taskParamsString);
         log.debug(
-            "JSON serialization failed for task params, using string redaction: {}",
-            jsonException.getMessage());
+            "JSON serialization failed for task params, using string redaction: ", jsonException);
       }
 
       String msg =
@@ -376,6 +375,11 @@ public class Commissioner {
     if (taskInfo.getTaskParams().has("metricsExportConfig")) {
       details.set("metricsExportConfig", taskInfo.getTaskParams().get("metricsExportConfig"));
     }
+    // Add modifiedExportTypes (telemetry export configure task) so the UI can show which
+    // telemetry config types are being modified while the task is in progress.
+    if (taskInfo.getTaskParams().has("modifiedExportTypes")) {
+      details.set("modifiedExportTypes", taskInfo.getTaskParams().get("modifiedExportTypes"));
+    }
 
     responseJson.set("details", details);
 
@@ -429,7 +433,10 @@ public class Commissioner {
                   SoftwareUpgradeProgress.fromPrevYBSoftwareConfigIfPresent(
                       u.getUniverseDetails().prevYBSoftwareConfig);
               if (progress != null) {
-                responseJson.set("softwareUpgradeProgress", Json.toJson(progress));
+                JsonNode detailsNode = responseJson.get("details");
+                if (detailsNode instanceof ObjectNode) {
+                  ((ObjectNode) detailsNode).set("softwareUpgradeProgress", Json.toJson(progress));
+                }
               }
             });
   }

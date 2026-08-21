@@ -11,6 +11,7 @@ test: yb.port.test_setup
 
 test: yb.port.create_function_c
 test: yb.port.create_misc
+test: yb.orig.ddl_txn_block_30109
 test: create_operator
 test: create_procedure
 test: yb.port.create_table

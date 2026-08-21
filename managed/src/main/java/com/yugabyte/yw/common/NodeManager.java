@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -93,12 +94,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
-import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
@@ -115,7 +111,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -155,13 +150,6 @@ public class NodeManager extends DevopsBase {
   public static final long PRECHECK_NODE_DETACHED_DEFAULT_TIMEOUT_SECS = 300;
 
   public static final String YUGABYTE_USER = "yugabyte";
-
-  static final String ANSIBLE_STRATEGY = "yb.ansible.strategy";
-  static final String ANSIBLE_TIMEOUT = "yb.ansible.conn_timeout_secs";
-  static final String ANSIBLE_VERBOSITY = "yb.ansible.verbosity";
-  static final String ANSIBLE_DEBUG = "yb.ansible.debug";
-  static final String ANSIBLE_DIFF_ALWAYS = "yb.ansible.diff_always";
-  static final String ANSIBLE_LOCAL_TEMP = "yb.ansible.local_temp";
 
   @Inject Config appConfig;
 
@@ -229,7 +217,7 @@ public class NodeManager extends DevopsBase {
   }
 
   private boolean imdsv2required(Architecture arch, UserIntent userIntent, Provider provider) {
-    if (!userIntent.providerType.equals(CloudType.aws)) {
+    if (provider.getCloudCode() != CloudType.aws) {
       return false;
     }
     UUID imageBundleUUID = Util.retreiveImageBundleUUID(arch, userIntent, provider);
@@ -264,14 +252,14 @@ public class NodeManager extends DevopsBase {
     return universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
   }
 
-  private List<String> getCloudArgs(NodeCommandType type, NodeTaskParams nodeTaskParam) {
+  private List<String> getCloudArgs(
+      NodeCommandType type, NodeTaskParams nodeTaskParam, Provider provider) {
     List<String> command = new ArrayList<>();
     command.add("--zone");
     command.add(nodeTaskParam.getAZ().getCode());
-    UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
 
     // Right now for docker we grab the network from application conf.
-    if (userIntent.providerType.equals(Common.CloudType.docker)) {
+    if (provider.getCloudCode().equals(Common.CloudType.docker)) {
       String networkName = appConfig.getString("yb.docker.network");
       if (networkName == null) {
         throw new RuntimeException("yb.docker.network is not set in application.conf");
@@ -280,7 +268,7 @@ public class NodeManager extends DevopsBase {
       command.add(networkName);
     }
 
-    if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+    if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
       ObjectNode detailsJson = Json.newObject();
       // NodeInstance may not yet be assigned to a universe in these prechecks.
       boolean maybeNodeInstanceUnassigned =
@@ -300,13 +288,6 @@ public class NodeManager extends DevopsBase {
       }
       command.add("--node_metadata");
       command.add(detailsJson.toString());
-    }
-    // Add systemd debugging for any systemctl service management commands.
-    if (confGetter.getGlobalConf(GlobalConfKeys.enableSystemdDebugLogging)) {
-      command.add("--systemd_debug");
-    }
-    if (confGetter.getGlobalConf(GlobalConfKeys.ansibleKeepRemoteFiles)) {
-      command.add("--ansible_keep_remote_files");
     }
     return command;
   }
@@ -342,23 +323,24 @@ public class NodeManager extends DevopsBase {
     return args;
   }
 
-  private List<String> getAccessKeySpecificCommand(NodeTaskParams params, NodeCommandType type) {
+  private List<String> getAccessKeySpecificCommand(
+      NodeTaskParams params, Provider provider, NodeCommandType type) {
     List<String> subCommand = new ArrayList<>();
     if (params.getUniverseUUID() == null) {
       throw new RuntimeException("NodeTaskParams missing Universe UUID.");
     }
     UserIntent userIntent = getUserIntentFromParams(params);
     final String defaultAccessKeyCode = appConfig.getString("yb.security.default.access.key");
-
+    String accessKeyCode = userIntent.getAccessKeyCodeForProvider(provider.getUuid());
     // TODO: [ENG-1242] we shouldn't be using our keypair, until we fix our VPC to support VPN
     if ((userIntent != null
-            && StringUtils.isNotBlank(userIntent.accessKeyCode)
-            && !userIntent.accessKeyCode.equalsIgnoreCase(defaultAccessKeyCode))
-        || StringUtils.isBlank(userIntent.accessKeyCode)) {
+            && StringUtils.isNotBlank(accessKeyCode)
+            && !accessKeyCode.equalsIgnoreCase(defaultAccessKeyCode))
+        || StringUtils.isBlank(accessKeyCode)) {
       AccessKey.KeyInfo keyInfo = null;
-      if (!StringUtils.isBlank(userIntent.accessKeyCode)) {
+      if (!StringUtils.isBlank(accessKeyCode)) {
         AccessKey accessKey =
-            AccessKey.getOrBadRequest(params.getProvider().getUuid(), userIntent.accessKeyCode);
+            AccessKey.getOrBadRequest(params.getProvider().getUuid(), accessKeyCode);
         keyInfo = accessKey.getKeyInfo();
       }
       String sshUser = null;
@@ -388,13 +370,7 @@ public class NodeManager extends DevopsBase {
       log.info("node.sshPortOverride {}, sshPort used {}", params.sshPortOverride, sshPort);
       subCommand.addAll(
           getAccessKeySpecificCommand(
-              params,
-              type,
-              keyInfo,
-              userIntent.providerType,
-              userIntent.accessKeyCode,
-              sshUser,
-              sshPort));
+              params, type, keyInfo, provider.getCloudCode(), accessKeyCode, sshUser, sshPort));
     }
 
     return subCommand;
@@ -409,13 +385,6 @@ public class NodeManager extends DevopsBase {
       String sshUserOverride,
       Integer sshPort) {
     List<String> subCommand = new ArrayList<>();
-
-    if (keyInfo != null && keyInfo.vaultFile != null) {
-      subCommand.add("--vars_file");
-      subCommand.add(keyInfo.vaultFile);
-      subCommand.add("--vault_password_file");
-      subCommand.add(keyInfo.vaultPasswordFile);
-    }
     if (keyInfo != null && keyInfo.privateKey != null) {
       subCommand.add("--private_key_file");
       subCommand.add(keyInfo.privateKey);
@@ -504,6 +473,10 @@ public class NodeManager extends DevopsBase {
         subCommand.add(computedUser);
       }
     } else if (type == NodeCommandType.Precheck) {
+      String ybUserHomeOverride =
+          confGetter
+              .getConfForScope(params.getProvider(), ProviderConfKeys.ybUserHomeOverride)
+              .trim();
       subCommand.add("--precheck_type");
       if (providerDetails.skipProvisioning) {
         subCommand.add("configure");
@@ -516,6 +489,11 @@ public class NodeManager extends DevopsBase {
       }
       subCommand.add("--yb_home_dir");
       subCommand.add(provider.getYbHome());
+      if (StringUtils.isNotEmpty(ybUserHomeOverride)) {
+        log.info("Using yb_user_home override value from provider config: {}", ybUserHomeOverride);
+        subCommand.add("--yb_user_home");
+        subCommand.add(ybUserHomeOverride);
+      }
       if (providerDetails.setUpChrony) {
         subCommand.add("--skip_ntp_check");
       }
@@ -563,7 +541,8 @@ public class NodeManager extends DevopsBase {
           && !((AnsibleSetupServer.Params) params).useTimeSync
           && (providerType.equals(Common.CloudType.aws)
               || providerType.equals(Common.CloudType.gcp)
-              || providerType.equals(Common.CloudType.azu))) {
+              || providerType.equals(Common.CloudType.azu)
+              || providerType.equals(Common.CloudType.oci))) {
         subCommand.add("--use_chrony");
         List<String> publicServerList =
             Arrays.asList("0.pool.ntp.org", "1.pool.ntp.org", "2.pool.ntp.org", "3.pool.ntp.org");
@@ -1005,9 +984,10 @@ public class NodeManager extends DevopsBase {
       ybcFlags.put(
           GFlagsUtil.CERT_NODE_FILENAME, taskParam.gflags.get(GFlagsUtil.CERT_NODE_FILENAME));
     }
+    Provider provider = taskParam.getProvider();
 
     if (!taskParam.itestS3PackagePath.isEmpty()
-        && userIntent.providerType.equals(Common.CloudType.aws)) {
+        && provider.getCloudCode() == Common.CloudType.aws) {
       subcommand.add("--itest_s3_package_path");
       subcommand.add(taskParam.itestS3PackagePath);
     }
@@ -1030,7 +1010,7 @@ public class NodeManager extends DevopsBase {
     if (taskParam.type != UpgradeTaskParams.UpgradeTaskType.Software) {
       maybeAddVMImageCommandArgs(
           universe,
-          userIntent.providerType,
+          provider.getCloudCode(),
           taskParam.vmUpgradeTaskType,
           !(taskParam.ignoreUseCustomImageConfig
               || universe.getUniverseDetails().overridePrebuiltAmiDBVersion),
@@ -1202,7 +1182,7 @@ public class NodeManager extends DevopsBase {
                     FileUtils.getOrCreateTmpDirectory(
                         confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
                 Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
-                String providerUUID = userIntent.provider;
+                String providerUUID = provider.getUuid().toString();
                 String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
                 String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
                 // Append the path to copy the gFlag file from local to remote host
@@ -1248,11 +1228,7 @@ public class NodeManager extends DevopsBase {
             subcommand.add(processType.toLowerCase());
           }
 
-          String ybHomeDir =
-              Provider.getOrBadRequest(
-                      UUID.fromString(
-                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
-                  .getYbHome();
+          String ybHomeDir = provider.getYbHome();
           String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
@@ -1364,11 +1340,7 @@ public class NodeManager extends DevopsBase {
                   GFlagsUtil.ALLOW_INSECURE_CONNECTIONS,
                   GFlagsUtil.CERTS_DIR,
                   GFlagsUtil.CERTS_FOR_CLIENT_DIR);
-          String ybHomeDir =
-              Provider.getOrBadRequest(
-                      UUID.fromString(
-                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
-                  .getYbHome();
+          String ybHomeDir = provider.getYbHome();
 
           if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
             if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
@@ -1520,33 +1492,6 @@ public class NodeManager extends DevopsBase {
     return skipHostValidation ? SkipCertValidationType.HOSTNAME : SkipCertValidationType.NONE;
   }
 
-  private Map<String, String> getAnsibleEnvVars(UUID universeUUID) {
-    Map<String, String> envVars = new HashMap<>();
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-
-    envVars.put(
-        "ANSIBLE_STRATEGY", confGetter.getConfForScope(universe, UniverseConfKeys.ansibleStrategy));
-    envVars.put(
-        "ANSIBLE_TIMEOUT",
-        Integer.toString(
-            confGetter.getConfForScope(universe, UniverseConfKeys.ansibleConnectionTimeoutSecs)));
-    envVars.put(
-        "ANSIBLE_VERBOSITY",
-        Integer.toString(confGetter.getConfForScope(universe, UniverseConfKeys.ansibleVerbosity)));
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.ansibleDebug)) {
-      envVars.put("ANSIBLE_DEBUG", "True");
-    }
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.ansibleDiffAlways)) {
-      envVars.put("ANSIBLE_DIFF_ALWAYS", "True");
-    }
-    envVars.put(
-        "ANSIBLE_LOCAL_TEMP",
-        confGetter.getConfForScope(universe, UniverseConfKeys.ansibleLocalTemp));
-
-    log.trace("ansible env vars {}", envVars);
-    return envVars;
-  }
-
   private Map<String, String> getFaultInjectionEnvVars(Provider provider) {
     Map<String, String> envVars = new HashMap<>();
     String faultInjectedPaths =
@@ -1612,7 +1557,6 @@ public class NodeManager extends DevopsBase {
           // Assume node is using systemd if universe metadata does not exist.
           commandArgs.add("--systemd_services");
         }
-        addDefaultAnsibleEnvVars(ansibleEnvVars);
         customTimeout =
             confGetter.getGlobalConf(GlobalConfKeys.destroyServerCommandTimeout).getSeconds();
         break;
@@ -1628,17 +1572,13 @@ public class NodeManager extends DevopsBase {
 
     NodeInstanceData instanceData = nodeInstance.getDetails();
     if (StringUtils.isNotBlank(instanceData.ip)) {
-      getNodeAgentClient()
-          .maybeGetNodeAgent(instanceData.ip, provider, null /* universe */)
-          .ifPresent(
-              nodeAgent -> {
-                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
-                  nodeAgent.refresh();
-                }
-                commandArgs.add("--connection_type");
-                commandArgs.add("node_agent_rpc");
-                nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
-              });
+      if (provider.isManualOnprem()) {
+        commandArgs.add("--connection_type");
+        commandArgs.add("node_agent_rpc");
+        // Node agent must already be present and running for onprem manual (non-sudo).
+        NodeAgent nodeAgent = getNodeAgentClient().getAndUpgradeOrThrow(instanceData.ip);
+        nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+      }
     }
     commandArgs.add(nodeTaskParam.getNodeName());
 
@@ -1659,23 +1599,6 @@ public class NodeManager extends DevopsBase {
             .redactedVals(redactedVals)
             .timeoutSecs(customTimeout)
             .build());
-  }
-
-  private void addDefaultAnsibleEnvVars(Map<String, String> ansibleEnvVars) {
-    ansibleEnvVars.put("ANSIBLE_STRATEGY", confGetter.getStaticConf().getString(ANSIBLE_STRATEGY));
-    ansibleEnvVars.put(
-        "ANSIBLE_TIMEOUT", Integer.toString(confGetter.getStaticConf().getInt(ANSIBLE_TIMEOUT)));
-    ansibleEnvVars.put(
-        "ANSIBLE_VERBOSITY",
-        Integer.toString(confGetter.getStaticConf().getInt(ANSIBLE_VERBOSITY)));
-    if (confGetter.getStaticConf().getBoolean(ANSIBLE_DEBUG)) {
-      ansibleEnvVars.put("ANSIBLE_DEBUG", "True");
-    }
-    if (confGetter.getStaticConf().getBoolean(ANSIBLE_DIFF_ALWAYS)) {
-      ansibleEnvVars.put("ANSIBLE_DIFF_ALWAYS", "True");
-    }
-    ansibleEnvVars.put(
-        "ANSIBLE_LOCAL_TEMP", confGetter.getStaticConf().getString(ANSIBLE_LOCAL_TEMP));
   }
 
   private Path addBootscript(
@@ -1712,12 +1635,15 @@ public class NodeManager extends DevopsBase {
       Universe universe,
       UserIntent userIntent,
       NodeTaskParams nodeTaskParam,
+      Provider provider,
       List<String> commandArgs) {
-    if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
+    if (Provider.InstanceTagsEnabledProviders.contains(provider.getCloudCode())) {
       addInstanceTags(
           universe,
-          nodeTaskParam.tags != null ? nodeTaskParam.tags : userIntent.instanceTags,
-          userIntent.providerType,
+          nodeTaskParam.tags != null
+              ? nodeTaskParam.tags
+              : userIntent.getInstanceTagsForProvider(provider.getUuid()),
+          provider,
           nodeTaskParam,
           commandArgs);
     }
@@ -1726,13 +1652,13 @@ public class NodeManager extends DevopsBase {
   private void addInstanceTags(
       Universe universe,
       Map<String, String> instanceTags,
-      Common.CloudType providerType,
+      Provider provider,
       NodeTaskParams nodeTaskParam,
       List<String> commandArgs) {
     // Create an ordered shallow copy of the tags.
     Map<String, String> useTags = new TreeMap<>(instanceTags);
-    filterInstanceTags(useTags, providerType);
-    addAdditionalInstanceTags(universe, nodeTaskParam, useTags);
+    filterInstanceTags(useTags, provider.getCloudCode());
+    addAdditionalInstanceTags(universe, nodeTaskParam, provider, useTags);
     if (!useTags.isEmpty()) {
       commandArgs.add("--instance_tags");
       commandArgs.add(Json.stringify(Json.toJson(useTags)));
@@ -1753,8 +1679,13 @@ public class NodeManager extends DevopsBase {
       List<String> commandArgs,
       Map<String, String> redactedVals) {
     String nodeIp = null;
+    Provider provider = nodeTaskParam.getProvider();
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
-    if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+    if (!NodeAgentClient.isCloudTypeSupported(provider.getCloudCode())) {
+      log.trace("Skipping node agent command args for {} provider", userIntent.providerType);
+      return;
+    }
+    if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
       Optional<NodeInstance> nodeInstanceOp =
           nodeTaskParam.nodeUuid == null
               ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName(), nodeTaskParam.nodeUuid)
@@ -1768,22 +1699,16 @@ public class NodeManager extends DevopsBase {
         nodeIp = nodeDetails.cloudInfo.private_ip;
       }
     }
-    if (StringUtils.isNotBlank(nodeIp) && StringUtils.isNotBlank(userIntent.provider)) {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    if (StringUtils.isNotBlank(nodeIp)) {
+      // Calls hitting here may or may not have node agent. Java client calls already validate the
+      // presence of node agents.
       getNodeAgentClient()
-          .maybeGetNodeAgent(nodeIp, provider, universe)
+          .maybeGetAndUpgrade(nodeIp)
           .ifPresent(
               nodeAgent -> {
-                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
-                  nodeAgent.refresh();
-                }
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
-                if (getNodeAgentClient()
-                    .isAnsibleOffloadingEnabled(nodeAgent, provider, universe)) {
-                  commandArgs.add("--offload_ansible");
-                }
-                nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+                getNodeAgentClient().addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
   }
@@ -1801,13 +1726,14 @@ public class NodeManager extends DevopsBase {
       }
       commandArgs.add(
           GFlagsUtil.getCustomTmpDirectory(
+              confGetter,
               universe,
               cluster,
               nodeTaskParam.azUuid,
               nodeTaskParam.isMaster,
               nodeTaskParam.isTserver));
     } else {
-      commandArgs.add(GFlagsUtil.getCustomTmpDirectory(node, universe));
+      commandArgs.add(GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe));
     }
   }
 
@@ -1823,7 +1749,7 @@ public class NodeManager extends DevopsBase {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
     Provider provider = nodeTaskParam.getProvider();
     Customer customer = Customer.getOrBadRequest(provider.getCustomerUUID());
-    populateNodeUuidFromUniverse(universe, nodeTaskParam);
+    populateNodeUuidFromUniverse(universe, provider, nodeTaskParam);
     Architecture arch = universe.getUniverseDetails().arch;
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
@@ -1833,7 +1759,7 @@ public class NodeManager extends DevopsBase {
       Region region = nodeTaskParam.getRegion();
       toOverwriteNodeProperties =
           imageBundleUtil.getNodePropertiesOrFail(
-              imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+              imageBundleUUID, region.getCode(), provider.getCloudCode().toString());
       if (nodeTaskParam.sshPortOverride == null) {
         nodeTaskParam.sshPortOverride = toOverwriteNodeProperties.getSshPort();
       }
@@ -1855,8 +1781,8 @@ public class NodeManager extends DevopsBase {
         ReplaceRootVolume.Params rrvParams = (ReplaceRootVolume.Params) nodeTaskParam;
         commandArgs.add("--replacement_disk");
         commandArgs.add(rrvParams.replacementDisk);
-        commandArgs.addAll(getAccessKeySpecificCommand(rrvParams, type));
-        if (Common.CloudType.aws.equals(userIntent.providerType)) {
+        commandArgs.addAll(getAccessKeySpecificCommand(rrvParams, provider, type));
+        if (Common.CloudType.aws == provider.getCloudCode()) {
           if (StringUtils.isNotBlank(rrvParams.rootDeviceName)) {
             commandArgs.add("--root_device_name");
             commandArgs.add(rrvParams.rootDeviceName);
@@ -1876,7 +1802,7 @@ public class NodeManager extends DevopsBase {
         CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) nodeTaskParam;
         commandArgs.add("--num_disks");
         commandArgs.add(String.valueOf(crvParams.numVolumes));
-        if (Common.CloudType.aws.equals(userIntent.providerType)) {
+        if (Common.CloudType.aws == provider.getCloudCode()) {
           commandArgs.add("--snapshot_creation_delay");
           commandArgs.add(
               String.valueOf(confGetter.getGlobalConf(GlobalConfKeys.snapshotCreationDelay)));
@@ -1893,7 +1819,7 @@ public class NodeManager extends DevopsBase {
           }
           Config config = this.runtimeConfigFactory.forProvider(provider);
           AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
-          Common.CloudType cloudType = userIntent.providerType;
+          Common.CloudType cloudType = provider.getCloudCode();
           if (!cloudType.equals(Common.CloudType.onprem)) {
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
             if (taskParam.capacityReservation != null) {
@@ -1932,7 +1858,7 @@ public class NodeManager extends DevopsBase {
             }
 
             // Instance template feature is currently only implemented for GCP.
-            if (Common.CloudType.gcp.equals(userIntent.providerType)) {
+            if (Common.CloudType.gcp == provider.getCloudCode()) {
               GCPRegionCloudInfo g = CloudInfoInterface.get(taskParam.getRegion());
               String instanceTemplate = g.getInstanceTemplate();
               if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
@@ -1942,7 +1868,7 @@ public class NodeManager extends DevopsBase {
             }
 
             // Azure specific create parameters
-            if (Common.CloudType.azu.equals(userIntent.providerType)) {
+            if (Common.CloudType.azu.equals(provider.getCloudCode())) {
               AzureRegionCloudInfo a = CloudInfoInterface.get(taskParam.getRegion());
               String vnetName = a.getVnet();
               if (StringUtils.isNotBlank(vnetName)) {
@@ -2030,7 +1956,7 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--assign_static_public_ip");
             }
           }
-          addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
+          addInstanceTags(universe, userIntent, nodeTaskParam, provider, commandArgs);
           if (cloudType.equals(Common.CloudType.aws)) {
             if (taskParam.ipArnString != null) {
               commandArgs.add("--iam_profile_arn");
@@ -2038,7 +1964,7 @@ public class NodeManager extends DevopsBase {
             }
           }
 
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam, true /* includeIopsAndThroughput */));
             DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
@@ -2058,7 +1984,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
           }
           AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
-          Common.CloudType cloudType = userIntent.providerType;
+          Common.CloudType cloudType = provider.getCloudCode();
 
           if (cloudType.equals(Common.CloudType.aws)) {
             // aws uses instance_type to determine device names for mounting
@@ -2140,15 +2066,12 @@ public class NodeManager extends DevopsBase {
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
-              taskParam.auditLogConfig,
-              taskParam.queryLogConfig,
-              taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(
-                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              taskParam.telemetryConfig,
+              gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
               provider,
               userIntent);
 
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
             DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
@@ -2175,9 +2098,6 @@ public class NodeManager extends DevopsBase {
               commandArgs.add(StringUtils.join(node.cloudInfo.lun_indexes, ","));
             }
           }
-          if (taskParam.skipAnsiblePlaybook) {
-            commandArgs.add("--skip_ansible_playbook");
-          }
           break;
         }
       case Configure:
@@ -2199,9 +2119,6 @@ public class NodeManager extends DevopsBase {
           if (taskParam.installThirdPartyPackages) {
             commandArgs.add("--install_third_party_packages");
           }
-          if (taskParam.skipDownloadSoftware) {
-            commandArgs.add("--skip_ansible_configure_playbook");
-          }
           UniverseDefinitionTaskParams.Cluster cluster =
               universe.getCluster(nodeTaskParam.placementUuid);
           Map<String, String> gflags =
@@ -2215,15 +2132,12 @@ public class NodeManager extends DevopsBase {
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
-              taskParam.auditLogConfig,
-              taskParam.queryLogConfig,
-              taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(
-                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              taskParam.telemetryConfig,
+              gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
               provider,
               userIntent);
           commandArgs.addAll(getInlineWaitForClockSyncCommandArgs(this.confGetter));
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
@@ -2242,11 +2156,11 @@ public class NodeManager extends DevopsBase {
         }
       case List:
         {
-          if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+          if (provider.getCloudCode() == Common.CloudType.onprem) {
             if (nodeTaskParam.deviceInfo != null) {
               commandArgs.addAll(getDeviceArgs(nodeTaskParam));
             }
-            commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+            commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           }
           commandArgs.add("--as_json");
           break;
@@ -2272,7 +2186,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           if (userIntent.assignStaticPublicIP) {
             commandArgs.add("--delete_static_public_ip");
           }
@@ -2297,7 +2211,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case Resume:
@@ -2324,7 +2238,7 @@ public class NodeManager extends DevopsBase {
           if (!bootScript.isEmpty()) {
             bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case Control:
@@ -2347,7 +2261,7 @@ public class NodeManager extends DevopsBase {
             if (node != null
                 && cluster != null
                 && cluster.userIntent.getDeviceInfoForNode(node) != null
-                && cluster.userIntent.providerType != Common.CloudType.onprem) {
+                && provider.getCloudCode() != Common.CloudType.onprem) {
               commandArgs.add("--num_volumes");
               commandArgs.add(
                   String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
@@ -2361,7 +2275,7 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--skip_stop_for_paused_vm");
             }
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case Tags:
@@ -2370,24 +2284,26 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
           }
           InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
-          if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
+          if (Provider.InstanceTagsEnabledProviders.contains(provider.getCloudCode())) {
             Map<String, String> tags =
-                taskParam.tags != null ? taskParam.tags : userIntent.instanceTags;
+                taskParam.tags != null
+                    ? taskParam.tags
+                    : userIntent.getInstanceTagsForProvider(provider.getUuid());
             if (MapUtils.isEmpty(tags) && taskParam.deleteTags.isEmpty()) {
               throw new RuntimeException("Invalid params: no tags to add or remove");
             }
-            addInstanceTags(universe, tags, userIntent.providerType, nodeTaskParam, commandArgs);
+            addInstanceTags(universe, tags, provider, nodeTaskParam, commandArgs);
             if (!taskParam.deleteTags.isEmpty()) {
               commandArgs.add("--remove_tags");
               commandArgs.add(taskParam.deleteTags);
             }
-            if (userIntent.providerType.equals(Common.CloudType.azu)) {
+            if (provider.getCloudCode() == Common.CloudType.azu) {
               commandArgs.addAll(getDeviceArgs(taskParam));
-              commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+              commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
             }
           } else {
             throw new IllegalArgumentException(
-                "Tags are unsupported for " + userIntent.providerType);
+                "Tags are unsupported for " + provider.getCloudCode());
           }
           break;
         }
@@ -2407,7 +2323,7 @@ public class NodeManager extends DevopsBase {
               commandArgs.add(ybImage);
             }
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam, true /* includeIopsAndThroughput */));
@@ -2439,7 +2355,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(nodeTaskParam.deviceInfo.storageType.toString().toLowerCase());
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case Change_Instance_Type:
@@ -2465,7 +2381,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case Transfer_XCluster_Certs:
@@ -2486,7 +2402,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--xcluster_dest_certs_dir");
             commandArgs.add(taskParam.destinationCertsDir.toString());
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case CronCheck:
@@ -2494,12 +2410,12 @@ public class NodeManager extends DevopsBase {
           if (!(nodeTaskParam instanceof AnsibleConfigureServers.Params)) {
             throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           break;
         }
       case Precheck:
         {
-          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
@@ -2522,7 +2438,7 @@ public class NodeManager extends DevopsBase {
                   });
             }
           }
-          addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
+          addInstanceTags(universe, userIntent, nodeTaskParam, provider, commandArgs);
           break;
         }
       case Verify_Node_SSH_Access:
@@ -2533,52 +2449,6 @@ public class NodeManager extends DevopsBase {
           log.info("Verifying access to node {}", nodeTaskParam.nodeName);
           NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
           commandArgs.addAll(getNodeSSHCommand(taskParams));
-          String newPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
-          sensitiveData.put("--new_private_key_file", newPrivateKeyFilePath);
-          break;
-        }
-      case Add_Authorized_Key:
-        {
-          if (!(nodeTaskParam instanceof NodeAccessTaskParams)) {
-            throw new RuntimeException("NodeTaskParams is not NodeAccessTaskParams");
-          }
-          log.info("Adding a new key to authorized keys of node {}", nodeTaskParam.nodeName);
-          NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
-          commandArgs.addAll(getNodeSSHCommand(taskParams));
-          // for uploaded private key case, public  key content is taken from private key file
-          if (taskParams.taskAccessKey.getKeyInfo().publicKey != null) {
-            String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
-            if (pubKeyContent.equals("")) {
-              throw new RuntimeException("Public key content is empty!");
-            }
-            sensitiveData.put("--public_key_content", pubKeyContent);
-          } else {
-            sensitiveData.put("--public_key_content", "");
-          }
-          String newPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
-          sensitiveData.put("--new_private_key_file", newPrivateKeyFilePath);
-          break;
-        }
-      case Remove_Authorized_Key:
-        {
-          if (!(nodeTaskParam instanceof NodeAccessTaskParams)) {
-            throw new RuntimeException("NodeTaskParams is not NodeAccessTaskParams");
-          }
-          log.info("Removing a key from authorized keys of node {}", nodeTaskParam.nodeName);
-          NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
-          commandArgs.addAll(getNodeSSHCommand(taskParams));
-          // for uploaded private key case, public  key content is taken from private key file
-          if (taskParams.taskAccessKey.getKeyInfo().publicKey != null) {
-            String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
-            if (pubKeyContent.equals("")) {
-              throw new RuntimeException("Public key content is empty!");
-            }
-            sensitiveData.put("--public_key_content", pubKeyContent);
-          } else {
-            sensitiveData.put("--public_key_content", "");
-          }
-          String oldPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
-          sensitiveData.put("--old_private_key_file", oldPrivateKeyFilePath);
           break;
         }
       case Reboot:
@@ -2590,7 +2460,7 @@ public class NodeManager extends DevopsBase {
           if (!bootScript.isEmpty()) {
             bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
 
           if (taskParam.useSSH) {
             commandArgs.add("--use_ssh");
@@ -2618,7 +2488,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--runtime_args");
             commandArgs.add(Json.stringify(Json.toJson(runtimeArgs)));
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           break;
         }
       case Wait_For_Connection:
@@ -2627,7 +2497,7 @@ public class NodeManager extends DevopsBase {
           if (!bootScript.isEmpty()) {
             bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           break;
         }
       case Manage_Otel_Collector:
@@ -2640,17 +2510,14 @@ public class NodeManager extends DevopsBase {
               commandArgs,
               params,
               params.installOtelCollector,
-              params.auditLogConfig,
-              params.queryLogConfig,
-              params.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(
-                  params.queryLogConfig, params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              params.telemetryConfig,
+              params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
               provider,
               userIntent);
           if (params.useSudo) {
             commandArgs.add("--use_sudo");
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
@@ -2667,7 +2534,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not CheckCertificateConfig.Params");
           }
           CheckCertificateConfig.Params taskParam = (CheckCertificateConfig.Params) nodeTaskParam;
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           if (taskParam.SkipHostNameCheck
               || getCertValidationFromGflag(
                       userIntent, Collections.emptyMap(), Collections.emptySet())
@@ -2688,7 +2555,7 @@ public class NodeManager extends DevopsBase {
     }
     addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, redactedVals);
     addCustomTmpDirectoryCommandArgs(universe, nodeTaskParam, commandArgs);
-    if (userIntent.providerType == CloudType.local) {
+    if (provider.getCloudCode() == CloudType.local) {
       if (sensitiveData.containsKey("--gflags")) {
         commandArgs.add("--gflags");
         commandArgs.add(sensitiveData.get("--gflags"));
@@ -2702,17 +2569,14 @@ public class NodeManager extends DevopsBase {
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       Map<String, String> envVars =
-          ImmutableMap.<String, String>builder()
-              .putAll(getAnsibleEnvVars(nodeTaskParam.getUniverseUUID()))
-              .putAll(getFaultInjectionEnvVars(provider))
-              .build();
+          ImmutableMap.<String, String>builder().putAll(getFaultInjectionEnvVars(provider)).build();
       return execCommand(
           DevopsCommand.builder()
               .regionUUID(nodeTaskParam.getRegion().getUuid())
               .command(type.toString().toLowerCase())
               .commandArgs(commandArgs)
               .timeoutSecs(customDevopsTimeoutSecs)
-              .cloudArgs(getCloudArgs(type, nodeTaskParam))
+              .cloudArgs(getCloudArgs(type, nodeTaskParam, provider))
               .envVars(envVars)
               .redactedVals(redactedVals)
               .sensitiveData(sensitiveData)
@@ -2862,7 +2726,8 @@ public class NodeManager extends DevopsBase {
   }
 
   // Set the nodeUuid in nodeTaskParam if it is not set.
-  private void populateNodeUuidFromUniverse(Universe universe, NodeTaskParams nodeTaskParam) {
+  private void populateNodeUuidFromUniverse(
+      Universe universe, Provider provider, NodeTaskParams nodeTaskParam) {
     if (nodeTaskParam.nodeUuid == null) {
       NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
       if (nodeDetails != null) {
@@ -2870,8 +2735,7 @@ public class NodeManager extends DevopsBase {
       }
     }
     if (nodeTaskParam.nodeUuid == null) {
-      UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
-      if (!Common.CloudType.onprem.equals(userIntent.providerType)) {
+      if (!Common.CloudType.onprem.equals(provider.getCloudCode())) {
         // This is for backward compatibility where node UUID is not set in the Universe.
         nodeTaskParam.nodeUuid =
             Util.generateNodeUUID(universe.getUniverseUUID(), nodeTaskParam.nodeName);
@@ -2880,13 +2744,16 @@ public class NodeManager extends DevopsBase {
   }
 
   private void addAdditionalInstanceTags(
-      Universe universe, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
+      Universe universe,
+      NodeTaskParams nodeTaskParam,
+      Provider provider,
+      Map<String, String> tags) {
     Customer customer = Customer.get(universe.getCustomerId());
     tags.put("customer-uuid", customer.getUuid().toString());
     tags.put("universe-uuid", universe.getUniverseUUID().toString());
     tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
-    if (userIntent.providerType.equals(Common.CloudType.gcp)) {
+    if (provider.getCloudCode().equals(Common.CloudType.gcp)) {
       // GCP does not allow special characters other than - and _
       // Special characters being replaced here
       // https://cloud.google.com/compute/docs/labeling-resources#requirements
@@ -2958,22 +2825,16 @@ public class NodeManager extends DevopsBase {
     }
   }
 
-  public List<String> getNodeSSHCommand(NodeAccessTaskParams params) {
+  private List<String> getNodeSSHCommand(NodeAccessTaskParams params) {
     KeyInfo keyInfo = params.accessKey.getKeyInfo();
     Provider provider = Provider.getOrBadRequest(params.customerUUID, params.providerUUID);
     Integer sshPort = provider.getDetails().sshPort;
     String sshUser = params.sshUser;
-    String vaultPasswordFile = keyInfo.vaultPasswordFile;
-    String vaultFile = keyInfo.vaultFile;
     List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--ssh_user");
     commandArgs.add(sshUser);
     commandArgs.add("--custom_ssh_port");
     commandArgs.add(sshPort.toString());
-    commandArgs.add("--vault_password_file");
-    commandArgs.add(vaultPasswordFile);
-    commandArgs.add("--vars_file");
-    commandArgs.add(vaultFile);
     String privateKeyFilePath = keyInfo.privateKey;
     if (privateKeyFilePath != null) {
       commandArgs.add("--private_key_file");
@@ -3001,28 +2862,21 @@ public class NodeManager extends DevopsBase {
       List<String> commandArgs,
       NodeTaskParams taskParams,
       boolean installOtelCollector,
-      AuditLogConfig auditLogConfig,
-      QueryLogConfig queryLogConfig,
-      MetricsExportConfig metricsExportConfig,
-      String logLinePrefix,
+      TelemetryConfig telemetryConfig,
+      String ysqlPgConfCsv,
       Provider provider,
       UserIntent userIntent) {
     if (installOtelCollector) {
       commandArgs.add("--install_otel_collector");
     }
-    if (auditLogConfig == null && queryLogConfig == null && metricsExportConfig == null) {
+    if (telemetryConfig == null || !telemetryConfig.hasAnyConfig()) {
       return;
     }
-    // Check if any config exists and is enabled. If none are enabled, return early.
-    boolean anyConfigEnabled =
-        (auditLogConfig != null && OtelCollectorUtil.isAuditLogEnabledInUniverse(auditLogConfig))
-            || (queryLogConfig != null
-                && OtelCollectorUtil.isQueryLogEnabledInUniverse(queryLogConfig))
-            || (metricsExportConfig != null
-                && OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig));
-    if (!anyConfigEnabled) {
+    // Return early if no telemetry section is enabled in the universe.
+    if (!OtelCollectorUtil.hasAnyTelemetryEnabledInUniverse(telemetryConfig)) {
       return;
     }
+    AuditLogConfig auditLogConfig = telemetryConfig.getAuditLogConfig();
     if (auditLogConfig != null && auditLogConfig.getYcqlAuditConfig() != null) {
       YCQLAuditConfig.YCQLAuditLogLevel logLevel =
           auditLogConfig.getYcqlAuditConfig().getLogLevel() != null
@@ -3031,23 +2885,19 @@ public class NodeManager extends DevopsBase {
       commandArgs.add("--ycql_audit_log_level");
       commandArgs.add(logLevel.name());
     }
-    if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)
-        || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
-        || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
+    if (OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
       // Get the node agent for the node if its present.
       Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
       NodeDetails nodeDetails = universe.getNode(taskParams.nodeName);
-      NodeAgent nodeAgent =
-          getNodeAgentClient()
-              .maybeGetNodeAgent(nodeDetails.cloudInfo.private_ip, provider, universe)
-              .orElse(null);
-
       int otelColMaxMemory =
           confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorMaxMemory);
       if (otelColMaxMemory > 0) {
         commandArgs.add("--otel_col_max_memory");
         commandArgs.add(Integer.toString(otelColMaxMemory));
       }
+      // Derive the log line prefix from telemetryConfig (single source of truth) + the gflag.
+      String logLinePrefix =
+          GFlagsUtil.getLogLinePrefix(telemetryConfig.getQueryLogConfig(), ysqlPgConfCsv);
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator
@@ -3055,36 +2905,14 @@ public class NodeManager extends DevopsBase {
                   taskParams,
                   provider,
                   userIntent,
-                  auditLogConfig,
-                  queryLogConfig,
-                  metricsExportConfig,
+                  telemetryConfig,
                   logLinePrefix,
                   getOtelColMetricsPort(taskParams),
-                  nodeAgent)
+                  NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip).orElse(null))
               .toAbsolutePath()
               .toString());
 
-      Set<UUID> exporterUUIDs = new HashSet<>();
-      if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)) {
-        for (UniverseLogsExporterConfig logsExporterConfig :
-            auditLogConfig.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-      if (OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)) {
-        for (UniverseQueryLogsExporterConfig logsExporterConfig :
-            queryLogConfig.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-      if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
-        for (UniverseMetricsExporterConfig exporterConfig :
-            metricsExportConfig.getUniverseMetricsExporterConfig()) {
-          exporterUUIDs.add(exporterConfig.getExporterUuid());
-        }
-      }
-
-      for (UUID exporterUUID : exporterUUIDs) {
+      for (UUID exporterUUID : OtelCollectorUtil.getActiveExporterUuids(telemetryConfig)) {
         addOtelColArgsForExporters(
             commandArgs, exporterUUID, taskParams.getUniverseUUID(), taskParams.nodeUuid);
       }

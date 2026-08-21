@@ -148,6 +148,9 @@ class TabletInvoker {
 
   void Execute(TabletIdView tablet_id, bool leader_only = false);
 
+  // Clear per-tablet state so the next Execute can target a different tablet.
+  void Reset();
+
   // Returns true when whole operation is finished, false otherwise.
   bool Done(Status* status);
 
@@ -164,6 +167,9 @@ class TabletInvoker {
 
   bool RefreshTabletInfoWithConsensusInfo(
       const tserver::TabletConsensusInfoPB& tablet_consensus_info);
+
+  bool RefreshTabletInfoWithConsensusInfo(
+      const tserver::LWTabletConsensusInfoPB& tablet_consensus_info);
 
  private:
   friend class TabletRpcTest;

@@ -26,6 +26,7 @@ import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -357,10 +358,9 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
             () ->
                 doCreateInstanceTypeAndVerify(
                     awsProvider.getUuid(), Json.newObject(), BAD_REQUEST));
-    assertErrorNodeValue(Json.parse(contentAsString(result)), "idKey", "This field is required");
-    assertErrorNodeValue(
-        Json.parse(contentAsString(result)), "memSizeGB", "This field is required");
-    assertErrorNodeValue(Json.parse(contentAsString(result)), "numCores", "This field is required");
+    assertErrorNodeValue(Json.parse(contentAsString(result)), "idKey", "error.required");
+    assertErrorNodeValue(Json.parse(contentAsString(result)), "memSizeGB", "error.required");
+    assertErrorNodeValue(Json.parse(contentAsString(result)), "numCores", "error.required");
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -544,6 +544,46 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
         assertPlatformException(
             () -> doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(Json.parse(contentAsString(result)), "Cannot find provider " + randomUUID);
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testCreateInstanceTypeWithInvalidPath() {
+    ObjectNode instanceTypeJson = Json.newObject();
+    ObjectNode idKey = Json.newObject();
+    ObjectNode instanceTypeDetailsJson = Json.newObject();
+    idKey.put("instanceTypeCode", "test-i1");
+    instanceTypeJson.put("memSizeGB", 10.9);
+    instanceTypeJson.put("volumeCount", 1);
+    instanceTypeJson.put("numCores", 3);
+    instanceTypeJson.set("idKey", idKey);
+    instanceTypeJson.set("instanceTypeDetails", instanceTypeDetailsJson);
+    ArrayNode volumeDetailsListJson = Json.newArray();
+    ObjectNode volumeDetailsJson = Json.newObject();
+    volumeDetailsJson.put("volumeType", "SSD");
+    volumeDetailsJson.put("volumeSizeGB", 20);
+    volumeDetailsJson.put("mountPath", "/mnt/path1,/mnt/path2,/home/yugabyte");
+    volumeDetailsListJson.add(volumeDetailsJson);
+    instanceTypeDetailsJson.set("volumeDetailsList", volumeDetailsListJson);
+    Result result =
+        assertPlatformException(
+            () ->
+                doCreateInstanceTypeAndVerify(
+                    onPremProvider.getUuid(), instanceTypeJson, BAD_REQUEST));
+    assertErrorNodeValue(
+        Json.parse(contentAsString(result)),
+        "YB home directory /home/yugabyte cannot be the same or descendent of the the mount path"
+            + " /home/yugabyte");
+    assertAuditEntry(0, customer.getUuid());
+    volumeDetailsJson.put("mountPath", "/mnt/path1,/mnt/path2,/mnt/path1");
+    result =
+        assertPlatformException(
+            () ->
+                doCreateInstanceTypeAndVerify(
+                    onPremProvider.getUuid(), instanceTypeJson, BAD_REQUEST));
+    assertErrorNodeValue(
+        Json.parse(contentAsString(result)),
+        "Mount path /mnt/path1 cannot be same or descendant of another mount path /mnt/path1");
     assertAuditEntry(0, customer.getUuid());
   }
 }

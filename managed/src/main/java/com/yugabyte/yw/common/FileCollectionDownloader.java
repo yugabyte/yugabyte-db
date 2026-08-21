@@ -210,6 +210,7 @@ public class FileCollectionDownloader {
       // Get just the filenames for the tar command
       List<String> tarArgs = new ArrayList<>();
       tarArgs.add("tar");
+      tarArgs.add("--warning=no-file-changed");
       tarArgs.add("-czf");
       tarArgs.add(combinedTarPath);
       tarArgs.add("-C");
@@ -426,6 +427,16 @@ public class FileCollectionDownloader {
         return false;
       }
 
+      // Fail fast on unreachable nodes; otherwise rm-over-SSH will burn the full cleanup timeout
+      // and surface as a generic "failed to clean up" instead of "node unreachable".
+      if (!nodeUniverseManager.isNodeReachable(node, universe)) {
+        log.warn(
+            "Node {} is unreachable, skipping remote tar cleanup at {}",
+            node.nodeName,
+            remoteTarPath);
+        return false;
+      }
+
       nodeUniverseManager.runCommand(
           node, universe, List.of("rm", "-f", remoteTarPath), ShellProcessContext.DEFAULT);
       log.info("Cleaned up remote tar file {} on node {}", remoteTarPath, node.nodeName);
@@ -504,6 +515,18 @@ public class FileCollectionDownloader {
             .build();
       }
 
+      // Fail fast on unreachable nodes; otherwise the per-node probes below swallow the
+      // connection error and surface as a misleading "Remote tar file not found".
+      if (!nodeUniverseManager.isNodeReachable(node, universe)) {
+        return NodeDownloadResult.builder()
+            .nodeName(node.nodeName)
+            .nodeAddress(node.cloudInfo.private_ip)
+            .success(false)
+            .errorMessage("Node is unreachable")
+            .downloadTimeMs(System.currentTimeMillis() - startTime)
+            .build();
+      }
+
       // Check if remote file exists
       if (!nodeUniverseManager.checkNodeIfFileExists(node, universe, remoteTarPath)) {
         return NodeDownloadResult.builder()
@@ -519,9 +542,11 @@ public class FileCollectionDownloader {
       String fileName = new File(remoteTarPath).getName();
       Path localPath = Paths.get(outputDirectory, fileName);
 
-      // Download the file using NodeUniverseManager
-      nodeUniverseManager.downloadNodeFile(
-          node, universe, "/", List.of(remoteTarPath), localPath.toString());
+      // Copy the tar straight back as bytes. downloadNodeFile would tar-stream the file
+      // during transfer (preserving its remote path inside a wrapper archive), producing a
+      // gratuitous extra tar layer in the final download. The remote tar is already a tar.gz
+      // and the staging dir is yugabyte-owned/world-readable, so a plain file copy works.
+      nodeUniverseManager.copyFileFromNode(node, universe, remoteTarPath, localPath.toString());
 
       // Verify download
       if (Files.exists(localPath)) {

@@ -56,7 +56,12 @@ class CDCSDKReplicaIdentityTest : public CDCSDKYsqlTest {
     RETURN_NOT_OK(test_cluster_.InitPostgres());
     auto pg_ts = test_cluster()->mini_tablet_server(test_cluster_.pg_ts_idx_);
     RETURN_NOT_OK(pg_ts->StartPgIfConfigured());
-    RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
+    if (colocated) {
+      test_namespace_name = "test_namespace";
+      RETURN_NOT_OK(CreateDatabase(&test_cluster_, test_namespace_name, colocated));
+    } else {
+      test_namespace_name = kDefaultYsqlDatabaseName;
+    }
 
     cdc_proxy_ = GetCdcProxy();
 
@@ -100,13 +105,13 @@ class CDCSDKReplicaIdentityTest : public CDCSDKYsqlTest {
 TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestReplicaIdentityWithStreamCreation)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
 
   ASSERT_EQ(tablets.size(), 1);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY NOTHING"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY DEFAULT"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
@@ -154,13 +159,13 @@ TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardReplica
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
 
   ASSERT_EQ(tablets.size(), 1);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
@@ -207,7 +212,7 @@ TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardReplica
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -257,12 +262,12 @@ TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardReplica
 
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY DEFAULT"));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
@@ -309,12 +314,12 @@ TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardReplica
 
   ASSERT_OK(SetUpWithParams(1, 1, false /* colocated */));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY NOTHING"));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
@@ -359,13 +364,13 @@ TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateRe
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
 
   ASSERT_EQ(tablets.size(), 1);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
 
@@ -423,13 +428,13 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
 
   ASSERT_EQ(tablets.size(), 1);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
 
@@ -495,14 +500,14 @@ TEST_F(
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = EXPECT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public",
+      &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, false, "", "public",
       num_cols));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
 
   ASSERT_EQ(tablets.size(), 1);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
 
@@ -555,7 +560,7 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -598,13 +603,13 @@ TEST_F(
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
   ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
@@ -618,9 +623,6 @@ TEST_F(
   ASSERT_GE((*expected_row).op_id.index, 0);
   ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
   ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
-
-  // Assert that the safe time is invalid in the tablet_peers
-  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
 
   // Count the number of snapshot READs.
   uint32_t reads_snapshot = 0;
@@ -684,6 +686,10 @@ TEST_F(
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
   LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion): "
             << change_resp.cdc_sdk_proto_records_size();
+  auto explicit_checkpoint = change_resp.cdc_sdk_checkpoint();
+  explicit_checkpoint.set_snapshot_time(change_resp.safe_hybrid_time());
+  change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &explicit_checkpoint));
   ASSERT_OK(UpdateRows(2 /* key */, 6 /* value */, &test_cluster_));
   ASSERT_OK(UpdateRows(2 /* key */, 10 /* value */, &test_cluster_));
   auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
@@ -714,19 +720,18 @@ TEST_F(
   ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
   ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
 
-  // Assert that the safe time is invalid in the tablet_peers
   AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
 }
 
 TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropWithReplicaIdentity)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
@@ -774,12 +779,12 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public", 3));
+      &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, false, "", "public", 3));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   auto set_resp =
@@ -866,12 +871,12 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   auto set_resp =
@@ -952,12 +957,12 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -1060,9 +1065,9 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test_table(key int PRIMARY KEY, value_1 int);"));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
 
@@ -1112,12 +1117,12 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("CREATE TABLE test_table_1 (key int PRIMARY KEY, value_1 int)"));
   ASSERT_OK(conn.Execute("CREATE TABLE test_table_2 (key int primary key, value_1 int)"));
 
-  auto table_1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table_1"));
-  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table_2"));
+  auto table_1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test_table_1"));
+  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test_table_2"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table_1, 0, &tablets, nullptr));
 
@@ -1197,9 +1202,9 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test_table(key int PRIMARY KEY, value_1 int);"));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -1266,7 +1271,8 @@ TEST_F(
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   for (auto sufix : table_sufix) {
     table_names.push_back(kTableName + sufix);
-    auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName + sufix));
+    auto table = ASSERT_RESULT(CreateTable(
+        &test_cluster_, test_namespace_name, kTableName + sufix));
     tables.emplace_back(table);
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_for_table;
     ASSERT_OK(test_client()->GetTablets(table, 0, &tablets_for_table, nullptr));
@@ -1275,7 +1281,7 @@ TEST_F(
   }
   ASSERT_EQ(tablets.size(), 4);
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table_1 REPLICA IDENTITY FULL"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table_3 REPLICA IDENTITY DEFAULT"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table_4 REPLICA IDENTITY NOTHING"));
@@ -1331,7 +1337,7 @@ TEST_F(
 TEST_F(CDCSDKReplicaIdentityTest, TestBeforeImageForNullOnNullUpdates) {
   ASSERT_OK(SetUpWithParams(1, 1, false, true));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -1346,8 +1352,8 @@ TEST_F(CDCSDKReplicaIdentityTest, TestBeforeImageForNullOnNullUpdates) {
   ASSERT_OK(conn.Execute("ALTER TABLE test_1 REPLICA IDENTITY FULL"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_2 REPLICA IDENTITY DEFAULT"));
 
-  auto table_1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_1"));
-  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_2"));
+  auto table_1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test_1"));
+  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test_2"));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
@@ -1404,9 +1410,9 @@ TEST_F(CDCSDKReplicaIdentityTest, TestBeforeImageForNullOnNullUpdates) {
 TEST_F(CDCSDKReplicaIdentityTest, TestBeforeImageForNewlyAddedColumn) {
   ASSERT_OK(SetUpWithParams(1, 1, false, true));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());

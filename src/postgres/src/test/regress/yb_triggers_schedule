@@ -8,5 +8,6 @@ test: yb.port.test_setup
 
 test: yb.port.triggers
 test: yb.orig.triggers
+test: yb.orig.transition_tables
 test: yb.port.event_trigger
 test: yb.orig.event_trigger

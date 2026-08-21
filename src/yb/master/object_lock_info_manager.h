@@ -23,6 +23,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/status_callback.h"
 
 namespace yb::rpc {
@@ -38,6 +39,8 @@ class AcquireObjectLockRequestPB;
 class AcquireObjectLockResponsePB;
 class ReleaseObjectLockRequestPB;
 class ReleaseObjectLockResponsePB;
+class WaitForLockersMultipleRequestPB;
+class WaitForLockersMultipleResponsePB;
 class DdlLockEntriesPB;
 }  // namespace yb::tserver
 
@@ -50,8 +53,15 @@ class AcquireObjectLocksGlobalRequestPB;
 class AcquireObjectLocksGlobalResponsePB;
 class ReleaseObjectLocksGlobalRequestPB;
 class ReleaseObjectLocksGlobalResponsePB;
+class WaitForLockersMultipleGlobalRequestPB;
+class WaitForLockersMultipleGlobalResponsePB;
 
 class ObjectLockInfo;
+
+struct TServerLeaseInfo {
+  SysObjectLockEntryPB::LeaseInfoPB lease_info;
+  MonoDelta lease_expiry;
+};
 
 class ObjectLockInfoManager {
  public:
@@ -69,6 +79,12 @@ class ObjectLockInfoManager {
   void UnlockObject(
       const ReleaseObjectLocksGlobalRequestPB& req, ReleaseObjectLocksGlobalResponsePB& resp,
       rpc::RpcContext rpc);
+
+  void WaitForLockersMultipleGlobal(
+      const WaitForLockersMultipleGlobalRequestPB& req,
+      WaitForLockersMultipleGlobalResponsePB& resp,
+      rpc::RpcContext rpc);
+
   void ReleaseLocksForTxn(const TransactionId& txn_id);
 
   Status RefreshYsqlLease(
@@ -92,7 +108,7 @@ class ObjectLockInfoManager {
       const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
       std::optional<LeaderEpoch> leader_epoch = std::nullopt);
 
-  std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB> GetLeaseInfos() const;
+  std::unordered_map<std::string, TServerLeaseInfo> GetLeaseInfos() const;
 
   void BootstrapLocksPostLoad();
 

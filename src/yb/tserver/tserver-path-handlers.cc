@@ -46,6 +46,7 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/quorum_util.h"
 
@@ -72,12 +73,14 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller_stats.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/url-coding.h"
 
 using yb::consensus::GetConsensusRole;
@@ -497,6 +500,11 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       std::bind(&TabletServerPathHandlers::HandleObjectLocksPage, this, _1, _2),
       true /* styled */,
       false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/cgroups", "",
+      std::bind(&TabletServerPathHandlers::HandleCgroupsPage, this, _1, _2),
+      true /* styled */,
+      false /* is_on_nav_bar */);
   RegisterTabletPathHandler(
       server, tserver_, "/tablet-consensus-status", &HandleConsensusStatusPage);
   RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
@@ -653,6 +661,38 @@ void TabletServerPathHandlers::HandleObjectLocksPage(
   ts_local_lock_manager->DumpLocksToHtml(*output);
 }
 
+void TabletServerPathHandlers::HandleCgroupsPage(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  *output << "<h2>Cgroups</h2>\n";
+#ifdef __linux__
+  auto cgroup_manager = tserver_->cgroup_manager();
+  if (!cgroup_manager) {
+    *output << "Cgroup management is not enabled.\n";
+    return;
+  }
+
+  auto it = req.parsed_args.find("sample_interval_ms");
+  // 1000ms is the maximum value for cfs_period_us, so we are guaranteed to sample at least one
+  // full period for all cgroups.
+  uint64_t sample_interval_ms = 1'000;
+  if (it != req.parsed_args.end()) {
+    auto result = CheckedStoull(it->second);
+    if (!result.ok()) {
+      *output << "Bad value for sample_interval_ms: ";
+      EscapeForHtml(AsString(result.status()), output);
+      *output << ".\n";
+      return;
+    }
+    sample_interval_ms = *result;
+  }
+
+  cgroup_manager->DumpCgroupsToHtml(*output, sample_interval_ms);
+#else
+  *output << "Only available on Linux builds\n";
+#endif
+}
+
 namespace {
 string TabletLink(const string& id) {
   return Substitute("<a href=\"/tablet?id=$0\">$1</a>",
@@ -670,15 +710,19 @@ string GetOnDiskSizeInHtml(const yb::tablet::TabletOnDiskSizeInfo& info) {
   disk_size_html << "<ul>"
                  << "<li>" << "Total (may be stale): "
                  << (info.total_on_disk_size > 0 ?
-                        HumanReadableNumBytes::ToString(info.total_on_disk_size) : "N/A")
+                        HumanizeBytes(info.total_on_disk_size) : "N/A")
                  << "<ul>"
                  << "<li>" << "SST Files: "
-                 << HumanReadableNumBytes::ToString(info.sst_files_disk_size)
+                 << HumanizeBytes(info.sst_files_disk_size)
                  << "<li>" << "WAL Files: "
-                 << HumanReadableNumBytes::ToString(info.wal_files_disk_size)
+                 << HumanizeBytes(info.wal_files_disk_size)
                  << "<li>" << "Consensus Metadata: "
-                 << HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size)
-                 << "</ul>"
+                 << HumanizeBytes(info.consensus_metadata_disk_size);
+  if (info.vector_index_disk_size > 0) {
+    disk_size_html << "<li>" << "Vector Indexes: "
+                   << HumanizeBytes(info.vector_index_disk_size);
+  }
+  disk_size_html << "</ul>"
                  << "</ul>";
   return disk_size_html.str();
 }
@@ -794,9 +838,9 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Namespace</th><th>Table name</th><th>Table UUID</th><th>Tablet ID</th>"
              "<th>Partition</th>"
-             "<th>State</th><th>Hidden</th><th>Num SST Files</th><th>On-disk "
-             "size</th><th>RaftConfig</th>"
-             "<th>Last status</th></tr>\n";
+             "<th>State</th><th>Hidden</th><th>RaftConfig</th>"
+             "<th>Last status</th><th>Num SST Files</th><th>On-disk "
+             "size</th></tr>\n";
   for (const std::shared_ptr<TabletPeer>& peer : peers) {
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
@@ -827,7 +871,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     (*output) << Format(
         // Namespace, Table name, UUID of table, tablet id, partition
         "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
-        // State, Hidden, num SST files, on-disk size, consensus configuration, last status
+        // State, Hidden, consensus configuration, last status, num SST files, on-disk size
         "<td>$5</td><td>$6</td><td>$7</td><td>$8</td><td>$9</td><td>$10</td></tr>\n",
         EscapeForHtmlToString(namespace_name),              // $0
         EscapeForHtmlToString(table_name),                  // $1
@@ -836,12 +880,12 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
         EscapeForHtmlToString(partition),                   // $4
         EscapeForHtmlToString(peer->HumanReadableState()),  // $5
         status.is_hidden(),                                 // $6
-        num_sst_files,                                      // $7
-        tablets_disk_size_html,                             // $8
         consensus_result ? ConsensusStatePBToHtml(
                                consensus_result.get()->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
-                         : "",                         // $9
-        EscapeForHtmlToString(status.last_status()));  // $10
+                         : "",                              // $7
+        EscapeForHtmlToString(status.last_status()),        // $8
+        num_sst_files,                                      // $9
+        tablets_disk_size_html);                            // $10
   }
   *output << "</table>\n";
 }
@@ -1052,8 +1096,8 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
       *output << Substitute(
           "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td></tr>\n",
           EscapeForHtmlToString(op_pb.name()), op_pb.runnable(),
-          HumanReadableNumBytes::ToString(op_pb.ram_anchored_bytes()),
-          HumanReadableNumBytes::ToString(op_pb.logs_retained_bytes()), op_pb.perf_improvement(),
+          HumanizeBytes(op_pb.ram_anchored_bytes()),
+          HumanizeBytes(op_pb.logs_retained_bytes()), op_pb.perf_improvement(),
           op_pb.cdcsdk_reset_stale_retention_barrier() ? "Yes" : "No");
     }
   }
@@ -1128,7 +1172,7 @@ void TabletServerPathHandlers::HandleXClusterPage(
   output << "<h1>xCluster state</h1>\n";
 
   if (!xcluster_outbound_stream_stats.empty()) {
-    output << "<h3>xCluster outbound streams</h3>\n";
+    auto group_fs = html_print_helper.CreateFieldset("xCluster outbound streams");
 
     auto xcluster_streams = html_print_helper.CreateTablePrinter(
         "xcluster_streams",
@@ -1137,18 +1181,20 @@ void TabletServerPathHandlers::HandleXClusterPage(
          "WAL index sent", "WAL end index", "Last poll at", "Status"});
 
     for (const auto& stat : xcluster_outbound_stream_stats) {
-      xcluster_streams.AddRow(
-          stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
-          stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
-          StringPrintf("%.3f", stat.mbs_sent), stat.records_sent, stat.avg_get_changes_latency_ms,
-          stat.sent_index, stat.latest_index, stat.last_poll_time.ToFormattedString(), stat.status);
+      xcluster_streams
+          .AddRow(
+              stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
+              stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
+              StringPrintf("%.3f", stat.mbs_sent), stat.records_sent,
+              stat.avg_get_changes_latency_ms, stat.sent_index, stat.latest_index,
+              stat.last_poll_time.ToFormattedString(), stat.status)
+          .SetColor(stat.status);
     }
     xcluster_streams.Print();
   }
 
   if (!xcluster_inbound_stream_stats.empty()) {
-    output << "<h3>xCluster inbound streams</h3>\n";
-
+    auto group_fs = html_print_helper.CreateFieldset("xCluster inbound streams");
     auto xcluster_pollers = html_print_helper.CreateTablePrinter(
         "xcluster_pollers",
         {"ReplicationGroup Id", "Stream Id", "Consumer Table Id", "Consumer Tablet Id",
@@ -1157,12 +1203,15 @@ void TabletServerPathHandlers::HandleXClusterPage(
          "Avg apply latency (ms)", "WAL index received", "Last poll At", "Status"});
 
     for (const auto& stat : xcluster_inbound_stream_stats) {
-      xcluster_pollers.AddRow(
-          stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
-          stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
-          StringPrintf("%.3f", stat.avg_throughput_kbps), StringPrintf("%.3f", stat.mbs_received),
-          stat.records_received, stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms,
-          stat.received_index, stat.last_poll_time.ToFormattedString(), stat.status);
+      xcluster_pollers
+          .AddRow(
+              stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
+              stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
+              StringPrintf("%.3f", stat.avg_throughput_kbps),
+              StringPrintf("%.3f", stat.mbs_received), stat.records_received,
+              stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms, stat.received_index,
+              stat.last_poll_time.ToFormattedString(), stat.status)
+          .SetColor(stat.status);
     }
     xcluster_pollers.Print();
   }
@@ -1330,29 +1379,33 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
     jw.StartObject();
     const yb::tablet::TabletOnDiskSizeInfo& info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status);
     jw.String("total_size");
-    jw.String(HumanReadableNumBytes::ToString(info.active_on_disk_size));
+    jw.String(HumanizeBytes(info.active_on_disk_size));
     jw.String("total_size_bytes");
     jw.Uint64(info.active_on_disk_size);
     jw.String("total_size_including_snapshots");
-    jw.String(HumanReadableNumBytes::ToString(info.total_on_disk_size));
+    jw.String(HumanizeBytes(info.total_on_disk_size));
     jw.String("total_size_including_snapshots_bytes");
     jw.Uint64(info.total_on_disk_size);
     jw.String("consensus_metadata_size");
-    jw.String(HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size));
+    jw.String(HumanizeBytes(info.consensus_metadata_disk_size));
     jw.String("consensus_metadata_size_bytes");
     jw.Uint64(info.consensus_metadata_disk_size);
     jw.String("wal_files_size");
-    jw.String(HumanReadableNumBytes::ToString(info.wal_files_disk_size));
+    jw.String(HumanizeBytes(info.wal_files_disk_size));
     jw.String("wal_files_size_bytes");
     jw.Uint64(info.wal_files_disk_size);
     jw.String("sst_files_size");
-    jw.String(HumanReadableNumBytes::ToString(info.sst_files_disk_size));
+    jw.String(HumanizeBytes(info.sst_files_disk_size));
     jw.String("sst_files_size_bytes");
     jw.Uint64(info.sst_files_disk_size);
     jw.String("uncompressed_sst_files_size");
-    jw.String(HumanReadableNumBytes::ToString(info.uncompressed_sst_files_disk_size));
+    jw.String(HumanizeBytes(info.uncompressed_sst_files_disk_size));
     jw.String("uncompressed_sst_files_size_bytes");
     jw.Uint64(info.uncompressed_sst_files_disk_size);
+    jw.String("vector_index_size");
+    jw.String(HumanizeBytes(info.vector_index_disk_size));
+    jw.String("vector_index_size_bytes");
+    jw.Uint64(info.vector_index_disk_size);
     jw.EndObject();
 
     jw.String("raft_config");

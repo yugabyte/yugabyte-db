@@ -1,0 +1,48 @@
+CREATE TABLE table_missing_attrs(id int);
+INSERT INTO table_missing_attrs VALUES (1);
+SELECT * FROM table_missing_attrs;
+ id 
+----
+  1
+(1 row)
+
+SELECT id from table_missing_attrs;
+ id 
+----
+  1
+(1 row)
+
+ALTER TABLE table_missing_attrs ADD COLUMN a int DEFAULT 10;
+ALTER TABLE table_missing_attrs ADD COLUMN b int DEFAULT 20;
+ALTER TABLE table_missing_attrs ADD COLUMN c int DEFAULT NULL;
+ALTER TABLE table_missing_attrs ADD COLUMN d int DEFAULT 30;
+ALTER TABLE table_missing_attrs ADD COLUMN e int DEFAULT 0;
+SELECT * FROM table_missing_attrs;
+ id | a  | b  | c | d  | e 
+----+----+----+---+----+---
+  1 | 10 | 20 |   | 30 | 0
+(1 row)
+
+SELECT a, c, d, e FROM table_missing_attrs;
+ a  | c | d  | e 
+----+---+----+---
+ 10 |   | 30 | 0
+(1 row)
+
+INSERT INTO table_missing_attrs(id, a, b) VALUES (2, 100, 200);
+ALTER TABLE table_missing_attrs ADD COLUMN f TEXT DEFAULT 'abcdefghijklmnopqrstuvwxyz';
+SELECT * FROM table_missing_attrs;
+ id |  a  |  b  | c | d  | e |             f              
+----+-----+-----+---+----+---+----------------------------
+  1 |  10 |  20 |   | 30 | 0 | abcdefghijklmnopqrstuvwxyz
+  2 | 100 | 200 |   | 30 | 0 | abcdefghijklmnopqrstuvwxyz
+(2 rows)
+
+SELECT a, c, d, f FROM table_missing_attrs;
+  a  | c | d  |             f              
+-----+---+----+----------------------------
+  10 |   | 30 | abcdefghijklmnopqrstuvwxyz
+ 100 |   | 30 | abcdefghijklmnopqrstuvwxyz
+(2 rows)
+
+DROP TABLE table_missing_attrs;

@@ -18,6 +18,7 @@ install_node_exporter=true
 skip_ntp_check=false
 mount_points=""
 yb_home_dir="/home/yugabyte"
+yb_user_home="/home/yugabyte"
 # This should be a comma separated key-value list. Associative arrays were add in bash 4.0 so
 # they might not exist in the provided instance depending on how old it is.
 result_kvs=""
@@ -205,24 +206,17 @@ check_yugabyte_user() {
   update_result_json "user_group" "$result"
 }
 
-check_yugabyte_user_home_if_exists() {
-  # Check only if yugabyte user exists.
+find_yb_user_home() {
   if id -u "yugabyte" >/dev/null 2>&1; then
-    # Get the local home directory
-    # Output looks like yugabyte:x:1001:1001::/home/yugabyte:/bin/bash
-    actual_home_dir=$(getent passwd yugabyte | cut -d: -f6 2>&1)
-    if [[ -z "$actual_home_dir" ]]; then
-      update_result_json "home_dir_exists" false
+    yb_user_home=$(getent passwd yugabyte | cut -d: -f6 2>&1)
+    if [[ -z "$yb_user_home" ]]; then
+      echo "FATAL: Could not find home directory for user yugabyte"
+      exit 1
     else
-      update_result_json "home_dir_exists" true
-      # Normalize path.
-      actual_home_dir=$(readlink -m "$actual_home_dir" 2>&1)
-      if [[ "$actual_home_dir" != "$yb_home_dir" ]]; then
-        update_result_json "home_dir_matches" false
-      else
-        update_result_json "home_dir_matches" true
-      fi
+      echo "$yb_user_home"
     fi
+  else
+    echo "$yb_user_home"
   fi
 }
 
@@ -319,7 +313,7 @@ preflight_all_checks() {
   fi
   update_result_json "python_version" "$result"
 
-  check_yugabyte_user_home_if_exists
+  yb_user_home=$(find_yb_user_home)
 
   # Check all the communication ports
   check_port "master_http_port" "$master_http_port"

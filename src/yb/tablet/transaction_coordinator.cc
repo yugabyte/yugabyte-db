@@ -21,6 +21,7 @@
 
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 
@@ -90,8 +91,7 @@ DEFINE_UNKNOWN_uint64(transaction_deadlock_detection_interval_usec, 60000000,
               "Deadlock detection interval in usec.");
 TAG_FLAG(transaction_deadlock_detection_interval_usec, advanced);
 
-DEFINE_RUNTIME_int32(
-    clear_deadlocked_txns_info_older_than_heartbeats, 10,
+DEFINE_RUNTIME_int32(clear_deadlocked_txns_info_older_than_heartbeats, 10,
     "Minimum number of transaction heartbeat periods for which a deadlocked transaction's info is "
     "retained, after it has been reported to be aborted. This ensures the memory used to track "
     "info of deadlocked transactions does not grow unbounded.");
@@ -604,7 +604,8 @@ class TransactionState {
                  .transaction = id_,
                  .aborted = GetAbortedSubtxnInfo()->pb(),
                  .commit_time = commit_time_,
-                 .sealed = status_ == TransactionStatus::SEALED});
+                 .sealed = status_ == TransactionStatus::SEALED,
+                 .xrepl_origin_id = xrepl_origin_id_});
           }
         }
       }
@@ -1227,7 +1228,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   virtual ~Impl() {
-    Shutdown();
+    StartShutdown();
+    CompleteShutdown();
   }
 
   void RemoveInactiveTransactions(Waiters* waiters) override {
@@ -1284,10 +1286,17 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     return TransactionInfo{it->first_touch(), it->pg_session_req_version()};
   }
 
-  void Shutdown() {
+  // Stops the pollers so that no leader actions (which submit transaction status update operations)
+  // run after this returns. This must happen before the tablet pauses its read/write operations
+  // during shutdown, otherwise a poll could try to submit an operation against a paused tablet and
+  // fail with a non-shutdown status. See issue #32211.
+  void StartShutdown() {
     deadlock_detection_poller_.Shutdown();
-    deadlock_detector_.Shutdown();
     poller_.Shutdown();
+  }
+
+  void CompleteShutdown() {
+    deadlock_detector_.Shutdown();
     rpcs_.Shutdown();
   }
 
@@ -1534,6 +1543,14 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
         auto status = HandleTransactionNotFound(*id, state);
+        // AlreadyPresent means the transaction was already committed, fully applied, and cleaned
+        // up from managed_transactions_. This is a stale retry of the commit request whose
+        // response was lost (e.g. due to a leader change). Acknowledge it as success.
+        if (status.IsAlreadyPresent()) {
+          lock.unlock();
+          request->CompleteWithStatus(Status::OK());
+          return;
+        }
         if (status.ok()) {
           it = managed_transactions_.emplace(
               this, *id, state.start_time(), context_.clock().Now(), log_prefix_).first;
@@ -1705,7 +1722,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         << status;
     const auto split_child_tablet_ids = SplitChildTabletIdsData(status).value();
     const bool tablet_has_been_split = !split_child_tablet_ids.empty();
-    if (status.IsNotFound() || tablet_has_been_split) {
+    if (status.IsNotFound() || status.IsDeleted() || tablet_has_been_split) {
       Lock lock(this, context_.LeaderTerm());
       auto it = managed_transactions_.find(action.transaction);
       if (it == managed_transactions_.end()) {
@@ -1788,10 +1805,29 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     return it;
   }
 
+  // Returns:
+  //   OK          - transaction not found but state is CREATED/PROMOTED, caller should create it.
+  //   AlreadyPresent - transaction was already committed and cleaned up. This happens when
+  //                    a commit request was accepted and fully applied, but the response was lost
+  //                    (e.g. due to a status tablet leader change), causing the client to retry.
+  //                    The caller should acknowledge this retry with success.
+  //   Other error - transaction expired or was aborted.
   Status HandleTransactionNotFound(const TransactionId& id,
                                    const LWTransactionStatePB& state) {
     if (state.status() != TransactionStatus::CREATED &&
         state.status() != TransactionStatus::PROMOTED) {
+      // Check if this is a stale retry of a commit that already succeeded. After a transaction
+      // is committed and all intents are applied, it is erased from managed_transactions_ but
+      // its ID is retained in recently_committed_txn_ids_ for a bounded period. Without this
+      // check, we would incorrectly return "expired or aborted" for a transaction that actually
+      // committed, causing the client to report a spurious failure.
+      if (state.status() == TransactionStatus::COMMITTED &&
+          recently_committed_txn_ids_.contains(id)) {
+        LOG_WITH_PREFIX(INFO)
+            << "Transaction " << id << " was already committed and applied, "
+            << "acknowledging stale commit retry";
+        return STATUS(AlreadyPresent, "Transaction already committed");
+      }
       YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
           << "Request to unknown transaction " << id << ": "
           << state.ShortDebugString();
@@ -1901,6 +1937,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       for (auto& transaction : managed_transactions_) {
         const_cast<TransactionState&>(transaction).Poll(leader, now_physical);
       }
+      PruneRecentlyCommittedUnlocked();
     }
   }
 
@@ -1915,8 +1952,32 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         state.ClearRequests(status);
       });
       if (!it->ShouldBeRetained()) {
+        bool was_committed = it->status() != TransactionStatus::ABORTED;
+        auto txn_id = it->id();
         managed_transactions_.erase(it);
+        // Remember committed transaction IDs so we can distinguish "committed and cleaned up"
+        // from "expired/never committed" when a stale commit retry arrives.
+        if (was_committed) {
+          AddToRecentlyCommitted(txn_id);
+        }
       }
+    }
+  }
+
+  void AddToRecentlyCommitted(const TransactionId& id) {
+    // Retain for 2x the transaction RPC timeout -- this is the maximum window during which a
+    // client can retry a commit RPC. The 2x multiplier provides extra safety margin.
+    auto expiry = CoarseMonoClock::now() + TransactionRpcTimeout() * 2;
+    recently_committed_txn_ids_.insert({id, expiry});
+    VLOG_WITH_PREFIX(2) << "Added transaction " << id << " to recently committed cache";
+  }
+
+  void PruneRecentlyCommittedUnlocked() {
+    auto now = CoarseMonoClock::now();
+    auto& expiry_index = recently_committed_txn_ids_.get<RecentlyCommittedExpiryTag>();
+    auto it = expiry_index.begin();
+    while (it != expiry_index.end() && it->expiry <= now) {
+      it = expiry_index.erase(it);
     }
   }
 
@@ -2055,6 +2116,30 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   std::mutex managed_mutex_;
   ManagedTransactions managed_transactions_;
 
+  // Bounded cache of transaction IDs that were recently committed and fully applied.
+  // Used to distinguish "committed and cleaned up" from "expired/never committed" when a
+  // stale UpdateTransaction(COMMITTED) retry arrives after a leader change.
+  struct RecentlyCommittedEntry {
+    TransactionId id;
+    CoarseTimePoint expiry;
+  };
+  class RecentlyCommittedExpiryTag;
+  typedef boost::multi_index_container<RecentlyCommittedEntry,
+      boost::multi_index::indexed_by<
+          boost::multi_index::hashed_unique<
+              boost::multi_index::member<
+                  RecentlyCommittedEntry, TransactionId, &RecentlyCommittedEntry::id>,
+              TransactionIdHash
+          >,
+          boost::multi_index::ordered_non_unique<
+              boost::multi_index::tag<RecentlyCommittedExpiryTag>,
+              boost::multi_index::member<
+                  RecentlyCommittedEntry, CoarseTimePoint, &RecentlyCommittedEntry::expiry>
+          >
+      >
+  > RecentlyCommittedTransactions;
+  RecentlyCommittedTransactions recently_committed_txn_ids_;
+
   std::atomic<bool> deleting_{false};
   std::condition_variable last_transaction_finished_;
 
@@ -2103,8 +2188,12 @@ void TransactionCoordinator::Start() {
   impl_->Start();
 }
 
-void TransactionCoordinator::Shutdown() {
-  impl_->Shutdown();
+void TransactionCoordinator::StartShutdown() {
+  impl_->StartShutdown();
+}
+
+void TransactionCoordinator::CompleteShutdown() {
+  impl_->CompleteShutdown();
 }
 
 Status TransactionCoordinator::PrepareForDeletion(const CoarseTimePoint& deadline) {

@@ -128,8 +128,7 @@
 #include "pg_yb_utils.h"
 
 static TupleTableSlot *ExecProcNodeFirst(PlanState *node);
-static TupleTableSlot *ExecProcNodeYbDistTrace(PlanState *node);
-const char *YbGetExecNodeSpanName(PlanState *node);
+static const char *YbGetExecNodeSpanName(PlanState *node);
 static bool ExecShutdownNode_walker(PlanState *node, void *context);
 
 
@@ -490,15 +489,13 @@ ExecProcNodeFirst(PlanState *node)
 	 * does instrumentation.  Otherwise we can dispense with all wrappers and
 	 * have ExecProcNode() directly call the relevant function from now on.
 	 *
-	 * YB: When distributed tracing is active, ExecProcNodeInstr wraps spans
-	 * around ExecProcNodeReal internally so that span durations exclude
-	 * instrumentation overhead.  When there is no instrumentation but tracing
-	 * is enabled, ExecProcNodeYbDistTrace is installed instead.
+	 * YB: When distributed tracing is active but there is no instrumentation,
+	 * YbExecProcNodeTrace manages the node's span instead.
 	 */
 	if (node->instrument)
 		node->ExecProcNode = ExecProcNodeInstr;
 	else if (YBCIsDistTraceActive())
-		node->ExecProcNode = ExecProcNodeYbDistTrace;
+		node->ExecProcNode = YbExecProcNodeTrace;
 	else
 		node->ExecProcNode = node->ExecProcNodeReal;
 
@@ -512,7 +509,7 @@ ExecProcNodeFirst(PlanState *node)
  * Map a PlanState node tag to the corresponding executor span name
  * for distributed tracing.
  */
-const char *
+static const char *
 YbGetExecNodeSpanName(PlanState *node)
 {
 	switch (nodeTag(node))
@@ -1101,22 +1098,43 @@ YbGetExecNodeSpanName(PlanState *node)
 
 
 /*
- * ExecProcNodeYbDistTrace
- *
- * ExecProcNode wrapper that starts/ends a distributed tracing span around
- * the real node execution.  Installed by ExecProcNodeFirst when distributed
- * tracing is enabled but no instrumentation is active.
+ * Create the node's span on its first call and make it current while
+ * ExecProcNodeReal runs, so child spans (RPC, shared-memory) nest under it.
+ * The span is ended at ExecEndNode, or earlier at the end of the protocol
+ * message when the portal suspends (cursors, extended-protocol row limits);
+ * a later resume then creates a fresh span under that message's root span.
  */
-static TupleTableSlot *
-ExecProcNodeYbDistTrace(PlanState *node)
+TupleTableSlot *
+YbExecProcNodeTrace(PlanState *node)
 {
 	TupleTableSlot *result;
 
-	YB_DIST_TRACE_START_SPAN(YbGetExecNodeSpanName(node));
+	/*
+	 * This wrapper stays installed for the node's lifetime, but a suspended
+	 * portal can be resumed by a later message that carries no trace.
+	 */
+	if (!YBCIsDistTraceActive())
+		return node->ExecProcNodeReal(node);
 
+	if (!node->yb_dist_trace_node_span)
+	{
+		/*
+		 * Create in es_query_cxt so the span's YB-side handle is registered
+		 * in a memctx that lives exactly as long as the plan tree; the
+		 * current context here is typically a short-lived per-tuple context.
+		 */
+		MemoryContext oldcontext =
+			MemoryContextSwitchTo(node->state->es_query_cxt);
+
+		node->yb_dist_trace_node_span =
+			YBCDistTraceCreateNodeSpan(YbGetExecNodeSpanName(node));
+		MemoryContextSwitchTo(oldcontext);
+		node->state->yb_dist_trace_has_node_spans = true;
+	}
+
+	YBCDistTraceNodeSpanPushScope(node->yb_dist_trace_node_span);
 	result = node->ExecProcNodeReal(node);
-
-	YB_DIST_TRACE_END_SPAN();
+	YBCDistTraceNodeSpanPopScope(node->yb_dist_trace_node_span);
 
 	return result;
 }
@@ -1418,6 +1436,17 @@ ExecEndNode(PlanState *node)
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
 	}
+
+	/*
+	 * YB: end this node's distributed-tracing span.  Runs after the switch so
+	 * child spans close before their parent; on query abort the executor
+	 * hooks in yb_dist_trace.c close whatever is left open.
+	 */
+	if (node->yb_dist_trace_node_span)
+	{
+		YBCDistTraceEndNodeSpan(node->yb_dist_trace_node_span);
+		node->yb_dist_trace_node_span = NULL;
+	}
 }
 
 /*
@@ -1649,6 +1678,21 @@ ExecSetTupleBound(int64 tuples_needed, PlanState *child_node)
 			else
 				bnl_state->bound = tuples_needed;
 		}
+	}
+	else if (IsA(child_node, LockRowsState))
+	{
+		YbLockRowsStateInfo *yb_lock_state_info = &((LockRowsState *) child_node)->yb_info;
+		if (tuples_needed < 0)
+		{
+			/* make sure flag gets reset if needed upon rescan */
+			yb_lock_state_info->bounded = false;
+		}
+		else
+		{
+			yb_lock_state_info->bounded = true;
+			yb_lock_state_info->bound = tuples_needed;
+		}
+
 	}
 
 	/*

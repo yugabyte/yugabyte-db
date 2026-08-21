@@ -23,6 +23,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 
 import java.lang.Thread.State;
 import java.sql.Connection;
@@ -53,7 +54,8 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestEnquote extends BaseYsqlConnMgr {
 
   @Override

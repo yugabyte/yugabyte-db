@@ -20,6 +20,8 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/pgsql_error.h"
 
 #include "yb/gutil/casts.h"
@@ -135,8 +137,9 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   if (!settings.replication.empty()) {
     result += Format(" replication=$0", PqEscapeStringConn(settings.replication));
   }
-  if (settings.yb_auto_analyze) {
-    result += Format(" yb_auto_analyze=true");
+  if (!settings.yb_internal_conn_kind.empty()) {
+    result += Format(
+        " yb_internal_conn_kind=$0", PqEscapeStringConn(settings.yb_internal_conn_kind));
   }
   return result;
 }
@@ -262,7 +265,7 @@ constexpr Oid UUIDOID = 2950;
 constexpr Oid JSONBOID = 3802;
 constexpr Oid VECTOROID = 8078;
 constexpr Oid BSONOID = 8095;
-constexpr Oid GRAPHIDOID = 8113;
+constexpr Oid GRAPHIDOID = 8116;
 
 template<BasePGType T>
 bool IsValidType(Oid pg_type) {
@@ -586,7 +589,8 @@ void PGConnClose::operator()(PGconn* conn) const {
 Result<PGConn> PGConn::Connect(const std::string& conn_str,
                                CoarseTimePoint deadline,
                                bool simple_query_protocol,
-                               const std::string& explicit_conn_str_for_log) {
+                               const std::string& explicit_conn_str_for_log,
+                               const std::function<bool()>& should_stop) {
   PGConnPtr result;
   ConnStatusType status;
   const auto& conn_str_for_log = explicit_conn_str_for_log.empty()
@@ -617,6 +621,11 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
         // If the database does not exist or password authentication failed, we do not retry.
         break;
       }
+    }
+    // Stop retrying if the caller is going away (e.g. server shutdown); otherwise a doomed
+    // connection would keep retrying until the deadline, blocking shutdown.
+    if (should_stop && should_stop()) {
+      break;
     }
   } while (waiter.Wait());
   const MonoDelta duration(CoarseMonoClock::now() - start);
@@ -658,6 +667,7 @@ void PGConn::Reset() {
 Status PGConn::Execute(
     const std::string& command, bool show_query_in_error, bool ignore_empty_query) {
   VLOG(1) << __func__ << " " << command;
+  SCOPED_WAIT_STATUS(WaitForInternalYSQLQueryCompletion);
   PGResultPtr res(PQexec(impl_.get(), command.c_str()));
   auto status = PQresultStatus(res.get());
   if (ExecStatusType::PGRES_COMMAND_OK != status &&
@@ -692,6 +702,7 @@ Result<PGResultPtr> PGConn::Fetch(
     const std::string& command, std::optional<PGResultFormat> data_format,
     const std::vector<const char*>& params) {
   VLOG(1) << __func__ << " " << command;
+  SCOPED_WAIT_STATUS(WaitForInternalYSQLQueryCompletion);
   if (simple_query_protocol_) {
     DCHECK(!data_format) << "data_format cannot be specified with simple query protocol";
     DCHECK(params.empty()) << "Parameters passed but connection uses simple query protocol";
@@ -919,7 +930,8 @@ std::string PqEscapeStringConn(const std::string& input) {
 PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)
     : conn_str_(BuildConnectionString(settings)),
       conn_str_for_log_(BuildConnectionString(settings, true /* mask_password */)),
-      connect_timeout_(settings.connect_timeout) {
+      connect_timeout_(settings.connect_timeout),
+      should_stop_(settings.should_stop) {
 }
 
 Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
@@ -929,9 +941,10 @@ Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
   // deadline since the caller likely intended a deadline of 1.
   if (connect_timeout_) {
     const auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(connect_timeout_);
-    return PGConn::Connect(conn_str_, deadline, simple_query_protocol, conn_str_for_log_);
+    return PGConn::Connect(
+        conn_str_, deadline, simple_query_protocol, conn_str_for_log_, should_stop_);
   }
-  return PGConn::Connect(conn_str_, simple_query_protocol, conn_str_for_log_);
+  return PGConn::Connect(conn_str_, simple_query_protocol, conn_str_for_log_, should_stop_);
 }
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
@@ -998,8 +1011,10 @@ PGConnPerf::~PGConnPerf() {
 
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
-    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline,
-    bool yb_auto_analyze) {
+    std::string_view user, uint64_t postgres_auth_key,
+    const std::optional<CoarseTimePoint>& deadline,
+    std::string_view yb_internal_conn_kind,
+    std::function<bool()> should_stop) {
   size_t connect_timeout = 0;
   if (deadline && *deadline != CoarseTimePoint::max()) {
     // By default, connect_timeout is 0, meaning infinite. 1 is automatically converted to 2, so set
@@ -1014,10 +1029,11 @@ PGConnBuilder CreateInternalPGConnBuilder(
       {.host = PgDeriveSocketDir(pgsql_proxy_bind_address),
        .port = pgsql_proxy_bind_address.port(),
        .dbname = database_name,
-       .user = "postgres",
+       .user = std::string(user),
        .password = UInt64ToString(postgres_auth_key),
        .connect_timeout = connect_timeout,
-       .yb_auto_analyze = yb_auto_analyze});
+       .yb_internal_conn_kind = std::string(yb_internal_conn_kind),
+       .should_stop = std::move(should_stop)});
 }
 
 } // namespace yb::pgwrapper

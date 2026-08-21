@@ -367,6 +367,7 @@ extern PGDLLIMPORT int idle_replication_slot_timeout_secs;
 /* YB */
 extern PGDLLIMPORT const char *YB_OUTPUT_PLUGIN;
 extern PGDLLIMPORT const char *PG_OUTPUT_PLUGIN;
+extern PGDLLIMPORT const char *YB_GRPC_STREAM_INDICATOR;
 extern PGDLLIMPORT const char *LSN_TYPE_SEQUENCE;
 extern PGDLLIMPORT const char *LSN_TYPE_HYBRID_TIME;
 extern PGDLLIMPORT const char *ORDERING_MODE_ROW;

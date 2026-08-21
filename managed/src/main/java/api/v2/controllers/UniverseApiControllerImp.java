@@ -7,6 +7,8 @@ import static play.mvc.Results.ok;
 import api.v2.handlers.UniverseManagementHandler;
 import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.AttachUniverseSpec;
+import api.v2.models.CheckResizeOptionsResp;
+import api.v2.models.CheckResizeOptionsSpec;
 import api.v2.models.CleanupCollectionInfo;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.CollectFilesRequest;
@@ -25,6 +27,8 @@ import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseOperatorImportReq;
+import api.v2.models.UniversePagedQuerySpec;
+import api.v2.models.UniversePagedResp;
 import api.v2.models.UniverseQueryLogsExport;
 import api.v2.models.UniverseResizeNodes;
 import api.v2.models.UniverseResourceDetails;
@@ -38,8 +42,14 @@ import api.v2.models.UniverseSoftwareUpgradePrecheckResp;
 import api.v2.models.UniverseSoftwareUpgradeStart;
 import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
+import api.v2.models.UniverseUpdateProxyConfig;
+import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBATask;
+import api.v2.models.YBAValidationResponse;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.models.Audit;
 import java.io.InputStream;
 import java.util.UUID;
@@ -48,12 +58,30 @@ import play.mvc.Http.Request;
 import play.mvc.Result;
 
 public class UniverseApiControllerImp extends UniverseApiControllerImpInterface {
-  @Inject private UniverseManagementHandler universeHandler;
-  @Inject private UniverseUpgradesManagementHandler universeUpgradeHandler;
+  private final UniverseManagementHandler universeHandler;
+  private final UniverseUpgradesManagementHandler universeUpgradeHandler;
+
+  @Inject
+  public UniverseApiControllerImp(
+      AuditService auditService,
+      Config config,
+      GFlagsAuditHandler gFlagsAuditHandler,
+      UniverseManagementHandler universeHandler,
+      UniverseUpgradesManagementHandler universeUpgradeHandler) {
+    super(auditService, config, gFlagsAuditHandler);
+    this.universeHandler = universeHandler;
+    this.universeUpgradeHandler = universeUpgradeHandler;
+  }
 
   @Override
   public Universe getUniverse(Request request, UUID cUUID, UUID uniUUID) throws Exception {
     return universeHandler.getUniverse(cUUID, uniUUID);
+  }
+
+  @Override
+  public UniversePagedResp pageListUniverses(
+      Request request, UUID cUUID, UniversePagedQuerySpec universePagedQuerySpec) throws Exception {
+    return universeHandler.pageListUniverses(cUUID, universePagedQuerySpec);
   }
 
   @Override
@@ -176,6 +204,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
     return universeUpgradeHandler.editKubernetesOverrides(request, cUUID, uniUUID, spec);
   }
 
+  @Override
+  public YBAValidationResponse validateKubernetesOverrides(
+      Request request, UUID cUUID, UniverseValidateKubernetesOverrides spec) throws Exception {
+    return universeHandler.validateKubernetesOverrides(request, cUUID, spec);
+  }
+
   // Overrode this method to improve response handling in clients - the Content-Disposition lets the
   // client know to handle this response as a downloaded file named "attachDetachSpec.tar.gz". Also,
   // the content type is specified as "application/gzip" to set the MIME type of the response. If we
@@ -213,6 +247,13 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   }
 
   @Override
+  public CheckResizeOptionsResp checkResizeOptions(
+      Request request, UUID cUUID, UUID uniUUID, CheckResizeOptionsSpec checkResizeOptionsSpec)
+      throws Exception {
+    return universeHandler.checkResizeOptions(cUUID, uniUUID, checkResizeOptionsSpec);
+  }
+
+  @Override
   public void deleteAttachDetachMetadata(Request request, UUID cUUID, UUID uniUUID)
       throws Exception {
     universeHandler.deleteAttachDetachMetadata(request, cUUID, uniUUID);
@@ -246,6 +287,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request, UUID cUUID, UUID uniUUID, ExportTelemetryConfigSpec reqBody)
       throws Exception {
     return universeUpgradeHandler.configureExportTelemetryConfig(request, cUUID, uniUUID, reqBody);
+  }
+
+  @Override
+  public api.v2.models.TelemetryConfig getExportTelemetryConfig(
+      Request request, UUID cUUID, UUID uniUUID) throws Exception {
+    return universeUpgradeHandler.getExportTelemetryConfig(cUUID, uniUUID);
   }
 
   @Override
@@ -327,5 +374,11 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
       throws Exception {
     return universeUpgradeHandler.resizeNodes(request, cUUID, uniUUID, spec);
+  }
+
+  @Override
+  public YBATask updateProxyConfig(
+      Request request, UUID cUUID, UUID uniUUID, UniverseUpdateProxyConfig spec) throws Exception {
+    return universeUpgradeHandler.updateProxyConfig(request, cUUID, uniUUID, spec);
   }
 }

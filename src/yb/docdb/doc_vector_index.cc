@@ -24,7 +24,10 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/read_operation_data.h"
 #include "yb/docdb/rocksdb_writer.h"
+
+#include "yb/hnsw/hnsw_block_cache.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -33,6 +36,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 #include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
@@ -68,6 +73,10 @@ METRIC_DEFINE_event_stats(table, vector_index_found_intents,
 METRIC_DEFINE_event_stats(table, vector_index_result_size,
     "Resulting entries of vector index search", yb::MetricUnit::kEntries,
     "Number of entries returned by vector index search.");
+METRIC_DEFINE_counter(table, vector_index_backfill_inserted_entries,
+    "Backfilled entries of vector index", yb::MetricUnit::kEntries,
+    "Number of entries inserted into the vector index during backfill. Tracks the progress of "
+    "vector index backfill.");
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(vector_index_skip_filter_check);
@@ -208,6 +217,10 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
 
     // Let's not filter the vector in case of error.
     auto decision = rocksdb::FilterDecision::kKeep;
+
+    // Use Fetch (raw value), not FetchYbctid: we only care whether a reverse-mapping entry
+    // exists. Decoding is unnecessary, and FetchYbctid would treat tombstones as missing
+    // while this filter relies on regular compaction to clean those up.
     auto ybctid = reverse_mapping_reader_->Fetch(vector_id);
     if (!ybctid.ok()) {
       LOG_WITH_PREFIX(DFATAL) << "Failed to fetch ybctid, status: " << ybctid.status();
@@ -303,6 +316,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .vector_merge_filter_factory = std::move(merge_filter_factory),
       .file_extension = GetVectorIndexChunkFileExtension(options_),
       .metric_entity = metric_entity_,
+      .block_cache_capacity = block_cache_ ? block_cache_->capacity() : 0,
     };
     return lsm_.Open(std::move(lsm_options));
   }
@@ -313,30 +327,41 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Status Insert(
       const DocVectorIndexInsertEntries& entries,
-      const storage::UserFrontiers& frontiers) override {
+      const InsertOptions& insert_options) override {
     typename LSM::InsertEntries lsm_entries;
     lsm_entries.reserve(entries.size());
     for (const auto& entry : entries) {
       lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry)));
     }
     vector_index::VectorLSMInsertContext context {
-      .frontiers = &frontiers,
+      .frontiers = insert_options.frontiers,
+      .chunk_size = insert_options.chunk_size,
     };
     return lsm_.Insert(lsm_entries, context);
   }
 
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return lsm_.EstimateNumVectorsForBytes(bytes_limit);
+  }
+
   Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
-      DocDBStatistics* statistics) override {
+      DocVectorIndexReverseMappingReader& reverse_mapping_reader) override {
     auto entries = VERIFY_RESULT(lsm_.Search(
         VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
 
     auto dump_stats = FLAGS_vector_index_dump_stats;
     auto start_time = MonoTime::Now();
 
-    auto reverse_mapping_reader = VERIFY_RESULT(
-        context_->CreateReverseMappingReader(ReadHybridTime::Max(), statistics));
+    // Let a test apply a DELETE's reverse-mapping tombstone between the filter's read and the
+    // resolution below, reproducing the "Vector not found" race.
+    TEST_SYNC_POINT("DocVectorIndexImpl::Search:AfterFilter");
+    TEST_SYNC_POINT("DocVectorIndexImpl::Search:BeforeResolve");
 
+    // Resolve ybctids with the caller's reader -- the same one the filter used -- so both see one
+    // snapshot. Otherwise a DELETE whose reverse-mapping tombstone lands between the two reads lets
+    // the filter accept an entry that resolves empty here; such a row is still dropped when its
+    // ybctid is fetched (the row delete is intent-tracked, unlike the physical-only reverse map).
     DocVectorIndexSearchResult result;
     VLOG_WITH_FUNC(4) << "could_have_missing_entries: " << could_have_missing_entries
                       << ", entries.size(): " << entries.size()
@@ -345,7 +370,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
         could_have_missing_entries && entries.size() >= options.max_num_results;
     result.entries.reserve(entries.size());
     for (auto& entry : entries) {
-      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->Fetch(entry.vector_id));
+      auto ybctid = VERIFY_RESULT(reverse_mapping_reader.FetchYbctid(entry.vector_id));
       VLOG_WITH_FUNC(4)
           << "vector_id: " << entry.vector_id << ", ybctid: " << ybctid.ToDebugHexString();
       if (ybctid.empty()) {
@@ -355,7 +380,6 @@ class DocVectorIndexImpl : public DocVectorIndex {
         return STATUS_FORMAT(NotFound, "Vector not found: $0", entry.vector_id);
       }
 
-      // TODO(vector_index): does it handle kTombstone in db_entry.value?
       result.entries.push_back(DocVectorIndexSearchResultEntry {
         .encoded_distance = EncodeDistance(entry.distance),
         .key = KeyBuffer(ybctid),
@@ -407,8 +431,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.WaitForFlush();
   }
 
-  ConsensusFrontierPtr GetFlushedFrontier() override {
-    return down_cast<ConsensusFrontier>(lsm_.GetFlushedFrontier());
+  storage::FrontierInfo GetFrontiers(storage::FrontierKinds kinds) override {
+    return lsm_.GetFrontiers(kinds);
   }
 
   rocksdb::FlushAbility GetFlushAbility() override {
@@ -429,6 +453,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Result<size_t> TotalEntries() const override {
     return lsm_.TotalEntries();
+  }
+
+  uint64_t OnDiskSize() const override {
+    return lsm_.OnDiskSize();
   }
 
   void StartShutdown() override {
@@ -475,13 +503,32 @@ Result<Slice> DocVectorIndexReverseMappingReader::Fetch(
 Result<Slice> DocVectorIndexReverseMappingReader::FetchYbctid(
     const vector_index::VectorId& vector_id) {
   auto value = VERIFY_RESULT(Fetch(vector_id));
-
-  // All non-ybctid values should be excluded.
-  if (value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone)) {
+  if (value.empty()) {
     return Slice{};
   }
 
-  return value;
+  auto decoded = VERIFY_RESULT(dockv::EncodedDocVectorMetaValue::Decode(value));
+  return decoded.IsTombstone() ? Slice{} : decoded.ybctid;
+}
+
+ConsensusFrontierPtr DocVectorIndex::GetFlushedFrontier() {
+  return down_cast<ConsensusFrontier>(
+      GetFrontiers(storage::FrontierKinds{storage::FrontierKind::kFlushed}).flushed);
+}
+
+storage::UserFrontierRange DocVectorIndex::GetInMemoryFrontiers() {
+  return GetFrontiers(storage::FrontierKinds{
+      storage::FrontierKind::kInMemorySmallest,
+      storage::FrontierKind::kInMemoryLargest}).in_memory;
+}
+
+storage::UserFrontierPtr DocVectorIndex::GetInMemoryFrontier(storage::UpdateUserValueType type) {
+  if (type == storage::UpdateUserValueType::kSmallest) {
+    return GetFrontiers(storage::FrontierKinds{
+        storage::FrontierKind::kInMemorySmallest}).in_memory.smallest;
+  }
+  return GetFrontiers(storage::FrontierKinds{
+      storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
 }
 
 bool DocVectorIndex::BackfillDone() {
@@ -497,11 +544,21 @@ bool DocVectorIndex::BackfillDone() {
 }
 
 void DocVectorIndex::ApplyReverseEntry(
-    rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht) {
+    rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht,
+    ColumnId column_id, Slice table_key_prefix) {
   DocHybridTimeBuffer ht_buf;
   auto encoded_write_time = ht_buf.EncodeWithValueType(write_ht);
   auto vector_id = dockv::EncodedDocVectorValue::FromSlice(value).id;
-  handler.Put(dockv::DocVectorKeyAsParts(vector_id, encoded_write_time), { &ybctid, 1 });
+
+  // Legacy format.
+  if (column_id == kInvalidColumnId) {
+    handler.Put(dockv::DocVectorKeyAsParts(vector_id, encoded_write_time), { &ybctid, 1 });
+    return;
+  }
+
+  auto value_buffer = dockv::DocVectorMetaValue(table_key_prefix, ybctid, column_id);
+  auto value_slice = value_buffer.AsSlice();
+  handler.Put(dockv::DocVectorKeyAsParts(vector_id, encoded_write_time), { &value_slice, 1 });
 }
 
 Result<DocVectorIndexPtr> CreateDocVectorIndex(
@@ -531,7 +588,9 @@ DocVectorIndexMetrics::DocVectorIndexMetrics(const MetricEntityPtr& metric_entit
       read_intents_us(METRIC_vector_index_read_intents_us.Instantiate(metric_entity)),
       merge_us(METRIC_vector_index_merge_us.Instantiate(metric_entity)),
       found_intents(METRIC_vector_index_found_intents.Instantiate(metric_entity)),
-      result_size(METRIC_vector_index_result_size.Instantiate(metric_entity)) {
+      result_size(METRIC_vector_index_result_size.Instantiate(metric_entity)),
+      backfill_inserted_entries(
+          METRIC_vector_index_backfill_inserted_entries.Instantiate(metric_entity)) {
 }
 
 } // namespace yb::docdb

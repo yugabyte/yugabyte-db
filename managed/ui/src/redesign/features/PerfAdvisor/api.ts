@@ -9,7 +9,8 @@ export enum QUERY_KEY {
   unRegisterPerfAdvisor = 'unRegisterPerfAdvisor',
   fetchUniverseRegistrationDetails = 'fetchUniverseRegistrationDetails',
   attachUniverseToPerfAdvisor = 'attachUniverseToPerfAdvisor',
-  deleteUniverseRegistration = 'deleteUniverseRegistration'
+  deleteUniverseRegistration = 'deleteUniverseRegistration',
+  pageRegisteredUniverses = 'pageRegisteredUniverses'
 }
 
 export const AXIOS_INSTANCE = axios.create({ baseURL: ROOT_URL, withCredentials: true });
@@ -107,6 +108,27 @@ class ApiService {
   deleteUniverseRegistration = (universeUuid: string) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/pa_collector`;
     return axios.delete(requestUrl).then((resp) => resp.data);
+  };
+
+  pageRegisteredUniverses = (
+    paUuid: string,
+    offset: number,
+    limit: number,
+    sortBy: string,
+    direction: string,
+    nameFilter?: string
+  ) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector/${paUuid}/universes/page`;
+    return axios
+      .post(requestUrl, {
+        offset,
+        limit,
+        sortBy,
+        direction,
+        needTotalCount: true,
+        filter: nameFilter ? { universeName: nameFilter } : {}
+      })
+      .then((res) => res.data);
   };
 }
 

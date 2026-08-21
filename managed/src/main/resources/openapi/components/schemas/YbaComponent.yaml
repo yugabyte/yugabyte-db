@@ -6,3 +6,4 @@ enum:
   - YBA
   - PROMETHEUS
   - RELEASES
+  - PA_COLLECTOR

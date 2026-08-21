@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -22,6 +23,9 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.ResourceTracker;
@@ -56,7 +60,10 @@ import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParam
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.ReleaseArtifact;
@@ -98,6 +105,7 @@ import io.yugabyte.operator.v1alpha1.BackupScheduleSpec;
 import io.yugabyte.operator.v1alpha1.BackupSpec;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
 import io.yugabyte.operator.v1alpha1.DrConfig;
+import io.yugabyte.operator.v1alpha1.KMSConfig;
 import io.yugabyte.operator.v1alpha1.PitrConfig;
 import io.yugabyte.operator.v1alpha1.PitrRestore;
 import io.yugabyte.operator.v1alpha1.Release;
@@ -239,12 +247,26 @@ public class OperatorUtils {
     return cust.getUuid().toString();
   }
 
+  /**
+   * Returns the UUID of the local PlatformInstance when HA is configured, or empty if HA is not set
+   * up. Used to track which YBA instances have applied a resource to their K8s cluster.
+   */
+  public Optional<UUID> getLocalPlatformInstanceUuid() {
+    return HighAvailabilityConfig.get()
+        .flatMap(HighAvailabilityConfig::getLocal)
+        .map(PlatformInstance::getUuid);
+  }
+
   public Universe getUniverseFromNameAndNamespace(
       Long customerId, String universeName, String namespace) throws Exception {
     KubernetesResourceDetails ybUniverseResourceDetails = new KubernetesResourceDetails();
     ybUniverseResourceDetails.name = universeName;
     ybUniverseResourceDetails.namespace = namespace;
     YBUniverse ybUniverse = getYBUniverse(ybUniverseResourceDetails);
+    if (ybUniverse == null) {
+      log.debug("YBUniverse '{}' not found in namespace '{}'", universeName, namespace);
+      return null;
+    }
     String name = YBUniverseReconciler.getUniverseName(ybUniverse);
     log.debug("Getting universe from name: {}", name);
     Optional<Universe> universe = Universe.maybeGetUniverseByName(customerId, name);
@@ -503,36 +525,61 @@ public class OperatorUtils {
       Cluster curCluster, UserIntent newIntent, YBUniverse ybUniverse) {
     if (ybUniverse.getSpec().getTserverVolume() != null
         || ybUniverse.getSpec().getMasterVolume() != null) {
+      UserIntent newIntentClone = newIntent.clone();
       AtomicBoolean deviceInfoChanged = new AtomicBoolean(false);
-      if (!curCluster.userIntent.deviceInfo.equals(newIntent.deviceInfo)) {
-        deviceInfoChanged.set(true);
+      // If new userIntent does not contain perAZ overrides for tserver, first assign old
+      // userIntentOverrides
+      if (!(ybUniverse.getSpec().getTserverVolume() != null
+          && ybUniverse.getSpec().getTserverVolume().getPerAZ() != null)) {
+        newIntentClone.updateAZVolumeOverrides(
+            curCluster.userIntent,
+            curCluster.placementInfo.getAllAZUUIDs(),
+            null,
+            false /* isDedicatedMaster */);
       }
-      if (curCluster.clusterType != ClusterType.ASYNC) {
-        if (!curCluster.userIntent.masterDeviceInfo.equals(newIntent.masterDeviceInfo)) {
-          deviceInfoChanged.set(true);
-        }
+      // If new userIntent does not contain perAZ overrides for master, first assign old
+      // userIntentOverrides
+      if (curCluster.clusterType != ClusterType.ASYNC
+          && !(ybUniverse.getSpec().getMasterVolume() != null
+              && ybUniverse.getSpec().getMasterVolume().getPerAZ() != null)) {
+        newIntentClone.updateAZVolumeOverrides(
+            curCluster.userIntent,
+            curCluster.placementInfo.getAllAZUUIDs(),
+            null,
+            true /* isDedicatedMaster */);
       }
       curCluster
           .placementInfo
           .getAllAZUUIDs()
           .forEach(
               azUUID -> {
-                if (ybUniverse.getSpec().getTserverVolume() != null
-                    && ybUniverse.getSpec().getTserverVolume().getPerAZ() != null) {
-                  DeviceInfo tsDeviceInfo = curCluster.userIntent.getDeviceInfoForAz(azUUID, false);
-                  deviceInfoChanged.set(
-                      deviceInfoChanged.get()
-                          || !tsDeviceInfo.equals(newIntent.getDeviceInfoForAz(azUUID, false)));
-                }
-                if (ybUniverse.getSpec().getMasterVolume() != null
-                    && ybUniverse.getSpec().getMasterVolume().getPerAZ() != null) {
+                DeviceInfo tsDeviceInfo =
+                    curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+                DeviceInfo newTsDeviceInfo =
+                    newIntentClone.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+                log.debug(
+                    "Comparing tserver device info for AZ {}: old {}, new {}",
+                    azUUID,
+                    Json.toJson(tsDeviceInfo),
+                    Json.toJson(newTsDeviceInfo));
+                deviceInfoChanged.set(
+                    deviceInfoChanged.get() || !tsDeviceInfo.equals(newTsDeviceInfo));
+
+                if (curCluster.clusterType != ClusterType.ASYNC) {
                   DeviceInfo masterDeviceInfo =
-                      curCluster.userIntent.getDeviceInfoForAz(azUUID, true);
+                      curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+                  DeviceInfo newMasterDeviceInfo =
+                      newIntentClone.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+                  log.debug(
+                      "Comparing master device info for AZ {}: old {}, new {}",
+                      azUUID,
+                      Json.toJson(masterDeviceInfo),
+                      Json.toJson(newMasterDeviceInfo));
                   deviceInfoChanged.set(
-                      deviceInfoChanged.get()
-                          || !masterDeviceInfo.equals(newIntent.getDeviceInfoForAz(azUUID, true)));
+                      deviceInfoChanged.get() || !masterDeviceInfo.equals(newMasterDeviceInfo));
                 }
               });
+      log.debug("Device info changed: {}", deviceInfoChanged.get());
       return deviceInfoChanged.get();
     } else {
       boolean tserverSizeChanged =
@@ -843,8 +890,7 @@ public class OperatorUtils {
       currentUserIntent.masterDeviceInfo = defaultMasterDeviceInfo();
     }
 
-    Provider provider =
-        Provider.getOrBadRequest(cust.getUuid(), UUID.fromString(currentUserIntent.provider));
+    Provider provider = Util.getSingleProvider(currentUserIntent);
     // Get all required params
     SpecificGFlags specGFlags = getGFlagsFromSpec(ybUniverse, provider);
     String incomingOverrides =
@@ -930,6 +976,10 @@ public class OperatorUtils {
             || !(u.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
                 == ybUniverse.getSpec().getUseYbdbInbuiltYbc());
     log.trace("Toggle Immutable YBC mismatch: {}", mismatch);
+    mismatch = mismatch || shouldRotateCerts(u, ybUniverse, cust.getUuid());
+    log.trace("certificate mismatch: {}", mismatch);
+    mismatch = mismatch || shouldToggleTls(currentUserIntent, ybUniverse);
+    log.trace("tls parameters mismatch: {}", mismatch);
     return mismatch;
   }
 
@@ -1009,13 +1059,14 @@ public class OperatorUtils {
       @Nullable String namespace,
       String key,
       ResourceTracker resourceTracker,
-      KubernetesResourceDetails owner) {
+      KubernetesResourceDetails owner,
+      UUID localInstanceUuid) {
     Secret secret = getSecret(name, namespace);
     if (secret == null) {
       log.warn("Secret {} not found", name);
       return null;
     }
-    resourceTracker.trackDependency(owner, secret);
+    resourceTracker.trackDependency(owner, secret, localInstanceUuid);
     log.trace("Tracking secret {} as dependency of {}", secret.getMetadata().getName(), owner);
     return parseSecretForKey(secret, key);
   }
@@ -1099,6 +1150,52 @@ public class OperatorUtils {
       }
     }
     return false;
+  }
+
+  /*--- Certificate rotation helper methods ---*/
+
+  /**
+   * Checks if certificate rotation is needed for the universe.
+   *
+   * @param universe the current universe
+   * @param ybUniverse the YBUniverse spec
+   * @param customerUUID the customer UUID
+   * @return true if certificate rotation is needed, false otherwise
+   */
+  public boolean shouldRotateCerts(Universe universe, YBUniverse ybUniverse, UUID customerUUID) {
+    String specRootCAName = ybUniverse.getSpec().getRootCA();
+    UUID currentRootCA = universe.getUniverseDetails().rootCA;
+
+    // If no cert specified in spec, no rotation needed
+    if (StringUtils.isBlank(specRootCAName)) {
+      return false;
+    }
+
+    CertificateInfo specRootCACert = CertificateInfo.get(customerUUID, specRootCAName);
+    if (specRootCACert == null) {
+      log.warn("Certificate {} not found for customer {}", specRootCAName, customerUUID);
+      return false;
+    }
+
+    // Check if the certificate UUID differs from the current one
+    return !specRootCACert.getUuid().equals(currentRootCA);
+  }
+
+  /*--- TLS toggle helper methods ---*/
+
+  /**
+   * Checks if the encryption-in-transit settings in the spec differ from the universe, requiring a
+   * TLS toggle operation.
+   *
+   * @param currentUserIntent the current primary cluster user intent
+   * @param ybUniverse the YBUniverse spec
+   * @return true if node-to-node or client-to-node encryption settings have changed
+   */
+  public boolean shouldToggleTls(UserIntent currentUserIntent, YBUniverse ybUniverse) {
+    return currentUserIntent.enableNodeToNodeEncrypt
+            != ybUniverse.getSpec().getEnableNodeToNodeEncrypt()
+        || currentUserIntent.enableClientToNodeEncrypt
+            != ybUniverse.getSpec().getEnableClientToNodeEncrypt();
   }
 
   /*--- Backup and Scheduled backup helper methods ---*/
@@ -1262,6 +1359,9 @@ public class OperatorUtils {
         CustomerConfig.get(backup.getCustomerUUID(), backup.getStorageConfigUUID());
     crSpec.setStorageConfig(storageConfigName);
     crSpec.setTimeBeforeDelete(params.timeBeforeDelete);
+    crSpec.setUseTablespaces(params.useTablespaces);
+    crSpec.setUseRoles(params.getUseRoles());
+    crSpec.setUsePrivileges(params.getUsePrivileges());
     Universe universe =
         Universe.getOrBadRequest(backup.getUniverseUUID(), Customer.get(backup.getCustomerUUID()));
     crSpec.setUniverse(universe.getUniverseDetails().getKubernetesResourceDetails().name);
@@ -1784,7 +1884,7 @@ public class OperatorUtils {
     }
   }
 
-  public void createReleaseCr(
+  public boolean createReleaseCr(
       com.yugabyte.yw.models.Release ybRelease,
       ReleaseArtifact k8sArtifact,
       ReleaseArtifact x86_64Artifact,
@@ -1800,7 +1900,7 @@ public class OperatorUtils {
               .get()
           != null) {
         log.info("Release {} already exists, skipping creation", ybRelease.getVersion());
-        return;
+        return true;
       }
       Release release = new Release();
       release.setMetadata(
@@ -1859,6 +1959,7 @@ public class OperatorUtils {
         downloadConfig.setHttp(http);
       } else {
         log.info("Release {} uses a local file", ybRelease.getVersion());
+        return false;
       }
       config.setDownloadConfig(downloadConfig);
 
@@ -1866,6 +1967,7 @@ public class OperatorUtils {
       release.setSpec(releaseSpec);
 
       kubernetesClient.resources(Release.class).inNamespace(namespace).resource(release).create();
+      return true;
     }
   }
 
@@ -2037,6 +2139,9 @@ public class OperatorUtils {
                 params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit));
       }
       spec.setEnablePointInTimeRestore(params.enablePointInTimeRestore);
+      spec.setUseTablespaces(params.useTablespaces);
+      spec.setUseRoles(params.getUseRoles());
+      spec.setUsePrivileges(params.getUsePrivileges());
       backupSchedule.setSpec(spec);
       kubernetesClient
           .resources(BackupSchedule.class)
@@ -2268,6 +2373,167 @@ public class OperatorUtils {
         KubernetesResourceDetails.fromResource(pitrConfig));
 
     return updatePitrConfigParams;
+  }
+
+  /** Returns the backend {@link KeyProvider} for the given KMSConfig custom resource. */
+  public KeyProvider getKMSConfigProvider(KMSConfig kmsConfig) {
+    ObjectNode spec = objectMapper.valueToTree(kmsConfig.getSpec());
+    JsonNode providerNode = spec.get("provider");
+    if (providerNode == null || providerNode.isNull()) {
+      throw new RuntimeException("KMS config provider is not set");
+    }
+    return KeyProvider.valueOf(providerNode.asText());
+  }
+
+  /**
+   * Builds the KMS provider auth-config form data from the KMSConfig CR spec, resolving any
+   * referenced Kubernetes Secrets. The returned ObjectNode contains the KMS config {@code name}
+   * plus the provider-specific auth-config fields expected by the backend EncryptionAtRest services
+   * (the same shape the REST API accepts as the request body).
+   *
+   * <p>HASHICORP (Vault) is implemented with TOKEN and APPROLE auth, and AZU with a service
+   * principal or managed identity; every other provider throws {@link
+   * UnsupportedOperationException} as an explicit placeholder for future support.
+   */
+  public ObjectNode getKMSConfigFormDataFromCr(KMSConfig kmsConfig) {
+    ObjectNode spec = objectMapper.valueToTree(kmsConfig.getSpec());
+    KeyProvider provider = getKMSConfigProvider(kmsConfig);
+    String resourceNamespace = kmsConfig.getMetadata().getNamespace();
+    ObjectNode formData = Json.newObject();
+    formData.put("name", spec.get("name").asText());
+    switch (provider) {
+      case HASHICORP:
+        buildHashicorpAuthConfig(formData, spec.get("vault"), resourceNamespace);
+        break;
+      case AZU:
+        buildAzureAuthConfig(formData, spec.get("azure"), resourceNamespace);
+        break;
+      default:
+        throw new UnsupportedOperationException(
+            String.format(
+                "%s KMS is not yet supported via the Kubernetes operator", provider.name()));
+    }
+    return formData;
+  }
+
+  private void buildAzureAuthConfig(ObjectNode formData, JsonNode azure, String resourceNamespace) {
+    if (azure == null || azure.isNull()) {
+      throw new RuntimeException("azure configuration is required for AZU KMS");
+    }
+    formData.put(AzuKmsAuthConfigField.CLIENT_ID.fieldName, azure.get("clientID").asText());
+    formData.put(AzuKmsAuthConfigField.TENANT_ID.fieldName, azure.get("tenantID").asText());
+    formData.put(AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName, azure.get("keyVaultURL").asText());
+    formData.put(AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName, azure.get("keyName").asText());
+    formData.put(
+        AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName,
+        getTextOrDefault(azure, "keyAlgorithm", "RSA"));
+    formData.put(
+        AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName, getIntOrDefault(azure, "keySize", 2048));
+
+    // A managed identity authenticates through DefaultAzureCredential and omits the client secret;
+    // a service principal requires it. clientID and tenantID are required in both cases.
+    boolean useManagedIdentity =
+        azure.hasNonNull("useManagedIdentity") && azure.get("useManagedIdentity").asBoolean();
+    if (!useManagedIdentity) {
+      JsonNode clientSecretSecret = azure.get("clientSecretSecret");
+      if (clientSecretSecret == null || clientSecretSecret.isNull()) {
+        throw new RuntimeException(
+            "clientSecretSecret is required for AZU KMS unless useManagedIdentity is true");
+      }
+      formData.put(
+          AzuKmsAuthConfigField.CLIENT_SECRET.fieldName,
+          resolveSecretRef(clientSecretSecret, resourceNamespace));
+    }
+  }
+
+  private static int getIntOrDefault(JsonNode node, String field, int defaultValue) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    return value.asInt();
+  }
+
+  private void buildHashicorpAuthConfig(
+      ObjectNode formData, JsonNode vault, String resourceNamespace) {
+    if (vault == null || vault.isNull()) {
+      throw new RuntimeException("vault configuration is required for HASHICORP KMS");
+    }
+    formData.put(HashicorpVaultConfigParams.HC_VAULT_ADDRESS, vault.get("address").asText());
+    formData.put(
+        HashicorpVaultConfigParams.HC_VAULT_KEY_NAME,
+        getTextOrDefault(vault, "keyName", "key_yugabyte"));
+    formData.put(
+        HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+        getTextOrDefault(vault, "secretEngine", "transit"));
+
+    String mountPath = getTextOrDefault(vault, "mountPath", "transit/");
+
+    String authType = getTextOrDefault(vault, "authType", null);
+    if ("TOKEN".equals(authType)) {
+      JsonNode tokenSecret = vault.get("tokenSecret");
+      if (tokenSecret == null || tokenSecret.isNull()) {
+        throw new RuntimeException("tokenSecret is required for HASHICORP KMS with TOKEN auth");
+      }
+      formData.put(
+          HashicorpVaultConfigParams.HC_VAULT_TOKEN,
+          resolveSecretRef(tokenSecret, resourceNamespace));
+    } else if ("APPROLE".equals(authType)) {
+      JsonNode appRole = vault.get("appRole");
+      if (appRole == null || appRole.isNull()) {
+        throw new RuntimeException("appRole is required for HASHICORP KMS with APPROLE auth");
+      }
+      formData.put(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID, appRole.get("roleID").asText());
+      JsonNode secretIdSecret = appRole.get("secretIdSecret");
+      if (secretIdSecret == null || secretIdSecret.isNull()) {
+        throw new RuntimeException(
+            "secretIdSecret is required for HASHICORP KMS with APPROLE auth");
+      }
+      formData.put(
+          HashicorpVaultConfigParams.HC_VAULT_SECRET_ID,
+          resolveSecretRef(secretIdSecret, resourceNamespace));
+
+      // authNamespace is only meaningful for APPROLE auth. The backend expects the transit mount
+      // path to be namespace-qualified (it strips the auth-namespace prefix before use), so the CR
+      // takes a mountPath relative to the Vault namespace and we prefix it here.
+      String authNamespace = getTextOrDefault(vault, "authNamespace", null);
+      if (authNamespace != null) {
+        formData.put(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE, authNamespace);
+        String prefix = authNamespace.endsWith("/") ? authNamespace : authNamespace + "/";
+        if (!mountPath.startsWith(prefix)) {
+          mountPath = prefix + mountPath;
+        }
+      }
+    } else {
+      throw new UnsupportedOperationException(
+          "Unsupported auth type for HASHICORP KMS via the Kubernetes operator: " + authType);
+    }
+
+    formData.put(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH, mountPath);
+  }
+
+  /**
+   * Resolves a {name, namespace, key} Secret reference from the CR to the secret's string value.
+   */
+  private String resolveSecretRef(JsonNode secretRef, String defaultNamespace) {
+    String name = secretRef.get("name").asText();
+    String key = secretRef.get("key").asText();
+    String namespace =
+        secretRef.hasNonNull("namespace") ? secretRef.get("namespace").asText() : defaultNamespace;
+    String value = parseSecretForKey(getSecret(name, namespace), key);
+    if (value == null) {
+      throw new RuntimeException(
+          String.format("Could not resolve key '%s' from secret '%s'", key, name));
+    }
+    return value;
+  }
+
+  private static String getTextOrDefault(JsonNode node, String field, String defaultValue) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    return value.asText();
   }
 
   public boolean requiresDrConfigDatabaseUpdate(DrConfig drConfig, XClusterConfig xClusterConfig) {

@@ -11,15 +11,18 @@ name = "pgrx_embed_pg_documentdb_gw_host"
 path = "./src/bin/pgrx_embed.rs"
 
 [features]
-default = ["pg16"]
+# YB: Default feature is pg15 for now.
+default = ["pg15"]
 pg15 = ["pgrx/pg15" ]
 pg16 = ["pgrx/pg16" ]
 pg17 = ["pgrx/pg17" ]
-pg18 = ["pgrx/pg18" ]
+# YB: pg18 feature disabled — YB pgrx does not support pg18 yet.
+# pg18 = ["pgrx/pg18" ]
 pg_test = []
 
 [dependencies]
-pgrx = { version ="=0.16.0", default-features = false }
+# YB: Using YB pgrx.
+pgrx = { path = "../../pgrx/pgrx", default-features = false }
 documentdb_gateway = { path = "../pg_documentdb_gw" }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1.41"

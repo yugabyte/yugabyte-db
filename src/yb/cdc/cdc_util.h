@@ -21,6 +21,12 @@
 
 namespace yb::cdc {
 
+class SchemaVersionsPB;
+
+// Fixes data for #31533. After an upgrade, the old_*_schema_versions fields may no longer
+// be the same size due to default values not being serialized.
+void RepairOldSchemaVersionsPB(SchemaVersionsPB& pb);
+
 struct TabletStreamInfo {
   // Unique ID on Producer, but not on Consumer.
   xrepl::StreamId stream_id;

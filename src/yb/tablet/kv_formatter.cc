@@ -13,10 +13,14 @@
 
 #include "yb/tablet/kv_formatter.h"
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_debug.h"
 
 #include "yb/rocksdb/db/dbformat.h"
+
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

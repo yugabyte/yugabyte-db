@@ -16,17 +16,6 @@
 
 namespace yb::pggate {
 
-PgGlobalViewRead::PgGlobalViewRead(
-    const char* database_name, std::vector<std::string>&& tserver_uuids)
-    : database_name_(database_name), tserver_uuids_(std::move(tserver_uuids)) {}
-
-void PgGlobalViewRead::ResetScan() {
-  // params_ is not cleared here: postgresReScanForeignScan sets cursor_exists to false,
-  // forcing create_cursor to run again on the next iterate, which refreshes params via
-  // SetParams before the scan begins.
-  next_tserver_idx_ = 0;
-}
-
 void PgGlobalViewRead::SetParams(std::span<const char*> values) {
   params_.clear();
   params_.reserve(values.size());
@@ -35,40 +24,34 @@ void PgGlobalViewRead::SetParams(std::span<const char*> values) {
   }
 }
 
-YbcRemotePgExecResult PgGlobalViewRead::ExecScan(PgClient& client, std::string_view query) {
-  while (next_tserver_idx_ < tserver_uuids_.size()) {
-    const auto& tserver_uuid = tserver_uuids_[next_tserver_idx_++];
-    auto res = client.RemoteExec(query, database_name_, tserver_uuid, params_);
-    if (!res.ok()) {
-      LOG(WARNING) << "Failed to execute remote pg query: " << res.status();
-      continue;
-    }
-
-    // Trying to create the PGresult object here causes a circular dependency issue.
-    // So we keep the protobuf response and construct the PGresult from postgres_fdw
-    // layer.
-    const auto& pb = res->pg_result();
-
-    if (!pb.error_message().empty()) {
-      LOG(WARNING) << "Remote pg query failed on tserver "
-                   << tserver_uuid << ": " << pb.error_message();
-      continue;
-    }
-
-    if (pb.rows_size() == 0) {
-      continue;
-    }
-
-    const auto pb_size = pb.ByteSizeLong();
-    DCHECK_GT(pb_size, 0) << "Received protobuf size should be positive, got " << pb_size;
-
-    serialized_result_.resize(pb_size);
-    auto* buf = serialized_result_.data();
-    pb.SerializeWithCachedSizesToArray(buf);
-    return {buf, serialized_result_.size()};
+YbcRemotePgExecResult PgGlobalViewRead::ExecScan(
+    PgClient& client, std::string_view database_name, std::string_view query,
+    std::string_view tserver_uuid) {
+  auto res = client.RemoteExec(
+      query, database_name, tserver_uuid, params_);
+  if (!res.ok()) {
+    last_error_ = res.status().ToString();
+    return {nullptr, 0, last_error_.c_str()};
   }
 
-  return {nullptr, 0};
+  auto& pb = *res->mutable_pg_result();
+
+  if (!pb.error_message().empty()) {
+    last_error_ = std::move(*pb.mutable_error_message());
+    return {nullptr, 0, last_error_.c_str()};
+  }
+
+  if (pb.rows_size() == 0) {
+    return {nullptr, 0, nullptr};
+  }
+
+  const auto pb_size = pb.ByteSizeLong();
+  DCHECK_GT(pb_size, 0) << "Received protobuf size should be positive, got " << pb_size;
+
+  serialized_result_.resize(pb_size);
+  auto* buf = serialized_result_.data();
+  pb.SerializeWithCachedSizesToArray(buf);
+  return {buf, serialized_result_.size(), nullptr};
 }
 
 }  // namespace yb::pggate

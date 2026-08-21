@@ -22,11 +22,11 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -71,6 +71,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   private PlatformExecutorFactory platformExecutorFactory;
   private PlatformScheduler platformScheduler;
   private ExecutorService executorService;
+  private NodeAgentClient nodeAgentClient;
   private NodeAgentInstaller mockNodeAgentInstaller;
   private NodeAgentEnabler nodeAgentEnabler;
   private TestUniverseTaskBase universeTaskBase;
@@ -95,11 +96,17 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     settableRuntimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
     platformExecutorFactory = app.injector().instanceOf(PlatformExecutorFactory.class);
     platformScheduler = app.injector().instanceOf(PlatformScheduler.class);
+    nodeAgentClient = app.injector().instanceOf(NodeAgentClient.class);
     executorService = Executors.newCachedThreadPool();
     mockNodeAgentInstaller = mock(NodeAgentInstaller.class);
+
     nodeAgentEnabler =
         new NodeAgentEnabler(
-            confGetter, platformExecutorFactory, platformScheduler, mockNodeAgentInstaller);
+            confGetter,
+            platformExecutorFactory,
+            platformScheduler,
+            mockNodeAgentInstaller,
+            nodeAgentClient);
     nodeAgentEnabler.setUniverseInstallerExecutor(executorService);
     universeTaskBase =
         new TestUniverseTaskBase(
@@ -257,38 +264,11 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testMarkUniversesForClientDisabled() {
-    provider1.getDetails().setEnableNodeAgent(true);
-    provider1.save();
-    provider2.getDetails().setEnableNodeAgent(true);
-    provider2.save();
-    settableRuntimeConfigFactory
-        .forProvider(provider1)
-        .setValue(ProviderConfKeys.enableNodeAgentClient.getKey(), String.valueOf(false));
-    Universe universe1 = Universe.getOrBadRequest(universeUuid1);
-    Universe universe01 = Universe.getOrBadRequest(universeUuid01);
-    Universe universe2 = Universe.getOrBadRequest(universeUuid2);
-    assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
-    assertEquals(false, universe01.getUniverseDetails().installNodeAgent);
-    assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
-    nodeAgentEnabler.markUniverses();
-    universe1 = Universe.getOrBadRequest(universeUuid1);
-    universe01 = Universe.getOrBadRequest(universeUuid01);
-    universe2 = Universe.getOrBadRequest(universeUuid2);
-    assertEquals(true, universe1.getUniverseDetails().installNodeAgent);
-    assertEquals(true, universe01.getUniverseDetails().installNodeAgent);
-    assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
-  }
-
-  @Test
   public void testMarkUniversesOnInstallNodeAgentSubTask() {
     provider1.getDetails().setEnableNodeAgent(true);
     provider1.save();
     provider2.getDetails().setEnableNodeAgent(true);
     provider2.save();
-    settableRuntimeConfigFactory
-        .forProvider(provider1)
-        .setValue(ProviderConfKeys.enableNodeAgentClient.getKey(), String.valueOf(false));
     Universe universe1 = Universe.getOrBadRequest(universeUuid1);
     Universe universe2 = Universe.getOrBadRequest(universeUuid2);
     assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
@@ -308,7 +288,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
     assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
     // Client is disabled.
-    assertEquals(0, group1.getSubTaskCount());
+    assertEquals(3, group1.getSubTaskCount());
     // Node agent installation tasks should be added instead of marking.
     assertEquals(3, group2.getSubTaskCount());
   }

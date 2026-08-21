@@ -16,6 +16,7 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -63,6 +64,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.ValidateFlagValueResponse;
 import org.yb.client.YBClient;
 import play.Environment;
 
@@ -181,6 +183,7 @@ public class GFlagsValidation {
       xmlModule.setDefaultUseWrapper(false);
       XmlMapper xmlMapper = new XmlMapper(xmlModule);
       AllGFlags data = xmlMapper.readValue(flagStream, AllGFlags.class);
+      setRestartInfo(data.flags);
       if (mostUsedGFlags) {
         InputStream inputStream =
             environment.resourceAsStream("gflags_metadata/most_used_gflags.json");
@@ -545,12 +548,17 @@ public class GFlagsValidation {
     Map<String, GFlagDetails> allGFlagsMap =
         extractGFlags(version, serverType.name(), false).stream()
             .collect(Collectors.toMap(flagDetails -> flagDetails.name, Function.identity()));
+    Set<String> undefokGFlags = GFlagsUtil.extractUndefokFlags(flags);
     for (Map.Entry<String, String> entry : flags.entrySet()) {
       String flag = entry.getKey();
-      if (!allGFlagsMap.containsKey(flag)) {
+      if (!undefokGFlags.contains(flag) && !allGFlagsMap.containsKey(flag)) {
         throw new PlatformServiceException(BAD_REQUEST, flag + " is not present in metadata.");
       }
       GFlagDetails flagDetail = allGFlagsMap.get(flag);
+      // flag details can be null for undefok flags
+      if (undefokGFlags.contains(flag) && flagDetail == null) {
+        continue;
+      }
       if (isAutoFlag(flagDetail) && !flagDetail.initial.equals(entry.getValue())) {
         filteredList.put(entry.getKey(), entry.getValue());
       }
@@ -563,6 +571,23 @@ public class GFlagsValidation {
       return new HashSet<>();
     }
     return new HashSet<>(Arrays.asList(StringUtils.splitPreserveAllTokens(flagDetails.tags, ",")));
+  }
+
+  /**
+   * Sets requiresRestart on each flag from its tags. In YugabyteDB metadata, the "runtime" tag
+   * means the flag can be changed at runtime (no process restart); absence of "runtime" means the
+   * flag is read only at startup, so a restart (or rolling restart) is required for changes to take
+   * effect.
+   */
+  private void setRestartInfo(List<GFlagDetails> flags) {
+    if (flags == null) {
+      return;
+    }
+    for (GFlagDetails flag : flags) {
+      boolean isRuntime =
+          getFlagsTagSet(flag).stream().anyMatch(t -> "runtime".equalsIgnoreCase(t.trim()));
+      flag.requiresRestart = !isRuntime;
+    }
   }
 
   public boolean isAutoFlag(GFlagDetails flag) {
@@ -699,29 +724,37 @@ public class GFlagsValidation {
     }
   }
 
-  public Map<String, String> validateGFlags(
-      YBClient client, Map<String, String> mergedGFlags, ServerType serverType) {
-    Map<String, String> serverGFlagsValidationErrors = new HashMap<String, String>();
-    for (Map.Entry<String, String> entry : mergedGFlags.entrySet()) {
-      String flagName = entry.getKey();
-      String flagValue = entry.getValue();
-      try {
-        client.validateFlagValue(flagName, flagValue);
-        // Success: no exception means valid flag.
-      } catch (Exception e) {
-        serverGFlagsValidationErrors.put(
-            flagName,
-            "On server type: "
-                + serverType.toString()
-                + ", Error validating flag "
-                + flagName
-                + " with value: "
-                + flagValue
-                + " "
-                + e);
-      }
+  /**
+   * Validates all flags in a single batch RPC sent directly to the given server process.
+   *
+   * <p>This method never throws on validation failures, errors are returned in the map. An
+   * exception is only thrown for RPC-level failures (e.g. the server is unreachable).
+   *
+   * @param client an open YBClient
+   * @param hp host and port of the target server — tserver (9100) or master (7100)
+   * @param flags all flags to validate
+   * @param serverType used only for labelling errors in the returned map
+   * @return map of flag name → error message; empty map means all flags passed
+   */
+  public Map<String, String> validateGFlagsViaRpc(
+      YBClient client, HostAndPort hp, Map<String, String> flags, ServerType serverType)
+      throws Exception {
+    ValidateFlagValueResponse response = client.validateFlagValues(hp, flags);
+    if (!response.hasErrors()) {
+      return new HashMap<>();
     }
-    return serverGFlagsValidationErrors;
+    Map<String, String> errors = new HashMap<>();
+    for (Map.Entry<String, String> entry : response.getErrors().entrySet()) {
+      errors.put(
+          entry.getKey(),
+          "On server type: "
+              + serverType.toString()
+              + ", Error validating flag "
+              + entry.getKey()
+              + ": "
+              + entry.getValue());
+    }
+    return errors;
   }
 
   /** Structure to capture GFlags metadata from xml file. */
@@ -791,11 +824,12 @@ public class GFlagsValidation {
       sb.append(", clusterUuid=").append(clusterUuid);
 
       if (masterGFlagsErrors != null && !masterGFlagsErrors.isEmpty()) {
-        sb.append(", masterGFlagsErrors=").append(masterGFlagsErrors);
+        sb.append(", masterGFlagsErrors=").append(masterGFlagsErrors.toString().replace("\n", " "));
       }
 
       if (tserverGFlagsErrors != null && !tserverGFlagsErrors.isEmpty()) {
-        sb.append(", tserverGFlagsErrors=").append(tserverGFlagsErrors);
+        sb.append(", tserverGFlagsErrors=")
+            .append(tserverGFlagsErrors.toString().replace("\n", " "));
       }
 
       sb.append("}");

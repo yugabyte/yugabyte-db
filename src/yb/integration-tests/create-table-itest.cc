@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include "yb/client/namespace_info.h"
+
 #include "yb/integration-tests/create-table-itest-base.h"
 
 #include "yb/common/colocated_util.h"
@@ -606,7 +608,10 @@ TEST_F(CreateTableITest, TestTransactionStatusTableCreation) {
       // TODO(#27854): We get stuck with object locking when there is no system.transactions
       // table. Disabling it for now until we fix the underlying issue.
       "--enable_object_locking_for_table_locks=false",
+      // Concurrent DDL requires object locking, so keep the two flags consistent.
+      "--ysql_enable_concurrent_ddl=false",
   };
+  AppendFlagToAllowedPreviewFlagsCsv(tserver_flags, "ysql_enable_concurrent_ddl");
   // We also need to enable ysql.
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 1, 1, true));
 

@@ -2748,8 +2748,9 @@ ERROR:  extension "pg_stat_statements" already exists
 ALTER EXTENSION pg_stat_statements UPDATE TO '1.13-yb-1.0'; -- YB: change to latest version number
 WARNING:  AUDIT: SESSION,4,1,DDL,ALTER EXTENSION,,,ALTER EXTENSION pg_stat_statements UPDATE TO '1.13-yb-1.0',<not logged>
 NOTICE:  version "1.13-yb-1.0" of extension "pg_stat_statements" is already installed
-DROP EXTENSION pg_stat_statements;
-WARNING:  AUDIT: SESSION,5,1,DDL,DROP EXTENSION,,,DROP EXTENSION pg_stat_statements,<not logged>
+DROP EXTENSION pg_stat_statements CASCADE; -- YB: CASCADE drops the gv$ global-view wrappers
+NOTICE:  drop cascades to 2 other objects
+WARNING:  AUDIT: SESSION,5,1,DDL,DROP EXTENSION,,,DROP EXTENSION pg_stat_statements CASCADE,<not logged>
 SET pgaudit.log_level = 'notice';
 -- Check that password redaction works with CREATE/ALTER USER MAPPING
 CREATE EXTENSION postgres_fdw;

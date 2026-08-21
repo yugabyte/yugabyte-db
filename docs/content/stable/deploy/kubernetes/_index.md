@@ -6,6 +6,8 @@ description: Deploy YugabyteDB clusters natively on Kubernetes with various prov
 headcontent: Deploy YugabyteDB natively on Kubernetes
 aliases:
   - /deploy/kubernetes/
+  - /stable/deploy/public-clouds/azure/aks/
+  - /stable/deploy/public-clouds/gcp/gke/
 menu:
   stable:
     identifier: deploy-kubernetes

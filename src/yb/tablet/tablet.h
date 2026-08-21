@@ -88,6 +88,7 @@ DECLARE_bool(TEST_docdb_log_write_batches);
 
 namespace yb {
 
+class Cgroup;
 class FsManager;
 class MetricEntity;
 
@@ -102,15 +103,23 @@ YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
-inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(std::to_underlying(lhs) | std::to_underlying(rhs));
 }
 
-inline FlushFlags operator&(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator&(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(std::to_underlying(lhs) & std::to_underlying(rhs));
 }
 
-inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator~(FlushFlags a) {
+  return static_cast<FlushFlags>(~std::to_underlying(a));
+}
+
+constexpr inline FlushFlags operator-(FlushFlags a, FlushFlags b) {
+  return a & ~b;
+}
+
+constexpr inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
   return (lhs & rhs) != FlushFlags::kNone;
 }
 
@@ -224,7 +233,8 @@ class Tablet : public AbstractTablet,
       const HybridTime read_time,
       const CoarseTimePoint deadline,
       const bool is_main_table,
-      std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* consistency_stats);
@@ -232,14 +242,16 @@ class Tablet : public AbstractTablet,
   Status FlushVerifyBatchIfRequired(
       const HybridTime read_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* index_consistency_states);
   Status FlushVerifyBatch(
       const HybridTime read_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* index_consistency_states);
@@ -267,6 +279,7 @@ class Tablet : public AbstractTablet,
       const std::vector<qlexpr::IndexInfo>& indexes,
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -276,11 +289,13 @@ class Tablet : public AbstractTablet,
   Status FlushWriteIndexBatchIfRequired(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
   Status FlushWriteIndexBatch(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      const ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -295,10 +310,19 @@ class Tablet : public AbstractTablet,
   // This transitions from kBootstrapping to kOpen state.
   void MarkFinishedBootstrapping();
 
+  // Starts tablet subsystems that must not run until the tablet is fully created and published by
+  // its TabletPeer (in particular vector index backfill, which resolves transaction statuses and
+  // therefore needs the TabletPeer to be able to serve safe time). Called from TabletPeer::Start.
+  void Start();
+
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
   // Returns true if it was the first call to StartShutdown.
-  bool StartShutdown();
+  // On the first call this also starts shutting the RocksDB instances down (StartShutdownStorages),
+  // so that writers parked in a RocksDB write stall are released before the peer strand is drained.
+  // See issue #32211. The resulting operation pauses are kept in shutdown_op_pauses_ until the
+  // RocksDB instances are destroyed in CompleteShutdownStorages.
+  bool StartShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
   bool IsShutdownRequested() const {
     return shutdown_requested_.load(std::memory_order::acquire);
   }
@@ -308,10 +332,9 @@ class Tablet : public AbstractTablet,
   // - transaction participant
   // - RocksDB instances
   // - etc.
-  // By default, RocksDB shutdown flushes the memtable. This behavior is overriden depending on the
-  // provided value of disable_flush_on_shutdown.
-  // If abort_ops is specified, aborts pending RocksDB operations that are abortable.
-  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
+  // StartShutdown (which controls flush-on-shutdown and pending-operation aborting) must have been
+  // called first; CompleteShutdown consumes the operation pauses it produced.
+  void CompleteShutdown();
 
   // Triggered by a corresponding tablet peer when it has been moved into RUNNING state.
   Status CompleteStartup();
@@ -336,21 +359,41 @@ class Tablet : public AbstractTablet,
       docdb::ApplyTransactionState* stream_state);
 
   // Apply all of the row operations associated with this transaction.
+  //
+  // `apply_to_storages` selects which storages this write is materialized into -- the regular
+  // RocksDB (bit 0) and vector indexes (bits 1+); there is no intents-DB bit. It is honored only
+  // on the non-transactional (xCluster external-apply) path, where NonTransactionalBatchWriter
+  // skips applying to any storage whose bit is clear -- the regular-DB Put, and (via
+  // VectorIndexesUpdater) each vector index. Tablet-bootstrap replay narrows it -- clearing the
+  // bit for any storage a fused external WRITE_OP is already durably flushed to, so that storage
+  // is not written again (GH#31899); every other caller passes All(). The argument has no default,
+  // so each caller states its intent explicitly.
   Status ApplyRowOperations(
       WriteOperation* operation,
-      const docdb::StorageSet& apply_to_storages = {});
+      const docdb::StorageSet& apply_to_storages,
+      bool skip_opid_update = false);
 
+  Status UpdateOpIdForOperation(WriteOperation* operation);
+
+  Status WriteTransactionMetadataUpdate(
+      OpId op_id, HybridTime write_hybrid_time, Slice transaction_id,
+      const LWTransactionMetadataPB& metadata_update) override;
+
+  // `apply_to_storages`: see ApplyRowOperations.
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
-      const docdb::StorageSet& apply_to_storages = {});
+      const docdb::StorageSet& apply_to_storages,
+      bool skip_opid_update = false);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
+  // `apply_to_storages`: see ApplyRowOperations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers& frontiers,
-      HybridTime write_hybrid_time, HybridTime local_hybrid_time);
+      HybridTime write_hybrid_time, HybridTime local_hybrid_time,
+      const docdb::StorageSet& apply_to_storages);
 
   void WriteToRocksDB(
       const storage::UserFrontiers& frontiers,
@@ -445,9 +488,13 @@ class Tablet : public AbstractTablet,
       const TableId& table_id = "");
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
-  Status Flush(FlushMode mode,
-               FlushFlags flags = FlushFlags::kAllDbs,
-               int64_t ignore_if_flushed_after_tick = rocksdb::FlushOptions::kNeverIgnore);
+  Status Flush(
+      FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick,
+      rocksdb::FlushReason rocksdb_flush_reason);
+
+  Status Flush(FlushMode mode, FlushFlags flags, rocksdb::FlushReason rocksdb_flush_reason);
+
+  Status Flush(FlushMode mode, rocksdb::FlushReason rocksdb_flush_reason);
 
   Status WaitForFlush();
 
@@ -631,6 +678,9 @@ class Tablet : public AbstractTablet,
     return intents_db_.get();
   }
 
+  // Set per-task cgroup on both regular and intents RocksDB instances for per-DB compaction mode.
+  void SetRocksDbTaskCgroup(Cgroup* cgroup);
+
   // The only way to make any conclusion that a tablet is a product of a split is to check its key
   // bounds are initialized as it is supposed that these key bounds are setup during tablet split.
   const docdb::KeyBounds& key_bounds() const {
@@ -711,6 +761,10 @@ class Tablet : public AbstractTablet,
   HybridTime Get(HybridTime lower_bound);
 
   bool ShouldApplyWrite();
+
+  // Returns true if any backing RocksDB (regular_db or intents_db) is in a hard write stop.
+  // Lightweight check on atomic counters, safe to call from outside consensus locks.
+  bool AreWritesStopped();
 
   Status TEST_SwitchMemtable();
 
@@ -907,6 +961,11 @@ class Tablet : public AbstractTablet,
       bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
+  Result<TransactionOperationContext> CreateTransactionOperationContext(
+      const LWTransactionMetadataPB& transaction_metadata,
+      bool is_ysql_catalog_table,
+      const LWSubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
+
   bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
 
   // Store the new AutoFlags config to disk and then applies it. Error Status is returned only for
@@ -954,10 +1013,18 @@ class Tablet : public AbstractTablet,
   // `max_num_ranges` and adds to `keys_buffer` a list of these ranges boundary keys (depending on
   // is_forward).
   //
-  // It is guaranteed that returned keys are at most max_key_length bytes.
-  // Both lower_bound_key and upper_bound_key are exclusive. They are adjusted by this function
-  // to be within tablet boundaries (key_bounds_ if set or based on metadata()->partition() if
-  // key_bounds_ is not set) and to be no longer than max_key_length.
+  // It is guaranteed that returned keys are:
+  // - valid encoded DocKeys or encoded partition keys (see GetEncodedPartitionKey in
+  //   dockv/partition.h).
+  // - at most max_key_length bytes.
+  //
+  // Both lower_bound_key and upper_bound_key are exclusive and should be valid encoded DocKeys or
+  // encoded partition keys (see GetEncodedPartitionKey in dockv/partition.h).
+  // They are adjusted by this function to be within the following boundaries:
+  // - For a colocated table: the colocated_table_id key prefix
+  // - For non-colocated: tablet partition bounds.
+  // Note: the max_key_length cap above applies to the full encoded DocKeys retrieved from the data;
+  // the terminating tablet boundary key is returned as-is and is not length-capped.
   //
   // If `is_forward` is set, list will consist of:
   // - 1st_range_boundary_key \in (adjusted_lower_bound_key, adjusted_upper_bound_key)
@@ -1008,6 +1075,10 @@ class Tablet : public AbstractTablet,
     TEST_sleep_before_delete_intents_file_ = value;
   }
 
+  void TEST_SetDisableFlushOnShutdown(bool value) {
+    TEST_disable_flush_on_shutdown_ = value;
+  }
+
   // Reads the current value of FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and
   // updates both regular db and intents db rate limiter speed.
   void RefreshCompactFlushRateLimitBytesPerSec();
@@ -1056,6 +1127,10 @@ class Tablet : public AbstractTablet,
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
+
+  Result<TransactionOperationContext> CreateTransactionOperationContext(
+      const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
+      const LWSubTransactionMetadataPB* subtransaction_metadata) const;
 
   // Pause new read/write operations that are blocking/not blocking start of RocksDB shutdown and
   // wait for all such pending read/write operations to finish.
@@ -1128,7 +1203,18 @@ class Tablet : public AbstractTablet,
   Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;
 
   Status ProcessPgsqlGetTableKeyRangesRequest(
-      const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
+      const LWPgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
+
+  template <class TransactionMetadata, class SubTransactionMetadata>
+  Result<TransactionOperationContext> DoCreateTransactionOperationContext(
+      const TransactionMetadata& transaction_metadata,
+      bool is_ysql_catalog_table,
+      const SubTransactionMetadata* subtransaction_metadata) const;
+
+  template <class SubTransactionPB>
+  Result<TransactionOperationContext> DoCreateTransactionOperationContext(
+      const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
+      const SubTransactionPB* subtransaction_metadata) const;
 
   template <class Out>
   void TEST_DocDBDumpToContainerImpl(
@@ -1224,6 +1310,11 @@ class Tablet : public AbstractTablet,
   // prevent race conditions between destructing the RocksDB in-memory instance and read/write
   // operations.
   std::atomic_bool shutdown_requested_{false};
+
+  // Read/write operation pauses produced by StartShutdownStorages, populated by StartShutdown and
+  // consumed by CompleteShutdown. They keep operations paused while the RocksDB instances are being
+  // torn down, so they must stay alive across the gap between StartShutdown and CompleteShutdown.
+  TabletScopedRWOperationPauses shutdown_op_pauses_;
 
   // This is a special atomic counter per tablet that increases monotonically.
   // It is like timestamp, but doesn't need locks to read or update.
@@ -1391,6 +1482,7 @@ class Tablet : public AbstractTablet,
 
   MonoDelta TEST_sleep_before_apply_intents_;
   MonoDelta TEST_sleep_before_delete_intents_file_;
+  std::atomic<bool> TEST_disable_flush_on_shutdown_{false};
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

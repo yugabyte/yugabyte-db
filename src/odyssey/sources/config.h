@@ -97,8 +97,14 @@ struct od_config {
 	int yb_max_pools;
 	int yb_enable_prep_stmt_close;
 	int TEST_yb_auth_delay_ms;
+	int yb_wait_for_rfq_on_sync;
+	int yb_enable_dealloc_reconciliation;
 	enum yb_od_alter_guc_adoption yb_alter_guc_adoption_strategy;
 	int yb_alter_guc_stale_backend_ttl_ms;
+	_Atomic int yb_max_prepared_statements;
+	_Atomic int yb_tcmalloc_gc_interval;
+	_Atomic int yb_enable_parse_queue_tracking;
+	_Atomic int yb_backend_drain_timeout_ms;
 };
 
 void od_config_init(od_config_t *);

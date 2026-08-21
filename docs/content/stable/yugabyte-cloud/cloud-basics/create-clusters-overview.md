@@ -20,7 +20,7 @@ The following best practices are recommended for production clusters.
 | [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Aeon supports AWS, Azure, and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
 | [Fault tolerance](#fault-tolerance) | Region or Availability zone (AZ) level - minimum of three nodes across multiple regions or AZs. |
 | [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>Clusters support 15 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 15 x 3 x 4 = 180 connections. |
-| [YugabyteDB version](#yugabytedb-version) | Use the **Production** release track. |
+| [YugabyteDB version](#yugabytedb-version) | Use the **Extended** release track. |
 | [Staging cluster](#staging-cluster) | Use a staging cluster to test application compatibility with database updates before upgrading your production cluster. |
 | [Backups](#backups) | Use the default backup schedule (daily, with 8 day retention). |
 | [Security and authorization](#security) | YugabyteDB Aeon clusters are secure by default. Deploy clusters in a VPC and configure either peering or a private link. Refer to [VPC network](../cloud-vpcs/). After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [Connect to clusters](../../cloud-connect/). |
@@ -97,7 +97,7 @@ Cloud providers offer a variety of instance types across the regions where they 
 
 YugabyteDB achieves resiliency by replicating data across fault domains using the [Raft consensus protocol](../../../architecture/docdb-replication/replication/). The fault domain can be at the level of individual nodes, availability zones, or entire regions.
 
-The _fault tolerance_ determines how resilient the cluster is to domain (that is, node, zone, or region) outages, whether planned or unplanned. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the Raft protocol works, providing a fault tolerance of `ft` requires replicating data across `2ft + 1` domains. For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
+The [fault tolerance](/stable/architecture/key-concepts/#fault-tolerance) determines how resilient the cluster is to domain (that is, node, zone, or region) outages, whether planned or unplanned. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the Raft protocol works, providing a fault tolerance of `ft` requires replicating data across `2ft + 1` domains. For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
 
 With a fault tolerant cluster, planned outages such as maintenance and upgrades are performed using a rolling restart, meaning your workloads are not interrupted.
 
@@ -110,6 +110,7 @@ YugabyteDB Aeon provides the following configurations for fault tolerance.
 |                 | 3 Node outages   | 7 | 1 |
 | **Zone**        | 1 Zone outage    | 3 across 3 zones   | 3 |
 | **Region**      | 1 Region outage  | 3 across 3 regions | 3 |
+|                 | 1 Region outage and<br>2 Zone outages | 5 across 3 regions (RF5) | 5 |
 |                 | 2 Region outages | 5 across 5 regions | 5 |
 |                 | 3 Region outages | 7 across 7 regions | 7 |
 
@@ -122,15 +123,21 @@ For application development and testing, you can set fault tolerance to **None**
 #### Region
 
 - YugabyteDB can continue to do reads and writes even in case of a cloud region outage.
-- Minimum of 3 nodes across 3 regions, 5 nodes across 5 regions, or 7 nodes across 7 regions.
+- Minimum of 3 nodes across 3 regions, 5 nodes across 3 regions, 5 nodes across 5 regions, or 7 nodes across 7 regions.
 - Add or remove nodes in increments of 1 per region; all regions have the same number of nodes. For example, for a fault tolerance of 2 regions, you must scale in increments of 5 (one node per region).
+
+Aeon also supports the [Global database pattern](/stable/develop/build-global-apps/global-database/), with 5 availability zones across 3 regions (two regions have 2 zones while the third region has a single zone). This configuration is resilient to _two zone outages_ and provides quicker failover; with two replicas in the [preferred region](../create-clusters/create-clusters-multisync/#preferred-region), when a leader fails, a local follower can be elected as a leader, rather than a follower in a different region. The cluster is scaled in increments of 2-2-1 nodes per region. When setting the preferred region, set it to one of the regions with two zones.
 
 #### Availability Zone
 
 - YugabyteDB can continue to do reads and writes even in case of a cloud availability zone outage.
 - Minimum of 3 nodes across 3 availability zones for a fault tolerance of 1 zone.
-- Because cloud providers typically provide only 3-4 availability zones per region, availability zone fault tolerance is limited to 1 zone outage (anything more requires more zones than are available in any typical region).
-- Add or remove nodes in increments of 3 (1 node per zone); all zones have the same number of nodes.
+
+Zones can be placed in a single region, or across 3 regions.
+
+In the case of single region, because cloud providers typically provide only 3-4 availability zones per region, fault tolerance is limited to 1 zone outage (anything more requires more zones than are available in any typical region). You add or remove nodes in increments of 3 (1 node per zone); all zones have the same number of nodes.
+
+YugabyteDB Aeon also provides a configuration resilient to 2 zone outages, with a minimum of 5 nodes, across 5 availability zones, across 3 regions; two regions have 2 zones while the third region has a single zone. In this case, you scale the cluster in increments of 2-2-1 nodes per region. This configuration is also resilient to 1 region outage.
 
 #### Node
 
@@ -165,21 +172,20 @@ Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
 
 ### YugabyteDB version
 
-By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
+Clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
 
-- Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Aeon.
-- Innovation - Updated more frequently, providing quicker access to new features.
-- Early Access - Updated more frequently, providing access to the most recent stable YugabyteDB release.
+- Extended - Has less frequent updates, using mature [LTS releases](../../../releases/versioning/#stable-release-support-policy) that have been tested longer in YugabyteDB Aeon.
+- Rapid - Updated more frequently, providing quicker access to new features. Rapid can include [STS and LTS releases](../../../releases/versioning/#stable-release-support-policy), depending on which is more recent.
 
-If you need a feature from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview is also available for Sandbox clusters.)
+{{< note title="Production, Innovation, and Early Access tracks" >}}
+
+Clusters previously on the Innovation and Production tracks are now on the Extended track.
+
+Clusters previously on the Preview and Early Access tracks are now on the Rapid track.
+
+{{< /note >}}
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
-
-{{< warning title="Important" >}}
-
-There is currently no migration path from a preview release to a stable release.
-
-{{< /warning >}}
 
 ### Staging cluster
 
@@ -213,6 +219,11 @@ YugabyteDB Aeon performs full cluster (all namespaces) level backups, and the ba
 Clusters are secure by default. You need to explicitly allow access to clusters by adding IP addresses of clients connecting to the cluster to the cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
 
 If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. If you are using peering (AWS and GCP), you also need to add the CIDR ranges of peered application VPCs to your cluster IP allow list. If you are using a private link (AWS and Azure), you do not need to add addresses to the IP allow list.
+
+{{< note title="Note" >}}
+Currently, VPC peering in YugabyteDB Aeon only supports VPCs with a single CIDR block. If your VPCs have multiple CIDR blocks, use a private service endpoint.
+{{< /note >}}
+
 
 Multi-region clusters, or clusters in Azure, must be deployed in VPCs; in AWS, each region or read replica must be deployed in its own VPC.
 

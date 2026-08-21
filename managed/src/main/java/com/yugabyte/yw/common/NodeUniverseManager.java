@@ -41,7 +41,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
@@ -74,8 +73,7 @@ public class NodeUniverseManager extends DevopsBase {
   public void downloadNodeLogs(NodeDetails node, Universe universe, String targetLocalFile) {
     universeLock.acquireLock(universe.getUniverseUUID());
     try {
-      Optional<NodeAgent> optional =
-          maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
+      Optional<NodeAgent> optional = maybeUpgradeAndGetNodeAgent(universe, node);
       if (optional.isPresent()) {
         nodeActionRunner.downloadLogs(
             optional.get(), node, getYbHomeDir(node, universe), targetLocalFile, DEFAULT_CONTEXT);
@@ -103,7 +101,7 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   public String getRemoteTmpDir(NodeDetails node, Universe universe) {
-    String remoteTmpDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    String remoteTmpDir = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
     if (remoteTmpDir == null || remoteTmpDir.isEmpty()) {
       remoteTmpDir = "/tmp";
     }
@@ -151,8 +149,7 @@ public class NodeUniverseManager extends DevopsBase {
           getRemoteTmpDir(node, universe)
               + "/"
               + Paths.get(filesListFilePath).getFileName().toString();
-      Optional<NodeAgent> optional =
-          maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
+      Optional<NodeAgent> optional = maybeUpgradeAndGetNodeAgent(universe, node);
       if (optional.isPresent()) {
         nodeActionRunner.downloadFile(
             optional.get(),
@@ -201,10 +198,7 @@ public class NodeUniverseManager extends DevopsBase {
       Set<String> paths,
       String targetLocalPath) {
     String nodeTmpDir = getRemoteTmpDir(node, universe);
-    Provider provider =
-        Provider.get(
-            customerUUID,
-            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider = Util.getProviderForNode(node, universe);
     ShellProcessContext context =
         ShellProcessContext.builder().sshUser(provider.getDetails().sshUser).build();
 
@@ -224,7 +218,9 @@ public class NodeUniverseManager extends DevopsBase {
         node.getNodeName());
 
     // Collect all files in a compressed archive in the tmp dir.
-    cmds = new ArrayList<>(Arrays.asList("sudo", "tar", "-czhf"));
+    // --warning=no-file-changed: live logs (e.g. /var/log/messages) can change during read; GNU tar
+    // otherwise exits 1 and the support bundle skips system logs.
+    cmds = new ArrayList<>(Arrays.asList("sudo", "tar", "--warning=no-file-changed", "-czhf"));
     String pathToTar = nodeTmpDir + "/root_files.tar.gz";
     cmds.add(pathToTar);
     cmds.addAll(paths);
@@ -247,7 +243,7 @@ public class NodeUniverseManager extends DevopsBase {
     Optional<NodeAgent> optional =
         context.isUseSshConnectionOnly()
             ? Optional.empty()
-            : maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
+            : maybeUpgradeAndGetNodeAgent(universe, node);
     if (optional.isPresent()) {
       nodeActionRunner.copyFile(optional.get(), remoteFile, localFile, DEFAULT_CONTEXT);
     } else {
@@ -302,7 +298,7 @@ public class NodeUniverseManager extends DevopsBase {
     Optional<NodeAgent> optional =
         context.isUseSshConnectionOnly()
             ? Optional.empty()
-            : maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
+            : maybeUpgradeAndGetNodeAgent(universe, node);
     if (optional.isPresent()) {
       nodeActionRunner.uploadFile(optional.get(), sourceFile, targetFile, permissions, context);
     } else {
@@ -341,7 +337,7 @@ public class NodeUniverseManager extends DevopsBase {
     Optional<NodeAgent> optional =
         context.isUseSshConnectionOnly()
             ? Optional.empty()
-            : maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
+            : maybeUpgradeAndGetNodeAgent(universe, node);
     if (optional.isPresent()) {
       return nodeActionRunner.runCommand(optional.get(), command, context, useBash);
     }
@@ -405,7 +401,7 @@ public class NodeUniverseManager extends DevopsBase {
     Optional<NodeAgent> optional =
         context.isUseSshConnectionOnly()
             ? Optional.empty()
-            : maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
+            : maybeUpgradeAndGetNodeAgent(universe, node);
     if (optional.isPresent()) {
       return nodeActionRunner.runScript(optional.get(), localScriptPath, params, context);
     }
@@ -517,7 +513,8 @@ public class NodeUniverseManager extends DevopsBase {
       boolean authEnabled,
       boolean cpEnabled) {
     Cluster curCluster = universe.getCluster(node.placementUuid);
-    if (curCluster.userIntent.providerType == CloudType.local) {
+    Provider provider = Util.getProviderForNode(node, universe);
+    if (provider.getCloudCode() == CloudType.local) {
       return localNodeUniverseManager.runYsqlCommand(
           node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled);
     }
@@ -538,7 +535,7 @@ public class NodeUniverseManager extends DevopsBase {
     command.add("-c");
     List<String> bashCommand = new ArrayList<>();
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
-    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
     if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
       bashCommand.add("export sslmode=\"require\";");
     }
@@ -597,10 +594,7 @@ public class NodeUniverseManager extends DevopsBase {
    * @return home directory
    */
   public String getYbHomeDir(NodeDetails node, Universe universe) {
-    UUID providerUUID =
-        UUID.fromString(
-            universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUUID);
+    Provider provider = Util.getProviderForNode(node, universe);
     return provider.getYbHome();
   }
 
@@ -613,46 +607,15 @@ public class NodeUniverseManager extends DevopsBase {
     return "/tmp";
   }
 
-  public Optional<NodeAgent> maybeUpgradeAndGetNodeAgent(
-      String nodeIp, Provider provider, @Nullable Universe universe) {
-    if (provider.getCloudCode() == CloudType.kubernetes) {
-      log.debug("Node agent is not supported on provider type {}", provider.getCloudCode());
-      return Optional.empty();
-    }
-    Optional<NodeAgent> optional =
-        getNodeAgentClient().maybeGetNodeAgent(nodeIp, provider, universe);
-    if (!optional.isPresent()) {
-      log.debug(
-          "Node agent is not enabled for node {} with provider {}", nodeIp, provider.getUuid());
-      return optional;
-    }
-    NodeAgent nodeAgent = optional.get();
-    if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
-      nodeAgent.refresh();
-    }
-    return optional;
-  }
-
-  public Optional<NodeAgent> maybeUpgradeAndGetNodeAgent(
-      Universe universe, NodeDetails node, boolean checkJavaClient) {
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+  public Optional<NodeAgent> maybeUpgradeAndGetNodeAgent(Universe universe, NodeDetails node) {
     CloudType cloudType = universe.getNodeDeploymentMode(node);
-    if (cloudType == CloudType.kubernetes) {
+    if (!NodeAgentClient.isCloudTypeSupported(cloudType)) {
       log.debug("Node agent is not supported on provider type {}", cloudType);
       return Optional.empty();
     }
-    // Check the feature flag to either enable or disable Java client.
-    if (checkJavaClient
-        && !confGetter.getConfForScope(
-            universe, UniverseConfKeys.nodeAgentNodeActionUseJavaClient)) {
-      log.debug("Node agent is not enabled for java client");
-      return Optional.empty();
-    }
-    return maybeUpgradeAndGetNodeAgent(
-        node.cloudInfo.private_ip,
-        Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider)),
-        universe);
+    // Calls hitting here may or may not have node agent. Java client calls already validate the
+    // presence of node agents.
+    return getNodeAgentClient().maybeGetAndUpgrade(node.cloudInfo.private_ip);
   }
 
   private void addConnectionParams(
@@ -664,6 +627,8 @@ public class NodeUniverseManager extends DevopsBase {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
     CloudType cloudType = universe.getNodeDeploymentMode(node);
+    UUID providerUUID = cluster.getProviderUUIDForNode(node);
+    String accessKeyCode = cluster.userIntent.getAccessKeyCodeForProvider(providerUUID);
     if (cloudType == CloudType.kubernetes) {
       Map<String, String> k8sConfig =
           KubernetesUtil.getKubernetesConfigPerPod(
@@ -677,35 +642,35 @@ public class NodeUniverseManager extends DevopsBase {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(k8sConfig)));
     } else if (cloudType != Common.CloudType.unknown) {
-      // No need to check the feature flag as this is not for java client.
       Optional<NodeAgent> optional =
           context.isUseSshConnectionOnly()
               ? Optional.empty()
-              : maybeUpgradeAndGetNodeAgent(universe, node, false /*check feature flag*/);
+              : maybeUpgradeAndGetNodeAgent(universe, node);
       if (optional.isPresent()) {
         NodeAgent nodeAgent = optional.get();
         commandArgs.add("rpc");
         getNodeAgentClient().addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
-      } else if (!StringUtils.isEmpty(cluster.userIntent.accessKeyCode)) {
-        UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+      } else if (!StringUtils.isEmpty(accessKeyCode)) {
         Provider provider = Provider.getOrBadRequest(providerUUID);
-        AccessKey accessKey =
-            AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
+        AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, accessKeyCode);
         String sshPort = provider.getDetails().sshPort.toString();
-        UUID imageBundleUUID =
-            Util.retreiveImageBundleUUID(
-                universe.getUniverseDetails().arch, cluster.userIntent, provider);
-        if (imageBundleUUID != null) {
-          ImageBundle.NodeProperties toOverwriteNodeProperties =
-              imageBundleUtil.getNodePropertiesOrFail(
-                  imageBundleUUID,
-                  node.cloudInfo.region,
-                  cluster.userIntent.providerType.toString());
-          sshPort = toOverwriteNodeProperties.getSshPort().toString();
+        if (node.sshPortOverride != null) {
+          sshPort = node.sshPortOverride.toString();
+        } else {
+          UUID imageBundleUUID =
+              Util.retreiveImageBundleUUID(
+                  universe.getUniverseDetails().arch, cluster.userIntent, provider);
+          if (imageBundleUUID != null) {
+            ImageBundle.NodeProperties toOverwriteNodeProperties =
+                imageBundleUtil.getNodePropertiesOrFail(
+                    imageBundleUUID, node.cloudInfo.region, cloudType.toString());
+            sshPort = toOverwriteNodeProperties.getSshPort().toString();
+          }
         }
         commandArgs.add("ssh");
         // Default SSH port can be the custom port for custom images.
-        if (StringUtils.isNotBlank(context.getSshUser())
+        if (node.sshPortOverride == null
+            && StringUtils.isNotBlank(context.getSshUser())
             && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
           // In case the custom ssh User is specified in the context, that will be
           // prepare node stage, where the custom sshPort might not be configured yet.
@@ -759,7 +724,8 @@ public class NodeUniverseManager extends DevopsBase {
       context = context.toBuilder().redactedVals(redactedVals).build();
     }
     Cluster curCluster = universe.getCluster(node.placementUuid);
-    if (curCluster.userIntent.providerType == CloudType.local) {
+    CloudType cloudType = curCluster.getProviderCloudType(node);
+    if (cloudType == CloudType.local) {
       return localNodeUniverseManager.executeNodeAction(universe, node, nodeAction, commandArgs);
     }
     return shellProcessHandler.run(commandArgs, context);
@@ -773,7 +739,8 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   /**
-   * Checks if a file or directory exists on the node in the universe
+   * Checks if a file or directory exists on the node in the universe using the default shell
+   * context (runs as the default SSH user).
    *
    * @param node
    * @param universe
@@ -781,22 +748,36 @@ public class NodeUniverseManager extends DevopsBase {
    * @return true if file/directory exists, else false
    */
   public boolean checkNodeIfFileExists(NodeDetails node, Universe universe, String remotePath) {
+    return checkNodeIfFileExists(node, universe, remotePath, DEFAULT_CONTEXT);
+  }
+
+  /**
+   * Checks if a file or directory exists on the node in the universe under the provided shell
+   * context. Callers that supply a non-default linux_user (e.g. the file-collection API) must use
+   * this overload so the existence check runs as the same user as the surrounding operation --
+   * otherwise `test -e` may report missing for files whose parent directory is not traversable by
+   * the default user.
+   *
+   * @param node
+   * @param universe
+   * @param remotePath
+   * @param context shell context controlling the user, timeout, and other execution settings
+   * @return true if file/directory exists, else false
+   */
+  public boolean checkNodeIfFileExists(
+      NodeDetails node, Universe universe, String remotePath, ShellProcessContext context) {
     List<String> params = new ArrayList<>();
     params.add("check_file_exists");
     params.add(remotePath);
 
-    ShellResponse scriptOutput = runScript(node, universe, NODE_UTILS_SCRIPT, params);
+    ShellResponse scriptOutput = runScript(node, universe, NODE_UTILS_SCRIPT, params, context);
 
     if (!scriptOutput.isSuccess()) {
       throw new RuntimeException(
           String.format("Failed to run command. Got error: '%s'", scriptOutput.getMessage()));
     }
 
-    if (scriptOutput.extractRunCommandOutput().trim().equals("1")) {
-      return true;
-    } else {
-      return false;
-    }
+    return scriptOutput.extractRunCommandOutput().trim().equals("1");
   }
 
   /**
@@ -830,6 +811,17 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   /**
+   * Reachability pre-check for per-node platform APIs (run-script, file-collections, ...) that uses
+   * the shared {@code yb.node_script.reachability_check_timeout_sec} runtime flag so a single knob
+   * controls the timeout across all callers.
+   */
+  public boolean isNodeReachable(NodeDetails node, Universe universe) {
+    long timeoutSecs =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeScriptReachabilityCheckTimeoutSec);
+    return isNodeReachable(node, universe, timeoutSecs);
+  }
+
+  /**
    * Gets a map of all the absolute file paths to sizes at a given remote directory
    *
    * @param node
@@ -841,6 +833,17 @@ public class NodeUniverseManager extends DevopsBase {
    */
   public Map<String, Long> getNodeFilePathAndSizes(
       NodeDetails node, Universe universe, String remoteDirPath, int maxDepth, String fileType) {
+    return getNodeFilePathAndSizes(
+        node, universe, remoteDirPath, maxDepth, fileType, DEFAULT_CONTEXT);
+  }
+
+  public Map<String, Long> getNodeFilePathAndSizes(
+      NodeDetails node,
+      Universe universe,
+      String remoteDirPath,
+      int maxDepth,
+      String fileType,
+      ShellProcessContext context) {
     String localTempFilePath =
         getLocalTmpDir() + "/" + UUID.randomUUID().toString() + "-source-files-unfiltered.txt";
     String remoteTempFilePath =
@@ -856,15 +859,15 @@ public class NodeUniverseManager extends DevopsBase {
     findCommandParams.add(fileType);
     findCommandParams.add(remoteTempFilePath);
 
-    runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams).processErrors();
+    runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams, context).processErrors();
     // Download the files list.
-    copyFileFromNode(node, universe, remoteTempFilePath, localTempFilePath);
+    copyFileFromNode(node, universe, remoteTempFilePath, localTempFilePath, context);
 
     // Delete file from remote server after copying to local.
     List<String> removeCommand = new ArrayList<>();
     removeCommand.add("rm");
     removeCommand.add(remoteTempFilePath);
-    runCommand(node, universe, removeCommand);
+    runCommand(node, universe, removeCommand, context);
 
     // Populate the text file into array.
     List<String> nodeFilePathStrings = Arrays.asList();
@@ -948,7 +951,11 @@ public class NodeUniverseManager extends DevopsBase {
 
   public void postProcessInMemoryGFlags(
       Map<String, String> gflags, Universe universe, NodeDetails nodeDetails) {
-    if (universe.getCluster(nodeDetails.placementUuid).userIntent.providerType == CloudType.local) {
+    if (universe
+        .getCluster(nodeDetails.placementUuid)
+        .userIntent
+        .getAllCloudTypes()
+        .contains(CloudType.local)) {
       localNodeUniverseManager.postProcessGFlagsMap(gflags, universe, nodeDetails);
     }
   }

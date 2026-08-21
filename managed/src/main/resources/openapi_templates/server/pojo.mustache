@@ -4,10 +4,15 @@ import {{javaxPackage}}.validation.constraints.*;
 import {{javaxPackage}}.validation.Valid;
 {{/useBeanValidation}}
 {{^vendorExtensions.x-java-type}}
+{{#vendorExtensions.x-data-container}}
+import io.ebean.PagedList;
+{{/vendorExtensions.x-data-container}}
+{{^vendorExtensions.x-data-container}}
 import play.libs.Files.TemporaryFile;
 import play.mvc.Http;
 import play.mvc.Http.Request;
 import play.mvc.Result;
+{{/vendorExtensions.x-data-container}}
 {{/vendorExtensions.x-java-type}}
 /**
  * {{#description}}{{.}}{{/description}}{{^description}}{{classname}}{{/description}}
@@ -17,6 +22,10 @@ import play.mvc.Result;
 {{#vendorExtensions.x-class-extra-annotation}}
 {{{vendorExtensions.x-class-extra-annotation}}}
 {{/vendorExtensions.x-class-extra-annotation}}
+{{#vendorExtensions.x-data-container}}
+{{>pojoCustomDataContainer}}
+{{/vendorExtensions.x-data-container}}
+{{^vendorExtensions.x-data-container}}
 public class {{classname}} {{#parent}}extends {{{.}}}{{/parent}} {{#vendorExtensions.x-implements}}{{#-first}}implements {{{.}}}{{/-first}}{{^-first}}, {{{.}}}{{/-first}}{{/vendorExtensions.x-implements}} {
   {{#vars}}
     {{#isEnum}}
@@ -143,6 +152,44 @@ public class {{classname}} {{#parent}}extends {{{.}}}{{/parent}} {{#vendorExtens
   }
   {{/vendorExtensions.x-java-type}} 
   {{/vars}}
+{{! Fluent overrides: iterate parentVars (AbstractJavaCodegen), not readWriteVars/isOverridden. }}
+  {{#parent}}
+  {{#parentVars}}
+  {{^isReadOnly}}
+  @Override
+  {{#vendorExtensions.x-java-type}}
+  public {{classname}} {{name}}({{{vendorExtensions.x-java-type}}} {{name}}) {
+    super.{{name}}({{name}});
+    return this;
+  }
+
+  {{/vendorExtensions.x-java-type}}
+  {{^vendorExtensions.x-java-type}}
+  public {{classname}} {{name}}({{{datatypeWithEnum}}} {{name}}) {
+    super.{{name}}({{name}});
+    return this;
+  }
+
+  {{/vendorExtensions.x-java-type}}
+  {{#isArray}}
+
+  @Override
+  public {{classname}} add{{nameInPascalCase}}Item({{{items.datatypeWithEnum}}} {{name}}Item) {
+    super.add{{nameInPascalCase}}Item({{name}}Item);
+    return this;
+  }
+  {{/isArray}}
+  {{#isMap}}
+
+  @Override
+  public {{classname}} put{{nameInPascalCase}}Item(String key, {{{items.datatypeWithEnum}}} {{name}}Item) {
+    super.put{{nameInPascalCase}}Item(key, {{name}}Item);
+    return this;
+  }
+  {{/isMap}}
+  {{/isReadOnly}}
+  {{/parentVars}}
+  {{/parent}}
 
   @Override
   public boolean equals(Object o) {
@@ -186,3 +233,4 @@ public class {{classname}} {{#parent}}extends {{{.}}}{{/parent}} {{#vendorExtens
     return o.toString().replace("\n", "\n    ");
   }
 }
+{{/vendorExtensions.x-data-container}}

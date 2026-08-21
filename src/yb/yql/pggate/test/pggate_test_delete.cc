@@ -72,7 +72,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -126,7 +126,8 @@ TEST_F(PggateTestDelete, TestDelete) {
   // DELETE ----------------------------------------------------------------------------------------
   // Allocate new delete.
   CHECK_YBC_STATUS(YBCPgNewDelete(
-      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, YB_TRANSACTIONAL, &pg_stmt));
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, YB_TRANSACTIONAL,
+      false /* skip_intents_write */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -158,7 +159,8 @@ TEST_F(PggateTestDelete, TestDelete) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;

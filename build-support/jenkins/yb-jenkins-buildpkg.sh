@@ -42,11 +42,8 @@ set_common_test_paths
 
 # -------------------------------------------------------------------------------------------------
 # Now that all C++ and Java code has been built, test creating a package.
-#
-# Skip this in ASAN/TSAN, as there are still unresolved issues with dynamic libraries there
-# (conflicting versions of the same library coming from thirdparty vs. Linuxbrew) as of 12/04/2017.
 
-if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" ]] && ! is_sanitizer ; then
+if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" ]] ; then
   heading "Creating a distribution package"
 
   package_path_file="${BUILD_ROOT}/package_path.txt"
@@ -129,12 +126,16 @@ else
     # YB_GIT_COMMIT_FOR_DETECTING_TESTS allows overriding the commit to use to detect the set
     # of tests to run. Useful when testing this script.
     current_git_commit=$(git rev-parse HEAD)
+    # Diff the change against its base branch via a merge-base ("three-dot") range:
+    # origin/$YB_BRANCH...<commit> captures every commit of the change and is stable even
+    # if origin/$YB_BRANCH advances.
     ( set -x
       "$YB_SCRIPT_PATH_DEPENDENCY_GRAPH" \
-          --build-root "${BUILD_ROOT}" \
-          --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
-          --output-test-config "${BUILD_ROOT}/test_conf.json" \
-          affected
+        --build-root "${BUILD_ROOT}" \
+        --git-diff \
+          "origin/${YB_BRANCH}...${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
+        --output-test-config "${BUILD_ROOT}/test_conf.json" \
+        affected
     )
   else
     log "Skipping dependency graph -- expecting to run all tests."

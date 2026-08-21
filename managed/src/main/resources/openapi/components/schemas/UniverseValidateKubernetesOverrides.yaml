@@ -1,0 +1,33 @@
+title: UniverseValidateKubernetesOverrides
+description: |
+  UniverseValidateKubernetesOverrides
+
+  Validate kubernetes overrides on the universe. Part of UniverseValidateKubernetesOverridesReq
+type: object
+properties:
+  yb_software_version:
+    description: YugabyteDB Software version installed in DB nodes of this Universe
+    type: string
+    example: 2024.2.0.0-b6
+  node_prefix:
+    description: A globally unique name generated as a combination of the customer id and the universe name. This is used as the prefix of node names in the universe.
+    type: string
+    example: yb-dev-universe-name
+  is_readonly_cluster:
+    description: Whether it is readonly cluster or not.
+    type: boolean
+  placement_spec:
+    $ref: "./ClusterPlacementSpec.yaml"
+  overrides:
+    description: Global kubernetes overrides to apply across the entire universe.
+    type: string
+    example: |-
+      tserver:
+        podLabels:
+          env: test
+  az_overrides:
+    description: Granular kubernetes overrides per Availability Zone identified by AZ uuid.
+    example: 'az_uuid: "tserver:\n  podLabels:\n    env: test"'
+    additionalProperties:
+      type: string
+x-yba-api-visibility: internal

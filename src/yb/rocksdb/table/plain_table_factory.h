@@ -31,7 +31,6 @@ namespace rocksdb {
 
 struct EnvOptions;
 
-class WritableFile;
 class Table;
 class TableBuilder;
 

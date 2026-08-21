@@ -153,6 +153,10 @@ class YBInboundCall : public InboundCall {
     return sidecars_;
   }
 
+  ThreadPoolTag pool_tag() const override {
+    return header_.pool_tag;
+  }
+
   // Serializes 'response' into the InboundCall's internal buffer, and marks
   // the call as a success. Enqueues the response back to the connection
   // that made the call.

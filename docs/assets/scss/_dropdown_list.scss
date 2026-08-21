@@ -4,7 +4,9 @@
   justify-content: space-between;
 
   @media (min-width: 992px) {
-    margin: 20px 0;
+    &:not(.header-version-dropdown) {
+      margin: 20px 0;
+    }
   }
 
   .dropdown-menu {

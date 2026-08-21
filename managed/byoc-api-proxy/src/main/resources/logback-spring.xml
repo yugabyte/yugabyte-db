@@ -1,0 +1,48 @@
+<configuration>
+    <springProperty scope="context" name="env" source="ybcloud.conf.environment"
+                    defaultValue="LOCAL"/>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <if condition='!property("env").equals("LOCAL")'>
+            <then>
+                <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+                    <providers>
+                        <timestamp/>
+                        <version/>
+                        <logLevel/>
+                        <mdc/>
+                        <pattern>
+                            <pattern>
+                                {
+                                "message": "%message%n%xException",
+                                "logger":
+                                {
+                                "thread": "%thread",
+                                "name": "%logger",
+                                "file": "%file",
+                                "line": "#asLong{%line}"
+                                }
+                                }
+                            </pattern>
+                        </pattern>
+                    </providers>
+                </encoder>
+            </then>
+            <else>
+                <encoder>
+                    <pattern>%highlight(%-5level) - %d{yyyy-MM-dd HH:mm:ss.SSS} %file:%line - %mdc{request-id:-} %message%n%xException</pattern>
+                </encoder>
+            </else>
+        </if>
+    </appender>
+
+    <appender name="ASYNCSTDOUT" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="STDOUT" />
+        <includeCallerData>true</includeCallerData>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="ASYNCSTDOUT" />
+    </root>
+
+</configuration>

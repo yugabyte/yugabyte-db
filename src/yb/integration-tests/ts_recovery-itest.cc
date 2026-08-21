@@ -41,6 +41,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 using std::string;

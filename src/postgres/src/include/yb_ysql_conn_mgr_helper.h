@@ -85,6 +85,14 @@ extern uint64_t yb_conn_mgr_sighup_logical_client_version;
 extern bool yb_conn_mgr_sighup_had_backend_guc_change;
 
 /*
+ * Set to true when this PG backend receives its first Auth Passthrough ("AP")
+ * Request packet (header type 'A'), identifying it as a CM control backend for
+ * the auth-passthrough flow. Backend type cannot be changed to or from control
+ * backend. Thus this flag is never unset, once set.
+ */
+ extern bool yb_conn_mgr_is_auth_passthrough_backend;
+
+/*
  * Check whether the connection is made from Ysql Connection Manager.
  */
 extern bool YbIsClientYsqlConnMgr();

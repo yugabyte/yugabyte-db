@@ -18,6 +18,9 @@
 #include <gtest/gtest.h>
 
 #include "yb/util/backoff_waiter.h"
+#ifdef __linux__
+#include "yb/util/cgroups.h"
+#endif
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -141,6 +144,56 @@ TEST(TestProcessSupervisor, StartAndRestart) {
   supervisor->Stop();
 }
 
+TEST(TestProcessSupervisor, WaitForProcessStartAfterLastRestart) {
+  auto supervisor = MakeTestSupervisor();
+  ASSERT_OK(supervisor->InitPaused());
+  // The supervisor is paused, so no process has been started yet: the wait should time out.
+  auto status = supervisor->WaitForProcessStartAfterLastRestart(MonoDelta::FromMilliseconds(200));
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+
+  // Wait from another thread, then trigger the first process start via Restart.
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&supervisor] {
+    ASSERT_OK(supervisor->WaitForProcessStartAfterLastRestart(MonoDelta::FromSeconds(10)));
+  });
+  ASSERT_OK(supervisor->Restart());
+  thread_holder.JoinAll();
+
+  // Once the requested process start has happened, the wait returns immediately.
+  ASSERT_OK(supervisor->WaitForProcessStartAfterLastRestart(MonoDelta::FromMilliseconds(1)));
+  supervisor->Stop();
+}
+
+TEST(TestProcessSupervisor, WaitForProcessStartAfterLastRestartNeedsFreshStart) {
+  FailStartProcessSupervisor supervisor;
+  ASSERT_OK(supervisor.Start());
+  auto first_proc = supervisor.WaitForProcessSpawn(1);
+  ASSERT_OK(first_proc->WaitForStart());
+  // The initial start satisfies the wait: no restart has been requested yet.
+  ASSERT_OK(supervisor.WaitForProcessStartAfterLastRestart(MonoDelta::FromSeconds(10)));
+
+  // Request a restart whose process starts keep failing. Even though the process was
+  // successfully started once before, the wait must not be satisfied by that old start.
+  supervisor.SetSucceedProcessStart(false);
+  ASSERT_OK(supervisor.Restart());
+  auto status = supervisor.WaitForProcessStartAfterLastRestart(MonoDelta::FromMilliseconds(200));
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+
+  // Once process starts succeed again, the supervisor thread's retry loop starts the process and
+  // the wait completes.
+  supervisor.SetSucceedProcessStart(true);
+  ASSERT_OK(supervisor.WaitForProcessStartAfterLastRestart(MonoDelta::FromSeconds(30)));
+  supervisor.Stop();
+}
+
+TEST(TestProcessSupervisor, WaitForProcessStartAfterLastRestartOnStoppedSupervisor) {
+  auto supervisor = MakeTestSupervisor();
+  ASSERT_OK(supervisor->InitPaused());
+  supervisor->Stop();
+  auto status = supervisor->WaitForProcessStartAfterLastRestart(MonoDelta::FromSeconds(10));
+  ASSERT_TRUE(status.IsShutdownInProgress()) << status;
+}
+
 TEST(TestProcessSupervisor, RestartOnUnStarted) {
   auto supervisor = MakeTestSupervisor();
   auto s = supervisor->Restart();
@@ -241,5 +294,72 @@ Status RestartAndWaitForRespawn(TestCatProcessSupervisor& supervisor, MonoDelta 
 std::unique_ptr<TestCatProcessSupervisor> MakeTestSupervisor() {
   return std::make_unique<TestCatProcessSupervisor>();
 }
+
+#ifdef __linux__
+
+class TestSleepProcessWrapper : public ProcessWrapper {
+ public:
+  Status PreflightCheck() override { return Status::OK(); }
+  Status ReloadConfig() override { return Status::OK(); }
+  Status UpdateAndReloadConfig() override { return Status::OK(); }
+
+  Status Start() override {
+    std::vector<std::string> argv{"sleep", "300"};
+    proc_.emplace("/bin/sleep", argv);
+    return proc_->Start();
+  }
+};
+
+class TestSleepSupervisor : public ProcessSupervisor {
+ public:
+  explicit TestSleepSupervisor(Cgroup* cgroup = nullptr) : ProcessSupervisor(cgroup) {}
+  ~TestSleepSupervisor() { Stop(); }
+
+  std::shared_ptr<ProcessWrapper> CreateProcessWrapper() override {
+    return std::make_shared<TestSleepProcessWrapper>();
+  }
+
+ protected:
+  std::string GetProcessName() override { return "test_sleep"; }
+};
+
+TEST(TestProcessSupervisor, CgroupAssignmentOnStart) {
+  ASSERT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+
+  auto& test_cgroup = ASSERT_RESULT_REF(
+      RootCgroup()->CreateOrLoadChild("@test-supervisor"));
+
+  TestSleepSupervisor supervisor(&test_cgroup);
+  ASSERT_OK(supervisor.Start());
+
+  // Give the process a moment to be fully started and moved.
+  std::this_thread::sleep_for(500ms);
+
+  auto child_pid = supervisor.ProcessId();
+  ASSERT_TRUE(child_pid.has_value()) << "Child process not running";
+
+  auto child_cgroup = ASSERT_RESULT(GetProcessCpuCgroup(*child_pid));
+  std::string root_name = RootCgroup()->full_name();
+  std::string relative = child_cgroup.substr(root_name.size());
+  LOG(INFO) << "Child pid=" << *child_pid << " cgroup=" << relative;
+  EXPECT_EQ(relative, "/@test-supervisor");
+
+  // Restart and verify the new process also lands in the cgroup.
+  ASSERT_OK(supervisor.Restart());
+  std::this_thread::sleep_for(1s);
+
+  auto new_pid = supervisor.ProcessId();
+  ASSERT_TRUE(new_pid.has_value()) << "Child process not running after restart";
+  ASSERT_NE(*new_pid, *child_pid) << "PID should change after restart";
+
+  auto new_cgroup = ASSERT_RESULT(GetProcessCpuCgroup(*new_pid));
+  std::string new_relative = new_cgroup.substr(root_name.size());
+  LOG(INFO) << "Restarted child pid=" << *new_pid << " cgroup=" << new_relative;
+  EXPECT_EQ(new_relative, "/@test-supervisor");
+
+  supervisor.Stop();
+}
+
+#endif // __linux__
 
 }  // namespace yb

@@ -38,7 +38,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY mv_xid_test;
 SELECT COUNT(*) FROM mv_xid_test;
  count 
 -------
-    10
+    12
 (1 row)
 
 COMMIT;

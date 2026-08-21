@@ -44,14 +44,19 @@ WHERE
     AND db_name IN ('test_db', 'yugabyte')
 ORDER BY db_name, start_hash_code NULLS FIRST;
 
--- Test that data from colocated tables is returned
+-- Test per-tablet behavior with colocated tables.
+-- colocated_hash and colocated_asc are colocated (share one tablet), while
+-- non_colocated_split opts out and is split into 2 tablets.  Because the view
+-- is per-tablet, the colocated group produces a single row whose relname is
+-- the colocation parent table, not the individual user tables.
 CREATE DATABASE colocated_db WITH COLOCATION = true;
 \c colocated_db
 
-CREATE TABLE test_table_1 (k INT PRIMARY KEY, v INT);
-CREATE TABLE test_table_2 (k INT, v INT, PRIMARY KEY (k asc));
-CREATE TABLE test_table_3 (k INT PRIMARY KEY, v INT) WITH (COLOCATION = false) SPLIT INTO 2 TABLETS;
+CREATE TABLE colocated_hash (k INT PRIMARY KEY, v INT);
+CREATE TABLE colocated_asc (k INT, v INT, PRIMARY KEY (k asc));
+CREATE TABLE non_colocated_split (k INT PRIMARY KEY, v INT) WITH (COLOCATION = false) SPLIT INTO 2 TABLETS;
 
+-- Non-colocated non_colocated_split still produces one row per tablet.
 SELECT
     relname,
     db_name,
@@ -59,6 +64,259 @@ SELECT
     end_hash_code
 FROM yb_tablet_metadata
 WHERE
-    relname IN ('test_table_1', 'test_table_2', 'test_table_3')
+    relname = 'non_colocated_split'
     AND db_name = 'colocated_db'
 ORDER BY start_hash_code NULLS FIRST;
+
+-- The colocated group produces exactly one tablet row (not one per table).
+SELECT count(*) AS colocated_tablet_count
+FROM yb_tablet_metadata
+WHERE
+    db_name = 'colocated_db'
+    AND relname LIKE '%.colocation.parent.tablename';
+
+-- Test that yb_tablet_metadata is independent of the connected database
+CREATE DATABASE yb_tmeta_a;
+CREATE DATABASE yb_tmeta_b;
+
+\c yb_tmeta_a
+
+CREATE TABLE only_in_a (k INT, PRIMARY KEY (k ASC));
+CREATE TABLE same_name (k INT, PRIMARY KEY (k ASC));
+
+\c yb_tmeta_b
+
+CREATE TABLE only_in_b (k INT, PRIMARY KEY (k ASC));
+CREATE TABLE same_name (k INT, PRIMARY KEY (k ASC));
+
+\c yb_tmeta_a
+
+SELECT
+    relname,
+    db_name
+FROM yb_tablet_metadata
+WHERE
+    relname IN ('only_in_a', 'only_in_b', 'same_name')
+    AND db_name IN ('yb_tmeta_a', 'yb_tmeta_b')
+ORDER BY db_name, relname;
+
+SELECT count(*) AS yb_tmeta_a_row_count FROM yb_tablet_metadata \gset
+
+\c yb_tmeta_b
+
+SELECT count(*) = :yb_tmeta_a_row_count::bigint AS same_row_count
+FROM yb_tablet_metadata;
+
+SELECT
+    relname,
+    db_name
+FROM yb_tablet_metadata
+WHERE
+    relname IN ('only_in_a', 'only_in_b', 'same_name')
+    AND db_name IN ('yb_tmeta_a', 'yb_tmeta_b')
+ORDER BY db_name, relname;
+
+-- Test that non-superusers can still query yb_tablet_metadata cluster-wide.
+-- Rows for tables the user lacks SELECT on (including every cross-database
+-- row) have their relname/start_range/end_range columns masked. The filter
+-- below uses db_name, which is never masked.
+CREATE ROLE yb_tmeta_user LOGIN;
+
+\c yb_tmeta_a yb_tmeta_user
+
+SELECT
+    relname,
+    db_name
+FROM yb_tablet_metadata
+WHERE
+    db_name = 'yb_tmeta_b'
+ORDER BY relname, tablet_id;
+
+-- ============================================================
+-- Privilege-based column masking for yb_tablet_metadata
+-- ============================================================
+-- relname, start_range, end_range are masked to '<insufficient privilege>'
+-- for non-privileged users on rows where:
+--   * the row's table lives in a different database than the connection, OR
+--   * the user lacks SELECT on the row's underlying table.
+-- Hash-sharded rows keep NULL start_range/end_range even when masked, since
+-- those columns are structurally NULL for hash tables. Range-sharded rows
+-- get the placeholder on every cell, including edge tablets whose value
+-- would naturally have been NULL.
+-- Superuser and yb_db_admin members always see real values. The system
+-- 'transactions' tablet (db_name='system') is always shown unmasked.
+
+-- Fixtures: a hash table the user can SELECT, a hash table they can't,
+-- a multi-tablet range table they can't, and a remote-database table they
+-- can SELECT (to verify cross-DB still masks).
+\c yb_tmeta_a yugabyte
+CREATE TABLE mask_hash_grant (k INT PRIMARY KEY, v INT) SPLIT INTO 2 TABLETS;
+CREATE TABLE mask_hash_nogrant (k INT PRIMARY KEY, v INT) SPLIT INTO 2 TABLETS;
+CREATE TABLE mask_range_nogrant (k INT NOT NULL, PRIMARY KEY (k ASC))
+    SPLIT AT VALUES ((5), (10));
+GRANT SELECT ON mask_hash_grant TO yb_tmeta_user;
+
+\c yb_tmeta_b yugabyte
+CREATE TABLE mask_remote_grant (k INT PRIMARY KEY, v INT) SPLIT INTO 2 TABLETS;
+GRANT SELECT ON mask_remote_grant TO yb_tmeta_user;
+
+\c yb_tmeta_a yugabyte
+
+-- (A) yb_db_admin members see real values everywhere, including cross-DB rows
+GRANT yb_db_admin TO yb_tmeta_user;
+SET ROLE yb_tmeta_user;
+
+SELECT relname
+FROM yb_tablet_metadata
+WHERE oid IN ('mask_hash_grant'::regclass, 'mask_hash_nogrant'::regclass,
+              'mask_range_nogrant'::regclass)
+  AND db_name = current_database()
+ORDER BY relname, tablet_id;
+
+SELECT count(*) > 0 AS sees_real_remote_relname
+FROM yb_tablet_metadata
+WHERE db_name = 'yb_tmeta_b'
+  AND relname IN ('only_in_b', 'same_name', 'mask_remote_grant');
+
+RESET ROLE;
+REVOKE yb_db_admin FROM yb_tmeta_user;
+
+-- Switch to the regular user for the remaining masking tests
+SET ROLE yb_tmeta_user;
+
+-- (B) Same-DB rows: SELECT granted -> real relname; not granted -> masked
+SELECT relname
+FROM yb_tablet_metadata
+WHERE oid IN ('mask_hash_grant'::regclass, 'mask_hash_nogrant'::regclass)
+  AND db_name = current_database()
+ORDER BY relname, tablet_id;
+
+-- (C) Hash-sharded masked row keeps natural NULL ranges
+SELECT relname, start_range, end_range
+FROM yb_tablet_metadata
+WHERE oid = 'mask_hash_nogrant'::regclass
+  AND db_name = current_database()
+ORDER BY start_hash_code;
+
+-- (D) Range-sharded masked row gets the placeholder on every range cell,
+-- including the edge tablets whose value would have been NULL
+SELECT relname, start_range, end_range
+FROM yb_tablet_metadata
+WHERE oid = 'mask_range_nogrant'::regclass
+  AND db_name = current_database()
+ORDER BY tablet_id;
+
+-- (E) Cross-DB row stays masked even though the user holds SELECT on the
+-- remote table -- gate is the connection's current database
+SELECT DISTINCT relname
+FROM yb_tablet_metadata
+WHERE db_name = 'yb_tmeta_b';
+
+-- (F) System 'transactions' tablet is always shown unmasked
+SELECT relname
+FROM yb_tablet_metadata
+WHERE db_name = 'system';
+
+-- (G) Columns other than relname/start_range/end_range are not masked
+SELECT db_name,
+       start_hash_code,
+       end_hash_code,
+       leader IS NOT NULL AS has_leader,
+       array_length(replicas, 1) > 0 AS has_replicas,
+       tablet_attrs IS NULL AS attrs_is_null
+FROM yb_tablet_metadata
+WHERE oid = 'mask_hash_nogrant'::regclass
+  AND db_name = current_database()
+ORDER BY start_hash_code;
+
+-- (H) Masking does not change row count
+SELECT count(*) AS user_view_count FROM yb_tablet_metadata \gset
+RESET ROLE;
+SELECT :user_view_count::bigint = count(*) AS row_counts_match
+FROM yb_tablet_metadata;
+
+-- (I) Reconnecting to the row's own database unmasks it for a user
+-- who holds SELECT on the underlying table.
+\c yb_tmeta_b yb_tmeta_user
+
+SELECT relname
+FROM yb_tablet_metadata
+WHERE oid = 'mask_remote_grant'::regclass
+  AND db_name = current_database()
+ORDER BY tablet_id;
+
+-- ============================================================
+-- Colocated database masking
+-- ============================================================
+-- A colocated DB emits one row per colocated user table (all sharing
+-- the same parent tablet) plus rows for the YB-internal colocation
+-- parent. Colocated user-table rows have is_hash_partitioned=false in
+-- the function, so masked rows take the range-mask path:
+-- '<insufficient privilege>' replaces the natural NULL in
+-- start_range/end_range. Tables that opt out of colocation in a
+-- colocated DB stay on the hash-mask path and keep natural NULL
+-- ranges. The parent row is never grantable, so it is always masked
+-- for non-privileged users.
+
+\c yugabyte yugabyte
+CREATE DATABASE mask_coloc_db WITH COLOCATION = true;
+\c mask_coloc_db yugabyte
+CREATE TABLE mask_coloc_grant (k INT PRIMARY KEY, v INT);
+CREATE TABLE mask_coloc_nogrant (k INT PRIMARY KEY, v INT);
+CREATE TABLE mask_coloc_hash_nogrant (k INT PRIMARY KEY, v INT)
+    WITH (COLOCATION = false) SPLIT INTO 2 TABLETS;
+GRANT SELECT ON mask_coloc_grant TO yb_tmeta_user;
+
+\c mask_coloc_db yb_tmeta_user
+
+-- (J) Colocated tables share the colocation parent tablet. The parent's
+-- OID is distinct from any individual colocated table's OID, so a
+-- SELECT grant on mask_coloc_grant does not unmask the parent row.
+-- Filter to the parent row via NULL start_hash_code (the colocated
+-- group is not hash-partitioned).
+SELECT relname, start_hash_code, start_range, end_range
+FROM yb_tablet_metadata
+WHERE db_name = current_database()
+  AND start_hash_code IS NULL
+ORDER BY tablet_id;
+
+-- (K) Non-colocated hash table inside a colocated DB stays on the hash
+-- mask path: masked relname but natural NULL ranges preserved, and
+-- the unmasked hash codes are still present.
+SELECT relname, start_range, end_range,
+       start_hash_code IS NOT NULL AS has_hash_code
+FROM yb_tablet_metadata
+WHERE oid = 'mask_coloc_hash_nogrant'::regclass
+  AND db_name = current_database()
+ORDER BY start_hash_code;
+
+-- (L) Every tablet in this colocated DB is masked: the parent because
+-- its OID doesn't match any grantable table, and the non-colocated
+-- hash table because no SELECT was granted on it.
+SELECT DISTINCT relname
+FROM yb_tablet_metadata
+WHERE db_name = current_database()
+ORDER BY relname;
+
+-- (M) Cross-DB into mask_coloc_db: every row -- including the parent
+-- and the table the user has a local SELECT grant on -- is masked.
+-- The gate is the connection's current_database, not the grants.
+\c yb_tmeta_a yb_tmeta_user
+SELECT DISTINCT relname
+FROM yb_tablet_metadata
+WHERE db_name = 'mask_coloc_db';
+
+-- (N) System catalog tablet (tablet_id = all zeros): relname is masked
+-- for unprivileged users, but all partition columns are NULL since
+-- the tablet has no hash or range bounds (InvalidOid path).
+SELECT object_name, start_hash_code, end_hash_code, start_range, end_range
+FROM yb_get_tablet_metadata()
+WHERE tablet_id = '00000000000000000000000000000000';
+
+-- Cleanup
+\c yugabyte yugabyte
+DROP DATABASE colocated_db;
+DROP DATABASE mask_coloc_db;
+DROP DATABASE yb_tmeta_a;
+DROP DATABASE yb_tmeta_b;
+DROP ROLE yb_tmeta_user;

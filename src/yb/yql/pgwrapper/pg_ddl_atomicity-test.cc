@@ -40,6 +40,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -82,6 +83,14 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
         Format("--ysql_yb_ddl_transaction_block_enabled=$0", TransactionalDdlEnabled()));
     options->extra_tserver_flags.push_back(
         Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
+    // Concurrent DDL requires object locking, so when object locking is disabled, disable
+    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
+    // on. When object locking is enabled, leave concurrent DDL at its default.
+    if (!TableLocksEnabled()) {
+      options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(
+          options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    }
 
   }
 
@@ -1031,6 +1040,14 @@ class PgDdlAtomicitySanityTestWithTableLocks : public PgDdlAtomicitySanityTest,
     PgDdlAtomicitySanityTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
+    // Concurrent DDL requires object locking, so when object locking is disabled, disable
+    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
+    // on. When object locking is enabled, leave concurrent DDL at its default.
+    if (!TableLocksEnabled()) {
+      options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(
+          options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    }
     options->extra_tserver_flags.push_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", TableLocksEnabled()));
   }
@@ -1370,7 +1387,7 @@ TEST_F(PgDdlAtomicitySnapshotTest, SnapshotTest) {
   HybridTime hybrid_time_before_rollback = HybridTime::FromMicros(current_time.ToInt64());
 
   // Ensure that at least one snapshot is taken.
-  SleepFor(snapshot_interval_secs * 5s);
+  SleepFor(snapshot_interval_secs * 5s * kTimeMultiplier);
 
   // Verify that rollback for Alter and Create has indeed not happened yet.
   VerifyTableExists(client.get(), kDatabase, kCreateTable, 10);
@@ -1423,7 +1440,7 @@ Status PgDdlAtomicitySnapshotTest::ListSnapshotTest(DdlErrorInjection inject_err
   Timestamp current_time(VERIFY_RESULT(WallClock()->Now()).time_point);
   HybridTime hybrid_time_before_rollback = HybridTime::FromMicros(current_time.ToInt64());
 
-  SleepFor(snapshot_interval_secs * 5s);
+  SleepFor(snapshot_interval_secs * 5s * kTimeMultiplier);
   auto snapshot_id =
       VERIFY_RESULT(snapshot_util_->PickSuitableSnapshot(schedule_id, hybrid_time_before_rollback));
 
@@ -2059,6 +2076,86 @@ TEST_F(PgDdlAtomicityTest, TestPollTransactionFuilure) {
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "false"));
   // Now a new DDL on table foo can succeed.
   ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN id3 INT"));
+}
+
+// Regression test for GHI #30895.
+// When a DDL transaction's commit response is lost (e.g. due to a leader change), the client
+// retries the UpdateTransaction(COMMITTED) RPC. If by that time the transaction has been fully
+// applied and cleaned up from the coordinator, the retry used to fail with "Transaction expired
+// or aborted by a conflict", causing the DDL to be incorrectly considered failed.
+// This test verifies that the DDL succeeds despite a simulated lost commit response.
+TEST_F(PgDdlAtomicityTest, DdlCommitWithLostResponse) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Inject a simulated commit response loss on all tservers.
+  // The flag auto-clears after the first COMMITTED replication, so only one DDL is affected.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_drop_commit_response", "true"));
+
+  // This DDL's transaction commit will be Raft-replicated successfully, but the RPC response
+  // will be dropped. The client retries, and with the fix, the retry is acknowledged as a
+  // successful commit via the recently_committed_txn_ids_ cache.
+  ASSERT_OK(conn.Execute("CREATE TABLE test_lost_commit_response (id INT PRIMARY KEY, v TEXT)"));
+
+  // Verify the table is usable.
+  ASSERT_OK(conn.Execute("INSERT INTO test_lost_commit_response VALUES (1, 'hello')"));
+  auto val = ASSERT_RESULT(
+      conn.FetchRow<std::string>("SELECT v FROM test_lost_commit_response WHERE id = 1"));
+  ASSERT_EQ(val, "hello");
+}
+
+// Regression test for GHI #30895, leader-change variant.
+// Same as DdlCommitWithLostResponse, but additionally forces a leadership change on the
+// transaction status tablet after the commit is Raft-replicated. The new leader replays the
+// COMMITTED entry from the Raft log, creating the transaction in managed_transactions_.
+// The client's retry arrives at the new leader and eventually succeeds through the normal
+// lifecycle: IllegalState retries -> transaction applies -> cleanup -> recently_committed cache.
+TEST_F(PgDdlAtomicityTest, DdlCommitWithLostResponseAndLeaderChange) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_drop_commit_response", "true"));
+
+  // Run the DDL in a background thread so we can step down leaders while it's in progress.
+  TestThreadHolder thread_holder;
+  std::atomic<bool> ddl_done{false};
+  thread_holder.AddThreadFunctor([this, &ddl_done] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE test_leader_change (id INT PRIMARY KEY, v TEXT)"));
+    ddl_done.store(true);
+  });
+
+  // Wait for the commit to be Raft-replicated. The flag auto-clears after the first hit,
+  // so by the time we get here the commit is replicated but the response was dropped.
+  SleepFor(2s * kTimeMultiplier);
+
+  // Step down transaction status tablet leaders to force retries to reach a new leader.
+  // Some step-downs may fail transiently (e.g. a peer still in PRE_VOTER state during
+  // bootstrap), which is fine: we just need at least one leadership change.
+  int stepped_down = 0;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    auto tablets = ASSERT_RESULT(cluster_->GetTablets(cluster_->tablet_server(i)));
+    for (const auto& tablet : tablets) {
+      if (tablet.table_name().find("transactions") != std::string::npos && tablet.is_leader()) {
+        LOG(INFO) << "Stepping down leader for transaction status tablet " << tablet.tablet_id()
+                  << " on tserver " << i;
+        auto s = cluster_->MoveTabletLeader(tablet.tablet_id());
+        if (s.ok()) {
+          ++stepped_down;
+        } else {
+          LOG(WARNING) << "Failed to step down leader for " << tablet.tablet_id() << ": " << s;
+        }
+      }
+    }
+  }
+  LOG(INFO) << "Stepped down " << stepped_down << " transaction status tablet leader(s)";
+
+  thread_holder.WaitAndStop(60s * kTimeMultiplier);
+  ASSERT_TRUE(ddl_done.load()) << "DDL did not complete";
+
+  // Verify the table is usable.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("INSERT INTO test_leader_change VALUES (1, 'hello')"));
+  auto val = ASSERT_RESULT(
+      conn.FetchRow<std::string>("SELECT v FROM test_leader_change WHERE id = 1"));
+  ASSERT_EQ(val, "hello");
 }
 
 } // namespace pgwrapper

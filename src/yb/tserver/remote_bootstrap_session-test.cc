@@ -20,14 +20,17 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/state_change_context.h"
 
+#include "yb/rpc/messenger.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/write_query.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_log.h"
 
 using std::string;
 
@@ -54,7 +57,7 @@ void RemoteBootstrapSessionTest::TearDown() {
   messenger_->Shutdown();
   session_.reset();
   WARN_NOT_OK(
-    tablet_peer_->Shutdown(
+    tablet_peer_->TEST_Shutdown(
         tablet::ShouldAbortActiveTransactions::kTrue, tablet::DisableFlushOnShutdown::kFalse),
     "Tablet peer shutdown failed");
   multi_raft_manager_->CompleteShutdown();
@@ -113,7 +116,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   // TODO similar to code in tablet_peer-test, consider refactor.
   RaftConfigPB config;
   config.add_peers()->CopyFrom(config_peer);
-  config.set_opid_index(consensus::kInvalidOpIdIndex);
+  config.set_committed_op_index(consensus::kInvalidOpIdIndex);
 
   std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
       tablet()->metadata()->fs_manager(), tablet_id, fs_manager()->uuid(), config,
@@ -142,6 +145,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       tablet(),
       nullptr /* server_mem_tracker */,
       messenger_.get(),
+      messenger_->ThreadPoolPtr(),
       proxy_cache_.get(),
       log,
       table_metric_entity,
@@ -183,21 +187,22 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
     req.set_tablet_id(tablet_peer_->tablet_id());
     AddTestRowInsert(i, i * 2, Substitute("key$0", i), &req);
 
-    WriteResponsePB resp;
+    auto arena = SharedThreadSafeArena();
+    auto* resp = arena->NewArenaObject<LWWriteResponsePB>();
     CountDownLatch latch(1);
 
     auto query = std::make_unique<tablet::WriteQuery>(
         kLeaderTerm, CoarseTimePoint::max() /* deadline */, tablet_peer_.get(),
-        tablet_ptr, nullptr, &resp);
-    query->set_client_request(req);
-    query->set_callback(tablet::MakeLatchOperationCompletionCallback(&latch, &resp));
+        tablet_ptr, /* rpc_context= */ nullptr, resp);
+    query->set_client_request(*arena->NewArenaObject<LWWriteRequestPB>(req));
+    query->set_callback(tablet::MakeLatchOperationCompletionCallback(&latch, resp));
     tablet_peer_->WriteAsync(std::move(query));
     latch.Wait();
-    ASSERT_FALSE(resp.has_error()) << "Request failed: " << resp.error().ShortDebugString();
-    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, resp.ql_response_batch(0).status()) <<
-        "Insert error: " << resp.ShortDebugString();
+    ASSERT_FALSE(resp->has_error()) << "Request failed: " << resp->error().ShortDebugString();
+    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, resp->ql_response_batch().front().status()) <<
+        "Insert error: " << resp->ShortDebugString();
   }
-  ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 }
 
 void RemoteBootstrapSessionTest::InitSession() {

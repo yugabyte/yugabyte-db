@@ -44,6 +44,7 @@ DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -99,7 +100,9 @@ class PgFKeyTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     AppendPgConfOption(MaxQueryLayerRetriesConf(0));
     // Tests assert for expected rpc counts from ysql which change with object locking enabled.
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     PgMiniTestBase::SetUp();
     rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
@@ -364,7 +367,7 @@ TEST_F(PgFKeyTest,
 }
 
 // Test checks FK correctness in case of FK check requires type casting.
-// In this case RPC optimization can't be used.
+// RPC optimization is used in this case as well.
 TEST_F(PgFKeyTest, AddFKConstraintWithTypeCast) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(PrepareTables(&conn,
@@ -377,7 +380,7 @@ TEST_F(PgFKeyTest, AddFKConstraintWithTypeCast) {
   ASSERT_OK(InsertItems(&conn, kPKTable, 21, 21));
   const auto add_fk_rpc_count = ASSERT_RESULT(rpc_count_->Delta(
       [&conn] { return AddFKConstraint(&conn); })).read;
-  ASSERT_EQ(add_fk_rpc_count, 43);
+  ASSERT_EQ(add_fk_rpc_count, 2);
 }
 
 // Test checks FK check correctness with respect to internal buffering

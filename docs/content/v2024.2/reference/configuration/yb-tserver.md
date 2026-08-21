@@ -600,7 +600,7 @@ Default: `0` for no limit.
 
 The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
 
-Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+Default: `1462`
 
 ## Geo-distribution flags
 
@@ -1366,7 +1366,7 @@ Default: `4194304` (4MB)
 
 Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
 
-Default: `1 MB`
+Default: `1048576` (1MB)
 
 ##### --ysql_cdc_active_replication_slot_window_ms
 
@@ -1377,6 +1377,16 @@ Default: `60000`
 ##### --cdc_send_null_before_image_if_not_exists
 
 When true, the CDC service returns a null before-image if it is not able to find one.
+
+Default: `false`
+
+##### --cdc_enable_intra_transactional_before_image
+
+Available in v2024.2.9.1 and later, v2025.2.4.0 and later.
+
+When true, CDC populates before-image values for DML operations that occur within the same transaction. For example, if a row is inserted and then updated or deleted in one transaction, each UPDATE or DELETE change record includes the row values immediately before that operation within the transaction (not only the pre-transaction state).
+
+This flag requires a YB-TServer restart. Enable it on all YB-TServers in the universe when you need accurate before images for intra-transactional changes with logical replication or gRPC CDC.
 
 Default: `false`
 
@@ -1695,7 +1705,7 @@ Default: 86400000 (1 day)
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
 
-Default: -1, where the system automatically calculates the value to be approximately 1 second.
+Default: -1, where the system automatically calculates the margin. For YSQL index backfill the baseline is 3 minutes (180000 ms); for YCQL the baseline is approximately 1 second (1000 ms). The effective margin is the greater of that baseline and a value derived from backfill_index_write_batch_size and backfill_index_rate_rows_per_sec.
 
 ##### backfill_index_write_batch_size
 

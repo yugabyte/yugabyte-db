@@ -97,9 +97,10 @@ class MockQueue : public PeerMessageQueue {
           std::move(observers_strand)) {}
 
   MOCK_METHOD1(Init, void(const OpId& locally_replicated_index));
-  MOCK_METHOD4(SetLeaderMode, void(const OpId& committed_opid,
+  MOCK_METHOD5(SetLeaderMode, void(const OpId& committed_opid,
                                    int64_t current_term,
                                    const OpId& last_applied_op_id,
+                                   const OpId& pending_config_op_id,
                                    const RaftConfigPB& active_config));
   MOCK_METHOD0(SetNonLeaderMode, void());
   Status AppendOperations(const ReplicateMsgs& msgs,
@@ -268,7 +269,7 @@ class RaftConsensusTest : public YBTest {
 
   void SetUpConsensus(int64_t initial_term = consensus::kMinimumTerm, int num_peers = 1) {
     config_ = BuildRaftConfigPBForTests(num_peers);
-    config_.set_opid_index(kInvalidOpIdIndex);
+    config_.set_committed_op_index(kInvalidOpIdIndex);
 
     auto proxy_factory = std::make_unique<LocalTestPeerProxyFactory>(nullptr);
 
@@ -435,7 +436,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
       .Times(1);
   EXPECT_CALL(*queue_, Init(_))
       .Times(1);
-  EXPECT_CALL(*queue_, SetLeaderMode(_, _, _, _))
+  EXPECT_CALL(*queue_, SetLeaderMode(_, _, _, _, _))
       .Times(1);
   EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
       .Times(1);
@@ -476,7 +477,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
       .Times(2);
   EXPECT_CALL(*queue_, Init(_))
       .Times(1);
-  EXPECT_CALL(*queue_, SetLeaderMode(_, _, _, _))
+  EXPECT_CALL(*queue_, SetLeaderMode(_, _, _, _, _))
       .Times(2);
   EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_, _))
       .Times(3);

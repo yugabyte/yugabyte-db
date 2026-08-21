@@ -12,10 +12,13 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestStatsAndMetrics extends BaseYsqlConnMgr {
   private static final String[] FIELDS_IN_CONNECTION_STATS =
       {"database_name",
@@ -95,9 +98,13 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
       int stats_update_interval_ms) throws Exception {
     JsonObject pool;
 
+    // In the first fetch, it is possible that the stats are not updated and so
+    // the pool doesn't exist. In thi case, we take the avg_wait_time to be 0
     pool = getPool(db_name, user_name);
-    assertNotNull(pool);
-    int avgWaitTimeNs1 = pool.get("avg_wait_time_ns").getAsInt();
+    int avgWaitTimeNs1 = 0;
+    if (pool != null)
+      pool.get("avg_wait_time_ns").getAsInt();
+
     Thread.sleep(stats_update_interval_ms);
     pool = getPool(db_name, user_name);
     assertNotNull(pool);

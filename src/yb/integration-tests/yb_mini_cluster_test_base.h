@@ -21,6 +21,10 @@
 
 namespace yb {
 
+namespace tserver {
+class DumpTabletDataResponsePB;
+}  // namespace tserver
+
 namespace test {
 
 YB_DEFINE_ENUM(Partitioning, (kHash)(kRange))
@@ -68,6 +72,12 @@ class MiniClusterTestWithClient : public YBMiniClusterTestBase<T> {
   virtual Status EnsureClientCreated();
 
   void DoTearDown() override;
+
+  Result<tserver::DumpTabletDataResponsePB> DumpTabletData(
+      size_t tserver_idx, const TabletId& tablet_id,
+      const HybridTime& read_ht = HybridTime::kInvalid, const std::string& dest_path = "");
+
+  Status ValidateTabletDataAcrossReplicas(const TabletId& tablet_id);
 
   std::unique_ptr<client::YBClient> client_;
 };

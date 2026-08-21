@@ -33,6 +33,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 
@@ -154,6 +155,9 @@ class TransactionLoader::Executor {
         }
         RETURN_NOT_OK(LoadTransaction(id));
         ++loaded_transactions;
+        // Sync point AFTER each LoadTransaction call.
+        TEST_SYNC_POINT_CALLBACK(
+            "TransactionLoader::Executor::LoadedTransaction", &id);
       }
       current_key_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
       intents_iterator_.Seek(current_key_.AsSlice());
@@ -244,16 +248,34 @@ class TransactionLoader::Executor {
   }
 
   // id - transaction id to load.
+  // Intent iterator is moved to end of transaction metadata update section.
   Status LoadTransaction(const TransactionId& id) EXCLUDES(loader_.pending_applies_mtx_) {
     metric_transaction_load_attempts_->Increment();
     VLOG_WITH_PREFIX(1) << "Loading transaction: " << id;
 
     TransactionMetadataPB metadata_pb;
 
-    const Slice& value = intents_iterator_.value();
+    Slice value = intents_iterator_.value();
     if (!metadata_pb.ParseFromArray(value.cdata(), narrow_cast<int>(value.size()))) {
       return STATUS_FORMAT(
           IllegalState, "Unable to parse stored metadata: $0", value.ToDebugHexString());
+    }
+
+    {
+      current_key_.AppendRawBytes(&dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime, 1);
+      intents_iterator_.Seek(current_key_);
+      ScopeExit s([&] { current_key_.RemoveLastByte(); });
+      while (intents_iterator_.Valid() && intents_iterator_.key().starts_with(current_key_)) {
+        TransactionMetadataPB metadata_update_pb;
+        Slice value = intents_iterator_.value();
+        if (!metadata_update_pb.ParseFromArray(value.cdata(), narrow_cast<int>(value.size()))) {
+          return STATUS_FORMAT(
+              IllegalState, "Unable to parse metadata update: $0", value.ToDebugHexString());
+        }
+        metadata_pb.MergeFrom(metadata_update_pb);
+        intents_iterator_.Next();
+      }
+      RETURN_NOT_OK(intents_iterator_.status());
     }
 
     auto metadata = TransactionMetadata::FromPB(metadata_pb);
@@ -304,12 +326,10 @@ class TransactionLoader::Executor {
     // Fetch the last batch of the current transaction having a strong intent by backward scan of
     // relevant portion in the reverse index section. During the backward scan, we break after
     // processing the first encountered strong intent.
-    //
-    // Note: We explicitly check both that the transaction id is a prefix of the intent key and
-    // the intent key is longer than length(transaction id) + 1, so as to terminate the loop if we
-    // hit either the transaction meta record or tranaction post-apply meta record (which is only
-    // present in CDC use cases).
-    while (intents_iterator_.Valid() && intents_iterator_.key().size() > current_key_.size() + 1 &&
+    while (intents_iterator_.Valid() &&
+           intents_iterator_.key().size() > current_key_.size() + 1 &&
+           intents_iterator_.key()[current_key_.size()] !=
+               dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime &&
            intents_iterator_.key().starts_with(current_key_)) {
       auto decoded_key = dockv::DecodeIntentKey(intents_iterator_.value());
       LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())

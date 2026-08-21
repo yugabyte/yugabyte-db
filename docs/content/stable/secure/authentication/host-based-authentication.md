@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: host-based-authentication
     parent: authentication
-    weight: 733
+    weight: 734
 type: docs
 ---
 

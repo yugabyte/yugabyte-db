@@ -12,11 +12,16 @@
 
 #pragma once
 
+#include <condition_variable>
+
 #include "yb/util/status.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/timestamp.h"
 #include "yb/util/thread.h"
 
 namespace yb {
+
+class Cgroup;
 
 // ProcessWrapper is just a wrapper class for handling the details regarding running a
 // process (like, the Kill method used and command used for running the process).
@@ -76,6 +81,12 @@ YB_DEFINE_ENUM(YbSubProcessState, (kNotStarted)(kRunning)(kStopping)(kPaused));
 //       (none)
 class ProcessSupervisor {
  public:
+  explicit ProcessSupervisor([[maybe_unused]] Cgroup* cgroup = nullptr)
+#ifdef __linux__
+      : cgroup_(cgroup)
+#endif
+      {}
+
   virtual ~ProcessSupervisor() {}
   virtual void Stop();
   Status Start();
@@ -86,12 +97,18 @@ class ProcessSupervisor {
   Status Restart();
   Status Pause();
 
-  std::optional<int64_t> ProcessId();
+  // Waits until the supervised process has been successfully started after the most recent
+  // restart request (or, if no restart was ever requested, at least once), or until the timeout
+  // expires. Use this when the caller depends on side effects of the new process start, such as
+  // config files the process wrapper regenerates right before spawning the process.
+  Status WaitForProcessStartAfterLastRestart(MonoDelta timeout) EXCLUDES(mtx_);
+
+  std::optional<int64_t> ProcessId() EXCLUDES(mtx_);
 
  protected:
   virtual std::shared_ptr<ProcessWrapper> CreateProcessWrapper() = 0;
   std::mutex mtx_;
-  std::shared_ptr<ProcessWrapper> process_wrapper_ = nullptr;
+  std::shared_ptr<ProcessWrapper> process_wrapper_ GUARDED_BY(mtx_) = nullptr;
   virtual void PrepareForStop() {}
   virtual Status PrepareForStart() { return Status::OK(); }
   virtual std::string GetProcessName() = 0;
@@ -112,7 +129,19 @@ class ProcessSupervisor {
   // Current state of the process.
   YbSubProcessState state_ GUARDED_BY(mtx_) = YbSubProcessState::kNotStarted;
 
+  // The time at which the process was last started successfully
+  Timestamp last_process_start_time_ GUARDED_BY(mtx_);
+
+  // The time at which the last restart request was made for this process.
+  // This is used to ensure if the last restart request was successful by comparing
+  // it with last_process_start_time_
+  Timestamp last_restart_request_time_ GUARDED_BY(mtx_);
+
   scoped_refptr<Thread> supervisor_thread_;
+
+#ifdef __linux__
+  Cgroup* cgroup_ = nullptr;
+#endif
 
   CountDownLatch thread_finished_latch_{1};
   std::condition_variable cond_;

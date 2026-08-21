@@ -4,15 +4,18 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import api.v2.handlers.HandlerPagingSupport;
+import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PagedList;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Column;
@@ -33,11 +36,11 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = false)
 public class ImageBundle extends Model {
 
-  public static enum ImageBundleType {
+  public enum ImageBundleType {
     YBA_ACTIVE,
     YBA_DEPRECATED,
     CUSTOM
-  };
+  }
 
   @Data
   @EqualsAndHashCode(callSuper = false)
@@ -81,8 +84,21 @@ public class ImageBundle extends Model {
   @ApiModelProperty(value = "Is the ImageBundle Active")
   private Boolean active = true;
 
-  public static final Finder<UUID, ImageBundle> find =
-      new Finder<UUID, ImageBundle>(ImageBundle.class) {};
+  public static final Finder<UUID, ImageBundle> find = new Finder<>(ImageBundle.class) {};
+
+  public static PagedList<ImageBundle> getPagedList(
+      UUID providerUUID, String arch, NormalizedPaginationSpec normalized) {
+    ExpressionList<ImageBundle> expr =
+        ImageBundle.find.query().where().eq("provider_uuid", providerUUID);
+
+    if (arch != null) {
+      expr = expr.eq("active", true).eq("details::json->>'arch'", arch);
+    }
+
+    String order = normalized.order();
+    String orderBy = String.format("coalesce(lower(name), '') %s, uuid %s", order, order);
+    return HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
+  }
 
   public static ImageBundle getOrBadRequest(UUID providerUUID, UUID imageBundleUUID) {
     ImageBundle bundle = ImageBundle.get(providerUUID, imageBundleUUID);
@@ -161,11 +177,8 @@ public class ImageBundle extends Model {
           find.query().where().eq("provider_uuid", providerUUID).eq("active", true).findList();
       bundles.removeIf(
           bundle -> {
-            if (bundle.getDetails() != null
-                && bundle.getDetails().getArch().toString().equals(arch)) {
-              return false;
-            }
-            return true;
+            return bundle.getDetails() == null
+                || !bundle.getDetails().getArch().toString().equals(arch);
           });
     }
 
@@ -185,18 +198,14 @@ public class ImageBundle extends Model {
       // In case exception is thrown we will fallback to manual filtering, specifically for UTs
       bundles = find.query().where().eq("provider_uuid", providerUUID).findList();
       bundles.removeIf(
-          bundle -> {
-            if (bundle.getMetadata() != null
-                && bundle.getMetadata().getType() != null
-                && bundle
-                    .getMetadata()
-                    .getType()
-                    .toString()
-                    .equals(ImageBundleType.YBA_ACTIVE.toString())) {
-              return false;
-            }
-            return true;
-          });
+          bundle ->
+              bundle.getMetadata() == null
+                  || bundle.getMetadata().getType() == null
+                  || !bundle
+                      .getMetadata()
+                      .getType()
+                      .toString()
+                      .equals(ImageBundleType.YBA_ACTIVE.toString()));
     }
     return bundles;
   }
@@ -218,8 +227,9 @@ public class ImageBundle extends Model {
     // We will allow fine grain edit in case the bundle is associated with
     // the universe. We will allow addition of new AMI in the newly added
     // region but will not allow any other edit.
-    if (existingBundle.getProvider().getCloudCode() == CloudType.aws) {
-      // Compare that AMI is not removed for any region in used bundle for AWS.
+    if (existingBundle.getProvider().getCloudCode().usesPerRegionImages()) {
+      // Compare that the per-region image is not removed for any region in the used
+      // bundle for clouds with per-region images (AWS AMIs, OCI image OCIDs).
       Map<String, ImageBundleDetails.BundleInfo> infoExistingBundle = existingDetails.getRegions();
       Map<String, ImageBundleDetails.BundleInfo> info = details.getRegions();
 

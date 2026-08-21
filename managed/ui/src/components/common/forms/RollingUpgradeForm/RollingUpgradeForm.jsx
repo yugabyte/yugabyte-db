@@ -243,11 +243,6 @@ export default class RollingUpgradeForm extends Component {
     this.setState({ formConfirmed: false });
   };
 
-  componentDidMount() {
-    const { fetchRuntimeConfigs } = this.props;
-    fetchRuntimeConfigs();
-  }
-
   render() {
     const {
       modalVisible,

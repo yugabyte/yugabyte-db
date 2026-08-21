@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.OCIUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Backup;
@@ -43,6 +44,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
   private final RuntimeConfGetter runtimeConfGetter;
   public final AWSUtil awsUtil;
   public final AZUtil azUtil;
+  public final OCIUtil ociUtil;
 
   private final Map<Class<? extends CustomerConfigData>, ConfigDataValidator> validators =
       new HashMap<>();
@@ -54,13 +56,15 @@ public class CustomerConfigValidator extends BaseBeanValidator {
       RuntimeConfGetter runtimeConfGetter,
       AWSUtil awsUtil,
       AZUtil azUtil,
-      GCPUtil gcpUtil) {
+      GCPUtil gcpUtil,
+      OCIUtil ociUtil) {
     super(beanValidator);
     this.factory = createCloudFactory();
     this.storageUtilFactory = storageUtilFactory;
     this.runtimeConfGetter = runtimeConfGetter;
     this.awsUtil = awsUtil;
     this.azUtil = azUtil;
+    this.ociUtil = ociUtil;
 
     validators.put(
         CustomerConfigStorageGCSData.class,
@@ -73,6 +77,9 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     validators.put(
         CustomerConfigStorageAzureData.class,
         new CustomerConfigStorageAzureValidator(beanValidator, factory, storageUtilFactory));
+    validators.put(
+        CustomerConfigStorageOCIData.class,
+        new CustomerConfigStorageOCIValidator(beanValidator, ociUtil));
     validators.put(
         CustomerConfigStorageGCSData.class,
         new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));

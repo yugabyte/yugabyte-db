@@ -73,6 +73,7 @@ CREATE TABLE public.test_table (
     id integer NOT NULL,
     CONSTRAINT test_table_pkey PRIMARY KEY((id) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 2 TABLETS;
 
 

@@ -23,7 +23,7 @@ namespace yb {
 struct CAPABILITY("thread role") ThreadRole {};
 
 template<class T>
-class [[nodiscard]] SCOPED_CAPABILITY CapabilityGuard {  // NOLINT
+class [[nodiscard]] SCOPED_CAPABILITY CapabilityGuard {
  public:
   CapabilityGuard() ACQUIRE(T::Alias()) {};
   ~CapabilityGuard() RELEASE(T::Alias()) {};

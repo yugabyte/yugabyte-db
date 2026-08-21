@@ -1139,7 +1139,8 @@ pa_masking_value_for_att(Relation rel, FormData_pg_attribute * att, char * polic
     {
       if (reldesc->constr->defval[i].adnum == att->attnum )
         return deparse_expression(stringToNode(reldesc->constr->defval[i].adbin),
-                                  NIL, false, false);
+                                  NIL, false, false,
+								  false, false); /* yb_pretty, yb_maskconstants */
     }
 
   }

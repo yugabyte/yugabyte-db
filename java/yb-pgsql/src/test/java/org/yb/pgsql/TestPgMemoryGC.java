@@ -4,9 +4,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBDaemon;
-import org.yb.util.YBTestRunnerNonSanOrAArch64Mac;
+import org.yb.util.RequiresLinux;
+import org.yb.util.SkipOnAArch64;
+import org.yb.util.SkipOnASAN;
+import org.yb.util.SkipOnTSAN;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -23,7 +27,11 @@ import static org.yb.AssertionWrappers.assertEquals;
  * Verify that the freed memory allocated by a query is released to OS.
  * Skip verifying for override threshold for non Linux distribution as Mac doesn't use TCmalloc
  */
-@RunWith(value = YBTestRunnerNonSanOrAArch64Mac.class)
+@SkipOnTSAN
+@SkipOnASAN
+@RequiresLinux
+@SkipOnAArch64
+@RunWith(value = YBTestRunner.class)
 public class TestPgMemoryGC extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgMemoryGC.class);
 

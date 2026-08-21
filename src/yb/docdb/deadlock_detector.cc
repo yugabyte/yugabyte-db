@@ -30,6 +30,8 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
@@ -49,8 +51,7 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_UNKNOWN_int32(
-    clear_active_probes_older_than_seconds, 60,
+DEFINE_UNKNOWN_int32(clear_active_probes_older_than_seconds, 60,
     "Interval with which to clear active probes tracked at a deadlock detector. This ensures that "
     "the memory used to track both created and forwarded probes does not grow unbounded. If this "
     "is too low, we may remove entries too aggressively and end up failing to report deadlocks.");

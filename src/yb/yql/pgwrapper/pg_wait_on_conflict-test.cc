@@ -32,6 +32,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -71,6 +72,10 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
+DECLARE_bool(enable_leader_failure_detection);
+DECLARE_int32(leader_lease_duration_ms);
+DECLARE_bool(ysql_enable_write_pipelining);
 
 using namespace std::literals;
 
@@ -127,7 +132,9 @@ class PgWaitQueuesTestWithoutObjectLocking : public PgWaitQueuesTest {
  protected:
   void InitFlags() override {
     PgWaitQueuesTest::InitFlags();
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
   }
 };
 
@@ -787,6 +794,17 @@ TEST_F(PgConcurrentBlockedWaitersTest, YB_DISABLE_TEST_IN_TSAN(LongPauseRetrySin
 
 class PgLeaderChangeWaitQueuesTest : public PgConcurrentBlockedWaitersTest {
  protected:
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) = 60000;
+    // A waiter's UPDATE is acked before replication completes, so its blocked read carries a
+    // pending_async_write_op_id. These tests keep that read in the wait queue while moving the
+    // tablet's leader more than once, which VerifyAsyncWriteReceived cannot validate, so it
+    // aborts the waiter. Make the waiter writes synchronous instead.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = false;
+    PgConcurrentBlockedWaitersTest::SetUp();
+  }
+
   Status WaitForLoadBalance(int num_tablet_servers) {
     return WaitFor(
       [&]() -> Result<bool> { return client_->IsLoadBalanced(num_tablet_servers); },
@@ -1275,6 +1293,14 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(DeadlockResolvesYoungestTxn)) {
 }
 
 void PgWaitQueuesTest::TestMultiTabletFairness() const {
+  // Prevent leadership churn during the test. The 20+ PG connections all go through TS-0 which
+  // can get stressed enough to cause missed heartbeats, triggering leader elections. When status
+  // tablet leaders become unavailable, wait-queue requests time out, and after the blocker commits,
+  // transactions resume at different tablets in different orders -- leading to spurious deadlocks.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 60000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
   constexpr int kNumUpdateConns = 20;
   constexpr int kNumKeys = 40;
   // This test specifically ensures 2 aspects when transactions simultaneously contend on
@@ -1434,11 +1460,11 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
   }
 }
 
-TEST_F(PgWaitQueuesTest, MultiTabletFairness) {
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_SANITIZERS(MultiTabletFairness)) {
   TestMultiTabletFairness();
 }
 
-TEST_F(PgWaitQueuesMaxBatchSize1Test, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
+TEST_F(PgWaitQueuesMaxBatchSize1Test, YB_DISABLE_TEST_IN_SANITIZERS(MultiTabletFairness)) {
   TestMultiTabletFairness();
 }
 
@@ -1564,7 +1590,9 @@ class PgWaitQueueRF1TestWithoutObjectLocking : public PgWaitQueueRF1Test {
  protected:
   void InitFlags() override {
     PgWaitQueuesTest::InitFlags();
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
   }
 };
 
@@ -1830,7 +1858,9 @@ class PgWaitQueuesWithRetriesTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_debug_log_internal_restarts=true";
     // TODO(#24877): Remove the below once we enable query layer retries for object locking.
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     PgMiniTestBase::SetUp();
   }
 };

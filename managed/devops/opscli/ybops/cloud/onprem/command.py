@@ -11,9 +11,8 @@
 from ybops.cloud.common.command import InstanceCommand, AccessCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, ListInstancesMethod, \
     InitYSQLMethod, CronCheckMethod, TransferXClusterCerts, \
-    VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, \
-    AccessEditVaultMethod, AccessCreateVaultMethod, AccessDeleteKeyMethod, RebootInstancesMethod, \
-    RunHooks, WaitForConnection, ManageOtelCollector
+    VerifySSHConnection, AccessDeleteKeyMethod, RebootInstancesMethod, RunHooks, \
+    WaitForConnection, ManageOtelCollector
 from ybops.cloud.onprem.method import OnPremCreateInstancesMethod, OnPremDestroyInstancesMethod, \
     OnPremProvisionInstancesMethod, OnPremValidateMethod, \
     OnPremFillInstanceProvisionTemplateMethod, OnPremListInstancesMethod, \
@@ -41,8 +40,6 @@ class OnPremInstanceCommand(InstanceCommand):
         self.add_method(CronCheckMethod(self))
         self.add_method(TransferXClusterCerts(self))
         self.add_method(VerifySSHConnection(self))
-        self.add_method(AddAuthorizedKey(self))
-        self.add_method(RemoveAuthorizedKey(self))
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
         self.add_method(WaitForConnection(self))
@@ -57,6 +54,4 @@ class OnPremAccessCommand(AccessCommand):
 
     def add_methods(self):
         self.add_method(OnPremAccessAddKeyMethod(self))
-        self.add_method(AccessCreateVaultMethod(self))
-        self.add_method(AccessEditVaultMethod(self))
         self.add_method(AccessDeleteKeyMethod(self))

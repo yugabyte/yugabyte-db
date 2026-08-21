@@ -81,7 +81,6 @@ import java.nio.charset.Charset;
 import java.security.KeyFactory;
 import java.security.KeyStore;
 import java.security.PrivateKey;
-import java.security.Security;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -741,6 +740,20 @@ public class AsyncYBClient implements AutoCloseable {
     return d;
   }
 
+  public Deferred<FlushTabletsResponse> flushTablets(HostAndPort hp, String permanentUuid,
+      List<String> tabletIds) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    FlushTabletsRequest rpc = new FlushTabletsRequest(this.masterTable, permanentUuid, tabletIds);
+    Deferred<FlushTabletsResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    client.sendRpc(rpc);
+    return d;
+  }
+
   public Deferred<SetCheckpointResponse> setCheckpointWithBootstrap(
       YBTable table,
       String streamId,
@@ -1350,6 +1363,28 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Validates a batch of flags directly against a specific master or tserver process.
+   *
+   * @param hp  the host and port of the tserver (port 9100) or master (port 7100)
+   * @param flags  map of flag name → value to validate; all sent in a single RPC
+   * @return a Deferred object that will contain the response of the gflag validation request.
+   */
+  public Deferred<ValidateFlagValueResponse> validateFlagValues(
+      final HostAndPort hp, Map<String, String> flags) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    ValidateFlagValueRequest rpc = new ValidateFlagValueRequest(flags);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<ValidateFlagValueResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
    * Get the master tablet id.
    *
    * @return the constant master tablet uuid.
@@ -1814,6 +1849,40 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<GetXClusterSafeTimeResponse> getXClusterSafeTime() {
     checkIsClosed();
     GetXClusterSafeTimeRequest request = new GetXClusterSafeTimeRequest(this.masterTable);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Initiates an asynchronous xCluster failover for the given replication group. The failover
+   * task runs on the DB master and can be polled via {@link #isXClusterFailoverDone}.
+   *
+   * <p>Prerequisites: AsyncYBClient must be created with the target (consumer) universe as context.
+   *
+   * @param replicationGroupId The replication group to fail over
+   * @return A deferred object that yields an {@link XClusterFailoverResponse}
+   */
+  public Deferred<XClusterFailoverResponse> xClusterFailover(String replicationGroupId) {
+    checkIsClosed();
+    XClusterFailoverRequest request =
+        new XClusterFailoverRequest(this.masterTable, replicationGroupId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Polls whether an xCluster failover initiated via {@link #xClusterFailover} has completed.
+   *
+   * <p>Prerequisites: AsyncYBClient must be created with the target (consumer) universe as context.
+   *
+   * @param replicationGroupId The replication group whose failover status to check
+   * @return A deferred object that yields an {@link IsXClusterFailoverDoneResponse}
+   */
+  public Deferred<IsXClusterFailoverDoneResponse> isXClusterFailoverDone(
+      String replicationGroupId) {
+    checkIsClosed();
+    IsXClusterFailoverDoneRequest request =
+        new IsXClusterFailoverDoneRequest(this.masterTable, replicationGroupId);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -4007,6 +4076,7 @@ public class AsyncYBClient implements AutoCloseable {
    */
   private String getIP(final String host) {
     // We have seen rare instances where DNS won't resolve, but a retry will resolve the issue.
+    UnknownHostException lastException = null;
     for (int i = 0; i < 3; i++) {
      final long start = System.nanoTime();
      try {
@@ -4020,9 +4090,10 @@ public class AsyncYBClient implements AutoCloseable {
        }
        return ip;
      } catch (UnknownHostException e) {
+       lastException = e;
        LOG.warn(
            "Failed to resolve the IP of `" + host + "' in " + (System.nanoTime() - start) + "ns. " +
-           "Retrying.");
+           "Retrying.", e);
      }
      // Sleep for 1 second before retry.
      try {
@@ -4032,7 +4103,7 @@ public class AsyncYBClient implements AutoCloseable {
       return null;
      }
     }
-    LOG.error("Failed to resolve the IP of `" + host + "' after retries.");
+    LOG.error("Failed to resolve the IP of `" + host + "' after retries.", lastException);
     return null;
   }
 

@@ -9,27 +9,26 @@
  */
 
 import { FC } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { useFormContext, Controller } from 'react-hook-form';
 import { mui, YBInput } from '@yugabyte-ui-library/core';
-import { CloudType } from '../../../../../helpers/dtos';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
-import { YSQLFormSpec, YCQLFormSpec } from '../../steps/database-settings/dtos';
+import { getAccessiblePorts } from '../../utils/createUniversePayload';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, styled, Typography } = mui;
 
 const MAX_PORT = 65535;
 interface DeploymentPortsProps {
-  disabled: boolean;
   providerCode: string;
-  ysql: YSQLFormSpec;
-  ycql: YCQLFormSpec;
+  ysql: boolean;
+  ycql: boolean;
   enableConnectionPooling?: boolean;
+  isEditMode?: boolean;
 }
 
 const PortContainer = styled(Box)(({ theme }) => ({
@@ -63,100 +62,25 @@ const StyledLabelIcon = styled(Box)(({ theme }) => ({
 }));
 
 export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
-  disabled,
   ysql,
   ycql,
   providerCode,
-  enableConnectionPooling
+  enableConnectionPooling,
+  isEditMode
 }) => {
-  const { setValue, control } = useFormContext<OtherAdvancedProps>();
+  const { control } = useFormContext<OtherAdvancedProps>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.otherAdvancedSettings.deployPortsFeild'
   });
 
-  const MASTER_PORTS = [
-    { id: 'masterHttpPort', visible: true, disabled: disabled },
-    { id: 'masterRpcPort', visible: true, disabled: disabled }
-  ];
-
-  const TSERVER_PORTS = [
-    { id: 'tserverHttpPort', visible: true, disabled: disabled },
-    { id: 'tserverRpcPort', visible: true, disabled: disabled }
-  ];
-
-  const YCQL_PORTS = [
-    {
-      id: 'yqlServerHttpPort',
-      visible: ycql.enable,
-      disabled: disabled
-    },
-    {
-      id: 'yqlServerRpcPort',
-      visible: ycql.enable, //ycqlEnabled,
-      disabled: disabled
-    }
-  ].filter((ports) => ports.visible);
-
-  const YSQL_PORTS = [
-    { id: 'ysqlServerHttpPort', visible: ysql.enable, disabled: disabled }, //visible: ysqlEnabled,
-    {
-      id: 'ysqlServerRpcPort',
-      visible: ysql.enable,
-      disabled: providerCode === CloudType.kubernetes
-    },
-    {
-      id: 'internalYsqlServerRpcPort',
-      visible: ysql.enable && enableConnectionPooling,
-      disabled: providerCode === CloudType.kubernetes
-    }
-  ].filter((ports) => ports.visible);
-
-  const REDIS_PORTS = [
-    { id: 'redisServerHttpPort', visible: false, disabled: disabled },
-    { id: 'redisServerRpcPort', visible: false, disabled: disabled }
-  ];
-
-  const OTHER_PORTS = [
-    { id: 'nodeExporterPort', visible: providerCode !== CloudType.onprem, disabled: disabled }, //visible: provider?.code !== CloudType.onprem,
-    {
-      id: 'ybControllerrRpcPort',
-      visible: true,
-      disabled: disabled
-    }
-  ];
-
-  const PORT_GROUPS = [
-    {
-      name: t('masterGroup'),
-      PORTS_LIST: MASTER_PORTS,
-      visible: MASTER_PORTS.length > 0
-    },
-    {
-      name: t('tServerGroup'),
-      PORTS_LIST: TSERVER_PORTS,
-      visible: TSERVER_PORTS.length > 0
-    },
-    {
-      name: t('ysqlGroup'),
-      PORTS_LIST: YSQL_PORTS,
-      visible: YSQL_PORTS.length > 0
-    },
-    {
-      name: t('ycqlGroup'),
-      PORTS_LIST: YCQL_PORTS,
-      visible: YCQL_PORTS.length > 0
-    },
-    {
-      name: t('redisGroup'),
-      PORTS_LIST: REDIS_PORTS,
-      visible: REDIS_PORTS.length > 0
-    },
-    {
-      name: t('othersGroup'),
-      PORTS_LIST: OTHER_PORTS,
-      visible: OTHER_PORTS.length > 0
-    }
-  ].filter((pg) => pg.visible);
+  const PORT_GROUPS = getAccessiblePorts(
+    ysql,
+    ycql,
+    providerCode,
+    enableConnectionPooling,
+    t,
+    isEditMode
+  );
 
   return (
     <PortContainer>
@@ -167,9 +91,14 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
             <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '24px' }}>
               <NextLineIcon />
               <Box
-                sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px' }}
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: '16px'
+                }}
               >
-                {pg.PORTS_LIST.map((item) => (
+                {pg.PORTS_LIST.map((item: any) => (
                   <Controller
                     name={item.id}
                     render={({ field: { value, onChange } }) => {
@@ -180,10 +109,22 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                           label={
                             <StyledLabelIcon>
                               <span>{t(item.id)}</span>
-                              <InfoIcon />
+                              {/* <InfoIcon /> */}
                             </StyledLabelIcon>
                           }
-                          helperText={'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[item.id])}
+                          helperText={
+                            <>
+                              {'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[item.id])}{' '}
+                              {item?.helperText ? (
+                                <>
+                                  <br />
+                                  <Trans i18nKey={`${item.id}Helper`} t={t} />
+                                </>
+                              ) : (
+                                <></>
+                              )}
+                            </>
+                          }
                           dataTestId={`deployment-ports-field-${item.id}`}
                           onBlur={(event) => {
                             let port =
@@ -193,6 +134,7 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                             onChange(port);
                           }}
                           defaultValue={DEFAULT_COMMUNICATION_PORTS[item.id]}
+                          disabled={item.disabled}
                           // trimWhitespace={false}
                         />
                       );

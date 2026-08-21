@@ -210,6 +210,7 @@ Result<QLWriteRequestMsg*> CreateAndSetupIndexInsertRequest(
     const qlexpr::QLTableRow& existing_row,
     const qlexpr::QLTableRow& new_row,
     const qlexpr::IndexInfo* index,
+    ThreadSafeArena& arena,
     IndexRequests* index_requests,
     bool* has_index_key_changed = nullptr,
     bool* index_pred_new_row = nullptr,
@@ -218,9 +219,10 @@ Result<QLWriteRequestMsg*> CreateAndSetupIndexInsertRequest(
 class QLReadOperation : public DocExprExecutor {
  public:
   QLReadOperation(
-      const QLReadRequestMsg& request,
-      const TransactionOperationContext& txn_op_context)
-      : request_(request), txn_op_context_(txn_op_context) {}
+      std::reference_wrapper<const QLReadRequestMsg> request,
+      const TransactionOperationContext& txn_op_context,
+      QLResponseMsg* response = nullptr)
+      : request_(request), response_(response), txn_op_context_(txn_op_context) {}
 
   Status Execute(const YQLStorageIf& ql_storage,
                  const ReadOperationData& read_operation_data,
@@ -246,7 +248,7 @@ class QLReadOperation : public DocExprExecutor {
 
   Status GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out);
 
-  QLResponseMsg& response() { return response_; }
+  QLResponseMsg& response() { return *DCHECK_NOTNULL(response_); }
 
  private:
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
@@ -258,8 +260,8 @@ class QLReadOperation : public DocExprExecutor {
                                    const ReadHybridTime& read_time);
 
   const QLReadRequestMsg& request_;
+  QLResponseMsg* response_;
   const TransactionOperationContext txn_op_context_;
-  QLResponseMsg response_;
 };
 
 }  // namespace docdb

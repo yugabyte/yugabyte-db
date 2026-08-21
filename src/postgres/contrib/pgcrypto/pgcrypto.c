@@ -46,6 +46,8 @@ PG_MODULE_MAGIC_EXT(
 					.version = PG_VERSION
 );
 
+void _PG_init(void);
+
 /* private stuff */
 
 static const struct config_enum_entry builtin_crypto_options[] = {

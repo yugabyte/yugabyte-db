@@ -82,6 +82,7 @@ INSERT INTO project_logs VALUES (1, 'Initial log');
 -- This will drop table project_logs but shouldn't abort the entire transaction.
 ROLLBACK TO SAVEPOINT sp_mixed;
 SELECT project_name FROM projects WHERE id = 101;
+ROLLBACK;
 
 -- #28957: Rollback to savepoint of ALTER TABLE should complete and not run forever
 CREATE TABLE departments (
@@ -233,3 +234,129 @@ COMMIT;
 SELECT id FROM _33_s_1_data ORDER BY id;
 SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V1';
 SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
+
+-- DROP TABLE is reverted correctly with ROLLBACK TO SAVEPOINT operation.
+CREATE TABLE test_drop_table_with_savepoint (id INT PRIMARY KEY, val TEXT);
+BEGIN;
+INSERT INTO test_drop_table_with_savepoint VALUES (1, 'sample');
+SAVEPOINT sp1;
+DROP TABLE test_drop_table_with_savepoint;
+SELECT * FROM test_drop_table_with_savepoint;
+ROLLBACK TO SAVEPOINT sp1;
+SELECT * FROM test_drop_table_with_savepoint;
+DROP TABLE test_drop_table_with_savepoint;
+SELECT * FROM test_drop_table_with_savepoint;
+COMMIT;
+
+-- More involved save point test case
+CREATE OR REPLACE FUNCTION process_work1() RETURNS void AS $$
+BEGIN
+    CREATE TABLE users1 (first_name TEXT, last_name TEXT);
+    CREATE TABLE audit_log1 (
+        id INT PRIMARY KEY,
+        msg TEXT
+    );
+    INSERT INTO users1 SELECT md5(random()::text), md5(random()::text) FROM
+                         (SELECT * FROM generate_series(1,10000) AS id) AS id;
+    INSERT INTO audit_log1 VALUES (1, 'Starting the main process...'); -- This is part of the main transaction.
+
+    -- >>> PostgreSQL creates an internal SAVEPOINT here <<<
+    BEGIN
+        INSERT INTO audit_log1 VALUES (2, 'Processing a sub-task...');
+
+        -- This next line will fail because of the primary key constraint (id=1 already exists)
+        INSERT INTO audit_log1 VALUES (1, 'This will cause a unique_violation error!');
+
+    EXCEPTION
+        WHEN unique_violation THEN
+            -- >>> PostgreSQL has already performed an internal ROLLBACK TO SAVEPOINT before this
+            -- code runs <<<
+            RAISE NOTICE 'Caught a duplicate key! The sub-task was rolled back.';
+    END;
+    -- >>> If the block had succeeded, an internal RELEASE SAVEPOINT would happen here <<<
+
+    INSERT INTO audit_log1 VALUES (3, 'Main process finished.'); -- This runs because the error was handled.
+END;
+$$ LANGUAGE plpgsql;
+-- Clear the table and run the function
+SELECT process_work1();
+
+-- Check the final state of the table
+SELECT * FROM audit_log1 ORDER BY id;
+SELECT COUNT(*) FROM users1;
+
+
+-- create table users2 is outside begin exception block
+-- insert into users2 is inside begin exception block
+CREATE OR REPLACE FUNCTION process_work2() RETURNS void AS $$
+BEGIN
+    CREATE TABLE users2 (first_name TEXT, last_name TEXT);
+    CREATE TABLE audit_log2 (
+        id INT PRIMARY KEY,
+        msg TEXT
+    );
+    INSERT INTO audit_log2 VALUES (1, 'Starting the main process...'); -- This is part of the main transaction.
+
+    -- >>> PostgreSQL creates an internal SAVEPOINT here <<<
+    BEGIN
+        INSERT INTO users2 SELECT md5(random()::text), md5(random()::text) FROM
+                             (SELECT * FROM generate_series(1,10000) AS id) AS id;
+        INSERT INTO audit_log2 VALUES (2, 'Processing a sub-task...');
+
+        -- This next line will fail because of the primary key constraint (id=1 already exists)
+        INSERT INTO audit_log2 VALUES (1, 'This will cause a unique_violation error!');
+
+    EXCEPTION
+        WHEN unique_violation THEN
+            -- >>> PostgreSQL has already performed an internal ROLLBACK TO SAVEPOINT before this
+            -- code runs <<<
+            RAISE NOTICE 'Caught a duplicate key! The sub-task was rolled back.';
+    END;
+    -- >>> If the block had succeeded, an internal RELEASE SAVEPOINT would happen here <<<
+
+    INSERT INTO audit_log2 VALUES (3, 'Main process finished.'); -- This runs because the error was handled.
+END;
+$$ LANGUAGE plpgsql;
+-- Clear the table and run the function
+SELECT process_work2();
+
+-- Check the final state of the table
+SELECT * FROM audit_log2 ORDER BY id;
+SELECT COUNT(*) FROM users2;
+
+-- both create table users3 and insert into users3 are inside begin exception block
+CREATE OR REPLACE FUNCTION process_work3() RETURNS void AS $$
+BEGIN
+    CREATE TABLE audit_log3 (
+        id INT PRIMARY KEY,
+        msg TEXT
+    );
+    INSERT INTO audit_log3 VALUES (1, 'Starting the main process...'); -- This is part of the main transaction.
+
+    -- >>> PostgreSQL creates an internal SAVEPOINT here <<<
+    BEGIN
+        CREATE TABLE users3 (first_name TEXT, last_name TEXT);
+        INSERT INTO users3 SELECT md5(random()::text), md5(random()::text) FROM
+                             (SELECT * FROM generate_series(1,10000) AS id) AS id;
+        INSERT INTO audit_log3 VALUES (2, 'Processing a sub-task...');
+
+        -- This next line will fail because of the primary key constraint (id=1 already exists)
+        INSERT INTO audit_log3 VALUES (1, 'This will cause a unique_violation error!');
+
+    EXCEPTION
+        WHEN unique_violation THEN
+            -- >>> PostgreSQL has already performed an internal ROLLBACK TO SAVEPOINT before this
+            -- code runs <<<
+            RAISE NOTICE 'Caught a duplicate key! The sub-task was rolled back.';
+    END;
+    -- >>> If the block had succeeded, an internal RELEASE SAVEPOINT would happen here <<<
+
+    INSERT INTO audit_log3 VALUES (3, 'Main process finished.'); -- This runs because the error was handled.
+END;
+$$ LANGUAGE plpgsql;
+-- Clear the table and run the function
+SELECT process_work3();
+
+-- Check the final state of the table
+SELECT * FROM audit_log3 ORDER BY id;
+SELECT COUNT(*) FROM users3;

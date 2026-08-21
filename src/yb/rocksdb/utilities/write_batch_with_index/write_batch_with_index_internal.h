@@ -27,7 +27,7 @@
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/util/slice.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
 #include "yb/rocksdb/port/port.h"
 

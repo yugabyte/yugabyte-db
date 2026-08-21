@@ -1340,13 +1340,23 @@ pg_newlocale_from_collation(Oid collid)
 	}
 
 	cache_entry = collation_cache_insert(CollationCache, collid, &found);
-	if (!found)
+
+	bool		yb_force_locale_lookup = yb_test_collation && YbIsClientYsqlConnMgr();
+
+	if (!found || yb_force_locale_lookup)
 	{
 		/*
 		 * YB_TODO_PG19MERGE: PG19 moved per-provider locale construction into
 		 * create_pg_locale / create_pg_locale_libc / create_pg_locale_icu.
 		 * Port the YB YbCheckUnsupportedLibcLocale(collcollate) /
 		 * YbCheckUnsupportedLibcLocale(collctype) calls.
+		 */
+
+		/*
+		 * YB: We leak a reference to the old cache_entry locale when yb_test_collation is true
+		 * as this flag is only a test flag and is visible to users and not supposed to be enabled
+		 * in regular usage. The only other way to hit this code path is on the first locale lookup,
+		 * when the cache_entry is not populated, so no risk of leaking any memory there.
 		 */
 
 		/*

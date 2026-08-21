@@ -25,6 +25,8 @@ Ensure the universes have the following characteristics:
 - Both universes are running the same version of YugabyteDB (v2.18.0.0 or later).
 - Both universes have [node-to-node encryption](../../../security/enable-encryption-in-transit/) enabled (recommended) or both have this setting disabled.
 
+    If you change encryption in transit settings after starting replication, you must change the setting on both universes and restart replication.
+
 - They can be backed up and restored using the same [storage configuration](../../../back-up-restore-universes/configure-backup-storage/).
 
     The storage configuration for copying data from source to target must be accessible from both universes. For example, if AWS S3 is used as the target of backups, the same S3 bucket must be accessible from the source and target universe.
@@ -302,7 +304,7 @@ When [upgrading universes](../../../manage-deployments/upgrade-software-install/
 
 If you upgrade and finalize the source universe first, replication may be paused automatically until both universes are finalized to the same software version.
 
-If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
+If you have bidirectional xCluster replication, perform the upgrade steps for each universe individually and monitor both of them. If you encounter any issues, roll back both universes. If everything appears to be in good condition, finalize both universes with as little delay as possible.
 
 ### Rotating CA certificates
 

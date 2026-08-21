@@ -26,15 +26,20 @@ import org.yb.YBParameterizedTestRunner;
  */
 @RunWith(value = YBParameterizedTestRunner.class)
 public class TestPgRegressPgMisc extends BasePgRegressTestPorted {
+  private final boolean objectLockingEnabled;
   private final boolean concurrentDDLEnabled;
 
-  public TestPgRegressPgMisc(boolean concurrentDDLEnabled) {
+  public TestPgRegressPgMisc(boolean objectLockingEnabled, boolean concurrentDDLEnabled) {
+    this.objectLockingEnabled = objectLockingEnabled;
     this.concurrentDDLEnabled = concurrentDDLEnabled;
   }
 
-  @Parameterized.Parameters(name = "concurrentDDLEnabled={0}")
-  public static List<Boolean> parameters() {
-    return Arrays.asList(false, true);
+  @Parameterized.Parameters(name = "objectLocking={0}-concurrentDDL={1}")
+  public static List<Object[]> parameters() {
+    return Arrays.asList(
+        new Object[]{false, false},
+        new Object[]{true, false},
+        new Object[]{true, true});
   }
 
   @Override
@@ -48,12 +53,12 @@ public class TestPgRegressPgMisc extends BasePgRegressTestPorted {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_enable_auto_analyze", "false");
-    appendToYsqlPgConf(
-        flagMap, "yb_enable_concurrent_ddl=" + concurrentDDLEnabled);
+    flagMap.put("enable_object_locking_for_table_locks", String.valueOf(objectLockingEnabled));
+    flagMap.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
+    flagMap.put("ysql_enable_concurrent_ddl", String.valueOf(concurrentDDLEnabled));
 
     // TODO(28543): Remove once transactional ddl is enabled by default.
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
     return flagMap;
   }
 

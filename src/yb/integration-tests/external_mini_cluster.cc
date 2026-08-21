@@ -35,9 +35,11 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <ranges>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -100,6 +102,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -406,6 +409,13 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   } else {
     LOG(INFO) << "No need to start tablet servers";
   }
+  // WaitForInitDb is called here, after tservers have launched, rather than inside
+  // StartMasters(). The master gates initdb on the TEST_master_min_live_tservers_before_initdb
+  // flag set in StartMaster(), so initdb only completes after the tservers above register.
+  // StartMasters() is only called from this method, so the deferral is safe.
+  if (opts_.enable_ysql) {
+    RETURN_NOT_OK(WaitForInitDb());
+  }
   if (opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections) {
     RETURN_NOT_OK(WaitForTabletServersToAcceptYSQLConnection(
         MonoTime::Now() + kTabletServerRegistrationTimeout));
@@ -563,6 +573,22 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
   if (opts_.enable_ysql) {
     flags.push_back("--enable_ysql=true");
     flags.push_back("--master_auto_run_initdb");
+    // Avoid GitHub #31029 startup race: initdb's postgres bootstrap calls CreateTable on the
+    // master (to create the global transaction status table) and fails with "Not enough live
+    // tablet servers ..." if no tservers have registered yet. Have the master wait for the
+    // tservers we are about to start before launching initdb. Mirrors the Java-side fix in
+    // MiniYBCluster.java. num_tablet_servers is the right ceiling because (a) we are about
+    // to start exactly that many tservers immediately after, and (b) the master's RF
+    // requirement is min(num_tablet_servers, FLAGS_replication_factor), so any test that
+    // survives the bootstrap eventually needs all of them anyway.
+    //
+    // Add the flag to --undefok so that upgrade tests (which boot older yb-master binaries
+    // from build/db-upgrade/) silently ignore it. Older masters never had this race in
+    // upgrade scenarios -- they load a pre-baked sys-catalog snapshot and bypass initdb
+    // altogether -- so being able to skip the flag is safe.
+    AppendCsvFlagValue(flags, "undefok", "TEST_master_min_live_tservers_before_initdb");
+    flags.push_back(Format(
+        "--TEST_master_min_live_tservers_before_initdb=$0", opts_.num_tablet_servers));
     if (opts_.enable_ysql_auth) {
       flags.push_back("--ysql_enable_auth=true");
     }
@@ -1281,9 +1307,10 @@ Status ExternalMiniCluster::StartMasters() {
     masters_.push_back(master);
   }
 
-  if (opts_.enable_ysql) {
-    RETURN_NOT_OK(WaitForInitDb());
-  }
+  // Note: WaitForInitDb() is intentionally not called here. It is called from Start() after
+  // tservers have launched, so that the master's wait on
+  // TEST_master_min_live_tservers_before_initdb does not deadlock against tservers that
+  // haven't been started yet. See the comment block in Start() for details.
 
   // Trigger an election to avoid an unnecessary 3s wait on every cluster startup.
   if (!masters_.empty()) {
@@ -2078,6 +2105,24 @@ Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(
       NotFound, Format("Could not find leader of tablet $0 among live tservers.", tablet_id));
 }
 
+Result<std::vector<size_t>> ExternalMiniCluster::GetTabletFollowerIndexes(
+    const TabletId& tablet_id) {
+  std::vector<size_t> result;
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
+    auto tserver = tablet_server(i);
+    if (tserver->IsProcessAlive() && !tserver->IsProcessPaused()) {
+      auto tablets = VERIFY_RESULT(GetTablets(tserver));
+      for (const auto& tablet : tablets) {
+        if (tablet.tablet_id() == tablet_id && !tablet.is_leader()) {
+          result.push_back(i);
+          break;
+        }
+      }
+    }
+  }
+  return result;
+}
+
 ExternalTabletServer* ExternalMiniCluster::tablet_server_by_uuid(const std::string& uuid) const {
   for (const scoped_refptr<ExternalTabletServer>& ts : tablet_servers_) {
     if (ts->instance_id().permanent_uuid() == uuid) {
@@ -2296,8 +2341,8 @@ Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
 }
 
 Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
-    const std::string& db_name, std::optional<size_t> tserver_index, bool simple_query_protocol,
-    const std::string& user) {
+    std::string_view db_name, std::optional<size_t> tserver_index, bool simple_query_protocol,
+    std::string_view user) {
   ExternalClusterPGConnectionOptions options;
   options.db_name = db_name;
   if (tserver_index) {
@@ -2417,19 +2462,20 @@ LogWaiter ExternalMiniCluster::GetMasterLogWaiter(const std::string& log_message
 // LogWaiter
 //------------------------------------------------------------
 
-LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait)
-    : LogWaiter(std::vector<ExternalDaemon*>({daemon}), string_to_wait) {}
-
-LogWaiter::LogWaiter(std::vector<ExternalDaemon*> daemons, const std::string& string_to_wait)
-    : daemons_(std::move(daemons)), string_to_wait_(string_to_wait) {
+LogWaiter::LogWaiter(std::vector<ExternalDaemon*> daemons, std::vector<std::string> strings_to_wait)
+  : daemons_(std::move(daemons)), strings_to_wait_(std::move(strings_to_wait)) {
   for (auto daemon : daemons_) {
     daemon->SetLogListener(this);
   }
 }
 
 void LogWaiter::Handle(const GStringPiece& s) {
-  if (s.contains(string_to_wait_)) {
-    event_occurred_ = true;
+  for (const auto& string_to_wait : strings_to_wait_) {
+    if (s.contains(string_to_wait)) {
+      std::lock_guard lock(mutex_);
+      matched_log_line_ = s.as_string();
+      event_occurred_ = true;
+    }
   }
 }
 
@@ -2443,9 +2489,15 @@ Status LogWaiter::WaitFor(const MonoDelta timeout) {
 
   return ::yb::LoggedWaitFor(
       [this] { return event_occurred_.load(); }, timeout,
-      Format("Waiting for log record '$0' on $1...", string_to_wait_, ToString(daemons_ids)),
+      Format("Waiting for log record '$0' on $1...", strings_to_wait_, ToString(daemons_ids)),
       kInitialWaitPeriod);
 }
+
+std::string LogWaiter::matched_log_line() const {
+  std::lock_guard lock(mutex_);
+  return matched_log_line_;
+}
+
 
 LogWaiter::~LogWaiter() {
   for (auto daemon : daemons_) {
@@ -2828,6 +2880,54 @@ Status WaitForTableIntentsApplied(
     ExternalMiniCluster *cluster, const TableId&, MonoDelta timeout) {
   // TODO(jhe) - Check for just table_id, currently checking for all intents.
   return CHECK_NOTNULL(cluster)->WaitForAllIntentsApplied(timeout);
+}
+
+void DumpTabletDistribution(ExternalMiniCluster* cluster, bool running_only) {
+  const auto num_ts = cluster->num_tablet_servers();
+
+  // table_name -> per-tserver replica counts, indexed by tserver index.
+  std::map<std::string, std::vector<int>> table_to_ts_loads;
+  std::vector<int> ts_totals(num_ts, 0);
+  for (size_t i = 0; i < num_ts; ++i) {
+    auto* ts = cluster->tablet_server(i);
+    auto tablets_result = cluster->GetTablets(ts);
+    if (!tablets_result.ok()) {
+      LOG(WARNING) << "Failed to list tablets for tserver " << ts->uuid() << ": "
+                   << tablets_result.status();
+      continue;
+    }
+    for (const auto& tablet : *tablets_result) {
+      // Skip replicas that are not actively serving (e.g. tombstoned replicas left behind after
+      // the load balancer moved a peer to another tserver); counting them would over-report load
+      // and disagree with the committed placement seen through the master.
+      if (running_only && tablet.state() != tablet::RUNNING) {
+        continue;
+      }
+      auto& loads = table_to_ts_loads[tablet.table_name()];
+      if (loads.empty()) {
+        loads.resize(num_ts);
+      }
+      loads[i]++;
+      ts_totals[i]++;
+    }
+  }
+
+  std::ostringstream out;
+  out << "Tablet distribution across " << num_ts << " tservers (replicas per table per tserver):";
+  for (size_t i = 0; i < num_ts; ++i) {
+    out << "\n  TS" << i << " = " << cluster->tablet_server(i)->uuid();
+  }
+  for (const auto& [table_name, loads] : table_to_ts_loads) {
+    out << "\n  " << table_name << ":";
+    for (size_t i = 0; i < num_ts; ++i) {
+      out << " " << (i < loads.size() ? loads[i] : 0);
+    }
+  }
+  out << "\n  TOTAL:";
+  for (size_t i = 0; i < num_ts; ++i) {
+    out << " " << ts_totals[i];
+  }
+  LOG(INFO) << out.str();
 }
 
 }  // namespace yb

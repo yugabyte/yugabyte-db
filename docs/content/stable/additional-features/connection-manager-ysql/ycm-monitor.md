@@ -16,19 +16,22 @@ type: docs
 
 Use the following metrics to monitor connections when using YSQL Connection Manager.
 
-Access metrics at the `13000/connections` endpoint.
+Access the per-pool metrics in JSON format at the `13000/connections` endpoint. Each pool is reported as a JSON object with the following fields.
 
 | Metric Name | Description |
 | :--- | :--- |
-| database_name (DB OID) | Specifies information regarding the database being used in each pool. |
-| user_name (User OID) | Specifies information regarding the user being used in each pool. |
+| database_name | Name of the database used by the pool. |
+| DB OID | OID of the database used by the pool. |
+| user_name | Name of the user used by the pool. |
+| User OID | OID of the user used by the pool. |
+| logical_rep | Whether the pool serves logical replication connections. |
 | active_logical_connections | Specifies on a pool-by-pool basis the number of active logical (client) connections.<br>An "active" client connection corresponds to a session in an active transaction on a server connection. |
 | queued_logical_connections | Specifies on a pool-by-pool basis the number of queued client connections.<br>A "queued" client connection corresponds to a session that is queued up to attach to a server connection. |
 | waiting_logical_connections | Specifies on a pool-by-pool basis the number of waiting/idle client connections.<br>A session that is neither queued to attach to a server connection nor currently using a server connection is in a "waiting" state. |
 | active_physical_connections | Specifies on a pool-by-pool basis the number of active physical (server) connections.<br>(At the start of a transaction) After a server connection is picked up from the connection pool (or freshly created) to serve a client connection, it is marked as "active". |
 | idle_physical_connections | Specifies on a pool-by-pool basis the number of idle server connections.<br>(At the end of a transaction) Once a server connection detaches from its client connection and returns to the server connection pool, it is marked as "idle". |
 | sticky_connections | Specifies on a pool-by-pool basis the number of [sticky connections](../ycm-setup/#sticky-connections).<br>server connections that do not return to the connection pool at the end of a transaction remain stuck to the client connection for the lifetime of the session. |
-| avg_wait_time_ns | Specifies on a pool-by-pool basis the time (in ns) on average clients have to be queued before attaching to a server connection. |
+| avg_wait_time_ns | Specifies on a pool-by-pool basis the average time (in ns) for a client connection to attach to a server connection — time spent queued plus the time taken to find and attach a server connection. Averaged over the last stats interval. |
 | qps / tps | Specifies on a pool-by-pool basis some basic performance metrics.<br>qps = queries per second<br>tps = transactions per second |
 
 ### Logical and server connections
@@ -54,6 +57,32 @@ You can have some queued state clients. However, if clients start timing out or 
 [Sticky connections](../ycm-setup/#sticky-connections) can be the cause of higher connection acquisition latency in some cases (sticky connections are destroyed once used).
 
 They may also be the cause for connection exhaustion or client wait timeouts.
+
+## Prometheus metrics
+
+YSQL Connection Manager also exposes metrics in Prometheus format at the YB-TServer Prometheus metrics endpoint, for scraping by monitoring systems such as Prometheus and Grafana.
+
+The following server-level metrics describe the Connection Manager as a whole.
+
+| Metric | Type | Description |
+| :----- | :--- | :---------- |
+| `ysql_conn_mgr_num_pools` | gauge | Number of YSQL Connection Manager pools. |
+| `ysql_conn_mgr_last_updated_timestamp` | gauge | Timestamp of the last update to YSQL Connection Manager metrics. |
+| `ysql_conn_mgr_max_client_connections` | gauge | Maximum number of clients that can connect to YSQL Connection Manager. |
+
+The following metrics are reported per pool, labelled with the `database` and `user` of the pool.
+
+| Metric | Type | Description |
+| :----- | :--- | :---------- |
+| `ysql_conn_mgr_active_clients` | gauge | Number of active logical connections. |
+| `ysql_conn_mgr_queued_clients` | gauge | Number of logical connections waiting in the queue for a physical connection. |
+| `ysql_conn_mgr_waiting_clients` | gauge | Number of logical connections that are either idle (no ongoing transaction) or waiting for the worker thread to be processed. |
+| `ysql_conn_mgr_active_servers` | gauge | Number of physical connections currently attached to a logical connection. |
+| `ysql_conn_mgr_idle_servers` | gauge | Number of physical connections not attached to any logical connection. |
+| `ysql_conn_mgr_query_rate` | gauge | Query rate over the last stats interval (set in the Odyssey config). |
+| `ysql_conn_mgr_transaction_rate` | gauge | Transaction rate over the last stats interval (set in the Odyssey config). |
+| `ysql_conn_mgr_avg_wait_time_ns` | gauge | Average wait time (in nanoseconds) for a logical connection to be attached to a physical connection. |
+| `ysql_conn_mgr_sticky_connections` | gauge | Number of logical connections attached to a physical connection for the lifetime of the logical connection. |
 
 ## Logging
 
@@ -90,28 +119,3 @@ ysql-conn-mgr-2025-04-22_205456.log.2986790
 ```
 
 The log file was created for a Connection Manager process with a PID of 2986790, which started logging at 20:54:56 UTC on 22nd April 2025.
-
-<!--
-Monitoring in YBA & YBM (screenshots)
-YBA :
-YBM :
-Metrics displayed on cluster UI (Available Per node, Per DB):
-Client Connections
-Client connection Average wait time (ns)
-Server connections
-Database transactions / sec
-
-The following metrics are exported when Metrics Export is enabled in YugabyteDB Aeon:
-
-- ybdb_ysql_conn_mgr_active_clients
-- ybdb_ysql_conn_mgr_active_servers
-- ybdb_ysql_conn_mgr_avg_wait_time_ns
-- ybdb_ysql_conn_mgr_idle_servers
-- ybdb_ysql_conn_mgr_last_updated_timestamp
-- ybdb_ysql_conn_mgr_num_pools
-- ybdb_ysql_conn_mgr_query_rate
-- ybdb_ysql_conn_mgr_queued_clients
-- ybdb_ysql_conn_mgr_sticky_connections
-- ybdb_ysql_conn_mgr_transaction_rate
-- ybdb_ysql_conn_mgr_waiting_clients
--->

@@ -70,6 +70,7 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kClonePgSchema)
   (kCloneTablet)
   (kCreateReplica)
+  (kDdlRequesterLiveness)
   (kDeleteReplica)
   (kEnableDbConns)
   (kFlushTablets)

@@ -24,7 +24,7 @@
 
 #include "yb/docdb/docdb_types.h"
 
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"

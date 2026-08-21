@@ -27,7 +27,6 @@
 
 namespace rocksdb {
 
-class WritableFile;
 struct ParsedInternalKey;
 struct PlainTableReaderFileInfo;
 enum PlainTableEntryType : unsigned char;

@@ -55,6 +55,7 @@ export const YSQL_FIELD = 'ysql.enable';
 export const YSQL_AUTH_FIELD = 'ysql.enable_auth';
 export const YSQL_PASSWORD_FIELD = 'ysql.password';
 export const YSQL_CONFIRM_PWD = 'ysql.confirm_pwd';
+export const GFLAGS_FIELD = 'gFlags';
 
 export const YCQL_FIELD = 'ycql.enable';
 export const YCQL_AUTH_FIELD = 'ycql.enable_auth';
@@ -63,3 +64,9 @@ export const YCQL_CONFIRM_PWD = 'ycql.confirm_pwd';
 
 export const CONNECTION_POOLING_FIELD = 'enableConnectionPooling';
 export const PG_COMPATIBILITY_FIELD = 'enablePGCompatibitilty';
+
+export const UNIVERSE_OVERRIDES_FIELD = 'universeOverrides';
+export const AZ_OVERRIDES_FIELD = 'azOverrides';
+export const K8S_AZ_OVERRIDES_FIELD = 'k8sAzOverrides';
+
+export const USER_TAGS_FIELD = 'instanceTags';

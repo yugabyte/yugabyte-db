@@ -5,6 +5,7 @@ package com.yugabyte.yw.models;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.metrics.*;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -318,19 +319,47 @@ public class MetricConfigDefinition {
   private String filtersToString(Map<String, String> filters, Map<String, String> excludeFilters) {
     List<String> filtersList = new ArrayList<>();
     for (Map.Entry<String, String> filter : filters.entrySet()) {
-      if (specialFilterPattern.matcher(filter.getValue()).find()) {
-        filtersList.add(filter.getKey() + "=~\"" + filter.getValue() + "\"");
+      String value = resolveYbaEnvPlaceholders(filter.getValue());
+      if (specialFilterPattern.matcher(value).find()) {
+        filtersList.add(filter.getKey() + "=~\"" + value + "\"");
       } else {
-        filtersList.add(filter.getKey() + "=\"" + filter.getValue() + "\"");
+        filtersList.add(filter.getKey() + "=\"" + value + "\"");
       }
     }
     for (Map.Entry<String, String> excludeFilter : excludeFilters.entrySet()) {
-      if (specialFilterPattern.matcher(excludeFilter.getValue()).find()) {
-        filtersList.add(excludeFilter.getKey() + "!~\"" + excludeFilter.getValue() + "\"");
+      String value = resolveYbaEnvPlaceholders(excludeFilter.getValue());
+      if (specialFilterPattern.matcher(value).find()) {
+        filtersList.add(excludeFilter.getKey() + "!~\"" + value + "\"");
       } else {
-        filtersList.add(excludeFilter.getKey() + "!=\"" + excludeFilter.getValue() + "\"");
+        filtersList.add(excludeFilter.getKey() + "!=\"" + value + "\"");
       }
     }
     return "{" + String.join(", ", filtersList) + "}";
+  }
+
+  /**
+   * Substitutes the {@code __ybaPodName__}, {@code __ybaNamespace__} and {@code __ybaPvcName__}
+   * tokens in YAML-declared filter values with the values from the YBA pod's {@code POD_NAME} /
+   * {@code POD_NAMESPACE} / {@code PVC_NAME} env vars. Used by YBA-platform metric graphs so they
+   * don't accidentally aggregate data from other pods or PVCs in the cluster.
+   */
+  private static String resolveYbaEnvPlaceholders(String value) {
+    if (value == null) {
+      return value;
+    }
+    String result = value;
+    if (result.contains("__ybaPodName__")) {
+      String podName = KubernetesEnvironmentVariables.getPodName();
+      result = result.replace("__ybaPodName__", podName != null ? podName : "");
+    }
+    if (result.contains("__ybaNamespace__")) {
+      String namespace = KubernetesEnvironmentVariables.getPodNamespace();
+      result = result.replace("__ybaNamespace__", namespace != null ? namespace : "");
+    }
+    if (result.contains("__ybaPvcName__")) {
+      String pvcName = KubernetesEnvironmentVariables.getPvcName();
+      result = result.replace("__ybaPvcName__", pvcName != null ? pvcName : "");
+    }
+    return result;
   }
 }

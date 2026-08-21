@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/util/status_format.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
 using std::string;
@@ -28,6 +30,9 @@ class PgDropColumnSanityTest : public LibPqTestBase {
     // These tests disable ddl rollback (which holds back release of global object locks),
     // and expect dmls to go through. This doesn't hold true with object locking enabled.
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 
   virtual void SetupTables();

@@ -59,6 +59,25 @@ SUBDIRS = \
 	portability \
 	ybgate
 
+# YB: headers from the YugabyteDB source tree that are included by the
+# YB-modified server headers (e.g. utils/elog.h includes
+# yb/yql/pggate/util/ybc_util.h) and by extensions.  Installing them allows
+# extensions to be built against an installed server tree without the
+# YugabyteDB source tree.  This list must cover the transitive closure of
+# yb/ includes reachable from the installed C headers.  C++ server headers
+# are intentionally out of scope: ybgate/ybgate_cpp_util.h pulls
+# yb/common/pgsql_error.h, whose protobuf/Status closure is not installed.
+YB_PGGATE_SRCDIR = $(YB_SRC_ROOT)/src/yb/yql/pggate
+YB_PGGATE_HEADERS = \
+	pg_metrics_list.h \
+	ybc_dist_trace.h \
+	ybc_gflags.h \
+	ybc_pg_typedefs.h \
+	ybc_pggate.h \
+	util/ybc_guc.h \
+	util/ybc_util.h \
+	webserver/ybc_pg_webserver_wrapper.h
+
 # Install all headers
 install: all installdirs
 # These headers are needed by the public headers of the interfaces.
@@ -90,10 +109,16 @@ ifeq ($(vpath_build),yes)
 	done
 endif
 	$(MAKE) -C catalog install
+# YB: install YugabyteDB headers needed by the YB-modified server headers.
+	for file in $(YB_PGGATE_HEADERS); do \
+	  $(INSTALL_DATA) '$(YB_PGGATE_SRCDIR)'/$$file '$(DESTDIR)$(includedir_server)'/yb/yql/pggate/$$file || exit; \
+	done
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(includedir)/libpq' '$(DESTDIR)$(includedir_internal)/libpq'
 	$(MKDIR_P) $(addprefix '$(DESTDIR)$(includedir_server)'/, $(SUBDIRS))
+# YB: directories for YugabyteDB headers.
+	$(MKDIR_P) $(addprefix '$(DESTDIR)$(includedir_server)'/yb/yql/pggate/, util webserver)
 
 
 uninstall:
@@ -102,6 +127,8 @@ uninstall:
 # heuristic...
 	rm -rf $(addprefix '$(DESTDIR)$(includedir_server)'/, $(SUBDIRS) *.h)
 	$(MAKE) -C catalog uninstall
+# YB: remove installed YugabyteDB headers.
+	rm -rf '$(DESTDIR)$(includedir_server)'/yb
 
 
 clean:

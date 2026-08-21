@@ -95,8 +95,8 @@ function nodesAzForRegion(regionCode: string) {
   return {
     availabilityZones: {
       [regionCode]: [
-        { name: 'az-a', uuid: 'az-uuid-1', nodeCount: 1, preffered: 0 },
-        { name: 'az-b', uuid: 'az-uuid-2', nodeCount: 2, preffered: 1 }
+        { name: 'az-a', uuid: 'az-uuid-1', nodeCount: 1, preffered: 1 },
+        { name: 'az-b', uuid: 'az-uuid-2', nodeCount: 2, preffered: 2 }
       ]
     },
     useDedicatedNodes: false

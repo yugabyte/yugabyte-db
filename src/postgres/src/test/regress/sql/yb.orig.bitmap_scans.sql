@@ -18,13 +18,13 @@ CREATE INDEX ON simple(ind_b ASC);
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
 \set Q1 '/*+ BitmapScan(simple) */'
 \set query ':P :Q1 SELECT * FROM simple WHERE k = 1;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P :Q1 SELECT * FROM simple WHERE ind_a < 5 ORDER BY k;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P :Q1 SELECT * FROM simple WHERE ind_a BETWEEN 2 AND 6 OR ind_b > 25 ORDER BY k;'
-\i :iter_P2
+\i :run_query
 
 --
 -- test cases where we could skip fetching the table rows (TODO: #22044)
@@ -32,7 +32,7 @@ CREATE INDEX ON simple(ind_b ASC);
 -- this query does not need a recheck, so we don't need to fetch the rows for the COUNT(*)
 \set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)'
 \set query ':P :Q1 SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR ind_b < 10;'
-\i :iter_P2
+\i :run_query
 
 -- when we require the rows, notice that the YB Bitmap Table Scan sends a table read request
 \set query ':explain :Q1 SELECT * FROM simple WHERE ind_a = 2 OR ind_b < 10;'
@@ -48,17 +48,17 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
 -- when the expression can be pushed down, we don't need a recheck but we do
 -- still need to send the request.
 \set query ':P :Q1 SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);'
-\i :iter_P2
+\i :run_query
 
 -- other aggregates may require the rows
 \set query ':P :Q1 SELECT SUM(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT MAX(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);'
-\i :iter_P2
+\i :run_query
 
 -- when we don't need the actual value, we can avoid fetching
 \set query ':P :Q1 SELECT 1 FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);'
-\i :iter_P2
+\i :run_query
 \set query ':explain :Q1 SELECT random() FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);'
 :query
 
@@ -66,22 +66,22 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
 -- test primary key queries
 --
 \set query ':P :Q1 SELECT * FROM simple WHERE k = 1 OR ind_a = 2;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P :Q1 SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P :Q1 SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;'
-\i :iter_P2
+\i :run_query
 
 -- test non-existent results
 \set query ':P :Q1 SELECT COUNT(*) FROM simple WHERE k = 2000 OR ind_a < 0;'
-\i :iter_P2
+\i :run_query
 
 --
 -- test unsatisfiable conditions
 --
-
+SET yb_test_skip_binding_scan_keys = true;
 \set query ':explain :Q1 SELECT * FROM simple WHERE (k <= 1 AND k = 2);'
 :query
 \set query ':explain :Q1 SELECT * FROM simple WHERE (k = 1 AND k = 2) OR ind_b = 0;'
@@ -90,13 +90,14 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
 :query
 \set query ':explain :Q1 SELECT * FROM simple WHERE (ind_a = 2 AND ind_a = 2) OR ind_b = 0;'
 :query
+RESET yb_test_skip_binding_scan_keys;
 
 --
 -- #21793: test row compare expressions
 --
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
 \set query ':P :Q1 SELECT * FROM simple WHERE (ind_a, ind_a) <= (4, 1) OR ind_a IS NULL;'
-\i :iter_P2
+\i :run_query
 
 --
 -- #22062: variable not found in subplan target list
@@ -109,7 +110,7 @@ SELECT * FROM simple AS tbl_1 JOIN simple AS tbl_2 ON tbl_1.ind_a = tbl_2.ind_a 
 --
 \set Q1 '/*+ BitmapScan(simple_1) BitmapScan(simple) */'
 \set query ':P :Q1 SELECT * FROM simple WHERE ind_a = 2 AND ind_a <> (SELECT ind_a FROM simple WHERE ind_b = 1);'
-\i :iter_P2
+\i :run_query
 
 --
 -- test UPDATE
@@ -120,13 +121,13 @@ SELECT * FROM simple AS tbl_1 JOIN simple AS tbl_2 ON tbl_1.ind_a = tbl_2.ind_a 
 :query
 
 \set query ':P :Q1 SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 ORDER BY k;'
-\i :iter_P2
+\i :run_query
 
 -- NOTE: this GUC cannot be set using pg_hint_plan Set(...) because it is
 -- currently used during execution, not just planning.
 SET yb_test_skip_binding_scan_keys = true;
 
-\i :iter_P2
+\i :run_query
 
 RESET yb_test_skip_binding_scan_keys;
 
@@ -135,7 +136,7 @@ RESET yb_test_skip_binding_scan_keys;
 :query
 
 \set query ':P :Q1 SELECT ind_a, ind_b FROM simple WHERE ind_a IS NULL OR ind_b < 15 ORDER BY k;'
-\i :iter_P2
+\i :run_query
 
 
 --
@@ -150,21 +151,21 @@ INSERT INTO multi SELECT i, i * 2, i * 3, i * 4 FROM generate_series(1, 1000) i;
 \set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)'
 \set Q1 '/*+ BitmapScan(multi) */'
 \set query ':P :Q1 SELECT * FROM multi WHERE a < 2 OR b > 1997 ORDER BY a;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P :Q1 SELECT * FROM multi WHERE c BETWEEN 10 AND 15 AND a < 30 ORDER BY a;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P :Q1 SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8 ORDER BY a;'
-\i :iter_P2
+\i :run_query
 
 -- try some slightly complex nested logical operands queries
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
 \set query ':P :Q1 SELECT * FROM multi WHERE a < 2 OR (b > 1797 AND (c BETWEEN 2709 AND 2712 OR c = 2997)) ORDER BY a;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P :Q1 SELECT * FROM multi WHERE (a < 3 AND a % 2 = 0) OR (b IN (10, 270, 1800) AND (c < 20 OR c > 2500)) ORDER BY a;'
-\i :iter_P2
+\i :run_query
 
 --
 -- test limits
@@ -207,7 +208,7 @@ SET work_mem TO '100kB';
 -- hint2: verify local filters still apply when pushdown is disabled
 \set Q2 '/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */'
 \set query ':explain :Q SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000) AND b % 2 = 0) ORDER BY a;'
-\i :iter_Q2
+\i :run_query
 
 -- where the first bitmap index scan exceeds work_mem
 \set query ':explain :Q1 SELECT * FROM multi WHERE a < 5000 OR (b > 0 AND (c < 3000 OR c > 27000)) ORDER BY a;'
@@ -225,22 +226,22 @@ SET work_mem TO '100kB';
 SET yb_enable_expression_pushdown = true;
 SET yb_enable_index_aggregate_pushdown = true;
 \set query ':P :Q1 SELECT COUNT(*) FROM multi WHERE a > 10;'
-\i :iter_P2
+\i :run_query
 
 SET yb_enable_expression_pushdown = false;
 SET yb_enable_index_aggregate_pushdown = true;
 \set query ':P :Q1 SELECT COUNT(*) FROM multi WHERE a > 10;'
-\i :iter_P2
+\i :run_query
 
 SET yb_enable_expression_pushdown = false;
 SET yb_enable_index_aggregate_pushdown = false;
 \set query ':P :Q1 SELECT COUNT(*) FROM multi WHERE a > 10;'
-\i :iter_P2
+\i :run_query
 
 SET yb_enable_expression_pushdown = true;
 SET yb_enable_index_aggregate_pushdown = false;
 \set query ':P :Q1 SELECT COUNT(*) FROM multi WHERE a > 10;'
-\i :iter_P2
+\i :run_query
 
 RESET yb_enable_index_aggregate_pushdown;
 RESET yb_enable_expression_pushdown;
@@ -255,13 +256,12 @@ RESET work_mem;
 \set Q1 '/*+ BitmapScan(multi multi_b_c_idx) */'
 \set Q2 '/*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */'
 \set query ':P :Q SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;'
-\set Pnext :iter_Q2
-\i :iter_P2
+\i :run_query
 
 \set Q1 '/*+ BitmapScan(multi) */'
 \set Q2 '/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */'
 \set query ':P :Q SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;'
-\i :iter_P2
+\i :run_query
 
 --
 -- test recheck index conditions
@@ -287,43 +287,38 @@ insert into recheck_test VALUES
 SELECT $$
 :P :Q1 SELECT text_col FROM recheck_test AS t WHERE text_col = 'i' AND text_col < 'j';
 $$ AS query \gset
-\set Pnext :iter_query
-\i :iter_P2
+\i :run_query
 
 -- PxR: explain/run x target (int4_col vs COUNT(*))
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
 \set R1 'int4_col'
 \set R2 'COUNT(*)'
-\set Pnext :iter_R2
 
 \set query ':P :Q1 SELECT :R FROM recheck_test t WHERE int4_col < 3 AND int4_col IN (2, 5, 6);'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT :R FROM recheck_test t WHERE int4_col IN (2, 5, 6) AND int4_col < 3;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P :Q1 SELECT :R FROM recheck_test t WHERE int4_col < 3 AND int4_col = 5;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT :R FROM recheck_test t WHERE int4_col = 5 AND int4_col < 3;'
-\i :iter_P2
+\i :run_query
 
 -- PxQxR: explain/run x expression_pushdown x target
 -- test where casting may cause us to require recheck
 \set explain 'EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF)'
 \set Q1 '/*+ BitmapScan(t) */'
 \set Q2 '/*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */'
-\set Pnext :iter_Q2
-\set Qnext :iter_R2
 
 \set query ':P :Q SELECT :R FROM recheck_test t WHERE int4_col = 2147483647;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q SELECT :R FROM recheck_test t WHERE int4_col = 2147483648;'
-\i :iter_P2
+\i :run_query
 
 \set Q1 '/*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */'
 \set Q2 '/*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) Set(yb_enable_expression_pushdown false) */'
-\set Qnext :iter_query
 \set query ':explain :Q SELECT s.bigint_col, t.int4_col FROM recheck_test s JOIN recheck_test t ON s.bigint_col = t.int4_col;'
-\i :iter_Q2
+\i :run_query
 
 --
 -- #22622: test local recheck of condition for a column that is not a target
@@ -336,14 +331,13 @@ $$ AS query \gset
 SELECT $$
 :explain :Q select int4_col from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
 $$ AS query \gset
-\i :iter_Q2
+\i :run_query
 
 -- also check for aggregate pushdowns
 SELECT $$
 :P :Q select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
 $$ AS query \gset
-\set Pnext :iter_Q2
-\i :iter_P2
+\i :run_query
 
 --
 -- test pk of different types
@@ -357,36 +351,35 @@ INSERT INTO pk_text SELECT i::text, i FROM generate_series(1, 100) i;
 SELECT $$
 :P :Q1 SELECT * FROM pk_text WHERE v_int = 12 OR k_text = '12';
 $$ AS query \gset
-\set Pnext :iter_query
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P :Q1 SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P :Q1 SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P :Q1 SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY v_int;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- test count
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
 SELECT $$
 :P :Q1 SELECT COUNT(*) FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12');
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- test non-existent results
 SELECT $$
 :P :Q1 SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 --
 -- BitmapAnd
@@ -401,12 +394,17 @@ $$ AS query \gset
 -- must choose a bitmap scan, what plan does it choose? Does that plan work?
 --
 SET yb_enable_base_scans_cost_model = true;
+SET yb_fetch_size_limit = 0;
+SET yb_fetch_row_limit = 0;
 
 CREATE TABLE test_and (a INT, b INT, c INT);
 CREATE INDEX ON test_and (a ASC);
 CREATE INDEX ON test_and (b ASC);
 CREATE INDEX ON test_and (c ASC);
-INSERT INTO test_and SELECT i, j, k FROM generate_series(1, 20) i, generate_series(1, 20) j, generate_series(1, 20) k;
+INSERT INTO test_and SELECT i, j, k FROM generate_series(1, 50) i, generate_series(1, 52) j, generate_series(1, 56) k;
+ALTER TABLE test_and ALTER COLUMN a SET STATISTICS 1000;
+ALTER TABLE test_and ALTER COLUMN b SET STATISTICS 1000;
+ALTER TABLE test_and ALTER COLUMN c SET STATISTICS 1000;
 ANALYZE test_and;
 
 \set explain 'EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF)'
@@ -430,12 +428,99 @@ ANALYZE test_and;
 :query
 
 -- complex nested queries
-\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 5 AND (b < 3 OR b > 16);'
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 5 AND (b < 3 OR b > 48);'
 :query
-\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 5);'
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 48 AND a < 5);'
 :query
-\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 6);'
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 48 AND a < 7);'
 :query
 
+-- #32132, 32123: bitmap scan storage filter reading wrong col
+--
+-- Postgres passes column references for filter columns to the execution layer
+-- and further to DocDB to execute the filters. These column references are the
+-- index of the key in the index columns. This works for secondary indexes, but
+-- primary indexes in YB are part of the base table and ordering of columns in
+-- the base table can be different from the ordering of the primary index keys
+-- and we must send the index of the column in the base table.
+--
+-- However, this logic was incorrectly implemented in case of Bitmap Index Scan
+-- and incorrect column references were passed.
+--
+-- This can lead to different types of errors if the type of the column doesn't
+-- match the type expected by the filter, but this can also lead to wrong
+-- results if the type matched because the filter would get executed on the
+-- wrong column. These errors may be harder to spot.
+-- A non-key column (v1) is declared before the range key (k2), so k2's position
+-- among the index key columns (2) differs from its position in the base table
+-- (3). Without this fix, the LIKE filter would be executed on a column of type
+-- numeric and fail with 'invalid byte sequence for encoding "UTF8"'.
+CREATE TABLE bitmap_pk_diff_type_1 (k1 int NOT NULL, v1 numeric, k2 varchar NOT NULL,
+                                  PRIMARY KEY (k1 HASH, k2 ASC));
+INSERT INTO bitmap_pk_diff_type_1 VALUES (1, 10, 'aa'), (1, 20, 'bb');
+EXPLAIN (COSTS OFF) /*+ BitmapScan(bitmap_pk_diff_type_1) */
+SELECT k2 FROM bitmap_pk_diff_type_1 WHERE k2 LIKE '%a' AND k1 = 1;
+/*+ BitmapScan(bitmap_pk_diff_type_1) */
+SELECT k2 FROM bitmap_pk_diff_type_1 WHERE k2 LIKE '%a' AND k1 = 1 ORDER BY k2;
+
+-- In the following case, ILIKE filter would be executed on a column of type
+-- date and fail with 'ERROR:  recvmsg error: Connection reset by peer'
+-- instead of the encoding error.
+CREATE TABLE bitmap_pk_diff_type_2 (k1 int NOT NULL, v1 date, k2 varchar NOT NULL,
+                                  PRIMARY KEY (k1 HASH, k2 ASC));
+INSERT INTO bitmap_pk_diff_type_2 VALUES (1, '2026-06-01', 'aa'), (1, '2026-06-02', 'bb');
+EXPLAIN (COSTS OFF) /*+ BitmapScan(bitmap_pk_diff_type_2) */
+SELECT k2 FROM bitmap_pk_diff_type_2 WHERE k2 LIKE '%a' AND k1 = 1;
+/*+ BitmapScan(bitmap_pk_diff_type_2) */
+SELECT k2 FROM bitmap_pk_diff_type_2 WHERE k2 LIKE '%a' AND k1 = 1 ORDER BY k2;
+
+-- Same layout but v1 and k2 share a type, so there is no encoding error.
+-- Without this fix, the filter on k2 silently runs against v1 instead,
+-- returning the wrong result.
+-- The following query should return 'y2', but without this fix it returned 'x1'
+-- when bitmap scan was used and 'y2' when bitmap scan was not used.
+CREATE TABLE bitmap_pk_same_type (k1 int NOT NULL, v1 text NOT NULL, k2 text NOT NULL,
+                                  PRIMARY KEY (k1 HASH, k2 ASC));
+INSERT INTO bitmap_pk_same_type VALUES (1, 'x1', 'x2'), (1, 'y2', 'y1');
+EXPLAIN (COSTS OFF) /*+ BitmapScan(bitmap_pk_same_type) */
+SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
+/*+ BitmapScan(bitmap_pk_same_type) */
+SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
+-- Cross-check: the bitmap result must equal the non-bitmap (seq scan) result.
+/*+ SeqScan(bitmap_pk_same_type) */
+SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
+
+DROP TABLE bitmap_pk_diff_type_1;
+DROP TABLE bitmap_pk_diff_type_2;
+DROP TABLE bitmap_pk_same_type;
+
+-- In a Bitmap Index Scan, filters pushed down as Storage Index Filters must be
+-- included in the recheck conditions.
+-- The table has no primary key, so rows get a random internal ybrowid and are
+-- hash-distributed randomly across tablets.  Because count(*) is pushed down as
+-- a partial aggregate, the scan node's actual row count equals the number of
+-- tablets holding a matching row, which is nondeterministic across runs.  Pin
+-- the table to a single tablet to make the plan output deterministic.
+CREATE TABLE bitmap_recheck (a float4, b INT, c INT) SPLIT INTO 1 TABLETS;
+INSERT INTO bitmap_recheck (a, b, c) (SELECT s::float4/10, s, s % 10 FROM generate_series(1,40) s);
+
+CREATE INDEX bitmap_recheck_a ON bitmap_recheck (a ASC);
+CREATE INDEX bitmap_recheck_b_c ON bitmap_recheck (b ASC) INCLUDE (c) WHERE c > 2;
+
+-- In the Bitmap Index Scan plan, recheck is triggered because the filter
+-- `a = 0.4` is pushed down as Index Condition, but not enforced during the
+-- index scan because of type mismatch. The column `a` is of type `float4` but
+-- PG assigns type `float8` to the literal decimal `0.4`.
+-- The filter `c > 5` is pushed down as a Storage Index Filter on
+-- index `bitmap_recheck_b_c` and it must be included in the recheck conditions.
+\set Q1 '/*+ SeqScan(bitmap_recheck) */'
+\set Q2 '/*+ BitmapScan(bitmap_recheck) */'
+\set query ':P :Q SELECT count(*) FROM bitmap_recheck WHERE a = 0.4 OR c > 5;'
+\i :run_query
+
+DROP TABLE bitmap_recheck;
+
+RESET yb_fetch_size_limit;
+RESET yb_fetch_row_limit;
 RESET yb_enable_base_scans_cost_model;
 RESET enable_bitmapscan;

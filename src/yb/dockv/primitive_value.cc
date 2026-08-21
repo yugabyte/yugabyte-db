@@ -705,6 +705,8 @@ std::string PrimitiveValue::ValueToString() const {
       return FormatBytesAsStr(str_val_);
     case ValueEntryType::kUuid:
       return uuid_val_.ToString();
+    case ValueEntryType::kVector:
+      return Format("VECTOR_DATA($0)", Slice(str_val_).ToDebugHexString());
     case ValueEntryType::kVectorId:
       return DocVectorIdToString(uuid_val_);
     case ValueEntryType::kDeleteVectorIds:
@@ -712,7 +714,7 @@ std::string PrimitiveValue::ValueToString() const {
     case ValueEntryType::kRowLock:
       return "l";
     case ValueEntryType::kArrayIndex:
-      return Substitute("ArrayIndex($0)", int64_val_);
+      return Format("ArrayIndex($0)", int64_val_);
     case ValueEntryType::kPackedRowV1:
       return "<PACKED ROW>";
     case ValueEntryType::kPackedRowV2:
@@ -735,9 +737,9 @@ std::string PrimitiveValue::ValueToString() const {
     case ValueEntryType::kColocationId:
       return Format("ColocationId($0)", uint32_val_);
     case ValueEntryType::kTransactionId:
-      return Substitute("TransactionId($0)", uuid_val_.ToString());
+      return Format("TransactionId($0)", uuid_val_.ToString());
     case ValueEntryType::kSubTransactionId:
-      return Substitute("SubTransactionId($0)", uint32_val_);
+      return Format("SubTransactionId($0)", uint32_val_);
     case ValueEntryType::kWriteId:
       return Format("WriteId($0)", int32_val_);
     case ValueEntryType::kMaxByte:
@@ -937,6 +939,10 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendIntentTypeSet(ObsoleteIntentTypeSetToNew(uint16_val_));
       return;
 
+    case KeyEntryType::kTransactionMetadataUpdateTime:
+      key_bytes->AppendUInt64(hybrid_time_val_.hybrid_time().ToUint64());
+      return;
+
     case KeyEntryType::kIntentTypeSet:
       key_bytes->AppendIntentTypeSet(IntentTypeSet(uint16_val_));
       return;
@@ -1044,6 +1050,18 @@ class SizeCounter {
   size_t value_ = 0;
 };
 
+template <class Buffer>
+void DoAppendEncodedNullValue(Buffer* out) {
+  out->push_back(ValueEntryTypeAsChar::kTombstone);
+}
+
+template <class Value, class Buffer>
+void DoAppendEncodedBinaryValue(char value_type_prefix, const Value& value, Buffer* out) {
+  DCHECK_EQ(value.value_case(), QLValuePB::kBinaryValue);
+  out->push_back(value_type_prefix);
+  out->append(value.binary_value());
+}
+
 template <class Value, class Buffer>
 void DoAppendEncodedValue(const Value& value, Buffer* out) {
   switch (value.value_case()) {
@@ -1096,8 +1114,7 @@ void DoAppendEncodedValue(const Value& value, Buffer* out) {
       return;
     }
     case QLValuePB::kBinaryValue:
-      out->push_back(ValueEntryTypeAsChar::kString);
-      out->append(value.binary_value());
+      DoAppendEncodedBinaryValue(EncodedBinaryValueDefaultTypePrefix(), value, out);
       return;
     case QLValuePB::kBoolValue:
       if (value.bool_value()) {
@@ -1154,7 +1171,7 @@ void DoAppendEncodedValue(const Value& value, Buffer* out) {
       return;
     }
     case QLValuePB::VALUE_NOT_SET:
-      out->push_back(ValueEntryTypeAsChar::kTombstone);
+      DoAppendEncodedNullValue(out);
       return;
 
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
@@ -1182,6 +1199,50 @@ void DoAppendEncodedValue(const Value& value, Buffer* out) {
 }
 
 } // namespace
+
+void AppendEncodedNullValue(ValueBuffer* out) {
+  DoAppendEncodedNullValue(out);
+}
+
+void AppendEncodedNullValue(std::string* out) {
+  DoAppendEncodedNullValue(out);
+}
+
+constexpr char EncodedBinaryValueDefaultTypePrefix() {
+  return ValueEntryTypeAsChar::kString;
+}
+
+void AppendEncodedBinaryValue(char value_type_prefix, const QLValuePB& value, ValueBuffer* out) {
+  DoAppendEncodedBinaryValue(value_type_prefix, value, out);
+}
+
+void AppendEncodedBinaryValue(char value_type_prefix, const QLValuePB& value, std::string* out) {
+  DoAppendEncodedBinaryValue(value_type_prefix, value, out);
+}
+
+void AppendEncodedBinaryValue(char value_type_prefix, const LWQLValuePB& value, ValueBuffer* out) {
+  DoAppendEncodedBinaryValue(value_type_prefix, value, out);
+}
+
+void AppendEncodedBinaryValue(char value_type_prefix, const LWQLValuePB& value, std::string* out) {
+  DoAppendEncodedBinaryValue(value_type_prefix, value, out);
+}
+
+size_t EncodedBinaryValueSize(const QLValuePB& value) {
+  SizeCounter counter;
+
+  // Value type prefix does not matter for size calculation.
+  DoAppendEncodedBinaryValue(EncodedBinaryValueDefaultTypePrefix(), value, &counter);
+  return counter.value();
+}
+
+size_t EncodedBinaryValueSize(const LWQLValuePB& value) {
+  SizeCounter counter;
+
+  // Value type prefix does not matter for size calculation.
+  DoAppendEncodedBinaryValue(EncodedBinaryValueDefaultTypePrefix(), value, &counter);
+  return counter.value();
+}
 
 void AppendEncodedValue(const QLValuePB& value, ValueBuffer* out) {
   DoAppendEncodedValue(value, out);
@@ -1551,6 +1612,20 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       return Status::OK();
     }
 
+    case KeyEntryType::kTransactionMetadataUpdateTime: {
+      if (slice->size() < sizeof(uint64_t)) {
+        return STATUS_FORMAT(
+            Corruption, "Invalid number of bytes for a TransactionMetadataUpdateTime: $0",
+            slice->size());
+      }
+      if (out) {
+        new (&out->hybrid_time_val_) DocHybridTime(HybridTime(BigEndian::Load64(slice->data())));
+      }
+      slice->remove_prefix(sizeof(uint64_t));
+      type_ref = KeyEntryType::kTransactionMetadataUpdateTime;
+      return Status::OK();
+    }
+
     case KeyEntryType::kIntentTypeSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentType: {
@@ -1678,7 +1753,8 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
       return STATUS(Corruption, "Reached end of slice looking for frozen group end marker");
     }
     case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kString:
+    case ValueEntryType::kString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kVector:
       new(&str_val_) string(slice.cdata(), slice.size());
       // Only set type to string after string field initialization succeeds.
       type_ = value_type;
@@ -1969,7 +2045,8 @@ Status PrimitiveValue::DecodeToQLValuePB(
     }
 
     case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kString:
+    case ValueEntryType::kString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kVector:
       if (data_type == DataType::STRING) {
         ql_value->set_string_value(slice.cdata(), slice.size());
       } else if (data_type == DataType::BINARY || data_type == DataType::VECTOR) {
@@ -2170,7 +2247,8 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueEntryType::kMaxByte: return true;
 
     case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kString: return str_val_ == other.str_val_;
+    case ValueEntryType::kString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kVector: return str_val_ == other.str_val_;
 
     case ValueEntryType::kFrozen: return *frozen_val_ == *other.frozen_val_;
 
@@ -2229,7 +2307,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
     case ValueEntryType::kDecimal: FALLTHROUGH_INTENDED;
     case ValueEntryType::kVarInt: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kString:
+    case ValueEntryType::kString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kVector:
       return str_val_.compare(other.str_val_);
     case ValueEntryType::kInt32: FALLTHROUGH_INTENDED;
     case ValueEntryType::kWriteId:
@@ -2397,7 +2476,7 @@ bool PrimitiveValue::IsString() const {
 
 bool PrimitiveValue::IsStoredAsString() const {
   return IsString() || type_ == ValueEntryType::kJsonb || type_ == ValueEntryType::kDecimal ||
-         type_ == ValueEntryType::kVarInt;
+         type_ == ValueEntryType::kVarInt || type_ == ValueEntryType::kVector;
 }
 
 bool PrimitiveValue::IsDouble() const {
@@ -3001,6 +3080,16 @@ const FrozenContainer& KeyEntryValue::GetFrozen() const {
   return *frozen_val_;
 }
 
+bool KeyEntryValue::IsHybridTime() const {
+  return KeyEntryType::kHybridTime == type_ ||
+         KeyEntryType::kTransactionMetadataUpdateTime == type_;
+}
+
+const DocHybridTime& KeyEntryValue::GetHybridTime() const {
+  DCHECK(IsHybridTime());
+  return hybrid_time_val_;
+}
+
 bool KeyEntryValue::IsInetAddress() const {
   return type_ == KeyEntryType::kInetaddress || type_ == KeyEntryType::kInetaddressDescending;
 }
@@ -3241,6 +3330,8 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
       return Substitute("TransactionId($0)", uuid_val_.ToString());
     case KeyEntryType::kSubTransactionId:
       return Substitute("SubTransactionId($0)", uint32_val_);
+    case KeyEntryType::kTransactionMetadataUpdateTime:
+      return Format("TransactionMetadataUpdateTime($0)", HybridTime(uint64_val_));
     case KeyEntryType::kIntentTypeSet:
       return Format("Intents($0)", IntentTypeSet(uint16_val_));
     case KeyEntryType::kObsoleteIntentTypeSet:
@@ -3311,6 +3402,7 @@ int KeyEntryValue::CompareTo(const KeyEntryValue& other) const {
       return CompareUsingLessThan(uint32_val_, other.uint32_val_);
     case KeyEntryType::kUInt64Descending:
       return CompareUsingLessThan(other.uint64_val_, uint64_val_);
+    case KeyEntryType::kTransactionMetadataUpdateTime: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUInt64:
       return CompareUsingLessThan(uint64_val_, other.uint64_val_);
     case KeyEntryType::kInt64: FALLTHROUGH_INTENDED;
@@ -3533,6 +3625,7 @@ bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
     case KeyEntryType::kUInt32:
         return lhs.uint32_val_ == rhs.uint32_val_;
 
+    case KeyEntryType::kTransactionMetadataUpdateTime: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUInt64Descending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUInt64:
         return lhs.uint64_val_ == rhs.uint64_val_;

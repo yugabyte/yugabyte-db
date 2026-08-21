@@ -229,6 +229,14 @@ DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_mb, 0,
     "--reject_writes_when_disk_full is enabled. If set to 0, defaults to "
     "--max_disk_throughput_mbps * min(10, --reject_writes_min_disk_space_check_interval_sec).");
 
+DEFINE_RUNTIME_uint32(reject_writes_min_disk_space_pct, 5,
+    "Reject writes if the available disk space on the WAL directory falls below this percentage of "
+    "the total disk capacity and --reject_writes_when_disk_full is enabled. For example, a value "
+    "5 rejects writes when free space drops below 5% of the disk's total capacity. This lets the "
+    "rejection threshold scale automatically with disk size. If both this flag and "
+    "--reject_writes_min_disk_space_mb yield a threshold, the larger of the two is used. "
+    "Ignored if zero.");
+
 DEFINE_validator(log_min_segments_to_retain, FLAG_GT_VALUE_VALIDATOR(0));
 DEFINE_validator(max_disk_throughput_mbps, FLAG_GT_VALUE_VALIDATOR(0));
 DEFINE_validator(reject_writes_min_disk_space_check_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
@@ -452,6 +460,12 @@ class Log::Appender {
     return task_stream_->ToString();
   }
 
+  void SetPerDbCgroup(Cgroup* cgroup) {
+    if (task_stream_) {
+      task_stream_->SetTaskCgroup(cgroup);
+    }
+  }
+
  private:
   // Process the given log entry batch or does a sync if a null is passed.
   void ProcessBatch(LogEntryBatch* entry_batch);
@@ -608,7 +622,12 @@ void Log::Appender::Shutdown() {
 // This task is submitted to allocation_pool_ in order to asynchronously pre-allocate new log
 // segments.
 void Log::SegmentAllocationTask() {
-  allocation_status_.Set(PreAllocateNewSegment());
+  auto status = PreAllocateNewSegment();
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(ERROR) << "Failed to pre-allocate new WAL segment: " << status;
+    allocation_state_.store(SegmentAllocationState::kAllocationFailed, std::memory_order_release);
+  }
+  allocation_status_.Set(status);
 }
 
 const Status Log::kLogShutdownStatus(
@@ -1004,6 +1023,14 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
       RETURN_NOT_OK(RollOver());
       // Rollover prevents potential overflow.
       segment_will_overflow = false;
+    } else if (allocation_state() == SegmentAllocationState::kAllocationFailed) {
+      auto alloc_status = allocation_status_.Get();
+      LOG_WITH_PREFIX(ERROR)
+          << "WAL segment allocation failed: " << alloc_status
+          << ". Resetting state to allow retry on next append.";
+      allocation_state_.store(
+          SegmentAllocationState::kAllocationNotStarted, std::memory_order_release);
+      return alloc_status;
     } else {
       VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
     }
@@ -1404,23 +1431,23 @@ Status Log::UpdateSegmentReadableOffset() {
   return Status::OK();
 }
 
-Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const {
+Status Log::GetSegmentsToGCUnlocked(const MinRetainLogIndexInfo& min_retain_log_index_info,
+                                    SegmentSequence* segments_to_gc) const {
   // For the lifetime of a Log::CopyTo call, log_copy_min_index_ may be set to something
   // other than std::numeric_limits<int64_t>::max(). This value will correspond to the
   // minimum op_idx which is currently being copied and must be retained. In order to
   // avoid concurrently deleting those ops, we bump min_op_idx here to be at-least as
   // low as log_copy_min_index_.
-  min_op_idx = std::min(log_copy_min_index_, min_op_idx);
+  int64_t min_op_idx =
+      std::min(log_copy_min_index_, min_retain_log_index_info.earliest_needed_log_index);
 
-  auto xrepl_min_replicated_index = cdc_min_replicated_index_.load(std::memory_order_acquire);
-
-  {
-    std::lock_guard l(get_xcluster_index_lock_);
-    if (get_xcluster_min_index_to_retain_) {
-      xrepl_min_replicated_index =
-          std::min(xrepl_min_replicated_index, get_xcluster_min_index_to_retain_(tablet_id_));
-    }
-  }
+  // Apply the xrepl (CDCSDK/xCluster) soft floor. We trust the caller-supplied value but never
+  // let it be weaker than the Log's own current view, so a caller that passes
+  // log_index_needed_by_cdc = int64 max (e.g. a caller with no xrepl constraint, or tests) still
+  // cannot drop WAL that xrepl needs. The freshest value also wins over a slightly stale one the
+  // caller may have computed earlier.
+  auto xrepl_min_replicated_index =
+      std::min(min_retain_log_index_info.log_index_needed_by_cdc, GetXReplMinReplicatedIndex());
 
   // Find the prefix of segments in the segment sequence that is guaranteed not to include
   // 'min_op_idx'.
@@ -1453,9 +1480,20 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   return Status::OK();
 }
 
-Status Log::GetSegmentsToGC(int64_t min_op_idx, SegmentSequence* segments_to_gc) const {
+Status Log::GetSegmentsToGC(const MinRetainLogIndexInfo& min_retain_log_index_info,
+                            SegmentSequence* segments_to_gc) const {
   PerCpuRwSharedLock read_lock(state_lock_);
-  return GetSegmentsToGCUnlocked(min_op_idx, segments_to_gc);
+  return GetSegmentsToGCUnlocked(min_retain_log_index_info, segments_to_gc);
+}
+
+int64_t Log::GetXReplMinReplicatedIndex() const {
+  auto xrepl_min_replicated_index = cdc_min_replicated_index_.load(std::memory_order_acquire);
+  std::lock_guard l(get_xcluster_index_lock_);
+  if (get_xcluster_min_index_to_retain_) {
+    xrepl_min_replicated_index =
+        std::min(xrepl_min_replicated_index, get_xcluster_min_index_to_retain_(tablet_id_));
+  }
+  return xrepl_min_replicated_index;
 }
 
 void Log::ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const {
@@ -1596,10 +1634,11 @@ OpId Log::WaitForSafeOpIdToApply(const OpId& min_allowed, MonoDelta duration) {
   return result;
 }
 
-Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
-  CHECK_GE(min_op_idx, 0);
+Status Log::GC(const MinRetainLogIndexInfo& min_retain_log_index_info, int32_t* num_gced) {
+  CHECK_GE(min_retain_log_index_info.earliest_needed_log_index, 0);
 
-  LOG_WITH_PREFIX(DETAIL) << "Running Log GC on " << wal_dir_ << ": retaining ops >= " << min_op_idx
+  LOG_WITH_PREFIX(DETAIL) << "Running Log GC on " << wal_dir_ << ": retaining "
+                          << AsString(min_retain_log_index_info)
                           << ", log segment size = " << options_.segment_size_bytes;
   VLOG_TIMING(1, "Log GC") {
     SegmentSequence segments_to_delete;
@@ -1608,7 +1647,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
       std::lock_guard l(state_lock_);
       CHECK_EQ(kLogWriting, log_state_);
 
-      RETURN_NOT_OK(GetSegmentsToGCUnlocked(min_op_idx, &segments_to_delete));
+      RETURN_NOT_OK(GetSegmentsToGCUnlocked(min_retain_log_index_info, &segments_to_delete));
 
       if (segments_to_delete.empty()) {
         VLOG_WITH_PREFIX(1) << "No segments to delete.";
@@ -1650,9 +1689,12 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
   return Status::OK();
 }
 
-Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
-  if (min_op_idx < 0) {
-    return STATUS_FORMAT(InvalidArgument, "Invalid min op index $0", min_op_idx);
+Status Log::GetGCableDataSize(
+    const MinRetainLogIndexInfo& min_retain_log_index_info, int64_t* total_size) const {
+  if (min_retain_log_index_info.earliest_needed_log_index < 0) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Invalid min op index $0",
+        min_retain_log_index_info.earliest_needed_log_index);
   }
 
   SegmentSequence segments_to_delete;
@@ -1663,7 +1705,7 @@ Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
       return STATUS_FORMAT(IllegalState, "Invalid log state $0, expected $1",
           log_state_, kLogWriting);
     }
-    Status s = GetSegmentsToGCUnlocked(min_op_idx, &segments_to_delete);
+    Status s = GetSegmentsToGCUnlocked(min_retain_log_index_info, &segments_to_delete);
 
     if (!s.ok() || segments_to_delete.empty()) {
       return Status::OK();
@@ -1719,6 +1761,18 @@ void Log::SetSchemaForNextLogSegment(const Schema& schema,
 
 Status Log::TEST_WriteCorruptedEntryBatchAndSync() {
   return active_segment_->TEST_WriteCorruptedEntryBatchAndSync();
+}
+
+void Log::SetPerDbCgroup(Cgroup* cgroup) {
+  if (appender_) {
+    appender_->SetPerDbCgroup(cgroup);
+  }
+  if (allocation_token_) {
+    allocation_token_->SetTaskCgroup(cgroup);
+  }
+  if (background_sync_threadpool_token_) {
+    background_sync_threadpool_token_->SetTaskCgroup(cgroup);
+  }
 }
 
 Status Log::Close() {
@@ -1900,22 +1954,22 @@ Status Log::CopyTo(const std::string& dest_wal_dir, const OpId max_included_op_i
   });
 
   SegmentSequence segments;
-  scoped_refptr<LogIndex> log_index;
   {
     UniqueLock<PerCpuRwMutex> l(state_lock_);
-    if (log_state_ != kLogInitialized) {
-      SCHECK_EQ(log_state_, kLogWriting, IllegalState, Format("Invalid log state: $0", log_state_));
+    SCHECK(
+        log_state_ == kLogInitialized || log_state_ == kLogWriting, IllegalState,
+        Format("Invalid log state: $0", log_state_));
+    {
       ReverseLock<decltype(l)> rlock(l);
+      // If the log is not yet open for writing (kLogInitialized, e.g. when SPLIT_OP is replayed
+      // during tablet bootstrap), open it first so we can rollover current active segment if it is
+      // not empty.
+      RETURN_NOT_OK(EnsureSegmentInitialized());
       // Rollover current active segment if it is not empty.
       RETURN_NOT_OK(AllocateSegmentAndRollOver());
     }
 
-    SCHECK(
-        log_state_ == kLogInitialized || log_state_ == kLogWriting, IllegalState,
-        Format("Invalid log state: $0", log_state_));
-    // Remember log_index, because it could be reset if someone closes the log after we release
-    // state_lock_.
-    log_index = log_index_;
+    SCHECK_EQ(log_state_, kLogWriting, IllegalState, Format("Invalid log state: $0", log_state_));
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
 
     // We skip the last snapshot segment because it might be mutable and is either:
@@ -2281,9 +2335,25 @@ bool Log::HasSufficientDiskSpaceForWrite() {
   check_interval_sec =
       std::min(kAggressiveCheckIntervalSec, FLAGS_reject_writes_min_disk_space_check_interval_sec);
 
-  const uint64 min_allowed_disk_space_mb =
+  uint64 min_allowed_disk_space_mb =
       FLAGS_reject_writes_min_disk_space_mb ? FLAGS_reject_writes_min_disk_space_mb
                                             : FLAGS_max_disk_throughput_mbps * check_interval_sec;
+
+  // If a percentage-based threshold is configured (non-zero), derive a minimum disk space from the
+  // total disk capacity and use whichever threshold (MB-based or percentage-based) is larger. This
+  // lets the rejection threshold scale automatically with disk size.
+  if (FLAGS_reject_writes_min_disk_space_pct > 0) {
+    auto stats_result = get_env()->GetFilesystemStatsBytes(path);
+    if (stats_result.ok()) {
+      const uint64 pct_based_min_disk_space_mb = static_cast<uint64>(
+          stats_result->total_space * FLAGS_reject_writes_min_disk_space_pct / 100.0) / 1024 / 1024;
+      min_allowed_disk_space_mb = std::max(min_allowed_disk_space_mb, pct_based_min_disk_space_mb);
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 300)
+          << "Unable to get filesystem stats to compute percentage-based disk space threshold: "
+          << stats_result.status();
+    }
+  }
 
   const uint64 min_space_to_trigger_aggressive_check_mb =
       FLAGS_max_disk_throughput_mbps * FLAGS_reject_writes_min_disk_space_check_interval_sec;

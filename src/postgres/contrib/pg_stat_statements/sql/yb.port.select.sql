@@ -2,8 +2,9 @@
 -- SELECT statements
 --
 
--- YB: pg_stat_statements is auto-created at initdb; drop it first for a clean install.
-DROP EXTENSION IF EXISTS pg_stat_statements;
+-- YB: pg_stat_statements is created by default during initdb (global views) and
+-- the gv$ wrappers depend on it, so CASCADE to drop them for a clean slate.
+DROP EXTENSION IF EXISTS pg_stat_statements CASCADE;
 CREATE EXTENSION pg_stat_statements;
 SET pg_stat_statements.track_utility = FALSE;
 SET pg_stat_statements.track_planning = TRUE;

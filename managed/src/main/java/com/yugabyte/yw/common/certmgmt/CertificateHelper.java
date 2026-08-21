@@ -58,6 +58,7 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.DERSequence;
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
@@ -711,13 +712,19 @@ public class CertificateHelper {
   }
 
   public static PrivateKey getPrivateKey(String keyContent) {
-    try {
-      PEMParser parser = new PEMParser(new StringReader(keyContent));
-      PEMKeyPair pemKeyPair = (PEMKeyPair) parser.readObject();
-      return new JcaPEMKeyConverter().getPrivateKey(pemKeyPair.getPrivateKeyInfo());
+    try (PEMParser parser = new PEMParser(new StringReader(keyContent))) {
+      Object parsedKey = parser.readObject();
+      PrivateKeyInfo privateKeyInfo;
+      if (parsedKey instanceof PrivateKeyInfo) {
+        privateKeyInfo = (PrivateKeyInfo) parsedKey;
+      } else if (parsedKey instanceof PEMKeyPair) {
+        privateKeyInfo = ((PEMKeyPair) parsedKey).getPrivateKeyInfo();
+      } else {
+        throw new RuntimeException("Unexpected key type parsed: " + parsedKey.getClass().getName());
+      }
+      return new JcaPEMKeyConverter().getPrivateKey(privateKeyInfo);
     } catch (Exception e) {
-      log.error(e.getMessage());
-      throw new RuntimeException("Unable to get Private Key");
+      throw new RuntimeException("Exception occurred parsing the private key", e);
     }
   }
 

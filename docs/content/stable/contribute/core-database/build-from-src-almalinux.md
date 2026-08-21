@@ -56,8 +56,6 @@ sudo dnf groupinstall -y 'Development Tools'
 sudo dnf -y install epel-release
 packages=(
   ccache
-  gcc-toolset-11
-  gcc-toolset-11-libatomic-devel
   golang
   java-1.8.0-openjdk
   libatomic
@@ -167,14 +165,6 @@ sudo chmod +x /usr/local/bin/ninja
 sudo dnf install -y ccache
 # Also add the following line to your .bashrc or equivalent.
 export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
-```
-
-### GCC (optional)
-
-To compile with GCC, install the following packages, and adjust the version numbers to match the GCC version you plan to use.
-
-```sh
-sudo dnf install -y gcc-toolset-11 gcc-toolset-11-libatomic-devel
 ```
 
 ## Build the code

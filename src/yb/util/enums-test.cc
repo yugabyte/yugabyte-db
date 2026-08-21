@@ -20,8 +20,7 @@ namespace yb {
 class EnumsTest : public YBTest {
 };
 
-YB_DEFINE_ENUM(
-    TestEnum,
+YB_DEFINE_ENUM(TestEnum,
     (kElement1)
     (kItem2)
     (kWidget3))

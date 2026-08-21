@@ -3185,12 +3185,19 @@ DROP TABLE other_sql_value_functions;
 CREATE TABLE tz_expr_pushdown(k int primary key, updated_at timestamptz);
 SET yb_enable_expression_pushdown=on;
 INSERT INTO tz_expr_pushdown VALUES (1, '2022-01-01 01:00:00+00');
-EXPLAIN (COSTS OFF) SELECT k FROM tz_expr_pushdown
+EXPLAIN (ANALYZE, COSTS OFF) SELECT k FROM tz_expr_pushdown
   WHERE EXTRACT(HOUR FROM updated_at AT TIME ZONE 'UTC') >= 1;
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
- Seq Scan on tz_expr_pushdown
+ Seq Scan on tz_expr_pushdown (actual rows=1 loops=1)
    Storage Filter: (EXTRACT(hour FROM (updated_at AT TIME ZONE 'UTC'::text)) >= '1'::numeric)
 (2 rows)
+
+SELECT k FROM tz_expr_pushdown
+  WHERE EXTRACT(HOUR FROM updated_at AT TIME ZONE 'America/New_York') >= 1;
+ k 
+---
+ 1
+(1 row)
 
 DROP TABLE tz_expr_pushdown;

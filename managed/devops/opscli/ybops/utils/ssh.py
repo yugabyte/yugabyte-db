@@ -362,9 +362,9 @@ def get_public_key_content(private_key_file):
 
 
 def get_ssh_host_port(host_info, custom_port, default_port=False):
-    """This method would return ssh_host and port which we should use for ansible. If host_info
-    includes a ssh_port key, then we return its value. Otherwise, if the default_port param is
-    True, then we return a Default SSH port (22) else, we return a custom ssh port.
+    """This method would return ssh_host and port. If host_info includes a ssh_port key,
+    then we return its value. Otherwise, if the default_port param is True, then we return
+    a Default SSH port (22) else, we return a custom ssh port.
     Args:
         host_info (dict): host_info dictionary that we fetched from inventory script, we
                           fetch the private_ip from that.

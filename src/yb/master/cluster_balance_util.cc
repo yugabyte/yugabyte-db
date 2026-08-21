@@ -304,21 +304,18 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
 
     bool is_replica_running_and_consensus_ready =
         VERIFY_RESULT(IsReplicaConsensusReady(ts_uuid, tablet_id, replica));
-    const bool replica_is_stale = replica.IsStale();
     VLOG(3) << "Tablet " << tablet_id << " for table " << table_id_ << " is in state "
             << RaftGroupStatePB_Name(replica.state) << " on peer " << ts_uuid;
 
     if (is_replica_running_and_consensus_ready) {
       RETURN_NOT_OK(AddRunningTablet(tablet_id, ts_uuid, replica.fs_data_dir));
-    } else if (!replica_is_stale && !is_replica_running_and_consensus_ready) {
+    } else {
       // Keep track of transitioning state (not in a stopped or failed state).
       RETURN_NOT_OK(AddStartingTablet(tablet_id, ts_uuid));
       ++meta_ts.path_to_starting_tablets_count[replica.fs_data_dir];
-      // If there are any starting, non-stale tablets, there are ongoing remote bootstraps, so the
-      // cluster balancer is not idle.
+      // If there are any starting tablets, there are ongoing remote bootstraps, so the cluster
+      // balancer is not idle.
       global_state_->activity_info_.has_ongoing_remote_bootstraps_ = true;
-    } else if (replica_is_stale) {
-      VLOG(3) << "Replica is stale: " << replica.ToString();
     }
 
     if (replica.should_disable_lb_move) {

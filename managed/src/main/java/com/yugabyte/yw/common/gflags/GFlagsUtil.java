@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
@@ -31,6 +32,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
@@ -40,6 +42,8 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
@@ -69,6 +73,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import javax.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
@@ -88,7 +93,7 @@ public class GFlagsUtil {
   // handling of both cgroup v1 and v2.
   public static final String YSQL_CGROUP_PATH = "ysql";
 
-  private static final int DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED = 90;
+  private static final String DEFAULT_MAX_MEMORY_USAGE_RATIO_FOR_DEDICATED = "0.9";
   private static final int DEFAULT_LOAD_BALANCER_INITIAL_DELAY_SECS = 480;
 
   public static final String DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO =
@@ -153,8 +158,12 @@ public class GFlagsUtil {
   public static final String LEADER_LEASE_DURATION_MS = "leader_lease_duration_ms";
   public static final String LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS =
       "leader_failure_max_missed_heartbeat_periods";
+  public static final String TRANSACTION_RPC_TIMEOUT_MS = "transaction_rpc_timeout_ms";
   public static final String LOAD_BALANCER_INITIAL_DELAY_SECS = "load_balancer_initial_delay_secs";
   public static final String TIME_SOURCE = "time_source";
+  public static final String ENABLE_QOS = "enable_qos";
+  public static final String QOS_MAX_DB_CPU_PERCENT = "qos_max_db_cpu_percent";
+  public static final String QOS_MAX_DB_COUNT = "qos_max_db_count";
 
   public static final String TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC =
       "timestamp_history_retention_interval_sec";
@@ -325,6 +334,7 @@ public class GFlagsUtil {
       extra_gflags.put(RAFT_HEARTBEAT_INTERVAL, String.valueOf(1500));
       extra_gflags.put(LEADER_LEASE_DURATION_MS, String.valueOf(6000));
       extra_gflags.put(LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS, String.valueOf(5));
+      extra_gflags.put(TRANSACTION_RPC_TIMEOUT_MS, String.valueOf(7500));
     }
     // TODO cloudEnabled is supposed to be a static config but this is read from runtime config to
     // make itests work.
@@ -341,12 +351,23 @@ public class GFlagsUtil {
 
     if (node.dedicatedTo != null) {
       extra_gflags.put(
-          DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO,
-          String.valueOf(DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED));
+          DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO, DEFAULT_MAX_MEMORY_USAGE_RATIO_FOR_DEDICATED);
     }
 
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound()) {
       extra_gflags.put(TIME_SOURCE, "clockbound");
+    }
+
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.getMultiTenancy() != null) {
+      MultiTenancyConfig mTConfig =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.getMultiTenancy();
+      extra_gflags.put(ENABLE_QOS, mTConfig.isEnableQos() ? "true" : "false");
+      if (mTConfig.getQosMaxDbCount() != null) {
+        extra_gflags.put(QOS_MAX_DB_COUNT, mTConfig.getQosMaxDbCount().toString());
+      }
+      if (mTConfig.getQosMaxDbCpuPercent() != null) {
+        extra_gflags.put(QOS_MAX_DB_CPU_PERCENT, mTConfig.getQosMaxDbCpuPercent().toString());
+      }
     }
 
     String processType = taskParam.getProperty("processType");
@@ -474,8 +495,10 @@ public class GFlagsUtil {
             : node.cloudInfo.private_ip;
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
-    String providerUUID = userIntent.provider;
+    Cluster cluster = universeDetails.getClusterByUuid(node.placementUuid);
+    UserIntent userIntent = cluster.userIntent;
+    Provider provider = Util.getProviderForNode(node, cluster);
+    String ybHomeDir = provider.getYbHome();
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", "1");
     ybcFlags.put("server_address", serverAddresses);
@@ -485,8 +508,8 @@ public class GFlagsUtil {
             taskParam.overrideNodePorts
                 ? taskParam.communicationPorts.ybControllerrRpcPort
                 : node.ybControllerRpcPort));
-    ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
-    ybcFlags.put("cores_dir", getYbHomeDir(providerUUID) + CORES_DIR_PATH);
+    ybcFlags.put("log_dir", provider.getYbHome() + YBC_LOG_SUBDIR);
+    ybcFlags.put("cores_dir", provider.getYbHome() + CORES_DIR_PATH);
 
     ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
     ybcFlags.put(
@@ -506,13 +529,13 @@ public class GFlagsUtil {
     // since pgsql_bind_address is set to 0.0.0.0 or private_ip.
     // Also, /varz endpoint works, since webserver_interface is set to private_ip.
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
-    ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
-    ybcFlags.put("yb_admin", getYbHomeDir(providerUUID) + YB_ADMIN_PATH);
-    ybcFlags.put("yb_ctl", getYbHomeDir(providerUUID) + YB_CTL_PATH);
-    ybcFlags.put("ysql_dump", getYbHomeDir(providerUUID) + YSQL_DUMP_PATH);
-    ybcFlags.put("ysql_dumpall", getYbHomeDir(providerUUID) + YSQL_DUMPALL_PATH);
-    ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
-    ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
+    ybcFlags.put("redis_cli", ybHomeDir + REDIS_CLI_PATH);
+    ybcFlags.put("yb_admin", ybHomeDir + YB_ADMIN_PATH);
+    ybcFlags.put("yb_ctl", ybHomeDir + YB_CTL_PATH);
+    ybcFlags.put("ysql_dump", ybHomeDir + YSQL_DUMP_PATH);
+    ybcFlags.put("ysql_dumpall", ybHomeDir + YSQL_DUMPALL_PATH);
+    ybcFlags.put("ysqlsh", ybHomeDir + YSQLSH_PATH);
+    ybcFlags.put("ycqlsh", ybHomeDir + YCQLSH_PATH);
     ybcFlags.put("log_filename", YBC_LOG_FILENAME);
     ybcFlags.put("log_utc_time", "true");
     ybcFlags.put(
@@ -539,14 +562,13 @@ public class GFlagsUtil {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
     // Append the custom_tmp gflag to the YBC gflag.
-    String ybcTempDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    String ybcTempDir = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
     // PLAT-10007 use ybc-data instead of /tmp
     if (ybcTempDir.equals("/tmp")) {
       ybcTempDir = getDataDirectoryPath(universe, node, config) + "/ybc-data";
     }
     ybcFlags.put(TMP_DIRECTORY, ybcTempDir);
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
-      String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
     }
@@ -556,7 +578,7 @@ public class GFlagsUtil {
     if (userIntent.providerType == CloudType.local) {
       // In case of local provider, we want ybc to use /tmp directory
       // inside the respective node folder.
-      ybcFlags.put(TMP_DIRECTORY, getYbHomeDir(providerUUID) + "/tmp");
+      ybcFlags.put(TMP_DIRECTORY, ybHomeDir + "/tmp");
     }
     return ybcFlags;
   }
@@ -571,9 +593,10 @@ public class GFlagsUtil {
       RuntimeConfGetter confGetter) {
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
-    String providerUUID = userIntent.provider;
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
+    Cluster cluster = universeDetails.getClusterByUuid(node.placementUuid);
+    UserIntent userIntent = cluster.userIntent;
+
+    Provider provider = Util.getProviderForNode(node, cluster);
     String ybHomeDir = provider.getYbHome();
     String serverAddress =
         listenOnAllInterfaces
@@ -721,7 +744,8 @@ public class GFlagsUtil {
     } else {
       gflags.put(START_REDIS_PROXY, "false");
     }
-    if (taskParam.cgroupSize > 0) {
+    if (taskParam.cgroupSize > 0
+        && !universe.getUniverseDetails().getPrimaryCluster().userIntent.isQosEnabled()) {
       gflags.put(POSTMASTER_CGROUP, YSQL_CGROUP_PATH);
     }
     // Add timestamp_history_retention_sec gflag if required.
@@ -738,30 +762,19 @@ public class GFlagsUtil {
     return gflags;
   }
 
-  public static String getCustomTmpDirectory(NodeDetails node, Universe universe) {
-    Map<String, String> res = new HashMap<>();
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    if (node.isMaster) {
-      res.putAll(
-          getGFlagsForNode(
-              node,
-              UniverseTaskBase.ServerType.MASTER,
-              cluster,
-              universe.getUniverseDetails().clusters));
-    }
-    if (node.isTserver) {
-      res.putAll(
-          getGFlagsForNode(
-              node,
-              UniverseTaskBase.ServerType.TSERVER,
-              cluster,
-              universe.getUniverseDetails().clusters));
-    }
-
-    return res.getOrDefault(TMP_DIRECTORY, "/tmp");
+  public static String getCustomTmpDirectory(
+      RuntimeConfGetter confGetter, @NotNull NodeDetails node, Universe universe) {
+    return getCustomTmpDirectory(
+        confGetter,
+        universe,
+        universe.getCluster(node.placementUuid),
+        node.azUuid,
+        node.isMaster,
+        node.isTserver);
   }
 
   public static String getCustomTmpDirectory(
+      RuntimeConfGetter confGetter,
       Universe universe,
       Cluster cluster,
       @Nullable UUID azUuid,
@@ -784,7 +797,18 @@ public class GFlagsUtil {
               cluster,
               universe.getUniverseDetails().clusters));
     }
-    return res.getOrDefault(TMP_DIRECTORY, "/tmp");
+    String result = res.get(TMP_DIRECTORY);
+    if (result == null) {
+      Provider provider;
+      if (azUuid == null) {
+        UUID providerUUID = Util.getSingleProviderUUID(cluster);
+        provider = Provider.getOrBadRequest(providerUUID);
+      } else {
+        provider = AvailabilityZone.getOrBadRequest(azUuid).getProvider();
+      }
+      result = confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
+    }
+    return result == null ? "/tmp" : result;
   }
 
   private static Map<String, String> getYSQLGFlags(
@@ -860,8 +884,8 @@ public class GFlagsUtil {
   }
 
   public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.auditLogConfig);
-    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.queryLogConfig);
+    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getAuditLogConfig());
+    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getQueryLogConfig());
     return GFlagsUtil.mergeCSVs(auditLogYsqlPgConfCsv, queryLogYsqlPgConfCsv, true);
   }
 
@@ -991,7 +1015,7 @@ public class GFlagsUtil {
 
   private static Map<String, String> getYcqlAuditFlags(AnsibleConfigureServers.Params taskParams) {
     Map<String, String> result = new HashMap<>();
-    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
+    AuditLogConfig auditLogConfig = taskParams.getAuditLogConfig();
     if (auditLogConfig != null) {
       if (auditLogConfig.getYcqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
@@ -1691,7 +1715,7 @@ public class GFlagsUtil {
       try {
         fileName = FileUtils.computeHashForAFile(jsonNode, 10);
       } catch (NoSuchAlgorithmException e) {
-        LOG.warn("Error generating the hash for a file, {}", e.getMessage());
+        LOG.warn("Error generating the hash for a file: ", e);
         // Generate a random string in case of failure.
         fileName = UUID.randomUUID().toString();
       }
@@ -1795,7 +1819,7 @@ public class GFlagsUtil {
       try {
         Files.createDirectory(localGflagFilePath);
       } catch (IOException e) {
-        LOG.error("Error while creating gflag directory: {}", e);
+        LOG.error("Error while creating gflag directory: ", e);
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
             String.format("Failed to create tmp gflag directory: %s", e.getMessage()));
@@ -1815,8 +1839,21 @@ public class GFlagsUtil {
       }
     }
     UserIntent userIntent = universeDetails.getClusterByUuid(placementUUID).userIntent;
-    String providerUUID = userIntent.provider;
 
+    Set<UUID> allProviderUUIDs = userIntent.getAllProviderUUIDs();
+    UUID providerUUID;
+    if (allProviderUUIDs.size() == 1) {
+      providerUUID = allProviderUUIDs.iterator().next();
+    } else {
+      if (node == null) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Missing node information for multi-provider universe {}. Can't Continue",
+                universeUUID.toString()));
+      }
+      providerUUID = Util.getProviderForNode(node, universe).getUuid();
+    }
     String modifiedHbaConfEntries = "";
     // Split the input string at positions where it starts with "host..." or "local"
     String[] hbaConfEntries = hbaConfValue.split("(?i)(?<=\\s|,|\")\\s*(?=host\\w*|local\\b)");
@@ -1833,7 +1870,7 @@ public class GFlagsUtil {
           modifiedHbaConfEntry.append("\"");
         }
         modifiedHbaConfEntry.append(
-            updateHbaConfValueForJWT(hbaConfEntry, localGflagFilePath, providerUUID));
+            updateHbaConfValueForJWT(hbaConfEntry, localGflagFilePath, providerUUID.toString()));
         if (i != 0 && !hbaConfEntries[i - 1].endsWith("\"")) {
           if (i != hbaConfEntries.length - 1) {
             // Remove the trailing comma
@@ -2134,8 +2171,7 @@ public class GFlagsUtil {
         log.error("Failed to fetch in memory gflags", ignored);
       }
     } else {
-      Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getProviderForNode(nodeDetails, universe);
       try {
         ShellResponse response =
             nodeUniverseManager.runCommand(
@@ -2202,5 +2238,207 @@ public class GFlagsUtil {
         });
 
     return result;
+  }
+
+  /**
+   * Sensitive gflags in newFlags that still appear as REDACTED (whole value) or contain it (e.g.
+   * ldap password inside ysql_hba_conf_csv)
+   */
+  private static String describeRedactedSensitiveGFlagsInPayload(
+      Map<String, String> newFlags, Set<String> sensitiveGFlagNames) {
+    if (newFlags == null || newFlags.isEmpty()) {
+      return "None (Empty gflags map in request)";
+    }
+    LinkedHashSet<String> found = new LinkedHashSet<>();
+    for (String name : sensitiveGFlagNames) {
+      if (RedactingService.SECRET_REPLACEMENT.equals(newFlags.get(name))) {
+        found.add(name);
+      }
+    }
+    String hbaCsv = newFlags.get("ysql_hba_conf_csv");
+    if (hbaCsv != null && hbaCsv.contains(RedactingService.SECRET_REPLACEMENT)) {
+      found.add("ysql_hba_conf_csv");
+    }
+    return found.isEmpty() ? String.join(", ", sensitiveGFlagNames) : String.join(", ", found);
+  }
+
+  // Merges sensitive gflags, preserving actual values when REDACTED is received.
+  public static Map<String, String> mergeSensitiveGFlags(
+      Map<String, String> existingGFlags,
+      Map<String, String> newGFlags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (existingGFlags == null || newGFlags == null) {
+      return newGFlags;
+    }
+
+    Map<String, String> mergedGFlags = new HashMap<>(newGFlags);
+
+    try {
+      Set<String> sensitiveGFlagFields =
+          RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
+
+      for (String sensitiveFlag : sensitiveGFlagFields) {
+        String newValue = newGFlags.get(sensitiveFlag);
+        String existingValue = existingGFlags.get(sensitiveFlag);
+
+        if (RedactingService.isGFlagRedacted(newValue)) {
+          if (existingValue != null && existingValue.equals(RedactingService.SECRET_REPLACEMENT)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "The stored value of "
+                    + sensitiveFlag
+                    + " is already "
+                    + RedactingService.SECRET_REPLACEMENT
+                    + "; the real value cannot be recovered."
+                    + " Provide the actual value in the request.");
+          }
+          if (existingValue != null) {
+            mergedGFlags.put(sensitiveFlag, existingValue);
+            LOG.debug(
+                "Merged sensitive gflag {}: REDACTED -> preserved existing value", sensitiveFlag);
+          }
+        }
+      }
+
+      String newYsqlHbaConf = newGFlags.get(YSQL_HBA_CONF_CSV);
+      String existingYsqlHbaConf = existingGFlags.get(YSQL_HBA_CONF_CSV);
+
+      if (RedactingService.isGFlagRedacted(newYsqlHbaConf)) {
+        if (existingYsqlHbaConf == null) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "ysql_hba_conf_csv cannot be submitted with "
+                  + RedactingService.SECRET_REPLACEMENT
+                  + " in ldapbindpasswd: no prior universe value exists to restore the password"
+                  + " from. Submit the full ysql_hba_conf_csv with the actual ldapbindpasswd.");
+        }
+        if (existingYsqlHbaConf.contains(RedactingService.SECRET_REPLACEMENT)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "The stored ysql_hba_conf_csv already contains "
+                  + RedactingService.SECRET_REPLACEMENT
+                  + " in ldapbindpasswd; the real password cannot be recovered."
+                  + " Submit ysql_hba_conf_csv with the actual ldapbindpasswd.");
+        }
+        // Redact the YBA metadata's ysql_hba_conf_csv value and compare with user input
+        String existingRedacted =
+            RedactingService.redactAllLdapBindPasswdHbaFormattedValues(existingYsqlHbaConf);
+        if (!existingRedacted.equals(newYsqlHbaConf)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "ysql_hba_conf_csv contains "
+                  + RedactingService.SECRET_REPLACEMENT
+                  + " in ldapbindpasswd but differs from the stored value in other fields."
+                  + " To apply HBA changes alongside a new password, submit the full"
+                  + " ysql_hba_conf_csv with the actual ldapbindpasswd.");
+        }
+        mergedGFlags.put(YSQL_HBA_CONF_CSV, existingYsqlHbaConf);
+      }
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (Exception e) {
+      // Exception here means merging failed and there is risk of writing redacted gflags during
+      // gflag upgrade.
+      LOG.error("Failure in merging sensitive gflags during gflags upgrade task.", e);
+      Set<String> sensitiveForMsg;
+      try {
+        sensitiveForMsg =
+            RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
+      } catch (Exception secondary) {
+        LOG.warn(
+            "Could not list sensitive gflags while building merge error message; omitting list.",
+            secondary);
+        sensitiveForMsg = Set.of();
+      }
+      String redactedInPayload =
+          describeRedactedSensitiveGFlagsInPayload(newGFlags, sensitiveForMsg);
+      PlatformServiceException pse =
+          new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              "Merging sensitive gflags failed: "
+                  + e.getMessage()
+                  + ". Provide original (non-REDACTED) values in the request for sensitive gflags"
+                  + " that were sent redacted; in this payload they include: "
+                  + redactedInPayload
+                  + ".");
+      pse.initCause(e);
+      throw pse;
+    }
+
+    return mergedGFlags;
+  }
+
+  // Merges sensitive SpecificGFlags, preserving actual values when REDACTED is received.
+  public static SpecificGFlags mergeSensitiveSpecificGFlags(
+      SpecificGFlags existingSpecificGFlags,
+      SpecificGFlags newSpecificGFlags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (existingSpecificGFlags == null || newSpecificGFlags == null) {
+      return newSpecificGFlags;
+    }
+
+    // Merge per-process flags
+    SpecificGFlags mergedSpecificGFlags = newSpecificGFlags.clone();
+    if (mergedSpecificGFlags.getPerProcessFlags() != null
+        && mergedSpecificGFlags.getPerProcessFlags().value != null) {
+      for (Map.Entry<UniverseTaskBase.ServerType, Map<String, String>> entry :
+          new ArrayList<>(mergedSpecificGFlags.getPerProcessFlags().value.entrySet())) {
+        UniverseTaskBase.ServerType serverType = entry.getKey();
+        Map<String, String> newProcessFlags = entry.getValue();
+        Map<String, String> existingProcessFlags =
+            existingSpecificGFlags.getPerProcessFlags() != null
+                ? existingSpecificGFlags.getPerProcessFlags().value.get(serverType)
+                : null;
+
+        Map<String, String> mergedProcessFlags =
+            mergeSensitiveGFlags(
+                existingProcessFlags, newProcessFlags, gFlagsValidation, ybSoftwareVersion);
+        mergedSpecificGFlags.getPerProcessFlags().value.put(serverType, mergedProcessFlags);
+        if (!Objects.equals(mergedProcessFlags, newProcessFlags)) {
+          LOG.debug("Merged sensitive gflags for server type {}", serverType);
+        }
+      }
+    }
+
+    // Merge per-AZ flags
+    if (mergedSpecificGFlags.getPerAZ() != null) {
+      for (Map.Entry<UUID, SpecificGFlags.PerProcessFlags> entry :
+          new ArrayList<>(mergedSpecificGFlags.getPerAZ().entrySet())) {
+        UUID azUuid = entry.getKey();
+        SpecificGFlags.PerProcessFlags newAZFlags = entry.getValue();
+        SpecificGFlags.PerProcessFlags existingAZFlags =
+            existingSpecificGFlags.getPerAZ() != null
+                ? existingSpecificGFlags.getPerAZ().get(azUuid)
+                : null;
+
+        if (newAZFlags == null) {
+          mergedSpecificGFlags.getPerAZ().put(azUuid, new SpecificGFlags.PerProcessFlags());
+          continue;
+        }
+        if (newAZFlags.value != null) {
+          for (Map.Entry<UniverseTaskBase.ServerType, Map<String, String>> serverEntry :
+              new ArrayList<>(newAZFlags.value.entrySet())) {
+            UniverseTaskBase.ServerType serverType = serverEntry.getKey();
+            Map<String, String> newServerFlags = serverEntry.getValue();
+            Map<String, String> existingServerFlags =
+                existingAZFlags != null && existingAZFlags.value != null
+                    ? existingAZFlags.value.get(serverType)
+                    : null;
+
+            Map<String, String> mergedServerFlags =
+                mergeSensitiveGFlags(
+                    existingServerFlags, newServerFlags, gFlagsValidation, ybSoftwareVersion);
+            newAZFlags.value.put(serverType, mergedServerFlags);
+            if (!Objects.equals(mergedServerFlags, newServerFlags)) {
+              LOG.debug("Merged sensitive gflags for AZ {} server type {}", azUuid, serverType);
+            }
+          }
+        }
+      }
+    }
+
+    return mergedSpecificGFlags;
   }
 }

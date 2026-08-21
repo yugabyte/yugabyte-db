@@ -1,0 +1,12 @@
+title: KmsConfiguration
+description: |
+  Customer KMS configuration.
+
+  Contains the user-provided `spec` and system-generated `info`.
+  Returned as response payload for KMS configuration list APIs.
+type: object
+properties:
+  spec:
+    $ref: "./KmsConfigurationSpec.yaml"
+  info:
+    $ref: "./KmsConfigurationInfo.yaml"

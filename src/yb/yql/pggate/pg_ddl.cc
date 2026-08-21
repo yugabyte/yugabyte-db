@@ -97,7 +97,6 @@ PgCreateDatabase::PgCreateDatabase(const PgSessionPtr& pg_session,
   if (yb_clone_info) {
     req_.set_source_database_name(yb_clone_info->src_db_name);
     req_.set_clone_time(yb_clone_info->clone_time);
-    req_.set_source_owner(yb_clone_info->src_owner);
     req_.set_target_owner(yb_clone_info->tgt_owner);
   }
 }

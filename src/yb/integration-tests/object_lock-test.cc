@@ -44,10 +44,12 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_callback.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
-// #include "yb/util/test_thread_holder.h"
-// #include "yb/util/unique_lock.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -55,9 +57,11 @@ using namespace std::chrono_literals;
 
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_skip_launch_release_request);
+DECLARE_bool(TEST_pause_obj_lock_release_relaunch);
 DECLARE_int32(heartbeat_max_failures_before_backoff);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(retrying_rpc_max_jitter_ms);
@@ -523,6 +527,58 @@ Status ReleaseLockGlobally(
   return sync.Wait();
 }
 
+std::future<Status> WaitForLockersGloballyAsync(
+    master::MasterDdlProxy* proxy, const std::string& session_host_uuid,
+    uint64_t database_id, uint64_t relation_id, TableLockType lock_type,
+    uint64_t lease_epoch = kLeaseEpoch, MonoDelta rpc_timeout = kTimeout) {
+  auto resp = std::make_shared<master::WaitForLockersMultipleGlobalResponsePB>();
+  auto controller = std::make_shared<rpc::RpcController>();
+  controller->set_timeout(rpc_timeout);
+  auto promise = std::make_shared<std::promise<Status>>();
+  auto future = promise->get_future();
+  master::WaitForLockersMultipleGlobalRequestPB req;
+  req.set_session_host_uuid(session_host_uuid);
+  req.set_lease_epoch(lease_epoch);
+  auto* lock = req.add_object_locks();
+  lock->set_database_oid(database_id);
+  lock->set_relation_oid(relation_id);
+  lock->set_object_oid(kDefaultObjectId);
+  lock->set_object_sub_oid(kDefaultObjectSubId);
+  lock->set_lock_type(lock_type);
+  auto callback = [promise, resp, controller]() {
+    if (!controller->status().ok()) {
+      promise->set_value(controller->status());
+    } else if (resp->has_error()) {
+      promise->set_value(ResponseStatus(*resp));
+    } else {
+      promise->set_value(Status::OK());
+    }
+  };
+  proxy->WaitForLockersMultipleGlobalAsync(req, resp.get(), controller.get(), std::move(callback));
+  return future;
+}
+
+std::future<Status> WaitForLockersGloballyAsync(
+    client::YBClient* client, const std::string& session_host_uuid,
+    uint64_t database_id, uint64_t relation_id, TableLockType lock_type,
+    uint64_t lease_epoch = kLeaseEpoch, MonoDelta rpc_timeout = kTimeout) {
+  auto promise = std::make_shared<std::promise<Status>>();
+  auto future = promise->get_future();
+  master::WaitForLockersMultipleGlobalRequestPB req;
+  req.set_session_host_uuid(session_host_uuid);
+  req.set_lease_epoch(lease_epoch);
+  auto* lock = req.add_object_locks();
+  lock->set_database_oid(database_id);
+  lock->set_relation_oid(relation_id);
+  lock->set_object_oid(kDefaultObjectId);
+  lock->set_object_sub_oid(kDefaultObjectSubId);
+  lock->set_lock_type(lock_type);
+  auto callback = [promise](const Status& s) { promise->set_value(s); };
+  client->WaitForLockersMultipleGlobalAsync(
+      req, std::move(callback), ToCoarse(MonoTime::Now() + rpc_timeout));
+  return future;
+}
+
 YB_DEFINE_ENUM(FailureMode, (NoFailure)(MissingHeartbeatResponses)(RestartMasterDuringRelease));
 class ObjectLockTestWithMissingResponsesAndMasterRestartDuringRelease
     : public ObjectLockTest,
@@ -941,6 +997,69 @@ TEST_F(ObjectLockTest, BootstrapTServersUponAddition) {
   }
 }
 
+// Without checking lease epoch in RelaunchIfNecessary, a tserver that already acked the release,
+// then restarted and bootstrapped from still-persisted lock state, is treated as already covered
+// (same TSDescriptor) and never receives the release again - leaving a leaked object lock.
+TEST_F(ObjectLockTest, ReleaseRelaunchesAfterTServerLeaseEpochChange) {
+  google::SetVLOGLevel("object_lock_info_manager*", 2);
+  const auto& kSessionHostUuid = TSUuid(0);
+  constexpr size_t kTsToRestartIdx = 1;
+  auto* ts_to_restart = cluster_->mini_tablet_server(kTsToRestartIdx);
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, kSessionHostUuid, kTxn2, kDatabaseID, kRelationId));
+  auto expected_locks =
+      cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager()->TEST_GrantedLocksSize();
+  ASSERT_GE(expected_locks, 1);
+  ASSERT_EQ(
+      ts_to_restart->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), expected_locks);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_release_relaunch) = true;
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_release_relaunch) = false;
+  });
+
+  auto release_timeout = MonoDelta::FromSeconds(60);
+  Status release_status;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&] {
+    release_status = ReleaseLockGloballyAt(
+        &master_proxy, kSessionHostUuid, kTxn2, kLeaseEpoch, nullptr, std::nullopt,
+        release_timeout);
+  });
+
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        for (const auto& ts : cluster_->mini_tablet_servers()) {
+          if (ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize() != 0) {
+            return false;
+          }
+        }
+        return true;
+      },
+      kTimeout, "Wait for release RPCs to clear locks on all tservers"));
+
+  ASSERT_OK(RestartTabletServer(*ts_to_restart, kTimeout));
+
+  ASSERT_OK(WaitFor(
+      [ts_to_restart, expected_locks]() {
+        return ts_to_restart->server()->ts_local_lock_manager()->TEST_GrantedLocksSize() ==
+               expected_locks;
+      },
+      kTimeout, "Wait for restarted tserver to bootstrap stale object locks"));
+
+  StringWaiterLogSink log_waiter_1("New TServers were added");
+  StringWaiterLogSink log_waiter_2("DoCallbackAndRespond: release OK");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_release_relaunch) = false;
+  thread_holder.JoinAll();
+  ASSERT_OK(release_status);
+  ASSERT_OK(log_waiter_1.WaitFor(kTimeout));
+  ASSERT_OK(log_waiter_2.WaitFor(kTimeout));
+  for (const auto& ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 0);
+  }
+}
+
 TEST_F(ObjectLockTest, ReleaseExclusiveLocksWhenTServerLeaseExpires) {
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   // Acquire exclusive lock for tserver0. Should succeed.
@@ -1101,6 +1220,59 @@ TEST_F(ObjectLockTest, TxnsOrderedWrtBgTxnsDuringBootstrap) {
                master_local_lock_manager->TEST_GrantedLocksSize() == 0;
       },
       60s, "wait for DDL locks to clear at the master"));
+}
+
+TEST_F(ObjectLockTest, TestWaitForLockersMultiple) {
+  const auto& kSessionHostUuid = TSUuid(0);
+  auto tserver0_proxy = TServerProxy(0);
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+
+  const auto kWaitForLockersTimeout = 30s;
+
+  // Assert that WaitForLockersMultiple blocks when a conflicting lock is held.
+  ASSERT_OK(AcquireLockAt(
+      &tserver0_proxy, kSessionHostUuid, kTxn1, kDatabaseID, kRelationId));
+
+  auto wait_future = WaitForLockersGloballyAsync(
+      &master_proxy, kSessionHostUuid, kDatabaseID, kRelationId,
+      TableLockType::ACCESS_EXCLUSIVE, kLeaseEpoch, kWaitForLockersTimeout);
+  ASSERT_EQ(wait_future.wait_for(1s), std::future_status::timeout)
+      << "WaitForLockers should block while a conflicting DML lock is held";
+
+  ASSERT_OK(ReleaseLockAt(&tserver0_proxy, kSessionHostUuid, kTxn1));
+  ASSERT_OK(ResolveFutureStatus(wait_future));
+
+  // Assert that WaitForLockersMultiple times out when the conflicting txn outlasts the deadline.
+  ASSERT_OK(AcquireLockAt(
+      &tserver0_proxy, kSessionHostUuid, kTxn2, kDatabaseID, kRelationId));
+
+  auto timeout_future = WaitForLockersGloballyAsync(
+      &master_proxy, kSessionHostUuid, kDatabaseID, kRelationId,
+      TableLockType::ACCESS_EXCLUSIVE, kLeaseEpoch, 3s);
+  auto status = ResolveFutureStatus(timeout_future);
+  ASSERT_TRUE(status.IsTimedOut()) << "Expected TimedOut, got: " << status;
+
+  ASSERT_OK(ReleaseLockAt(&tserver0_proxy, kSessionHostUuid, kTxn2));
+
+  // Test concurrent WaitForLockersMultiple requests.
+  ASSERT_OK(AcquireLockAt(
+      &tserver0_proxy, kSessionHostUuid, kTxn3, kDatabaseID, kRelationId));
+
+  auto wait_future_1 = WaitForLockersGloballyAsync(
+      &master_proxy, kSessionHostUuid, kDatabaseID, kRelationId,
+      TableLockType::ACCESS_EXCLUSIVE, kLeaseEpoch, kWaitForLockersTimeout);
+  auto wait_future_2 = WaitForLockersGloballyAsync(
+      &master_proxy, kSessionHostUuid, kDatabaseID, kRelationId,
+      TableLockType::ACCESS_EXCLUSIVE, kLeaseEpoch, kWaitForLockersTimeout);
+
+  ASSERT_EQ(wait_future_1.wait_for(1s), std::future_status::timeout)
+      << "WaitForLockers 1 should block while conflicting DML locks are held";
+  ASSERT_EQ(wait_future_2.wait_for(1s), std::future_status::timeout)
+      << "WaitForLockers 2 should block while conflicting DML locks are held";
+
+  ASSERT_OK(ReleaseLockAt(&tserver0_proxy, kSessionHostUuid, kTxn3));
+  ASSERT_OK(ResolveFutureStatus(wait_future_1));
+  ASSERT_OK(ResolveFutureStatus(wait_future_2));
 }
 
 class ExternalObjectLockTestExpiry : public ExternalObjectLockTest,
@@ -1276,6 +1448,131 @@ TEST_F(ExternalObjectLockTest, TServerCrashRestartAndDoesNotReacquireLease) {
       &master_proxy, tablet_server(1)->uuid(), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch,
       nullptr, std::nullopt, kTimeout * 2));
 }
+
+TEST_F(ExternalObjectLockTest, TestWaitForLockers) {
+  const auto kNumPartitions = 2;
+  auto conn_setup = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn_setup.Execute(
+      "CREATE TABLE parent_t(k INT, v INT) PARTITION BY RANGE(k)"));
+  for (size_t i = 1; i <= kNumPartitions; ++i) {
+    ASSERT_OK(conn_setup.Execute(Format(
+        "CREATE TABLE child_t$0 PARTITION OF parent_t FOR VALUES FROM ($1) TO ($2)", i,
+        (i - 1) * 100 + 1, i * 100 + 1)));
+  }
+  ASSERT_OK(conn_setup.Execute("INSERT INTO parent_t VALUES (1,1), (101,101)"));
+
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("INSERT INTO parent_t VALUES (50, 50)"));
+
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn2.Execute("SET statement_timeout = '5s'"));
+  auto detach_status = conn2.Execute(
+      "ALTER TABLE parent_t DETACH PARTITION child_t2 CONCURRENTLY");
+  ASSERT_NOK(detach_status) << "DETACH CONCURRENTLY should have timed out";
+
+  ASSERT_OK(conn2.Execute("SET statement_timeout = '120s'"));
+  ASSERT_OK(conn1.CommitTransaction());
+
+  // ALTER DETACH CONCURRENTLY is carried out in phases (each phase in its own txn), first phase
+  // where alter is performed and the second phase which invokes WaitForLockers and then finalizes
+  // the detach. But when we timeout at the WaitForLockers, the alter in the first phase stands
+  // committed, and the second phase terminates on error leaving the DETACH in a partial state.
+  //
+  // So the new attempt to ALTER fails with the following error:
+  // ERROR:  partition "child_t2" already pending detach in partitioned table "public.parent_t"
+  // Use ALTER TABLE ... DETACH PARTITION ... FINALIZE to complete the pending detach operation.
+  ASSERT_NOK_STR_CONTAINS(
+      conn2.Execute("ALTER TABLE parent_t DETACH PARTITION child_t2 CONCURRENTLY"),
+      "already pending detach in partitioned table");
+  ASSERT_OK(conn2.Execute("DROP TABLE child_t2"));
+  auto num_partitions = ASSERT_RESULT(conn2.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_inherits WHERE inhparent = 'parent_t'::regclass"));
+  ASSERT_EQ(num_partitions, 1);
+}
+
+struct IndexPhaseParam {
+  std::string phase;
+  std::string log_message;
+};
+
+class ExternalObjectLockTestBootstrapDuringCreateIndex
+    : public ExternalObjectLockTest,
+      public ::testing::WithParamInterface<IndexPhaseParam> {};
+
+TEST_P(ExternalObjectLockTestBootstrapDuringCreateIndex, TxnsOrderedWrtBgTxnsDuringBootstrap) {
+  const auto& param = GetParam();
+  constexpr size_t kTSIdx = 0;
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", kTSIdx));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_ci(k INT PRIMARY KEY, v1 INT, v2 INT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test_ci SELECT i, i, i FROM generate_series(1, 100) AS i"));
+
+  // First CREATE INDEX completes normally.
+  ASSERT_OK(conn.Execute("CREATE INDEX test_ci_idx1 ON test_ci(v1)"));
+
+  // Block the second CREATE INDEX at the specified phase.
+  // At this point, the kPlain txn operates with the kPgSession txn as its background txn.
+  // And the kPgSession txn operates with the kPlain txn as its background txn.
+  auto* ts = tablet_server(kTSIdx);
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", param.phase));
+  LogWaiter log_waiter(ts, param.log_message);
+  auto idx_future = std::async(std::launch::async, [&conn]() -> Status {
+    return conn.Execute("CREATE INDEX test_ci_idx2 ON test_ci(v2)");
+  });
+  ExternalTabletServer* added_ts = nullptr;
+  // On early exit, shut down the added tserver and unblock the GUC so idx_future's
+  // destructor doesn't hang waiting for the CREATE INDEX to finish.
+  CancelableScopeExit cleanup([this, &added_ts]() {
+    if (added_ts) {
+      added_ts->Shutdown();
+    }
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"),
+        "Failed to unblock CREATE INDEX");
+  });
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(30)));
+
+  // Add a new tserver while DDL locks are held. It must bootstrap DDL locks and acquire a
+  // lease before it can accept PG connections.
+  ASSERT_OK(cluster_->AddTabletServer(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy, {}, -1,
+      /* wait_for_registration */ false));
+  auto new_ts_idx = cluster_->num_tablet_servers() - 1;
+  added_ts = cluster_->tablet_server(new_ts_idx);
+
+  // Wait for the new tserver to accept a PG connection and serve a DML. A successful
+  // connection implies the tserver acquired a lease, and a successful INSERT confirms
+  // bootstrap completed (DML lock acquisition requires the lock manager to be bootstrapped).
+  ASSERT_OK(WaitFor(
+      [this, new_ts_idx]() -> Result<bool> {
+        ExternalClusterPGConnectionOptions conn_options;
+        conn_options.tserver_index = new_ts_idx;
+        conn_options.timeout_secs = 2;
+        auto conn = cluster_->ConnectToDB(std::move(conn_options));
+        if (!conn.ok()) {
+          return false;
+        }
+        return conn->Execute("INSERT INTO test_ci VALUES (101, 101, 101)").ok();
+      },
+      MonoDelta::FromSeconds(20),
+      "Wait for new tserver to bootstrap and serve DML"));
+
+  cleanup.Cancel();
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_OK(idx_future.get());
+}
+
+INSTANTIATE_TEST_CASE_P(
+    IndexPhases, ExternalObjectLockTestBootstrapDuringCreateIndex,
+    ::testing::Values(
+        IndexPhaseParam{"indislive", "blocking index state change indislive=true"},
+        IndexPhaseParam{"indisready", "blocking index state change indisready=true"},
+        IndexPhaseParam{"backfill", "blocking concurrent index backfill"},
+        IndexPhaseParam{"postbackfill", "blocking operations after concurrent index backfill"}),
+    [](const ::testing::TestParamInfo<IndexPhaseParam>& info) {
+      return info.param.phase;
+    });
 
 class ExternalObjectLockTestLongLeaseTTL : public ExternalObjectLockTest {
   ClusterFlags FlagOverrides() override;
@@ -1721,6 +2018,36 @@ TEST_P(MultiMasterObjectLockTestWithFailover, AcquireReleaseDdlLocksThroughYBCli
   ASSERT_OK(ReleaseLockAt(&tserver0_proxy, kSessionHostUuid, kTxn1));
   ASSERT_OK(ResolveFutureStatus(ddl_future));
   ASSERT_OK(ReleaseLockGlobally(client_.get(), kSessionHostUuid, kTxn2, kLeaseEpoch));
+}
+
+TEST_P(MultiMasterObjectLockTestWithFailover, WaitForLockersAcrossMasterFailover) {
+  ASSERT_OK(EnsureClientCreated());
+  const auto& kSessionHostUuid = TSUuid(0);
+  auto tserver0_proxy = TServerProxy(0);
+  auto* tserver0 = cluster_->mini_tablet_server(0);
+  auto tserver0_local_lock_manager = tserver0->server()->ts_local_lock_manager();
+  const auto kWaitForLockersTimeout = kTimeout * 5 * kTimeMultiplier;
+
+  // Acquire a DML lock on tserver0.
+  ASSERT_OK(AcquireLockAt(
+      &tserver0_proxy, kSessionHostUuid, kTxn1, kDatabaseID, kRelationId));
+  ASSERT_GT(tserver0_local_lock_manager->TEST_GrantedLocksSize(), 0);
+
+  // Issue WaitForLockers via YBClient (handles leader redirection after failover).
+  auto wait_future = WaitForLockersGloballyAsync(
+      client_.get(), kSessionHostUuid, kDatabaseID, kRelationId,
+      TableLockType::ACCESS_EXCLUSIVE, kLeaseEpoch, kWaitForLockersTimeout);
+
+  // Confirm that WaitForLockers is actually blocking.
+  ASSERT_EQ(wait_future.wait_for(2s), std::future_status::timeout)
+      << "WaitForLockers should block while a conflicting DML lock is held";
+
+  // Trigger master failover while WaitForLockers is in flight.
+  ASSERT_OK(FailoverLeaderMaster());
+
+  // Release the DML lock -- WaitForLockers should still resolve successfully after failover.
+  ASSERT_OK(ReleaseLockAt(&tserver0_proxy, kSessionHostUuid, kTxn1));
+  ASSERT_OK(ResolveFutureStatus(wait_future));
 }
 
 INSTANTIATE_TEST_CASE_P(

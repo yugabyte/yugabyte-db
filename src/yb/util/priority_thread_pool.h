@@ -20,10 +20,11 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/status_fwd.h"
-#include "yb/util/status.h"
 #include "yb/util/thread.h"
 
 namespace yb {
+
+class Cgroup;
 
 YB_DEFINE_ENUM(PriorityThreadPoolTaskState, (kPaused)(kNotStarted)(kRunning));
 constexpr uint64_t kDefaultGroupNo = 0;
@@ -73,6 +74,11 @@ class PriorityThreadPoolTask {
     return serial_no_;
   }
 
+  // Per-task cgroup for per-DB cgroup switching in per_db pool mode.
+  // When set, the executing thread is moved to this cgroup before Run().
+  void SetTaskCgroup(Cgroup* cgroup) { task_cgroup_ = cgroup; }
+  Cgroup* task_cgroup() const { return task_cgroup_; }
+
  private:
   // An internal method which controls task execution and should be triggered to run a task.
   // A special tag is required to deny the method overloading in a user's code and to allow
@@ -82,6 +88,7 @@ class PriorityThreadPoolTask {
   virtual void Execute(ExecuteTag, const Status& status, PriorityThreadPoolSuspender* suspender);
 
   const size_t serial_no_;
+  [[maybe_unused]] Cgroup* task_cgroup_ = nullptr;
 
   friend class PriorityThreadPoolTokenTask;
   friend class PriorityThreadPoolTaskExecutor;
@@ -149,6 +156,10 @@ class PriorityThreadPool {
 
   // Dumps state to string, useful for debugging.
   std::string StateToString();
+
+#ifdef __linux__
+  void SetCgroup(Cgroup* cgroup);
+#endif
 
   void TEST_SetThreadCreationFailureProbability(double probability);
 

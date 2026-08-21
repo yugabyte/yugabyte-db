@@ -84,7 +84,7 @@ SELECT dist_rag.init_vector_index(
 | `r_index_name` | `VARCHAR(50)` | `'pg_rag_default_store'` | Unique name for the index |
 | `r_sources` | `UUID[]` | `ARRAY[]::UUID[]` | Source IDs to associate |
 | `r_chunk_params` | `JSONB` | `'{}'` | Chunking configuration for all attached sources |
-| `r_ai_provider` | `ai_provider_enum` | `'OPENAI'` | One of: `OPENAI`, `LOCAL` |
+| `r_ai_provider` | `ai_provider_enum` | `'OPENAI'` | One of: `OPENAI`, `LOCAL`, `AWS_BEDROCK` |
 | `r_embedding_model_params` | `JSONB` | `'{}'` | Must contain `"dimensions"` key (e.g. `{"dimensions": 1536}`) |
 
 **Returns:** `UUID` -- the vector index ID.
@@ -232,7 +232,7 @@ WHERE index_name = 'engineering_kb';
 |------|--------|
 | `secrets_provider_enum` | `LOCAL`, `AWS`, `GCP`, `AZURE`, `HASHICORP_VAULT` |
 | `create_source_status_enum` | `QUEUED`, `IN_PROGRESS`, `COMPLETED`, `FAILED` |
-| `ai_provider_enum` | `OPENAI`, `LOCAL` |
+| `ai_provider_enum` | `OPENAI`, `LOCAL`, `AWS_BEDROCK` |
 | `index_build_status` | `INIT`, `IN_PROGRESS`, `NOT_STARTED` |
 | `document_processing_status_enum` | `NOT_STARTED`, `QUEUED`, `PROCESSING`, `COMPLETED`, `FAILED`, `RETRY` |
 | `pipeline_status_enum` | `PROCESSING`, `COMPLETED`, `FAILED` |

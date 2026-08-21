@@ -17,6 +17,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/flags_callback.h"
+#include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/path_util.h"
@@ -82,14 +83,23 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
     "is reached, the connection is automatically closed, regardless of activity, ensuring that "
     "fresh backend connections are regularly maintained.");
 
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, max_prepared_statements, 100,
+    "Soft limit on prepared statements per server connection. When the limit is exceeded, the"
+    "least recently used statements are closed on the backend. This is enforced periodically at "
+    "connection detach points, so the actual count may temporarily exceed this value. Set to 0 "
+    "to disable LRU eviction.");
+
 DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "Comma-separated list of log settings for Ysql Connection Manger, which may include "
     "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
     "log settings present in this string will be enabled. Omitted settings will remain disabled.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, true,
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, false,
     "Enable the use of the auth-backend for authentication of logical connections. "
-    "When false, the older auth-passthrough implementation is used."
+    "When false, the auth-passthrough implementation is used. Auth Backend mode involves "
+    "spawning a fresh PG backend to perform authentication for each incoming auth request."
+    "Auth Passthrough mode allows reusing spawned 'control backends' to authenticate clients "
+    "and thus is faster as it skips needing to spawn a new backend process each time."
     );
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_auth_msg_timeout, 15000,
@@ -112,11 +122,11 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_readahead_buffer_size, 8192,
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive, 15,
     "TCP keepalive time in Ysql Connection Manager. Set to zero, to disable keepalive");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval, 75,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval, 20,
     "TCP keepalive interval in Ysql Connection Manager. This is applicable if "
     "'ysql_conn_mgr_tcp_keepalive' is enabled.");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_probes, 9,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_probes, 4,
     "TCP keepalive probes in Ysql Connection Manager. This is applicable if "
     "'ysql_conn_mgr_tcp_keepalive' is enabled.");
 
@@ -171,10 +181,35 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_reserve_internal_conns, 15,
   "is 300 and this flag is set to its default of 15, the YSQL Connection Manager will have a"
   "physical connection limit of 285 (300 - 15).");
 
+DEFINE_RUNTIME_uint32(ysql_conn_mgr_pg_conf_wait_timeout_ms, 15000,
+    "Timeout in milliseconds for the YSQL Connection Manager to wait for the PostgreSQL process "
+    "to be started (and hence for ysql_pg.conf to be freshly written) before reading "
+    "ysql_pg.conf to build its own config. If the timeout expires the connection manager start "
+    "fails and is retried by its supervisor.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_dump_heap_snapshot_interval, 0,
     "Dump tcmalloc current heap snapshot of Ysql Connection Manager process. "
     "If set to greater than 0, tcmalloc current heap snapshot will be dumped to the conn mgr "
     "logs after every ysql_conn_mgr_dump_heap_snapshot_interval number of seconds.");
+
+DEFINE_RUNTIME_CONN_MGR_FLAG(bool, enable_parse_queue_tracking, true,
+    "Enables tracking of in-flight Parse operations in the YSQL Connection Manager. "
+    "This is used so that prepared-statement state tracked on the Connection Manager can be "
+    "reconciled with the backend when errors disrupt the expected packet sequence. When "
+    "disabled, the Connection Manager's view of prepared statements can drift out of sync with "
+    "the backend, which may surface as errors such as 'prepared statement does not exist'.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
+    "When enabled, the YSQL Connection Manager stops reading further client packets after "
+    "forwarding a Sync message and resumes only once the matching ReadyForQuery from the "
+    "backend is received, preventing cross-Sync-boundary pipelining. if set to false, there"
+    " can be correctness issues with pipelining.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, enable_dealloc_reconciliation, true,
+    "When enabled, the YSQL Connection Manager tracks prepared statements that have been "
+    "deallocated on the backend in a per-server hashmap and defers evicting them from "
+    "server hashmap till Sync boundary. If set to false, there can be correctness issues "
+    "on sending deallocate and parse for same name of prep stmt within Sync boundary.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "Sets the interval at which TCMalloc should sample allocations for connection manager. "
@@ -182,6 +217,24 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "ysql_conn_mgr_dump_heap_snapshot_interval is set to greater than 0 i.e if dumping heap "
     "snapshots is enabled. Otherwise we keep the sample period same as what google tcmalloc "
     "has set for connection manager process");
+
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcmalloc_gc_interval, 300,
+    "Interval in seconds between tcmalloc page-heap GC checks in Ysql Connection Manager. "
+    "Each tick invokes yb::MemTracker::GcTcmallocIfNeeded(); if the pageheap free-list "
+    "overhead exceeds tcmalloc_max_free_bytes_percentage of currently-allocated bytes, the "
+    "excess is returned to the OS. Set to 0 to disable periodic GC.");
+
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, backend_drain_timeout_ms, 100,
+    "Upper bound in milliseconds for which Connection Manager will synchronously wait for a "
+    "backend's socket to be closed when closing the backend connection. Setting this to 0 "
+    "skips the wait entirely, which may cause subsequent connection attempts to fail with "
+    "'sorry, too many clients already'. Setting it too high can cause Connection Manager "
+    "worker threads to block on closing sockets, reducing throughput.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
+    "Maximum number of pending TCP connections queued by the kernel on "
+    "Connection Manager's listening socket (the backlog argument to listen(2)). "
+    "Incoming connections beyond this limit may be refused or dropped during connection bursts.");
 
 namespace {
 
@@ -217,11 +270,17 @@ DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
 DEFINE_validator(ysql_conn_mgr_enable_prep_stmt_close,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
 
+DEFINE_validator(ysql_conn_mgr_enable_dealloc_reconciliation,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_wait_for_rfq_on_sync));
+
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
 
-YsqlConnMgrWrapper::YsqlConnMgrWrapper(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : conf_(std::move(conf)), stat_shm_key_(std::move(stat_shm_key)) {}
+YsqlConnMgrWrapper::YsqlConnMgrWrapper(
+    const YsqlConnMgrConf& conf, key_t stat_shm_key, PgProcessStartWaiter pg_start_waiter)
+    : conf_(std::move(conf)),
+      stat_shm_key_(std::move(stat_shm_key)),
+      pg_start_waiter_(std::move(pg_start_waiter)) {}
 
 std::string YsqlConnMgrWrapper::GetYsqlConnMgrExecutablePath() {
   return JoinPathSegments(yb::env_util::GetRootDir("bin"), "bin", "odyssey");
@@ -234,6 +293,12 @@ Status YsqlConnMgrWrapper::PreflightCheck() {
 Status YsqlConnMgrWrapper::Start() {
   auto ysql_conn_mgr_executable = GetYsqlConnMgrExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(ysql_conn_mgr_executable));
+
+  if (pg_start_waiter_) {
+    RETURN_NOT_OK_PREPEND(
+        pg_start_waiter_(MonoDelta::FromMilliseconds(FLAGS_ysql_conn_mgr_pg_conf_wait_timeout_ms)),
+        "Failed waiting for the PostgreSQL process to be started before reading ysql_pg.conf");
+  }
 
   if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode != "none") {
     LOG(INFO) << "Warmup of server connections is enabled in ysql connection manager";
@@ -343,11 +408,16 @@ Status YsqlConnMgrWrapper::UpdateAndReloadConfig() {
   return ReloadConfig();
 }
 
-YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : conf_(conf), stat_shm_key_(stat_shm_key) {}
+YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(
+    const YsqlConnMgrConf& conf, key_t stat_shm_key,
+    YsqlConnMgrWrapper::PgProcessStartWaiter pg_start_waiter)
+    : ProcessSupervisor(conf.cgroup),
+      conf_(conf),
+      stat_shm_key_(stat_shm_key),
+      pg_start_waiter_(std::move(pg_start_waiter)) {}
 
 std::shared_ptr<ProcessWrapper> YsqlConnMgrSupervisor::CreateProcessWrapper() {
-  return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_);
+  return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_, pg_start_waiter_);
 }
 
 void YsqlConnMgrSupervisor::UpdateAndReloadConfig() {

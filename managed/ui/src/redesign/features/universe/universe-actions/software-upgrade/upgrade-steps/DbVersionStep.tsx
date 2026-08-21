@@ -1,23 +1,24 @@
 import { ChangeEvent } from 'react';
-import { useFormContext, Controller } from 'react-hook-form';
-import { useTranslation } from 'react-i18next';
 import { makeStyles, Typography } from '@material-ui/core';
+import { YBButton } from '@yugabyte-ui-library/core';
+import { Controller, useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { useMutation } from 'react-query';
+import { AxiosError } from 'axios';
+import { toast } from 'react-toastify';
 
-import { YBAutoComplete, YBButton } from '@yugabyte-ui-library/core';
-
-import { DbUpgradeInfoCard } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeInfoCard';
-import { DbReleaseAutocompleteOption } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbReleaseAutocompleteOption';
-import type {
-  DBUpgradeFormFields,
-  ReleaseOption
-} from '@app/redesign/features/universe/universe-actions/software-upgrade/types';
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { startSoftwareUpgrade } from '@app/v2/api/universe/universe';
-
-const TRANSLATION_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal.dbVersionStep';
-
-const FIELD_LABEL_WIDTH = 100;
-const FIELD_ROW_GAP_UNITS = 4;
+import { YBAutoComplete } from '@app/redesign/components';
+import { DbUpgradeInfoCard } from '../DbUpgradeInfoCard';
+import { DbReleaseAutocompleteOption } from '../DbReleaseAutocompleteOption';
+import type { DBUpgradeFormFields, ReleaseOption } from '../types';
+import { useDbUpgradeModalContext } from '../DbUpgradeModalContext';
+import { useRefreshUniverseTasksCache } from '@app/redesign/helpers/cacheUtils';
+import { handleServerError } from '@app/utils/errorHandlingUtils';
+import type { YBATaskRespResponse } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
 
 const useStyles = makeStyles((theme) => ({
   formFieldsContainer: {
@@ -72,23 +73,23 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-interface DbVersionStepProps {
-  currentRelease: string;
-  targetReleaseOptions: ReleaseOption[];
-  currentUniverseUuid: string;
-  onPreCheckSuccess: () => void;
-}
-
 const TEST_ID_PREFIX = 'DbVersionStep';
+const FIELD_LABEL_WIDTH = 100;
+const FIELD_ROW_GAP_UNITS = 4;
 
-export const DbVersionStep = ({
-  currentRelease,
-  targetReleaseOptions,
-  currentUniverseUuid,
-  onPreCheckSuccess
-}: DbVersionStepProps) => {
-  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+export const DbVersionStep = () => {
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'universeActions.dbUpgrade.upgradeModal.dbVersionStep'
+  });
   const classes = useStyles();
+  const { currentUniverseUuid, currentDbVersion, targetReleaseOptions, closeModal } =
+    useDbUpgradeModalContext();
+  const refreshUniverseTasksCache = useRefreshUniverseTasksCache(currentUniverseUuid);
+
+  const softwareUpgradeRbacAccessRequiredOn = {
+    onResource: currentUniverseUuid,
+    ...ApiPermissionMap.UPGRADE_NEW_UNIVERSE_SOFTWARE
+  };
 
   const runDbUpgradePrecheck = useMutation(
     (targetDbVersion: string) =>
@@ -97,8 +98,30 @@ export const DbVersionStep = ({
         run_only_prechecks: true
       }),
     {
-      onSuccess: () => {
-        onPreCheckSuccess();
+      onSuccess: (response: YBATaskRespResponse) => {
+        const handleTaskCompletion = (error: boolean) => {
+          if (!error) {
+            toast.success(
+              <Typography variant="body2">
+                {t('toast.dbUpgradePrecheckSuccess', {
+                  keyPrefix: 'universeActions.dbUpgrade.upgradeModal'
+                })}
+              </Typography>
+            );
+          }
+        };
+        refreshUniverseTasksCache();
+        closeModal();
+        if (response.task_uuid) {
+          fetchTaskUntilItCompletes(response.task_uuid, handleTaskCompletion);
+        }
+      },
+      onError: (error: Error | AxiosError) => {
+        handleServerError(error, {
+          customErrorLabel: t('toast.dbUpgradePrecheckFailedLabel', {
+            keyPrefix: 'universeActions.dbUpgrade.upgradeModal'
+          })
+        });
       }
     }
   );
@@ -108,7 +131,7 @@ export const DbVersionStep = ({
 
   const handleVersionChange = (
     _: ChangeEvent<{}>,
-    value: string | Record<string, string> | (string | Record<string, string>)[] | null
+    value: Record<string, string> | string | (Record<string, string> | string)[] | null
   ) => {
     const option = value as ReleaseOption | null;
     setValue('targetDbVersion', option?.version ?? '', { shouldValidate: true });
@@ -129,7 +152,7 @@ export const DbVersionStep = ({
 
         <div className={classes.fieldRow}>
           <Typography className={classes.fieldLabel}>{t('currentVersion')}</Typography>
-          <Typography variant="body2">{currentRelease}</Typography>
+          <Typography variant="body2">{currentDbVersion}</Typography>
         </div>
 
         <div className={classes.fieldRow}>
@@ -140,26 +163,32 @@ export const DbVersionStep = ({
               control={control}
               rules={{ required: t('fieldRequired', { keyPrefix: 'common' }) }}
               render={({ field: { value }, fieldState }) => {
+                const selectedRelease =
+                  targetReleaseOptions.find((option) => option.version === value) ?? null;
+
                 return (
                   <YBAutoComplete
-                    value={value}
+                    value={selectedRelease as unknown as Record<string, string>}
                     options={targetReleaseOptions as unknown as Record<string, string>[]}
                     groupBy={(option) => option.series}
                     getOptionLabel={(option) =>
-                      typeof option === 'string' ? option : (option.label ?? option.version)
+                      option.version === currentDbVersion
+                        ? `${option.label} (${t('currentVersion').toLocaleLowerCase()})`
+                        : option.label
                     }
-                    getOptionDisabled={(option) => option.version === currentRelease}
-                    dataTestId={`${TEST_ID_PREFIX}-VersionSelect`}
-                    renderOption={(props, option) => (
-                      <li {...props}>
-                        <DbReleaseAutocompleteOption
-                          releaseOption={option as unknown as ReleaseOption}
-                        />
-                      </li>
+                    getOptionDisabled={(option) => option.version === currentDbVersion}
+                    getOptionSelected={(option, value) =>
+                      value !== null && value !== undefined && option.version === value.version
+                    }
+                    renderOption={(option) => (
+                      <DbReleaseAutocompleteOption
+                        releaseOption={option as unknown as ReleaseOption}
+                        currentDbVersion={currentDbVersion}
+                      />
                     )}
                     onChange={handleVersionChange}
                     ybInputProps={{
-                      dataTestId: `${TEST_ID_PREFIX}-VersionSelect-input`,
+                      'data-testid': `${TEST_ID_PREFIX}-VersionSelect-input`,
                       error: !!fieldState.error,
                       helperText: fieldState.error?.message,
                       id: 'dBVersion',
@@ -176,18 +205,21 @@ export const DbVersionStep = ({
           <div className={classes.upgradeInfoCardContainer}>
             <DbUpgradeInfoCard
               currentUniverseUuid={currentUniverseUuid}
-              currentVersion={currentRelease}
+              currentVersion={currentDbVersion}
               targetVersion={selectedVersion}
             />
-            <YBButton
-              variant="secondary"
-              onClick={handleRunPreupgradeCheck}
-              dataTestId={`${TEST_ID_PREFIX}-RunPreupgradeCheckButton`}
-              fullWidth={false}
-              sx={{ alignSelf: 'flex-end' }}
-            >
-              {t('runPreupgradeCheck')}
-            </YBButton>
+            <RbacValidator accessRequiredOn={softwareUpgradeRbacAccessRequiredOn} isControl>
+              <YBButton
+                variant="secondary"
+                onClick={handleRunPreupgradeCheck}
+                disabled={runDbUpgradePrecheck.isLoading}
+                dataTestId={`${TEST_ID_PREFIX}-RunPreupgradeCheckButton`}
+                fullWidth={false}
+                sx={{ alignSelf: 'flex-end' }}
+              >
+                {t('runPreupgradeCheck')}
+              </YBButton>
+            </RbacValidator>
           </div>
         )}
       </div>

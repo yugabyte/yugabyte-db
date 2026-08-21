@@ -268,7 +268,7 @@ TEST_F(BackupTxnTest, Persistence) {
 
   auto tablet_peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
   auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   LOG(INFO) << "Second restart";
 
@@ -411,7 +411,7 @@ TEST_F(BackupTxnTest, Failure) {
 }
 
 TEST_F(BackupTxnTest, Restart) {
-  FLAGS_timestamp_history_retention_interval_sec =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
       std::chrono::duration_cast<std::chrono::seconds>(kWaitTimeout).count() *
       kTimeMultiplier;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
@@ -453,7 +453,7 @@ TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
     auto tablet_peer = cluster_->mini_master(i)->tablet_peer();
     auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
-    ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+    ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   }
 
   ShutdownAllTServers(cluster_.get());

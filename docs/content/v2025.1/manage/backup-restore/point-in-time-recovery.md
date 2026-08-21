@@ -226,9 +226,7 @@ PITR functionality has several limitations, primarily related to interactions wi
 
 ### CDC
 
-Using PITR and [CDC](../../../additional-features/change-data-capture/) together is currently not supported.
-
-Tracking issue: [12773](https://github.com/yugabyte/yugabyte-db/issues/12773)
+For databases and tables with [CDC](../../../additional-features/change-data-capture/) configured, you need to create new CDC streams or replication slots after the restore is complete, and start streaming from that point. Creating new streams or slots ensures that you start streaming from the correct checkpoints.
 
 ### xCluster replication
 

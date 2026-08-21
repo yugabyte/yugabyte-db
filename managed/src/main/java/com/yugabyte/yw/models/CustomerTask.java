@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonEnumDefaultValue;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.api.client.util.Strings;
@@ -15,7 +17,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.filters.TaskFilter;
 import io.ebean.Expr;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -442,7 +446,16 @@ public class CustomerTask extends Model {
     KubernetesToggleImmutableYbc,
 
     @EnumValue("OperatorImport")
-    OperatorImport;
+    OperatorImport,
+
+    @EnumValue("RegisterWithPACollector")
+    RegisterWithPACollector,
+
+    @EnumValue("UnregisterFromPACollector")
+    UnregisterFromPACollector,
+
+    @JsonEnumDefaultValue
+    Unknown;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -657,6 +670,14 @@ public class CustomerTask extends Model {
           return completed ? "Set Immutable Ybc on K8s" : "Setting Immutable Ybc on K8s";
         case OperatorImport:
           return completed ? "Imported universe to Operator" : "Importing universe to Operator";
+        case RegisterWithPACollector:
+          return completed
+              ? "Updated PA Collector registration for"
+              : "Updating PA Collector registration for";
+        case UnregisterFromPACollector:
+          return completed ? "Disabled PA Collector for" : "Disabling PA Collector for";
+        case Unknown:
+          return "Unknown";
         default:
           return null;
       }
@@ -668,7 +689,8 @@ public class CustomerTask extends Model {
               value -> {
                 try {
                   Field field = TaskType.class.getField(value.name());
-                  return !field.isAnnotationPresent(Deprecated.class);
+                  return !field.isAnnotationPresent(Deprecated.class)
+                      && !field.isAnnotationPresent(JsonEnumDefaultValue.class);
                 } catch (Exception e) {
                   return false;
                 }
@@ -1110,5 +1132,36 @@ public class CustomerTask extends Model {
         .or(Expr.ge("completion_time", since), Expr.ge("create_time", since))
         .orderBy("completion_time desc")
         .findList();
+  }
+
+  public static ExpressionList<CustomerTask> createQueryByFilter(TaskFilter filter) {
+    ExpressionList<CustomerTask> query =
+        find.query().where().eq("customer_uuid", filter.getCustomerUUID());
+
+    if (!CollectionUtils.isEmpty(filter.getTargetList())) {
+      appendInClause(query, "target_type", filter.getTargetList());
+    }
+
+    if (!CollectionUtils.isEmpty(filter.getTargetUUIDList())) {
+      appendInClause(query, "target_uuid", filter.getTargetUUIDList());
+    }
+
+    if (!CollectionUtils.isEmpty(filter.getTypeList())) {
+      appendInClause(query, "type", filter.getTypeList());
+    }
+
+    if (!CollectionUtils.isEmpty(filter.getTypeNameList())) {
+      appendInClause(query, "custom_type_name", filter.getTypeNameList());
+    }
+
+    if (filter.getDateRangeStart() != null && filter.getDateRangeEnd() != null) {
+      query.between("create_time", filter.getDateRangeStart(), filter.getDateRangeEnd());
+    }
+
+    if (!CollectionUtils.isEmpty(filter.getStatus())) {
+      appendInClause(query, "taskInfo.taskState", filter.getStatus());
+    }
+
+    return query;
   }
 }

@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "yb/util/enums.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 

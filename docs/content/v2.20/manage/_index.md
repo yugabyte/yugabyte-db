@@ -11,65 +11,37 @@ menu:
     weight: 50
 type: indexpage
 ---
-<div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="backup-restore/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Back up and restore</div>
-      </div>
-      <div class="body">
-        Back up and restore data in YugabyteDB.
-      </div>
-    </a>
-  </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="data-migration/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
-        <div class="title">Migrate data</div>
-      </div>
-      <div class="body">
-        Bulk data export and import in the context of YugabyteDB.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./change-cluster-config/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
-        <div class="title">Change cluster configuration</div>
-      </div>
-      <div class="body">
-          Move universe data to a new set of machines.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Back up and restore"
+    body="Back up and restore data in YugabyteDB."
+    href="backup-restore/"
+    icon="fa-thin fa-life-ring">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./upgrade-deployment/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
-        <div class="title">Upgrade a deployment</div>
-      </div>
-      <div class="body">
-          Upgrade the YB software deployment.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Migrate data"
+    body="Bulk data export and import in the context of YugabyteDB."
+    href="data-migration/"
+    icon="fa-thin fa-file-import">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="diagnostics-reporting/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
-        <div class="title">Diagnostics reporting</div>
-      </div>
-      <div class="body">
-        Configure collection and reporting of diagnostics data.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Change cluster configuration"
+    body="Move universe data to a new set of machines."
+    href="change-cluster-config/"
+    icon="fa-thin fa-circle-nodes">}}
 
-</div>
+  {{<index/item
+    title="Upgrade a deployment"
+    body="Upgrade the YB software deployment."
+    href="upgrade-deployment/"
+    icon="fa-thin fa-arrow-up-to-line">}}
+
+  {{<index/item
+    title="Diagnostics reporting"
+    body="Configure collection and reporting of diagnostics data."
+    href="diagnostics-reporting/"
+    icon="fa-thin fa-stethoscope">}}
+
+{{</index/block>}}

@@ -70,25 +70,27 @@ public class TableInfoUtil {
     return isDdlQueueTable(table) || isSequencesDataTable(table);
   }
 
-  public static boolean isDdlQueueTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
+  private static boolean isAutoDDLInternalTable(
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo table, String name) {
     return table.getRelationType() == MasterTypes.RelationType.USER_TABLE_RELATION
         && Objects.nonNull(table.getPgschemaName())
         && table.getPgschemaName().equals("yb_xcluster_ddl_replication")
-        && table.getName().equals("ddl_queue");
+        && table.getName().equals(name);
+  }
+
+  public static boolean isDdlQueueTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
+    return isAutoDDLInternalTable(table, "ddl_queue");
+  }
+
+  public static boolean isReplicatedDdlsTable(
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
+    return isAutoDDLInternalTable(table, "replicated_ddls");
   }
 
   public static boolean isSequencesDataTable(
       MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
     return table.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION
         && table.getName().equals("sequences_data");
-  }
-
-  public static boolean isReplicatedDdlsTable(
-      MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
-    return table.getRelationType() == MasterTypes.RelationType.USER_TABLE_RELATION
-        && Objects.nonNull(table.getPgschemaName())
-        && table.getPgschemaName().equals("yb_xcluster_ddl_replication")
-        && table.getName().equals("replicated_ddls");
   }
 
   public static boolean isSystemRedis(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {

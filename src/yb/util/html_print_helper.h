@@ -16,6 +16,7 @@
 #include <sstream>
 
 #include "yb/util/enums.h"
+#include "yb/util/status.h"
 #include "yb/util/tostring.h"
 
 namespace yb {
@@ -24,6 +25,7 @@ class HtmlTablePrintHelper;
 class HtmlFieldsetScope;
 
 YB_DEFINE_ENUM(HtmlTableCellAlignment, (Left)(Right));
+YB_DEFINE_ENUM(HtmlTableRowColor, (Default)(Red)(Yellow));
 
 // Helper class to print HTML.
 class HtmlPrintHelper {
@@ -80,6 +82,11 @@ class HtmlTablePrintHelper {
       (AddColumn(std::forward<Ts>(values)), ...);
     }
 
+    void SetColor(HtmlTableRowColor color) { color_ = color; }
+    void SetColor(const Status& status) {
+      color_ = status.ok() ? HtmlTableRowColor::Default : HtmlTableRowColor::Red;
+    }
+
    private:
     std::string ProcessValue(std::string&& value) { return std::move(value); }
     std::string ProcessValue(std::string_view value) { return std::string(value); }
@@ -90,6 +97,7 @@ class HtmlTablePrintHelper {
 
     friend class HtmlTablePrintHelper;
     std::vector<TableColumnValue> column_values_;
+    HtmlTableRowColor color_ = HtmlTableRowColor::Default;
   };
 
   struct TableRowSet {
@@ -112,9 +120,11 @@ class HtmlTablePrintHelper {
   TableRow& AddRow() {
     return AddRowSet().AddRow();
   }
-  template<typename... Ts>
-  void AddRow(Ts&&... column_values) {
-    AddRow().AddColumns(std::forward<Ts>(column_values)...);
+  template <typename... Ts>
+  TableRow& AddRow(Ts&&... column_values) {
+    auto& row = AddRow();
+    row.AddColumns(std::forward<Ts>(column_values)...);
+    return row;
   }
 
   void Print();

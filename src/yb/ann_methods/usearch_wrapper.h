@@ -21,7 +21,7 @@
 #include "yb/hnsw/hnsw_fwd.h"
 
 #include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/hnsw_options.h"

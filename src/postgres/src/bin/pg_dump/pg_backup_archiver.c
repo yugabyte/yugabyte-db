@@ -137,6 +137,29 @@ static void StrictNamesCheck(RestoreOptions *ropt);
 static bool IsYugabyteEnabled = true;
 
 /*
+ * YB: when --rename-owner=NEW was supplied to ysql_dump, every "OWNER TO X"
+ * clause whose owner equals the source database owner is rewritten to NEW.
+ * This helper returns the substituted owner name (or the original one when no
+ * substitution applies) and is the single chokepoint used by every owner-
+ * emitting site in this file. Comparison is on the raw role name string
+ * captured in dumpDatabase(); identifier escaping is still done at emission
+ * time via fmtId() / appendStringLiteralAHX().
+ */
+static const char *
+yb_effective_owner(ArchiveHandle *AH, const char *owner)
+{
+	DumpOptions *dopt = AH->public.dopt;
+
+	if (dopt &&
+		dopt->yb_rename_owner &&
+		dopt->yb_source_db_owner &&
+		owner &&
+		strcmp(owner, dopt->yb_source_db_owner) == 0)
+		return dopt->yb_rename_owner;
+	return owner;
+}
+
+/*
  * Add the set GUC command to the archive handler in a backward compatible manner.
  * Checks for the presence of the GUC before setting it.Example of usage:
  * YbBackwardCompatibleSetGuc(AH, "yb_ignore_relfilenode_ids", "off", false);
@@ -3761,7 +3784,7 @@ _becomeOwner(ArchiveHandle *AH, TocEntry *te)
 	if (ropt && (ropt->noOwner || !ropt->use_setsessauth))
 		return;
 
-	_becomeUser(AH, te->owner);
+	_becomeUser(AH, yb_effective_owner(AH, te->owner));
 }
 
 
@@ -4324,7 +4347,8 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 		if (strcmp(te->desc, "BLOB METADATA") == 0)
 		{
 			/* BLOB METADATA needs special code to handle multiple LOs */
-			char	   *cmdEnd = psprintf(" OWNER TO %s", fmtId(te->owner));
+			char	   *cmdEnd = psprintf(" OWNER TO %s",
+										  fmtId(yb_effective_owner(AH, te->owner)));
 
 			IssueCommandPerBlob(AH, te, "ALTER LARGE OBJECT ", cmdEnd);
 			pg_free(cmdEnd);
@@ -4343,6 +4367,9 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 			 */
 			if (temp.data[0])
 			{
+				/* YB: --rename-owner substitutes the source DB owner. */
+				const char *eff_owner = yb_effective_owner(AH, te->owner);
+
 				if (AH->public.dopt->include_yb_metadata)
 				{
 					/*
@@ -4355,7 +4382,7 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 					PQExpBuffer alter = createPQExpBuffer();
 
 					appendPQExpBuffer(alter, "ALTER %s OWNER TO %s;",
-									  temp.data, fmtId(te->owner));
+									  temp.data, fmtId(eff_owner));
 
 					ybBeginUnrestrictedMeta(AH);
 					ahprintf(AH, "\\if :use_roles\n");
@@ -4363,7 +4390,7 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 					{
 						PQExpBuffer role_buf = createPQExpBuffer();
 
-						appendStringLiteralAHX(role_buf, te->owner, AH);
+						appendStringLiteralAHX(role_buf, eff_owner, AH);
 						ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
 								 ") AS role_exists \\gset\n"
 								 "\\if :role_exists\n"
@@ -4371,7 +4398,7 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 								 "\\else\n"
 								 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
 								 "\\endif\n",
-								 role_buf->data, alter->data, fmtId(te->owner));
+								 role_buf->data, alter->data, fmtId(eff_owner));
 						destroyPQExpBuffer(role_buf);
 					}
 					else
@@ -4382,93 +4409,11 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 				}
 				else
 					ahprintf(AH, "ALTER %s OWNER TO %s;\n\n",
-							 temp.data, fmtId(te->owner));
+							 temp.data, fmtId(eff_owner));
 			}				/* YB */
 			termPQExpBuffer(&temp);
 		}
 
-		/*
-		 * YB_TODO_PG19MERGE: original YB-side (kept for reference; port
-		 * include_yb_metadata + use_roles + yb_dump_role_checks role-existence
-		 * guard into the generic else branch above):
-		 */
-#if 0
-		if (strcmp(te->desc, "AGGREGATE") == 0 ||
-			strcmp(te->desc, "BLOB") == 0 ||
-			strcmp(te->desc, "COLLATION") == 0 ||
-			strcmp(te->desc, "CONVERSION") == 0 ||
-			strcmp(te->desc, "DATABASE") == 0 ||
-			strcmp(te->desc, "DOMAIN") == 0 ||
-			strcmp(te->desc, "FUNCTION") == 0 ||
-			strcmp(te->desc, "OPERATOR") == 0 ||
-			strcmp(te->desc, "OPERATOR CLASS") == 0 ||
-			strcmp(te->desc, "OPERATOR FAMILY") == 0 ||
-			strcmp(te->desc, "PROCEDURE") == 0 ||
-			strcmp(te->desc, "PROCEDURAL LANGUAGE") == 0 ||
-			strcmp(te->desc, "SCHEMA") == 0 ||
-			strcmp(te->desc, "EVENT TRIGGER") == 0 ||
-			strcmp(te->desc, "TABLE") == 0 ||
-			strcmp(te->desc, "TABLEGROUP") == 0 ||  /* YB */
-			strcmp(te->desc, "TYPE") == 0 ||
-			strcmp(te->desc, "VIEW") == 0 ||
-			strcmp(te->desc, "MATERIALIZED VIEW") == 0 ||
-			strcmp(te->desc, "SEQUENCE") == 0 ||
-			strcmp(te->desc, "FOREIGN TABLE") == 0 ||
-			strcmp(te->desc, "TEXT SEARCH DICTIONARY") == 0 ||
-			strcmp(te->desc, "TEXT SEARCH CONFIGURATION") == 0 ||
-			strcmp(te->desc, "FOREIGN DATA WRAPPER") == 0 ||
-			strcmp(te->desc, "SERVER") == 0 ||
-			strcmp(te->desc, "STATISTICS") == 0 ||
-			strcmp(te->desc, "PUBLICATION") == 0 ||
-			strcmp(te->desc, "SUBSCRIPTION") == 0)
-		{
-			appendPQExpBufferStr(temp, "ALTER ");
-			_getObjectDescription(temp, te);
-			appendPQExpBuffer(temp, " OWNER TO %s;", fmtId(te->owner));
-
-			if (AH->public.dopt->include_yb_metadata)
-			{
-				ahprintf(AH, "\\if :use_roles\n");
-				if (AH->public.dopt->yb_dump_role_checks)
-				{
-					PQExpBuffer role_buf = createPQExpBuffer();
-
-					appendStringLiteralAHX(role_buf, te->owner, AH);
-					ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
-							 ") AS role_exists \\gset\n"
-							 "\\if :role_exists\n"
-							 "    %s\n"
-							 "\\else\n"
-							 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
-							 "\\endif\n", role_buf->data, temp->data, fmtId(te->owner));
-					destroyPQExpBuffer(role_buf);
-				}
-				else
-					ahprintf(AH, "    %s\n", temp->data);
-
-				ahprintf(AH, "\\endif\n\n");
-			}
-			else
-				ahprintf(AH, "%s\n\n", temp->data);
-
-			destroyPQExpBuffer(temp);
-		}
-		else if (strcmp(te->desc, "CAST") == 0 ||
-				 strcmp(te->desc, "CHECK CONSTRAINT") == 0 ||
-				 strcmp(te->desc, "CONSTRAINT") == 0 ||
-				 strcmp(te->desc, "DATABASE PROPERTIES") == 0 ||
-				 strcmp(te->desc, "DEFAULT") == 0 ||
-				 strcmp(te->desc, "FK CONSTRAINT") == 0 ||
-				 strcmp(te->desc, "INDEX") == 0 ||
-				 strcmp(te->desc, "RULE") == 0 ||
-				 strcmp(te->desc, "TRIGGER") == 0 ||
-				 strcmp(te->desc, "ROW SECURITY") == 0 ||
-				 strcmp(te->desc, "POLICY") == 0 ||
-				 strcmp(te->desc, "USER MAPPING") == 0)
-		{
-			/* these object types don't have separate owners */
-		}
-#endif
 	}
 
 	/*

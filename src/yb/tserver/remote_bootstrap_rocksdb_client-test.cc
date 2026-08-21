@@ -89,7 +89,7 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestLowDiskSpace) {
   HostPort host_port = HostPortFromPB(leader_.last_known_private_addr()[0]);
   auto client = std::make_unique<RemoteBootstrapClient>(GetTabletId(), fs_manager_.get());
   Status status = client->Start(leader_.permanent_uuid(), proxy_cache_.get(),
-                                host_port, ServerRegistrationPB(), &meta_);
+                                host_port, ServerRegistrationPB(), OpId(), &meta_);
   ASSERT_EQ(status.code(), Status::kIOError);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) =
       orig_TEST_simulate_free_space_bytes;

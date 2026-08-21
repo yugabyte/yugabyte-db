@@ -21,7 +21,6 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/doc_ql_filefilter.h"
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -49,16 +48,15 @@
 
 using namespace std::literals;
 
+DEFINE_RUNTIME_bool(disable_last_seen_ht_rollback, false,
+    "Disable optimization to ignore non-existent keys for read restart.");
+
 DEFINE_RUNTIME_bool(use_fast_next_for_iteration, true,
-                    "Whether intent aware iterator should use fast next feature.");
+    "Whether intent aware iterator should use fast next feature.");
 
 // Default value was picked intuitively, could try to find more suitable value in future.
 DEFINE_RUNTIME_uint64(max_next_calls_while_skipping_future_records, 3,
-                      "After number of next calls is reached this limit, use seek to find non "
-                      "future record.");
-
-DEFINE_RUNTIME_bool(disable_last_seen_ht_rollback, false,
-                    "Disable optimization to ignore non-existent keys for read restart.");
+    "After number of next calls is reached this limit, use seek to find non future record.");
 
 namespace yb::docdb {
 
@@ -776,12 +774,19 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
   return result;
 }
 
-Result<Slice> IntentAwareIterator::FetchValue(Slice key) {
-  UpdateFilterKey(key);
+Result<Slice> IntentAwareIterator::FetchValue(Slice key, docdb::UpdateFilterKey update_filter_key) {
+  if (update_filter_key) {
+    // No-op if variable bloom filter is not used.
+    UpdateFilterKey(key);
+  }
+
   Seek(key, SeekFilter::kAll, Full::kTrue);
   auto fetch_result = VERIFY_RESULT_REF(Fetch());
 
-  return fetch_result.key == key ? fetch_result.value : Slice{};
+  // When the seek finds no matching entry, FillEntry() leaves entry_.key pointing at the
+  // previously fetched key, whose backing RocksDB block may already have been freed by this
+  // seek. Guard on validity so we never read that stale slice.
+  return fetch_result && fetch_result.key == key ? fetch_result.value : Slice{};
 }
 
 template <bool kDescending>
@@ -1394,18 +1399,26 @@ Result<ReadRestartData> IntentAwareIterator::GetReadRestartData() const {
   }
   auto decoded_max_seen_ht = VERIFY_RESULT(max_seen_ht_data_.max_seen_ht.Decode());
   VLOG(4) << "Restart read: " << decoded_max_seen_ht.hybrid_time() << ", original: " << read_time_;
-  return ReadRestartData{decoded_max_seen_ht.hybrid_time(), max_seen_ht_data_.max_seen_ht_key};
+  return ReadRestartData{
+      decoded_max_seen_ht.hybrid_time(),
+      max_seen_ht_data_.max_seen_ht_key};
 }
 
-MaxSeenHtData IntentAwareIterator::ObtainMaxSeenHtCheckpoint() {
-  return max_seen_ht_data_;
+EncodedDocHybridTime IntentAwareIterator::ObtainMaxSeenHtCheckpoint() {
+  return max_seen_ht_data_.max_seen_ht;
 }
 
-void IntentAwareIterator::RollbackMaxSeenHt(MaxSeenHtData checkpoint) {
+void IntentAwareIterator::RollbackMaxSeenHt(const EncodedDocHybridTime& checkpoint) {
   if (ANNOTATE_UNPROTECTED_READ(FLAGS_disable_last_seen_ht_rollback)) {
     return;
   }
-  max_seen_ht_data_ = checkpoint;
+  max_seen_ht_data_.max_seen_ht = checkpoint;
+  // The key is only recorded once HT crosses read_time. If the rolled-back HT
+  // is back at or below read_time, the observation that produced the key is
+  // being undone, drop it.
+  if (checkpoint <= encoded_read_time_.read) {
+    max_seen_ht_data_.max_seen_ht_key.Clear();
+  }
 }
 
 HybridTime IntentAwareIterator::TEST_MaxSeenHt() const {
@@ -1465,7 +1478,7 @@ void IntentAwareIterator::DebugSeekTriggered() {
 }
 #endif
 
-void IntentAwareIterator::UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice key) {
+void IntentAwareIterator::UpdateMaxSeenHt(const EncodedDocHybridTime& seen_ht, Slice key) {
   if (max_seen_ht_data_.max_seen_ht >= seen_ht) {
     return;
   }
@@ -1475,7 +1488,7 @@ void IntentAwareIterator::UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice ke
   // Pick the first offending key.
   if (max_seen_ht_data_.max_seen_ht > encoded_read_time_.read
       && max_seen_ht_data_.max_seen_ht_key.empty()) {
-    max_seen_ht_data_.max_seen_ht_key = SubDocKey::DebugSliceToString(key);
+    max_seen_ht_data_.max_seen_ht_key = key;
   }
 }
 

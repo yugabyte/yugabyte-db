@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.supportbundle;
 
 import static com.yugabyte.yw.common.TestHelper.createTarGzipFiles;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -30,17 +31,24 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -57,10 +65,11 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
   @Mock public RuntimeConfGetter MockConfGetter;
 
   private final String testUniverseLogsRegexPattern =
-      "((?:.*)(?:yb-)(?:master|tserver)(?:.*))(\\d{8})-(?:\\d*)\\.(?:.*)";
-  private final String testPostgresLogsRegexPattern = "((?:.*)(?:postgresql)-)(.{10})(?:.*)";
+      "((?:.*)(?:yb-)(?:master|tserver)(?:.*))(\\d{8}-\\d{6})\\.(?:.*)";
+  private final String testPostgresLogsRegexPattern =
+      "((?:.*)(?:postgresql)-)(\\d{4}-\\d{2}-\\d{2}_\\d{6})(?:.*)";
   private final String testConnectionPoolingLogsRegexPattern =
-      "((?:.*)(?:ysql-conn-mgr)-)(.{10})(?:.*)";
+      "((?:.*)(?:ysql-conn-mgr)-)(\\d{4}-\\d{2}-\\d{2}_\\d{6})(?:.*)";
   private Universe universe;
   private Customer customer;
   private String fakeSupportBundleBasePath = "/tmp/yugaware_tests/support_bundle-universe_logs/";
@@ -114,12 +123,9 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     when(MockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.connectionPoolingLogsRegexPattern)))
         .thenReturn(testConnectionPoolingLogsRegexPattern);
-    when(mockSupportBundleUtil.extractFileTypeFromFileNameAndRegex(any(), any()))
+    when(mockSupportBundleUtil.filterFilePathsBetweenDates(
+            any(), org.mockito.ArgumentMatchers.<java.util.List<String>>any(), any(), any()))
         .thenCallRealMethod();
-    when(mockSupportBundleUtil.extractDateFromFileNameAndRegex(any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.filterFilePathsBetweenDates(any(), any(), any(), any()))
-        .thenCallRealMethod();
-    when(mockSupportBundleUtil.filterList(any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.checkDateBetweenDates(any(), any(), any())).thenCallRealMethod();
     doCallRealMethod()
         .when(mockSupportBundleUtil)
@@ -182,5 +188,170 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     // Check if the logs directory is created
     Boolean isDestDirCreated = new File(fakeTargetComponentPath).exists();
     assertTrue(isDestDirCreated);
+  }
+
+  @Test
+  public void testGetFilesListWithSizesTimeAwareRange() throws Exception {
+    SimpleDateFormat ybTs = new SimpleDateFormat("yyyyMMdd-HHmmss");
+    Date startDate = ybTs.parse("20220127-073000");
+    Date endDate = ybTs.parse("20220127-100000");
+    String fileTypePrefix = "/mnt/yb-data/master/logs/yb-master.u-n1.yugabyte.log.INFO.";
+    Map<String, Long> allLogs =
+        new HashMap<>(
+            Map.of(
+                fileTypePrefix + "20220127-090000.1542.gz",
+                10L,
+                fileTypePrefix + "20220127-072322.1542.gz",
+                10L,
+                fileTypePrefix + "20220127-045422.1542.gz",
+                10L));
+    when(mockNodeUniverseManager.getNodeFilePathAndSizes(any(), any(), any(), eq(1), eq("f")))
+        .thenReturn(allLogs);
+
+    UniverseLogsComponent universeLogsComponent =
+        new UniverseLogsComponent(
+            mockUniverseInfoHandler,
+            mockNodeUniverseManager,
+            mockConfig,
+            mockSupportBundleUtil,
+            MockConfGetter);
+
+    Map<String, Long> filtered =
+        universeLogsComponent.getFilesListWithSizes(
+            customer, null, universe, startDate, endDate, node);
+
+    assertEquals(2, filtered.size());
+    assertTrue(filtered.containsKey(fileTypePrefix + "20220127-090000.1542.gz"));
+    assertTrue(filtered.containsKey(fileTypePrefix + "20220127-072322.1542.gz"));
+    assertTrue(!filtered.containsKey(fileTypePrefix + "20220127-045422.1542.gz"));
+  }
+
+  @Test
+  public void testGetFilesListWithSizesIncludesOnlyOnePreStartLog() throws Exception {
+    SimpleDateFormat ybTs = new SimpleDateFormat("yyyyMMdd-HHmmss");
+    Date startDate = ybTs.parse("20220128-000000");
+    Date endDate = ybTs.parse("20220130-000000");
+    String fileTypePrefix = "/mnt/yb-data/master/logs/yb-master.u-n1.yugabyte.log.INFO.";
+    Map<String, Long> allLogs =
+        new HashMap<>(
+            Map.of(
+                fileTypePrefix + "20220127-072322.1542.gz",
+                10L,
+                fileTypePrefix + "20220126-120000.1542.gz",
+                10L,
+                fileTypePrefix + "20220125-120000.1542.gz",
+                10L));
+    when(mockNodeUniverseManager.getNodeFilePathAndSizes(any(), any(), any(), eq(1), eq("f")))
+        .thenReturn(allLogs);
+
+    UniverseLogsComponent universeLogsComponent =
+        new UniverseLogsComponent(
+            mockUniverseInfoHandler,
+            mockNodeUniverseManager,
+            mockConfig,
+            mockSupportBundleUtil,
+            MockConfGetter);
+
+    Map<String, Long> filtered =
+        universeLogsComponent.getFilesListWithSizes(
+            customer, null, universe, startDate, endDate, node);
+
+    assertEquals(1, filtered.size());
+    assertTrue(filtered.containsKey(fileTypePrefix + "20220127-072322.1542.gz"));
+    assertTrue(!filtered.containsKey(fileTypePrefix + "20220126-120000.1542.gz"));
+  }
+
+  @Test
+  public void testGetFilesListWithSizesIncludesInRangeAndOnePreStartLog() throws Exception {
+    SimpleDateFormat ybTs = new SimpleDateFormat("yyyyMMdd-HHmmss");
+    Date startDate = ybTs.parse("20220128-000000");
+    Date endDate = ybTs.parse("20220130-000000");
+    String fileTypePrefix = "/mnt/yb-data/master/logs/yb-master.u-n1.yugabyte.log.INFO.";
+    Map<String, Long> allLogs =
+        new HashMap<>(
+            Map.of(
+                fileTypePrefix + "20220129-120000.1542.gz",
+                10L,
+                fileTypePrefix + "20220127-072322.1542.gz",
+                10L,
+                fileTypePrefix + "20220126-120000.1542.gz",
+                10L));
+    when(mockNodeUniverseManager.getNodeFilePathAndSizes(any(), any(), any(), eq(1), eq("f")))
+        .thenReturn(allLogs);
+
+    UniverseLogsComponent universeLogsComponent =
+        new UniverseLogsComponent(
+            mockUniverseInfoHandler,
+            mockNodeUniverseManager,
+            mockConfig,
+            mockSupportBundleUtil,
+            MockConfGetter);
+
+    Map<String, Long> filtered =
+        universeLogsComponent.getFilesListWithSizes(
+            customer, null, universe, startDate, endDate, node);
+
+    assertEquals(2, filtered.size());
+    assertTrue(filtered.containsKey(fileTypePrefix + "20220129-120000.1542.gz"));
+    assertTrue(filtered.containsKey(fileTypePrefix + "20220127-072322.1542.gz"));
+    assertTrue(!filtered.containsKey(fileTypePrefix + "20220126-120000.1542.gz"));
+  }
+
+  @Test
+  public void testDownloadComponentBetweenDatesFiltersPgAuditAndKeepsGzipFormat() throws Exception {
+    Date startDate = new Date(Long.MIN_VALUE);
+    Date endDate = new Date(Long.MAX_VALUE);
+
+    Path tserverLogsPath = Paths.get(fakeBundlePath, "tserver", "logs");
+    Files.createDirectories(tserverLogsPath);
+    File sourcePgLogGzip = tserverLogsPath.resolve("postgresql-2026-05-03_000000.log.gz").toFile();
+    writeGzipString(
+        sourcePgLogGzip,
+        "2026-05-03 10:00:00 LOG:  statement: select 1;\n"
+            + "2026-05-03 10:00:01 AUDIT:  SESSION,1,1,READ,SELECT,,,select 1;\n");
+
+    // Keep test focused on pg filtering path.
+    doCallRealMethod()
+        .when(mockSupportBundleUtil)
+        .batchWiseDownload(
+            any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
+
+    SupportBundleFormData bundleData = new SupportBundleFormData();
+    bundleData.filterPgAuditLogs = true;
+    SupportBundleTaskParams params =
+        new SupportBundleTaskParams(new SupportBundle(), bundleData, customer, universe);
+
+    UniverseLogsComponent universeLogsComponent =
+        new UniverseLogsComponent(
+            mockUniverseInfoHandler,
+            mockNodeUniverseManager,
+            mockConfig,
+            mockSupportBundleUtil,
+            MockConfGetter);
+    universeLogsComponent.downloadComponentBetweenDates(
+        params, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
+
+    File filteredPgLogGzip =
+        tserverLogsPath.resolve("filtered_postgresql-2026-05-03_000000.log.gz").toFile();
+    assertTrue(filteredPgLogGzip.exists());
+    assertTrue(!sourcePgLogGzip.exists());
+
+    String filteredContent = readGzipString(filteredPgLogGzip);
+    assertTrue(filteredContent.contains("LOG:  statement: select 1;"));
+    assertTrue(!filteredContent.contains("AUDIT:"));
+  }
+
+  private void writeGzipString(File outputFile, String content) throws IOException {
+    try (FileOutputStream fos = new FileOutputStream(outputFile);
+        GZIPOutputStream gzipOutputStream = new GZIPOutputStream(fos)) {
+      IOUtils.write(content, gzipOutputStream, StandardCharsets.UTF_8);
+    }
+  }
+
+  private String readGzipString(File inputFile) throws IOException {
+    try (FileInputStream fis = new FileInputStream(inputFile);
+        GZIPInputStream gzipInputStream = new GZIPInputStream(fis)) {
+      return IOUtils.toString(gzipInputStream, StandardCharsets.UTF_8);
+    }
   }
 }

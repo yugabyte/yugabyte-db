@@ -29,7 +29,7 @@ check_root_systemd_services() {
 }
 
 {% if use_system_level_systemd == 'False' %}
-    systemd_dir="{{ yb_home_dir }}/.config/systemd/user"
+    systemd_dir="{{ yb_user_home }}/.config/systemd/user"
     check_root_systemd_services
     if [ "$SUDO_ACCESS" = "true" ]; then
         su - {{ yb_user }} -c "mkdir -p ${systemd_dir}"
@@ -53,11 +53,11 @@ check_root_systemd_services() {
 
 {% if configure_cgroup == 'True' %}
 # Root-only: v1 boot oneshot (yb-cgroup-v1-setup.service) or v2 user@ template drop-in (Delegate=pids memory cpu).
-YB_HOME="{{ yb_home_dir }}"
+YB_USER_HOME="{{ yb_user_home }}"
 YB_USER="{{ yb_user }}"
 USE_SYS="{{ use_system_level_systemd }}"
 CGROUP_TYPE=unknown
-[ -f "$YB_HOME/.yugabyte/cgroup_type" ] && CGROUP_TYPE=$(tr -d '\r\n' < "$YB_HOME/.yugabyte/cgroup_type")
+[ -f "$YB_USER_HOME/.yugabyte/cgroup_type" ] && CGROUP_TYPE=$(tr -d '\r\n' < "$YB_USER_HOME/.yugabyte/cgroup_type")
 YB_UID=$(id -u "$YB_USER" 2>/dev/null || echo "")
 V1_BOOT_UNIT=/etc/systemd/system/yb-cgroup-v1-setup.service
 USER_AT_DROPIN_DIR=/etc/systemd/system/user@.service.d

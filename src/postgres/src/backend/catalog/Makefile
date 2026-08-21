@@ -59,6 +59,7 @@ install-data: installdirs
 	$(INSTALL_DATA) $(srcdir)/yb_system_functions.sql '$(DESTDIR)$(datadir)/yb_system_functions.sql'
 	$(INSTALL_DATA) $(srcdir)/system_views.sql '$(DESTDIR)$(datadir)/system_views.sql'
 	$(INSTALL_DATA) $(srcdir)/yb_system_views.sql '$(DESTDIR)$(datadir)/yb_system_views.sql'
+	$(INSTALL_DATA) $(srcdir)/yb_global_views.sql '$(DESTDIR)$(datadir)/yb_global_views.sql'
 	$(INSTALL_DATA) $(srcdir)/information_schema.sql '$(DESTDIR)$(datadir)/information_schema.sql'
 	$(INSTALL_DATA) $(srcdir)/sql_features.txt '$(DESTDIR)$(datadir)/sql_features.txt'
 
@@ -67,4 +68,4 @@ installdirs:
 
 .PHONY: uninstall-data
 uninstall-data:
-	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, system_functions.sql system_views.sql information_schema.sql sql_features.txt yb_system_functions.sql yb_system_views.sql)
+	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, system_functions.sql system_views.sql information_schema.sql sql_features.txt yb_system_functions.sql yb_system_views.sql yb_global_views.sql)

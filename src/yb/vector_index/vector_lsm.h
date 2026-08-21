@@ -34,6 +34,7 @@ namespace yb {
 
 class PriorityThreadPoolToken;
 using PriorityThreadPoolTokenPtr = std::shared_ptr<PriorityThreadPoolToken>;
+class PriorityThreadPoolSuspender;
 
 }
 
@@ -50,6 +51,7 @@ struct VectorLSMInsertEntry {
 
 struct VectorLSMInsertContext {
   const storage::UserFrontiers* frontiers = nullptr;
+  size_t chunk_size = 0;
 };
 
 template<IndexableVectorType Vector,
@@ -89,7 +91,10 @@ struct VectorLSMOptions {
   MergeFilterFactory vector_merge_filter_factory;
   std::string file_extension;
   MetricEntityPtr metric_entity;
+  size_t block_cache_capacity = 0;
 };
+
+YB_DEFINE_ENUM(CompactionType, (kBackground)(kManual));
 
 template<IndexableVectorType VectorType,
          ValidDistanceResultType DistanceResultType>
@@ -101,6 +106,9 @@ class VectorLSM {
   using Options = VectorLSMOptions<Vector, DistanceResult>;
   using VectorIndex = VectorIndexIf<Vector, DistanceResult>;
   using VectorIndexPtr = VectorIndexIfPtr<Vector, DistanceResult>;
+  // Pair of the saved chunk file metadata and the (possibly reopened) index, as
+  // produced by SaveIndexToFile.
+  using SaveIndexToFileResult = std::pair<VectorLSMFileMetaDataPtr, VectorIndexPtr>;
   using SearchResults = typename VectorIndex::SearchResult;
   using InsertEntry = VectorLSMInsertEntry<Vector>;
   using InsertEntries = std::vector<InsertEntry>;
@@ -112,10 +120,20 @@ class VectorLSM {
   Status Destroy();
   Status CreateCheckpoint(const std::string& out);
 
+  // Computes the requested frontiers atomically under the LSM lock so the flushed and in-memory
+  // views are mutually consistent.
+  storage::FrontierInfo GetFrontiers(storage::FrontierKinds kinds);
   storage::UserFrontierPtr GetFlushedFrontier();
+  // Returns the (smallest, largest) frontiers over the in-memory state that has not been flushed
+  // to disk yet (the mutable chunk and immutable chunks not yet in the manifest).
+  storage::UserFrontierRange GetInMemoryFrontiers();
   storage::FlushAbility GetFlushAbility();
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
+
+  // Returns an estimate, derived from the underlying vector index implementation, of the number
+  // of vectors that fit into the specified byte budget.
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const;
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
@@ -139,6 +157,9 @@ class VectorLSM {
 
   size_t NumImmutableChunks() const EXCLUDES(mutex_);
   size_t NumSavedImmutableChunks() const EXCLUDES(mutex_);
+
+  // Returns the total size in bytes of the immutable chunk files currently on disk.
+  uint64_t OnDiskSize() const EXCLUDES(mutex_);
 
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
@@ -182,6 +203,9 @@ class VectorLSM {
   class  CompactionTask;
   using  CompactionTaskPtr = std::unique_ptr<CompactionTask>;
 
+  class MergingIterator;
+  class Merger;
+
   friend struct MutableChunk;
 
   // Saves the current mutable chunk to disk and creates a new one.
@@ -195,11 +219,12 @@ class VectorLSM {
   // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
   Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
 
-  Result<std::pair<VectorLSMFileMetaDataPtr, VectorIndexPtr>> SaveIndexToFile(
-      VectorIndex& index, uint64_t serial_no);
+  Result<SaveIndexToFileResult> SaveIndexToFile(VectorIndex& index, uint64_t serial_no);
 
   // The argument `chunk` must be the very first chunk from `updates_queue_`.
-  Status UpdateManifest(WritableFile& manifest_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
+  Status UpdateManifest(
+      WritableFile& manifest_file, ImmutableChunkPtr chunk, bool schedule_compaction)
+      EXCLUDES(mutex_);
   Status AddChunkToManifest(WritableFile& manifest_file, ImmutableChunk& chunk);
 
   bool ManifestAcquired() EXCLUDES(mutex_);
@@ -212,6 +237,17 @@ class VectorLSM {
 
   // Creates vector index and reserve at least for `min_vectors` entries.
   Result<VectorIndexPtr> CreateVectorIndex(size_t min_vectors) const;
+
+  // Returns an index instance suitable for queries that don't depend on chunk contents
+  // (e.g. Distance). Reuses an existing chunk's index when available (including immutable on-disk
+  // chunks), and falls back to a freshly created factory probe otherwise.
+  VectorIndexPtr GetProbeIndex() const EXCLUDES(mutex_);
+
+  // Returns an in-memory (kCreate-mode) index, suitable for EstimateNumVectorsForBytes and other
+  // requests that require the in-memory format. Never returns an on-disk read-only index
+  // (e.g. yb_hnsw) which may not support the request.
+  // TODO(#32369): Replace GetProbeIndex/GetInMemoryProbeIndex with index traits.
+  VectorIndexPtr GetInMemoryProbeIndex() const EXCLUDES(mutex_);
 
   Status CreateNewMutableChunk(size_t min_vectors) REQUIRES(mutex_);
 
@@ -250,14 +286,25 @@ class VectorLSM {
 
   // Returns compaction scope with a continuos subset of immutable chunks picked for a compaction
   // based either on size amplification or size ratio approaches.
-  CompactionScope PickChunksForCompaction() const EXCLUDES(mutex_);
+  CompactionScope PickChunksForCompaction(CompactionType type) const EXCLUDES(mutex_);
 
-  // Returns new chunk - a product of input chunks compaction; the new chunk is saved to a disk.
-  Result<ImmutableChunkPtr> DoCompactChunks(const ImmutableChunkPtrs& input_chunks);
+  // Returns new chunk(s) produced by compacting input chunks; every chunk is saved to a disk.
+  // The suspender (may be null) lets the long-running merge yield its priority thread pool worker
+  // to higher priority tasks (e.g. flushes) instead of holding it for the whole compaction.
+  Result<ImmutableChunkPtrs> DoCompactChunks(
+      const ImmutableChunkPtrs& input_chunks, PriorityThreadPoolSuspender* suspender);
 
-  Status DoCompact(const CompactionContext& context, CompactionScope&& scope) EXCLUDES(mutex_);
+  Status DoCompact(
+      const CompactionContext& context, CompactionScope&& scope,
+      PriorityThreadPoolSuspender* suspender) EXCLUDES(mutex_);
 
-  void ScheduleBackgroundCompaction() EXCLUDES(mutex_);
+  void ScheduleBackgroundCompaction(CompactionTask* task) EXCLUDES(mutex_);
+
+  // Retires finished_task (if any) and registers its successor background compaction task under a
+  // single lock acquisition. Returns the registered task to be submitted, a null task if no
+  // background compaction is needed, or a non-OK status if the VectorLSM is shutting down.
+  Result<CompactionTaskPtr> CreateBackgroundCompactionTask(CompactionTask* finished_task)
+      EXCLUDES(compaction_tasks_mutex_);
 
   // Creates compaction task and tries to submit it to the thread pool. Triggers callback only if
   // compaction task has been successfully submitted.
@@ -266,14 +313,15 @@ class VectorLSM {
   Result<CompactionTaskPtr> RegisterManualCompaction(StdStatusCallback callback) EXCLUDES(mutex_);
 
   void Deregister(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
-  void Register(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
-  void RegisterUnlocked(CompactionTask& task) REQUIRES(compaction_tasks_mutex_);
+  void RemoveTaskUnlocked(CompactionTask& task) REQUIRES(compaction_tasks_mutex_);
+  Status RegisterUnlocked(CompactionTask& task) REQUIRES(compaction_tasks_mutex_);
 
   // Requirement: tasks must be registered.
   Status SubmitTask(CompactionTaskPtr task);
 
   template<typename Lock>
-  void WaitForCompactionTasksDone(Lock& lock) REQUIRES(compaction_tasks_mutex_);
+  void WaitForCompactionTasksDone(Lock& lock, bool wait_for_no_pending_manual = false)
+      REQUIRES(compaction_tasks_mutex_);
 
   Status TEST_SkipManifestUpdateDuringShutdown() REQUIRES(mutex_);
 
@@ -285,7 +333,8 @@ class VectorLSM {
   std::shared_ptr<MutableChunk> mutable_chunk_ GUARDED_BY(mutex_);
 
   // Immutable chunks are sorted by order_no and this order must be kept in case of collection
-  // modifications (e.g. due to merging of chunks).
+  // modifications (e.g. due to merging of chunks). order_no is used to manifest flushed and
+  // compacted chunks in the correct order; it is not required to be unique.
   ImmutableChunkPtrs immutable_chunks_ GUARDED_BY(mutex_);
 
   std::shared_ptr<InsertRegistry> insert_registry_;
@@ -334,5 +383,8 @@ void MergeChunkResults(
     std::vector<VectorWithDistance<DistanceResult>>& combined_results,
     std::vector<VectorWithDistance<DistanceResult>>& chunk_results,
     size_t max_num_results);
+
+// Resolves max mem-store size for a Vector LSM compaction output chunk. Returns 0 for no limit.
+size_t TEST_GetCompactionChunkMaxMemStoreBytes(size_t block_cache_capacity);
 
 }  // namespace yb::vector_index

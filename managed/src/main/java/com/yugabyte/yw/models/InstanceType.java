@@ -76,13 +76,15 @@ public class InstanceType extends Model {
 
   private static final List<String> AWS_INSTANCE_PREFIXES_SUPPORTED =
       ImmutableList.of(
-          "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "m4.", "m5.", "m5a.", "m6i.", "m6a.", "m7i.",
-          "m7a.", "c6i.", "c6a.", "c7a.", "c7i.");
+          "c3.", "c4.", "c5.", "c5d.", "c6a.", "c6i.", "c7a.", "c7i.", "i3.", "m3.", "m4.", "m5.",
+          "m5a.", "m6a.", "m6i.", "m7a.", "m7i.", "m8a.", "m8i.", "r6a.", "r6i.", "r7a.", "r7i.",
+          "r8a.", "r8i.");
   private static final List<String> GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED =
-      ImmutableList.of("m6g.", "c6gd.", "c6g.", "t4g.", "r6g.", "r7g.", "r8g.");
+      ImmutableList.of("c6g.", "c6gd.", "m6g.", "m7g.", "m8g.", "r6g.", "r7g.", "r8g.", "t4g.");
   private static final List<String> CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED =
       ImmutableList.of(
-          "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "t2.", "t3.", "t4g.", "m6i.", "m5.");
+          "c3.", "c4.", "c5.", "c5d.", "i3.", "m3.", "m5.", "m6i.", "m7a.", "m7i.", "m8a.", "m8i.",
+          "r7a.", "r7i.", "r8a.", "r8i.", "t2.", "t3.", "t4g.");
 
   static final String YB_AWS_DEFAULT_VOLUME_COUNT_KEY = "yb.aws.default_volume_count";
   static final String YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY = "yb.aws.default_volume_size_gb";
@@ -507,6 +509,7 @@ public class InstanceType extends Model {
     public static final int DEFAULT_VOLUME_COUNT = 1;
     public static final int DEFAULT_GCP_VOLUME_SIZE_GB = 375;
     public static final int DEFAULT_AZU_VOLUME_SIZE_GB = 250;
+    public static final int DEFAULT_OCI_VOLUME_SIZE_GB = 250;
 
     // These instance type codes are typically the ones provided by the cloud vendor.
     @ApiModelProperty(
@@ -552,6 +555,13 @@ public class InstanceType extends Model {
       InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
       instanceTypeDetails.setVolumeDetailsList(
           DEFAULT_VOLUME_COUNT, DEFAULT_AZU_VOLUME_SIZE_GB, VolumeType.SSD);
+      return instanceTypeDetails;
+    }
+
+    public static InstanceTypeDetails createOCIDefault() {
+      InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
+      instanceTypeDetails.setVolumeDetailsList(
+          DEFAULT_VOLUME_COUNT, DEFAULT_OCI_VOLUME_SIZE_GB, VolumeType.SSD);
       return instanceTypeDetails;
     }
 

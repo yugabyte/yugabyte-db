@@ -4,7 +4,7 @@
   # Default build command.
   command = "npm run build"
   # Skip builds unless this directory has changes.
-  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- ."
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . && [ -n \"$CACHED_COMMIT_REF\" ] && [ \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" ]"
 
 # Deploy contexts
 # Environment variables here override variables set in the web UI.
@@ -444,7 +444,11 @@
 
 [[redirects]]
   from = "/preview/manage/backup-restore/back-up-data/"
-  to = "/stable/manage/backup-restore/export-import-data/"
+  to = "/stable/manage/backup-restore/export-import-data-ysql/"
+
+[[redirects]]
+  from = "/stable/manage/backup-restore/export-import-data/"
+  to = "/stable/manage/backup-restore/export-import-data-ysql/"
 
 [[redirects]]
   from = "/preview/manage/backup-restore/point-in-time-restore-ysql/"
@@ -452,7 +456,7 @@
 
 [[redirects]]
   from = "/preview/manage/backup-restore/restore-data/"
-  to = "/stable/manage/backup-restore/export-import-data/"
+  to = "/stable/manage/backup-restore/export-import-data-ysql/"
 
 [[redirects]]
   from = "/preview/manage/data-migration/bulk-export/"
@@ -788,6 +792,11 @@
 [[redirects]]
   from = "/v2.18/*"
   to = "https://docs-archive.yugabyte.com/v2.18/"
+  force = true
+
+[[redirects]]
+  from = "/v2024.1/*"
+  to = "https://docs-archive.yugabyte.com/v2024.1/"
   force = true
 
 # Build an app for orms

@@ -55,13 +55,17 @@
     "python/ai/rag_agent": [
       "python/ai/rag_agent/*.py",
       "python/ai/rag_agent/*.txt",
-      "python/ai/rag_agent/*.md"
+      "python/ai/rag_agent/*.md",
+      "python/ai/rag_agent/Dockerfile"
     ],
     "python/ai/rag_agent/db": [
       "python/ai/rag_agent/db/*"
     ],
     "python/ai/rag_agent/embeddings": [
       "python/ai/rag_agent/embeddings/*"
+    ],
+    "python/ai/rag_agent/html_processing": [
+      "python/ai/rag_agent/html_processing/*"
     ],
     "python/ai/rag_agent/models": [
       "python/ai/rag_agent/models/*"
@@ -98,10 +102,14 @@
   },
   "yugabyte-client": {
     "%symlinks%": {
+      "bin/ysql_dump": "../postgres/bin/ysql_dump",
+      "bin/ysql_dumpall": "../postgres/bin/ysql_dumpall",
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },
     ".": ["$BUILD_ROOT/version_metadata.json"],
     "bin": [
+      "$BUILD_ROOT/postgres/bin/ysql_dump",
+      "$BUILD_ROOT/postgres/bin/ysql_dumpall",
       "$BUILD_ROOT/postgres/bin/ysqlsh",
       "build-support/post_install.sh",
       "scripts/installation/bin/fips_install.sh",

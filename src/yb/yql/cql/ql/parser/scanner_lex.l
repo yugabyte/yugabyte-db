@@ -53,6 +53,14 @@ using namespace yb::ql;
 #pragma GCC diagnostic ignored "-Waddress"
 #endif
 
+/*
+ * Similar error is also raised for gcc 15.x.
+ * scanner_lex.l.cc:2996:34: error: 'nonnull' argument 'file' compared to NULL [-Werror=nonnull-compare]
+ */
+#if defined(__GNUC__) && __GNUC__ >= 15
+#pragma GCC diagnostic ignored "-Wnonnull-compare"
+#endif
+
 #undef YY_DECL
 #define YY_DECL \
   GramProcessor::symbol_type LexProcessor::yylex(const ScanState& scan_state)

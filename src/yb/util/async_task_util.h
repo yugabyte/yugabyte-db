@@ -13,11 +13,12 @@
 
 #pragma once
 
+#include <functional>
 #include <mutex>
 
 #include "yb/gutil/thread_annotations.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

@@ -26,7 +26,8 @@ import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 import static org.yb.AssertionWrappers.*;
 import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainQueryId;
 
@@ -34,7 +35,8 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainQueryId;
  * Runs tests for tests query id stability, including queries
  * with comments, hints, and different spacing.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestYbQueryId extends BasePgSQLTest {
 
   @Override
@@ -358,12 +360,25 @@ public class TestYbQueryId extends BasePgSQLTest {
       suRsList = resultSetToList(rs);
     }
 
-    // Should throw an error since user1 does not have permission to read stats.
-    assertThrows(SQLException.class, () -> {
-        user1Stmt.executeQuery(pgStatsQuery1);
-    });
+    // Unprivileged users can query pg_stat_statements but queryid is NULL for
+    // other users' entries, so the WHERE queryid IN (...) filter only returns
+    // rows belonging to the querying user.
+    List<List<Object>> user1UnprivRsList;
+    try (ResultSet rs = user1Stmt.executeQuery(pgStatsQuery1)) {
+      user1UnprivRsList = resultSetToList(rs);
+    }
 
+    assertEquals(new HashSet<>(user1UnprivRsList),
+                 new HashSet<>(Arrays.asList(Arrays.asList(dbId1, queryId1, user1Id))));
+
+    // After granting pg_read_all_stats, queryid is visible for all entries.
     suStmt.execute("GRANT pg_read_all_stats TO user1");
+
+    // Reconnect so the new backend reads the updated role membership; an open
+    // session may not see a shared-role grant under per-database catalog versions.
+    user1Connection = getConnectionBuilder().withDatabase("db1").
+                          withUser("user1").withPassword("password123").connect();
+    user1Stmt = user1Connection.createStatement();
 
     List<List<Object>> user1RsList;
     try (ResultSet rs = user1Stmt.executeQuery(pgStatsQuery1)) {
@@ -375,8 +390,13 @@ public class TestYbQueryId extends BasePgSQLTest {
 
     suStmt.execute("GRANT pg_read_all_stats TO user2");
 
+    // Reconnect user2 for the same reason as user1 above.
+    user2Connection = getConnectionBuilder().withDatabase("db3").
+                          withUser("user2").withPassword("password123").connect();
+    user2Stmt = user2Connection.createStatement();
+
     List<List<Object>> user2RsList;
-    try (ResultSet rs = user1Stmt.executeQuery(pgStatsQuery1)) {
+    try (ResultSet rs = user2Stmt.executeQuery(pgStatsQuery1)) {
       user2RsList = resultSetToList(rs);
     }
 

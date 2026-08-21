@@ -1,0 +1,26 @@
+title: CustomerConfigSpec
+description: |
+  User-provided customer configuration.
+  Payload shape depends on `type` and `name`.
+type: object
+properties:
+  config_name:
+    description: Configuration name.
+    type: string
+    example: production-storage
+  type:
+    description: 'Configuration category (storage, alerts, call-home, password policy, etc.).'
+    type: string
+    enum:
+      - STORAGE
+      - ALERTS
+      - CALLHOME
+      - PASSWORD_POLICY
+  name:
+    description: Configuration key or subtype within the category.
+    type: string
+    example: preferences
+  data:
+    description: Masked configuration payload (opaque structure depends on type/name).
+    type: object
+    additionalProperties: true

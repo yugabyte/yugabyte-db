@@ -27,6 +27,9 @@
 #include "utils/timestamp.h"
 #include "utils/uuid.h"
 
+/* YB includes */
+#include "utils/builtins.h"
+
 /* helper macros */
 #define NS_PER_S	INT64CONST(1000000000)
 #define NS_PER_MS	INT64CONST(1000000)
@@ -119,6 +122,22 @@ uuid_out(PG_FUNCTION_ARGS)
 	*p = '\0';
 
 	PG_RETURN_CSTRING(buf);
+}
+
+/*
+ * Return a palloc'd 32-character lowercase hex representation of 'uuid' (no
+ * dashes, null-terminated). This is the format used internally by YugabyteDB
+ * (e.g. by YBCGetTabletServerHosts) and is not the canonical UUID textual
+ * format produced by uuid_out().
+ */
+char *
+yb_convert_uuid_to_yb_uuid_string_repr(const pg_uuid_t *uuid)
+{
+	char	   *hex = (char *) palloc(2 * UUID_LEN + 1);
+
+	hex_encode((const char *) uuid->data, UUID_LEN, hex);
+	hex[2 * UUID_LEN] = '\0';
+	return hex;
 }
 
 /*

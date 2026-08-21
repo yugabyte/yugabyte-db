@@ -66,7 +66,14 @@ typedef struct QueryDesc
 	 * needs to be a separate field because its life cycle is distinct from
 	 * that of 'totaltime'.
 	 */
-	struct Instrumentation *yb_query_stats;
+	struct NodeInstrumentation *yb_query_stats;
+
+	/*
+	 * YB: Set by PortalCleanup for PORTAL_ONE_SELECT to tell
+	 * standard_ExecutorFinish to skip its top-level session-stats capture.
+	 * The SELECT's stats were already captured at end of its ExecutorRun.
+	 */
+	bool		yb_skip_finish_capture;
 } QueryDesc;
 
 /* in pquery.c */

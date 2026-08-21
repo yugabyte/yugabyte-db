@@ -16,7 +16,7 @@ Use alerts to notify you and your team members when cluster and database resourc
 
 You configure alerts and notifications on the **Alerts** page.
 
-To monitor clusters in real time, use the performance metrics on the cluster [Overview and Performance](../overview/) tabs.
+To monitor clusters in real time, use the performance metrics on the cluster [Performance Metrics](../monitor-metrics/) tab.
 
 ## Features
 
@@ -87,7 +87,7 @@ When you receive a cluster alert, the first step is to review the chart for the 
 | [CMK Unavailable](#fix-cmk-unavailable-alerts) | N/A |
 | [CPU Utilization](#fix-cpu-alerts) | CPU Usage metric |
 
-You can view metrics on the cluster **Performance** tab. Refer to [Performance metrics](../overview/#performance-metrics).
+You can view metrics on the cluster **Performance** tab. Refer to [Performance Metrics](../monitor-metrics/).
 
 {{< note title="Note" >}}
 

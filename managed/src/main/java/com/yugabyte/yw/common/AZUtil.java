@@ -37,8 +37,6 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -69,7 +67,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -94,11 +91,15 @@ public class AZUtil implements CloudUtil {
 
   public static final String AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
 
+  public static final String AZURE_CLIENT_ID_FIELDNAME = "AZURE_CLIENT_ID";
+
   public static final String YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
 
   public static final String YBC_AZURE_STORAGE_END_POINT_FIELDNAME = "AZURE_STORAGE_END_POINT";
 
   public static final String YBC_USE_AZURE_IAM_FIELDNAME = "USE_AZURE_IAM";
+
+  public static final String YBC_AZURE_CLIENT_ID_FIELDNAME = "AZURE_CLIENT_ID";
 
   private static final String PRICING_JSON_URL =
       "https://prices.azure.com/api/retail/prices?$filter=";
@@ -296,11 +297,16 @@ public class AZUtil implements CloudUtil {
     return createBlobContainerClient(azureUrl, sasToken, container);
   }
 
-  private BlobContainerClient createBlobContainerClientWithIam(String azureUrl, String container)
+  private BlobContainerClient createBlobContainerClientWithIam(
+      String azureUrl, String container, @Nullable String azureClientId)
       throws BlobStorageException {
+    DefaultAzureCredentialBuilder credentialBuilder = new DefaultAzureCredentialBuilder();
+    if (StringUtils.isNotBlank(azureClientId)) {
+      credentialBuilder.managedIdentityClientId(azureClientId);
+    }
     return new BlobContainerClientBuilder()
         .endpoint(azureUrl)
-        .credential(new DefaultAzureCredentialBuilder().build())
+        .credential(credentialBuilder.build())
         .containerName(container)
         .buildClient();
   }
@@ -312,7 +318,7 @@ public class AZUtil implements CloudUtil {
     String azureUrl = cLInfo.azureUrl;
     String container = cLInfo.bucket;
     if (configData.useAzureIam) {
-      return createBlobContainerClientWithIam(azureUrl, container);
+      return createBlobContainerClientWithIam(azureUrl, container, configData.azureClientId);
     } else {
       Map<String, String> containerTokenMap = getContainerTokenMap(configData);
       String containerEndpoint = String.format("%s/%s", azureUrl, container);
@@ -328,7 +334,7 @@ public class AZUtil implements CloudUtil {
       CustomerConfigStorageAzureData configData, String azureUrl, String container)
       throws BlobStorageException {
     if (configData.useAzureIam) {
-      return createBlobContainerClientWithIam(azureUrl, container);
+      return createBlobContainerClientWithIam(azureUrl, container, configData.azureClientId);
     } else {
       return createBlobContainerClient(azureUrl, configData.azureSasToken, container);
     }
@@ -494,6 +500,9 @@ public class AZUtil implements CloudUtil {
           "Neither 'AZURE_STORAGE_SAS_TOKEN' nor 'USE_AZURE_IAM' are present in the backup"
               + " config.");
     }
+    if (StringUtils.isNotBlank(azData.azureClientId)) {
+      azCredsMap.put(YBC_AZURE_CLIENT_ID_FIELDNAME, azData.azureClientId);
+    }
     azCredsMap.put(YBC_AZURE_STORAGE_END_POINT_FIELDNAME, azureUrl);
     return azCredsMap;
   }
@@ -576,7 +585,7 @@ public class AZUtil implements CloudUtil {
                   YbcBackupUtil.DEFAULT_REGION_STRING, azData, azData.backupLocation);
       BlobContainerClient client =
           createBlobContainerClient(azData, YbcBackupUtil.DEFAULT_REGION_STRING);
-      validateOnBlobContainerClient(client, cLInfo.cloudPath, permissions);
+      validateOnBlobContainerClient(client, cLInfo.cloudPath, permissions, azData.immutableStorage);
       if (CollectionUtils.isNotEmpty(azData.regionLocations)) {
         azData.regionLocations.stream()
             .forEach(
@@ -586,7 +595,8 @@ public class AZUtil implements CloudUtil {
                           getCloudLocationInfo(location.region, azData, location.location);
                   BlobContainerClient regionClient =
                       createBlobContainerClient(azData, location.region);
-                  validateOnBlobContainerClient(regionClient, cLInfoRegion.cloudPath, permissions);
+                  validateOnBlobContainerClient(
+                      regionClient, cLInfoRegion.cloudPath, permissions, azData.immutableStorage);
                 });
       }
     } else {
@@ -604,7 +614,8 @@ public class AZUtil implements CloudUtil {
   public void validateOnBlobContainerClient(
       BlobContainerClient blobContainerClient,
       String cloudPath,
-      List<ExtraPermissionToValidate> permissions) {
+      List<ExtraPermissionToValidate> permissions,
+      boolean skipDelete) {
     Optional<ExtraPermissionToValidate> unsupportedPermission =
         permissions.stream()
             .filter(
@@ -634,7 +645,9 @@ public class AZUtil implements CloudUtil {
       validateListBlobs(blobContainerClient, completeObjectPath);
     }
 
-    validateDelete(blobContainerClient, completeObjectPath);
+    if (!skipDelete) {
+      validateDelete(blobContainerClient, completeObjectPath);
+    }
   }
 
   /**
@@ -736,34 +749,17 @@ public class AZUtil implements CloudUtil {
     return Double.NaN;
   }
 
-  public UniverseInterruptionResult spotInstanceUniverseStatus(Universe universe) {
-    UniverseInterruptionResult result = new UniverseInterruptionResult(universe.getName());
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    Provider primaryClusterProvider =
-        Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+  public void addSpotInstanceUniverseStatus(
+      UniverseInterruptionResult result,
+      NodeDetails nodeDetails,
+      Universe universe,
+      Provider provider) {
     String startTime = universe.getCreationDate().toInstant().toString();
-    UUID primaryClusterUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
-
-    // For nodes in primary cluster
-    for (final NodeDetails nodeDetails : universe.getNodesInCluster(primaryClusterUUID)) {
-      result.addNodeStatus(
-          nodeDetails.nodeName,
-          isSpotInstanceInterrupted(nodeDetails.nodeName, primaryClusterProvider, startTime)
-              ? InterruptionStatus.Interrupted
-              : InterruptionStatus.NotInterrupted);
-    }
-    // For nodes in read replicas
-    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      for (final NodeDetails nodeDetails : universe.getNodesInCluster(cluster.uuid)) {
-        result.addNodeStatus(
-            nodeDetails.nodeName,
-            isSpotInstanceInterrupted(nodeDetails.nodeName, provider, startTime)
-                ? InterruptionStatus.Interrupted
-                : InterruptionStatus.NotInterrupted);
-      }
-    }
-    return result;
+    result.addNodeStatus(
+        nodeDetails.nodeName,
+        isSpotInstanceInterrupted(nodeDetails.nodeName, provider, startTime)
+            ? InterruptionStatus.Interrupted
+            : InterruptionStatus.NotInterrupted);
   }
 
   private boolean isSpotInstanceInterrupted(String nodeName, Provider provider, String startTime) {

@@ -1,5 +1,5 @@
-import { makeStyles } from '@material-ui/core';
 import { Fragment } from 'react';
+import { makeStyles } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
 import { CanaryUpgradeConfig } from '../../types';
@@ -35,6 +35,13 @@ export const UpgradePlanList = ({ canaryUpgradeConfig }: UpgradePlanListProps) =
         index={1}
         listElementContent={t('masterServers')}
       />
+      {!!canaryUpgradeConfig?.pauseAfterMasters && (
+        <ListElement
+          type={ListElementType.BULLET}
+          contentClassName={classes.pauseText}
+          listElementContent={t('pause')}
+        />
+      )}
       {canaryUpgradeConfig &&
         canaryUpgradeConfig.primaryClusterAzOrder.map((azUuid, index) => (
           <Fragment key={azUuid}>

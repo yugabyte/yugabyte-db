@@ -18,8 +18,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -29,6 +30,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -44,9 +46,7 @@ import play.libs.Json;
 import play.mvc.Http;
 
 /**
- * This code needs to be fixed (ideally purged) as it is doing lot of raw json manipulation. As a
- * first step to that cleanup we have moved it out of Universe controller to keep the controller
- * sane.
+ * JSON binding helpers for universe task params; merge logic lives here instead of the controller.
  */
 @Slf4j
 public class UniverseControllerRequestBinder {
@@ -79,11 +79,12 @@ public class UniverseControllerRequestBinder {
         // We can get rid of this if when we default to new style resource spec.
         for (Cluster cluster : taskParams.clusters) {
           UserIntent ui = cluster.userIntent;
-          if (ui.providerType == CloudType.kubernetes) {
+          if (Util.isKubernetesBasedUniverse(taskParams)) {
             if (ui.instanceType != null) {
               if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+                UUID providerUUID = Util.getSingleProviderUUID(ui);
                 InstanceType instanceType =
-                    InstanceType.getOrBadRequest(UUID.fromString(ui.provider), ui.instanceType);
+                    InstanceType.getOrBadRequest(providerUUID, ui.instanceType);
                 // set K8s resource spec from instance type data.
                 ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
                 ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
@@ -102,6 +103,129 @@ public class UniverseControllerRequestBinder {
       throw new PlatformServiceException(
           BAD_REQUEST, "JsonProcessingException parsing request body: " + exception.getMessage());
     }
+  }
+
+  /**
+   * Binds JSON, merges with the given universe, then fixes provider fields and redacted gflags from
+   * DB. Request gflags stay unless a value still contains the platform redaction token.
+   */
+  static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
+      Http.Request request, Class<T> paramType, Universe universe) {
+    T taskParams = bindFormDataToTaskParams(request, paramType);
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return taskParams;
+    }
+    return mergeBoundTaskParamsWithUniverse(taskParams, universe, paramType);
+  }
+
+  /** Merges bound params into universe details then runs copyGFlagsFromUniverseDetails. */
+  public static <T extends UniverseDefinitionTaskParams> T mergeBoundTaskParamsWithUniverse(
+      T taskParams, Universe universe, Class<T> paramType) {
+    T merged = mergeWithUniverse(taskParams, universe, paramType);
+    copyGFlagsFromUniverseDetails(merged, universe);
+    return merged;
+  }
+
+  /**
+   * Copies master, tserver, and specific gflags from the stored cluster back into the request
+   * params, but only for map entries whose value is the redaction sentinel. specificGFlags is
+   * scanned only in per-process and per-AZ maps (gflagGroups is enum names, not secrets).
+   */
+  private static void copyGFlagsFromUniverseDetails(
+      UniverseDefinitionTaskParams taskParams, Universe universe) {
+    if (taskParams.clusters == null || universe == null) {
+      return;
+    }
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return;
+    }
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    if (universeDetails == null || universeDetails.clusters == null) {
+      return;
+    }
+    Map<UUID, UniverseDefinitionTaskParams.Cluster> universeClustersByUuid = new HashMap<>();
+    for (UniverseDefinitionTaskParams.Cluster c : universeDetails.clusters) {
+      if (c.uuid != null) {
+        universeClustersByUuid.put(c.uuid, c);
+      }
+    }
+    for (UniverseDefinitionTaskParams.Cluster paramCluster : taskParams.clusters) {
+      if (paramCluster.userIntent == null || paramCluster.uuid == null) {
+        continue;
+      }
+      UniverseDefinitionTaskParams.Cluster universeCluster =
+          universeClustersByUuid.get(paramCluster.uuid);
+      if (universeCluster == null || universeCluster.userIntent == null) {
+        // New cluster — no stored counterpart to merge from. Reject any REDACTED gflags so the
+        // sentinel is never written into universe metadata (the real value is unrecoverable).
+        UserIntent newIntent = paramCluster.userIntent;
+        if (mapContainsRedactedPlaceholder(newIntent.masterGFlags)
+            || mapContainsRedactedPlaceholder(newIntent.tserverGFlags)
+            || specificGFlagsContainsRedactedPlaceholder(newIntent.specificGFlags)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "New cluster (type="
+                  + paramCluster.clusterType
+                  + ") cannot be created with "
+                  + RedactingService.SECRET_REPLACEMENT
+                  + " in gflags: there is no prior universe value to restore the real password"
+                  + " from. Submit the full gflags with the actual values.");
+        }
+        continue;
+      }
+      UserIntent src = universeCluster.userIntent;
+      UserIntent dst = paramCluster.userIntent;
+      if (mapContainsRedactedPlaceholder(dst.masterGFlags)) {
+        dst.masterGFlags =
+            src.masterGFlags != null ? new HashMap<>(src.masterGFlags) : new HashMap<>();
+      }
+      if (mapContainsRedactedPlaceholder(dst.tserverGFlags)) {
+        dst.tserverGFlags =
+            src.tserverGFlags != null ? new HashMap<>(src.tserverGFlags) : new HashMap<>();
+      }
+      if (specificGFlagsContainsRedactedPlaceholder(dst.specificGFlags)) {
+        dst.specificGFlags = src.specificGFlags == null ? null : src.specificGFlags.clone();
+      }
+    }
+  }
+
+  private static boolean mapContainsRedactedPlaceholder(Map<String, String> map) {
+    if (map == null) {
+      return false;
+    }
+    String token = RedactingService.SECRET_REPLACEMENT;
+    for (String v : map.values()) {
+      if (RedactingService.isGFlagRedacted(v)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // gflagGroups is a list of GroupName enums; no free-text secrets to scan.
+  private static boolean specificGFlagsContainsRedactedPlaceholder(SpecificGFlags flags) {
+    if (flags == null) {
+      return false;
+    }
+    if (flags.getPerProcessFlags() != null && flags.getPerProcessFlags().value != null) {
+      for (Map<String, String> m : flags.getPerProcessFlags().value.values()) {
+        if (mapContainsRedactedPlaceholder(m)) {
+          return true;
+        }
+      }
+    }
+    if (flags.getPerAZ() != null) {
+      for (SpecificGFlags.PerProcessFlags pf : flags.getPerAZ().values()) {
+        if (pf != null && pf.value != null) {
+          for (Map<String, String> m : pf.value.values()) {
+            if (mapContainsRedactedPlaceholder(m)) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
   }
 
   static <T extends UpgradeTaskParams> T bindFormDataToUpgradeTaskParams(
@@ -191,6 +315,13 @@ public class UniverseControllerRequestBinder {
       taskParams.creatingUser = CommonUtils.getUserFromContext();
       if (formData.has("runOnlyPrechecks")) {
         taskParams.runOnlyPrechecks = formData.get("runOnlyPrechecks").booleanValue();
+      }
+
+      // Param classes extending UpgradeWithGFlags (e.g. GFlagsUpgradeParams and ResizeNodeParams)
+      // skips this; UpgradeUniverseHandler has separate logic because we need to consider payload
+      // gflags too. Other upgrades will use copyGFlagsFromUniverseDetails here.
+      if (!UpgradeWithGFlags.class.isAssignableFrom(paramType)) {
+        copyGFlagsFromUniverseDetails(taskParams, universe);
       }
 
       return taskParams;

@@ -1,0 +1,10 @@
+title: TaskPagedQuerySpec
+description: |
+  Paged list of customer tasks.
+  Rows are ordered by create time. The order is descending by default.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"
+properties:
+  filter:
+    $ref: "./TaskApiFilter.yaml"

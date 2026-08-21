@@ -24,8 +24,10 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/tostring.h"
 
 #include "yb/yql/pggate/pg_client.h"
 
@@ -51,6 +53,15 @@ Status PgTableDesc::Init() {
     attr_num_map_.emplace_back(column.order(), idx++);
   }
   std::sort(attr_num_map_.begin(), attr_num_map_.end());
+  // Diagnostic for schema-staleness investigations (e.g. "Invalid column number N" from
+  // FindColumn). Enable with `--vmodule=pg_tabledesc=1` to see exactly which schema each
+  // pggate session bound into its attr_num_map_, including the response schema_version and
+  // the full GetTableSchemaResponsePB this PgTableDesc was built from.
+  VLOG(1) << "PgTableDesc::Init relfilenode=" << relfilenode_id_.ToString()
+          << " schema_version=" << resp_.version()
+          << " num_columns=" << resp_.schema().columns_size()
+          << " attr_num_map=" << yb::ToString(attr_num_map_)
+          << " resp=" << resp_.ShortDebugString();
   if (resp_.has_tablegroup_id()) {
     tablegroup_oid_ = VERIFY_RESULT(GetPgsqlTablegroupOid(resp_.tablegroup_id()));
   }
@@ -85,7 +96,35 @@ Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
   if (attr_num == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId))
     return num_columns();
 
-  return STATUS_FORMAT(InvalidArgument, "Invalid column number $0", attr_num);
+  // Always log the schema we are searching against when FindColumn fails. This error path
+  // surfaces to PG as `XX000 ERROR: Invalid column number N` and is non-retryable; capturing
+  // the bound schema here is the only way to retroactively distinguish a stale-schema race
+  // from an attnum-vs-order conversion bug. See investigation of #20327 / customer report.
+  LOG(WARNING) << "PgTableDesc::FindColumn failed: relfilenode=" << relfilenode_id_.ToString()
+               << " pg_table_id=" << pg_table_id().ToString()
+               << " table=" << table_name_.ToString(/*include_id=*/false)
+               << " requested_attr_num=" << attr_num
+               << " schema_version=" << resp_.version()
+               << " num_columns=" << resp_.schema().columns_size()
+               << " attr_num_map=" << yb::ToString(attr_num_map_);
+  // Embed the table identity in the user-visible Status. The bare "Invalid column number N"
+  // message that PG surfaces as `XX000 ERROR:` was untraceable in production: the customer
+  // report had no way to identify which table the failing query referenced. Both identifiers
+  // are included because they diverge on TRUNCATE/REWRITE -- relfilenode_id is the DocDB-side
+  // id that rotates, pg_table_id is the stable PG `pg_class.oid`. The "Invalid column number
+  // N" prefix is preserved so existing test classifiers (pg_concurrent_ddl_invalid_column,
+  // pg_packed_row, pg_ddl_atomicity_stress, pg_single_tserver, TestSchemaVersionMismatch,
+  // TestPgDdlConcurrency) that match on that substring continue to work.
+  return STATUS_FORMAT(
+      InvalidArgument,
+      "Invalid column number $0 (table=$1, relfilenode=$2, pg_table_id=$3, "
+      "schema_version=$4, num_columns=$5)",
+      attr_num,
+      table_name_.ToString(/*include_id=*/false),
+      relfilenode_id_.ToString(),
+      pg_table_id().ToString(),
+      resp_.version(),
+      num_columns());
 }
 
 const std::vector<std::pair<int, size_t>>& PgTableDesc::GetAttrNumMap() const {

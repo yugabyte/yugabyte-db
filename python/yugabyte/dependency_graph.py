@@ -634,9 +634,6 @@ def main() -> None:
                              'dependency graph traversal by diffing the current state of the code '
                              'against this commit. This could also be anything that could be '
                              'passed to "git diff" as a single argument.')
-    parser.add_argument('--git-commit',
-                        help='Similar to --git-diff, but takes a git commit ref (e.g. sha1 or '
-                             'branch) and uses the set of files from that commit.')
     parser.add_argument('--build-root',
                         required=True,
                         help='E.g. <some_root>/build/debug-clang14-dynamic-ninja')
@@ -693,10 +690,9 @@ def main() -> None:
             not args.file_name_glob and
             not args.rebuild_graph and
             not args.git_diff and
-            not args.git_commit and
             cmd not in COMMANDS_NOT_NEEDING_TARGET_SET):
         raise RuntimeError(
-                "Neither of --file-regex, --file-name-glob, --git-{diff,commit}, or "
+                "Neither of --file-regex, --file-name-glob, --git-diff, or "
                 "--rebuild-graph are specified, and the command is not one of: " +
                 ", ".join([cmd.value for cmd in COMMANDS_NOT_NEEDING_TARGET_SET]))
 
@@ -716,12 +712,6 @@ def main() -> None:
     if conf.file_regex and args.git_diff:
         raise RuntimeError(
                 "--git-diff is incompatible with --file-{regex,name-glob}")
-
-    if args.git_diff and args.git_commit:
-        raise RuntimeError('--git-diff and --git-commit are incompatible')
-
-    if args.git_commit:
-        args.git_diff = "{}^..{}".format(args.git_commit, args.git_commit)
 
     graph_cache_path = os.path.join(args.build_root, 'dependency_graph.json')
     if args.rebuild_graph or not os.path.isfile(graph_cache_path):
@@ -758,6 +748,7 @@ def main() -> None:
     if args.git_diff:
         old_working_dir = os.getcwd()
         with WorkDirContext(conf.yb_src_root):
+            logging.info("Computing changed files: git diff %s --name-only", args.git_diff)
             git_diff_output = subprocess.check_output(
                     ['git', 'diff', args.git_diff, '--name-only']).decode('utf-8')
 
@@ -775,6 +766,14 @@ def main() -> None:
                 node = dep_graph.node_by_path.get(file_path)
                 if node:
                     initial_nodes.add(node)
+
+            max_changed_files_to_log = 50
+            logging.info(
+                "git diff reported %d changed file(s)%s: %s",
+                len(file_changes),
+                ("" if len(file_changes) <= max_changed_files_to_log
+                 else f" (showing first {max_changed_files_to_log})"),
+                file_changes[:max_changed_files_to_log])
 
         if not initial_nodes:
             logging.warning("Did not find any graph nodes for this set of files: %s", file_paths)

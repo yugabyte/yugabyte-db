@@ -168,8 +168,14 @@ const mapDispatchToProps = (dispatch) => {
     showConnectionPoolModal: () => {
       dispatch(openDialog('enableConnectionPooling'));
     },
+    showMultiTenancyModal: () => {
+      dispatch(openDialog('enableMultiTenancy'));
+    },
     showInstallNodeAgentModal: () => {
       dispatch(openDialog('installNodeAgentModal'));
+    },
+    showReprovisionNodesWithYnpModal: () => {
+      dispatch(openDialog('reprovisionNodesWithYnpModal'));
     },
     fetchPerfAdvisorList: () => {
       dispatch(fetchPerfAdvisorList()).then((response) => {

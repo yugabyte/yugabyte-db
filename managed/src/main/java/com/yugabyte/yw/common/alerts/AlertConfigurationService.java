@@ -607,8 +607,15 @@ public class AlertConfigurationService {
               List<AlertDefinition> universeDefinitions =
                   definitionsByUniverseUuid.get(universeUuid);
               // In case universe still exists and is in our target - we need to have definition.
+              // Universes that never successfully finished the initial Create task are excluded:
+              // there's nothing to alert on until the universe actually comes up, and creating a
+              // definition would cause the writer to produce alerts against a universe that has
+              // never had a healthy state.
               boolean shouldHaveDefinition =
-                  (target.isAll() || target.getUuids().contains(universeUuid)) && universe != null;
+                  (target.isAll() || target.getUuids().contains(universeUuid))
+                      && universe != null
+                      && universe.getUniverseDetails() != null
+                      && universe.getUniverseDetails().creationSucceeded;
               AlertDefinition universeDefinition;
               if (shouldHaveDefinition) {
                 if (CollectionUtils.isEmpty(universeDefinitions)) {
@@ -742,8 +749,12 @@ public class AlertConfigurationService {
     List<AlertConfiguration> alertConfigurations =
         Arrays.stream(AlertTemplate.values())
             .filter(
-                template ->
-                    alertTemplateService.getTemplateDescription(template).isCreateForNewCustomer())
+                template -> {
+                  AlertTemplateDescription description =
+                      alertTemplateService.getTemplateDescription(template);
+                  return description.isCreateForNewCustomer()
+                      && description.isApplicableToCurrentEnvironment();
+                })
             .map(template -> createConfigurationTemplate(customer, template))
             .map(AlertConfigurationTemplate::getDefaultConfiguration)
             .collect(Collectors.toList());

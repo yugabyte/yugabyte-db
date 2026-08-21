@@ -79,7 +79,7 @@ In this listing:
 
 ### Identify and terminate an open transaction
 
-Often enough, you may need to identify long-running queries, because these queries could indicate deeper problems. The pg_stat_activity view can help identify these issues. In this example, you create an open transaction, identify it, and terminate it. The example uses the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
+Often enough, you may need to identify long-running queries, because these queries could indicate deeper problems. The pg_stat_activity view can help identify these issues. In this example, you create an open transaction, identify it, and terminate it. The example uses the [Retail Analytics sample dataset](/stable/develop/sample-data/retail-analytics/).
 
 #### Create an open transaction
 

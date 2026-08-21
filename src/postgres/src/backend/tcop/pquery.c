@@ -104,6 +104,7 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 	qd->planstate = NULL;
 	qd->query_instr = NULL;
 	qd->yb_query_stats = NULL;
+	qd->yb_skip_finish_capture = false;
 
 	/* not yet executed */
 	qd->already_executed = false;

@@ -9,4 +9,4 @@ allOf:
         description: List of exporters. Empty = no export.
         type: array
         items:
-          $ref: "./TelemetryExporterEntry.yaml"
+          $ref: "./UniverseMetricsExporterConfig.yaml"

@@ -36,6 +36,13 @@ static const CommandTagBehavior tag_behavior[] = {
 
 #undef PG_CMDTAG
 
+/* YB: number of entries in the CommandTag enum */
+int
+YbGetCommandTagCount(void)
+{
+	return lengthof(tag_behavior);
+}
+
 void
 InitializeQueryCompletion(QueryCompletion *qc)
 {

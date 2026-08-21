@@ -62,8 +62,6 @@ public class TemplateManagerTest extends FakeDBApplication {
     testProvider.save();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = "/path/to/pk.pem";
-    keyInfo.vaultFile = "/path/to/vault";
-    keyInfo.vaultPasswordFile = "/path/to/vaultpassword";
     keyInfo.privateKey = "/path/to/pemfile";
     return AccessKey.create(testProvider.getUuid(), KEY_CODE, keyInfo);
   }
@@ -80,10 +78,6 @@ public class TemplateManagerTest extends FakeDBApplication {
     cmd.add(YB_STORAGE_PATH_VALUE + "/provision/" + testProvider.getUuid());
     cmd.add("--ssh_user");
     cmd.add(testProvider.getDetails().sshUser);
-    cmd.add("--vars_file");
-    cmd.add(keyInfo.vaultFile);
-    cmd.add("--vault_password_file");
-    cmd.add(keyInfo.vaultPasswordFile);
     cmd.add("--private_key_file");
     cmd.add(keyInfo.privateKey);
     cmd.add("--local_package_path");

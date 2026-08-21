@@ -363,6 +363,17 @@ DROP TABLE ptest;
 DROP TABLE nlptest;
 
 --
+-- #32403 Test pushdown aggregates with NULL values.
+--
+CREATE TABLE null_test (k int primary key, v1 int, v2 int);
+INSERT INTO null_test SELECT i, NULL, NULL FROM generate_series(1,6) i;
+\set query 'SELECT AVG(v1), COUNT(v1), MIN(v1), MAX(v1), SUM(v1), AVG(v2), COUNT(v2), MIN(v2), MAX(v2), SUM(v2) FROM null_test'
+:explain :query; :query;
+\set query 'SELECT SUM(v2), MAX(v2), MIN(v2), COUNT(v2), AVG(v2), SUM(v1), MAX(v1), MIN(v1), COUNT(v1), AVG(v1) FROM null_test'
+:explain :query; :query;
+DROP TABLE null_test;
+
+--
 -- Colocation.
 --
 CREATE DATABASE co COLOCATION TRUE;

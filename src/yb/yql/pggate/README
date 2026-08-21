@@ -125,3 +125,47 @@ will be waited upon before making progress.
 2) Reads:
   These aren't buffered because usually the output of a read is required to make progress in the
   query layer.
+
+
+Read point selection
+--------------------
+
+PgTxnManager::SetupReadTimeOptions resolves the precedence below and sends
+at most one read-time signal on the Perform options. Overall, for any two
+read time options A and B, sometimes A may be incompatible with B.
+Other times, A may have higher or lower preference than B.
+
+Read Time Options:
+
+1) Passed read time: statements such as BACKFILL, USE_SNAPSHOT or GUC options
+   such as yb_read_time specify an explicit read time at which the operations
+   must read the database. The contract to read at that point cannot be
+   violated.
+2) Reset read point: used for non transactional writes when the read point
+   must be picked in the storage layer for correctness reasons. Since
+   a read point must be picked in storage layer, options such as passed read
+   time or ENSURE_READ_TIME_IS_SET is incompatible with this option.
+3) Serializable isolation: Precedes clamp / defer read time options since
+   serializable avoids read restart errors. Incompatible with other read
+   time options.
+4) Follower reads may specify a staleness value and the read time is picked
+   at now - staleness. If a read time is specified above, that read time
+   is used instead. Other read time options do not apply.
+5) Restart read: occurs when a read faces a read restart error and the read
+   must restart at the restart_read_time passed back by the storage layer.
+   This is a sibling of passed read time, where pggate already knows the
+   read time of the snapshot. Does not co-occur with passed read time, reset
+   read time, clamp or deferred options because they do not face a read restart
+   error. Compatible with ENSURE_READ_TIME_IS_SET.
+6) Clamp / defer: options to deliberately choose a read time to avoid read
+   restart errors. These options only pick their read time in the query layer.
+   Compatible with all others since the only strict requirements with this
+   option is to avoid read restart errors. The read point selection itself
+   is flexible.
+7) Ensure read time is set: in some cases, we are required to pick the
+   read time on the query layer. For this reason, this option is incompatible
+   with reset read time option, which has the opposite requirement. Less
+   preferred compared to clamp / defer since clamp / defer additionally require
+   that there be no read restart errors.
+8) Catch-all: no additional requirements other than the typical snapshot
+   semantics. Lowest preference for this reason.

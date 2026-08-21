@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.config.impl;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -25,8 +26,10 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
@@ -221,6 +224,53 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   }
 
   @Test
+  public void testInvalidateScopeRemovesCachedConfig() {
+    SettableRuntimeConfigFactory cacheEnabledFactory = createCacheEnabledFactory();
+    UUID universeUuid = defaultUniverse.getUniverseUUID();
+
+    cacheEnabledFactory.forUniverse(defaultUniverse).setValue(TASK_GC_FREQUENCY, "1 day");
+    // setValue notifies the change listener, which evicts this scope from the cache.
+    cacheEnabledFactory.forUniverse(defaultUniverse);
+    assertTrue(cacheEnabledFactory.getCachedConfigs().containsKey(universeUuid));
+
+    cacheEnabledFactory.invalidateScope(universeUuid);
+
+    assertFalse(cacheEnabledFactory.getCachedConfigs().containsKey(universeUuid));
+    assertFalse(cacheEnabledFactory.getOverriddenScopes().contains(universeUuid));
+  }
+
+  @Test
+  public void testInvalidateAllScopesClearsCache() {
+    SettableRuntimeConfigFactory cacheEnabledFactory = createCacheEnabledFactory();
+
+    cacheEnabledFactory.forUniverse(defaultUniverse).setValue(TASK_GC_FREQUENCY, "1 day");
+    // setValue notifies the change listener, which evicts this scope from the cache.
+    cacheEnabledFactory.forUniverse(defaultUniverse);
+    assertFalse(cacheEnabledFactory.getCachedConfigs().isEmpty());
+
+    cacheEnabledFactory.invalidateAllScopes();
+
+    assertTrue(cacheEnabledFactory.getCachedConfigs().isEmpty());
+    assertTrue(cacheEnabledFactory.getOverriddenScopes().isEmpty());
+  }
+
+  @Test
+  public void testUniverseDeleteInvalidatesScope() {
+    mutableConfigFactory.clearCache();
+    UUID universeUuid = defaultUniverse.getUniverseUUID();
+
+    mutableConfigFactory.forUniverse(defaultUniverse).setValue(TASK_GC_FREQUENCY, "1 day");
+    // setValue notifies the change listener, which evicts this scope from the cache.
+    mutableConfigFactory.forUniverse(defaultUniverse);
+    assertTrue(mutableConfigFactory.getCachedConfigs().containsKey(universeUuid));
+
+    defaultUniverse.delete();
+
+    assertFalse(mutableConfigFactory.getCachedConfigs().containsKey(universeUuid));
+    assertFalse(mutableConfigFactory.getOverriddenScopes().contains(universeUuid));
+  }
+
+  @Test
   public void testToRedactedString() {
     Map<String, Object> inputMap =
         ImmutableMap.<String, Object>builder()
@@ -372,5 +422,14 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
 
     assertFalse(runtimeConfig.hasPath(YB_PROVIDER_RUNTIME_ONLY_KEY));
     assertFalse(runtimeConfig.hasPath(YB_NOT_PRESENT_KEY));
+  }
+
+  private SettableRuntimeConfigFactory createCacheEnabledFactory() {
+    Map<String, Object> cacheEnabledConfigMap = new HashMap<>(staticConfigMap);
+    cacheEnabledConfigMap.put("runtime_config.cache_enabled", Boolean.TRUE);
+    cacheEnabledConfigMap.put("runtime_config.cache_expiry_duration", "3600s");
+    cacheEnabledConfigMap.put("runtime_config.cache_capacity", 100);
+    return new SettableRuntimeConfigFactory(
+        ConfigFactory.parseMap(cacheEnabledConfigMap), null, null);
   }
 }

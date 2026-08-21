@@ -1622,18 +1622,25 @@ public class TestSelect extends BaseCQLTest {
 
     // Check the metrics.
     int numFlushes = 0;
-    int numSelects = 0;
+    int numFlushStmts = 0;
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
       numFlushes += afterMetrics.get(ts).getHistogram(TSERVER_FLUSHES_METRIC).totalSum -
           beforeMetrics.get(ts).getHistogram(TSERVER_FLUSHES_METRIC).totalSum;
-      numSelects += afterMetrics.get(ts).getHistogram(TSERVER_SELECT_METRIC).totalCount -
-          beforeMetrics.get(ts).getHistogram(TSERVER_SELECT_METRIC).totalCount;
+      numFlushStmts += afterMetrics.get(ts).getHistogram(TSERVER_FLUSHES_METRIC).totalCount -
+          beforeMetrics.get(ts).getHistogram(TSERVER_FLUSHES_METRIC).totalCount;
     }
 
     // We could have a node-refresh even in the middle of this select, triggering selects to the
     // system tables -- but each of those should do exactly one flush. Therefore, we subtract
-    // the extra selects (if any) from numFlushes.
-    numFlushes -= numSelects - 1;
+    // the extra flushing statements (if any) from numFlushes.
+    //
+    // We key the subtraction off the flush histogram's own count rather than the SelectStmt
+    // count: NumFlushesToExecute's sum and count are recorded by a single atomic Increment (see
+    // executor.cc StatementExecuted), so they are always mutually consistent. The SelectStmt
+    // metric, by contrast, is incremented much earlier in the executor, so a concurrent
+    // background select can bump the select count before its flush has been counted here,
+    // over-subtracting and yielding a spurious flush count (e.g. expected 1 but was 0).
+    numFlushes -= numFlushStmts - 1;
     assertEquals(expectedFlushesCount, numFlushes);
   }
 

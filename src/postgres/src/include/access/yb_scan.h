@@ -41,6 +41,7 @@
 
 extern PGDLLIMPORT int yb_parallel_range_rows;
 extern bool yb_test_skip_binding_scan_keys;
+extern bool yb_enable_advanced_index_cond_fold;
 
 /*
  * In fact, only initial fetch uses the default size, we estimate the number
@@ -265,7 +266,8 @@ extern void ybc_heap_endscan(TableScanDesc scanDesc);
  */
 extern TableScanDesc ybc_heap_beginscan_for_index_build(Relation relation,
 														Snapshot snapshot,
-														struct IndexInfo *indexInfo);
+														struct IndexInfo *indexInfo,
+														YbPushdownExprs *yb_pushdown);
 
 
 extern void YbBindDatumToColumn(YbcPgStatement stmt,
@@ -376,7 +378,8 @@ extern void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
  * This API is needed for reading data via index.
  */
 extern TM_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
-							  LockWaitPolicy wait_policy, EState *estate);
+							  LockWaitPolicy wait_policy, EState *estate,
+							  YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *handle);
 
 /*
  * Fetch a single row for given ybctid into a heap-tuple.
@@ -384,7 +387,6 @@ extern TM_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
  */
 extern bool YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple);
 extern void YBCFlushTupleLocks();
-extern void YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy);
 
 /*
  * ANALYZE support: sampling of table data
@@ -414,7 +416,6 @@ extern Size yb_estimate_parallel_size(void);
 extern void yb_init_partition_key_data(void *data);
 extern void yb_rescan_partition_key_data(void *data);
 extern void ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
-							  YbcPgExecParameters *exec_params,
 							  bool is_forward);
 extern bool ybParallelNextRange(YBParallelPartitionKeys ppk,
 								const char **low_bound, size_t *low_bound_size,

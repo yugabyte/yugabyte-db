@@ -14,17 +14,29 @@
 
 #ifdef __linux__
 
+#include <condition_variable>
 #include <mutex>
 #include <optional>
+#include <ostream>
 #include <unordered_map>
+#include <vector>
 
 #include "yb/common/pg_types.h"
 
+#include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
+
+#include "yb/util/metrics_fwd.h"
 
 namespace yb {
 
 class Cgroup;
+class MetricRegistry;
+class Thread;
+struct CgroupCpuStats;
+
+template <typename T>
+class AtomicGauge;
 
 namespace tserver {
 
@@ -40,13 +52,100 @@ class TServerCgroupManager {
 
   Result<Cgroup&> CgroupForDb(PgOid db_oid);
 
+  // Store the database name for metric labels. Called from ts_tablet_manager
+  // when a tablet provides the mapping. Name updates (e.g. after ALTER DATABASE
+  // RENAME) are picked up on the next metrics collection cycle.
+  void RegisterDbName(PgOid db_oid, std::string name);
+
+  // Returns true if a name has already been registered for db_oid.
+  // Used to skip expensive master lookups when the name is already known.
+  bool IsDbNameKnown(PgOid db_oid) const;
+
   Status UpdateDbCpuLimits(double max_cpu_fraction, int period);
+
+  // Recompute and apply CPU limits to all cgroups based on current gflag values.
+  // Called on init and whenever any qos_* flag changes at runtime.
+  Status ApplyCpuLimits();
+
+  Status Init();
+
+  // Register cgroup metrics and start a background thread that periodically
+  // reads cgroup CPU stats and updates the gauges exposed on /metrics and
+  // /prometheus-metrics.
+  Status RegisterMetrics(MetricRegistry* registry);
+
+  void Shutdown();
+
+  // Dump cgroups to HTML for the /cgroups endpoint. sample_interval_ms is the interval at which we
+  // sample statistics (we sample twice in order to determine if a cgroup is currently throttled).
+  void DumpCgroupsToHtml(std::ostream& out, uint64_t sample_interval_ms) const;
+
+  // Initialize cgroup management for the process. Must be called before any threads/subprocesses
+  // are started. Handles calling SetupCgroupManagement.
+  static Status CgroupManagementInit(bool is_tserver);
+
+  // System cgroups for shared/communal threads.
+  // These are created once at startup and never destroyed.
+  static Cgroup* SystemHighCgroup() { return system_high_cgroup_; }
+  static Cgroup* SystemMedCgroup() { return system_med_cgroup_; }
+
+  // Shared tenant CPU pool. @normal is a child of @capped-pool (along with @system-med).
+  // @normal is uncapped within @capped-pool so it can use whatever @system-med doesn't.
+  // Per-database cgroups are children of @normal.
+  static Cgroup* NormalPoolCgroup() { return normal_pool_cgroup_; }
 
   static Status MovePgBackendToCgroup(PgOid db_oid);
 
  private:
-  std::mutex mutex_;
+  struct CgroupMetrics {
+    Cgroup* cgroup = nullptr;
+    scoped_refptr<MetricEntity> entity;
+    scoped_refptr<AtomicGauge<int64_t>> cpu_usage_ns;
+    scoped_refptr<AtomicGauge<int64_t>> cpu_user_ns;
+    scoped_refptr<AtomicGauge<int64_t>> cpu_sys_ns;
+    scoped_refptr<AtomicGauge<int64_t>> nr_periods;
+    scoped_refptr<AtomicGauge<int64_t>> nr_throttled;
+    scoped_refptr<AtomicGauge<int64_t>> throttled_time_ns;
+  };
+
+  static Result<Cgroup&> GetOrCreateDbCgroup(PgOid db_oid);
+
+  static Result<Cgroup&> SetupCgroupForDb(PgOid db_oid, double per_db_cpu_fraction);
+
+  double ComputePerDbCpuFraction() const;
+  // Returns the fraction of total machine CPU available for @capped-pool
+  // (everything except @system-high). = (100% - qos_system_high_cpu_reserved_percent) / 100.
+  double CappedPoolCpuFraction() const;
+
+  void MetricsCollectorThread();
+  CgroupMetrics CreateCgroupMetrics(
+      Cgroup* cgroup, const std::string& name, MetricRegistry* registry,
+      const MetricAttributeMap& extra_attrs = {});
+  void UpdateCgroupMetrics(CgroupMetrics& m);
+
+  mutable std::mutex mutex_;
   std::unordered_map<PgOid, Cgroup&> db_cgroups_ GUARDED_BY(mutex_);
+  std::unordered_map<PgOid, std::string> db_names_ GUARDED_BY(mutex_);
+
+  // Background metrics collector. shutdown_mutex_ + shutdown_cv_ enable responsive
+  // shutdown: MetricsCollectorThread sleeps via cv.wait_for instead of SleepFor,
+  // and Shutdown() notifies the cv so the thread wakes immediately.
+  std::mutex shutdown_mutex_;
+  std::condition_variable shutdown_cv_;
+  bool shutdown_requested_ = false;  // only written under shutdown_mutex_, read in cv predicate
+  scoped_refptr<Thread> metrics_thread_;
+  MetricRegistry* metric_registry_ = nullptr;
+
+  // Fixed cgroup metrics: system tiers plus @normal (shared tenant CPU pool). Per-DB cgroups are
+  // children of @normal but use metric entity ids `db_$OID` (leaf name only).
+  std::vector<CgroupMetrics> system_cgroup_metrics_;
+  // Per-DB cgroup metrics (created dynamically). Only accessed from MetricsCollectorThread.
+  std::unordered_map<PgOid, CgroupMetrics> db_cgroup_metrics_;
+
+  static Cgroup* system_high_cgroup_;
+  static Cgroup* capped_pool_cgroup_;   // parent of @system-med and @normal
+  static Cgroup* system_med_cgroup_;
+  static Cgroup* normal_pool_cgroup_;
 };
 
 } // namespace tserver

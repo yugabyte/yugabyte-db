@@ -35,6 +35,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.prometheus.metrics.core.metrics.Gauge;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
@@ -379,7 +380,17 @@ public class BackupGarbageCollector {
       CustomerConfig customerConfig =
           customerConfigService.getOrBadRequest(backup.getCustomerUUID(), storageConfigUUID);
       BackupCategory category = backup.getCategory();
-      if (isCredentialUsable(customerConfig, backup.getUniverseUUID(), category)) {
+      CustomerConfigStorageData configData =
+          (CustomerConfigStorageData) customerConfig.getDataObject();
+      if (configData.immutableStorage) {
+        log.info(
+            "Skipping cloud backup deletion for backup {} as this is immutable storage, will only"
+                + " remove YBA metadata",
+            backupUUID);
+        backup.delete();
+        log.info("Deleted YBA metadata for backup {}", backupUUID);
+        deletedSuccessfully = true;
+      } else if (isCredentialUsable(customerConfig, backup.getUniverseUUID(), category)) {
         Map<String, List<String>> backupLocationsMap = null;
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);

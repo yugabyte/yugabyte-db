@@ -101,10 +101,10 @@ def is_devops_root_dir(devops_home):
     this Python file that is normally supposed to be installed inside a virtualenv located somewhere
     inside that source directory.
     """
-    for subdir in ['bin', 'roles', 'vars']:
+    for subdir in ['bin', 'opscli', 'pex']:
         if not os.path.isdir(os.path.join(devops_home, subdir)):
             return False
-    return os.path.isfile(os.path.join(devops_home, 'ansible.cfg'))
+    return os.path.isfile(os.path.join(devops_home, 'opscli/__init__.py'))
 
 
 def init_env(log_level):

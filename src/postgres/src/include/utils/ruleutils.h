@@ -35,7 +35,8 @@ extern char *pg_get_partconstrdef_string(Oid partitionId, char *aliasname);
 
 extern char *pg_get_constraintdef_command(Oid constraintId);
 extern char *deparse_expression(Node *expr, List *dpcontext,
-								bool forceprefix, bool showimplicit);
+								bool forceprefix, bool showimplicit,
+								bool yb_pretty, bool yb_maskconstants);
 extern List *deparse_context_for(const char *aliasname, Oid relid);
 extern List *deparse_context_for_plan_tree(PlannedStmt *pstmt,
 										   List *rtable_names);
@@ -56,9 +57,6 @@ extern void get_reloptions(StringInfo buf, Datum reloptions);
 extern char *pg_get_statisticsobjdef_string(Oid statextid);
 
 /* YB */
-extern char *yb_deparse_expression(Node *expr, List *dpcontext,
-								   bool forceprefix, bool showimplicit,
-								   bool verbose);
 extern void yb_get_dependent_views(Oid relid, List **view_oids,
 								   List **view_defs);
 

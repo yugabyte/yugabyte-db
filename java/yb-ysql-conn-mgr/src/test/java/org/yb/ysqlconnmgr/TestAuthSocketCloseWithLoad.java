@@ -29,7 +29,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
@@ -48,7 +50,8 @@ import org.yb.pgsql.ConnectionEndpoint;
 // In this case, ysqlsh just returns an error directly and closes the socket to backend. We are
 // simulating the aforementioned scenario in this test.
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestAuthSocketCloseWithLoad extends BaseYsqlConnMgr {
 
   private static final int NUM_THREADS_PER_USER = 5;

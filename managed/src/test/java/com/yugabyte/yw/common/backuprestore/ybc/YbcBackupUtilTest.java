@@ -445,6 +445,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
     when(mockAWSUtil.getCloudLocationInfo(nullable(String.class), any(), nullable(String.class)))
         .thenCallRealMethod();
+    String appId = "APN_1.1/fortestingpurposes44$";
+    when(mockAWSUtil.getAwsSdkUaAppId()).thenReturn(appId);
     CloudStoreConfig csConfig =
         ybcBackupUtil.createBackupConfig(storageConfig, commonDir, defaultUniverse);
     Map<String, String> s3DefaultCredsMap =
@@ -454,6 +456,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
             put("AWS_SECRET_ACCESS_KEY", "A-SECRET");
             put("AWS_ENDPOINT", "s3.us-east-1.amazonaws.com");
             put("AWS_DEFAULT_REGION", "us-east-1");
+            put("AWS_SDK_UA_APP_ID", appId);
           }
         };
     Map<String, String> s3Region_1CredsMap =
@@ -463,6 +466,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
             put("AWS_SECRET_ACCESS_KEY", "A-SECRET");
             put("AWS_ENDPOINT", "s3.ap-south-1.amazonaws.com");
             put("AWS_DEFAULT_REGION", "ap-south-1");
+            put("AWS_SDK_UA_APP_ID", appId);
           }
         };
     Map<String, String> s3Region_2CredsMap =
@@ -472,6 +476,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
             put("AWS_SECRET_ACCESS_KEY", "A-SECRET");
             put("AWS_ENDPOINT", "s3.eu-south-1.amazonaws.com");
             put("AWS_DEFAULT_REGION", "eu-south-1");
+            put("AWS_SDK_UA_APP_ID", appId);
           }
         };
     assertTrue(csConfig.getDefaultSpec().getCredsMap().equals(s3DefaultCredsMap));

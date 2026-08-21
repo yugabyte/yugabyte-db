@@ -51,8 +51,7 @@ DEFINE_RUNTIME_int32(cql_nodelist_refresh_interval_secs, 300,
     "Interval after which a node list refresh event should be sent to all CQL clients.");
 TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
 
-DEFINE_RUNTIME_bool(
-    cql_limit_nodelist_refresh_to_subscribed_conns, true,
+DEFINE_RUNTIME_bool(cql_limit_nodelist_refresh_to_subscribed_conns, true,
     "When enabled, the node list refresh events will only be sent to the connections which have "
     "subscribed to receiving the topology change events.");
 TAG_FLAG(cql_limit_nodelist_refresh_to_subscribed_conns, advanced);

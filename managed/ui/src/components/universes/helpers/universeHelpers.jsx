@@ -1,7 +1,4 @@
 import { isDefinedNotNull, isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { YBLoadingCircleIcon } from '../../common/indicators';
-
-import _ from 'lodash';
 
 /**
  * A mapping from universe state to display text and className.
@@ -16,7 +13,7 @@ export const UniverseState = {
     className: 'paused'
   },
   PENDING: {
-    text: 'Pending',
+    text: 'Operation in progress',
     className: 'pending'
   },
   WARNING: {
@@ -24,7 +21,14 @@ export const UniverseState = {
     className: 'warning'
   },
   BAD: {
-    text: 'Error',
+    text: 'Operation failed',
+    className: 'bad'
+  },
+  // Universe creation never finished successfully. Health checks and alert definitions are
+  // intentionally suppressed for universes in this state because there is nothing running to
+  // monitor. Operators should either retry creation or delete the universe.
+  CREATION_FAILED: {
+    text: 'Universe creation failed',
     className: 'bad'
   },
   UNKNOWN: {
@@ -41,7 +45,8 @@ export const SoftwareUpgradeState = {
   FINALIZING: 'Finalizing',
   FINALIZE_FAILED: 'FinalizeFailed',
   ROLLING_BACK: 'RollingBack',
-  ROLLBACK_FAILED: 'RollbackFailed'
+  ROLLBACK_FAILED: 'RollbackFailed',
+  PAUSED: 'Paused'
 };
 
 export const SoftwareUpgradeTaskType = {
@@ -63,6 +68,7 @@ export const getUniverseStatus = (universe) => {
   const {
     updateInProgress,
     updateSucceeded,
+    creationSucceeded,
     universePaused,
     placementModificationTaskUuid,
     errorString
@@ -82,6 +88,12 @@ export const getUniverseStatus = (universe) => {
     return { state: UniverseState.PENDING, error: errorString };
   }
   if (!updateInProgress && !allUpdatesSucceeded) {
+    // creationSucceeded stays false forever if the initial Create task never finished. In that
+    // case surface a dedicated "Universe creation failed" state so operators know why health
+    // checks and alerts are quiet on this universe.
+    if (creationSucceeded === false) {
+      return { state: UniverseState.CREATION_FAILED, error: errorString };
+    }
     return errorString === 'Preflight checks failed.'
       ? { state: UniverseState.WARNING, error: errorString }
       : { state: UniverseState.BAD, error: errorString };
@@ -89,31 +101,12 @@ export const getUniverseStatus = (universe) => {
   return { state: UniverseState.UNKNOWN, error: errorString };
 };
 
-export const getUniverseStatusIcon = (curStatus) => {
-  if (_.isEqual(curStatus, UniverseState.GOOD)) {
-    return <i className="fa fa-check-circle" />;
-  }
-  if (_.isEqual(curStatus, UniverseState.PAUSED)) {
-    return <i className="fa fa-pause-circle-o" />;
-  }
-  if (_.isEqual(curStatus, UniverseState.PENDING)) {
-    return <i className="fa fa-hourglass-half" />;
-  }
-  if (_.isEqual(curStatus, UniverseState.WARNING)) {
-    return <i className="fa fa-warning" />;
-  }
-  if (_.isEqual(curStatus, UniverseState.BAD)) {
-    return <i className="fa fa-warning" />;
-  }
-  if (_.isEqual(curStatus, UniverseState.UNKNOWN)) {
-    return <YBLoadingCircleIcon size="small" />;
-  }
-};
-
 export const isPendingUniverseTask = (universeUUID, taskItem) => {
   return (
     taskItem.targetUUID === universeUUID &&
-    (taskItem.status === 'Running' || taskItem.status === 'Initializing' || taskItem.status === 'Abort') &&
+    (taskItem.status === 'Running' ||
+      taskItem.status === 'Initializing' ||
+      taskItem.status === 'Abort') &&
     Number(taskItem.percentComplete) !== 100
   );
 };

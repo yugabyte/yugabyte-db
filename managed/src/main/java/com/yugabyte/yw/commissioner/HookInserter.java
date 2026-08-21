@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.NaturalOrderComparator;
@@ -15,6 +16,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.models.HookScope;
 import com.yugabyte.yw.models.HookScope.TriggerType;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
@@ -24,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -105,10 +108,11 @@ public class HookInserter {
     // How:
     // 1. Bucket nodes by provider UUID
     // 2. Add the hooks to the excution plan
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     Map<UUID, List<NodeDetails>> nodeProviderMap = new HashMap<>();
     for (NodeDetails node : nodes) {
       Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
-      UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+      UUID providerUUID = providerGetter.apply(node).getUuid();
       nodeProviderMap.computeIfAbsent(providerUUID, k -> new ArrayList<>()).add(node);
     }
     for (Map.Entry<UUID, List<NodeDetails>> entry : nodeProviderMap.entrySet()) {

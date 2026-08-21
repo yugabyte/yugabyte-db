@@ -1,7 +1,7 @@
 systemd_dir="/etc/systemd/system"
 
 {% if use_system_level_systemd == 'False' %}
-    systemd_dir="{{yb_home_dir}}/.config/systemd/user"
+    systemd_dir="{{yb_user_home}}/.config/systemd/user"
     uid=$(id -u {{ yb_user }})
     user_run_dir="/run/user/$uid"
     test_dir="$user_run_dir/test_$$"
@@ -32,10 +32,10 @@ systemd_dir="/etc/systemd/system"
 {% endif %}
 
 {% if configure_cgroup == 'True' %}
-YB_HOME="{{ yb_home_dir }}"
+YB_USER_HOME="{{ yb_user_home }}"
 YB_USER="{{ yb_user }}"
-CGROUP_TYPE_FILE="${YB_HOME}/.yugabyte/cgroup_type"
-CGROUP_V1_CPU_FILE="${YB_HOME}/.yugabyte/cgroup_v1_cpu"
+CGROUP_TYPE_FILE="${YB_USER_HOME}/.yugabyte/cgroup_type"
+CGROUP_V1_CPU_FILE="${YB_USER_HOME}/.yugabyte/cgroup_v1_cpu"
 {% raw %}
 if [ -f "$CGROUP_TYPE_FILE" ]; then
     cg_type=$(tr -d '\r\n' < "$CGROUP_TYPE_FILE")

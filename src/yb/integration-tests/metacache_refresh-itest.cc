@@ -41,6 +41,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
@@ -173,10 +174,11 @@ class MetacacheRefreshITest : public MiniClusterTestWithClient<ExternalMiniClust
   client::YBPgsqlWriteOpPtr CreateNewWriteOp(
       rpc::Sidecars& sidecars, std::shared_ptr<client::YBTable> pgsql_table,
       const std::string& key) {
-    auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsql_table, &sidecars);
-    PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
-    psql_write_request->add_range_column_values()->mutable_value()->set_string_value(key);
-    PgsqlColumnValuePB* pgsql_column = psql_write_request->add_column_values();
+    auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(
+        pgsql_table, SharedThreadSafeArena(), &sidecars);
+    auto* psql_write_request = pgsql_write_op->mutable_request();
+    psql_write_request->add_range_column_values()->mutable_value()->dup_string_value(key);
+    auto* pgsql_column = psql_write_request->add_column_values();
     pgsql_column->set_column_id(pgsql_table->schema().ColumnId(1));
     pgsql_column->mutable_expr()->mutable_value()->set_int64_value(3);
     return pgsql_write_op;

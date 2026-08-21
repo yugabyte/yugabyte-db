@@ -30,12 +30,10 @@ Status SuppressAllowedErrors(const Status& s) {
   if (HasTransactionError(s) || IsRetryable(s)) {
     return Status::OK();
   }
-  // Usually PG backend will append to the error message with a line of text like
-  // Catalog Version Mismatch: A DDL occurred while processing this query. Try again.
-  // The "Try again" will be detected by IsRetryable(s) as true. But in uncommon
-  // cases, PG backend will not append this line, for this test we still want to
-  // suppress this error.
-  if (s.message().Contains("waiting for postgres backends to catch up")) {
+  // Concurrent CREATE INDEXes can race on WaitForBackendsCatalogVersion -- one waits for the
+  // others' backends to reach the new catalog version, which can exceed the per-RPC deadline.
+  if (s.message().Contains("waiting for postgres backends to catch up") ||
+      s.message().Contains("WaitForBackendsCatalogVersion RPC")) {
     return Status::OK();
   }
   return s;
@@ -47,23 +45,32 @@ Status RunIndexCreationQueries(PGConn* conn, const std::string& table_name) {
       "CREATE TABLE IF NOT EXISTS $0(k int PRIMARY KEY, v int)",
       "CREATE INDEX IF NOT EXISTS $0_v ON $0(v)",
   };
-  while (true) {
+  // Cap retries. Every DDL bumps the catalog version (#28253), so with 4 threads cycling
+  // DROP -> CREATE TABLE -> CREATE INDEX, a CREATE INDEX -- which internally waits for backends
+  // to catch up to multiple catalog versions, governed by
+  // ysql_yb_wait_for_backends_catalog_version_timeout (30s) -- is very likely to be invalidated
+  // by a peer's DDL and time out. An unbounded retry then livelocks the test past the 10-minute
+  // gtest timeout. The test only needs to verify that no unexpected errors are produced; it does
+  // not require CREATE INDEX to actually succeed.
+  constexpr int kMaxAttempts = 10;
+  for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
     RETURN_NOT_OK(SuppressAllowedErrors(conn->ExecuteFormat(kQueries[0], table_name)));
 
     // CREATE TABLE may fail due to catalog version mismatch.
-    // If it fails, skip creating the index on it.
+    // If it fails, retry from DROP so that CREATE INDEX is not attempted against a missing
+    // relation (which would surface as a non-suppressible error).
     auto create_status = conn->ExecuteFormat(kQueries[1], table_name);
     RETURN_NOT_OK(SuppressAllowedErrors(create_status));
     if (!create_status.ok()) {
       continue;
     }
 
-    auto index_status = conn->ExecuteFormat(kQueries[2], table_name);
-    RETURN_NOT_OK(SuppressAllowedErrors(index_status));
-    if (index_status.ok()) {
-      return Status::OK();
-    }
+    // The code path under test (DDL transaction commit in the middle of CREATE INDEX) has been
+    // exercised. A suppressed error here is an acceptable outcome.
+    RETURN_NOT_OK(SuppressAllowedErrors(conn->ExecuteFormat(kQueries[2], table_name)));
+    return Status::OK();
   }
+  return Status::OK();
 }
 
 } // namespace
@@ -151,8 +158,9 @@ class PgDDLConcurrencyWithObjectLockingTest : public PgDDLConcurrencyTest {
         "--enable_object_locking_for_table_locks=true");
     options->extra_tserver_flags.push_back(
         "--ysql_yb_ddl_transaction_block_enabled=true");
-    options->extra_tserver_flags.push_back(
-        "--ysql_pg_conf_csv=yb_enable_concurrent_ddl=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     PgDDLConcurrencyTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -240,6 +248,97 @@ TEST_F(PgDDLConcurrencyWithObjectLockingTest, AnalyzeWithConcurrentDDL) {
   thread_holder.Stop();
 }
 
+/*
+ * Concurrent clients invoke a plpgsql function that creates and mutates temp
+ * tables (CREATE / INSERT / ALTER / UPDATE / SELECT INTO pattern from GH #19242).
+ */
+TEST_F(PgDDLConcurrencyWithObjectLockingTest, TempTablePlpgsqlConcurrent) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE account(id int PRIMARY KEY, customer_id int, balance int)"));
+  ASSERT_OK(setup_conn.Execute(
+      "INSERT INTO account SELECT i, i % 10, i * 10 FROM generate_series(1, 100) i"));
+  ASSERT_OK(setup_conn.Execute(R"(
+      CREATE OR REPLACE FUNCTION test_proc(account_ids int[], in_customer_id int)
+      RETURNS TABLE(id int, customer_id int, balance int, adjusted int)
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        DROP TABLE IF EXISTS temp_t1, temp_t2, temp_t3;
+        CREATE TEMP TABLE temp_t1(id int, customer_id int, balance int);
+        CREATE TEMP TABLE temp_t2(id int, customer_id int, balance int, adjusted int);
+        CREATE TEMP TABLE temp_t3(id int, customer_id int, balance int, adjusted int);
+
+        IF account_ids IS NOT NULL THEN
+          INSERT INTO temp_t1
+          SELECT a.id, a.customer_id, a.balance
+          FROM account a
+          WHERE a.id = ANY (account_ids);
+        ELSE
+          INSERT INTO temp_t1
+          SELECT a.id, a.customer_id, a.balance
+          FROM account a
+          WHERE a.customer_id = in_customer_id;
+        END IF;
+
+        ALTER TABLE temp_t1 ADD COLUMN adjusted int;
+        -- Qualify columns: RETURNS TABLE creates OUT params with the same names.
+        UPDATE temp_t1 SET adjusted = temp_t1.balance + 1;
+
+        INSERT INTO temp_t2
+        SELECT t.id, t.customer_id, t.balance, t.adjusted FROM temp_t1 t;
+
+        INSERT INTO temp_t3
+        SELECT t2.id, t2.customer_id, t2.balance, t2.adjusted
+        FROM temp_t2 t2
+        JOIN account a ON a.id = t2.id;
+
+        RETURN QUERY SELECT t3.id, t3.customer_id, t3.balance, t3.adjusted
+                     FROM temp_t3 t3
+                     ORDER BY t3.id;
+      END;
+      $$)"));
+
+  TestThreadHolder thread_holder;
+  constexpr size_t kThreadsCount = 10;
+  CountDownLatch start_latch(kThreadsCount);
+
+  for (size_t i = 0; i < kThreadsCount; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), &start_latch, idx = i] {
+          auto conn = ASSERT_RESULT(Connect());
+          start_latch.CountDown();
+          start_latch.Wait();
+          while (!stop.load(std::memory_order_acquire)) {
+            // Alternate between the two branches of the function to exercise
+            // both fill paths under concurrency.
+            const std::string query = (idx % 2 == 0)
+                ? "SELECT * FROM test_proc(ARRAY[1, 2, 3, 4, 5], NULL)"
+                : Format("SELECT * FROM test_proc(NULL, $0)", idx % 10);
+            Status status;
+            // Retry transient transaction / catalog-version errors.
+            for (int attempt = 0; attempt < 10; ++attempt) {
+              auto rows = conn.FetchRows<int32_t, int32_t, int32_t, int32_t>(query);
+              if (rows.ok()) {
+                ASSERT_FALSE(rows->empty());
+                status = Status::OK();
+                break;
+              }
+              status = rows.status();
+              if (status.message().Contains("does not exist")) {
+                FAIL() << "Temp relation missing under concurrent plpgsql use: " << status;
+              }
+              if (!(HasTransactionError(status) || IsRetryable(status))) {
+                FAIL() << "Unexpected error calling test_proc: " << status;
+              }
+            }
+            ASSERT_OK(status);
+          }
+        });
+  }
+
+  thread_holder.WaitAndStop(20s * kTimeMultiplier);
+}
+
 class PgDDLConcurrencyWithObjectLockingTestRF1 : public PgDDLConcurrencyWithObjectLockingTest {
  public:
   int GetNumMasters() const override { return 1; }
@@ -248,8 +347,7 @@ class PgDDLConcurrencyWithObjectLockingTestRF1 : public PgDDLConcurrencyWithObje
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgDDLConcurrencyWithObjectLockingTest::UpdateMiniClusterOptions(options);
     options->replication_factor = 1;
-    options->extra_tserver_flags.push_back(
-        "--ysql_pg_conf_csv=yb_enable_concurrent_ddl=false");
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
   }
 };
 

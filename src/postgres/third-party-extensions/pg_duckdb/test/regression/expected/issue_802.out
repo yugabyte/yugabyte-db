@@ -1,0 +1,13 @@
+SET duckdb.force_execution = TRUE;
+create temp table t1(a int);
+insert into t1 select * from generate_series(0,8800);
+create index ON t1 (a);
+set enable_seqscan=off;
+select count(*), sum(a), count(*) = 880
+  from t1, generate_series(1, 8800, 10) as i
+  where t1.a = i;
+ count |   sum   | ?column? 
+-------+---------+----------
+   880 | 3868480 | t
+(1 row)
+

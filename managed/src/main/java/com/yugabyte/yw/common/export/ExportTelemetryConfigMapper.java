@@ -4,9 +4,10 @@ package com.yugabyte.yw.common.export;
 
 import api.v2.models.AuditLogsTelemetrySpec;
 import api.v2.models.ExportTelemetryUpgradeOptions;
+import api.v2.models.MasterLogsTelemetrySpec;
 import api.v2.models.MetricsTelemetrySpec;
 import api.v2.models.QueryLogsTelemetrySpec;
-import api.v2.models.TelemetryExporterEntry;
+import api.v2.models.TServerLogsTelemetrySpec;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
@@ -22,6 +23,10 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterC
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ServerLogLevel;
+import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.UniverseServerLogsExporterConfig;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
@@ -29,7 +34,7 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.commons.collections4.CollectionUtils;
 
-/** Manual conversion from generated API request. */
+/** Manual conversion between generated v2 API types and internal telemetry configs. */
 public class ExportTelemetryConfigMapper {
 
   private static final ObjectMapper MAPPER =
@@ -50,7 +55,9 @@ public class ExportTelemetryConfigMapper {
         TelemetryConfig.of(
             toAuditLogConfigFromGenerated(telemetryConfig.getAuditLogs()),
             toQueryLogConfigFromGenerated(telemetryConfig.getQueryLogs()),
-            toMetricsExportConfigFromGenerated(telemetryConfig.getMetrics())));
+            toMetricsExportConfigFromGenerated(telemetryConfig.getMetrics()),
+            toMasterLogConfigFromGenerated(telemetryConfig.getMasterLogs()),
+            toTserverLogConfigFromGenerated(telemetryConfig.getTserverLogs())));
   }
 
   /**
@@ -68,6 +75,8 @@ public class ExportTelemetryConfigMapper {
           Boolean.TRUE.equals(rolling)
               ? UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE
               : UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE;
+      // Caller made an explicit choice; the handler must not downgrade it to a non-restart flow.
+      params.setUpgradeOptionExplicitlySet(true);
     }
     if (upgradeOptions.getSleepAfterTserverRestartMillis() != null) {
       params.sleepAfterTServerRestartMillis = upgradeOptions.getSleepAfterTserverRestartMillis();
@@ -161,72 +170,184 @@ public class ExportTelemetryConfigMapper {
     return config;
   }
 
-  private static List<UniverseLogsExporterConfig> toUniverseLogsExporterConfigsFromGenerated(
-      @Nullable List<TelemetryExporterEntry> list) {
-    if (list == null) return Collections.emptyList();
-    return list.stream()
-        .filter(e -> e.getExporterUuid() != null)
-        .map(ExportTelemetryConfigMapper::toUniverseLogsExporterConfigFromGenerated)
-        .collect(Collectors.toList());
+  @Nullable
+  private static MasterLogConfig toMasterLogConfigFromGenerated(
+      @Nullable MasterLogsTelemetrySpec spec) {
+    if (spec == null) {
+      return null;
+    }
+    MasterLogConfig config = new MasterLogConfig();
+    List<UniverseServerLogsExporterConfig> exporters =
+        convertList(spec.getExporters(), UniverseServerLogsExporterConfig.class);
+    config.setUniverseLogsExporterConfig(exporters != null ? exporters : Collections.emptyList());
+    if (spec.getMinLevel() != null) {
+      config.setMinLevel(ServerLogLevel.valueOf(spec.getMinLevel().name()));
+    }
+    if (spec.getNoiseSampleDropRatio() != null) {
+      config.setNoiseSampleDropRatio(spec.getNoiseSampleDropRatio());
+    }
+    return config;
   }
 
-  private static UniverseLogsExporterConfig toUniverseLogsExporterConfigFromGenerated(
-      TelemetryExporterEntry e) {
-    UniverseLogsExporterConfig c = new UniverseLogsExporterConfig();
-    c.setExporterUuid(e.getExporterUuid());
-    c.setAdditionalTags(
-        e.getAdditionalTags() != null ? e.getAdditionalTags() : Collections.emptyMap());
-    return c;
+  @Nullable
+  private static TServerLogConfig toTserverLogConfigFromGenerated(
+      @Nullable TServerLogsTelemetrySpec spec) {
+    if (spec == null) {
+      return null;
+    }
+    TServerLogConfig config = new TServerLogConfig();
+    List<UniverseServerLogsExporterConfig> exporters =
+        convertList(spec.getExporters(), UniverseServerLogsExporterConfig.class);
+    config.setUniverseLogsExporterConfig(exporters != null ? exporters : Collections.emptyList());
+    if (spec.getMinLevel() != null) {
+      config.setMinLevel(ServerLogLevel.valueOf(spec.getMinLevel().name()));
+    }
+    return config;
+  }
+
+  private static List<UniverseLogsExporterConfig> toUniverseLogsExporterConfigsFromGenerated(
+      @Nullable List<api.v2.models.UniverseLogsExporterConfig> list) {
+    return convertList(list, UniverseLogsExporterConfig.class);
   }
 
   private static List<UniverseQueryLogsExporterConfig>
-      toUniverseQueryLogsExporterConfigsFromGenerated(@Nullable List<TelemetryExporterEntry> list) {
-    if (list == null) return Collections.emptyList();
-    return list.stream()
-        .filter(e -> e.getExporterUuid() != null)
-        .map(ExportTelemetryConfigMapper::toUniverseQueryLogsExporterConfigFromGenerated)
-        .collect(Collectors.toList());
-  }
-
-  private static UniverseQueryLogsExporterConfig toUniverseQueryLogsExporterConfigFromGenerated(
-      TelemetryExporterEntry e) {
-    UniverseQueryLogsExporterConfig c = new UniverseQueryLogsExporterConfig();
-    c.setExporterUuid(e.getExporterUuid());
-    c.setAdditionalTags(
-        e.getAdditionalTags() != null ? e.getAdditionalTags() : Collections.emptyMap());
-    if (e.getSendBatchMaxSize() != null) c.setSendBatchMaxSize(e.getSendBatchMaxSize());
-    if (e.getSendBatchSize() != null) c.setSendBatchSize(e.getSendBatchSize());
-    if (e.getSendBatchTimeoutSeconds() != null)
-      c.setSendBatchTimeoutSeconds(e.getSendBatchTimeoutSeconds());
-    if (e.getMemoryLimitMib() != null) c.setMemoryLimitMib(e.getMemoryLimitMib());
-    if (e.getMemoryLimitCheckIntervalSeconds() != null)
-      c.setMemoryLimitCheckIntervalSeconds(e.getMemoryLimitCheckIntervalSeconds());
-    return c;
+      toUniverseQueryLogsExporterConfigsFromGenerated(
+          @Nullable List<api.v2.models.UniverseQueryLogsExporterConfig> list) {
+    return convertList(list, UniverseQueryLogsExporterConfig.class);
   }
 
   private static List<UniverseMetricsExporterConfig> toUniverseMetricsExporterConfigsFromGenerated(
-      @Nullable List<TelemetryExporterEntry> list) {
-    if (list == null) return Collections.emptyList();
-    return list.stream()
-        .filter(e -> e.getExporterUuid() != null)
-        .map(ExportTelemetryConfigMapper::toUniverseMetricsExporterConfigFromGenerated)
-        .collect(Collectors.toList());
+      @Nullable List<api.v2.models.UniverseMetricsExporterConfig> list) {
+    return convertList(list, UniverseMetricsExporterConfig.class);
   }
 
-  private static UniverseMetricsExporterConfig toUniverseMetricsExporterConfigFromGenerated(
-      TelemetryExporterEntry e) {
-    UniverseMetricsExporterConfig c = new UniverseMetricsExporterConfig();
-    c.setExporterUuid(e.getExporterUuid());
-    c.setAdditionalTags(
-        e.getAdditionalTags() != null ? e.getAdditionalTags() : Collections.emptyMap());
-    if (e.getSendBatchMaxSize() != null) c.setSendBatchMaxSize(e.getSendBatchMaxSize());
-    if (e.getSendBatchSize() != null) c.setSendBatchSize(e.getSendBatchSize());
-    if (e.getSendBatchTimeoutSeconds() != null)
-      c.setSendBatchTimeoutSeconds(e.getSendBatchTimeoutSeconds());
-    if (e.getMetricsPrefix() != null) c.setMetricsPrefix(e.getMetricsPrefix());
-    if (e.getMemoryLimitMib() != null) c.setMemoryLimitMib(e.getMemoryLimitMib());
-    if (e.getMemoryLimitCheckIntervalSeconds() != null)
-      c.setMemoryLimitCheckIntervalSeconds(e.getMemoryLimitCheckIntervalSeconds());
-    return c;
+  // --- Conversion from internal types to generated api.v2.models types ---
+
+  /**
+   * Build a generated TelemetryConfig from the universe's currently applied {@link TelemetryConfig}
+   * (any section may be null to indicate it is disabled). Takes the whole aggregate so callers need
+   * not change when a new export type is added; only a per-type conversion line below is added.
+   */
+  public static api.v2.models.TelemetryConfig toGenerated(
+      @Nullable TelemetryConfig telemetryConfig) {
+    if (telemetryConfig == null) {
+      return new api.v2.models.TelemetryConfig();
+    }
+    return new api.v2.models.TelemetryConfig()
+        .auditLogs(toAuditLogsSpecFromInternal(telemetryConfig.getAuditLogConfig()))
+        .queryLogs(toQueryLogsSpecFromInternal(telemetryConfig.getQueryLogConfig()))
+        .metrics(toMetricsSpecFromInternal(telemetryConfig.getMetricsExportConfig()))
+        .masterLogs(toMasterLogsSpecFromInternal(telemetryConfig.getMasterLogConfig()))
+        .tserverLogs(toTserverLogsSpecFromInternal(telemetryConfig.getTserverLogConfig()));
+  }
+
+  @Nullable
+  private static MasterLogsTelemetrySpec toMasterLogsSpecFromInternal(
+      @Nullable MasterLogConfig config) {
+    if (config == null) {
+      return null;
+    }
+    MasterLogsTelemetrySpec spec = new MasterLogsTelemetrySpec();
+    spec.setExporters(
+        convertList(
+            config.getUniverseLogsExporterConfig(),
+            api.v2.models.UniverseServerLogsExporterConfig.class));
+    if (config.getMinLevel() != null) {
+      spec.setMinLevel(MasterLogsTelemetrySpec.MinLevelEnum.fromValue(config.getMinLevel().name()));
+    }
+    if (config.getNoiseSampleDropRatio() != null) {
+      spec.setNoiseSampleDropRatio(config.getNoiseSampleDropRatio());
+    }
+    return spec;
+  }
+
+  @Nullable
+  private static TServerLogsTelemetrySpec toTserverLogsSpecFromInternal(
+      @Nullable TServerLogConfig config) {
+    if (config == null) {
+      return null;
+    }
+    TServerLogsTelemetrySpec spec = new TServerLogsTelemetrySpec();
+    spec.setExporters(
+        convertList(
+            config.getUniverseLogsExporterConfig(),
+            api.v2.models.UniverseServerLogsExporterConfig.class));
+    if (config.getMinLevel() != null) {
+      spec.setMinLevel(
+          TServerLogsTelemetrySpec.MinLevelEnum.fromValue(config.getMinLevel().name()));
+    }
+    return spec;
+  }
+
+  @Nullable
+  private static AuditLogsTelemetrySpec toAuditLogsSpecFromInternal(
+      @Nullable AuditLogConfig config) {
+    if (config == null) {
+      return null;
+    }
+    AuditLogsTelemetrySpec spec = new AuditLogsTelemetrySpec();
+    spec.setYsqlAuditConfig(
+        MAPPER.convertValue(config.getYsqlAuditConfig(), api.v2.models.YSQLAuditConfig.class));
+    spec.setYcqlAuditConfig(
+        MAPPER.convertValue(config.getYcqlAuditConfig(), api.v2.models.YCQLAuditConfig.class));
+    spec.setExporters(
+        convertList(
+            config.getUniverseLogsExporterConfig(),
+            api.v2.models.UniverseLogsExporterConfig.class));
+    return spec;
+  }
+
+  @Nullable
+  private static QueryLogsTelemetrySpec toQueryLogsSpecFromInternal(
+      @Nullable QueryLogConfig config) {
+    if (config == null) {
+      return null;
+    }
+    QueryLogsTelemetrySpec spec = new QueryLogsTelemetrySpec();
+    spec.setYsqlQueryLogConfig(
+        MAPPER.convertValue(
+            config.getYsqlQueryLogConfig(), api.v2.models.YSQLQueryLogConfig.class));
+    spec.setExporters(
+        convertList(
+            config.getUniverseLogsExporterConfig(),
+            api.v2.models.UniverseQueryLogsExporterConfig.class));
+    return spec;
+  }
+
+  @Nullable
+  private static MetricsTelemetrySpec toMetricsSpecFromInternal(
+      @Nullable MetricsExportConfig config) {
+    if (config == null) {
+      return null;
+    }
+    MetricsTelemetrySpec spec = new MetricsTelemetrySpec();
+    spec.setScrapeIntervalSeconds(config.getScrapeIntervalSeconds());
+    spec.setScrapeTimeoutSeconds(config.getScrapeTimeoutSeconds());
+    if (config.getCollectionLevel() != null) {
+      spec.setCollectionLevel(
+          MetricsTelemetrySpec.CollectionLevelEnum.fromValue(
+              config.getCollectionLevel().toString()));
+    }
+    if (config.getScrapeConfigTargets() != null) {
+      spec.setScrapeConfigTargets(
+          config.getScrapeConfigTargets().stream()
+              .map(t -> api.v2.models.ScrapeConfigTargetType.fromValue(t.toString()))
+              .collect(Collectors.toList()));
+    }
+    spec.setExporters(
+        convertList(
+            config.getUniverseMetricsExporterConfig(),
+            api.v2.models.UniverseMetricsExporterConfig.class));
+    return spec;
+  }
+
+  // The generated per-type exporter schemas (UniverseLogsExporterConfig etc.) share field names
+  // with their internal counterparts, so Jackson converts each element directly in either
+  // direction.
+  private static <I, O> List<O> convertList(@Nullable List<I> list, Class<O> outClass) {
+    if (list == null) {
+      return Collections.emptyList();
+    }
+    return list.stream().map(c -> MAPPER.convertValue(c, outClass)).collect(Collectors.toList());
   }
 }

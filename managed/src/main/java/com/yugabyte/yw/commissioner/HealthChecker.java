@@ -528,6 +528,22 @@ public class HealthChecker {
         !shouldSendStatusUpdate && alertingData != null && alertingData.reportOnlyErrors;
 
     c.getUniverses().stream()
+        .filter(
+            u -> {
+              // Skip universes that were never successfully brought up. Running health checks on
+              // them just produces noisy failures and misleading alerts for something that never
+              // reached a healthy baseline. The UI surfaces a "Universe creation failed" state
+              // for these so operators still see the problem. Null details are handled downstream
+              // in checkSingleUniverse (which reports a failure metric), so let them through here.
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              if (details != null && !details.creationSucceeded) {
+                log.debug(
+                    "Skipping universe {} - universe creation has never successfully completed",
+                    u.getName());
+                return false;
+              }
+              return true;
+            })
         .map(
             u -> {
               String destinations = getAlertDestinations(u, c);
@@ -700,7 +716,6 @@ public class HealthChecker {
     }
     Date startTime = new Date();
     List<NodeInfo> nodeMetadata = new ArrayList<>();
-    String providerCode;
     int masterIndex = 0;
     int tserverIndex = 0;
     CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(params.universe.getUniverseUUID());
@@ -720,18 +735,6 @@ public class HealthChecker {
         confGetter.getConfForScope(params.universe, UniverseConfKeys.cqlshConnectivityTest);
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
       UserIntent userIntent = cluster.userIntent;
-      Provider provider = Provider.get(UUID.fromString(userIntent.provider));
-      if (provider == null) {
-        log.warn(
-            "Skipping universe "
-                + params.universe.getName()
-                + " due to invalid provider "
-                + cluster.userIntent.provider);
-        setHealthCheckFailedMetric(params.customer, params.universe);
-
-        return;
-      }
-      providerCode = provider.getCode();
       List<NodeDetails> activeNodes =
           details.getNodesInCluster(cluster.uuid).stream().filter(NodeDetails::isActive).toList();
       for (NodeDetails nd : activeNodes) {
@@ -765,7 +768,19 @@ public class HealthChecker {
       int topKMemThresholdPercent =
           confGetter.getConfForScope(
               params.universe, UniverseConfKeys.healthCollectTopKOtherProcessesMemThreshold);
+      Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(params.universe);
       for (NodeDetails nodeDetails : sortedDetails) {
+        Provider provider = providerGetter.apply(nodeDetails);
+        if (provider == null) {
+          log.warn(
+              "Skipping universe "
+                  + params.universe.getName()
+                  + " due to invalid provider for node "
+                  + nodeDetails.nodeName);
+          setHealthCheckFailedMetric(params.customer, params.universe);
+
+          return;
+        }
         NodeInstance nodeInstance = nodeInstanceMap.get(nodeDetails.getNodeUuid());
         String nodeIdentifier = StringUtils.EMPTY;
         if (nodeInstance != null && nodeInstance.getDetails().instanceName != null) {
@@ -809,7 +824,7 @@ public class HealthChecker {
               .setTserverHttpPort(nodeDetails.tserverHttpPort)
               .setTserverRpcPort(nodeDetails.tserverRpcPort);
         }
-        if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
+        if (provider.getCloudCode() == Common.CloudType.kubernetes) {
           nodeInfo.setK8s(true);
         }
         Map<String, String> tserverGflags =
@@ -863,7 +878,8 @@ public class HealthChecker {
                   nodeInfo.isK8s()
                       ? String.format(
                           CommonUtils.DEFAULT_YBC_DIR,
-                          GFlagsUtil.getCustomTmpDirectory(nodeDetails, params.universe))
+                          GFlagsUtil.getCustomTmpDirectory(
+                              confGetter, nodeDetails, params.universe))
                       : nodeInfo.getYbHomeDir());
         }
         // Check if any export is currently enabled in the universe.
@@ -1215,12 +1231,17 @@ public class HealthChecker {
       commandToRun.add("--cronbased");
     }
 
-    Object ynpVersion =
-        configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
-    if (ynpVersion != null) {
-      commandToRun.add("--yba_ynp_version=" + ynpVersion.toString());
-    } else {
-      log.warn("YNP version not found in YugawareMetadata, skipping version skew check");
+    // Only run the YNP version skew check when the global runtime config is enabled. When it is
+    // disabled, we skip passing the YBA YNP version so the node health script reports no skew and
+    // the YNP_VERSION_SKEW alert does not fire.
+    if (!nodeInfo.isK8s() && confGetter.getGlobalConf(GlobalConfKeys.enableYnpVersionCheck)) {
+      Object ynpVersion =
+          configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
+      if (ynpVersion != null) {
+        commandToRun.add("--yba_ynp_version=" + ynpVersion.toString());
+      } else {
+        log.warn("YNP version not found in YugawareMetadata, skipping version skew check");
+      }
     }
     ShellResponse response =
         nodeUniverseManager
@@ -1264,7 +1285,8 @@ public class HealthChecker {
         environment.resourceAsStream("health/node_health.py.template")) {
       template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
       Universe universe = Universe.getOrBadRequest(universeUuid);
-      String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(nodeInfo.nodeDetails, universe);
+      String customTmpDirectory =
+          GFlagsUtil.getCustomTmpDirectory(confGetter, nodeInfo.nodeDetails, universe);
       String scriptContent = template.replace("{{NODE_INFO}}", Json.toJson(nodeInfo).toString());
       scriptContent = scriptContent.replace("{{TMP_DIR}}", customTmpDirectory);
       // For now it has no universe/cluster specific info. Add placeholder substitution here once

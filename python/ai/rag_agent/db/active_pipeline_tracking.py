@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any
 from enum import Enum
 from db.connection_pool import ConnectionPool
 
-
+from observability import meko_observe
 class PipelineStatus(Enum):
     """Enum for pipeline status values"""
     PROCESSING = 'PROCESSING'
@@ -38,6 +38,7 @@ class PipelineTracking:
         """Return a connection to the pool."""
         self.pool.return_connection(conn)
 
+    @meko_observe(name="Insert Pipeline Details / Active Pipeline Tracking", as_type="span")
     def insert_pipeline_details(
         self,
         document_id: str,
@@ -112,6 +113,7 @@ class PipelineTracking:
             if conn:
                 self._return_connection(conn)
 
+    @meko_observe(name="Update Pipeline Status / Active Pipeline Tracking", as_type="span")
     def update_pipeline_status(
         self,
         pipeline_id: str,
@@ -164,6 +166,7 @@ class PipelineTracking:
             if conn:
                 self._return_connection(conn)
 
+    @meko_observe(name="Mark Pipeline Completed / Active Pipeline Tracking", as_type="span")
     def mark_pipeline_completed(self, pipeline_id: str) -> bool:
         """
         Mark a pipeline as completed.
@@ -206,6 +209,7 @@ class PipelineTracking:
             if conn:
                 self._return_connection(conn)
 
+    @meko_observe(name="Record Pipeline Error / Active Pipeline Tracking", as_type="span")
     def record_pipeline_error(
         self,
         pipeline_id: str,
@@ -256,6 +260,7 @@ class PipelineTracking:
             if conn:
                 self._return_connection(conn)
 
+    @meko_observe(name="Update Chunks Processed / Active Pipeline Tracking", as_type="span")
     def update_chunks_processed(self, pipeline_id: str, chunks_count: int) -> bool:
         """
         Update the number of chunks processed for a pipeline.
@@ -301,6 +306,7 @@ class PipelineTracking:
             if conn:
                 self._return_connection(conn)
 
+    @meko_observe(name="Update Embeddings Persisted / Active Pipeline Tracking", as_type="span")
     def update_embeddings_persisted(self, pipeline_id: str, embeddings_count: int) -> bool:
         """
         Update the number of embeddings persisted for a pipeline.

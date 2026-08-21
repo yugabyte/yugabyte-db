@@ -45,9 +45,9 @@ If you have high multiplexity (many more client connections than server connecti
 
 ## Unsupported authentication methods
 
-- TCP IPv6 client connections. Connection Manager assumes all client connections use IPv4. If any IPv6 client connection tries to connect, Connection Manager will still authenticate against IPv4 in the host column of the hba file.
+- TCP IPv6 client connections. Connection Manager assumes all client connections use IPv4. If any IPv6 client connection tries to connect, Connection Manager will still authenticate against IPv4 in the host column of the HBA file.
 
-- CERT authentication. Connection Manager does not support CERT authentication (verify-full/verify-ca). CERT authentication requires connections to be SSL encrypted. Authentication with Connection Manager still happens on the database side. Therefore Connection Manager should forward all client credentials (for example, the password) along with setting up the SSL context on the database while doing authentication. The client connection presents client certificates to Connection Manager and it's difficult to pass the same certificates to the database to perform authentication. If it were to pass, the server connections are Unix socket connections (no SSL/Encryption), which makes it difficult to set up a fake SSL context in which client certificates are needed to be processed for the purpose of certificate authentication via Connection Manager. Client certificates are loaded during the initial SSL handshake of the client with the postmaster process without Connection Manager.
+- [Host-based authentication](../../../secure/authentication/host-based-authentication) (HBA). Connection Manager does not support the _server-side_ HBA auth-method `cert`, where the server authenticates users via the client's certificate (CN/DN mapping). Supporting server-side cert-based authentication would require forwarding client certificates to the database over Unix socket backend connections, which is not yet implemented. YSQL Connection Manager does support client SSL modes `verify-ca` and `verify-full`, where the _client_ verifies the _server's_ certificate. For more information, refer to [Authentication methods](../ycm-setup/#authentication-methods).
 
 ## SSL behaviour
 
@@ -60,3 +60,5 @@ Although Connection Manager supports all SSL modes that clients can set in a con
 - Enable TLS in cluster and create a connection using sslmode=disable. Connection Manager will throw the following error: `odyssey: c8240c445726f: SSL is required`; whereas when connecting to the database port, the error message is `FATAL:  no pg_hba.conf entry for host`.
 
 The main reason for these differences in behaviour is because sometimes authentication is done at the Connection Manager layer itself, rather than following the standard authentication mechanism (where authentication happens on the server based on credentials forwarded by Connection Manager).
+
+For details on how each client SSL mode (disable, allow, prefer, require, verify-ca, verify-full) behaves with Connection Manager when TLS is enabled or disabled in the cluster, see [SSL modes and encryption in transit](../ycm-setup/#ssl-modes-and-encryption-in-transit).

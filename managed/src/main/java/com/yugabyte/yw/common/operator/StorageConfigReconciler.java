@@ -48,6 +48,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
 
   // The current storage config resource being reconciled, used for associating secret dependencies.
   private KubernetesResourceDetails currentReconcileResource;
+  private UUID currentLocalInstanceUuid;
 
   public Set<KubernetesResourceDetails> getTrackedResources() {
     return resourceTracker.getTrackedResources();
@@ -139,7 +140,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     if (awsSecret != null) {
       Secret secret = operatorUtils.getSecret(awsSecret.getName(), awsSecret.getNamespace());
       if (secret != null) {
-        resourceTracker.trackDependency(currentReconcileResource, secret);
+        resourceTracker.trackDependency(currentReconcileResource, secret, currentLocalInstanceUuid);
         log.trace(
             "Tracking AWS secret {} as dependency of {}",
             secret.getMetadata().getName(),
@@ -156,7 +157,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     if (gcsSecret != null) {
       Secret secret = operatorUtils.getSecret(gcsSecret.getName(), gcsSecret.getNamespace());
       if (secret != null) {
-        resourceTracker.trackDependency(currentReconcileResource, secret);
+        resourceTracker.trackDependency(currentReconcileResource, secret, currentLocalInstanceUuid);
         log.trace(
             "Tracking GCS secret {} as dependency of {}",
             secret.getMetadata().getName(),
@@ -173,7 +174,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     if (azureSecret != null) {
       Secret secret = operatorUtils.getSecret(azureSecret.getName(), azureSecret.getNamespace());
       if (secret != null) {
-        resourceTracker.trackDependency(currentReconcileResource, secret);
+        resourceTracker.trackDependency(currentReconcileResource, secret, currentLocalInstanceUuid);
         log.trace(
             "Tracking Azure secret {} as dependency of {}",
             secret.getMetadata().getName(),
@@ -199,7 +200,8 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     }
 
     KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(sc);
-    resourceTracker.trackResource(sc);
+    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(sc, currentLocalInstanceUuid);
     currentReconcileResource = resourceDetails;
     log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
 
@@ -268,7 +270,8 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
   public void onUpdate(StorageConfig oldSc, StorageConfig newSc) {
     log.info("Updating a storage config");
     // Persist the latest resource YAML so the OperatorResource table stays current.
-    resourceTracker.trackResource(newSc);
+    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(newSc, currentLocalInstanceUuid);
     ObjectMapper objectMapper = new ObjectMapper();
     String cuuid;
     String configUUID = null;
@@ -316,7 +319,9 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
   public void onDelete(StorageConfig sc, boolean deletedFinalStateUnknown) {
     log.info("Deleting a storage config");
     KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(sc);
-    Set<KubernetesResourceDetails> orphaned = resourceTracker.untrackResource(resourceDetails);
+    UUID localUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    Set<KubernetesResourceDetails> orphaned =
+        resourceTracker.untrackResource(resourceDetails, localUuid);
     log.info(
         "Untracked storage config {} and orphaned dependencies: {}", resourceDetails, orphaned);
 

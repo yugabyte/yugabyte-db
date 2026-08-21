@@ -38,7 +38,8 @@ PgDmlWrite::PgDmlWrite(
 }
 
 Status PgDmlWrite::Prepare(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    bool skip_intents_write) {
   // Setup descriptors for target and bind columns.
   target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
 
@@ -54,6 +55,9 @@ Status PgDmlWrite::Prepare(
   write_req_->set_schema_version(target_->schema_version());
   write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
   write_req_->set_metrics_capture(pg_session_->metrics().metrics_capture());
+  if (skip_intents_write) {
+    write_req_->set_skip_intents_write(skip_intents_write);
+  }
 
   doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
   PrepareColumns();

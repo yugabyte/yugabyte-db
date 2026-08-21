@@ -56,7 +56,7 @@ This view provides a list of wait events and their metadata. The columns of the 
 | wait_event_class | text | Class of the wait event, such as TabletWait, RocksDB, and so on.  |
 | wait_event | text | Name of the wait event. |
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, RPCWait, Disk IO, and so on. |
-| wait_event_aux | text | Additional information for the wait event. For example, tablet ID for TServer wait events. |
+| wait_event_aux | text | Additional information for the wait event, when available. For TServer events tied to a tablet, the first 15 characters of the tablet ID; for YCQL read/write events with table context, the first 15 characters of the table ID; for YSQL `WaitingOnTServer` events, the RPC name. Null for most other events. |
 | top_level_node_id | UUID | 16-byte TServer UUID of the YSQL/YCQL node where the query is being executed. |
 | query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/)/[ycql_stat_statements](../../../launch-and-manage/monitor-and-alert/query-tuning/ycql-stat-statements/). See [Constant query identifiers](#constant-query-identifiers). |
 | pid | bigint | PID of the process that is executing the query. For YCQL and background activities, this will be the YB-TServer PID. |
@@ -102,7 +102,7 @@ SELECT * FROM pg_catalog.yb_servers() WHERE uuid = <top_level_node_id>;
 
 ## Wait events
 
-The following describes the wait events available in the [active session history](#yb-active-session-history), along with their type and, where applicable, the auxiliary information (`wait_event_aux`) provided with that type. The events are categorized by wait event class.
+The following describes the wait events available in the [active session history](#yb-active-session-history), along with their type and, where applicable, the auxiliary information (`wait_event_aux`) provided with that type. The events are categorized by wait event class. In the **Aux** column, **Tablet ID** and **Table ID** refer to the first 15 characters of the respective ID.
 
 ### YSQL
 
@@ -151,20 +151,20 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 #### TabletWait class
 
-| Wait Event | Type |  Description |
-| :--------- | :--- | :---------- |
-| MVCC_WaitForSafeTime | WaitOnCondition | A read/write RPC is waiting for the safe time to be at least the desired read-time. |
-| LockedBatchEntry_Lock | WaitOnCondition | A read/write RPC is waiting for a DocDB row-level lock. |
-| BackfillIndex_WaitForAFreeSlot | WaitOnCondition | A backfill index RPC is waiting for a slot to open if there are too many backfill requests at the same time. |
-| CreatingNewTablet | DiskIO | The CreateTablet RPC is creating a new tablet, this may involve writing metadata files, causing I/O wait. |
-| SaveRaftGroupMetadataToDisk | DiskIO | The Raft/tablet metadata is being written to disk, generally during snapshot or restore operations. |
-| TransactionStatusCache_DoGetCommitData | RPCWait | An RPC needs to look up the commit status of a particular transaction. |
-| WaitForYSQLBackendsCatalogVersion | WaitOnCondition | CREATE INDEX is waiting for YSQL backends to have up-to-date pg_catalog. |
-| WriteSysCatalogSnapshotToDisk | DiskIO | Writing initial system catalog snapshot during initdb.|
-| DumpRunningRpc_WaitOnReactor | WaitOnCondition | DumpRunningRpcs is waiting on reactor threads. |
-| ConflictResolution_ResolveConficts | RPCWait | A read/write RPC is waiting to identify conflicting transactions. |
-| ConflictResolution_WaitOnConflictingTxns | WaitOnCondition | A read/write RPC is waiting for conflicting transactions to complete. |
-| WaitForReadTime | WaitOnCondition | A read/write RPC is waiting for the current time to catch up to [read time](../../../architecture/transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request). |
+| Wait Event | Type | <div style="width:100px">Aux</div> | Description |
+| :--------- | :--- | :-- | :---------- |
+| MVCC_WaitForSafeTime | WaitOnCondition | Tablet ID | A read/write RPC is waiting for the safe time to be at least the desired read-time. |
+| LockedBatchEntry_Lock | WaitOnCondition | Tablet ID | A read/write RPC is waiting for a DocDB row-level lock. |
+| BackfillIndex_WaitForAFreeSlot | WaitOnCondition | Tablet ID | A backfill index RPC is waiting for a slot to open if there are too many backfill requests at the same time. |
+| CreatingNewTablet | DiskIO | Tablet ID | The CreateTablet RPC is creating a new tablet, this may involve writing metadata files, causing I/O wait. |
+| SaveRaftGroupMetadataToDisk | DiskIO | Tablet ID | The Raft/tablet metadata is being written to disk, generally during snapshot or restore operations. |
+| TransactionStatusCache_DoGetCommitData | RPCWait | Tablet ID | An RPC needs to look up the commit status of a particular transaction. |
+| WaitForYSQLBackendsCatalogVersion | WaitOnCondition | Tablet ID | CREATE INDEX is waiting for YSQL backends to have up-to-date pg_catalog. |
+| WriteSysCatalogSnapshotToDisk | DiskIO | Tablet ID | Writing initial system catalog snapshot during initdb.|
+| DumpRunningRpc_WaitOnReactor | WaitOnCondition | Tablet ID | DumpRunningRpcs is waiting on reactor threads. |
+| ConflictResolution_ResolveConficts | RPCWait | Tablet ID | A read/write RPC is waiting to identify conflicting transactions. |
+| ConflictResolution_WaitOnConflictingTxns | WaitOnCondition | Tablet ID | A read/write RPC is waiting for conflicting transactions to complete. |
+| WaitForReadTime | WaitOnCondition | Tablet ID | A read/write RPC is waiting for the current time to catch up to [read time](../../../architecture/transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request). |
 
 #### Consensus class
 
@@ -174,23 +174,23 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | WAL_Sync | DiskIO | Tablet ID | A write RPC is synchronizing WAL edits. |
 | Raft_WaitingForReplication | RPCWait | Tablet ID | A write RPC is waiting for Raft replication. |
 | Raft_ApplyingEdits | WaitOnCondition/CPU | Tablet ID | A write RPC is applying Raft edits locally. |
-| ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during Raft term, configuration change, remote bootstrap, and so on. |
-| ReplicaState_TakeUpdateLock | WaitOnCondition | | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
+| ConsensusMeta_Flush | DiskIO | Tablet ID | ConsensusMetadata is flushed, for example, during Raft term, configuration change, remote bootstrap, and so on. |
+| ReplicaState_TakeUpdateLock | WaitOnCondition | Tablet ID | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
 
 #### RocksDB class
 
-| Wait Event | Type |  Description |
-| :--------- | :--- | :---------- |
-| RocksDB_ReadBlockFromFile | DiskIO | RocksDB is reading a block from a file. |
-| RocksDB_OpenFile | DiskIO | RocksDB is opening a file. |
-| RocksDB_WriteToFile | DiskIO | RocksDB is writing to a file. |
-| RocksDB_Flush | CPU | RocksDB is doing a flush. |
-| RocksDB_Compaction | CPU | RocksDB is doing a compaction. |
-| RocksDB_PriorityThreadPoolTaskPaused | WaitOnCondition | RocksDB pauses a flush or compaction task for another flush or compaction task with a higher priority. |
-| RocksDB_CloseFile | DiskIO | RocksDB is closing a file. |
-| RocksDB_RateLimiter | WaitOnCondition | RocksDB flush/compaction is slowing down due to rate limiter throttling access to disk. |
-| RocksDB_WaitForSubcompaction | WaitOnCondition | RocksDB is waiting for a compaction to complete. |
-| RocksDB_NewIterator | DiskIO | RocksDB is waiting for a new iterator to be created. |
+| Wait Event | Type | <div style="width:100px">Aux</div> | Description |
+| :--------- | :--- | :-- | :---------- |
+| RocksDB_ReadBlockFromFile | DiskIO | Tablet ID | RocksDB is reading a block from a file. |
+| RocksDB_OpenFile | DiskIO | Tablet ID | RocksDB is opening a file. |
+| RocksDB_WriteToFile | DiskIO | Tablet ID | RocksDB is writing to a file. |
+| RocksDB_Flush | CPU | Tablet ID | RocksDB is doing a flush. |
+| RocksDB_Compaction | CPU | Tablet ID | RocksDB is doing a compaction. |
+| RocksDB_PriorityThreadPoolTaskPaused | WaitOnCondition | Tablet ID | RocksDB pauses a flush or compaction task for another flush or compaction task with a higher priority. |
+| RocksDB_CloseFile | DiskIO | Tablet ID | RocksDB is closing a file. |
+| RocksDB_RateLimiter | WaitOnCondition | Tablet ID | RocksDB flush/compaction is slowing down due to rate limiter throttling access to disk. |
+| RocksDB_WaitForSubcompaction | WaitOnCondition | Tablet ID | RocksDB is waiting for a compaction to complete. |
+| RocksDB_NewIterator | DiskIO | Tablet ID | RocksDB is waiting for a new iterator to be created. |
 
 ### YCQL
 

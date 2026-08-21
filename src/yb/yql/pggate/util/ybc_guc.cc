@@ -51,6 +51,8 @@ bool yb_enable_pg_export_snapshot = true;
 
 bool yb_enable_replication_slot_consumption = true;
 
+bool yb_enable_replication_slot_query_api = false;
+
 bool yb_allow_replication_slot_lsn_types = true;
 
 bool yb_allow_replication_slot_ordering_modes = false;
@@ -61,7 +63,11 @@ bool yb_enable_replica_identity = true;
 
 bool yb_enable_consistent_replication_from_hash_range = false;
 
-bool yb_cdcsdk_stream_tables_without_primary_key = false;
+bool yb_enable_replication_slot_exclusive_lock = false;
+
+bool yb_cdcsdk_stream_tables_without_primary_key = true;
+
+bool yb_cdcsdk_allow_dml_without_pk = false;
 
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
@@ -88,6 +94,8 @@ int yb_walsender_poll_sleep_duration_empty_ms = 10;
 int yb_reorderbuffer_max_changes_in_memory = 4096;
 
 int yb_explicit_row_locking_batch_size = 1024;
+
+int yb_explicit_row_lock_skip_locked_max_read_ahead = 1;
 
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
@@ -144,6 +152,8 @@ int yb_fk_references_cache_limit = 65535;
 
 bool yb_allow_dockey_bounds = true;
 
+bool yb_dump_presplit_in_create = true;
+
 bool yb_xcluster_target_ddl_bypass = false;
 
 bool yb_ignore_read_time_in_walsender = false;
@@ -151,8 +161,6 @@ bool yb_ignore_read_time_in_walsender = false;
 bool yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
 
 bool enable_object_locking_infra = true;
-
-bool yb_enable_concurrent_ddl = false;
 
 bool yb_enable_ddl_savepoint_infra = true;
 

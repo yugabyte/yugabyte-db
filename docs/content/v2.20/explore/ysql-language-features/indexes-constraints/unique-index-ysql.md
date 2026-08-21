@@ -28,7 +28,7 @@ CREATE UNIQUE INDEX index_name ON table_name(column_list);
 
 {{% explore-setup-single %}}
 
-This example uses the `categories` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
+This example uses the `categories` table from the [Northwind sample database](/stable/develop/sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `categories` table:
 

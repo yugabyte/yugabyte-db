@@ -26,9 +26,18 @@ struct od_server {
 	od_relay_t relay;
 	int is_allocated;
 	int is_transaction;
-	/* Copy stmt state */
-	uint64_t done_fail_response_received;
-	uint64_t in_out_response_received;
+	/*
+	 * YB: With CopyInResponse, sync is ignored till CopyDone/CopyFail is received
+	 * from client whereas in CopyOutResponse backend is responsible for sending
+	 * CopyDone/CopyFail packet followed by CopyOutResponse packet which works same
+	 * as any other acknowledgement packets send by postgres.
+	 * Therefore, handling for CopyInResponse is different from CopyOutResponse in conn mgr
+	 * hence using separate counters for them as well as corresponding done/fail packets.
+	 */
+	uint64_t yb_done_fail_for_copy_in_response;
+	uint64_t yb_done_fail_for_copy_out_response;
+	uint64_t yb_in_response_received;
+	uint64_t yb_out_response_received;
 	/**/
 	int deploy_sync;
 	od_stat_state_t stats_state;
@@ -56,6 +65,18 @@ struct od_server {
 
 	/* allocated prepared statements ids */
 	od_hashmap_t *prep_stmts;
+	/* YB: LRU list and count of prep stmts */
+	od_list_t yb_prep_stmt_lru;
+	int yb_prep_stmt_count;
+
+	/*
+	 * YB: Stores prepared statements that were deallocated on backend,
+	 * but deferred eviction from server's prepared statement cache.
+	 */
+	od_hashmap_t *yb_close_prep_stmts;
+
+	/* YB: Outstanding parse queue for tracking unacknowledged parse operations */
+	yb_od_parse_queue_t parse_queue;
 
 	od_global_t *global;
 	int offline;
@@ -67,6 +88,8 @@ struct od_server {
 	/* YB */
 	bool yb_sticky_connection;
 	bool yb_replication_connection;
+	/* YB: true if this server has claimed a backend slot in yb_backends_in_use */
+	bool yb_slot_claimed;
 	bool reset_timeout;
 	/* is this an auth-backend? */
 	bool yb_auth_backend;
@@ -120,8 +143,10 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	server->idle_time = 0;
 	server->is_allocated = 0;
 	server->is_transaction = 0;
-	server->done_fail_response_received = 0;
-	server->in_out_response_received = 0;
+	server->yb_done_fail_for_copy_in_response = 0;
+	server->yb_done_fail_for_copy_out_response = 0;
+	server->yb_in_response_received = 0;
+	server->yb_out_response_received = 0;
 	server->deploy_sync = 0;
 	server->sync_request = 0;
 	server->sync_reply = 0;
@@ -133,6 +158,7 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	od_stat_state_init(&server->stats_state);
 	server->yb_sticky_connection = false;
 	server->yb_replication_connection = false;
+	server->yb_slot_claimed = false;
 	server->reset_timeout = false;
 	server->yb_auth_backend = false;
 	server->yb_logical_client_version = UINT64_MAX;
@@ -157,11 +183,19 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	memset(&server->yb_unnamed_prep_stmt_client_id, 0,
 	       sizeof(server->yb_unnamed_prep_stmt_client_id));
 
+	od_list_init(&server->yb_prep_stmt_lru);
+	server->yb_prep_stmt_count = 0;
+
+	yb_od_parse_queue_init(&server->parse_queue);
+
 	if (reserve_prep_stmts) {
 		server->prep_stmts =
 			od_hashmap_create(OD_SERVER_DEFAULT_HASHMAP_SZ);
+		server->yb_close_prep_stmts =
+			od_hashmap_create(OD_SERVER_DEFAULT_HASHMAP_SZ);
 	} else {
 		server->prep_stmts = NULL;
+		server->yb_close_prep_stmts = NULL;
 	}
 }
 
@@ -180,8 +214,12 @@ static inline void od_server_free(od_server_t *server)
 	if (server->is_allocated) {
 		od_relay_free(&server->relay);
 		od_io_free(&server->io);
+		yb_od_parse_queue_free(&server->parse_queue);
 		if (server->prep_stmts) {
 			od_hashmap_free(server->prep_stmts);
+		}
+		if (server->yb_close_prep_stmts) {
+			od_hashmap_free(server->yb_close_prep_stmts);
 		}
 		yb_kiwi_vars_free(&server->yb_vars_default);
 		yb_kiwi_vars_free(&server->yb_vars_session);
@@ -214,6 +252,20 @@ static inline int od_server_synchronized(od_server_t *server)
 	 */
 	return server->sync_request == server->sync_reply &&
 	       !server->yb_has_unsynced_pending_packets;
+}
+
+static inline bool yb_is_server_in_copy_mode(od_server_t *server)
+{
+	uint64_t total_in_out_response_received = server->yb_in_response_received +
+			server->yb_out_response_received;
+	uint64_t total_done_fail_received = server->yb_done_fail_for_copy_in_response +
+			server->yb_done_fail_for_copy_out_response;
+	return total_in_out_response_received != total_done_fail_received;
+}
+
+static inline bool yb_is_server_in_copy_in_mode(od_server_t *server)
+{
+	return server->yb_in_response_received > server->yb_done_fail_for_copy_in_response;
 }
 
 static inline int od_server_grac_shutdown(od_server_t *server)

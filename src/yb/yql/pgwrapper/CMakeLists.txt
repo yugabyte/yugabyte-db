@@ -65,7 +65,8 @@ set(YSQL_BINARY_RUNNER_SRCS
     ysql_binary_runner.cc)
 set(YSQL_BINARY_RUNNER_LIBS
     yb_util
-    yb_pgwrapper)
+    yb_pgwrapper
+    pq_utils)
 ADD_YB_LIBRARY(yb_ysql_binary_runner
                SRCS ${YSQL_BINARY_RUNNER_SRCS}
                DEPS ${YSQL_BINARY_RUNNER_LIBS})
@@ -119,7 +120,7 @@ ADD_YB_LIBRARY(ysql_upgrade
 
 set(YB_TEST_LINK_LIBS
     yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_test_utils geo_transactions_test_base
-    pg_locks_test_base rocksdb_tools yb-backup-test_base yb-tserver_util
+    pg_locks_test_base rocksdb_test_util rocksdb_tools yb-backup-test_base yb-tserver_util
     ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
@@ -131,7 +132,7 @@ YB_TEST_TARGET_LINK_LIBRARIES(dist_trace-test opentelemetry_proto)
 ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(geo_transactions_promotion-test)
 ADD_YB_TEST(libpq_utils-test)
-ADD_YB_TEST(pg_alter_add_column_default-test)
+ADD_YB_TEST(pg_alter_table-test)
 ADD_YB_TEST(pg_analyze-test)
 ADD_YB_TEST(pg_analyze_read_time-test)
 ADD_YB_TEST(pg_anonymizer-test)
@@ -145,6 +146,7 @@ ADD_YB_TEST(pg_cancel_transaction-test)
 ADD_YB_TEST(pg_catalog_perf-test)
 ADD_YB_TEST(pg_catalog_snapshot_too_old-test)
 ADD_YB_TEST(pg_catalog_version-test)
+ADD_YB_TEST(pg_skip_intents_metrics-test)
 ADD_YB_TEST(pg_cbo_dependent_flags-test)
 if (NOT APPLE)
   # We disable this test when running on Apple platform as it does not support cgroups.
@@ -185,8 +187,13 @@ ADD_YB_TEST(pg_op_buffering-test)
 ADD_YB_TEST(pg_op_processing_order-test)
 ADD_YB_TEST(pg_packed_insert-test)
 ADD_YB_TEST(pg_packed_row-test)
+ADD_YB_TEST(pg_perf-test)
 ADD_YB_TEST(pg_read_after_commit_visibility-test)
+ADD_YB_TEST(pg_read_restart_memory-test)
 ADD_YB_TEST(pg_read_time-test)
+ADD_YB_TEST(pg_relcache_corruption_fallback-test)
+ADD_YB_TEST(pg_relcache_init_internal_conn-test)
+ADD_YB_TEST(pg_relcache_preload_mem-test)
 ADD_YB_TEST(pg_row_lock-test)
 ADD_YB_TEST(pg_server_restart-test)
 ADD_YB_TEST(pg_shared_mem-test)
@@ -200,8 +207,10 @@ ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_temp_toast-test)
 ADD_YB_TEST(pg_terminate_backend-test)
 ADD_YB_TEST(pg_type-test)
+YB_TEST_TARGET_LINK_LIBRARIES(pg_type-test yb_pgbackend)
 ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_txn_status-test)
+ADD_YB_TEST(pg_vector-test)
 ADD_YB_TEST(pg_vector_index-itest)
 ADD_YB_TEST(pg_vector_index-test)
 ADD_YB_TEST(pg_wait_on_conflict-test)

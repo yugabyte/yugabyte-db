@@ -17,10 +17,13 @@ override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS)
 OBJS = \
 	pg_yb_utils.o \
 	yb_ash.o \
+	yb_dist_trace.o \
 	yb_exceptions_for_func_pushdown.o \
 	yb_file_utils.o \
 	yb_index_check.o \
+	yb_internal_conn.o \
 	yb_jumblefuncs.o \
+	yb_pg_conf_validator.o \
 	yb_qpm.o \
 	yb_query_diagnostics.o \
 	yb_tcmalloc_utils.o \

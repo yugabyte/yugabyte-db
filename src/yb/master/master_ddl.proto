@@ -324,6 +324,9 @@ message IsTruncateTableDoneResponsePB {
 message BackfillIndexRequestPB {
   // The index to backfill. Used for YSQL
   optional TableIdentifierPB index_identifier = 1;
+  // The DDL transaction held by the CREATE INDEX backend. If this transaction is detected as
+  // ABORTED (e.g. pg_terminate_backend killed the session), the master will stop the backfill.
+  optional TransactionMetadataPB requester_transaction = 2;
 }
 
 message BackfillIndexResponsePB {
@@ -867,6 +870,19 @@ message ReleaseObjectLocksGlobalResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message WaitForLockersMultipleGlobalRequestPB {
+  optional bytes session_host_uuid = 1;
+  optional uint64 lease_epoch = 2;
+  repeated docdb.ObjectLockPB object_locks = 3;
+  optional fixed64 propagated_hybrid_time = 4;
+  optional bytes background_transaction_id = 5;
+}
+
+message WaitForLockersMultipleGlobalResponsePB {
+  optional MasterErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
 message GetObjectLockStatusRequestPB {
 }
 
@@ -981,6 +997,10 @@ service MasterDdl {
       returns (RefreshYsqlLeaseResponsePB);
   rpc RelinquishYsqlLease(RelinquishYsqlLeaseRequestPB)
       returns (RelinquishYsqlLeaseResponsePB);
+  rpc WaitForLockersMultipleGlobal(WaitForLockersMultipleGlobalRequestPB)
+      returns (WaitForLockersMultipleGlobalResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc GetObjectLockStatus(GetObjectLockStatusRequestPB)
       returns (GetObjectLockStatusResponsePB);
 }

@@ -36,6 +36,7 @@
 #include "yb/tablet/restore_util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
@@ -206,7 +207,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   Status s;
   {
     SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
-    s = regular_db().Flush(rocksdb::FlushOptions());
+    s = regular_db().Flush(rocksdb::FlushOptions(rocksdb::FlushReason::kSnapshotCreation));
   }
 
   if (PREDICT_FALSE(!s.ok())) {
@@ -737,7 +738,7 @@ Status TabletSnapshots::DoCreateCheckpoint(
 
   // Vector indexes checkpoint must be created after rocksdb checkpoint
   // to be in sync with the flushed data.
-  if (auto vector_indexes = VectorIndexesList(); vector_indexes != nullptr) {
+  if (auto vector_indexes = VectorIndexesList()) {
     for (const auto& vector_index : *vector_indexes) {
       const auto storage_name = docdb::GetVectorIndexStorageName(vector_index->options());
       const auto checkpoint_dir = create_checkpoint_in == CreateCheckpointIn::kSubDir
@@ -871,7 +872,7 @@ Status TabletRestorePatch::Finish() {
     }
     // Insert this kv into the write batch.
     if (value_to_insert.last_value) {
-      QLValuePB value_pb;
+      LWQLValuePB value_pb(nullptr);
       value_pb.set_int64_value(*(value_to_insert.last_value));
       VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.last_value);
       auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("last_value"));
@@ -882,7 +883,7 @@ Status TabletRestorePatch::Finish() {
       IncrementTicker(RestoreTicker::kInserts);
     }
     if (value_to_insert.is_called) {
-      QLValuePB value_pb;
+      LWQLValuePB value_pb(nullptr);
       value_pb.set_bool_value(*(value_to_insert.is_called));
       VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.is_called);
       auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("is_called"));

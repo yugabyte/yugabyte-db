@@ -97,7 +97,6 @@ DECLARE_double(auto_compact_percent_obsolete);
 
 DECLARE_int32(auto_compact_check_interval_sec);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
-DECLARE_int32(full_compaction_pool_max_queue_size);
 DECLARE_int32(full_compaction_pool_max_threads);
 DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(replication_factor);
@@ -543,7 +542,7 @@ void CompactionTest::TestCompactionTaskMetrics(const int num_files, bool manual_
   yb::MetricRegistry registry;
   auto entity = METRIC_ENTITY_test_entity.Instantiate(&registry, "task metrics");
 
-  // Create task metrics for queued, paused, and active tasks.
+  // Create task metrics for active and non-active compaction tasks.
   ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(test_entity);
 
   auto priority_thread_pool_metrics =
@@ -786,8 +785,8 @@ TEST_F(CompactionTest, UpdateLastFullCompactionTimeForTableWithoutWrites) {
 }
 
 namespace {
-  // Make the queue size twice as big as the number of tablets so that by default, we will
-  // not overfill the queue.
+  // Used below to size the test workload (number of tablets); chosen to comfortably exceed
+  // kPoolMaxThreads so several tablets must wait their turn in the unbounded compaction queue.
   constexpr auto kQueueSize = kDefaultNumTablets * 2;
   constexpr auto kPoolMaxThreads = 1;
 }  // namespace
@@ -795,9 +794,6 @@ namespace {
 class ScheduledFullCompactionsTest : public CompactionTest {
  public:
   void SetUp() override {
-    // Before cluster setup, set the full compaction queue size to be greater than
-    // the number of tablets.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_full_compaction_pool_max_queue_size) = kQueueSize;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_full_compaction_pool_max_threads)
         = kPoolMaxThreads;
     // Set the check interval to 0, to ensure there is no conflict with the background
@@ -1918,6 +1914,12 @@ TEST_F(CompactionTest, BackgroundCompactionDuringPostSplitCompaction) {
   // Additional RocksDB listener to guarantee compaction flow.
   struct DBListener : public rocksdb::EventListener {
     bool background_compaction_in_progress = false;
+    // The two child tablets produced by the split share this single listener and increment (and
+    // reset) num_post_split_iterations concurrently. A sibling's no-op reset can bring the counter
+    // back to kTrigger just as the other child's final post-split iteration starts, which would
+    // misidentify that iteration as the background compaction and block it forever (no further
+    // iteration follows the last file). Trigger the background episode at most once to avoid this.
+    bool background_compaction_triggered = false;
     size_t num_post_split_iterations = 0;
     std::mutex mutex;
     std::condition_variable_any compaction_started_cv;
@@ -1926,7 +1928,9 @@ TEST_F(CompactionTest, BackgroundCompactionDuringPostSplitCompaction) {
       UniqueLock lock(mutex);
 
       // Background compaction will be always
-      if (num_post_split_iterations == kTrigger && !background_compaction_in_progress) {
+      if (num_post_split_iterations == kTrigger && !background_compaction_in_progress &&
+          !background_compaction_triggered) {
+        background_compaction_triggered = true;
         LOG(INFO) << "Background compaction started";
         background_compaction_in_progress = true;
 

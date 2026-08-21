@@ -102,7 +102,7 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 		       0);
 
 	char yb_logical_conn_type[2] = "x";
-	yb_logical_conn_type[0] = client->tls ? YB_LOGICAL_ENCRYPTED_CONN :
+	yb_logical_conn_type[0] = client->startup.yb_ssl_established ? YB_LOGICAL_ENCRYPTED_CONN :
 						YB_LOGICAL_UNENCRYPTED_CONN;
 
 	msg = yb_kiwi_fe_write_authentication(NULL);
@@ -787,4 +787,9 @@ void yb_handle_fatalforlogicalconnection_pkt(od_client_t *client,
 
 	yb_forward_fatal_msg(client, msg);
 	machine_msg_free(msg);
+}
+
+bool yb_is_control_pool(od_route_t *route)
+{
+	return route->rule->pool->routing == OD_RULE_POOL_INTERVAL;
 }

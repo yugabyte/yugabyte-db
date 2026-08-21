@@ -14,6 +14,10 @@ import { useDispatch } from 'react-redux';
 import { useToggle } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { makeStyles } from '@material-ui/core';
+
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { api } from '@app/redesign/helpers/api';
 import { YBButton, YBModal } from '../../../../components';
 import TaskDiffModal from '../TaskDiffModal';
 import { fetchCustomerTasks } from '../../../../../actions/tasks';
@@ -35,6 +39,7 @@ const useStyles = makeStyles(() => ({
 export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   const [showAbortConfirmationModal, toggleAbortConfirmationModal] = useToggle(false);
   const [showRetryConfirmationModal, toggleRetryConfirmationModal] = useToggle(false);
+  const [showRollbackConfirmationModal, toggleRollbackConfirmationModal] = useToggle(false);
   const [showTaskDiffModal, toggleTaskDiffModal] = useToggle(false);
 
   const { t } = useTranslation('translation', {
@@ -80,6 +85,20 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
     }
   });
 
+  const doRollbackTask = useMutation(() => api.rollbackTask(currentTask?.id), {
+    onSuccess: () => {
+      toast.success(t('messages.taskRollbackSuccess'));
+    },
+    onError: () => {
+      toast.error(t('messages.taskRollbackFailed'));
+    },
+    onSettled: () => {
+      toggleRollbackConfirmationModal(false);
+      refreshUniverse();
+      dispatch(fetchCustomerTasks());
+    }
+  });
+
   return (
     <div className={classes.root}>
       {doesTaskSupportsDiffData(currentTask) && (
@@ -104,6 +123,25 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
           {t('retry')}
         </YBButton>
       )}
+      {currentTask?.canRollback && (
+        <RbacValidator
+          accessRequiredOn={{
+            onResource: currentTask?.targetUUID,
+            ...ApiPermissionMap.ROLLBACK_TASKS
+          }}
+          isControl
+        >
+          <YBButton
+            variant="secondary"
+            onClick={() => {
+              toggleRollbackConfirmationModal(true);
+            }}
+            data-testid="rollback-task"
+          >
+            {t('rollback')}
+          </YBButton>
+        </RbacValidator>
+      )}
       {currentTask?.abortable && currentTask?.status !== TaskState.ABORT && (
         <YBButton
           variant="secondary"
@@ -124,6 +162,11 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
         visible={showRetryConfirmationModal}
         onClose={() => toggleRetryConfirmationModal(false)}
         onSubmit={() => doRetryTask.mutate()}
+      />
+      <RollbackConfirmModal
+        visible={showRollbackConfirmationModal}
+        onClose={() => toggleRollbackConfirmationModal(false)}
+        onSubmit={() => doRollbackTask.mutate()}
       />
       <TaskDiffModal
         visible={showTaskDiffModal}
@@ -179,6 +222,27 @@ export const RetryConfirmModal: FC<ConfirmationModalProps> = ({ visible, onClose
       title={t('messages.retryConfirmTitle')}
     >
       {t('messages.retryConfirmMsg')}
+    </YBModal>
+  );
+};
+
+const RollbackConfirmModal: FC<ConfirmationModalProps> = ({ visible, onClose, onSubmit }) => {
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'taskDetails.actions'
+  });
+
+  if (!visible) return null;
+  return (
+    <YBModal
+      open={visible}
+      onClose={onClose}
+      onSubmit={onSubmit}
+      submitLabel={t('rollback')}
+      cancelLabel={t('cancel', { keyPrefix: 'common' })}
+      size="xs"
+      title={t('messages.rollbackConfirmTitle')}
+    >
+      {t('messages.rollbackConfirmMsg')}
     </YBModal>
   );
 };

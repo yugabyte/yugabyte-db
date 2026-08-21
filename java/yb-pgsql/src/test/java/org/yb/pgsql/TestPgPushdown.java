@@ -29,12 +29,14 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonMac;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 
 /**
  * Test pushdown behaviour of different expression from PG to YB layer.
  */
-@RunWith(value = YBTestRunnerNonMac.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestPgPushdown extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgPushdown.class);
 

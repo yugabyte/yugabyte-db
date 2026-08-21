@@ -1,0 +1,14 @@
+title: BackupPointInTimeRestoreWindow
+description: Point-in-time restore window for a keyspace backup.
+type: object
+properties:
+  timestamp_retention_window_start_millis:
+    description: 'Start of the PITR retention window, in milliseconds since epoch.'
+    type: integer
+    format: int64
+    readOnly: true
+  timestamp_retention_window_end_millis:
+    description: 'End of the PITR retention window, in milliseconds since epoch.'
+    type: integer
+    format: int64
+    readOnly: true

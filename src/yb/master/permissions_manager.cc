@@ -42,8 +42,7 @@ using strings::Substitute;
 
 DECLARE_bool(ycql_cache_login_info);
 
-DEFINE_RUNTIME_AUTO_bool(
-    ycql_allow_cassandra_drop, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(ycql_allow_cassandra_drop, kLocalPersisted, false, true,
     "When true, stops the regeneration of the cassandra user on restart of the cluster.");
 
 // TODO: remove direct references to member fields in CatalogManager from here.

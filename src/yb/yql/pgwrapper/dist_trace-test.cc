@@ -17,27 +17,48 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include <google/protobuf/empty.pb.h>
 #include <gtest/gtest.h>
 
+#include "opentelemetry/sdk/common/global_log_handler.h"
+#include "opentelemetry/trace/scope.h"
+#include "opentelemetry/trace/tracer.h"
 #include "opentelemetry/proto/collector/trace/v1/trace_service.pb.h"
 
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/remote_method.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/server/webserver.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
+#include "yb/util/flags.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+
+DECLARE_string(otel_collector_traces_endpoint);
+DECLARE_string(otel_internal_log_level);
+DECLARE_uint32(otel_batch_max_queue_size);
+DECLARE_uint32(otel_batch_schedule_delay_ms);
+DECLARE_uint32(otel_batch_max_export_batch_size);
 
 namespace yb::pgwrapper {
 
@@ -46,14 +67,19 @@ namespace {
 namespace otlp = opentelemetry::proto::collector::trace::v1;
 namespace otlp_common = opentelemetry::proto::common::v1;
 namespace otlp_resource = opentelemetry::proto::resource::v1;
+namespace otlp_trace = opentelemetry::proto::trace::v1;
 
 static constexpr auto kOtelBatchMaxQueueSize = 4096;
 static constexpr auto kOtelBatchMaxExportBatchSize = 512;
 static constexpr auto kOtelBatchScheduleDelayMs = 100;
+static constexpr auto kSharedMemoryPerformSpanName =
+    "shmem req yb.tserver.PgClientService.Perform";
 
 YB_DEFINE_ENUM(QueryExecMode, (kFetch)(kExecute));
 YB_STRONGLY_TYPED_BOOL(IsUtility);
-YB_DEFINE_ENUM(SpanType, (kRoot)(kParse)(kRewrite)(kExecute)(kPlan)(kCommit)(kAbort));
+YB_DEFINE_ENUM(SpanType,
+    (kRoot)(kParse)(kRewrite)(kExecute)(kPlan)(kCommit)(kAbort)
+    (kExtParse)(kExtBind)(kExtExecute)(kExtSync)(kExtDescribe)(kExtFlush));
 
 struct ExpectedSpan {
   SpanType type;
@@ -81,6 +107,13 @@ struct Span {
   std::string span_id;
   int64_t db_id = 0;
   int64_t user_id = 0;
+  std::string status_message;
+  int status_code = otlp_trace::Status::STATUS_CODE_UNSET;
+  std::unordered_map<std::string, std::string> str_attrs;
+  std::unordered_map<std::string, int64_t> int_attrs;
+  std::unordered_map<std::string, bool> bool_attrs;
+  uint64_t start_nanos = 0;
+  uint64_t end_nanos = 0;
 
   bool operator<(const Span& other) const {
     return std::tie(op_name, service_name, query_text, trace_id, db_id, user_id) <
@@ -161,6 +194,12 @@ class OtlpHttpCollector {
       "SetOp", "LockRows", "Limit",
   };
 
+  static bool ShouldIgnoreForQuerySpanComparison(const Span& span) {
+    return kExecutorNodeSpanNames.contains(span.op_name) ||
+           span.op_name.starts_with("shmem req ") ||
+           span.op_name.starts_with("rpc ");
+  }
+
  public:
   Status Start() {
     WebserverOptions opts;
@@ -189,13 +228,13 @@ class OtlpHttpCollector {
   }
 
   Status VerifySpansMatch(const Trace& actual, const Trace& expected) const {
-    // Filter out per-tuple executor node spans before comparison. These have
-    // variable counts depending on row cardinality and are verified separately
-    // by HasSpanWithName in the executor node tests.
+    // Filter out auxiliary spans before comparing the core query trace. Executor node
+    // spans have variable row-count-dependent cardinality, and shared-memory request
+    // spans are covered by dedicated tests below.
     std::vector<Span> filtered_actual;
     std::copy_if(actual.spans.begin(), actual.spans.end(),
                  std::back_inserter(filtered_actual),
-                 [](const Span& s) { return !kExecutorNodeSpanNames.contains(s.op_name); });
+                 [](const Span& span) { return !ShouldIgnoreForQuerySpanComparison(span); });
 
     SCHECK_EQ(filtered_actual.size(), expected.spans.size(), IllegalState,
         Format("Span count mismatch for query '$0': expected $1, got $2",
@@ -230,10 +269,10 @@ class OtlpHttpCollector {
           for (const auto& expected : expected_traces) {
             auto it = traces_.find(expected.trace_id);
             if (it == traces_.end()) return false;
-            auto non_exec_count = std::count_if(
+            auto comparable_count = std::count_if(
                 it->second.spans.begin(), it->second.spans.end(),
-                [](const Span& s) { return !kExecutorNodeSpanNames.contains(s.op_name); });
-            if (non_exec_count < static_cast<int64_t>(expected.spans.size())) {
+                [](const Span& span) { return !ShouldIgnoreForQuerySpanComparison(span); });
+            if (comparable_count < static_cast<int64_t>(expected.spans.size())) {
               return false;
             }
           }
@@ -253,6 +292,12 @@ class OtlpHttpCollector {
     }
 
     return Status::OK();
+  }
+
+  void ClearTraces() EXCLUDES(mutex_) {
+    SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 5ms);
+    std::lock_guard lock(mutex_);
+    traces_.clear();
   }
 
   Status VerifyNoTracesEmitted() const EXCLUDES(mutex_) {
@@ -294,6 +339,97 @@ class OtlpHttpCollector {
     return false;
   }
 
+  bool HasSpanWithNamePrefix(const std::string& trace_id, std::string_view prefix) const
+      EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return false;
+    for (const auto& span : it->second.spans) {
+      if (span.op_name.starts_with(prefix)) return true;
+    }
+    return false;
+  }
+
+  bool HasSpanWithNamePrefixAndStatusMessage(
+      std::string_view prefix, std::string_view status_message) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    for (const auto& [_, trace] : traces_) {
+      for (const auto& span : trace.spans) {
+        if (span.op_name.starts_with(prefix) && span.status_message == status_message) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Find the first span whose name starts with span_name_prefix and return a copy.
+  // Returns std::nullopt if no such span exists.
+  std::optional<Span> FindSpanByNamePrefix(
+      const std::string& trace_id, std::string_view span_name_prefix) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return std::nullopt;
+    for (const auto& span : it->second.spans) {
+      if (span.op_name.starts_with(span_name_prefix)) {
+        return span;
+      }
+    }
+    return std::nullopt;
+  }
+
+  // Collect all spans whose name starts with span_name_prefix.
+  std::vector<Span> FindSpansByNamePrefix(
+      const std::string& trace_id, std::string_view span_name_prefix) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    std::vector<Span> result;
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return result;
+    for (const auto& span : it->second.spans) {
+      if (span.op_name.starts_with(span_name_prefix)) {
+        result.push_back(span);
+      }
+    }
+    return result;
+  }
+
+  std::optional<Span> FindRpcSpanWithTableName(
+      const std::string& trace_id, std::string_view table_name) const EXCLUDES(mutex_) {
+    return FindSpanWithNamePrefixAndTableName(trace_id, "rpc ", table_name);
+  }
+
+  std::optional<Span> FindSpanWithNamePrefixAndTableName(
+      const std::string& trace_id, std::string_view span_name_prefix,
+      std::string_view table_name) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return std::nullopt;
+    for (const auto& span : it->second.spans) {
+      if (!span.op_name.starts_with(span_name_prefix)) {
+        continue;
+      }
+      auto table_names_it = span.str_attrs.find("rpc.table_names");
+      if (table_names_it != span.str_attrs.end() &&
+          table_names_it->second.find(table_name) != std::string::npos) {
+        return span;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<Span> FindSpanBySpanId(
+      const std::string& trace_id, const std::string& span_id) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return std::nullopt;
+    for (const auto& span : it->second.spans) {
+      if (span.span_id == span_id) {
+        return span;
+      }
+    }
+    return std::nullopt;
+  }
+
   Status VerifyQueryNotTraced(std::string_view query) const EXCLUDES(mutex_) {
     SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 2ms);
     std::lock_guard lock(mutex_);
@@ -303,6 +439,57 @@ class OtlpHttpCollector {
                  query, trace.trace_id));
     }
     return Status::OK();
+  }
+
+  // Waits until the trace contains at least expected_count spans with the given op name.
+  Status VerifySpanCountInTrace(
+      std::string_view trace_id, std::string_view span_op_name, size_t expected_count) const
+      EXCLUDES(mutex_) {
+    return WaitFor(
+        [this, trace_id, span_op_name, expected_count]() -> Result<bool> {
+          std::lock_guard lock(mutex_);
+          auto it = traces_.find(std::string(trace_id));
+          if (it == traces_.end()) return false;
+          auto count = std::count_if(
+              it->second.spans.begin(), it->second.spans.end(),
+              [span_op_name](const Span& s) { return s.op_name == span_op_name; });
+          return static_cast<size_t>(count) >= expected_count;
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 30ms,
+        Format("$0 '$1' span(s) in trace '$2'", expected_count, span_op_name, trace_id));
+  }
+
+  // Waits until each name in child_op_names has a span whose parent_span_id
+  // matches the span_id of the first span named parent_op_name.
+  Status VerifyChildSpansOf(
+      std::string_view trace_id,
+      std::string_view parent_op_name,
+      const std::vector<std::string>& child_op_names) const EXCLUDES(mutex_) {
+    return WaitFor(
+        [this, trace_id, parent_op_name, &child_op_names]() -> Result<bool> {
+          std::lock_guard lock(mutex_);
+          auto it = traces_.find(std::string(trace_id));
+          if (it == traces_.end()) return false;
+          const auto& spans = it->second.spans;
+
+          auto parent_it = std::find_if(
+              spans.begin(), spans.end(),
+              [parent_op_name](const Span& s) { return s.op_name == parent_op_name; });
+          if (parent_it == spans.end()) return false;
+
+          const auto& parent_id = parent_it->span_id;
+          for (const auto& child_name : child_op_names) {
+            auto found = std::any_of(
+                spans.begin(), spans.end(),
+                [&parent_id, &child_name](const Span& s) {
+                  return s.op_name == child_name && s.parent_span_id == parent_id;
+                });
+            if (!found) return false;
+          }
+          return true;
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 30ms,
+        Format("Child spans of '$0' in trace '$1'", parent_op_name, trace_id));
   }
 
  private:
@@ -341,7 +528,7 @@ class OtlpHttpCollector {
           if (trace.query_text.empty() && span.name() == "query") {
             trace.query_text = FindStringAttribute(span.attributes(), "query.text");
           }
-          trace.spans.push_back(Span{
+          Span new_span{
               .service_name = service_name,
               .op_name = span.name(),
               .query_text = FindStringAttribute(span.attributes(), "query.text"),
@@ -350,7 +537,24 @@ class OtlpHttpCollector {
               .span_id = b2a_hex(span.span_id()),
               .db_id = FindIntAttribute(span.attributes(), "db.id"),
               .user_id = FindIntAttribute(span.attributes(), "user.id"),
-          });
+              .status_message = span.status().message(),
+              .status_code = span.status().code(),
+              .str_attrs = {},
+              .int_attrs = {},
+              .bool_attrs = {},
+              .start_nanos = span.start_time_unix_nano(),
+              .end_nanos = span.end_time_unix_nano(),
+          };
+          for (const auto& attr : span.attributes()) {
+            if (attr.value().has_string_value()) {
+              new_span.str_attrs[attr.key()] = attr.value().string_value();
+            } else if (attr.value().has_int_value()) {
+              new_span.int_attrs[attr.key()] = attr.value().int_value();
+            } else if (attr.value().has_bool_value()) {
+              new_span.bool_attrs[attr.key()] = attr.value().bool_value();
+            }
+          }
+          trace.spans.push_back(std::move(new_span));
         }
       }
     }
@@ -380,11 +584,19 @@ class DistTraceTest : public LibPqTestBase {
   }
 
  protected:
-  void ConfigureClusterOptions(ExternalMiniClusterOptions* options) {
-    options->replication_factor = 1;
+  virtual bool UsePgClientSharedMemory() const {
+    return true;
   }
 
-  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) {
+  void ConfigureClusterOptions(ExternalMiniClusterOptions* options) {
+    options->replication_factor = 1;
+    options->extra_tserver_flags.push_back(
+        Format("--enable_object_lock_fastpath=$0", UsePgClientSharedMemory()));
+    options->extra_tserver_flags.push_back(
+        Format("--pg_client_use_shared_memory=$0", UsePgClientSharedMemory()));
+  }
+
+  virtual void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) {
     AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags,
         "otel_collector_traces_endpoint");
     options->extra_tserver_flags.push_back(
@@ -489,6 +701,11 @@ class DistTraceTest : public LibPqTestBase {
         .span_id = {},
         .db_id = db_id,
         .user_id = user_id,
+        .status_message = {},
+        .status_code = otlp_trace::Status::STATUS_CODE_UNSET,
+        .str_attrs = {},
+        .int_attrs = {},
+        .bool_attrs = {},
     };
   }
 
@@ -526,6 +743,24 @@ class DistTraceTest : public LibPqTestBase {
           case SpanType::kAbort:
             trace.spans.push_back(GetSpan("abort", trace_id));
             break;
+          case SpanType::kExtParse:
+            trace.spans.push_back(GetSpan("ext.parse", trace_id));
+            break;
+          case SpanType::kExtBind:
+            trace.spans.push_back(GetSpan("ext.bind", trace_id));
+            break;
+          case SpanType::kExtExecute:
+            trace.spans.push_back(GetSpan("ext.execute", trace_id));
+            break;
+          case SpanType::kExtSync:
+            trace.spans.push_back(GetSpan("ext.sync", trace_id));
+            break;
+          case SpanType::kExtDescribe:
+            trace.spans.push_back(GetSpan("ext.describe", trace_id));
+            break;
+          case SpanType::kExtFlush:
+            trace.spans.push_back(GetSpan("ext.flush", trace_id));
+            break;
         }
       }
     }
@@ -559,6 +794,33 @@ class DistTraceTest : public LibPqTestBase {
 
     RETURN_NOT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
     return Status::OK();
+  }
+
+  Status VerifySpiSpanCount(const std::string& trace_id, size_t expected_count) {
+    return collector_.VerifySpanCountInTrace(trace_id, "spi.query", expected_count);
+  }
+
+  // Verifies that get_cached_plan and execute are child spans of spi.query.
+  // Note: parse is emitted before spi.query starts (at function compile time),
+  // so it is a sibling of spi.query, not a child.
+  Status VerifySpiQueryChildSpans(const std::string& trace_id) {
+    return collector_.VerifyChildSpansOf(
+        trace_id, "spi.query", {"get_cached_plan", "execute"});
+  }
+
+  Result<Span> WaitForSpanWithTableName(
+      const std::string& trace_id, std::string_view span_name_prefix,
+      std::string_view table_name) const {
+    std::optional<Span> span;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          span = collector_.FindSpanWithNamePrefixAndTableName(
+              trace_id, span_name_prefix, table_name);
+          return span.has_value();
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+        Format("$0 span with table name '$1' to appear", span_name_prefix, table_name)));
+    return *span;
   }
 
   std::vector<std::string>& CaptureWarnings() {
@@ -604,10 +866,28 @@ class DistTraceDisabledTest : public DistTraceTest {
   }
 };
 
+class DistTraceRpcTest : public DistTraceTest {
+ protected:
+  bool UsePgClientSharedMemory() const override {
+    return false;
+  }
+};
+
+class DistTraceRpcTimeoutTest : public DistTraceRpcTest {
+ protected:
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    DistTraceRpcTest::ConfigureDistTraceOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_client_read_write_timeout_ms=100");
+    options->extra_tserver_flags.push_back("--pg_client_extra_timeout_ms=0");
+  }
+};
+
 }  // namespace
 
 TEST_F(DistTraceTest, TestTraceparentComment) {
   std::vector<Trace> expected_query_traces;
+
+  ASSERT_OK(conn_->Execute("SET yb_enable_spi_dist_tracing = false"));
 
   for (const auto& [mode, is_utility, query, expected_spans] : GetTestQueries("test_comment")) {
     auto tp = GenerateTraceparent();
@@ -621,6 +901,8 @@ TEST_F(DistTraceTest, TestTraceparentComment) {
 }
 
 TEST_F(DistTraceTest, TestTraceparentGuc) {
+  ASSERT_OK(conn_->Execute("SET yb_enable_spi_dist_tracing = false"));
+
   for (const auto& [mode, is_utility, query, expected_spans] : GetTestQueries("test_guc")) {
     auto tp = GenerateTraceparent();
     ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
@@ -630,6 +912,32 @@ TEST_F(DistTraceTest, TestTraceparentGuc) {
     ASSERT_OK(collector_.VerifyAgainstCollectorTraces(
         {MakeExpectedTrace(query, tp.trace_id, expected_spans)}));
   }
+}
+
+TEST_F(DistTraceTest, TestGucPriorityOverComment) {
+  const auto& warnings = CaptureWarnings();
+
+  auto guc_tp = GenerateTraceparent();
+  auto comment_tp = GenerateTraceparent();
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", guc_tp.full));
+
+  auto query = Format("/*traceparent='$0'*/ SELECT 1;", comment_tp.full);
+  ASSERT_OK(conn_->Fetch(query));
+
+  ASSERT_OK(collector_.VerifyAgainstCollectorTraces({
+      MakeExpectedTrace(query, guc_tp.trace_id,
+          {{SpanType::kRoot, 1},
+           {SpanType::kParse, 1},
+           {SpanType::kRewrite, 1},
+           {SpanType::kPlan, 1},
+           {SpanType::kExecute, 1},
+           {SpanType::kCommit, 1}})}));
+
+  ASSERT_EQ(warnings.size(), 1);
+  ASSERT_STR_CONTAINS(warnings.back(),
+      "yb_dist_tracecontext GUC takes priority");
 }
 
 TEST_F(DistTraceTest, TestTraceparentGucSetLocal) {
@@ -722,6 +1030,18 @@ TEST_F(DistTraceTest, TestMalformedTraceparentComment) {
 
   for (const auto& tp_value : {kTraceparentValueTooShort, kTraceparentValueTooLong}) {
     ASSERT_OK(conn_->FetchFormat("/*traceparent='$0'*/ SELECT 1;", tp_value));
+    ASSERT_EQ(warnings.size(), ++num_warnings);
+    ASSERT_STR_CONTAINS(warnings.back(), "traceparent field doesn't have the correct size");
+  }
+
+  // Invalid leading traceparent takes priority over a valid trailing one.
+  // The leading comment is parsed first, fails validation, emits a warning,
+  // and the query runs without tracing; the trailing valid traceparent is ignored.
+  {
+    auto tp_valid = GenerateTraceparent();
+    ASSERT_OK(conn_->FetchFormat(
+        "/*traceparent='$0'*/ SELECT 1 /*traceparent='$1'*/",
+        kTraceparentValueTooShort, tp_valid.full));
     ASSERT_EQ(warnings.size(), ++num_warnings);
     ASSERT_STR_CONTAINS(warnings.back(), "traceparent field doesn't have the correct size");
   }
@@ -917,6 +1237,71 @@ TEST_F(DistTraceTest, TestAbortSpan) {
   ASSERT_OK(collector_.VerifyTraceContainsOpName(tp.trace_id, "abort"));
 }
 
+TEST_F(DistTraceTest, TestTraceparentCommentAppended) {
+  std::vector<Trace> expected_traces;
+  std::vector<std::string> untraced_queries;
+
+  const std::vector<ExpectedSpan> kSelectSpans = {
+    {SpanType::kRoot, 1}, {SpanType::kParse, 1}, {SpanType::kRewrite, 1},
+    {SpanType::kExecute, 1}, {SpanType::kPlan, 1}, {SpanType::kCommit, 1},
+  };
+
+  // Trailing comment (after the query body).
+  {
+    auto tp = GenerateTraceparent();
+    auto query = Format("SELECT 1 /*traceparent='$0'*/", tp.full);
+    ASSERT_OK(conn_->Fetch(query));
+    expected_traces.push_back(MakeExpectedTrace(query, tp.trace_id, kSelectSpans));
+  }
+
+  // Trailing comment with surrounding whitespace.
+  {
+    auto tp = GenerateTraceparent();
+    auto query = Format("SELECT 2 /*traceparent='$0'*/  ", tp.full);
+    ASSERT_OK(conn_->Fetch(query));
+    expected_traces.push_back(MakeExpectedTrace(query, tp.trace_id, kSelectSpans));
+  }
+
+  // Leading traceparent comment wins over trailing one.
+  {
+    auto tp1 = GenerateTraceparent();
+    auto tp2 = GenerateTraceparent();
+    auto query = Format(
+        "/*traceparent='$0'*/ SELECT 3 /*traceparent='$1'*/", tp1.full, tp2.full);
+    ASSERT_OK(conn_->Fetch(query));
+    expected_traces.push_back(MakeExpectedTrace(query, tp1.trace_id, kSelectSpans));
+  }
+
+  // Mid-query comment must NOT produce a span (only leading/trailing are supported).
+  {
+    auto tp = GenerateTraceparent();
+    untraced_queries.push_back(Format("SELECT /*traceparent='$0'*/ 4", tp.full));
+    ASSERT_OK(conn_->Fetch(untraced_queries.back()));
+  }
+
+  // Non-traceparent leading comment followed by traceparent in the middle -- not traced.
+  // The first /* */ block has no traceparent field so the leading check falls through,
+  // and the second comment is not at the query end so the trailing check also misses it.
+  {
+    auto tp = GenerateTraceparent();
+    untraced_queries.push_back(Format("/* abc */ /*traceparent='$0'*/ SELECT 5", tp.full));
+    ASSERT_OK(conn_->Fetch(untraced_queries.back()));
+  }
+
+  // Traceparent is not the last comment -- the final /* abc */ has no traceparent field
+  // so the trailing check finds no traceparent and returns NO_COMMENT.
+  {
+    auto tp = GenerateTraceparent();
+    untraced_queries.push_back(Format("SELECT 6 /*traceparent='$0'*/ /* abc */", tp.full));
+    ASSERT_OK(conn_->Fetch(untraced_queries.back()));
+  }
+
+  ASSERT_OK(collector_.VerifyAgainstCollectorTraces(expected_traces));
+  for (const auto& q : untraced_queries) {
+    ASSERT_OK(collector_.VerifyQueryNotTraced(q));
+  }
+}
+
 TEST_F(DistTraceDisabledTest, TestTraceparentWhenDistTraceDisabled) {
   auto tp = GenerateTraceparent();
 
@@ -1030,6 +1415,790 @@ TEST_F(DistTraceTest, TestNodeSpans) {
   ASSERT_OK(conn_->Execute("RESET enable_hashjoin"));
   ASSERT_OK(conn_->Execute("RESET enable_mergejoin"));
   ASSERT_OK(conn_->Execute("RESET enable_material"));
+}
+
+// A query failing mid-execution longjmps past ExecEndNode, so the node span
+// must be closed with error status by the ExecutorRun hook's error cleanup.
+TEST_F(DistTraceTest, TestNodeSpanClosedOnMidExecutionError) {
+  ASSERT_OK(CreateTable("err_t", 5));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  // Fails inside the Seq Scan's ExecProcNode call, after its span is created.
+  ASSERT_NOK(conn_->Fetch("SELECT 1/(id-id) FROM err_t"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto scan_spans = collector_.FindSpansByNamePrefix(tp.trace_id, "Seq Scan");
+        return !scan_spans.empty() &&
+               scan_spans.front().status_message == "node interrupted by error";
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "errored Seq Scan node span to appear in trace"));
+
+  // Tracing must keep working on the same connection after the abort.
+  auto tp2 = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp2.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM err_t"));
+  ASSERT_OK(collector_.VerifyTraceContainsOpName(tp2.trace_id, "query"));
+}
+
+// On a mid-execution error, only nodes on the active ExecProcNode call chain
+// are marked errored. A node span that is still open but idle (every call it
+// ran returned normally) belongs to a subtree that finished its work before
+// the failure; it must end with unset status plus a yb.ended_by_error_cleanup
+// marker so the trace pinpoints the failing node instead of painting the
+// whole plan tree as failed.
+TEST_F(DistTraceTest, TestCompletedNodeSpanNotErroredOnLaterError) {
+  ASSERT_OK(CreateTable("err_done_t", 5));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  // The Aggregate's first ExecProcNode call drains the Seq Scan to completion,
+  // then the division by zero fails in the Aggregate's own projection, so the
+  // Aggregate is the only node mid-call when the error fires.
+  ASSERT_NOK(conn_->Fetch("SELECT 1 / (sum(id) - sum(id)) FROM err_done_t"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return !collector_.FindSpansByNamePrefix(tp.trace_id, "Aggregate").empty() &&
+               !collector_.FindSpansByNamePrefix(tp.trace_id, "Seq Scan").empty();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "Aggregate and Seq Scan node spans to appear in trace"));
+
+  auto agg_spans = collector_.FindSpansByNamePrefix(tp.trace_id, "Aggregate");
+  ASSERT_EQ(agg_spans.size(), 1);
+  ASSERT_EQ(agg_spans.front().status_code, otlp_trace::Status::STATUS_CODE_ERROR);
+  ASSERT_EQ(agg_spans.front().status_message, "node interrupted by error");
+
+  auto scan_spans = collector_.FindSpansByNamePrefix(tp.trace_id, "Seq Scan");
+  ASSERT_EQ(scan_spans.size(), 1);
+  const auto& scan_span = scan_spans.front();
+  ASSERT_EQ(scan_span.status_code, otlp_trace::Status::STATUS_CODE_UNSET)
+      << "completed node span marked with status message: " << scan_span.status_message;
+  ASSERT_TRUE(scan_span.bool_attrs.contains("yb.ended_by_error_cleanup"))
+      << "yb.ended_by_error_cleanup attribute missing on span ended by error cleanup";
+}
+
+// Node-level attributes are set while the node span is current in the OTel
+// RuntimeContext (node spans never go through the scope stack), so sort.type
+// must land on the Sort node span, not the enclosing execute span.
+TEST_F(DistTraceTest, TestSortTypeAttributeOnSortNodeSpan) {
+  ASSERT_OK(CreateTable("sort_t", 20));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM sort_t ORDER BY val"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.HasSpanWithName(tp.trace_id, "Sort");
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 30ms,
+      "Sort node span to appear in trace"));
+
+  auto sort_span = collector_.FindSpanByNamePrefix(tp.trace_id, "Sort");
+  ASSERT_TRUE(sort_span.has_value()) << "Sort span not found";
+  ASSERT_TRUE(sort_span->str_attrs.contains("sort.type"))
+      << "sort.type attribute missing on Sort node span";
+
+  auto execute_span = collector_.FindSpanByNamePrefix(tp.trace_id, "execute");
+  ASSERT_TRUE(execute_span.has_value()) << "execute span not found";
+  ASSERT_FALSE(execute_span->str_attrs.contains("sort.type"))
+      << "sort.type attribute leaked onto the execute span";
+}
+
+TEST_F(DistTraceTest, TestExtendedQueryProtocolComment) {
+  auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
+  auto tp = GenerateTraceparent();
+
+  auto query = Format("/*traceparent='$0'*/ SELECT 1", tp.full);
+  ASSERT_OK(ext_conn.Fetch(query));
+
+  ASSERT_OK(collector_.VerifyAgainstCollectorTraces({
+      MakeExpectedTrace(query, tp.trace_id,
+          {{SpanType::kRoot, 1},
+           {SpanType::kExtParse, 1},
+           {SpanType::kParse, 2},
+           {SpanType::kRewrite, 1},
+           {SpanType::kExtBind, 1},
+           {SpanType::kPlan, 1},
+           {SpanType::kExtDescribe, 1},
+           {SpanType::kExtExecute, 1},
+           {SpanType::kExecute, 1},
+           {SpanType::kExtSync, 1},
+           {SpanType::kCommit, 1}}),
+  }));
+}
+
+TEST_F(DistTraceTest, TestExtendedQueryProtocolGuc) {
+  auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
+  auto tp = GenerateTraceparent();
+
+  ASSERT_OK(ext_conn.Execute(
+      Format("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full)));
+
+  auto query = "SELECT 1";
+  ASSERT_OK(ext_conn.Fetch(query));
+
+  ASSERT_OK(collector_.VerifyAgainstCollectorTraces({
+      MakeExpectedTrace(query, tp.trace_id,
+          {{SpanType::kRoot, 1},
+           {SpanType::kExtParse, 1},
+           {SpanType::kParse, 2},
+           {SpanType::kRewrite, 1},
+           {SpanType::kExtBind, 1},
+           {SpanType::kPlan, 1},
+           {SpanType::kExtDescribe, 1},
+           {SpanType::kExtExecute, 1},
+           {SpanType::kExecute, 1},
+           {SpanType::kExtSync, 1},
+           {SpanType::kCommit, 1}}),
+  }));
+}
+
+// --- SPI tracing tests ---
+// Verifies that SQL executed via the Server Programming Interface (SPI) - the
+// internal API used by PL/pgSQL functions and triggers - produces "spi.query"
+// child spans when distributed tracing is active.
+
+// Basic check: a PL/pgSQL function with a single SPI query produces one
+// "spi.query" span under the root trace.
+TEST_F(DistTraceTest, TestSpiTracingBasic) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE OR REPLACE FUNCTION yb_spi_trace_basic() RETURNS integer AS $$"
+      " DECLARE v integer;"
+      " BEGIN"
+      "   SELECT 1 INTO v;"
+      "   RETURN v;"
+      " END;"
+      " $$ LANGUAGE plpgsql"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT yb_spi_trace_basic()"));
+
+  ASSERT_OK(collector_.VerifyTraceContainsOpName(tp.trace_id, "spi.query"));
+
+  // The spi.query span should carry the SQL executed via SPI in its
+  // "spi.query.text" attribute. plpgsql strips the "INTO v" target, so the
+  // recorded statement contains the "SELECT 1" expression it ran.
+  auto spi_span = collector_.FindSpanByNamePrefix(tp.trace_id, "spi.query");
+  ASSERT_TRUE(spi_span.has_value()) << "spi.query span not found";
+  auto statement_it = spi_span->str_attrs.find("spi.query.text");
+  ASSERT_NE(statement_it, spi_span->str_attrs.end())
+      << "spi.query.text attribute missing on spi.query span";
+  ASSERT_STR_CONTAINS(statement_it->second, "SELECT 1");
+}
+
+// Verifies that a function making N SPI calls produces at least N "spi.query" spans.
+TEST_F(DistTraceTest, TestSpiTracingMultipleQueriesProduceMultipleSpans) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE OR REPLACE FUNCTION yb_spi_trace_multi() RETURNS void AS $$"
+      " DECLARE v integer;"
+      " BEGIN"
+      "   SELECT 1 INTO v;"
+      "   SELECT 2 INTO v;"
+      "   SELECT 3 INTO v;"
+      " END;"
+      " $$ LANGUAGE plpgsql"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT yb_spi_trace_multi()"));
+
+  ASSERT_OK(VerifySpiSpanCount(tp.trace_id, 3));
+}
+
+// Verifies that nested PL/pgSQL functions each produce "spi.query" spans,
+// all under the same root trace.
+TEST_F(DistTraceTest, TestSpiTracingNestedFunctions) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE OR REPLACE FUNCTION yb_spi_trace_inner() RETURNS integer AS $$"
+      " DECLARE v integer;"
+      " BEGIN"
+      "   SELECT 42 INTO v;"
+      "   RETURN v;"
+      " END;"
+      " $$ LANGUAGE plpgsql"));
+  ASSERT_OK(conn_->Execute(
+      "CREATE OR REPLACE FUNCTION yb_spi_trace_outer() RETURNS integer AS $$"
+      " DECLARE v integer;"
+      " BEGIN"
+      "   SELECT yb_spi_trace_inner() INTO v;"
+      "   RETURN v;"
+      " END;"
+      " $$ LANGUAGE plpgsql"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT yb_spi_trace_outer()"));
+
+  // Outer function: 1 spi.query for "SELECT yb_spi_trace_inner() INTO v"
+  // Inner function: 1 spi.query for "SELECT 42 INTO v"
+  ASSERT_OK(VerifySpiSpanCount(tp.trace_id, 2));
+}
+
+// Verifies that a trigger body executing SQL via SPI produces "spi.query" spans.
+TEST_F(DistTraceTest, TestSpiTracingTrigger) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE yb_spi_trig_tbl(val integer)"));
+  ASSERT_OK(conn_->Execute(
+      "CREATE OR REPLACE FUNCTION yb_spi_trig_fn() RETURNS trigger AS $$"
+      " DECLARE v integer;"
+      " BEGIN"
+      "   SELECT count(*) INTO v FROM yb_spi_trig_tbl;"
+      "   RETURN NEW;"
+      " END;"
+      " $$ LANGUAGE plpgsql"));
+  ASSERT_OK(conn_->Execute(
+      "CREATE TRIGGER yb_spi_trig"
+      " AFTER INSERT ON yb_spi_trig_tbl"
+      " FOR EACH ROW EXECUTE FUNCTION yb_spi_trig_fn()"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Execute("INSERT INTO yb_spi_trig_tbl VALUES (1)"));
+
+  ASSERT_OK(collector_.VerifyTraceContainsOpName(tp.trace_id, "spi.query"));
+}
+
+// Verifies that a PL/pgSQL EXCEPTION block catching a failed SPI query does not
+// corrupt tracing state: the connection must remain traceable afterward.
+TEST_F(DistTraceTest, TestSpiTracingErrorHandledGracefully) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE OR REPLACE FUNCTION yb_spi_trace_caught_error() RETURNS text AS $$"
+      " BEGIN"
+      "   PERFORM 1/0;"
+      "   RETURN 'no_error';"
+      " EXCEPTION WHEN division_by_zero THEN"
+      "   RETURN 'caught';"
+      " END;"
+      " $$ LANGUAGE plpgsql"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  auto result = ASSERT_RESULT(conn_->FetchRow<std::string>(
+      "SELECT yb_spi_trace_caught_error()"));
+  ASSERT_EQ(result, "caught");
+
+  // Verify that subsequent tracing still works after the caught SPI error.
+  auto tp2 = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp2.full));
+  ASSERT_OK(conn_->Fetch("SELECT 1"));
+  ASSERT_OK(collector_.VerifyTraceContainsOpName(tp2.trace_id, "query"));
+}
+
+// Verifies that get_cached_plan and execute appear as child spans of spi.query.
+TEST_F(DistTraceTest, TestSpiTracingChildSpans) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE OR REPLACE FUNCTION yb_spi_trace_child_spans() RETURNS integer AS $$"
+      " DECLARE v integer;"
+      " BEGIN"
+      "   SELECT 1 INTO v;"
+      "   RETURN v;"
+      " END;"
+      " $$ LANGUAGE plpgsql"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT yb_spi_trace_child_spans()"));
+
+  ASSERT_OK(VerifySpiQueryChildSpans(tp.trace_id));
+
+}
+
+TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForRead) {
+  static constexpr auto kTableName = "shmem_read_test";
+  ASSERT_OK(CreateTable(kTableName, 5));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_OK(conn_->FetchFormat("SELECT * FROM $0", kTableName));
+
+  auto span = ASSERT_RESULT(WaitForSpanWithTableName(
+      tp.trace_id, kSharedMemoryPerformSpanName, kTableName));
+  ASSERT_EQ(span.op_name, kSharedMemoryPerformSpanName);
+  ASSERT_TRUE(span.status_message.empty()) << span.status_message;
+  auto table_names_it = span.str_attrs.find("rpc.table_names");
+  ASSERT_NE(table_names_it, span.str_attrs.end())
+      << "rpc.table_names attribute missing on shared memory span";
+  ASSERT_STR_CONTAINS(table_names_it->second, kTableName);
+}
+
+TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForWrite) {
+  static constexpr auto kTableName = "shmem_write_test";
+  ASSERT_OK(CreateTable(kTableName, 1));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (100, 'traced_insert')", kTableName));
+
+  auto span = ASSERT_RESULT(WaitForSpanWithTableName(
+      tp.trace_id, kSharedMemoryPerformSpanName, kTableName));
+  ASSERT_EQ(span.op_name, kSharedMemoryPerformSpanName);
+  ASSERT_TRUE(span.status_message.empty()) << span.status_message;
+  auto table_names_it = span.str_attrs.find("rpc.table_names");
+  ASSERT_NE(table_names_it, span.str_attrs.end())
+      << "rpc.table_names attribute missing on shared memory span";
+  ASSERT_STR_CONTAINS(table_names_it->second, kTableName);
+}
+
+TEST_F(DistTraceRpcTest, TestRpcSpans) {
+  ASSERT_OK(CreateTable("rpc_test", 5));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rpc_test"));
+
+  // An RPC span (e.g. "rpc yb.tserver.PgClientService.Perform") should appear
+  // as a child of one of the query execution spans.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.HasSpanWithNamePrefix(tp.trace_id, "rpc ");
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span to appear in trace"));
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "debug";
+
+  static constexpr auto kError = "otel internal error";
+  static constexpr auto kWarning = "otel internal warning";
+  static constexpr auto kInfo = "otel internal info";
+  static constexpr auto kDebug = "otel internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink warning_waiter(Format("W.*$0.*", kWarning));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-log-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_WARN(kWarning);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_OK(error_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(warning_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(info_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(debug_waiter.WaitFor(5s * kTimeMultiplier));
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelDefaultsToInfo) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+
+  static constexpr auto kError = "otel default internal error";
+  static constexpr auto kInfo = "otel default internal info";
+  static constexpr auto kDebug = "otel default internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-default-log-level-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_OK(error_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(info_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelGFlagControlsSdkFiltering) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "error";
+
+  static constexpr auto kError = "otel error threshold internal error";
+  static constexpr auto kWarning = "otel error threshold internal warning";
+  static constexpr auto kInfo = "otel error threshold internal info";
+  static constexpr auto kDebug = "otel error threshold internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink warning_waiter(Format("W.*$0.*", kWarning));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-error-log-level-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_WARN(kWarning);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_OK(error_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_EQ(warning_waiter.GetEventCount(), 0);
+  ASSERT_EQ(info_waiter.GetEventCount(), 0);
+  ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelNoneSuppressesAllMessages) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "none";
+
+  static constexpr auto kError = "otel none threshold internal error";
+  static constexpr auto kWarning = "otel none threshold internal warning";
+  static constexpr auto kInfo = "otel none threshold internal info";
+  static constexpr auto kDebug = "otel none threshold internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink warning_waiter(Format("W.*$0.*", kWarning));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-none-log-level-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_WARN(kWarning);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_EQ(error_waiter.GetEventCount(), 0);
+  ASSERT_EQ(warning_waiter.GetEventCount(), 0);
+  ASSERT_EQ(info_waiter.GetEventCount(), 0);
+  ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
+// A multi-row scan must emit exactly one executor-node span (not one per
+// tuple), with the scan's storage RPC nested under it.
+TEST_F(DistTraceRpcTest, TestNodeSpanPerNodeAndRpcNesting) {
+  constexpr int kNumRows = 50;
+  ASSERT_OK(CreateTable("node_span_test", kNumRows));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_OK(conn_->Fetch("SELECT * FROM node_span_test"));
+
+  // At least one RPC span must be a direct child of the Seq Scan node span.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto scan_spans = collector_.FindSpansByNamePrefix(tp.trace_id, "Seq Scan");
+        if (scan_spans.empty()) return false;
+        auto rpc_spans = collector_.FindSpansByNamePrefix(tp.trace_id, "rpc ");
+        return std::any_of(rpc_spans.begin(), rpc_spans.end(), [&](const Span& rpc) {
+          return std::any_of(scan_spans.begin(), scan_spans.end(), [&](const Span& scan) {
+            return rpc.parent_span_id == scan.span_id;
+          });
+        });
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "Seq Scan node span with a child RPC span"));
+
+  // Exactly one Seq Scan span regardless of row count; settle first so any
+  // stray per-tuple spans would already have been exported.
+  SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 4ms);
+  auto scan_spans = collector_.FindSpansByNamePrefix(tp.trace_id, "Seq Scan");
+  ASSERT_EQ(scan_spans.size(), 1)
+      << "expected exactly one Seq Scan node span, got " << scan_spans.size();
+
+  // The node span starts within its parent execute span. Its end is not
+  // asserted to be contained: node spans end at ExecEndNode (executor
+  // teardown), which runs after the execute span has closed, so a small
+  // overhang past the parent's end is expected.
+  const auto& scan = scan_spans.front();
+  auto parent = collector_.FindSpanBySpanId(tp.trace_id, scan.parent_span_id);
+  ASSERT_TRUE(parent.has_value()) << "Seq Scan parent span not found";
+  ASSERT_GE(scan.start_nanos, parent->start_nanos)
+      << "Seq Scan starts before its parent '" << parent->op_name << "'";
+}
+
+// A cursor scanned across multiple FETCH messages must emit one Seq Scan node
+// span per message. The node outlives each message (ExecEndNode only runs at
+// CLOSE), so a single live span would attribute the second FETCH's work to
+// the first message and leave the second FETCH's subtree empty.
+TEST_F(DistTraceRpcTest, TestCursorFetchEmitsNodeSpanPerMessage) {
+  constexpr int kNumRows = 50;
+  ASSERT_OK(CreateTable("cursor_test", kNumRows));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(conn_->Execute("DECLARE c CURSOR FOR SELECT * FROM cursor_test"));
+  ASSERT_OK(conn_->Fetch("FETCH 5 FROM c"));
+  ASSERT_OK(conn_->Fetch("FETCH 5 FROM c"));
+  ASSERT_OK(conn_->Execute("CLOSE c"));
+  ASSERT_OK(conn_->Execute("COMMIT"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindSpansByNamePrefix(tp.trace_id, "Seq Scan").size() >= 2;
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "One Seq Scan node span per FETCH message"));
+
+  // Settle so any stray span (e.g. one ended only at CLOSE) gets exported.
+  SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 4ms);
+  auto scan_spans = collector_.FindSpansByNamePrefix(tp.trace_id, "Seq Scan");
+  ASSERT_EQ(scan_spans.size(), 2)
+      << "expected one Seq Scan node span per FETCH, got " << scan_spans.size();
+
+  // Each FETCH's scan span must hang under its own message's spans, starting
+  // within its parent.
+  ASSERT_NE(scan_spans[0].parent_span_id, scan_spans[1].parent_span_id);
+  for (const auto& scan : scan_spans) {
+    auto parent = collector_.FindSpanBySpanId(tp.trace_id, scan.parent_span_id);
+    ASSERT_TRUE(parent.has_value()) << "Seq Scan parent span not found";
+    ASSERT_GE(scan.start_nanos, parent->start_nanos)
+        << "Seq Scan starts before its parent '" << parent->op_name << "'";
+  }
+}
+
+TEST_F(DistTraceRpcTest, TestErroredRpcSpanStatus) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_batch_schedule_delay_ms) = kOtelBatchScheduleDelayMs;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_batch_max_export_batch_size) =
+      kOtelBatchMaxExportBatchSize;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_batch_max_queue_size) = kOtelBatchMaxQueueSize;
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-rpc-error-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  auto root_span = dist_trace::GetDistTracer()->StartSpan("rpc-error-test");
+  {
+    opentelemetry::trace::Scope scope(root_span);
+    auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("DistTraceRpcErrorTest").Build());
+    auto shutdown_messenger = ScopeExit([&messenger] {
+      messenger->Shutdown();
+    });
+
+    rpc::Proxy proxy(messenger.get(), cluster_->tablet_server(0)->bound_rpc_addr());
+    static const rpc::RemoteMethod method("WrongServiceName", "ThisMethodDoesNotExist");
+    google::protobuf::Empty req;
+    google::protobuf::Empty resp;
+    rpc::RpcController controller;
+    const auto status = proxy.SyncRequest(&method, nullptr, req, &resp, &controller);
+    ASSERT_TRUE(status.IsRemoteError()) << status;
+  }
+  root_span->End();
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.HasSpanWithNamePrefixAndStatusMessage(
+            "rpc WrongServiceName.ThisMethodDoesNotExist", "Call ErroredOut");
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "Errored RPC span to appear in trace"));
+}
+
+TEST_F(DistTraceRpcTimeoutTest, TestTimedOutRpcSpanStatus) {
+  ASSERT_OK(CreateTable("rpc_timeout_test", 1));
+  auto lock_conn = ASSERT_RESULT(Connect(true /* simple_query_protocol */));
+  ASSERT_OK(lock_conn.Execute("BEGIN"));
+  ASSERT_OK(lock_conn.Execute("UPDATE rpc_timeout_test SET val = 'locked' WHERE id = 1"));
+  ASSERT_OK(conn_->Execute("SET yb_enable_pg_locks = true"));
+  ASSERT_OK(conn_->Execute("SET yb_locks_min_txn_age = '0ms'"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_delay_before_get_locks_status_ms", std::to_string(1000 * kTimeMultiplier)));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_NOK(conn_->Fetch(
+      "SELECT * FROM pg_locks WHERE relation = 'rpc_timeout_test'::regclass"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto rpc_spans = collector_.FindSpansByNamePrefix(tp.trace_id, "rpc ");
+        return std::any_of(rpc_spans.begin(), rpc_spans.end(), [](const Span& span) {
+          return span.op_name.starts_with("rpc yb.tserver.PgClientService.GetLockStatus") &&
+                 span.status_message == "Call TimedOut";
+        });
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "Timed-out PgClientService.GetLockStatus RPC span to appear in trace"));
+}
+
+// Verifies every attribute on an RPC client span for a PgClientService.Perform call.
+// Tests both a read (SELECT) and write (INSERT) path to ensure each attribute is populated.
+TEST_F(DistTraceRpcTest, TestRpcSpanAttributes) {
+  ASSERT_OK(CreateTable("rpc_attr_test", 5));
+
+  // --- Read path: SELECT triggers PgClientService.Perform ---
+  auto tp_read = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_read.full));
+
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rpc_attr_test"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp_read.trace_id, "rpc_attr_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for SELECT"));
+
+  {
+    auto span = collector_.FindRpcSpanWithTableName(tp_read.trace_id, "rpc_attr_test");
+    ASSERT_TRUE(span) << "Expected at least one RPC span for SELECT";
+
+    // --- rpc.table_names is stashed by PgSession via a thread-local and consumed by the
+    //     OutboundCall constructor, so it lands on the RPC span (not on its parent pggate span).
+    auto table_names_it = span->str_attrs.find("rpc.table_names");
+    ASSERT_NE(table_names_it, span->str_attrs.end())
+        << "rpc.table_names attribute missing on RPC span";
+    ASSERT_FALSE(table_names_it->second.empty()) << "rpc.table_names should not be empty";
+    ASSERT_STR_CONTAINS(table_names_it->second, "rpc_attr_test");
+  }
+
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+
+  // --- Write path: INSERT triggers PgClientService.Perform ---
+  auto tp_write = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_write.full));
+
+  ASSERT_OK(conn_->Execute("INSERT INTO rpc_attr_test VALUES (100, 'traced_insert')"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp_write.trace_id, "rpc_attr_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for INSERT"));
+
+  {
+    auto span = collector_.FindRpcSpanWithTableName(tp_write.trace_id, "rpc_attr_test");
+    ASSERT_TRUE(span) << "Expected at least one RPC span for INSERT";
+
+    // --- rpc.table_names lands on the RPC span itself (see the equivalent check in the
+    //     SELECT branch above for the rationale).
+    auto table_names_it = span->str_attrs.find("rpc.table_names");
+    ASSERT_NE(table_names_it, span->str_attrs.end())
+        << "rpc.table_names attribute missing on RPC span";
+    ASSERT_FALSE(table_names_it->second.empty()) << "rpc.table_names should not be empty";
+    ASSERT_STR_CONTAINS(table_names_it->second, "rpc_attr_test");
+  }
+}
+
+// Regression test for the rpc.table_names publish path across a table rewrite.
+TEST_F(DistTraceRpcTest, TestRpcSpanTableNamesAfterTruncate) {
+  ASSERT_OK(CreateTable("rewrite_test", 5));
+
+  // Pre-rewrite: relfilenode == pg_table_id, so the traced SELECT works and publishes the name.
+  auto tp_before = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_before.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rewrite_test"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp_before.trace_id, "rewrite_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for SELECT before TRUNCATE"));
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+
+  // TRUNCATE rewrites the table, rotating its relfilenode away from the stable pg_table_id.
+  ASSERT_OK(conn_->Execute("TRUNCATE rewrite_test"));
+
+  // Post-rewrite traced SELECT: must NOT crash the backend, and must still publish the name.
+  auto tp_after = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_after.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rewrite_test"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp_after.trace_id, "rewrite_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for SELECT after TRUNCATE"));
+
+  auto span = collector_.FindRpcSpanWithTableName(tp_after.trace_id, "rewrite_test");
+  ASSERT_TRUE(span) << "Expected an RPC span carrying rpc.table_names after TRUNCATE";
+  auto table_names_it = span->str_attrs.find("rpc.table_names");
+  ASSERT_NE(table_names_it, span->str_attrs.end())
+      << "rpc.table_names attribute missing on RPC span after TRUNCATE";
+  ASSERT_STR_CONTAINS(table_names_it->second, "rewrite_test");
+
+  // The connection must still be alive (backend did not crash).
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+  // TODO (#30816): FetchRow<T> for non-string types fails on simple query protocol connections,
+  // so fetch the count as text.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_->FetchRow<std::string>("SELECT count(*)::text FROM rewrite_test")), "0");
+}
+
+// Regression test for a backend crash on the first traced write after ADD PRIMARY KEY on a
+// published table. The rewrite gives the table a new relfilenode while keeping its pg_table_id;
+// a catcache invalidation of the old pg_class tuple then erased the tracing name mapping keyed
+// by that shared pg_table_id, and the traced INSERT's flush failed to resolve the table name.
+// The publication is required: it makes the old-relfilenode descriptor stay cached until after
+// the rewritten table's descriptor (and mapping) is stored, so the erase hits the fresh entry.
+TEST_F(DistTraceRpcTest, TestRpcSpanTableNamesAfterPkRewriteOnPublishedTable) {
+  ASSERT_OK(CreateTable("pk_rewrite_test", 1));
+  ASSERT_OK(conn_->Execute("CREATE PUBLICATION pk_rewrite_pub FOR ALL TABLES"));
+  ASSERT_OK(conn_->Execute("ALTER TABLE pk_rewrite_test ADD PRIMARY KEY (id)"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  // This INSERT used to abort the backend (NotFound in release builds).
+  ASSERT_OK(conn_->Execute("INSERT INTO pk_rewrite_test VALUES (100, 'after_rewrite')"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp.trace_id, "pk_rewrite_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for INSERT after ADD PRIMARY KEY"));
+
+  auto span = collector_.FindRpcSpanWithTableName(tp.trace_id, "pk_rewrite_test");
+  ASSERT_TRUE(span) << "Expected an RPC span carrying rpc.table_names after the PK rewrite";
+  auto table_names_it = span->str_attrs.find("rpc.table_names");
+  ASSERT_NE(table_names_it, span->str_attrs.end())
+      << "rpc.table_names attribute missing on RPC span after the PK rewrite";
+  ASSERT_STR_CONTAINS(table_names_it->second, "pk_rewrite_test");
+
+  // The connection must still be alive (backend did not crash).
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+  // TODO (#30816): FetchRow<T> for non-string types fails on simple query protocol connections,
+  // so fetch the count as text.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_->FetchRow<std::string>(
+          "SELECT count(*)::text FROM pk_rewrite_test")), "2");
 }
 
 }  // namespace yb::pgwrapper

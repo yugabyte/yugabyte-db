@@ -35,6 +35,7 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -44,6 +45,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
 import com.yugabyte.yw.models.Users.UserType;
+import com.yugabyte.yw.models.filters.PACollectorFilter;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role;
@@ -51,6 +53,7 @@ import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.scheduler.Scheduler;
 import db.migration.default_.common.R__Sync_System_Roles;
+import java.io.IOException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
@@ -63,6 +66,8 @@ import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import kamon.instrumentation.play.GuiceModule;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
 import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.junit.After;
 import org.junit.Test;
@@ -155,6 +160,10 @@ public class SessionControllerTest {
   private Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.READ);
 
   private void startApp(boolean isMultiTenant) {
+    startApp(isMultiTenant, ImmutableMap.of());
+  }
+
+  private void startApp(boolean isMultiTenant, Map<String, Object> additionalConfig) {
     HealthChecker mockHealthChecker = mock(HealthChecker.class);
     Scheduler mockScheduler = mock(Scheduler.class);
     CallHome mockCallHome = mock(CallHome.class);
@@ -173,6 +182,7 @@ public class SessionControllerTest {
             .disable(GuiceModule.class)
             .configure(testDatabase())
             .configure(ImmutableMap.of("yb.multiTenant", isMultiTenant))
+            .configure(additionalConfig)
             .overrides(bind(Scheduler.class).toInstance(mockScheduler))
             .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
             .overrides(bind(CallHome.class).toInstance(mockCallHome))
@@ -1146,5 +1156,43 @@ public class SessionControllerTest {
     // Expect the request to fail since the hostname isn't real.
     // This shows that it got past validation though
     assertUnauthorizedNoException(result, "Unable To Authenticate User");
+  }
+
+  @Test
+  public void testRegisterCustomerCreatesPACollector() throws IOException {
+    try (MockWebServer paServer = new MockWebServer()) {
+      paServer.start();
+      String paUrl = paServer.url("/").toString().replaceAll("/$", "");
+
+      startApp(false, ImmutableMap.of("yb.pa.url", paUrl, "yb.pa.api_token", "test-pa-token"));
+
+      // putCustomerMetadata will be called during registration, return valid response.
+      paServer.enqueue(
+          new MockResponse()
+              .setBody("{\"id\":\"00000000-0000-0000-0000-000000000000\"}")
+              .addHeader("Content-Type", "application/json"));
+
+      ObjectNode registerJson = Json.newObject();
+      registerJson.put("code", "fb");
+      registerJson.put("email", "foo2@bar.com");
+      registerJson.put("password", "pAssw_0rd");
+      registerJson.put("name", "Foo");
+
+      Result result = route(app, fakeRequest("POST", "/api/register").bodyJson(registerJson));
+      JsonNode json = Json.parse(contentAsString(result));
+
+      assertEquals(OK, result.status());
+      UUID customerUuid = UUID.fromString(json.get("customerUUID").asText());
+
+      PerfAdvisorService perfAdvisorService = app.injector().instanceOf(PerfAdvisorService.class);
+      List<PACollector> collectors =
+          perfAdvisorService.list(PACollectorFilter.builder().customerUuid(customerUuid).build());
+      assertFalse(
+          "PA collector should be registered during customer registration", collectors.isEmpty());
+
+      PACollector collector = collectors.get(0);
+      assertEquals(customerUuid, collector.getCustomerUUID());
+      assertEquals(paUrl, collector.getPaUrl());
+    }
   }
 }

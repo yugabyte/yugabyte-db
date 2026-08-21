@@ -119,16 +119,15 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   //------------------------------------------------------------------------------------------------
   // CQL support
   // Create a new QL operation for this table.
+  std::unique_ptr<YBqlWriteOp> NewQLWrite(
+      ThreadSafeArenaPtr arena, LWQLWriteRequestPB* request = nullptr);
+  std::unique_ptr<YBqlWriteOp> NewQLInsert(ThreadSafeArenaPtr arena);
+  std::unique_ptr<YBqlWriteOp> NewQLUpdate(ThreadSafeArenaPtr arena);
+  std::unique_ptr<YBqlWriteOp> NewQLDelete(ThreadSafeArenaPtr arena);
 
-  // Arena is not yet used, will be used in followup diffs after migration to lightweight protobufs.
-  // Also default value nullptr will be removed.
-  std::unique_ptr<YBqlWriteOp> NewQLWrite(const ThreadSafeArenaPtr& arena = nullptr);
-  std::unique_ptr<YBqlWriteOp> NewQLInsert(const ThreadSafeArenaPtr& arena = nullptr);
-  std::unique_ptr<YBqlWriteOp> NewQLUpdate(const ThreadSafeArenaPtr& arena = nullptr);
-  std::unique_ptr<YBqlWriteOp> NewQLDelete(const ThreadSafeArenaPtr& arena = nullptr);
-
-  std::unique_ptr<YBqlReadOp> NewQLRead(const ThreadSafeArenaPtr& arena = nullptr);
-  std::unique_ptr<YBqlReadOp> NewQLSelect(const ThreadSafeArenaPtr& arena = nullptr);
+  std::unique_ptr<YBqlReadOp> NewQLRead(
+      ThreadSafeArenaPtr arena, LWQLReadRequestPB* request = nullptr);
+  std::unique_ptr<YBqlReadOp> NewQLSelect(ThreadSafeArenaPtr arena);
 
   // Finds partition start for specified partition_key.
   // Partitions could be grouped by group_by bunches, in this case start of such bunch is returned.

@@ -664,8 +664,16 @@ public class TestTransaction extends BaseCQLTest {
           // (1) have the desired number of restart requests and retries.
           // (2) have run for 100 seconds but still don't have the desired number of restart
           //     requests. We still assert finally for atleast 1 restart and retry to have occurred.
-          final int TOTAL_RESTARTS = BuildTypeUtil.nonTsanVsTsan(10, 5);
-          final int TOTAL_RETRIES = BuildTypeUtil.nonTsanVsTsan(10, 5);
+          //
+          // ASAN gets the same lower thresholds as TSAN (issue #31707):
+          // runTestWithBothSkipPrefixLockSettings (added by commit c405be2e) runs this body twice
+          // with a cluster restart in between, doubling the wall-clock cost. Under ASAN the
+          // concurrent writer thread is slow enough that reaching 10 read restarts can blow past
+          // the 250s loop cap, and the wrapped body then exceeds the 450s test timeout. Lowering
+          // ASAN to the existing TSAN value of 5 lets the early-exit branch fire well before the
+          // cap on CI hardware while still exercising the read-restart code path.
+          final int TOTAL_RESTARTS = BuildTypeUtil.nonSanitizerVsSanitizer(10, 5);
+          final int TOTAL_RETRIES = BuildTypeUtil.nonSanitizerVsSanitizer(10, 5);
           int i = 0;
           int currentRestarts = 0;
           int currentRetries = 0;

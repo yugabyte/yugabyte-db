@@ -96,6 +96,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
 #include "commands/dbcommands.h"
+#include "utils/catcache.h"
 #include "utils/yb_inheritscache.h"
 #include "yb_ash.h"
 #include "yb/yql/pggate/ybc_gflags.h"
@@ -256,7 +257,7 @@ PerformAuthentication(Port *port)
 												  "Postmaster",
 												  ALLOCSET_DEFAULT_SIZES);
 
-	if (!load_hba())
+	if (!load_hba(NULL /* yb_validate_conf_file */ ))
 	{
 		/*
 		 * It makes no sense to continue if we fail to load the HBA file,
@@ -267,7 +268,7 @@ PerformAuthentication(Port *port)
 				(errmsg("could not load %s", HbaFileName)));
 	}
 
-	if (!load_ident(NULL /* yb_ident_context */ ))
+	if (!load_ident(NULL, NULL /* yb_validate_conf_file */ ))
 	{
 		/*
 		 * It is ok to continue if we fail to load the IDENT file, although it
@@ -427,7 +428,7 @@ YbHandleAuthPassthroughFailureAndGetElevel()
 {
 	Assert(YbIsAuthPassthroughInProgress(MyProcPort));
 
-	MyProcPort->yb_has_auth_passthrough_failed = true;
+	MyProcPort->yb_has_auth_passthrough_finished = true;
 	YbSendFatalForLogicalConnectionPacket();
 
 	return YbAuthFailedErrorLevel(true /* auth_passthrough */ );
@@ -442,8 +443,10 @@ YbHandleAuthPassthroughFailureAndGetElevel()
  *   1) Whether the supplied dbname matches the dboid
  *   2) Whether the database is accepting connections
  *   3) Whether the user has login privileges for this db
+ *   4) Whether there is any collation version mismatch for the target db.
  *
- * We do not perform the GUC settings in the latter half of the function to
+ * Finally, we do update the client and server encoding GUCs but skip modifying
+ * the lc_collate and lc_ctype GUCs (these will be set on the txn backend) to
  * avoid unnecessary state changes on the control backend as these will be done
  * on the appropriate transactional backend when the client fires a query.
  */
@@ -455,6 +458,20 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 
 	HeapTuple	tup;
 	Form_pg_database dbform;
+	Datum		datum;
+	bool		isnull;
+	char	   *collate;
+	char	   *iculocale;
+
+	/*
+	 * YB: Connection Manager Authentication Passthrough mode specific:
+	 * Flush cached pg_database entries.  The control backend tracks its own
+	 * database's catalog version, so it never sees invalidations triggered by
+	 * DDL in other databases (e.g. ALTER DATABASE ... REFRESH COLLATION
+	 * VERSION).  Since we may be looking up any database here, a stale entry
+	 * would silently return outdated attribute values.
+	 */
+	CatalogCacheFlushCatalog(DatabaseRelationId);
 
 	/* Fetch our pg_database row normally, via syscache */
 	tup = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(db_oid));
@@ -476,6 +493,7 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 				 errdetail("Database OID %u now seems to belong to \"%s\".", db_oid,
 						   NameStr(dbform->datname))));
 
+		ReleaseSysCache(tup);
 		return;
 	}
 
@@ -501,6 +519,7 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 							"connections",
 							name)));
 
+			ReleaseSysCache(tup);
 			return;
 		}
 
@@ -518,6 +537,7 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 					 errmsg("permission denied for database \"%s\"", name),
 					 errdetail("User does not have CONNECT privilege.")));
 
+			ReleaseSysCache(tup);
 			return;
 		}
 
@@ -540,6 +560,7 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 					 errmsg("too many connections for database \"%s\"", name)));
 
+			ReleaseSysCache(tup);
 			return;
 		}
 	}
@@ -547,17 +568,81 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 	/*
 	 * OK, we're golden.  Next to-do item is to save the encoding info out of
 	 * the pg_database tuple.
-	 * YB: GUC SOURCE has been changed to PGC_S_CLIENT from
-	 * PGC_S_DEFAULT_DYNAMIC in order to avoid setting defaults and sending
-	 * PARAMETER STATUS packets back on auth failure.
+	 *
+	 * YB: Ideally, during an Auth Passthrough authentication, GUC modifications
+	 * need to:
+	 *   - Set the current value of the GUC (change visible on calling SHOW)
+	 *   - Be reported to the client *only if* they were
+	 *       - set by the client (startup packet); or
+	 *       - marked to be reported by default (GUC_REPORT).
+	 *   - Not set the GUC default (GUC sources >= PGC_S_INTERACTIVE)
+	 *
+	 * However, here we make an exception to the last rule as this setting is
+	 * done for every authentication before any text encoding conversion is
+	 * done. Conversely, these encoding set calls need to be here because both
+	 * these vars are GUC_REPORT, and will always be reported back to the
+	 * client.
+	 *
+	 * Thus, every incoming client sees the encoding set for their supplied db
+	 * only (or encoding set via startup packet, if suppliec).
 	 */
 	SetDatabaseEncoding(dbform->encoding);
 	/* Record it as a GUC internal option, too */
 	SetConfigOption("server_encoding", GetDatabaseEncodingName(), PGC_INTERNAL,
-					PGC_S_CLIENT);
+					PGC_S_DYNAMIC_DEFAULT);
 	/* If we have no other source of client_encoding, use server encoding */
 	SetConfigOption("client_encoding", GetDatabaseEncodingName(), PGC_BACKEND,
-					PGC_S_CLIENT);
+					PGC_S_DYNAMIC_DEFAULT);
+
+	/*
+	 * Check collation version.  See similar code in CheckMyDatabase() and
+	 * pg_newlocale_from_collation().  Note that here we warn instead of error
+	 * in any case, so that we don't prevent connecting.
+	 */
+	datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_datcollate,
+							&isnull);
+	Assert(!isnull);
+	collate = TextDatumGetCString(datum);
+
+	if (dbform->datlocprovider == COLLPROVIDER_LIBC)
+		iculocale = NULL;
+	else
+	{
+		datum = SysCacheGetAttrNotNull(DATABASEOID, tup,
+									   Anum_pg_database_datlocale);
+		iculocale = TextDatumGetCString(datum);
+	}
+
+	datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_datcollversion,
+							&isnull);
+	if (!isnull)
+	{
+		char	   *actual_versionstr;
+		char	   *collversionstr;
+
+		collversionstr = TextDatumGetCString(datum);
+
+		actual_versionstr = get_collation_actual_version(dbform->datlocprovider,
+														  dbform->datlocprovider == COLLPROVIDER_LIBC ? collate : iculocale);
+		if (!actual_versionstr)
+			/* should not happen */
+			elog(WARNING,
+				 "database \"%s\" has no actual collation version, but a version was recorded",
+				 name);
+		else if (strcmp(actual_versionstr, collversionstr) != 0)
+			ereport(WARNING,
+					(errmsg("database \"%s\" has a collation version mismatch",
+							name),
+					 errdetail("The database was created using collation version %s, "
+							   "but the operating system provides version %s.",
+							   collversionstr, actual_versionstr),
+					 errhint("Rebuild all objects in this database that use the default collation and run "
+							 "ALTER DATABASE %s REFRESH COLLATION VERSION, "
+							 "or build PostgreSQL with the right library version.",
+							 quote_identifier(name))));
+	}
+
+	ReleaseSysCache(tup);
 }
 
 /*
@@ -1140,9 +1225,13 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
 		{
 			/*
-			 * If YB connection manager is enabled, for scalability reason we use
-			 * shared catalog version instead of YbGetMasterCatalogVersion() to
-			 * avoid one master RPC.
+			 * Serve the connection-auth prefetch from the tserver response
+			 * cache. For scalability we key the cache on the shared memory
+			 * catalog version (an approximation of the latest master catalog
+			 * version) instead of calling YbGetMasterCatalogVersion(), avoiding
+			 * one master RPC per connection. Treats connection manager auth
+			 * backends and regular backends uniformly when
+			 * ysql_enable_read_request_cache_for_connection_auth is set.
 			 */
 			YbcPgLastKnownCatalogVersionInfo catalog_version =
 				(YbcPgLastKnownCatalogVersionInfo)
@@ -1227,6 +1316,22 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 * Fortunately, "read committed" is plenty good enough.
 		 */
 		XactIsoLevel = XACT_READ_COMMITTED;
+
+		/*
+		 * YB: Preload the pg_authid catalog caches (by-name AUTHNAME and by-OID
+		 * AUTHOID) before client authentication.  Authentication reads pg_authid
+		 * by role name to fetch the stored password, and backend startup then
+		 * reads it again by role OID for session-user setup and the superuser
+		 * check.  Both happen before the regular catalog cache preload, so
+		 * without this they incur a catalog cache miss on every new connection.
+		 * pg_authid is a shared catalog that is already prefetched at backend
+		 * startup (see YbRegisterSysTableForPrefetching above), so a single scan
+		 * populates both caches from already-fetched data and adds no master
+		 * read.
+		 */
+		if (IsYugaByteEnabled() &&
+			*YBCGetGFlags()->ysql_preload_pg_authid_for_auth)
+			YbPreloadCatalogCache(AUTHOID, AUTHNAME);
 	}
 
 	/*
@@ -1501,12 +1606,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 	if (IsYugaByteEnabled())
 		YBCSetupPgBackendCgroup(MyDatabaseId);
-
-	/*
-	 * Validate the internal relcache init connection.
-	 */
-	if (MyProcPort && MyProcPort->yb_is_tserver_auth_method)
-		yb_is_internal_connection = true;
 
 	/*
 	 * Now we can mark our PGPROC entry with the database ID.

@@ -192,8 +192,9 @@ extern void assign_yb_dist_tracecontext(const char *newval, void *extra);
 extern void assign_yb_enable_pg_stat_statements_rpc_stats(bool newval,
 														  void *extra);
 extern void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
-extern void assign_yb_silence_advisory_locks_not_supported_error(bool newval,
-																 void *extra);
+extern bool check_yb_silence_advisory_locks_not_supported_error(bool *newval,
+																void **extra,
+																GucSource source);
 extern bool check_default_replica_identity(char **newval, void **extra,
 										   GucSource source);
 extern bool check_transaction_priority_lower_bound(double *newval,
@@ -209,6 +210,20 @@ extern bool check_yb_enable_advisory_locks(bool *newval, void **extra,
 extern bool check_yb_explicit_row_locking_batch_size(int *newval,
 													 void **extra, GucSource source);
 extern const char *show_tcmalloc_sample_period(void);
+extern bool check_yb_enable_new_relation_fastpath_write(bool *newval,
+														 void **extra,
+														 GucSource source);
+extern bool check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval,
+																	   void **extra,
+																	   GucSource source);
+extern bool yb_check_extra_commands_to_retry(char **newval, void **extra,
+											 GucSource source);
+extern void yb_assign_extra_commands_to_retry(const char *newval, void *extra);
+extern bool yb_check_extra_commands_to_retry_in_proc(char **newval,
+													 void **extra,
+													 GucSource source);
+extern void yb_assign_extra_commands_to_retry_in_proc(const char *newval,
+													   void *extra);
 extern bool yb_check_neg_catcache_ids(char **newval, void **extra,
 									  GucSource source);
 extern bool yb_check_no_txn(int *newval, void **extra, GucSource source);

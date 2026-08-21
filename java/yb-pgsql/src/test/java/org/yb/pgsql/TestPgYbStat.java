@@ -33,11 +33,13 @@ import org.yb.util.BuildTypeUtil;
 import org.yb.util.MiscUtil;
 import org.yb.util.ProcessUtil;
 import org.yb.util.ThrowingRunnable;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 import com.yugabyte.util.PSQLException;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestPgYbStat extends BasePgSQLTest {
   private static final Integer MAX_PG_STAT_RETRIES = 20;
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSequences.class);
@@ -150,12 +152,10 @@ public class TestPgYbStat extends BasePgSQLTest {
   }
 
   @Test
+  // (DB-12741) Test is flaky with connection manager irrespective of warmup
+  // mode. Running on the Postgres port instead.
+  @BypassConnMgr(reason = BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR)
   public void testYbTerminatedQueriesMultipleCauses() throws Exception {
-    // (DB-12741) Test is flaky with connection manager irrespective of warmup
-    // mode. Disable the test for now when running with connection manager.
-    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR,
-        isTestRunningWithConnectionManager());
-
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
     // that can potentially be leftover from another test in this class. This would let us start
     // with a clean slate.

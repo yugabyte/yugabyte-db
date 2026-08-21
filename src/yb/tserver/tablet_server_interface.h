@@ -14,6 +14,7 @@
 #pragma once
 
 #include <future>
+#include <string_view>
 
 #include "yb/ash/wait_state.h"
 
@@ -35,6 +36,7 @@
 #include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/concurrent_value.h"
+#include "yb/util/status_callback.h"
 
 namespace yb {
 
@@ -55,6 +57,11 @@ class PgYCQLStatementStatsResponsePB;
 
 using PgConfigReloader = std::function<Status(void)>;
 
+// Default role for internal pg connections (yb-tserver-key auth). Mirrors
+// pgwrapper::PGConnSettings::kDefaultUser, duplicated here so this widely included
+// header need not pull in the heavyweight libpq_utils.h.
+inline constexpr std::string_view kDefaultInternalPgUser = "postgres";
+
 class TabletServerIf : public LocalTabletServer {
  public:
   virtual ~TabletServerIf() {}
@@ -71,11 +78,18 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual uint32_t get_oid_cache_invalidations_count() const = 0;
 
+  // use_cache: on the master implementation, when true and the heartbeat catalog version cache
+  // is enabled, read from the cache instead of disk. Stale-tolerant callers (Read RPCs) can opt
+  // in for the fast path; callers that need authoritative versions (e.g. WaitForYsqlBackends
+  // catalog version) must leave it false. Tserver implementations ignore this parameter and
+  // always read their local shared-memory view.
   virtual void get_ysql_catalog_version(uint64_t* current_version,
-                                        uint64_t* last_breaking_version) const = 0;
+                                        uint64_t* last_breaking_version,
+                                        bool use_cache = false) const = 0;
   virtual void get_ysql_db_catalog_version(uint32_t db_oid,
                                            uint64_t* current_version,
-                                           uint64_t* last_breaking_version) const = 0;
+                                           uint64_t* last_breaking_version,
+                                           bool use_cache = false) const = 0;
 
   virtual Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
@@ -89,9 +103,14 @@ class TabletServerIf : public LocalTabletServer {
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) = 0;
 
-  virtual Status TriggerRelcacheInitConnection(
+  // Asynchronously triggers an internal superuser PG connection that rebuilds the relcache init
+  // file for `req.database_name()`. The callback is invoked once the operation finishes (or fails)
+  // with the final Status. Implementations must not block the caller's thread waiting for the
+  // result; multiple concurrent callers for the same database share a single underlying
+  // operation and each receives its own callback invocation.
+  virtual void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB& req,
-      tserver::TriggerRelcacheInitConnectionResponsePB *resp) = 0;
+      StdStatusCallback callback) = 0;
 
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 
@@ -145,8 +164,10 @@ class TabletServerIf : public LocalTabletServer {
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
 
   virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, bool simple_query_protocol = false,
-      const std::optional<CoarseTimePoint>& deadline = std::nullopt) = 0;
+      const std::string& database_name, std::string_view user = kDefaultInternalPgUser,
+      bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt,
+      std::string_view yb_internal_conn_kind = {}) = 0;
 
   virtual Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(
       const PgTxnSnapshotLocalId& snapshot_id) = 0;

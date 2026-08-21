@@ -923,15 +923,6 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("publication parameters are not applicable to sequence synchronization and will be ignored for sequences"));
 
-	if (IsYugaByteEnabled() && !(pubactions.pubinsert && pubactions.pubupdate &&
-								 pubactions.pubdelete &&
-								 pubactions.pubtruncate))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("publishing only a subset of DML commands is not yet supported"),
-				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
-						 "19250. React with thumbs up to raise its priority.")));
-
 	puboid = GetNewOidWithIndex(rel, PublicationObjectIndexId,
 								Anum_pg_publication_oid);
 	values[Anum_pg_publication_oid - 1] = ObjectIdGetDatum(puboid);
@@ -1162,15 +1153,6 @@ AlterPublicationOptions(ParseState *pstate, AlterPublicationStmt *stmt,
 							   relname, "publish_via_partition_root")));
 		}
 	}
-
-	if (IsYugaByteEnabled() && !(pubactions.pubinsert && pubactions.pubupdate &&
-								 pubactions.pubdelete &&
-								 pubactions.pubtruncate))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("publishing only a subset of DML commands is not yet supported"),
-				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
-						 "19250. React with thumbs up to raise its priority.")));
 
 	/* Everything ok, form a new tuple. */
 	memset(values, 0, sizeof(values));

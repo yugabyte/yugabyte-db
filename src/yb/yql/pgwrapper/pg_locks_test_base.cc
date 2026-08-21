@@ -31,6 +31,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 
 DECLARE_int32(heartbeat_interval_ms);
@@ -259,7 +260,7 @@ std::vector<PgClientServiceProxy*> PgLocksTestBase::get_pg_client_service_proxie
 
 Result<std::future<Status>> PgLocksTestBase::ExpectBlockedAsync(
     pgwrapper::PGConn* conn, const std::string& query) {
-  auto status = std::async(std::launch::async, [&conn, query]() {
+  auto status = std::async(std::launch::async, [conn, query]() {
     return conn->Execute(query);
   });
   // TODO: Once https://github.com/yugabyte/yugabyte-db/issues/17295 is fixed, remove the

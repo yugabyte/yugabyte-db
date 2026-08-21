@@ -25,6 +25,9 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 {{< warning >}}
 Review the following information before starting an upgrade.
 {{< /warning >}}
+{{< warning title="TA-31533: Universes with xCluster" >}}
+For some xCluster setups, before upgrading, you should run a verification script to check if the universe is affected by TA-31533. For more information, refer to {{<ta 31533>}}.
+{{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
 
@@ -231,7 +234,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 - Roll back is {{<tags/feature/ea idea="240">}} in v2.20.3.0 and {{<tags/feature/ga>}} in v2024.1.0 and higher.
 - Roll back is only supported when you are upgrading a cluster that is already on version v2.20.2.0 to higher versions (for example, v2.20.3.0, v2024.1.0, and so on). If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
-- You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you have to migrate your data to another cluster running the old version. You can either restore a backup taken while on the old version or [Export and import](../backup-restore/export-import-data/) the current data from the new version. The import script may have to be manually changed in order to conform to the query format of the old version.
+- You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you have to migrate your data to another cluster running the old version. You can either restore a backup taken while on the old version or [Export and import](../backup-restore/export-import-data-ysql/) the current data from the new version. The import script may have to be manually changed in order to conform to the query format of the old version.
 {{< /warning >}}
 
 In order to roll back to the version that you were on before the upgrade, you need to restart all YB-Master and YB-TServers on the old version. All YB-TServers have to be rolled back before you roll back YB-Masters.
@@ -284,7 +287,7 @@ Use the following procedure to roll back all YB-Masters:
 
 When you have unidirectional xCluster replication, it is recommended to upgrade the target cluster before the source. After the target cluster is upgraded and finalized, you can proceed to upgrade the source cluster.
 
-If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
+If you have bidirectional xCluster replication, perform the upgrade steps for each universe individually and monitor both of them. If you encounter any issues, roll back both universes. If everything appears to be in good condition, finalize both universes with as little delay as possible.
 
 {{< note title="Note" >}}
 xCluster replication requires the target cluster version to the same or later than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.

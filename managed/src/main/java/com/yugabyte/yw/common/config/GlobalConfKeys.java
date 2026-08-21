@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.config;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
+import com.yugabyte.yw.common.YbaOidcCallbackUrlResolver.OidcCallbackMode;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Users.Role;
@@ -97,6 +98,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Display JWT Token on Login Screen",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<OidcCallbackMode> oidcCallbackMode =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_callback_mode",
+          ScopeType.GLOBAL,
+          "OIDC Callback Mode",
+          "Controls whether OIDC callback URLs use the default query parameter style or path"
+              + " parameter style. Possible values are: query, path.",
+          ConfDataType.OidcCallbackModeEnum,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybClientID =
       new ConfKeyInfo<>(
           "yb.security.clientID",
@@ -378,6 +388,33 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "XCluster/DR config GET API timeout in milliseconds",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitrListApiTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.pitr.list_api.snapshot_schedules.request_timeout_ms",
+          ScopeType.GLOBAL,
+          "PITR list API snapshot schedules request timeout",
+          "YB client admin operation timeout in milliseconds for PITR list APIs that call"
+              + " listSnapshotSchedules",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitrListSnapshotSchedulesCacheTtlMs =
+      new ConfKeyInfo<>(
+          "yb.pitr.list_api.snapshot_schedules.cache.ttl_ms",
+          ScopeType.GLOBAL,
+          "PITR list API snapshot schedules cache TTL",
+          "Per-universe cache TTL in milliseconds for listSnapshotSchedules results used by PITR"
+              + " list APIs",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitrListSnapshotSchedulesCacheMaxUniverses =
+      new ConfKeyInfo<>(
+          "yb.pitr.list_api.snapshot_schedules.cache.max_size",
+          ScopeType.GLOBAL,
+          "PITR list API snapshot schedules cache max size",
+          "Maximum number of universes whose listSnapshotSchedules results are cached for PITR"
+              + " list APIs",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 
   public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
       new ConfKeyInfo<>(
@@ -542,7 +579,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow OTLP Exporter in Telemetry Provider",
           "Allow the usage of OTLP Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> telemetrySkipConnectivityValidations =
       new ConfKeyInfo<>(
           "yb.telemetry.skip_connectivity_validations",
@@ -980,6 +1017,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables extra logging for task params and request body",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableGFlagsSensitiveDataApiRedaction =
+      new ConfKeyInfo<>(
+          "yb.api.enable_gflags_sensitive_data_redaction",
+          ScopeType.GLOBAL,
+          "Enable gflags sensitive data API redaction",
+          "When true, API responses redact gflags sensitive data that is not covered by JsonPath "
+              + "(for example ldapbindpasswd in ysql_hba_conf_csv and audit additionalDetails). "
+              + "JsonPath based API redaction remains enabled.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> applicationLogFileNamePrefix =
       new ConfKeyInfo<>(
           "yb.logging.fileNamePrefix",
@@ -1190,6 +1237,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node destroy command timeout",
           "Timeout for node destroy command before failing.",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> nodeScriptReachabilityCheckTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.node_script.reachability_check_timeout_sec",
+          ScopeType.GLOBAL,
+          "Node reachability check timeout",
+          "Timeout in seconds for the pre-check that determines whether a node is reachable for"
+              + " per-node platform APIs such as run-script and file-collections. Unreachable"
+              + " nodes are reported as failed nodes rather than producing per-file/per-command"
+              + " errors.",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
       new ConfKeyInfo<>(
@@ -1454,6 +1512,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables validation for GCP Provider and returns the validation errors json if any",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableOciProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.oci_provider_validation",
+          ScopeType.GLOBAL,
+          "OCI provider validation",
+          "Enable OCI Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapSearchFilter =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_search_filter",
@@ -1609,6 +1675,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Map LDAP/OIDC groups to custom roles defined by RBAC.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowSuperadminUserGroupMapping =
+      new ConfKeyInfo<>(
+          "yb.security.allow_superadmin_user_group_mapping",
+          ScopeType.GLOBAL,
+          "Allow SuperAdmin in LDAP/OIDC group and user role mappings",
+          "When true, a SuperAdmin may assign the SuperAdmin system role"
+              + " via role bindings (including to LDAP/OIDC users) and may"
+              + " include SuperAdmin in LDAP/OIDC group mappings. When false,"
+              + " those operations are rejected.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> autoMasterFailoverPollerInterval =
       new ConfKeyInfo<>(
           "yb.auto_master_failover.poller_interval",
@@ -1647,6 +1724,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Support bundle prometheus dump range",
           "The start-end duration to collect the prometheus dump inside the support bundle (in"
+              + " minutes)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundleDefaultPaDumpRange =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.default_pa_dump_range",
+          ScopeType.GLOBAL,
+          "Support bundle perf advisor dump range",
+          "The start-end duration to collect the perf advisor dump inside the support bundle (in"
               + " minutes)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
@@ -1796,15 +1882,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Duration to start notifying about expiry before node agent server cert actually expires",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> nodeAgentDisableConfigureServer =
-      new ConfKeyInfo<>(
-          "yb.node_agent.disable_configure_server",
-          ScopeType.GLOBAL,
-          "Disable Node Agent Configure Server",
-          "Disable server configuration RPCs in node agent. Defaults to ansible if it is"
-              + " enabled.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> nodeAgentEnableMessageCompression =
       new ConfKeyInfo<>(
           "yb.node_agent.enable_message_compression",
@@ -1903,22 +1980,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable background upgrade for YBC.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> enableSystemdDebugLogging =
-      new ConfKeyInfo<>(
-          "yb.ansible.systemd_debug",
-          ScopeType.GLOBAL,
-          "Enable Systemd Debug Logging",
-          "Enable systemd debug logging for systemctl service management commands.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> ansibleKeepRemoteFiles =
-      new ConfKeyInfo<>(
-          "yb.ansible.keep_remote_files",
-          ScopeType.GLOBAL,
-          "Keep Remote Files from an ansible run",
-          "Keep remote files after ansible run for debugging.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> skipRuntimeGflagValidation =
       new ConfKeyInfo<>(
           "yb.skip_runtime_gflag_validation",
@@ -1951,6 +2012,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "List of operations that use capacity reservation in aws",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<List> capacityReservationOperationsGcp =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation_supported_operations_gcp",
+          ScopeType.GLOBAL,
+          "Capacity reservations operations for gcp",
+          "List of operations that use capacity reservation in gcp",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> verifyGFlagsOnNodeDuringUpgrade =
       new ConfKeyInfo<>(
           "yb.task.verify_gflags_on_node",
@@ -1965,6 +2034,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Enable Performing Automatic Rollback of Edit Operation",
           "Enable performing automatic rollback of edit operation (if possible)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowEditUniverseRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_edit_universe_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Edit Universe Tasks",
+          "Allow rolling back a failed edit universe task (VM and Kubernetes) via the task"
+              + " rollback API",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
@@ -2053,14 +2131,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " local credentials.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> disableGolangYnpDriver =
-      new ConfKeyInfo<>(
-          "yb.node_agent.disable_golang_ynp_driver",
-          ScopeType.GLOBAL,
-          "Disable Golang YNP Driver",
-          "Disable golang YNP driver to use python instead",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.FEATURE_FLAG));
   public static final ConfKeyInfo<Integer> nodeAgentServerRequestLogLevel =
       new ConfKeyInfo<>(
           "yb.node_agent.server.request_log_level",
@@ -2119,6 +2189,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable connectivity metric collection for all universes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableNonRestartGFlagUpgradeOption =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option",
+          ScopeType.GLOBAL,
+          "Enable Non-Restart GFlag Upgrade Option",
+          "Enable the option to upgrade GFlags without restarting the nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowExistingDuplicateAz =
       new ConfKeyInfo<>(
           "yb.provider.allow_existing_duplicate_az",
@@ -2133,6 +2211,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Disable YNP Node Preflight Check",
           "Disable preflight check in YNP node agent provision",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableYnpVersionCheck =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_ynp_version_check",
+          ScopeType.GLOBAL,
+          "Enable YNP Version Check",
+          "Enable YNP version check when adding nodes to a universe."
+              + " When enabled, the node's YNP major version must match the expected version.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> bgRedactAuditBatchSize =
@@ -2182,6 +2269,75 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Whether to move tables using temporary partition",
           "When tablespace update is required, tables are moved to new tablespace through temporary"
               + " tablespace.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> editUniverseV2UiEnabled =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.edit_universe_v2_ui_enabled",
+          ScopeType.GLOBAL,
+          "Enable Edit Universe V2 UI",
+          "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> gcpCapacityReservationGcEnabled =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.gcp_gc_enabled",
+          ScopeType.GLOBAL,
+          "Whether to enable GCP capacity reservation garbage collection",
+          "Whether to enable GCP capacity reservation garbage collection",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> gcpCapacityReservationGcInterval =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.gcp_gc_interval",
+          ScopeType.GLOBAL,
+          "Interval for GCP capacity reservation garbage collection",
+          "Interval for GCP capacity reservation garbage collection",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> gcpCapacityReservationTtl =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.gcp_ttl",
+          ScopeType.GLOBAL,
+          "Time to live for GCP capacity reservation",
+          "Time to live for GCP capacity reservation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> paMemoryPerNodeAdvancedObservabilityMb =
+      new ConfKeyInfo<>(
+          "yb.pa.memory_per_node_advanced_observability_mb",
+          ScopeType.GLOBAL,
+          "Memory per node for advanced observability",
+          "Estimated memory usage per node when advanced observability is enabled (in MB). Used"
+              + " to precheck YBA node memory headroom before enabling advanced observability.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> paMemoryPerNodePaCollectorMb =
+      new ConfKeyInfo<>(
+          "yb.pa.memory_per_node_pa_collector_mb",
+          ScopeType.GLOBAL,
+          "Memory per node for PA collector",
+          "Estimated memory usage per node when PA collector is enabled without advanced"
+              + " observability (in MB). Used to precheck YBA node memory headroom before enabling"
+              + " PA collection.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipPaMemoryValidation =
+      new ConfKeyInfo<>(
+          "yb.pa.skip_memory_validation",
+          ScopeType.GLOBAL,
+          "Skip PA Collector memory validation",
+          "Skip memory availability validation when enabling Performance Advisor Collection",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> paEmbeddedUiReverseProxyEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.embedded_ui.reverse_proxy.enabled",
+          ScopeType.GLOBAL,
+          "Reverse-proxy API calls from embedded PA Collector UI via YBA",
+          "When true, embedded PA Collector UI traffic is proxied through YBA (same origin)"
+              + " so YBA performs all authentication and universe RBAC; requires PA Collector to"
+              + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

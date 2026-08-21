@@ -40,9 +40,8 @@ Before you start creating a universe, ensure that you have created a provider co
 
 ### Configure ClockBound (optional)
 
-{{<tags/feature/ea idea="2133">}}[ClockBound](https://github.com/aws/clock-bound) improves clock accuracy and reduces read-restart errors in YSQL. To enable ClockBound for [cloud provider](../../configure-yugabyte-platform/aws/) universes, set the provider's `yb.provider.configure_clockbound_cloud_provisioning` runtime configuration flag to `true` (before creating the universe). Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
-
-When enabled, ClockBound is automatically configured during node provisioning, and the universe creation task sets the [time_source](../../../reference/configuration/yb-master/#time-source) flag to `clockbound`.
+[ClockBound](https://github.com/aws/clock-bound) improves clock accuracy and reduces read-restart errors in YSQL.
+ClockBound is automatically configured during node provisioning, and the universe creation task sets the [time_source](../../../reference/configuration/yb-master/#time-source) flag to `clockbound`.
 
 ClockBound is supported on AWS and GCP. Azure and Kubernetes deployments are not supported.
 
@@ -172,6 +171,7 @@ Enhanced Postgres Compatibility
 Enable Connection Pooling
 : {{<tags/feature/ea idea="1368">}}If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
 : While in Early Access, connection pooling is not available by default. To make the feature available, set the *Allow users to enable or disable connection pooling* Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+: After the universe is created, you can customize additional connection pooling YB-TServer flags using **Actions > Edit Flags**. For flag names and defaults, refer to [YSQL Connection Manager configuration](../../../additional-features/connection-manager-ysql/ycm-setup/#configure).
 
 Override Deployment Ports
 : To customize the [ports used for the universe](../../prepare/networking/), select the **Override Deployment Ports** option and enter the custom port numbers for the services you want to change. Any value from `1024` to `65535` is valid, as long as it doesn't conflict with anything else running on nodes to be provisioned.

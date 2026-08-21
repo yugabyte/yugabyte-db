@@ -75,7 +75,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16391'::pg_catalog.oid
 CREATE TABLE public.t2 (
     col integer
 )
-WITH (colocation_id='20001');
+WITH (colocation_id='20001', yb_presplit='');
 
 
 \unrestrict <key>
@@ -105,7 +105,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16420'::pg_catalog.o
 -- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
 SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16402'::pg_catalog.oid);
 CREATE MATERIALIZED VIEW public.mv1
-WITH (colocation_id='20004') AS
+WITH (colocation_id='20004', yb_presplit='') AS
  SELECT col
    FROM public.t2;
 
@@ -139,7 +139,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid
 CREATE TABLE public.t1 (
     col integer
 )
-WITH (colocation_id='20001');
+WITH (colocation_id='20001', yb_presplit='');
 
 
 \unrestrict <key>
@@ -171,7 +171,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid
 CREATE TABLE public.t3 (
     col integer
 )
-WITH (colocation_id='20002');
+WITH (colocation_id='20002', yb_presplit='');
 
 
 \unrestrict <key>
@@ -206,7 +206,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE TABLE public.t4 (
     col integer
 )
-WITH (colocation_id='20001');
+WITH (colocation_id='20001', yb_presplit='');
 
 
 \unrestrict <key>
@@ -238,7 +238,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16402'::pg_catalog.oid
 CREATE TABLE public.t5 (
     col integer
 )
-WITH (colocation_id='20001');
+WITH (colocation_id='20001', yb_presplit='');
 
 
 \unrestrict <key>
@@ -270,7 +270,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16391'::pg_catalog.oid
 CREATE TABLE public.t6 (
     col integer
 )
-WITH (colocation_id='20002');
+WITH (colocation_id='20002', yb_presplit='');
 
 
 \unrestrict <key>
@@ -311,7 +311,7 @@ CREATE TABLE public.t7 (
     d integer NOT NULL,
     CONSTRAINT t7_pkey PRIMARY KEY(d ASC)
 )
-WITH (colocation_id='20003');
+WITH (colocation_id='20003', yb_presplit='');
 
 
 \unrestrict <key>
@@ -545,36 +545,42 @@ CREATE INDEX NONCONCURRENTLY i3 ON public.t7 USING lsm (c ASC) WITH (colocation_
 
 
 --
--- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict <key>
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
+\restrict <key>
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict <key>
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
+\restrict <key>
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict <key>
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
+\restrict <key>
 
 
 --

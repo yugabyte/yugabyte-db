@@ -23,12 +23,15 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.BasePgSQLTest;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestDropAndRenameRole extends BaseYsqlConnMgr {
   private static final String GET_CURRENT_ROLE_QUERY = "SELECT current_user";
 

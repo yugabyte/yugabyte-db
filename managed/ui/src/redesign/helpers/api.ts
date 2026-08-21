@@ -122,6 +122,10 @@ export const universeQueryKey = {
     ...universeQueryKey.detail(universeUuid),
     'namespaces'
   ],
+  stateTransition: (
+    universeUuid: string | undefined,
+    state?: string | null
+  ) => [...universeQueryKey.detail(universeUuid), 'stateTransition', state ?? null],
   detailsV2: (universeUuid: string | undefined) => [
     ...universeQueryKey.ALL,
     'detailsV2',
@@ -256,7 +260,7 @@ export interface CreateDrConfigRequest {
       storageConfigUUID: string;
     };
   };
-  pitrParams: {
+  pitrParams?: {
     retentionPeriodSec: number;
   };
 
@@ -426,12 +430,33 @@ class ApiService {
     return Promise.reject('Failed to fetch universe. No universe UUID provided.');
   };
 
+  fetchStateTransition = (
+    universeUUID: string | undefined,
+    state?: string | null
+  ): Promise<unknown> => {
+    if (universeUUID) {
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUUID}/state_transition`;
+      return axios
+        .get(requestUrl, { params: state ? { state } : undefined })
+        .then((resp) => resp.data);
+    }
+    return Promise.reject('Failed to fetch state transition. No universe UUID provided.');
+  };
+
   fetchUniverseNamespaces = (universeUuid: string | undefined): Promise<UniverseNamespace[]> => {
     if (universeUuid) {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/namespaces`;
       return axios.get<UniverseNamespace[]>(requestUrl).then((resp) => resp.data);
     }
     return Promise.reject('Failed to fetch namespaces. No universe UUID provided.');
+  };
+
+  provisionUniverseNodes = (
+    universeUuid: string,
+    payload: { nodeNames: string[] }
+  ): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/upgrade/provision_nodes`;
+    return axios.post<YBPTask>(requestUrl, payload).then((response) => response.data);
   };
 
   createProvider = (
@@ -836,6 +861,7 @@ class ApiService {
       })
       .then((response) => response.data);
   };
+
   getAlerts = (
     offset: number,
     limit: number,

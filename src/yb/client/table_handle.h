@@ -73,6 +73,8 @@ void UpdateMapUpsertKeyValue(
 
 void UpdateMapRemoveKey(
     QLWriteRequestPB* req, int32_t column_id, std::string_view entry_key);
+void UpdateMapRemoveKey(
+    LWQLWriteRequestPB* req, int32_t column_id, std::string_view entry_key);
 
 QLMapValuePB* AddMapColumn(QLWriteRequestPB* req, int32_t column_id);
 LWQLMapValuePB* AddMapColumn(LWQLWriteRequestPB* req, int32_t column_id);
@@ -101,28 +103,22 @@ class TableHandle {
 
   Status Reopen();
 
-  std::shared_ptr<YBqlWriteOp> NewWriteOp(QLWriteRequestPB::QLStmtType type) const {
-    return NewWriteOp(nullptr, type);
-  }
-
-  // Arena is not yet used, will be used in followup diffs after migration to lightweight protobufs.
-  // Also default value nullptr will be removed.
   std::shared_ptr<YBqlWriteOp> NewWriteOp(
       const ThreadSafeArenaPtr& arena, QLWriteRequestPB::QLStmtType type) const;
 
-  std::shared_ptr<YBqlWriteOp> NewInsertOp(const ThreadSafeArenaPtr& arena = nullptr) const {
+  std::shared_ptr<YBqlWriteOp> NewInsertOp(const ThreadSafeArenaPtr& arena) const {
     return NewWriteOp(arena, QLWriteRequestPB::QL_STMT_INSERT);
   }
 
-  std::shared_ptr<YBqlWriteOp> NewUpdateOp(const ThreadSafeArenaPtr& arena = nullptr) const {
+  std::shared_ptr<YBqlWriteOp> NewUpdateOp(const ThreadSafeArenaPtr& arena) const {
     return NewWriteOp(arena, QLWriteRequestPB::QL_STMT_UPDATE);
   }
 
-  std::shared_ptr<YBqlWriteOp> NewDeleteOp(const ThreadSafeArenaPtr& arena = nullptr) const {
+  std::shared_ptr<YBqlWriteOp> NewDeleteOp(const ThreadSafeArenaPtr& arena) const {
     return NewWriteOp(arena, QLWriteRequestPB::QL_STMT_DELETE);
   }
 
-  std::shared_ptr<YBqlReadOp> NewReadOp(const ThreadSafeArenaPtr& arena = nullptr) const;
+  std::shared_ptr<YBqlReadOp> NewReadOp(const ThreadSafeArenaPtr& arena) const;
 
   int32_t ColumnId(std::string_view column_name) const {
     auto it = column_ids_.find(column_name);
@@ -146,7 +142,7 @@ class TableHandle {
   void AddCondition(QLConditionPB* const condition, const QLOperator op) const;
   void AddCondition(LWQLConditionPB* const condition, const QLOperator op) const;
 
-  void AddColumns(const std::vector<std::string>& columns, QLReadRequestPB* req) const;
+  void AddColumns(const std::vector<std::string>& columns, LWQLReadRequestPB* req) const;
 
   const YBTablePtr& table() const { return table_; }
 
@@ -179,7 +175,7 @@ class TableHandle {
   ColumnTypesMap column_types_;
 };
 
-typedef std::function<void(const TableHandle&, QLConditionPB*)> TableFilter;
+using TableFilter = std::function<void(const TableHandle&, LWQLConditionPB*)>;
 
 struct TableIteratorOptions {
   TableIteratorOptions();
@@ -226,7 +222,7 @@ class TableIterator : public std::iterator<
   size_t executed_ops_ = 0;
   size_t ops_index_ = 0;
   std::optional<qlexpr::QLRowBlock> current_block_;
-  const QLPagingStatePB* paging_state_ = nullptr;
+  const LWQLPagingStatePB* paging_state_ = nullptr;
   size_t row_index_;
   YBSessionPtr session_;
   StatusFunctor error_handler_;
@@ -275,7 +271,7 @@ class FilterBetweenImpl {
         upper_inclusive_(upper_inclusive),
         column_(std::move(column)) {}
 
-  void operator()(const TableHandle& table, QLConditionPB* condition) const;
+  void operator()(const TableHandle& table, LWQLConditionPB* condition) const;
 
  private:
   T lower_bound_;
@@ -297,7 +293,7 @@ class FilterGreater {
   FilterGreater(int32_t bound, Inclusive inclusive, std::string column = "key")
       : bound_(bound), inclusive_(inclusive), column_(std::move(column)) {}
 
-  void operator()(const TableHandle& table, QLConditionPB* condition) const;
+  void operator()(const TableHandle& table, LWQLConditionPB* condition) const;
 
  private:
   int32_t bound_;
@@ -310,7 +306,7 @@ class FilterLess {
   FilterLess(int32_t bound, Inclusive inclusive, std::string column = "key")
       : bound_(bound), inclusive_(inclusive), column_(std::move(column)) {}
 
-  void operator()(const TableHandle& table, QLConditionPB* condition) const;
+  void operator()(const TableHandle& table, LWQLConditionPB* condition) const;
 
  private:
   int32_t bound_;
@@ -323,7 +319,7 @@ class FilterEqualImpl {
  public:
   FilterEqualImpl(const T& t, std::string column) : t_(t), column_(std::move(column)) {}
 
-  void operator()(const TableHandle& table, QLConditionPB* condition) const;
+  void operator()(const TableHandle& table, LWQLConditionPB* condition) const;
 
  private:
   T t_;

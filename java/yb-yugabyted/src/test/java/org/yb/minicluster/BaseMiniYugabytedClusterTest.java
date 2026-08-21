@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
 import org.yb.pgsql.ConnectionBuilder;
+import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.Timeouts;
 import com.google.common.net.HostAndPort;
 
@@ -146,8 +147,16 @@ public class BaseMiniYugabytedClusterTest extends BaseYBTest {
         return new TreeMap<>();
     }
 
+    // Yugabyted's mini-cluster does not yet launch ysql_conn_mgr (see
+    // MiniYugabytedClusterParameters#startYsqlConnMgr), so the conn-mgr contact-point
+    // list is empty. Force the postgres endpoint so JDBC tests do not honor the
+    // YB_ENABLE_YSQL_CONN_MGR_IN_TESTS env var (which flips ConnectionEndpoint.DEFAULT
+    // to YSQL_CONN_MGR globally) and end up indexing into an empty list.
+    // TODO(mkumar) GH #31414 - Add a support to launch conn mgr process in
+    // yugabyteD test framework
     protected ConnectionBuilder getConnectionBuilder() {
-        return new ConnectionBuilder(miniYugabytedCluster.getPostgresContactPoints());
+        return new ConnectionBuilder(miniYugabytedCluster.getPostgresContactPoints())
+            .withConnectionEndpoint(ConnectionEndpoint.POSTGRES);
     }
 
     protected void configureDataPlacement(String dataPlacement) throws Exception {

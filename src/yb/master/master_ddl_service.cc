@@ -83,6 +83,13 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
       rpc::RpcContext rpc) override {
     server_->catalog_manager_impl()->ReleaseObjectLocksGlobal(req, resp, std::move(rpc));
   }
+
+  void WaitForLockersMultipleGlobal(
+      const WaitForLockersMultipleGlobalRequestPB* req,
+      WaitForLockersMultipleGlobalResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    server_->catalog_manager_impl()->WaitForLockersMultipleGlobal(req, resp, std::move(rpc));
+  }
 };
 
 } // namespace

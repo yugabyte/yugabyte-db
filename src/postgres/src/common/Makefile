@@ -31,10 +31,29 @@ include $(top_builddir)/src/Makefile.global
 # don't include subdirectory-path-dependent -I and -L switches
 STD_CPPFLAGS := $(filter-out -I$(top_srcdir)/src/include -I$(top_builddir)/src/include,$(CPPFLAGS))
 STD_LDFLAGS := $(filter-out -L$(top_builddir)/src/common -L$(top_builddir)/src/port,$(LDFLAGS))
-override CPPFLAGS += -DVAL_CC="\"$(CC)\""
-override CPPFLAGS += -DVAL_CPPFLAGS="\"$(STD_CPPFLAGS)\""
-override CPPFLAGS += -DVAL_CFLAGS="\"$(CFLAGS)\""
+# YB: strip build-machine-private switches from the CC/CPPFLAGS/CFLAGS values
+# pg_config reports so that an installed package does not hand them to external
+# extension builds.  YB_PG_COMPILER_CONFIG_SANITIZER is set by
+# build_postgres.py to the sanitizer command.  Outside the YB build, it is
+# unset, and the values are reported verbatim.
+ifdef YB_PG_COMPILER_CONFIG_SANITIZER
+yb_val_cc := $(shell $(YB_PG_COMPILER_CONFIG_SANITIZER) --cc $(CC))
+yb_val_cppflags := $(shell $(YB_PG_COMPILER_CONFIG_SANITIZER) $(STD_CPPFLAGS))
+yb_val_cflags := $(shell $(YB_PG_COMPILER_CONFIG_SANITIZER) $(CFLAGS))
+else
+yb_val_cc := $(CC)
+yb_val_cppflags := $(STD_CPPFLAGS)
+yb_val_cflags := $(CFLAGS)
+endif
+override CPPFLAGS += -DVAL_CC="\"$(yb_val_cc)\""
+override CPPFLAGS += -DVAL_CPPFLAGS="\"$(yb_val_cppflags)\""
+override CPPFLAGS += -DVAL_CFLAGS="\"$(yb_val_cflags)\""
+# YB: CFLAGS_SL is just the platform PIC flag (-fPIC).  Unlike the
+# CC/CPPFLAGS/CFLAGS values above, it never carries build-machine paths, so it
+# is reported verbatim.
 override CPPFLAGS += -DVAL_CFLAGS_SL="\"$(CFLAGS_SL)\""
+# YB: the link side (VAL_LDFLAGS/VAL_LDFLAGS_EX, i.e. -L paths and -Wl,-rpath
+# entries) is reported verbatim for now; sanitizing it is tracked in #32266.
 override CPPFLAGS += -DVAL_LDFLAGS="\"$(STD_LDFLAGS)\""
 override CPPFLAGS += -DVAL_LDFLAGS_EX="\"$(LDFLAGS_EX)\""
 override CPPFLAGS += -DVAL_LDFLAGS_SL="\"$(LDFLAGS_SL)\""

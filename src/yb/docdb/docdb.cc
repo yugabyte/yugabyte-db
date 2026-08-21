@@ -340,7 +340,7 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
       // Ensure we set appropriate error in the response object for QL errors.
       const auto& resp = down_cast<QLWriteOperation*>(doc_op.get())->response();
       resp->set_status(QLResponsePB::YQL_STATUS_QUERY_ERROR);
-      resp->set_error_message(std::move(error_msg));
+      resp->dup_error_message(error_msg);
       continue;
     }
 
@@ -404,9 +404,13 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
     if (!key_slice.starts_with(key_prefix)) {
       break;
     }
-    // If the key ends at the transaction id then it is transaction metadata (status tablet,
-    // isolation level etc.).
-    if (key_slice.size() > txn_reverse_index_prefix.size()) {
+    // Skip metadata records:
+    // - transaction id: transaction metadata
+    // - transaction id + transaction metadata update time: transaction metadata update
+    // - transaction id + 00: post-apply metadata
+    if (key_slice.size() > txn_reverse_index_prefix.size() &&
+        key_slice[txn_reverse_index_prefix.size() - 1] !=
+            dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime) {
       auto reverse_index_value = reverse_index_iter.value();
 
       // The intents with kDeleteVectorIds value type correspond to the tombstones added for

@@ -24,6 +24,8 @@ public class UniverseConfigureTaskParams extends UniverseDefinitionTaskParams {
 
   @Deprecated @ApiModelProperty public Boolean regionsChanged;
 
+  public boolean newUI;
+
   public enum ClusterOperationType {
     CREATE,
     EDIT,

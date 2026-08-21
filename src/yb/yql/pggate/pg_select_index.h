@@ -21,7 +21,7 @@
 
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_session.h"
@@ -37,7 +37,7 @@ class PgSelectIndex : public PgSelect {
 
   static Result<std::unique_ptr<PgSelectIndex>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& index_id,
-      const YbcPgTableLocalityInfo& locality_info,
+      const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read,
       std::shared_ptr<LWPgsqlReadRequestPB>&& read_req = {});
 
  protected:
@@ -47,7 +47,8 @@ class PgSelectIndex : public PgSelect {
   // Prepare NESTED query for secondary index. This function is called when Postgres layer is
   // accessing the IndexTable via an outer select (Sequential or primary scans)
   Status PrepareSubquery(
-      const PgObjectId& index_id, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req);
+      const PgObjectId& index_id, bool skip_intents_read,
+      std::shared_ptr<LWPgsqlReadRequestPB>&& read_req);
 
   struct Ybctids {
     boost::container::small_vector<Slice, 8> values;

@@ -112,6 +112,17 @@ SET standard_conforming_strings = on;
 \endif
 \restrict <key>
 
+\set role_exists false
+\if :ignore_existing_roles
+    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_global_views_user') AS role_exists \gset
+\endif
+\if :role_exists
+    \echo 'Role already exists:' yb_global_views_user
+\else
+    CREATE ROLE yb_global_views_user;
+    ALTER ROLE yb_global_views_user WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+\endif
+
 ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:VLK4RMaQLCvNtQ==$6YtlR4t69SguDiwFvbVgVZtuz6gpJQQqUMZ7IQJK5yI=:ps75jrHeYU4lXCcXI4O8oIdJ3eO8o2jirjruw9phBTo=';
 
 \unrestrict <key>
@@ -133,6 +144,11 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 --
 
 
+--
+-- Role memberships
+--
+
+GRANT pg_read_all_stats TO yb_global_views_user GRANTED BY postgres;
 
 
 

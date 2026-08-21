@@ -40,7 +40,7 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 		templateFileName:    "yb-installer-perf-advisor.yml",
 		// GetSoftwareRoot returns /opt/yugabyte/software/
 		PABin:    common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
-		PALogDir: common.GetBaseInstall() + "/data/logs",
+		PALogDir: common.GetBaseInstall() + "/data",
 		DataDir:  common.GetBaseInstall() + "/data/perf-advisor",
 	}
 }

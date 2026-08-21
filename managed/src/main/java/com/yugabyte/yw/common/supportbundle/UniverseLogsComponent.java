@@ -195,10 +195,14 @@ class UniverseLogsComponent implements SupportBundleComponent {
             String fileName = file.toPath().getFileName().toString();
             if (file.isFile() && fileName.startsWith(PG_LOG_FILE_PREFIX)) {
               var unzippedFile = file;
-              if (fileName.endsWith(ZIPPED_LOG_FILE_SUFFIX)) {
+              boolean sourceFileIsZipped = fileName.endsWith(ZIPPED_LOG_FILE_SUFFIX);
+              if (sourceFileIsZipped) {
                 unzippedFile = com.yugabyte.yw.common.utils.FileUtils.unGzip(file, tserverLogDir);
               }
               filterPgAuditLog(unzippedFile);
+              if (sourceFileIsZipped) {
+                gzipFilteredLog(unzippedFile);
+              }
               // Delete unfiltered zipped and unzipped file.
               file.delete();
               if (!unzippedFile.equals(file)) {
@@ -230,6 +234,22 @@ class UniverseLogsComponent implements SupportBundleComponent {
       grepProcess.redirectOutput(new File(logFile.getParent(), outputFileName)).start().waitFor();
     } catch (Exception e) {
       log.error("Error while filtering pg log: {}", baseFileName, e);
+    }
+  }
+
+  // Gzips filtered log file to preserve source .log.gz format.
+  private void gzipFilteredLog(File logFile) {
+    try {
+      String filteredLogFileName = "filtered_" + logFile.getName();
+      File filteredLogFile = new File(logFile.getParent(), filteredLogFileName);
+      if (!filteredLogFile.exists()) {
+        log.warn("Skipping gzip as filtered pg log file does not exist: {}", filteredLogFile);
+        return;
+      }
+      ProcessBuilder gzipProcess = new ProcessBuilder("gzip", filteredLogFile.getAbsolutePath());
+      gzipProcess.start().waitFor();
+    } catch (Exception e) {
+      log.error("Error while gzipping filtered pg log file: {}", logFile, e);
     }
   }
 

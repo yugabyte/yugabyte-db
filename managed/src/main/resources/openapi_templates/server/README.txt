@@ -129,3 +129,19 @@ the time the flow reaches the handler, Play Framework closes the InputStream cha
 
 Example: 
                 x-java-type: Http.MultipartFormData.FilePart<TemporaryFile>
+
+8. x-data-container and x-data-item (at schema / model level, together)
+These are recognized only on a component schema that should be generated as a thin Java subclass of an
+existing generic container superclass (e.g. a page).
+
+Both must be present on a schema that uses them; this is validated by a Redocly plugin.
+
+Example (thin split sources — only vendor keys and optional x-data-entities-description):
+
+  type: object
+  x-data-container: PaginationResp
+  x-data-item: KmsConfiguration
+
+Thin PagedResp sources declare x-data-container / x-data-item (and optional x-data-entities-description) only;
+openapi/redocly.yaml loads a preprocessor plugin (plugins/x-data-container-expand.cjs) that injects
+allOf + properties.entities $refs in memory during `redocly bundle`, so split YAML is never patched on disk.

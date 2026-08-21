@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -189,12 +190,7 @@ public class YbcUpgrade {
       String ybcVersion = ybcManager.getStableYbcVersion();
       for (Customer customer : Customer.getAll()) {
         for (Universe universe : Universe.getAllWithoutResources(customer)) {
-          if (universe
-              .getUniverseDetails()
-              .getPrimaryCluster()
-              .userIntent
-              .providerType
-              .equals(Common.CloudType.kubernetes)) {
+          if (Util.isKubernetesBasedUniverse(universe)) {
             if (!canUpgradeYBCOnK8s(universe, ybcVersion)) {
               continue;
             }
@@ -227,7 +223,7 @@ public class YbcUpgrade {
 
       targetUniverseList.forEach(
           (universeUUID) -> {
-            Universe universe = Universe.getOrBadRequest(universeUUID);
+            Universe.getOrBadRequest(universeUUID);
             try {
               this.upgradeYBC(universeUUID, ybcVersion, false);
             } catch (Exception e) {
@@ -448,33 +444,32 @@ public class YbcUpgrade {
       checkCronStatus(universe, node);
     }
     log.info("Placing ybc package on db node: {}", node.cloudInfo.private_ip);
+    Cluster nodeCluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
     AnsibleConfigureServers.Params params =
         this.ybcManager.getAnsibleConfigureYbcServerTaskParams(
             universe,
             node,
-            universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent.ybcFlags,
+            nodeCluster.userIntent.ybcFlags,
             UpgradeTaskType.YbcGFlags,
             UpgradeTaskSubType.YbcGflagsUpdate);
-    Optional<NodeAgent> optional =
-        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
-            ? Optional.empty()
-            : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
-                universe, node, true /*check feature flag*/);
-    if (optional.isPresent()) {
+    boolean isNodeAgentSupported =
+        NodeAgentClient.isCloudTypeSupported(nodeCluster.userIntent.providerType);
+    if (isNodeAgentSupported) {
+      NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(node.cloudInfo.private_ip);
       nodeAgentClient.runInstallYbcSoftware(
-          optional.get(),
-          nodeAgentRpcPayload.setupInstallYbcSoftwareBits(universe, node, params, optional.get()),
+          nodeAgent,
+          nodeAgentRpcPayload.setupInstallYbcSoftwareBits(universe, node, params, nodeAgent),
           NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
-      nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(optional.get(), universe, node, params);
+      nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(nodeAgent, universe, node, params);
       nodeAgentClient.runServerControl(
-          optional.get(),
+          nodeAgent,
           nodeAgentRpcPayload.setupServerControlBits(
               universe,
               node,
               ybcServerControlParams("stop" /* command */, universe, node, ybcVersion)),
           NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       nodeAgentClient.runServerControl(
-          optional.get(),
+          nodeAgent,
           nodeAgentRpcPayload.setupServerControlBits(
               universe,
               node,

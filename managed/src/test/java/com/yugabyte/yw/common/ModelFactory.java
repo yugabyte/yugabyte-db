@@ -186,6 +186,10 @@ public class ModelFactory {
     return Provider.create(customer.getUuid(), Common.CloudType.azu, "Azure");
   }
 
+  public static Provider ociProvider(Customer customer) {
+    return Provider.create(customer.getUuid(), Common.CloudType.oci, "OCI");
+  }
+
   public static Provider onpremProvider(Customer customer) {
     return Provider.create(customer.getUuid(), Common.CloudType.onprem, "OnPrem");
   }
@@ -311,7 +315,7 @@ public class ModelFactory {
     // Custom setup a default AWS provider, can be overridden later.
     List<Provider> providerList = Provider.get(c.getUuid(), cloudType);
     Provider p = providerList.isEmpty() ? newProvider(c, cloudType) : providerList.get(0);
-
+    List<Region> regions = p.getAllRegions();
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
@@ -319,6 +323,8 @@ public class ModelFactory {
     userIntent.providerType = cloudType;
     userIntent.ybSoftwareVersion = "2.17.0.0-b1";
     userIntent.useSystemd = useSystemd;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.regionList = regions.stream().map(Region::getUuid).collect(Collectors.toList());
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.setUniverseUUID(universeUUID);
     params.nodeDetailsSet = new HashSet<>();
@@ -332,14 +338,24 @@ public class ModelFactory {
       NodeDetails node = new NodeDetails();
       node.nodeUuid = UUID.randomUUID();
       node.cloudInfo = new CloudSpecificInfo();
+      node.cloudInfo.cloud = cloudType.toString();
+      node.cloudInfo.instance_type = userIntent.instanceType;
       node.cloudInfo.private_ip = "127.0.0.1";
       params.nodeDetailsSet.add(node);
       NodeDetails node2 = node.clone();
       node2.nodeUuid = UUID.randomUUID();
+      node.cloudInfo = new CloudSpecificInfo();
+      node.cloudInfo.instance_type = userIntent.instanceType;
+      node.cloudInfo.cloud = cloudType.toString();
       node2.cloudInfo.private_ip = "127.0.0.2";
       params.nodeDetailsSet.add(node2);
     }
     params.upsertPrimaryCluster(userIntent, null, pi);
+    // Test universes stand in for fully created universes; keep the default behavior of health
+    // checks and alert definitions covering them by pretending creation succeeded. Tests that
+    // specifically want to exercise the "creation failed" behavior can override this on the
+    // returned universe.
+    params.creationSucceeded = true;
     return Universe.create(params, customerId);
   }
 
@@ -375,6 +391,8 @@ public class ModelFactory {
     params.setYbcInstalled(enableYbc);
     params.nodePrefix = Util.getNodePrefix(customerId, universeName);
     params.upsertPrimaryCluster(userIntent, null, pi);
+    // Same rationale as createUniverse(): test universes stand in for fully created universes.
+    params.creationSucceeded = true;
     Universe u = Universe.create(params, customerId);
     Map<String, String> config = new HashMap<>();
     config.put(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString());
@@ -502,6 +520,48 @@ public class ModelFactory {
                 + " \"data\":"
                 + " {\"BACKUP_LOCATION\": \"https://foo.blob.core.windows.net/azurecontainer\","
                 + " \"AZURE_STORAGE_SAS_TOKEN\": \"AZ-TOKEN\"}}");
+    return CustomerConfig.createWithFormData(customer.getUuid(), formData);
+  }
+
+  public static CustomerConfig createOCIStorageConfig(
+      Customer customer, String configName, String backupLocation) {
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"OCI\","
+                + " \"type\": \"STORAGE\", \"data\": {"
+                + "\"BACKUP_LOCATION\": \""
+                + backupLocation
+                + "\","
+                + " \"OCI_REGION\": \"us-sanjose-1\","
+                + " \"OCI_NAMESPACE\": \"test-namespace\","
+                + " \"USE_OCI_IAM\": true}}");
+    return CustomerConfig.createWithFormData(customer.getUuid(), formData);
+  }
+
+  public static CustomerConfig createOCIStorageConfigWithS3Compat(
+      Customer customer, String configName) {
+    return createOCIStorageConfigWithS3Compat(customer, configName, "s3://test-bucket/prefix");
+  }
+
+  public static CustomerConfig createOCIStorageConfigWithS3Compat(
+      Customer customer, String configName, String backupLocation) {
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"OCI\","
+                + " \"type\": \"STORAGE\", \"data\": {"
+                + "\"BACKUP_LOCATION\": \""
+                + backupLocation
+                + "\","
+                + " \"OCI_S3_ACCESS_KEY_ID\": \"test-access-key\","
+                + " \"OCI_S3_SECRET_ACCESS_KEY\": \"test-secret-key\","
+                + " \"OCI_REGION\": \"us-sanjose-1\","
+                + " \"OCI_S3_HOST_BASE\":"
+                + " \"test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com\","
+                + " \"USE_OCI_IAM\": false}}");
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
 
@@ -868,6 +928,11 @@ public class ModelFactory {
   // - For each mentioned regions we are trying to find it at first. If the region
   // isn't found, it is created. The same is about availability zones.
   public static Universe createFromConfig(Provider provider, String univName, String config) {
+    return createFromConfig(provider, univName, config, false);
+  }
+
+  public static Universe createFromConfig(
+      Provider provider, String univName, String config, boolean initPartitions) {
     Customer customer = Customer.get(provider.getCustomerUUID());
     Universe universe =
         createUniverse(univName, UUID.randomUUID(), customer.getId(), provider.getCloudCode());
@@ -955,6 +1020,14 @@ public class ModelFactory {
           Cluster primaryCluster = universeDetails.getPrimaryCluster();
           primaryCluster.userIntent = userIntent;
           primaryCluster.placementInfo = placementInfo;
+          if (initPartitions) {
+            UniverseDefinitionTaskParams.PartitionInfo partitionInfo =
+                new UniverseDefinitionTaskParams.PartitionInfo();
+            partitionInfo.setReplicationFactor(userIntent.replicationFactor);
+            partitionInfo.setDefaultPartition(true);
+            partitionInfo.setPlacement(placementInfo);
+            primaryCluster.setPartitions(Collections.singletonList(partitionInfo));
+          }
         };
 
     return Universe.saveDetails(universe.getUniverseUUID(), updater);

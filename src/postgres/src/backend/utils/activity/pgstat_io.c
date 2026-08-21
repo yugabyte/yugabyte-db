@@ -382,9 +382,12 @@ pgstat_tracks_io_bktype(BackendType bktype)
 
 		case YB_YSQL_CONN_MGR:
 		case YB_YSQL_CONN_MGR_WAL_SENDER:
+		case YB_YSQL_CONN_MGR_CTRL:
 		case YB_AUTO_ANALYZE_BACKEND:
 		case YB_INDEX_BACKFILL_DDL:
 		case YB_MATVIEW_REFRESH_DDL:
+		case YB_RELCACHE_INIT_BACKEND:
+		case YB_GLOBAL_VIEW_BACKEND:
 			return false;
 	}
 

@@ -25,12 +25,14 @@ import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -56,6 +58,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +76,7 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.libs.Json;
 
 public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   private static final String CERTS_DIR = "/tmp/yugaware_tests/kcet_certs";
@@ -155,7 +159,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             new InstanceType.InstanceTypeDetails());
     defaultUserIntent = getTestUserIntent(defaultRegion, defaultProvider, instanceType, numNodes);
     defaultUserIntent.replicationFactor = 3;
-    defaultUserIntent.dedicatedNodes = true;
+    ApiUtils.configureDedicatedMasterFields(defaultUserIntent);
     defaultUserIntent.masterGFlags = new HashMap<>();
     defaultUserIntent.tserverGFlags = new HashMap<>();
     defaultUserIntent.universeName = "demo-universe";
@@ -170,6 +174,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   private KubernetesCommandExecutor createExecutor(
       KubernetesCommandExecutor.CommandType commandType, boolean setNamespace) {
+    return createExecutor(commandType, setNamespace, null /* telemetryConfig */);
+  }
+
+  private KubernetesCommandExecutor createExecutor(
+      KubernetesCommandExecutor.CommandType commandType,
+      boolean setNamespace,
+      com.yugabyte.yw.common.export.TelemetryConfig telemetryConfig) {
     KubernetesCommandExecutor kubernetesCommandExecutor =
         AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
@@ -182,6 +193,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.universeConfig = defaultUniverse.getConfig();
     params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.telemetryConfig = telemetryConfig;
     if (setNamespace) {
       params.namespace = namespace;
     }
@@ -428,6 +440,15 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     stsIndex.put("tserver", ImmutableMap.of("start", 0, "end", 0));
     stsIndex.put("master", ImmutableMap.of("start", 0, "end", 0));
     expectedOverrides.put("stsIndex", stsIndex);
+
+    // YB_METRIC_NODE_NAME_SUFFIX is injected on every helm apply so k8s_parent.py
+    // emits EXPORTED_INSTANCE matching NodeDetails.nodeName in YBA. Value is
+    // "" for single-AZ primary (the default test setup). See
+    // KubernetesCommandExecutor.generateHelmOverrides.
+    List<Map<String, String>> metricSuffixExtraEnv =
+        ImmutableList.of(ImmutableMap.of("name", "YB_METRIC_NODE_NAME_SUFFIX", "value", ""));
+    expectedOverrides.put("tserver", ImmutableMap.of("extraEnv", metricSuffixExtraEnv));
+    expectedOverrides.put("master", ImmutableMap.of("extraEnv", metricSuffixExtraEnv));
 
     expectedOverrides.put("defaultServiceScope", "AZ");
     return expectedOverrides;
@@ -1291,6 +1312,107 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   @Test
+  public void testHelmInstallNewlyAddedAZUsesNewDeviceInfo() throws IOException {
+    // Saved universe is single AZ (defaultAZ in defaultRegion). Add a new
+    // region/AZ to the provider that simulates the multi-AZ migration target.
+    AvailabilityZone newAZ =
+        AvailabilityZone.createOrThrow(defaultRegion, "az-2", "PlacementAZ 2", "subnet-2");
+    Map<String, String> newAzConfig = new HashMap<>();
+    newAzConfig.put("KUBECONFIG", "test");
+    newAZ.updateConfig(newAzConfig);
+    newAZ.save();
+
+    // Build the new (task) UniverseDetails that contains:
+    //  - a new userIntent with per-AZ deviceInfo overrides for the newly added AZ
+    //  - a placementInfo containing both AZs
+    UniverseDefinitionTaskParams taskUniverseDetails =
+        Json.fromJson(
+            Json.toJson(defaultUniverse.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        taskUniverseDetails.getPrimaryCluster().userIntent;
+    newUserIntent.regionList = ImmutableList.of(defaultRegion.getUuid());
+
+    DeviceInfo newAzTserverDeviceInfo = new DeviceInfo();
+    newAzTserverDeviceInfo.numVolumes = 3;
+    newAzTserverDeviceInfo.volumeSize = 200;
+    newAzTserverDeviceInfo.storageClass = "new-tserver-sc";
+
+    DeviceInfo newAzMasterDeviceInfo = new DeviceInfo();
+    newAzMasterDeviceInfo.numVolumes = 2;
+    newAzMasterDeviceInfo.volumeSize = 150;
+    newAzMasterDeviceInfo.storageClass = "new-master-sc";
+
+    newUserIntent.updateUserIntentOverrides(
+        uIO ->
+            uIO.updateAZOverride(
+                newAZ.getUuid(),
+                azO -> {
+                  azO.updatePerProcess(
+                      ServerType.TSERVER, perProc -> perProc.setDeviceInfo(newAzTserverDeviceInfo));
+                  azO.updatePerProcess(
+                      ServerType.MASTER, perProc -> perProc.setDeviceInfo(newAzMasterDeviceInfo));
+                }));
+
+    PlacementInfo newPi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(defaultAZ.getUuid(), newPi);
+    PlacementInfoUtil.addPlacementZone(newAZ.getUuid(), newPi);
+    taskUniverseDetails.getPrimaryCluster().placementInfo = newPi;
+
+    // Initialize the executor targeted at the newly added AZ.
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix + "-az-2";
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = taskUniverseDetails;
+    params.placementInfo = newPi;
+    params.azCode = newAZ.getCode();
+    params.namespace = "demo-ns-az-2";
+    // Non-empty masterAddresses signals an AZ-scoped (multi-AZ) deployment.
+    params.masterAddresses = "fake-master:7100";
+    kubernetesCommandExecutor.initialize(params);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            expectedOverrideFile.capture());
+
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    // The storage block must reflect the new userIntent overrides for the
+    // newly added AZ, NOT the saved userIntent's defaults.
+    Map<String, Object> storage = (Map<String, Object>) overrides.get("storage");
+    assertNotNull(storage);
+    Map<String, Object> tserverDiskSpecs = (Map<String, Object>) storage.get("tserver");
+    Map<String, Object> masterDiskSpecs = (Map<String, Object>) storage.get("master");
+
+    assertEquals(newAzTserverDeviceInfo.numVolumes, tserverDiskSpecs.get("count"));
+    assertEquals(
+        String.format("%dGi", newAzTserverDeviceInfo.volumeSize), tserverDiskSpecs.get("size"));
+    assertEquals(newAzTserverDeviceInfo.storageClass, tserverDiskSpecs.get("storageClass"));
+
+    assertEquals(newAzMasterDeviceInfo.numVolumes, masterDiskSpecs.get("count"));
+    assertEquals(
+        String.format("%dGi", newAzMasterDeviceInfo.volumeSize), masterDiskSpecs.get("size"));
+    assertEquals(newAzMasterDeviceInfo.storageClass, masterDiskSpecs.get("storageClass"));
+  }
+
+  @Test
   public void testHelmDelete() {
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.HELM_DELETE, /* set namespace */ true);
@@ -1402,7 +1524,67 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
           String.format(
               "%s.%s%s.%s.%s",
               podName, helmNameSuffix, serviceName, namespace, "svc.cluster.local"));
+      // Every K8s NodeDetails must carry a stable nodeUuid derived from
+      // (universeUuid, nodeName) so subtasks captured by UUID can resolve them
+      // even after a later processNodeInfo re-run that might change nodeName
+      // (see KubernetesCommandExecutor.resolveTargetNode).
+      assertEquals(
+          Util.generateNodeUUID(defaultUniverse.getUniverseUUID(), nodeName), node.nodeUuid);
     }
+  }
+
+  @Test
+  public void testPodInfoPreservesNodeUuidAcrossReruns() {
+    // Simulate the sequence that used to strand K8s subtasks after a rename:
+    // 1) Initial POD_INFO establishes NodeDetails with fresh, deterministic UUIDs.
+    // 2) A subsequent POD_INFO re-run (e.g. after an isMultiAZ(provider) flip
+    //    would have rebuilt the node set) must preserve the same nodeUuid so
+    //    subtasks captured by UUID (KubernetesCommandExecutor.Params.nodeUuid)
+    //    still resolve. Preservation is keyed on cloudInfo.kubernetesPodName,
+    //    which processNodeInfo writes from the immutable pod hostname.
+    String nodePrefix = defaultUniverse.getUniverseDetails().nodePrefix;
+    String namespace = nodePrefix;
+    defaultAZ.updateConfig(config);
+    defaultAZ.save();
+
+    String podsString =
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\","
+            + " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + " \"metadata\": {\"namespace\": \"%1$s\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + " \"metadata\": {\"namespace\": \"%1$s\"}}]}";
+    List<Pod> podList =
+        TestUtils.deserialize(String.format(podsString, namespace), PodList.class).getItems();
+    when(kubernetesManager.getPodInfos(any(), any(), any())).thenReturn(podList);
+
+    KubernetesCommandExecutor firstRun =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.POD_INFO,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+    firstRun.run();
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    NodeDetails afterFirst = defaultUniverse.getNode("yb-tserver-0");
+    assertNotNull(afterFirst);
+    UUID initialUuid = afterFirst.nodeUuid;
+    assertNotNull(initialUuid);
+    // First run derives the UUID from (universeUuid, nodeName).
+    assertEquals(
+        Util.generateNodeUUID(defaultUniverse.getUniverseUUID(), "yb-tserver-0"), initialUuid);
+    assertEquals("yb-tserver-0", afterFirst.cloudInfo.kubernetesPodName);
+
+    // Second POD_INFO must reuse the previously-assigned nodeUuid for the pod
+    // with the same hostname (kubernetesPodName), even if some other code path
+    // would try to regenerate it - protecting subtasks that captured the UUID.
+    KubernetesCommandExecutor secondRun =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.POD_INFO,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+    secondRun.run();
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    NodeDetails afterSecond = defaultUniverse.getNode("yb-tserver-0");
+    assertNotNull(afterSecond);
+    assertEquals(initialUuid, afterSecond.nodeUuid);
   }
 
   @Test
@@ -1614,5 +1796,166 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             eq(defaultUniverse.getUniverseDetails().nodePrefix),
             eq(namespace),
             any(String.class));
+  }
+
+  @Test
+  public void testHelmInstallRendersOtelCollectorForAuditAndQueryLogs() throws IOException {
+    // Persist a TelemetryProvider so the AWS exporter UUID referenced by the configs resolves
+    // through TelemetryProviderService.getOrBadRequest at render time.
+    com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig awsConfig =
+        new com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig();
+    awsConfig.setType(com.yugabyte.yw.models.helpers.telemetry.ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setAccessKey("ak");
+    awsConfig.setSecretKey("sk");
+    awsConfig.setLogGroup("lg");
+    awsConfig.setLogStream("ls");
+    awsConfig.setRegion("us-west-2");
+    com.yugabyte.yw.models.TelemetryProvider tp = new com.yugabyte.yw.models.TelemetryProvider();
+    tp.setUuid(UUID.randomUUID());
+    tp.setCustomerUUID(defaultCustomer.getUuid());
+    tp.setName("aws-tp");
+    tp.setConfig(awsConfig);
+    tp.setTags(ImmutableMap.of());
+    tp.save();
+
+    // ybSoftwareVersion must clear the config-passthrough threshold so the chart receives the full
+    // collector config (correct "receivers" spelling, full "filelog/<x>" receiver names).
+    defaultUserIntent.ybSoftwareVersion = "2026.1.2.0-b1";
+
+    com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig auditLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig();
+    com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig ysqlAudit =
+        new com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig();
+    ysqlAudit.setEnabled(true);
+    auditLogConfig.setYsqlAuditConfig(ysqlAudit);
+    com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig auditExporter =
+        new com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig();
+    auditExporter.setExporterUuid(tp.getUuid());
+    auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(auditExporter));
+
+    com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig queryLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig();
+    com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig ysqlQuery =
+        new com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig();
+    ysqlQuery.setEnabled(true);
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQuery);
+    com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig queryExporter =
+        new com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig();
+    queryExporter.setExporterUuid(tp.getUuid());
+    queryLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(queryExporter));
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+
+    // The telemetry state reaches the executor explicitly via its params
+    // (KubernetesTaskBase.getDesiredTelemetryConfig), not via the userIntent copies.
+    KubernetesCommandExecutor executor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+            true,
+            com.yugabyte.yw.common.export.TelemetryConfig.builder()
+                .auditLogConfig(auditLogConfig)
+                .queryLogConfig(queryLogConfig)
+                .build());
+    executor.run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            overrideFile.capture());
+
+    // The override YAML uses snakeyaml java-type tags for exporter classes that the default Yaml
+    // ctor can't resolve, so assert on the raw text instead of parsing the document.
+    String overridesYaml =
+        FileUtils.readFileToString(new File(overrideFile.getValue()), Charset.defaultCharset());
+    assertTrue(
+        "otelCollector block must be rendered, yaml=" + overridesYaml,
+        overridesYaml.contains("otelCollector"));
+    assertTrue(
+        "audit receiver 'filelog/ysql' must be present, yaml=" + overridesYaml,
+        overridesYaml.contains("filelog/ysql"));
+    assertTrue(
+        "query receiver 'filelog/query_logs_ysql' must be present, yaml=" + overridesYaml,
+        overridesYaml.contains("filelog/query_logs_ysql"));
+  }
+
+  @Test
+  public void testHelmInstallRendersOtelCollectorForMetricsExport() throws IOException {
+    // Persist a TelemetryProvider so the Datadog exporter UUID referenced by the config resolves
+    // through TelemetryProviderService.getOrBadRequest at render time.
+    com.yugabyte.yw.models.helpers.telemetry.DataDogConfig ddConfig =
+        new com.yugabyte.yw.models.helpers.telemetry.DataDogConfig();
+    ddConfig.setType(com.yugabyte.yw.models.helpers.telemetry.ProviderType.DATA_DOG);
+    ddConfig.setSite("datadoghq.com");
+    ddConfig.setApiKey("apiKey");
+    com.yugabyte.yw.models.TelemetryProvider tp = new com.yugabyte.yw.models.TelemetryProvider();
+    tp.setUuid(UUID.randomUUID());
+    tp.setCustomerUUID(defaultCustomer.getUuid());
+    tp.setName("dd-tp");
+    tp.setConfig(ddConfig);
+    tp.setTags(ImmutableMap.of());
+    tp.save();
+
+    // ybSoftwareVersion must clear the config-passthrough threshold: metrics export is only
+    // expressible in the full-collector-config chart contract.
+    defaultUserIntent.ybSoftwareVersion = "2026.1.2.0-b1";
+
+    com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig metricsExportConfig =
+        new com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig();
+    com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig metricsExporter =
+        new com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig();
+    metricsExporter.setExporterUuid(tp.getUuid());
+    metricsExportConfig.setUniverseMetricsExporterConfig(ImmutableList.of(metricsExporter));
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+
+    // The desired config reaches the executor explicitly via its params (the export-telemetry
+    // configure task's channel), not via the userIntent copies.
+    KubernetesCommandExecutor executor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+            true,
+            com.yugabyte.yw.common.export.TelemetryConfig.builder()
+                .metricsExportConfig(metricsExportConfig)
+                .build());
+    executor.run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            overrideFile.capture());
+
+    String overridesYaml =
+        FileUtils.readFileToString(new File(overrideFile.getValue()), Charset.defaultCharset());
+    assertTrue(
+        "otelCollector block must be rendered, yaml=" + overridesYaml,
+        overridesYaml.contains("otelCollector"));
+    assertTrue(
+        "pod-local prometheus receiver must be present, yaml=" + overridesYaml,
+        overridesYaml.contains("prometheus/yugabyte"));
+    assertTrue(
+        "metrics pipeline must be present, yaml=" + overridesYaml,
+        overridesYaml.contains("metrics/metrics_" + tp.getUuid()));
+    // Metrics scraping is pod-local, so the chart must inject the sidecar into master pods too.
+    assertTrue(
+        "runOnMaster must be set for metrics export, yaml=" + overridesYaml,
+        overridesYaml.contains("runOnMaster: true"));
   }
 }

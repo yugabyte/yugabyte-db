@@ -1,0 +1,28 @@
+title: CustomerConfigInfo
+description: |
+  System-generated customer configuration metadata.
+type: object
+properties:
+  uuid:
+    description: Unique identifier of the customer configuration row.
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    readOnly: true
+  customer_uuid:
+    description: Customer that owns this configuration.
+    type: string
+    format: uuid
+    example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    readOnly: true
+  state:
+    description: Lifecycle state of the configuration.
+    type: string
+    enum:
+      - Active
+      - QueuedForDeletion
+    readOnly: true
+  is_kubernetes_operator_controlled:
+    description: Whether this configuration is managed by the Kubernetes operator.
+    type: boolean
+    readOnly: true

@@ -61,6 +61,8 @@ YbCatalogModificationAspects
 YbCatalogVersionType
 YbChildScan
 YbChildScanData
+YbColFoldState
+YbColFoldType
 YbCommandInfo
 YbConcurrencyContext
 YbCostModel
@@ -94,6 +96,7 @@ YbFdwPlanState
 YbFetchKeysParam
 YbFetchStatus
 YbFlushTupleFn_t
+YbForceParallel
 YbFreeBatchFn_t
 YbFuncCallContext
 YbGateTestCase
@@ -200,6 +203,10 @@ YbSplitType
 YbStatLabel
 YbStatLabelData
 YbStatementType
+YbStatusErrorData
+YbStatusErrorDataErrorLocation
+YbStatusErrorDataFormatText
+YbSubstConstsContext
 YbSubstituteContext
 YbSysCatalogModificationAspect
 YbSysScanBase
@@ -252,11 +259,14 @@ YbcDeleteMemoryContextFn
 YbcFlushDebugContext
 YbcGetTableKeyRangesCallback
 YbcHeapSnapshotSample
+YbcIsExplicitlyLockedRowSkippedCheckHandle
+YbcIsExplicitlyLockedRowSkippedCheckHandleOptional
 YbcLsnType
 YbcMetricsInfo
 YbcObjectLockId
 YbcObjectLockMode
 YbcOrderingMode
+YbcOtelNodeSpan
 YbcOtelSpanContext
 YbcPallocFn
 YbcPgAshConfig
@@ -348,6 +358,7 @@ YbcSliceVector
 YbcSlotEntryDescriptor
 YbcSortKey
 YbcStatus
+YbcStatusErrorLocationInfo
 YbcSwitchMemoryContextFn
 YbcTableProperties
 YbcTablePropertiesData

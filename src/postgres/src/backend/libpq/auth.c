@@ -50,6 +50,7 @@
 #include "utils/builtins.h"		/* TODO: may not be needed */
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb_internal_conn.h"
 
 /*----------------------------------------------------------------
  * Global authentication functions
@@ -262,13 +263,13 @@ auth_failed(Port *port, int elevel, int status, const char *logdetail,
 
 	/*
 	 * YB: When using Auth Passthrough mode of connection manager, mark the
-	 * current auth attempt as failed so that the control backend knows to abort
-	 * auth and reset to its base state. The fact that we are in a call to
+	 * current auth attempt as finished so that the control backend knows to
+	 * abort auth and reset to its base state. The fact that we are in a call to
 	 * `auth_failed()` is sufficient to conclude that auth has failed.
 	 */
 
 	if (yb_is_auth_passthrough)
-		port->yb_has_auth_passthrough_failed = true;
+		port->yb_has_auth_passthrough_finished = true;
 
 	/*
 	 * If we failed due to EOF from client, just quit; there's no point in
@@ -281,8 +282,8 @@ auth_failed(Port *port, int elevel, int status, const char *logdetail,
 	 * events.)
 	 *
 	 * YB: When conn mgr is enabled and in auth passthrough mode, avoid calling
-	 * proc_exit here, instead returning a failure result via
-	 * port->yb_has_auth_passthrough_failed.
+	 * proc_exit here, instead returning a failure result by setting
+	 * port->yb_has_auth_passthrough_finished.
 	 */
 	if (status == STATUS_EOF)
 	{
@@ -454,7 +455,7 @@ set_authn_id(Port *port, const char *id)
  * YB: This function *does* return in case connection manager is active and this
  * is a control backend being used for authentication with auth passthrough mode
  * enabled.
- * If auth fails, `port->yb_has_auth_passthrough_failed` is used to signal
+ * If auth fails, `port->yb_has_auth_passthrough_finished` is used to signal
  * authentication failure. This is set in the call to `auth_failed()`. Else it
  * must be set manually where auth_failed is not called before returning.
  */
@@ -490,16 +491,22 @@ ClientAuthentication(Port *port)
 	CHECK_FOR_INTERRUPTS();
 
 	/*
-	 * Only tserver-owned backends using yb-tserver-key authentication are
-	 * allowed to run as yb_auto_analyze.
+	 * Every registered YB internal-connection kind (see yb_internal_conn.h),
+	 * including auto-analyze, must use yb-tserver-key authentication, since the
+	 * tserver opens these over the local unix socket. Tests that need to pose
+	 * as a kind go through CreateInternalPGConnBuilder with the tserver's
+	 * shared-memory postgres auth key as password, matching the hardcoded
+	 *
+	 *     local all postgres yb-tserver-key
+	 *
+	 * HBA rule.
 	 */
-	if (IsYugaByteEnabled() && MyBackendType == YB_AUTO_ANALYZE_BACKEND &&
-		port->hba->auth_method != uaYbTserverKey &&
-		!YBCGetGFlags()->TEST_ysql_bypass_auto_analyze_auth_check)
+	if (IsYugaByteEnabled() && YbIsInternalConnBackendType(MyBackendType) &&
+		port->hba->auth_method != uaYbTserverKey)
 		ereport(FATAL,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("yb_auto_analyze can only be set if the authentication method "
-						"is yb-tserver-key")));
+				 errmsg("yb_internal_conn_kind can only be set if the "
+						"authentication method is yb-tserver-key")));
 
 	/*
 	 * This is the first point where we have access to the hba record for the
@@ -573,7 +580,10 @@ ClientAuthentication(Port *port)
 					(port->gss && port->gss->enc) ? _("GSS encryption") :
 #endif
 #ifdef USE_SSL
-					port->ssl_in_use ? _("SSL encryption") :
+					((YbIsClientYsqlConnMgr() &&
+					(port->yb_is_auth_passthrough_req || yb_is_auth_backend)) ?
+					port->yb_is_ssl_enabled_in_logical_conn :
+					port->ssl_in_use) ? _("SSL encryption") :
 #endif
 					_("no encryption");
 
@@ -589,7 +599,7 @@ ClientAuthentication(Port *port)
 					if (yb_auth_passthrough)
 					{
 						YbSendFatalForLogicalConnectionPacket();
-						port->yb_has_auth_passthrough_failed = true;
+						port->yb_has_auth_passthrough_finished = true;
 					}
 
 					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
@@ -628,7 +638,10 @@ ClientAuthentication(Port *port)
 					(port->gss && port->gss->enc) ? _("GSS encryption") :
 #endif
 #ifdef USE_SSL
-					port->ssl_in_use ? _("SSL encryption") :
+					((YbIsClientYsqlConnMgr() &&
+					(port->yb_is_auth_passthrough_req || yb_is_auth_backend)) ?
+					port->yb_is_ssl_enabled_in_logical_conn :
+					port->ssl_in_use) ? _("SSL encryption") :
 #endif
 					_("no encryption");
 
@@ -666,7 +679,7 @@ ClientAuthentication(Port *port)
 					if (yb_auth_passthrough)
 					{
 						YbSendFatalForLogicalConnectionPacket();
-						port->yb_has_auth_passthrough_failed = true;
+						port->yb_has_auth_passthrough_finished = true;
 					}
 
 					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),

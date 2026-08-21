@@ -170,35 +170,87 @@ static inline od_server_t *yb_od_server_pool_idle_random (od_server_pool_t *pool
 	return server;
 }
 
+enum yb_idle_selection_mode {
+	YB_IDLE_SELECT_FIRST,
+	YB_IDLE_SELECT_LAST,
+	YB_IDLE_SELECT_RANDOM,
+};
+
+static inline bool yb_idle_server_version_matches(
+	od_server_t *server, int64_t logical_client_version,
+	int64_t max_logical_client_version,
+	enum yb_od_alter_guc_adoption guc_adoption_strategy,
+	bool is_warmup_needed)
+{
+	if (server->yb_marked_for_close)
+		return false;
+
+	switch (guc_adoption_strategy) {
+	case YB_GUC_ADOPTION_FLUCTUATING:
+		return true;
+	case YB_GUC_ADOPTION_GRADUAL:
+		return server->yb_logical_client_version >=
+		       logical_client_version;
+	case YB_GUC_ADOPTION_CONNECTION_STATIC:
+		return server->yb_logical_client_version ==
+		       logical_client_version;
+	}
+	return false;
+}
+
 static inline od_server_t *yb_od_server_pool_idle_version_matching(
 	od_server_pool_t *pool, int64_t logical_client_version,
-	enum yb_od_alter_guc_adoption guc_adoption_strategy)
+	int64_t max_logical_client_version,
+	enum yb_od_alter_guc_adoption guc_adoption_strategy,
+	enum yb_idle_selection_mode selection_mode, bool is_warmup_needed)
 {
 	od_list_t *target = &pool->idle;
 	od_server_t *server;
-	od_list_t *i, *n;
-	od_list_foreach_safe(target, i, n)
-	{
-		server = od_container_of(i, od_server_t, link);
-		if (server->yb_marked_for_close)
-			continue;
-		switch (guc_adoption_strategy) {
-		case YB_GUC_ADOPTION_FLUCTUATING:
-			return server;
-		case YB_GUC_ADOPTION_GRADUAL:
-			if (server->yb_logical_client_version >=
-			    logical_client_version)
-				return server;
-			break;
-		case YB_GUC_ADOPTION_CONNECTION_STATIC:
-			if (server->yb_logical_client_version ==
-			    logical_client_version)
-				return server;
-			break;
+	od_list_t *i;
+
+	if (selection_mode == YB_IDLE_SELECT_RANDOM) {
+		int match_count = 0;
+		od_list_foreach(target, i)
+		{
+			server = od_container_of(i, od_server_t, link);
+			if (yb_idle_server_version_matches(
+				    server, logical_client_version,
+				    max_logical_client_version,
+				    guc_adoption_strategy, is_warmup_needed))
+				match_count++;
 		}
+		if (match_count == 0)
+			return NULL;
+		int idx = rand() % match_count;
+		od_list_foreach(target, i)
+		{
+			server = od_container_of(i, od_server_t, link);
+			if (!yb_idle_server_version_matches(
+				    server, logical_client_version,
+				    max_logical_client_version,
+				    guc_adoption_strategy, is_warmup_needed))
+				continue;
+			if (idx-- == 0)
+				return server;
+		}
+		return NULL;
 	}
 
-	return NULL;
+	od_server_t *last_match = NULL;
+	od_list_foreach(target, i)
+	{
+		server = od_container_of(i, od_server_t, link);
+		if (!yb_idle_server_version_matches(
+			    server, logical_client_version,
+			    max_logical_client_version, guc_adoption_strategy,
+			    is_warmup_needed))
+			continue;
+		if (selection_mode == YB_IDLE_SELECT_FIRST)
+			return server;
+		last_match = server;
+	}
+
+	return last_match;
 }
 
 static inline bool

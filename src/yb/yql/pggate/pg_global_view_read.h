@@ -25,37 +25,31 @@ namespace yb::pggate {
 
 class PgClient;
 
-// Encapsulates scan state for federated YugabyteDB global view reads.
+// Per-scan state for federated YugabyteDB global view reads.
 //
-// Each scan iterates over tservers, executing a remote SQL query on each one
-// via RPC. This class isolates per-scan state so that multiple concurrent scans
-// (e.g. from joins or subqueries) don't interfere with each other.
+// Each ForeignScan targeting a single tserver gets its own instance.
+// The tserver UUID is not owned here; it is passed in by the caller
+// (from the plan's fdw_private) on each ExecScan call.
 //
 class PgGlobalViewRead : public PgMemctx::Registrable {
  public:
-  PgGlobalViewRead(
-    const char* database_name, std::vector<std::string>&& tserver_uuids);
-
-  void ResetScan();
-
   // Set text-format parameter values for parameterized queries.
   // A nullptr entry means the corresponding parameter is NULL.
   void SetParams(std::span<const char*> values);
 
-  // Executes the query on the next tserver and returns the serialized
-  // PgResultPB as a byte buffer. Advances the tserver index by one.
-  // Returns {nullptr, 0, false} when all tservers are exhausted.
-  YbcRemotePgExecResult ExecScan(PgClient& client, std::string_view query);
-
-  bool is_eof() const { return next_tserver_idx_ >= tserver_uuids_.size(); }
+  // Executes the query on the given tserver. On success with rows,
+  // returns the serialized PgResultPB in {pgresult, pgresult_size, nullptr}.
+  // On error, returns {nullptr, 0, error_message} with error_message
+  // pointing to a string valid until the next ExecScan call. On success
+  // with zero rows, returns {nullptr, 0, nullptr}.
+  YbcRemotePgExecResult ExecScan(
+      PgClient& client, std::string_view database_name, std::string_view query,
+      std::string_view tserver_uuid);
 
  private:
-  std::string database_name_;
-  std::vector<std::string> tserver_uuids_;
-  size_t next_tserver_idx_{0};
-  // Holds the serialized PgResultPB between ExecScan and the caller's deserialization.
   std::vector<uint8_t> serialized_result_;
   std::vector<std::optional<std::string>> params_;
+  std::string last_error_;
 };
 
 }  // namespace yb::pggate

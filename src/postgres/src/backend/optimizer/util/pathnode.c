@@ -60,6 +60,9 @@ static List *reparameterize_pathlist_by_child(PlannerInfo *root,
 											  RelOptInfo *child_rel);
 static bool pathlist_is_reparameterizable_by_child(List *pathlist,
 												   RelOptInfo *child_rel);
+/* YB declarations */
+static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
+											 RelOptInfo *rel, Path *subpath);
 
 
 /*****************************************************************************
@@ -459,6 +462,39 @@ set_cheapest(RelOptInfo *parent_rel)
 	parent_rel->cheapest_startup_path = cheapest_startup_path;
 	parent_rel->cheapest_total_path = cheapest_total_path;
 	parent_rel->cheapest_parameterized_paths = parameterized_paths;
+
+	/*
+	 * YB: Promote the cheapest unparameterized Gather/GatherMerge-containing
+	 * path tracked by add_path() over the cost-chosen serial
+	 * cheapest_total_path.  Falls back silently if no such path was created.
+	 */
+	if (IsYugaByteEnabled() &&
+		yb_test_force_parallel != YB_FORCE_PARALLEL_OFF &&
+		cheapest_total_path != NULL &&
+		cheapest_total_path->param_info == NULL &&
+		cheapest_total_path != parent_rel->yb_forced_gather_path &&
+		parent_rel->yb_forced_gather_path != NULL)
+	{
+		List	   *forced_parameterized_paths =
+			list_make1(parent_rel->yb_forced_gather_path);
+		ListCell   *lc;
+
+		/*
+		 * Join path generation consumes this list, not just
+		 * cheapest_total_path.
+		 */
+		foreach(lc, parent_rel->cheapest_parameterized_paths)
+		{
+			Path	   *path = (Path *) lfirst(lc);
+
+			if (path->param_info != NULL)
+				forced_parameterized_paths =
+					lappend(forced_parameterized_paths, path);
+		}
+
+		parent_rel->cheapest_total_path = parent_rel->yb_forced_gather_path;
+		parent_rel->cheapest_parameterized_paths = forced_parameterized_paths;
+	}
 }
 
 /*
@@ -846,6 +882,8 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 		{
 			parent_rel->pathlist = foreach_delete_current(parent_rel->pathlist,
 														  p1);
+			if (parent_rel->yb_forced_gather_path == old_path)
+				parent_rel->yb_forced_gather_path = NULL;
 
 			/*
 			 * Delete the data pointed-to by the deleted cell, if possible
@@ -893,6 +931,32 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 		 */
 		if (!accept_new)
 			break;
+	}
+
+	/*
+	 * YB: Force-keep unparameterized paths containing Gather/GatherMerge, and
+	 * record the path to promote in set_cheapest() via yb_forced_gather_path.
+	 * Paths whose subtree contains a Parallel Hash Join are preferred over
+	 * Gather-only paths so the shared-hash variant can be exercised.
+	 */
+	if (IsYugaByteEnabled() &&
+		yb_test_force_parallel != YB_FORCE_PARALLEL_OFF &&
+		new_path->param_info == NULL &&
+		yb_path_contains_gather(new_path))
+	{
+		bool		new_has_phash = yb_path_contains_parallel_hash(new_path);
+		bool		old_has_phash = (parent_rel->yb_forced_gather_path != NULL &&
+									 yb_path_contains_parallel_hash(parent_rel->yb_forced_gather_path));
+
+		accept_new = true;
+
+		if (parent_rel->yb_forced_gather_path == NULL ||
+			(new_has_phash && !old_has_phash) ||
+			(new_has_phash == old_has_phash &&
+			 compare_path_costs(new_path,
+								parent_rel->yb_forced_gather_path,
+								TOTAL_COST) < 0))
+			parent_rel->yb_forced_gather_path = new_path;
 	}
 
 	if (accept_new)
@@ -1116,6 +1180,21 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 				else
 					accept_new = false;
 			}
+		}
+
+		/*
+		 * YB: Force-keep Parallel Hash Join partial paths so
+		 * generate_gather_paths() can surface a Gather over them.  Protect
+		 * them from cost-dominance eviction (remove_old) and from being
+		 * rejected on cost (accept_new = false).
+		 */
+		if (IsYugaByteEnabled() &&
+			yb_test_force_parallel != YB_FORCE_PARALLEL_OFF)
+		{
+			if (IsA(old_path, HashPath) && old_path->parallel_aware)
+				remove_old = false;
+			if (IsA(new_path, HashPath) && new_path->parallel_aware)
+				accept_new = true;
 		}
 
 		/*
@@ -1347,6 +1426,108 @@ yb_propagate_mmagg_fields(YbPathInfo *parent_fields, List *mmaggregates)
 		return;
 }
 
+bool
+yb_path_contains_gather(Path *path)
+{
+	if (path == NULL)
+		return false;
+
+	switch (nodeTag(path))
+	{
+		case T_GatherPath:
+		case T_GatherMergePath:
+			return true;
+		case T_AggPath:
+			return yb_path_contains_gather(((AggPath *) path)->subpath);
+		case T_GroupPath:
+			return yb_path_contains_gather(((GroupPath *) path)->subpath);
+		case T_IncrementalSortPath:
+			return yb_path_contains_gather(((IncrementalSortPath *) path)->spath.subpath);
+		case T_HashPath:
+		case T_MergePath:
+		case T_NestPath:
+			return yb_path_contains_gather(((JoinPath *) path)->outerjoinpath) ||
+				yb_path_contains_gather(((JoinPath *) path)->innerjoinpath);
+		case T_LimitPath:
+			return yb_path_contains_gather(((LimitPath *) path)->subpath);
+		case T_MaterialPath:
+			return yb_path_contains_gather(((MaterialPath *) path)->subpath);
+		case T_ProjectSetPath:
+			return yb_path_contains_gather(((ProjectSetPath *) path)->subpath);
+		case T_ProjectionPath:
+			return yb_path_contains_gather(((ProjectionPath *) path)->subpath);
+		case T_SortPath:
+			return yb_path_contains_gather(((SortPath *) path)->subpath);
+		case T_SubqueryScanPath:
+			return yb_path_contains_gather(((SubqueryScanPath *) path)->subpath);
+		case T_UniquePath:
+			/*
+			 * YB_TODO_PG19MERGE: PG19 collapsed UpperUniquePath into
+			 * UniquePath; this case now covers master's separate
+			 * T_UpperUniquePath arm too.
+			 */
+			return yb_path_contains_gather(((UniquePath *) path)->subpath);
+		default:
+			return false;
+	}
+}
+
+/*
+ * yb_path_contains_parallel_hash
+ *	  Return true if the path tree contains a Parallel Hash Join (a HashPath
+ *	  whose join is parallel_aware, i.e. built with parallel_hash = true to
+ *	  use a shared hash table).
+ */
+bool
+yb_path_contains_parallel_hash(Path *path)
+{
+	if (path == NULL)
+		return false;
+
+	if (IsA(path, HashPath) && path->parallel_aware)
+		return true;
+
+	switch (nodeTag(path))
+	{
+		case T_GatherPath:
+			return yb_path_contains_parallel_hash(((GatherPath *) path)->subpath);
+		case T_GatherMergePath:
+			return yb_path_contains_parallel_hash(((GatherMergePath *) path)->subpath);
+		case T_AggPath:
+			return yb_path_contains_parallel_hash(((AggPath *) path)->subpath);
+		case T_GroupPath:
+			return yb_path_contains_parallel_hash(((GroupPath *) path)->subpath);
+		case T_IncrementalSortPath:
+			return yb_path_contains_parallel_hash(((IncrementalSortPath *) path)->spath.subpath);
+		case T_HashPath:
+		case T_MergePath:
+		case T_NestPath:
+			return yb_path_contains_parallel_hash(((JoinPath *) path)->outerjoinpath) ||
+				yb_path_contains_parallel_hash(((JoinPath *) path)->innerjoinpath);
+		case T_LimitPath:
+			return yb_path_contains_parallel_hash(((LimitPath *) path)->subpath);
+		case T_MaterialPath:
+			return yb_path_contains_parallel_hash(((MaterialPath *) path)->subpath);
+		case T_ProjectSetPath:
+			return yb_path_contains_parallel_hash(((ProjectSetPath *) path)->subpath);
+		case T_ProjectionPath:
+			return yb_path_contains_parallel_hash(((ProjectionPath *) path)->subpath);
+		case T_SortPath:
+			return yb_path_contains_parallel_hash(((SortPath *) path)->subpath);
+		case T_SubqueryScanPath:
+			return yb_path_contains_parallel_hash(((SubqueryScanPath *) path)->subpath);
+		case T_UniquePath:
+			/*
+			 * YB_TODO_PG19MERGE: PG19 collapsed UpperUniquePath into
+			 * UniquePath; this case now covers master's separate
+			 * T_UpperUniquePath arm too.
+			 */
+			return yb_path_contains_parallel_hash(((UniquePath *) path)->subpath);
+		default:
+			return false;
+	}
+}
+
 /*****************************************************************************
  *		PATH NODE CREATION ROUTINES
  *****************************************************************************/
@@ -1561,6 +1742,13 @@ create_bitmap_heap_path(PlannerInfo *root,
 	yb_propagate_fields(&pathnode->path.yb_path_info,
 						&bitmapqual->yb_path_info);
 
+	/*
+	 * YB Bitmap Scan does not support distinct pushdown. Propagating yb_uniqkeys
+	 * up from the bitmap qual would wrongly mark this path as already DISTINCT,
+	 * causing the planner to drop the Unique/Agg node and emit duplicate rows.
+	 */
+	pathnode->path.yb_path_info.yb_uniqkeys = NIL;
+
 	pathnode->bitmapqual = bitmapqual;
 
 	cost_bitmap_heap_scan(&pathnode->path, root, rel,
@@ -1605,6 +1793,13 @@ create_yb_bitmap_table_path(PlannerInfo *root,
 
 	yb_propagate_fields(&pathnode->path.yb_path_info,
 						&bitmapqual->yb_path_info);
+
+	/*
+	 * YB Bitmap Scan does not support distinct pushdown. Propagating yb_uniqkeys
+	 * up from the bitmap qual would wrongly mark this path as already DISTINCT,
+	 * causing the planner to drop the Unique/Agg node and emit duplicate rows.
+	 */
+	pathnode->path.yb_path_info.yb_uniqkeys = NIL;
 
 	pathnode->bitmapqual = bitmapqual;
 
@@ -2659,8 +2854,8 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 		subpath->parallel_safe;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	pathnode->path.pathkeys = pathkeys;
-	yb_propagate_fields(&pathnode->path.yb_path_info,
-						&subpath->yb_path_info);
+	yb_propagate_subqueryscan_fields(&pathnode->path.yb_path_info, rel,
+									 subpath);
 	pathnode->subpath = subpath;
 
 	cost_subqueryscan(pathnode, root, rel, pathnode->path.param_info,
@@ -5897,4 +6092,27 @@ yb_assign_unique_path_node_id(PlannerInfo *root, Path *path)
 			path->ybHasHintedUid = true;
 		}
 	}
+}
+
+/*
+ * Propagate YugabyteDB fields through a SubqueryScanPath.
+ *
+ * SubqueryScanPath crosses a namespace boundary:
+ * fields represented in the subquery's terms must be translated to
+ * the outer query.
+ */
+static void
+yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
+								 Path *subpath)
+{
+	if (!IsYugaByteEnabled())
+		return;
+
+	if (subpath->yb_path_info.yb_uniqkeys == NIL)
+		return;
+
+	parent_fields->yb_uniqkeys =
+		yb_convert_subquery_uniqkeys(rel,
+									 subpath->yb_path_info.yb_uniqkeys,
+									 make_tlist_from_pathtarget(subpath->pathtarget));
 }

@@ -210,6 +210,7 @@ class Executor : public qlexpr::QLExprExecutor {
 
   // Returns the YBSession for the statement in execution.
   client::YBSessionPtr GetSession();
+  ThreadSafeArenaPtr arena();
 
   // Flush operations that have been applied and commit. If there is none, finish the statement
   // execution.

@@ -14,11 +14,13 @@
 #include "yb/cdc/cdcsdk_virtual_wal.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
+#include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
 
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 
 // TODO(22655): Remove the below macro once YB_LOG_EVERY_N_SECS_OR_VLOG() is fixed.
 #define YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, n_secs, verbose_level) \
@@ -58,6 +60,9 @@
 #define GET_PUBOID_FROM_PG_PUBLICATION_REL_RECORD(record) \
   record->row_message().new_tuple().Get(1).pg_catalog_value().uint32_value()
 
+#define GET_OID_FROM_PG_PUBLICATION_RECORD(record) \
+  record->row_message().new_tuple().Get(0).pg_catalog_value().uint32_value()
+
 DEFINE_RUNTIME_uint32(cdcsdk_vwal_tablets_to_poll_batch_size, 200,
     "The maximum number of tablets to poll in a single GetConsistentChanges call. If there are "
     "more tablets to be polled, then an empty response is sent in current call.");
@@ -66,29 +71,24 @@ DEFINE_RUNTIME_uint32(cdcsdk_max_consistent_records, 500,
     "Controls the maximum number of records sent in GetConsistentChanges response. Only used when "
     "cdc_vwal_use_byte_threshold_for_consistent_changes flag is set to false.");
 
-DEFINE_RUNTIME_uint64(
-    cdcsdk_publication_list_refresh_interval_secs, 900 /* 15 mins */,
+DEFINE_RUNTIME_uint64(cdcsdk_publication_list_refresh_interval_secs, 900 /* 15 mins */,
     "Interval in seconds at which the table list in the publication will be refreshed");
 
-DEFINE_RUNTIME_uint64(
-    cdcsdk_vwal_getchanges_resp_max_size_bytes, 4_MB,
+DEFINE_RUNTIME_uint64(cdcsdk_vwal_getchanges_resp_max_size_bytes, 4_MB,
     "Max size (in bytes) of GetChanges response for all GetChanges requests sent "
     "from Virtual WAL.");
 
-DEFINE_test_flag(
-    bool, cdcsdk_use_microseconds_refresh_interval, false,
+DEFINE_test_flag(bool, cdcsdk_use_microseconds_refresh_interval, false,
     "Used in tests to simulate commit time ties of publication refresh record with transactions. "
     "When this flag is set to true the value of FLAGS_cdcsdk_publication_list_refresh_interval_secs"
     " will be ignored and publication refresh interval will be set to "
     "cdcsdk_publication_list_refresh_interval_micros.");
 
-DEFINE_test_flag(
-    uint64, cdcsdk_publication_list_refresh_interval_micros, 300000000 /* 5 minutes */,
+DEFINE_test_flag(uint64, cdcsdk_publication_list_refresh_interval_micros, 300000000 /* 5 minutes */,
     "Interval in micro seconds at which the table list in the publication will be refreshed. This "
     "will be used only when cdcsdk_use_microseconds_refresh_interval is set to true");
 
-DEFINE_RUNTIME_bool(
-    cdcsdk_enable_dynamic_table_support, true,
+DEFINE_RUNTIME_bool(cdcsdk_enable_dynamic_table_support, true,
     "This flag can be used to switch the dynamic addition of tables ON or OFF.");
 
 DEFINE_RUNTIME_bool(cdc_use_byte_threshold_for_vwal_changes, true,
@@ -115,6 +115,7 @@ DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(cdc_enable_local_rpc_in_virtual_wal);
 
 namespace yb::cdc {
 
@@ -247,10 +248,14 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
     pg_class_table_id_ = GetPgsqlTableId(pg_database_oid, kPgClassTableOid);
     pg_publication_rel_table_id_ = GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid);
+    pg_replication_origin_table_id_ = GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid);
+    pg_publication_table_id_ = GetPgsqlTableId(pg_database_oid, kPgPublicationOid);
     table_list.emplace(pg_class_table_id_);
     table_list.emplace(pg_publication_rel_table_id_);
-    VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class and pg_publication_rel "
-                           "to the polling list.";
+    table_list.emplace(pg_replication_origin_table_id_);
+    table_list.emplace(pg_publication_table_id_);
+    VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class, pg_publication_rel, "
+                           "pg_replication_origin and pg_publication to the polling list.";
   }
 
   if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
@@ -264,7 +269,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     if (!s.ok()) {
       s = s.CloneAndPrepend(Format(
           "Error fetching tablet list & checkpoints for table_id $0: $1", table_id));
-      LOG_WITH_PREFIX(DFATAL) << s;
+      LOG_WITH_PREFIX(WARNING) << s;
       return s;
     }
     publication_table_list_.insert(table_id);
@@ -317,8 +322,8 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
   if (!parent_tablet_id.empty()) {
     req.set_tablet_id(parent_tablet_id);
   }
-  // TODO(20946): Change this RPC call to a local call.
-  auto cdc_proxy = cdc_service_->GetCDCServiceProxy(hostport);
+
+  auto cdc_proxy = GetCDCServiceProxy(hostport);
   rpc::RpcController rpc;
   rpc.set_deadline(deadline);
   auto s = cdc_proxy->GetTabletListToPollForCDC(req, &resp, &rpc);
@@ -633,17 +638,20 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     auto record = tablet_record_info_pair.second.second;
 
     if (tablet_id == master::kSysCatalogTabletId) {
-      auto pub_refresh_required =
-          DeterminePubRefreshFromMasterRecord(tablet_record_info_pair.second);
+      bool explicit_alter_pub_detected;
+      auto pub_refresh_required = DeterminePubRefreshFromMasterRecord(
+          tablet_record_info_pair.second, &explicit_alter_pub_detected);
       if (pub_refresh_required) {
         last_pub_refresh_time = unique_id->GetCommitTime();
         resp->set_needs_publication_table_list_refresh(true);
         resp->set_publication_refresh_time(last_pub_refresh_time);
+        resp->set_explicit_alter_publication_detected(explicit_alter_pub_detected);
         metadata.contains_publication_refresh_record = true;
         VLOG_WITH_PREFIX(1)
             << "Notifying walsender to refresh publication list in the GetConsistentChanges "
                "response at commit_time: "
-            << last_pub_refresh_time;
+            << last_pub_refresh_time
+            << ", explicit_alter_publication_detected: " << explicit_alter_pub_detected;
         break;
       }
       continue;
@@ -903,8 +911,7 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
 
     RETURN_NOT_OK(PopulateGetChangesRequest(tablet_id, &req));
 
-    // TODO(20946): Change this RPC call to a local call.
-    auto cdc_proxy = cdc_service_->GetCDCServiceProxy(hostport);
+    auto cdc_proxy = GetCDCServiceProxy(hostport);
     rpc::RpcController rpc;
     rpc.set_deadline(deadline);
     auto s = cdc_proxy->GetChanges(req, &resp, &rpc);
@@ -1204,8 +1211,8 @@ Status CDCSDKVirtualWAL::ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordI
   // fails this check since we filter while inserting to the priority queue.
   RSTATUS_DCHECK(
       popped_record.GetCommitTime() >= virtual_wal_safe_time_.ToUint64(), IllegalState,
-      "Received a record with commit time: {} lesser than the Virtual WAL safe "
-      "time: {}. This record will not be shipped, filtered record: {}",
+      "Received a record with commit time: $0 lesser than the Virtual WAL safe "
+      "time: $1. This record will not be shipped, filtered record: $2",
       popped_record.GetCommitTime(), virtual_wal_safe_time_.ToUint64(), popped_record.ToString());
 
   virtual_wal_safe_time_ = HybridTime(popped_record.GetCommitTime());
@@ -1226,7 +1233,7 @@ Status CDCSDKVirtualWAL::UpdateRestartTimeIfRequired() {
 
   last_restart_lsn_read_time_ = current_time;
 
-  if (last_received_restart_lsn == last_seen_lsn_) {
+  if (last_received_restart_lsn >= last_seen_lsn_) {
     RETURN_NOT_OK(UpdateAndPersistLSNInternal(
         last_received_confirmed_flush_lsn_, last_received_restart_lsn,
         true /* use_vwal_safe_time */));
@@ -1608,8 +1615,7 @@ Status CDCSDKVirtualWAL::UpdatePublicationTableListInternal(
   }
 
   for (auto table_id : publication_table_list_) {
-    if (!new_tables.contains(table_id) && table_id != pg_class_table_id_ &&
-        table_id != pg_publication_rel_table_id_) {
+    if (!new_tables.contains(table_id) && !IsCatalogTableEligibleForCDC(table_id)) {
       tables_to_be_removed.insert(table_id);
       VLOG_WITH_PREFIX(1) << "Table: " << table_id << " to be removed from polling list";
     }
@@ -1787,9 +1793,16 @@ std::vector<TabletId> CDCSDKVirtualWAL::GetTabletIdsFromVirtualWAL() {
   return tablet_ids;
 }
 
-bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info) {
+bool CDCSDKVirtualWAL::IsCatalogTableEligibleForCDC(const TableId& table_id) const {
+  return table_id == pg_class_table_id_ || table_id == pg_publication_rel_table_id_ ||
+         table_id == pg_replication_origin_table_id_ || table_id == pg_publication_table_id_;
+}
+
+bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
+    const RecordInfo& record_info, bool* explicit_alter_publication_detected) {
   auto const& record = record_info.second;
   auto table_id = record->row_message().table_id();
+  *explicit_alter_publication_detected = false;
 
   // The record is a BEGIN / COMMIT.
   if (table_id.empty()) {
@@ -1815,28 +1828,49 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& rec
       return false;
     }
 
+    *explicit_alter_publication_detected = true;
+
     if (record->row_message().op() == RowMessage_Op_DELETE) {
       return true;
     }
 
-    // If we reach here it means that this is an INSERT record in pg_publication_rel.
     auto pub_oid = GET_PUBOID_FROM_PG_PUBLICATION_REL_RECORD(record);
     if (!publications_list_.contains(pub_oid)) {
       return false;
     }
 
     return true;
+  } else if (table_id == pg_replication_origin_table_id_) {
+    if (record->row_message().op() != RowMessage_Op_INSERT &&
+        record->row_message().op() != RowMessage_Op_DELETE) {
+      return false;
+    }
+    return true;
+  } else if (table_id == pg_publication_table_id_) {
+    if (record->row_message().op() != RowMessage_Op_UPDATE) {
+      return false;
+    }
+
+    auto pub_oid = GET_OID_FROM_PG_PUBLICATION_RECORD(record);
+    if (!publications_list_.contains(pub_oid)) {
+      return false;
+    }
+
+    *explicit_alter_publication_detected = true;
+    return true;
   }
 
-  // We should only receive records corresponding to pg_class and pg_publication_rel tables. Only
-  // possibility of reaching here is when a DDL record is sent from sys catalog tablet, for ex: when
-  // a new slot is created, the existing slot sees the CHANGE_METADATA_OP used for setting retention
-  // barriers and sends a DDL record.
+  // We should only receive records corresponding to pg_class, pg_publication_rel,
+  // pg_replication_origin and pg_publication tables. Only possibility of reaching here is when a
+  // DDL record is sent from sys catalog tablet, for ex: when a new slot is created, the existing
+  // slot sees the CHANGE_METADATA_OP used for setting retention barriers and sends a DDL record.
   LOG_IF(DFATAL, record->row_message().op() != RowMessage_Op_DDL)
       << "Records from an unexpected table: " << table_id
       << " received from sys catalog tablet in virtual WAL."
       << " pg_class_table_id_ = " << pg_class_table_id_
-      << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_;
+      << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_
+      << " pg_replication_origin_table_id_ = " << pg_replication_origin_table_id_
+      << " pg_publication_table_id_ = " << pg_publication_table_id_;
   return false;
 }
 
@@ -1868,6 +1902,18 @@ bool CDCSDKVirtualWAL::CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRec
   }
 
   return false;
+}
+
+std::shared_ptr<CDCServiceProxy> CDCSDKVirtualWAL::GetCDCServiceProxy(HostPort hostport) {
+  if (FLAGS_cdc_enable_local_rpc_in_virtual_wal) {
+    if (local_cdc_service_proxy_ == nullptr) {
+      local_cdc_service_proxy_ =
+          std::make_shared<CDCServiceProxy>(&cdc_service_->client()->proxy_cache(), HostPort());
+    }
+    return local_cdc_service_proxy_;
+  }
+
+  return cdc_service_->GetCDCServiceProxy(hostport);
 }
 
 } // namespace yb::cdc

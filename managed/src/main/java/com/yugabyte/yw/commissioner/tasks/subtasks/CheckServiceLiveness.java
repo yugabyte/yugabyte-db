@@ -17,8 +17,10 @@ import lombok.extern.slf4j.Slf4j;
 public class CheckServiceLiveness extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
-    /** Timeout in milliseconds for the liveness check. Default: 5000ms. */
-    public long timeoutMs = 5000;
+    /**
+     * Timeout in milliseconds for each per-service liveness check (master, tserver, node-agent).
+     */
+    public long timeoutMs = 30000;
   }
 
   @Inject
@@ -147,7 +149,7 @@ public class CheckServiceLiveness extends NodeTaskBase {
     }
 
     try {
-      boolean isAlive = isMasterAliveOnNode(node, masterAddresses);
+      boolean isAlive = isMasterAliveOnNode(node, masterAddresses, taskParams().timeoutMs);
       log.debug(
           "Master liveness check on node {} ({}:{}) returned: {}",
           node.nodeName,
@@ -177,7 +179,7 @@ public class CheckServiceLiveness extends NodeTaskBase {
     }
 
     try {
-      boolean isAlive = isTserverAliveOnNode(node, masterAddresses);
+      boolean isAlive = isTserverAliveOnNode(node, masterAddresses, taskParams().timeoutMs);
       log.debug(
           "Tserver liveness check on node {} ({}:{}) returned: {}",
           node.nodeName,
@@ -225,8 +227,7 @@ public class CheckServiceLiveness extends NodeTaskBase {
     }
 
     try {
-      // Use a short timeout for the ping to avoid blocking too long
-      Duration pingTimeout = Duration.ofMillis(Math.min(taskParams().timeoutMs, 2000));
+      Duration pingTimeout = Duration.ofMillis(taskParams().timeoutMs);
       nodeAgentClient.waitForServerReady(nodeAgent, pingTimeout);
       log.debug(
           "Node agent liveness check on node {} (IP: {}) returned: true", node.nodeName, nodeIp);

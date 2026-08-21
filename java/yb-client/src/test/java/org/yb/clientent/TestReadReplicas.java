@@ -25,12 +25,16 @@ import org.junit.runner.RunWith;
 import org.yb.Schema;
 import org.yb.ColumnSchema;
 import org.yb.CommonNet;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBCluster;
-import org.yb.util.YBTestRunnerNonTsanAsan;
+import org.yb.util.SkipOnASAN;
+import org.yb.util.SkipOnTSAN;
 
 import static org.yb.AssertionWrappers.assertTrue;
 
-@RunWith(value=YBTestRunnerNonTsanAsan.class)
+@SkipOnTSAN
+@SkipOnASAN
+@RunWith(value=YBTestRunner.class)
 public class TestReadReplicas extends TestYBClient {
   private static final String PLACEMENT_CLOUD = "testCloud";
   private static final String PLACEMENT_REGION = "testRegion";

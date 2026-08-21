@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
@@ -25,6 +26,7 @@ import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 @Slf4j
 @Abortable
 @Retryable
+@CanRollback
 public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
@@ -210,10 +212,6 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
             createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
-          // Also idempotent can be run again here.
-          // Mark the final software version on the universe
-          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
-              .setSubTaskGroupType(getTaskSubGroupType());
 
           if (universe.getUniverseDetails().useNewHelmNamingStyle) {
             createPodDisruptionBudgetPolicyTask(false /* deletePDB */)
@@ -238,6 +236,10 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                   true /* isSoftwareRollbackAllowed */);
             }
           }
+          // Also idempotent can be run again here.
+          // Mark the final software version on the universe (last subtask).
+          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
         },
         () -> {
           if (requireAdditionalSuperUserForCatalogUpgrade) {

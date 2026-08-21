@@ -1,0 +1,4 @@
+plugins:
+  - ./plugins/x-data-container-expand.cjs
+preprocessors:
+  x-data-container-expand/expand-paged-schemas: 'on'

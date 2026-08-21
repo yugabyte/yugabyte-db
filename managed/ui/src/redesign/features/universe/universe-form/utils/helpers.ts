@@ -25,6 +25,12 @@ import {
   INHERITED_FIELDS_FROM_PRIMARY,
   TOAST_AUTO_DISMISS_INTERVAL
 } from './constants';
+import {
+  clampMultiTenancyQosMaxDbCpuPercent,
+  clampMultiTenancyQosMaxDbCount,
+  MULTI_TENANCY_QOS_MAX_DB_CPU_PERCENT_FALLBACK,
+  MULTI_TENANCY_QOS_MAX_DB_COUNT_FALLBACK
+} from '../../universe-actions/edit-multi-tenancy/multiTenancyQosDbCount';
 import { api } from './api';
 import { getPlacementsFromCluster } from '../form/fields/PlacementsField/PlacementsFieldHelper';
 import { isDefinedNotNull } from '@app/utils/ObjectUtils';
@@ -250,7 +256,20 @@ export const getFormData = (
       customizePort: false, //** */
       ybcPackagePath: null, //** */,
       enablePGCompatibitilty: isPGEnabledFromIntent(userIntent),
-      enableConnectionPooling: _.get(userIntent, 'enableConnectionPooling', false)
+      enableConnectionPooling: _.get(userIntent, 'enableConnectionPooling', false),
+      enableMultiTenancyQos: _.get(userIntent, 'multiTenancy.enableQos', false),
+      multiTenancyQosMaxDbCpuPercent: (() => {
+        const v = _.get(userIntent, 'multiTenancy.qosMaxDbCpuPercent');
+        return typeof v === 'number' && !Number.isNaN(v)
+          ? v
+          : MULTI_TENANCY_QOS_MAX_DB_CPU_PERCENT_FALLBACK;
+      })(),
+      multiTenancyQosMaxDbCount: (() => {
+        const v = _.get(userIntent, 'multiTenancy.qosMaxDbCount');
+        return typeof v === 'number' && !Number.isNaN(v)
+          ? v
+          : MULTI_TENANCY_QOS_MAX_DB_COUNT_FALLBACK;
+      })()
     },
     instanceTags: transformInstanceTags(userIntent.instanceTags),
     gFlags: userIntent?.specificGFlags
@@ -338,6 +357,17 @@ export const getUserIntent = (
     imageBundleUUID: instanceConfig.imageBundleUUID!
   };
 
+  if (advancedConfig.enableMultiTenancyQos) {
+    const qosMaxDbCpuPercent = clampMultiTenancyQosMaxDbCpuPercent(
+      advancedConfig.multiTenancyQosMaxDbCpuPercent
+    );
+
+    const rawCount = advancedConfig.multiTenancyQosMaxDbCount;
+    const qosMaxDbCount = clampMultiTenancyQosMaxDbCount(rawCount);
+
+    intent.multiTenancy = { enableQos: true, qosMaxDbCpuPercent, qosMaxDbCount };
+  }
+
   if (enableRRGflags) {
     if (clusterType === ClusterType.ASYNC && inheritFlagsFromPrimary) {
       intent.specificGFlags = {
@@ -381,11 +411,17 @@ export const getUserIntent = (
   if (cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
     intent.masterInstanceType = instanceConfig.masterInstanceType;
     intent.masterDeviceInfo = instanceConfig.masterDeviceInfo;
+  } else {
+    // Clear master-only fields when not using dedicated nodes so configure API payload is valid
+    intent.masterInstanceType = null;
+    intent.masterDeviceInfo = null;
   }
 
   if (cloudConfig.provider?.code === CloudType.kubernetes) {
     intent.masterK8SNodeResourceSpec = instanceConfig.masterK8SNodeResourceSpec;
-    intent.masterDeviceInfo = instanceConfig.masterDeviceInfo;
+    if (cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
+      intent.masterDeviceInfo = instanceConfig.masterDeviceInfo;
+    }
   }
 
   if (instanceConfig.enableYSQLAuth && instanceConfig.ysqlPassword)

@@ -985,6 +985,11 @@ public class TestPgSelect extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       statement.execute(query);
 
+      // Write non-transactionally: intents of a transactional write are applied to the regular
+      // DocDB asynchronously, and rows that are still intents at read time are served by the
+      // intents iterator, making the regular DB seek count below nondeterministic.
+      statement.execute("SET yb_disable_transactional_writes = true");
+
       query = "INSERT INTO t (SELECT 1, i FROM GENERATE_SERIES(1, 10) AS i)";
       statement.execute(query);
 
@@ -993,6 +998,8 @@ public class TestPgSelect extends BasePgSQLTest {
 
       query = "INSERT INTO t (SELECT 3, i FROM GENERATE_SERIES(1, 10) AS i)";
       statement.execute(query);
+
+      statement.execute("RESET yb_disable_transactional_writes");
 
       Set<Row> expectedRows = new HashSet<>();
       expectedRows.add(new Row(1));

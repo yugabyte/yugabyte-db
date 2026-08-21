@@ -44,7 +44,9 @@
 #include "yb/client/client.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/error.h"
+#include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -754,72 +756,6 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   }
 }
 
-TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
-  ASSERT_NO_FATALS(CreateTable(kTable3Name, 8, &client_table3_));
-
-  std::shared_ptr<YBTable> table;
-  ASSERT_OK(client_->OpenTable(kTable3Name, &table));
-
-  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
-            WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-
-  auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
-      table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(kLookupWaitTimeSecs)).get());
-
-  std::vector<std::string> partitions;
-  partitions.reserve(tablets.size());
-  for (const auto& tablet : tablets) {
-    partitions.push_back(tablet->partition().partition_key_start());
-  }
-  std::sort(partitions.begin(), partitions.end());
-
-  // Special case: upper bound is not set, means upper bound is +Inf.
-  PgsqlReadRequestPB req;
-  auto wrapper = ASSERT_RESULT(TEST_FindPartitionKeyByUpperBound(partitions, req));
-  ASSERT_EQ(wrapper.get(), partitions.back());
-
-  // General cases.
-  for (bool is_inclusive : { true, false }) {
-    for (size_t idx = 0; idx < partitions.size(); ++idx) {
-      auto check_key = [&partitions, &req, idx, is_inclusive](const std::string& key) -> Status {
-        SCHECK(!key.empty(), IllegalState, "Invalid key");
-        req.clear_upper_bound();
-        req.mutable_upper_bound()->set_key(key);
-        req.mutable_upper_bound()->set_is_inclusive(is_inclusive);
-        auto* expected = &partitions[idx];
-        // If the key is the same as the lower partition bound and exclusive, the previous partition
-        // is the correct target.
-        if (!is_inclusive && *expected == key) {
-          SCHECK_GT(idx, 0, IllegalState, "Invalid partitions, first partition key must be empty");
-          expected = &partitions[idx - 1];
-        }
-        auto result = VERIFY_RESULT_REF(TEST_FindPartitionKeyByUpperBound(partitions, req));
-        SCHECK_EQ(*expected, result, IllegalState, Format(
-            "idx = $0, is_inclusive = $1, upper_bound = \"$2\"",
-            idx, is_inclusive, FormatBytesAsStr(req.upper_bound().key())));
-        return Status::OK();
-      };
-
-      // Get key and calculate bounds.
-      const auto& key = partitions[idx];
-      const uint16_t start = key.empty() ? 0 : PartitionSchema::DecodeMultiColumnHashValue(key);
-      const uint16_t last  = (idx < partitions.size() - 1 ?
-          PartitionSchema::DecodeMultiColumnHashValue(partitions[idx + 1]) :
-          std::numeric_limits<decltype(start)>::max()) - 1;
-
-      // 1. Upper bound matches partition start.
-      ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(start)));
-
-      // 2. Upper bound matches partition last key.
-      ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(last)));
-
-      // 3. Upper bound matches some middle key from partition.
-      const auto middle = start + ((last - start) / 2);
-      ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(middle)));
-    }
-  }
-}
-
 TEST_F(ClientTest, TestListTables) {
   auto tables = ASSERT_RESULT(client_->ListTables("", true));
   std::sort(tables.begin(), tables.end(), [](const YBTableName& n1, const YBTableName& n2) {
@@ -1257,7 +1193,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_TRUE(std::regex_match(
         error->status().ToString(),
-        std::regex(".*GetTableLocations \\{.*\\} timed out after deadline expired, passed.*")))
+        std::regex(".*LookupByKeyRpc \\{.*\\} timed out after deadline expired, passed.*")))
         << error->status().ToString();
   }
 
@@ -2465,12 +2401,13 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // Write to the PGSQL table.
   shared_ptr<YBTable> pgsq_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId , &pgsq_table));
+  auto arena = SharedThreadSafeArena();
   rpc::Sidecars sidecars;
-  auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsq_table, &sidecars);
-  PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
+  auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsq_table, arena, &sidecars);
+  auto* psql_write_request = pgsql_write_op->mutable_request();
 
-  psql_write_request->add_range_column_values()->mutable_value()->set_string_value("pgsql_key1");
-  PgsqlColumnValuePB* pgsql_column = psql_write_request->add_column_values();
+  psql_write_request->add_range_column_values()->mutable_value()->ref_string_value("pgsql_key1");
+  auto* pgsql_column = psql_write_request->add_column_values();
   // 1 is the index for column value.
 
   pgsql_column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
@@ -2493,7 +2430,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   EXPECT_OK(table.Open(yql_table_name, client_.get()));
   auto write_op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = write_op->mutable_request();
-  req->add_range_column_values()->mutable_value()->set_string_value("key1");
+  req->add_range_column_values()->mutable_value()->ref_string_value("key1");
   auto* column = req->add_column_values();
   // 1 is the index for column value.
   column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
@@ -2795,12 +2732,13 @@ TEST_F(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader) {
   shared_ptr<YBTable> pgsql_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId, &pgsql_table));
   std::shared_ptr<YBSession> session = CreateSession(client_.get());
+  auto arena = SharedThreadSafeArena();
   rpc::Sidecars sidecars;
   auto create_insert_pgsql_row = [&](const std::string& key) -> YBPgsqlWriteOpPtr {
-    auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsql_table, &sidecars);
-    PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
-    psql_write_request->add_range_column_values()->mutable_value()->set_string_value(key);
-    PgsqlColumnValuePB* pgsql_column = psql_write_request->add_column_values();
+    auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsql_table, arena, &sidecars);
+    auto* psql_write_request = pgsql_write_op->mutable_request();
+    psql_write_request->add_range_column_values()->mutable_value()->dup_string_value(key);
+    auto* pgsql_column = psql_write_request->add_column_values();
     pgsql_column->set_column_id(pgsql_table->schema().ColumnId(1));
     pgsql_column->mutable_expr()->mutable_value()->set_int64_value(3);
     return pgsql_write_op;
@@ -3084,6 +3022,112 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
 
   const auto lookup_serial_stop = client::internal::TEST_GetLookupSerial();
   ASSERT_EQ(lookup_serial_stop, lookup_serial_start + 1);
+}
+
+namespace {
+
+auto MakePartitionList(PartitionListVersion version) -> VersionedTablePartitionListPtr {
+  auto partition_list = std::make_shared<VersionedTablePartitionList>();
+  partition_list->version = version;
+  return partition_list;
+}
+
+} // namespace
+
+TEST_F(ClientTest, MetaCacheIgnoreNonTargetTable) {
+  const TableId kMainTableId = "main_table";
+  const TableId kVectorTableId = "vector_table";
+  const TabletId kTabletId = "tablet_1";
+  constexpr PartitionListVersion kMainTableVersion = 100;
+  constexpr PartitionListVersion kVectorTableVersion = 200;
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  meta_cache.InvalidateTableCache(kMainTableId, MakePartitionList(kMainTableVersion));
+  meta_cache.InvalidateTableCache(kVectorTableId, MakePartitionList(kVectorTableVersion));
+
+  master::TabletLocationsPB location;
+  location.set_tablet_id(kTabletId);
+  location.mutable_partition()->set_partition_key_start("");
+  location.mutable_partition()->set_partition_key_end("");
+  location.add_table_ids(kMainTableId);
+  location.add_table_ids(kVectorTableId);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+  *locations.Add() = location;
+
+  // Process tablet locations should ignore non-target tables.
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext { kVectorTableId, kVectorTableVersion }));
+
+  // Standard read path.
+  const auto stale_status = meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext { kMainTableId, kVectorTableVersion });
+  ASSERT_NOK(stale_status);
+  ASSERT_EQ(ClientError(stale_status), ClientErrorCode::kTablePartitionListIsStale);
+}
+
+TEST_F(ClientTest, MetaCacheAllowsMissingTargetTableForDeletedLocation) {
+  const TableId kTargetTableId = "target_table";
+  const TableId kOtherTableId = "other_table";
+  constexpr PartitionListVersion kTargetTableVersion = 100;
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  meta_cache.InvalidateTableCache(kTargetTableId, MakePartitionList(kTargetTableVersion));
+  meta_cache.InvalidateTableCache(kOtherTableId, MakePartitionList(kTargetTableVersion));
+
+  master::TabletLocationsPB location;
+  location.set_tablet_id("tablet_1");
+  location.mutable_partition()->set_partition_key_start("");
+  location.mutable_partition()->set_partition_key_end("");
+  location.set_stale(false);
+  location.set_is_deleted(true);
+  location.add_table_ids(kOtherTableId);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+  *locations.Add() = location;
+
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kTargetTableId, kTargetTableVersion}));
+}
+
+TEST_F(ClientTest, MetaCacheVectorLookupKeepsMainTableLookupUsable) {
+  const TableId kMainTableId = "main_table";
+  const TableId kVectorTableId = "vector_table";
+  const TabletId kTabletId = "tablet_1";
+  constexpr PartitionListVersion kMainTableVersion = 100;
+  constexpr PartitionListVersion kVectorTableVersion = 200;
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  meta_cache.InvalidateTableCache(kMainTableId, MakePartitionList(kMainTableVersion));
+  meta_cache.InvalidateTableCache(kVectorTableId, MakePartitionList(kVectorTableVersion));
+
+  master::TabletLocationsPB location;
+  location.set_tablet_id(kTabletId);
+  location.mutable_partition()->set_partition_key_start("");
+  location.mutable_partition()->set_partition_key_end("");
+  location.add_table_ids(kMainTableId);
+  location.add_table_ids(kVectorTableId);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+  *locations.Add() = location;
+
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kVectorTableId, kVectorTableVersion}));
+
+  // Main table should still use its own partition list version and process successfully.
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kMainTableId, kMainTableVersion}));
+
+  const auto stale_status = meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kMainTableId, kVectorTableVersion});
+  ASSERT_NOK(stale_status);
+  ASSERT_EQ(ClientError(stale_status), ClientErrorCode::kTablePartitionListIsStale);
 }
 
 class ClientTestWithHashAndRangePk : public ClientTest {

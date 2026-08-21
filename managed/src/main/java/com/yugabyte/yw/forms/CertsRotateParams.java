@@ -64,6 +64,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
    */
   public static final String HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION = "2025.2.1.0-b0";
 
+  public static final String HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION_PREVIEW = "2.31.0.0-b0";
+
   /**
    * Returns true if hot cert reload is supported from a C2N/version perspective. Returns false when
    * only client-to-node encryption is enabled and DB version is below 2025.2.1 (hot cert reload for
@@ -76,7 +78,11 @@ public class CertsRotateParams extends UpgradeTaskParams {
     if (!enableClientToNodeEncrypt || enableNodeToNodeEncrypt) {
       return true;
     }
-    return Util.compareYbVersions(ybSoftwareVersion, HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION, true)
+    return Util.compareYBVersions(
+            ybSoftwareVersion,
+            HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION,
+            HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION_PREVIEW,
+            true)
         >= 0;
   }
 
@@ -87,9 +93,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     verifyCertificateValidity(universe);
-    if (!userIntent.providerType.equals(CloudType.kubernetes)) {
+    if (!Util.isKubernetesBasedUniverse(universe.getUniverseDetails())) {
       verifyParamsForNormalUpgrade(universe, isFirstTry);
     } else {
       // TODO: Fix rotate certs api for VM universes and add this validation for VM universes.
@@ -175,8 +180,12 @@ public class CertsRotateParams extends UpgradeTaskParams {
           "Non-restart certificate rotation is not supported for client-to-node-only universes "
               + "with DB version below "
               + HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION
+              + " or "
+              + HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION_PREVIEW
               + ". Please use rolling or non-rolling upgrade, or upgrade DB to "
               + HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION
+              + " or "
+              + HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION_PREVIEW
               + " or later.");
     }
   }
@@ -303,7 +312,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
           rootCARotationType = CertRotationType.RootCert;
           break;
         case CustomCertHostPath:
-          if (!userIntent.providerType.equals(CloudType.onprem)) {
+          if (Util.checkAnyProviderType(userIntent, c -> c != CloudType.onprem)) {
             throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 "Certs of type CustomCertHostPath can only be used for on-prem universes.");
@@ -371,7 +380,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
           clientRootCARotationType = CertRotationType.RootCert;
           break;
         case CustomCertHostPath:
-          if (!userIntent.providerType.equals(CloudType.onprem)) {
+          if (Util.checkAnyProviderType(userIntent, c -> c != CloudType.onprem)) {
             throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 "Certs of type CustomCertHostPath can only be used for on-prem universes.");

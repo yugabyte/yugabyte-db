@@ -32,16 +32,19 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/pg_types.h"
+
 #include "yb/common/transaction.pb.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/format.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
+#include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 std::ostream& operator<<(std::ostream& str, const YbcObjectLockId& lock_id);
@@ -209,5 +212,7 @@ class TableLocalityMap {
  private:
   std::unordered_map<PgOid, YbcPgTableLocalityInfo> map_;
 };
+
+bool SkipIntents(const PgsqlOp& op);
 
 } // namespace yb::pggate

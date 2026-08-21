@@ -773,7 +773,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				YbDropProfileStmt
 %type <rolespec> OptTableGroupOwner
 %type <rowbounds> YbRowBounds
-%type <splitopt> SplitClause YbOptSplit
+%type <splitopt> SplitClause YbOptSplit yb_presplit_value
 %type <str>		OptTableSpaceLocation opt_for_bfinstr partition_key row_key
 				read_time row_key_end row_key_start yb_opt_alias
 
@@ -944,6 +944,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %token		MODE_PLPGSQL_ASSIGN1
 %token		MODE_PLPGSQL_ASSIGN2
 %token		MODE_PLPGSQL_ASSIGN3
+%token		MODE_YB_SPLIT_CLAUSE
 
 
 /* Precedence: lowest to highest */
@@ -1091,6 +1092,34 @@ parse_toplevel:
 				pg_yyget_extra(yyscanner)->parsetree =
 					list_make1(makeRawStmt((Node *) n, @2));
 			}
+			| MODE_YB_SPLIT_CLAUSE yb_presplit_value
+			{
+				/*
+				 * YB: parse a SPLIT clause in isolation (used to reparse
+				 * the value of the yb_presplit reloption).  See the
+				 * yb_presplit_value rule below for accepted forms.
+				 */
+				pg_yyget_extra(yyscanner)->parsetree = list_make1($2);
+			}
+		;
+
+/*
+ * YB: top-level production for RAW_PARSE_YB_SPLIT_CLAUSE.  Accepts any of
+ * the forms that yb_presplit may persist or that a user may write:
+ *   SPLIT INTO N TABLETS
+ *   SPLIT AT VALUES (...)
+ *   SPLIT (INTO N TABLETS)         -- legacy parenthesized form
+ *   SPLIT (AT VALUES (...))        -- legacy parenthesized form
+ *   INTO N TABLETS                 -- bare (callers may pass this)
+ *   AT VALUES (...)                -- bare (callers may pass this)
+ *
+ * Distinct from YbOptSplit so we do not introduce its nullable case at
+ * the toplevel, which would let an empty input reduce to NULL.
+ */
+yb_presplit_value:
+			SPLIT '(' SplitClause ')'			{ $$ = $3; }
+			| SPLIT SplitClause					{ $$ = $2; }
+			| SplitClause						{ $$ = $1; }
 		;
 
 /*
@@ -1158,12 +1187,12 @@ stmt:
 			| AlterSeqStmt
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTableStmt
-			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
-			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
+			| AlterTblSpcStmt
+			| AlterCompositeTypeStmt
 			| AlterPublicationStmt
 			| AlterRoleSetStmt
 			| AlterRoleStmt
-			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
+			| AlterSubscriptionStmt
 			| AlterStatsStmt
 			| AlterTSConfigurationStmt { parser_ybc_beta_feature(@1, "alter text search configuration", false); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1198,7 +1227,7 @@ stmt:
 			| CreateSchemaStmt
 			| CreateSeqStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
 			| CreateStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
-			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
+			| CreateSubscriptionStmt
 			| CreateStatsStmt
 			| CreateTableSpaceStmt
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1219,7 +1248,7 @@ stmt:
 			| DropOpFamilyStmt
 			| DropOwnedStmt
 			| DropStmt
-			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
+			| DropSubscriptionStmt
 			| DropTableSpaceStmt
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropRoleStmt
@@ -1235,7 +1264,7 @@ stmt:
 			| InsertStmt
 			| ListenStmt
 			| RefreshMatViewStmt
-			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
+			| LoadStmt 
 			| LockStmt
 			| MergeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt
@@ -3617,7 +3646,6 @@ hash_partbound:
 AlterCompositeTypeStmt:
 			ALTER TYPE_P any_name alter_type_cmds
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE", 1893);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 
 					/* can't use qualified_name, sigh */
@@ -3648,7 +3676,6 @@ alter_type_cmd:
 			/* ALTER TYPE <name> DROP ATTRIBUTE IF EXISTS <attname> [RESTRICT|CASCADE] */
 			| DROP ATTRIBUTE IF_P EXISTS ColId opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE DROP ATTRIBUTE", 1893);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_DropColumn;
@@ -3660,7 +3687,6 @@ alter_type_cmd:
 			/* ALTER TYPE <name> DROP ATTRIBUTE <attname> [RESTRICT|CASCADE] */
 			| DROP ATTRIBUTE ColId opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE DROP ATTRIBUTE", 1893);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_DropColumn;
@@ -6916,7 +6942,6 @@ TriggerOneEvent:
 TriggerReferencing:
 			REFERENCING TriggerTransitions
 				{
-					parser_ybc_signal_unsupported(@1, "REFERENCING clause (transition tables)", 1668);
 					$$ = $2;
 				}
 			| /*EMPTY*/								{ $$ = NIL; }
@@ -10904,7 +10929,6 @@ reindex_target_all:
 AlterTblSpcStmt:
 			ALTER TABLESPACE name SET reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLESPACE", 1153);
 					AlterTableSpaceOptionsStmt *n =
 						makeNode(AlterTableSpaceOptionsStmt);
 
@@ -10915,7 +10939,6 @@ AlterTblSpcStmt:
 				}
 			| ALTER TABLESPACE name RESET reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLESPACE", 1153);
 					AlterTableSpaceOptionsStmt *n =
 						makeNode(AlterTableSpaceOptionsStmt);
 
@@ -11142,7 +11165,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER SUBSCRIPTION name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER SUBSCRIPTION");
 					RenameStmt *n = makeNode(RenameStmt);
 
 					n->renameType = OBJECT_SUBSCRIPTION;
@@ -11536,7 +11558,7 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TYPE_P any_name RENAME ATTRIBUTE name TO name opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE", 1893);
+					parser_ybc_signal_unsupported(@1, "ALTER TYPE RENAME ATTRIBUTE", 1893);
 					RenameStmt *n = makeNode(RenameStmt);
 
 					n->renameType = OBJECT_ATTRIBUTE;
@@ -12529,7 +12551,6 @@ AlterPublicationStmt:
 CreateSubscriptionStmt:
 			CREATE SUBSCRIPTION name CONNECTION Sconst PUBLICATION name_list opt_definition
 				{
-					parser_ybc_not_support(@1, "CREATE SUBSCRIPTION");
 					CreateSubscriptionStmt *n =
 						makeNode(CreateSubscriptionStmt);
 					n->subname = $3;
@@ -12559,7 +12580,6 @@ CreateSubscriptionStmt:
 AlterSubscriptionStmt:
 			ALTER SUBSCRIPTION name SET definition
 				{
-					parser_ybc_not_support(@1, "ALTER SUBSCRIPTION");
 					AlterSubscriptionStmt *n =
 						makeNode(AlterSubscriptionStmt);
 
@@ -12570,7 +12590,6 @@ AlterSubscriptionStmt:
 				}
 			| ALTER SUBSCRIPTION name CONNECTION Sconst
 				{
-					parser_ybc_not_support(@1, "ALTER SUBSCRIPTION");
 					AlterSubscriptionStmt *n =
 						makeNode(AlterSubscriptionStmt);
 
@@ -12591,7 +12610,6 @@ AlterSubscriptionStmt:
 				}
 			| ALTER SUBSCRIPTION name REFRESH PUBLICATION opt_definition
 				{
-					parser_ybc_not_support(@1, "ALTER SUBSCRIPTION");
 					AlterSubscriptionStmt *n =
 						makeNode(AlterSubscriptionStmt);
 
@@ -12611,7 +12629,6 @@ AlterSubscriptionStmt:
 				}
 			| ALTER SUBSCRIPTION name ADD_P PUBLICATION name_list opt_definition
 				{
-					parser_ybc_not_support(@1, "ALTER SUBSCRIPTION");
 					AlterSubscriptionStmt *n =
 						makeNode(AlterSubscriptionStmt);
 
@@ -12623,7 +12640,6 @@ AlterSubscriptionStmt:
 				}
 			| ALTER SUBSCRIPTION name DROP PUBLICATION name_list opt_definition
 				{
-					parser_ybc_not_support(@1, "ALTER SUBSCRIPTION");
 					AlterSubscriptionStmt *n =
 						makeNode(AlterSubscriptionStmt);
 
@@ -12635,7 +12651,6 @@ AlterSubscriptionStmt:
 				}
 			| ALTER SUBSCRIPTION name SET PUBLICATION name_list opt_definition
 				{
-					parser_ybc_not_support(@1, "ALTER SUBSCRIPTION");
 					AlterSubscriptionStmt *n =
 						makeNode(AlterSubscriptionStmt);
 
@@ -12647,7 +12662,6 @@ AlterSubscriptionStmt:
 				}
 			| ALTER SUBSCRIPTION name ENABLE_P
 				{
-					parser_ybc_not_support(@1, "ALTER SUBSCRIPTION");
 					AlterSubscriptionStmt *n =
 						makeNode(AlterSubscriptionStmt);
 
@@ -12659,7 +12673,6 @@ AlterSubscriptionStmt:
 				}
 			| ALTER SUBSCRIPTION name DISABLE_P
 				{
-					parser_ybc_not_support(@1, "ALTER SUBSCRIPTION");
 					AlterSubscriptionStmt *n =
 						makeNode(AlterSubscriptionStmt);
 
@@ -12689,7 +12702,6 @@ AlterSubscriptionStmt:
 
 DropSubscriptionStmt: DROP SUBSCRIPTION name opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP SUBSCRIPTION");
 					DropSubscriptionStmt *n = makeNode(DropSubscriptionStmt);
 
 					n->subname = $3;
@@ -12699,7 +12711,6 @@ DropSubscriptionStmt: DROP SUBSCRIPTION name opt_drop_behavior
 				}
 				|  DROP SUBSCRIPTION IF_P EXISTS name opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP SUBSCRIPTION");
 					DropSubscriptionStmt *n = makeNode(DropSubscriptionStmt);
 
 					n->subname = $5;
@@ -13128,7 +13139,6 @@ opt_check_option:
 
 LoadStmt:	LOAD file_name
 				{
-					parser_ybc_not_support(@1, "LOAD");
 					LoadStmt   *n = makeNode(LoadStmt);
 
 					n->filename = $2;

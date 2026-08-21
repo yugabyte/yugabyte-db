@@ -1,10 +1,5 @@
 title: JobSchedulePagedResp
 description: Paged API query response for job schedule.
 type: object
-allOf:
-  - $ref: "./PaginationResp.yaml"
-properties:
-  entities:
-    type: array
-    items:
-      $ref: "./JobSchedule.yaml"
+x-data-container: PaginationResp
+x-data-item: JobSchedule

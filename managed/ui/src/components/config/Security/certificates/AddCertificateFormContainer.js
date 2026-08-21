@@ -34,7 +34,7 @@ const mapDispatchToProps = (dispatch) => {
             return;
           }
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(`Certificate adding has been failed:  ${errorMessage}`);
+          toast.error(`Certificate addition failed: ${errorMessage}`);
         }
       });
     },

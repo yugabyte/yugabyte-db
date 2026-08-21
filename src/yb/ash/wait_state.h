@@ -19,8 +19,6 @@
 
 #include "yb/ash/ash_fwd.h"
 
-#include "yb/common/common.messages.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
 
@@ -29,6 +27,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
 
 DECLARE_bool(ysql_yb_enable_ash);
@@ -50,6 +49,17 @@ DECLARE_bool(ysql_yb_enable_ash);
   yb::ash::ScopedWaitStatus _scoped_status( \
       BOOST_PP_CAT(yb::ash::WaitStateCode::k, code), __PRETTY_FUNCTION__)
 
+// Like SCOPED_WAIT_STATUS, but selects between two wait events based on the current query id.
+// Uses code_if_match if the current query id equals fixed_query_id, otherwise code_otherwise.
+#define SCOPED_WAIT_STATUS_FOR_QUERY_ID(fixed_query_id, code_if_match, code_otherwise) \
+  yb::ash::ScopedWaitStatus _scoped_status( \
+      (yb::ash::WaitStateInfo::CurrentWaitState() && \
+       yb::ash::WaitStateInfo::CurrentWaitState()->query_id() == \
+           std::to_underlying(fixed_query_id)) \
+          ? BOOST_PP_CAT(yb::ash::WaitStateCode::k, code_if_match) \
+          : BOOST_PP_CAT(yb::ash::WaitStateCode::k, code_otherwise), \
+      __PRETTY_FUNCTION__)
+
 #define ASH_ENABLE_CONCURRENT_UPDATES_FOR(ptr) \
   yb::ash::EnableConcurrentUpdates(ptr)
 #define ASH_ENABLE_CONCURRENT_UPDATES() \
@@ -58,6 +68,10 @@ DECLARE_bool(ysql_yb_enable_ash);
 
 namespace yb {
 class Trace;
+
+// Avoid pulling in the (very heavy) common.messages.h / common.pb.h chains.
+class AshMetadataPB;
+class LWAshMetadataPB;
 }  // namespace yb
 namespace yb::ash {
 
@@ -113,7 +127,8 @@ YB_DEFINE_TYPED_ENUM(Class, uint8_t,
     (kConsensus)
     (kTabletWait)
     (kRocksDB)
-    (kCommon));
+    (kCommon)
+    (kVectorIndex));
 
 // This is YB equivalent of wait events from pgstat.h, the term wait event and wait state
 // is used interchangeably in the code. The uint32_t values of all the wait events across PG
@@ -150,6 +165,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRpc_Done)
     (kDeprecated_Rpcs_WaitOnMutexInShutdown)
     (kRetryableRequests_SaveToDisk)
+    (kWaitForInternalYSQLQueryCompletion)
 
     // Wait states related to tablet wait
     ((kMVCC_WaitForSafeTime, YB_ASH_MAKE_EVENT(TabletWait)))
@@ -161,7 +177,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kWaitForYSQLBackendsCatalogVersion)
     (kWriteSysCatalogSnapshotToDisk)
     (kDumpRunningRpc_WaitOnReactor)
-    (kConflictResolution_ResolveConficts)
+    (kConflictResolution_ResolveConflicts)
     (kConflictResolution_WaitOnConflictingTxns)
     (kRemoteBootstrap_FetchData)
     (kRemoteBootstrap_StartRemoteSession)
@@ -173,6 +189,8 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kSnapshot_RestoreCheckpoint)
     (kXCluster_WaitingForGetChanges)
     (kBackfillIndex_WaitToBackfillTablet)
+    (kXCluster_WaitForSafeTime)
+    (kXCluster_RateLimiter)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -207,6 +225,9 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
     (kYBClient_LookingUpTablet)
     (kYBClient_WaitingOnMaster)
+
+    // Wait states related to the vector index
+    ((kVectorIndex_Search, YB_ASH_MAKE_EVENT(VectorIndex)))
 );
 
 // We also want to track background operations such as, log-append
@@ -277,6 +298,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kDeleteDBSequences)
   (kCheckIfPitrActive)
   (kIsObjectPartOfXRepl)
+  (kIsNamespacePartOfCDCSDK)
   (kGetTserverCatalogVersionInfo)
   (kGetTserverCatalogMessageLists)
   (kSetTserverCatalogMessageList)
@@ -301,9 +323,12 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kGetXClusterRole)
   (kGetYbSystemTableInfo)
   (kReleaseSessionObjectLock)
+  (kWaitForLockersMultiple)
   (kQueryAutoAnalyze)
+  (kResetAutoAnalyzeMutationCounters)
   (kGetTabletForKey)
   (kRemotePgExec)
+  (kIsDatabaseColocated)
 
   // CDCService RPCs
   (kInitVirtualWALForCDC)
@@ -376,21 +401,10 @@ struct AshMetadata {
     }
   }
 
-  void RootRequestIdToPB(AshMetadataPB* pb) const {
-    pb->set_root_request_id(root_request_id.data(), root_request_id.size());
-  }
-
-  void RootRequestIdToPB(LWAshMetadataPB* pb) const {
-    pb->dup_root_request_id(root_request_id.AsSlice());
-  }
-
-  void TopLevelNodeIdToPB(AshMetadataPB* pb) const {
-    pb->set_top_level_node_id(top_level_node_id.data(), top_level_node_id.size());
-  }
-
-  void TopLevelNodeIdToPB(LWAshMetadataPB* pb) const {
-    pb->dup_top_level_node_id(top_level_node_id.AsSlice());
-  }
+  void RootRequestIdToPB(AshMetadataPB* pb) const;
+  void RootRequestIdToPB(LWAshMetadataPB* pb) const;
+  void TopLevelNodeIdToPB(AshMetadataPB* pb) const;
+  void TopLevelNodeIdToPB(LWAshMetadataPB* pb) const;
 
   template <class PB>
   void ToPB(PB* pb) const {
@@ -679,5 +693,7 @@ WaitStateTracker& SharedMemoryPgPerformTracker();
 WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker();
 WaitStateTracker& XClusterPollerTracker();
 WaitStateTracker& MinRunningHybridTimeTracker();
+
+bool TEST_ShouldSleepAtWaitCode(WaitStateCode c);
 
 }  // namespace yb::ash

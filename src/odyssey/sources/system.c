@@ -73,7 +73,7 @@ int yb_log_server_conn_count(od_route_t *route, void **argv)
 	od_instance_t *instance = (od_instance_t *)argv[0];
 	od_log(&instance->logger, "warmup", NULL, NULL,
 	       "Total number of server connections in the %s pool are %d",
-	       (route->rule->pool->routing == OD_RULE_POOL_INTERVAL) ?
+	       (yb_is_control_pool(route)) ?
 		       "control connection" :
 		       "global",
 	       route->server_pool.count_active + route->server_pool.count_idle);

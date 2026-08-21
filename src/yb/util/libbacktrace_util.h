@@ -14,6 +14,8 @@
 // Utilities for working with libbacktrace, a library that allows to find file names and line
 // numbers in stack traces.
 
+#pragma once
+
 #ifdef __linux__
 #include <backtrace.h>
 #endif
@@ -21,12 +23,13 @@
 #include <mutex>
 #include <string>
 
+#include <gflags/gflags_declare.h>
+
 #include "yb/util/stack_trace.h"
 
 DECLARE_bool(use_libbacktrace);
 
-namespace yb {
-namespace libbacktrace {
+namespace yb::libbacktrace {
 
 struct BacktraceContext {
   StackTraceLineFormat stack_trace_line_format = StackTraceLineFormat::DEFAULT;
@@ -63,5 +66,4 @@ class GlobalBacktraceState;
 
 GlobalBacktraceState* GetGlobalBacktraceState();
 
-}
-}
+}  // namespace yb::libbacktrace

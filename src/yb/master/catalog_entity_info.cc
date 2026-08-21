@@ -66,12 +66,10 @@ using std::string;
 
 using strings::Substitute;
 
-DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
-DEFINE_RUNTIME_AUTO_bool(
-    use_parent_table_id_field, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(use_parent_table_id_field, kLocalPersisted, false, true,
     "Whether to use the new schema for colocated tables based on the parent_table_id field.");
 TAG_FLAG(use_parent_table_id_field, advanced);
 
@@ -155,15 +153,6 @@ void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
     }
   }
   leader_lease_info.initialized = initialized || info.initialized;
-}
-
-bool TabletReplica::IsStale() const {
-  MonoTime now(MonoTime::Now());
-  if (now.GetDeltaSince(time_updated).ToMilliseconds() >=
-      FLAGS_tserver_unresponsive_timeout_ms) {
-    return true;
-  }
-  return false;
 }
 
 bool TabletReplica::IsStarting() const {
@@ -920,6 +909,15 @@ Status TableInfo::SetIsBackfilling() {
   return Status::OK();
 }
 
+bool TableInfo::TrySetPostTabletCreateTasksScheduled() {
+  bool expected = false;
+  return post_tablet_create_tasks_scheduled_.compare_exchange_strong(expected, true);
+}
+
+void TableInfo::ClearPostTabletCreateTasksScheduled() {
+  post_tablet_create_tasks_scheduled_.store(false);
+}
+
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
   VLOG_WITH_FUNC(1) << status;
   std::lock_guard l(lock_);
@@ -1117,6 +1115,15 @@ bool TableInfo::IsSequencesSystemTable(const ReadLock& lock) const {
   return *table_oid == kPgSequencesDataTableOid;
 }
 
+bool TableInfo::ShouldLookupPgSchemaName() const {
+  return ShouldLookupPgSchemaName(LockForRead());
+}
+
+bool TableInfo::ShouldLookupPgSchemaName(const ReadLock& lock) const {
+  return lock->table_type() == PGSQL_TABLE_TYPE && !is_system() &&
+         !IsColocationParentTable() && !IsSequencesSystemTable(lock);
+}
+
 bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
   return LockForRead()->IsXClusterDDLReplicationDDLQueueTable();
 }
@@ -1211,11 +1218,31 @@ TransactionId TableInfo::EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
   std::lock_guard l(lock_);
   TransactionId txn;
 
-  auto itr = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.find(schema_version);
-  if (itr != ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.end()) {
-    txn = itr->second;
-    ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.erase(itr);
+  auto upper_bound_iter =
+      ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.upper_bound(schema_version);
+  // Note that a single rollback to sub-transaction operation can involve more than one schema
+  // version bump on a table.
+  // For example:
+  //   BEGIN;
+  //   SAVEPOINT a;
+  //   ALTER TABLE test ADD COLUMN c int;
+  //   CREATE INDEX test_idx on test(b);
+  //   ROLLBACK TO a;
+  // The rollback operation will bump up the schema version of `test` twice. Therefore, the same
+  // transaction can be waiting for multiple schema versions. Similar to the comments mentioned in
+  // EraseDdlTxnsWaitingForSchemaVersion, it is possible that the TServers respond back with the
+  // latest schema version. Therefore, we delete all entries for schema versions less than the
+  // reported schema version. They all must belong to the same transaction though since we only
+  // allow one rollback to sub-transaction operation on a table at a given time.
+  for (auto it = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.begin();
+       it != upper_bound_iter; ++it) {
+    DCHECK(txn.IsNil() || txn == it->second)
+        << Format("Multiple transactions waiting for schema version $0: $1 and $2",
+                  schema_version, txn, it->second);
+    txn = it->second;
   }
+  ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.erase(
+    ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.begin(), upper_bound_iter);
   return txn;
 }
 
@@ -1560,6 +1587,12 @@ bool CDCStreamInfo::IsTablesWithoutPrimaryKeyAllowed() const {
   return l->pb.has_allow_tables_without_primary_key() && l->pb.allow_tables_without_primary_key();
 }
 
+bool CDCStreamInfo::DetectPublicationChangesImplicitly() const {
+  auto l = LockForRead();
+  return l->pb.has_detect_publication_changes_implicitly() &&
+         l->pb.detect_publication_changes_implicitly();
+}
+
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
   if (l->pb.has_namespace_id()) {
@@ -1812,7 +1845,7 @@ void SetupTabletInfo(
 
   auto& cstate = *metadata.mutable_committed_consensus_state();
   cstate.set_current_term(consensus::kMinimumTerm);
-  cstate.mutable_config()->set_opid_index(consensus::kInvalidOpIdIndex);
+  cstate.mutable_config()->set_committed_op_index(consensus::kInvalidOpIdIndex);
 }
 
 TabletInfoPtr CreateTabletInfo(

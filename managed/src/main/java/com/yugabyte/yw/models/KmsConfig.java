@@ -13,11 +13,15 @@ package com.yugabyte.yw.models;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import api.v2.handlers.HandlerPagingSupport;
+import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PagedList;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.JsonIgnore;
@@ -75,8 +79,21 @@ public class KmsConfig extends Model {
   @ApiModelProperty(value = "KMS configuration version")
   private int version;
 
-  public static final Finder<UUID, KmsConfig> find =
-      new Finder<UUID, KmsConfig>(KmsConfig.class) {};
+  public static final Finder<UUID, KmsConfig> find = new Finder<>(KmsConfig.class) {};
+
+  public static PagedList<KmsConfig> getPagedList(
+      UUID customerUUID, NormalizedPaginationSpec normalized) {
+    ExpressionList<KmsConfig> expr =
+        KmsConfig.find
+            .query()
+            .where()
+            .eq("customer_UUID", customerUUID)
+            .eq("version", KmsConfig.SCHEMA_VERSION);
+
+    String order = normalized.order();
+    String orderBy = String.format("coalesce(lower(name), '') %s, config_uuid %s", order, order);
+    return HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
+  }
 
   public static KmsConfig get(UUID configUUID) {
     if (configUUID == null) return null;

@@ -39,6 +39,7 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/thread_restrictions.h"
 
@@ -150,6 +151,11 @@ bool MonoDelta::Equals(const MonoDelta &rhs) const {
 bool MonoDelta::IsNegative() const {
   DCHECK(Initialized());
   return nano_delta_ < 0;
+}
+
+bool MonoDelta::IsPositive() const {
+  DCHECK(Initialized());
+  return Initialized() && nano_delta_ > 0;
 }
 
 std::string MonoDelta::ToPrettyString() const {

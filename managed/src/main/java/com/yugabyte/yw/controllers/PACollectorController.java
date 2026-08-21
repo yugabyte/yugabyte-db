@@ -3,6 +3,9 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.RegisterUniverseWithPACollector;
+import com.yugabyte.yw.commissioner.tasks.UnregisterUniverseFromPACollector;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.pa.PerfAdvisorService;
@@ -12,15 +15,20 @@ import com.yugabyte.yw.forms.PACollectorExt;
 import com.yugabyte.yw.forms.PaRegistrationStatusResponse;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.paging.PaUniversePagedApiQuery;
+import com.yugabyte.yw.forms.paging.PaUniversePagedApiResponse;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Audit.TargetType;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.filters.PACollectorFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -40,6 +48,7 @@ import play.mvc.Result;
 public class PACollectorController extends AuthenticatedController {
 
   @Inject private PerfAdvisorService perfAdvisorService;
+  @Inject private Commissioner commissioner;
 
   @ApiOperation(
       notes = "YbaApi Internal.",
@@ -103,6 +112,10 @@ public class PACollectorController extends AuthenticatedController {
     if (collector.getUuid() != null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't create collector with uuid set");
     }
+    if (collector.isEmbedded()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't create embedded collector via API - it is managed by YBA");
+    }
     collector.setCustomerUUID(customerUUID);
     collector = perfAdvisorService.save(collector, false);
     auditService()
@@ -144,6 +157,14 @@ public class PACollectorController extends AuthenticatedController {
     }
     collector.setCustomerUUID(customerUUID);
     PACollector currentPlatform = perfAdvisorService.getOrBadRequest(customerUUID, paUUID);
+    if (currentPlatform.isEmbedded()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't edit embedded collector via API - it is managed by YBA");
+    }
+    if (collector.isEmbedded()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't set embedded flag via API - it is managed by YBA");
+    }
     collector = CommonUtils.unmaskObject(currentPlatform, collector);
     collector = perfAdvisorService.save(collector, force);
     auditService()
@@ -166,6 +187,14 @@ public class PACollectorController extends AuthenticatedController {
   public Result deletePACollector(
       UUID customerUUID, UUID collectorUUID, boolean force, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
+    PACollector collector = perfAdvisorService.getOrBadRequest(customerUUID, collectorUUID);
+    if (collector.isEmbedded()) {
+      // The embedded collector is fully owned by EmbeddedCollectorInitializer - deleting it
+      // via the API would just leave it half-configured until the next initializer tick
+      // recreates it. Force users to disable it via runtime config (yb.pa.url) instead.
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't delete embedded collector via API - it is managed by YBA");
+    }
 
     perfAdvisorService.delete(customerUUID, collectorUUID, force);
     auditService()
@@ -211,7 +240,7 @@ public class PACollectorController extends AuthenticatedController {
   @ApiOperation(
       notes = "YbaApi Internal.",
       value = "Register universe with PA Collector",
-      response = YBPSuccess.class)
+      response = YBPTask.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -225,27 +254,53 @@ public class PACollectorController extends AuthenticatedController {
       UUID collectorUUID,
       Boolean advancedObservability,
       Http.Request request) {
-    Customer.getOrBadRequest(customerUUID);
-
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     PACollector collector = perfAdvisorService.getOrBadRequest(customerUUID, collectorUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    perfAdvisorService.putUniverse(collector, universe, Boolean.TRUE.equals(advancedObservability));
-    Universe.saveDetails(
-        universeUUID, u -> u.getUniverseDetails().setPaCollectorUuid(collectorUUID));
+    PerfAdvisorService.PaMemoryMode currentMode = currentPaMemoryMode(universe, collector);
+    PerfAdvisorService.PaMemoryMode targetMode =
+        Boolean.TRUE.equals(advancedObservability)
+            ? PerfAdvisorService.PaMemoryMode.ADVANCED
+            : PerfAdvisorService.PaMemoryMode.COLLECTOR_ONLY;
+    perfAdvisorService.validatePerfAdvisorMemory(
+        universe,
+        currentMode,
+        targetMode,
+        "Cannot register universe with Performance Advisor Collector");
+
+    RegisterUniverseWithPACollector.Params params = new RegisterUniverseWithPACollector.Params();
+    params.setUniverseUUID(universeUUID);
+    params.customerUuid = customerUUID;
+    params.paCollectorUuid = collectorUUID;
+    params.advancedObservability = Boolean.TRUE.equals(advancedObservability);
+
+    UUID taskUUID = commissioner.submit(TaskType.RegisterUniverseWithPACollector, params);
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.RegisterWithPACollector,
+        universe.getName(),
+        universe.getUniverseDetails().getPaCollectorUuid() == null
+            ? "Enable PA Collector For"
+            : (advancedObservability
+                ? "Enable Advanced Observability For"
+                : "Disable Advanced Observability For"));
     auditService()
         .createAuditEntryWithReqBody(
             request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.PACollectorRegister);
-    return YBPSuccess.empty();
+    return new YBPTask(taskUUID, universeUUID).asResult();
   }
 
   @ApiOperation(
       notes = "YbaApi Internal.",
       value = "Unregister universe from PA Collector",
-      response = YBPSuccess.class)
+      response = YBPTask.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -254,7 +309,7 @@ public class PACollectorController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result unregisterUniverse(UUID customerUUID, UUID universeUUID, Http.Request request) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
     UUID paCollectorUuid = universe.getUniverseDetails().getPaCollectorUuid();
@@ -262,17 +317,58 @@ public class PACollectorController extends AuthenticatedController {
       return YBPSuccess.empty();
     }
 
-    PACollector collector = perfAdvisorService.getOrBadRequest(customerUUID, paCollectorUuid);
+    perfAdvisorService.getOrBadRequest(customerUUID, paCollectorUuid);
 
-    perfAdvisorService.deleteUniverse(collector, universe);
-    Universe.saveDetails(universeUUID, u -> u.getUniverseDetails().setPaCollectorUuid(null));
+    UnregisterUniverseFromPACollector.Params params =
+        new UnregisterUniverseFromPACollector.Params();
+    params.setUniverseUUID(universeUUID);
+    params.customerUuid = customerUUID;
+    params.paCollectorUuid = paCollectorUuid;
+
+    UUID taskUUID = commissioner.submit(TaskType.UnregisterUniverseFromPACollector, params);
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.UnregisterFromPACollector,
+        universe.getName(),
+        "Disable PA Collector For");
     auditService()
         .createAuditEntryWithReqBody(
             request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.PACollectorUnregister);
-    return YBPSuccess.empty();
+    return new YBPTask(taskUUID, universeUUID).asResult();
+  }
+
+  @ApiOperation(
+      notes = "YbaApi Internal.",
+      value = "List universes registered with PA Collector (paginated)",
+      response = PaUniversePagedApiResponse.class,
+      nickname = "pageRegisteredUniverses")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PagePaUniverseRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.paging.PaUniversePagedApiQuery",
+          required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result pageRegisteredUniverses(
+      UUID customerUUID, UUID collectorUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
+    PACollector collector = perfAdvisorService.getOrBadRequest(customerUUID, collectorUUID);
+    PaUniversePagedApiQuery apiQuery = parseJsonAndValidate(request, PaUniversePagedApiQuery.class);
+    PaUniversePagedApiResponse response =
+        perfAdvisorService.pagedListRegisteredUniverses(collector, apiQuery);
+    return PlatformResults.withData(response);
   }
 
   private PACollectorExt enrich(PACollector collector) {
@@ -280,5 +376,21 @@ public class PACollectorController extends AuthenticatedController {
     collectorExt.setPaCollector(CommonUtils.maskObject(collector));
     collectorExt.setInUseStatus(perfAdvisorService.getInUseStatus(collector));
     return collectorExt;
+  }
+
+  private PerfAdvisorService.PaMemoryMode currentPaMemoryMode(
+      Universe universe, PACollector collector) {
+    if (universe.getUniverseDetails().getPaCollectorUuid() == null) {
+      return PerfAdvisorService.PaMemoryMode.NONE;
+    }
+    var metadata = perfAdvisorService.getUniverseMetadata(collector, universe);
+    if (metadata == null) {
+      // Universe is marked as registered locally but the collector has no record.
+      // Be conservative and treat as not currently consuming any PA memory.
+      return PerfAdvisorService.PaMemoryMode.NONE;
+    }
+    return metadata.isMetricsExportToPrometheusEnabled()
+        ? PerfAdvisorService.PaMemoryMode.ADVANCED
+        : PerfAdvisorService.PaMemoryMode.COLLECTOR_ONLY;
   }
 }

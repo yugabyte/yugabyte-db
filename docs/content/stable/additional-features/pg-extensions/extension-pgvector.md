@@ -3,11 +3,15 @@ title: pgvector extension
 headerTitle: pgvector extension
 linkTitle: pgvector
 description: Using the pgvector extension in YugabyteDB
+tags:
+  feature: early-access
 menu:
   stable:
     identifier: extension-pgvector
     parent: pg-extensions
     weight: 20
+rightNav:
+  hideH4: true
 type: docs
 aliases:
   - /stable/explore/ysql-language-features/pg-extensions/extension-pgvector
@@ -15,11 +19,43 @@ aliases:
 
 The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows you to store and query vectors, for use in performing similarity searches.
 
+YugabyteDB includes pgvector `0.8.0-yb-1.0` on PostgreSQL 15-compatible YSQL. Most SQL-level types, functions, operators, casts, and aggregates match upstream pgvector 0.8.0. Approximate nearest neighbor (ANN) search uses the distributed `ybhnsw` access method (backed by DocDB Vector LSM) instead of native PostgreSQL `hnsw` / `ivfflat`.
+
 Vector distance functions measure similarity or difference between high-dimensional data points. Choosing the right function depends on the use case, such as search, ranking, or clustering. YugabyteDB supports the following distance functions:
 
 - Cosine Distance - Measures the angle between two vectors. Used for comparing direction rather than magnitude. Best for text similarity and recommendation systems.
 - L2 (Euclidean) Distance - Measures the straight-line distance between two points in space. Best when absolute differences in values matter, like in image recognition.
 - Inner Product - Measures similarity by multiplying corresponding elements and summing them. Often used in ranking and recommendation models, where larger values indicate higher similarity.
+
+## Supported features
+
+The following pgvector capabilities are supported in YugabyteDB.
+
+### Types and SQL
+
+| Feature | Details |
+| :--- | :--- |
+| `vector`, `halfvec`, and `sparsevec` types | Same user-facing SQL as upstream pgvector 0.8.0 (up to 16,000 dimensions for `vector` / `halfvec`) |
+| Distance operators | `<->` (L2), `<#>` (inner product), `<=>` (cosine), `<+>` (L1) |
+| Bit distance functions | `hamming_distance` and `jaccard_distance` |
+| Vector functions | Including `l2_distance`, `inner_product`, `cosine_distance`, `l1_distance`, `l2_normalize`, `subvector`, `binary_quantize`, `vector_dims`, and `vector_norm` |
+| Aggregates | `avg` and `sum` on `vector` and `halfvec` |
+| Casts and array input | Casts among `vector`, `halfvec`, `sparsevec`, and arrays (`integer[]`, `real[]`, `double precision[]`, `numeric[]`) |
+| DML and `COPY` | `INSERT`, `UPDATE`, `DELETE`, text `COPY`, and binary `COPY` for `vector`, `halfvec`, and `sparsevec` |
+
+### Exact and approximate search
+
+| Feature | Details |
+| :--- | :--- |
+| Exact (sequential) search | Supported for all distance metrics, including L1 (`<+>`) and queries on `halfvec` / `sparsevec` |
+| HNSW ANN indexes on `vector` | `ybhnsw` with `vector_l2_ops`, `vector_ip_ops`, and `vector_cosine_ops` |
+| `USING hnsw` compatibility | Rewritten internally to `ybhnsw` for PostgreSQL migration compatibility |
+| Indexed dimensions | Up to 16,000 dimensions on `ybhnsw` (column must declare fixed dimensions, for example `vector(768)`) |
+| Index options | `m`, `m0`, and `ef_construction` |
+| Query-time tuning | `hnsw.ef_search` |
+| Materialized views | Vector columns and `ybhnsw` indexes on materialized views |
+
+Top-k queries of the form `ORDER BY embedding <-> query LIMIT k` use the `ybhnsw` index. You can combine ANN search with a `WHERE` filter; the filter is applied after the index scan.
 
 ## Enable the extension
 
@@ -180,6 +216,12 @@ To use the L2 distance function:
 CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_l2_ops);
 ```
 
+For PostgreSQL backwards compatibility, `USING hnsw` is also supported and is internally mapped to the `ybhnsw` index access method. For example, the following statement is equivalent to the one above:
+
+```sql
+CREATE INDEX NONCONCURRENTLY ON items USING hnsw (embedding vector_l2_ops);
+```
+
 To use the inner product function:
 
 ```sql
@@ -192,7 +234,7 @@ To use the Cosine distance function:
 CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_cosine_ops);
 ```
 
-YugabyteDB currently supports the `vector` type.
+ANN indexes are supported on the `vector` type. You can store and run exact searches on `halfvec` and `sparsevec` columns; for HNSW indexing, use a `vector` column (or cast / densify to `vector`).
 
 #### HNSW index options
 
@@ -201,6 +243,7 @@ You can fine-tune HNSW indexing using the following parameters:
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
 | m | Maximum number of connections per layer. Valid range: 5–64. | 32 |
+| m0 | Maximum number of connections in the base layer. | Derived from `m` |
 | ef_construction | Size of the dynamic candidate list for constructing the graph. Valid range: 50–1000. | 200 |
 
 For example:
@@ -211,11 +254,33 @@ CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_l2_ops) WIT
 
 A higher `ef_construction` value provides faster recall at the cost of index build time / insert speed.
 
+#### Query-time tuning
+
+You can tune query-time behavior of HNSW search using the following GUC:
+
+| GUC | Description | Default |
+| :--- | :--- | :--- |
+| hnsw.ef_search | Size of the dynamic candidate list for search. Valid range: 1–1000. Higher values improve recall at the cost of query latency. | 40 |
+
+For example, to increase recall for the current session:
+
+```sql
+SET hnsw.ef_search = 100;
+```
+
 ### Limitations
 
-- Concurrent index creation is not supported yet.
-- Partial indexes on vector columns are not supported yet.
+- Concurrent index creation is not currently supported. For example, the following syntax falls back to non-concurrent implementation:
+
+    ```sql
+    CREATE INDEX CONCURRENTLY on <table> USING ybhnsw (vec vector_l2_ops);
+    ```
+
+    Unlike concurrent index creation on non-vector data types, the index backfill will take an exclusive lock (ACCESS_EXCLUSIVE) on the table, and writes to the table are blocked while index backfill is in progress. {{<issue 26402>}}
+
+- Partial indexes on vector columns are not supported yet. {{<issue 31441>}}
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
+- [Time travel queries](../../../manage/backup-restore/time-travel-query/) are not currently supported. {{<issue 20829>}}
 
 ## Learn more
 

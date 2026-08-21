@@ -1,0 +1,21 @@
+-- YB: regression guards for pg_duckdb error paths on YugabyteDB. Each statement below must raise a
+-- clean error (or succeed) and leave the backend alive; several cases guard against a crash that
+-- occurs without the corresponding fix.
+\set VERBOSITY terse
+
+-- Reading a missing lake file errors cleanly.
+SELECT count(*) FROM read_parquet('/tmp/yb-does-not-exist.parquet') AS r;
+
+-- Guard: without the NULL message_id check in DuckdbEmitLogHook, this crashes the backend
+-- (strcmp(NULL, ...) SIGSEGV) -- the legacy column-definition-list syntax raises a syntax error
+-- whose ErrorData has a NULL message_id.
+SELECT count("c") FROM read_parquet('/tmp/yb-does-not-exist.parquet') AS ("c" FLOAT);
+
+-- Guard: the "credential_chain" S3 secret provider is supplied by DuckDB's "aws" extension, which
+-- is not in YB's bundle (only httpfs/json/icu; httpfs registers only the "config" provider for S3).
+-- It must be rejected cleanly rather than reaching DuckDB with an unregistered provider.
+CREATE SERVER yb_s3_cc TYPE 's3' FOREIGN DATA WRAPPER duckdb OPTIONS (PROVIDER 'credential_chain');
+
+-- Worker-thread crash can land after the triggering statement returns; this gives it a chance
+-- to surface before the session ends.
+SELECT 'backend still alive' AS status;

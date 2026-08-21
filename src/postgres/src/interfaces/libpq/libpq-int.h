@@ -447,7 +447,10 @@ struct pg_conn
 	char	   *oauth_ca_file;	/* CA file path */
 	bool		oauth_want_retry;	/* should we retry on failure? */
 
-	char	   *yb_auto_analyze; /* use the connection for auto analyze? */
+	char	   *yb_internal_conn_kind;	/* one of the YbInternalConnKind wire
+										 * names (see yb_internal_conn.h);
+										 * NULL/empty for a regular client
+										 * connection */
 
 	/* Optional file to write trace info to */
 	FILE	   *Pfdebug;

@@ -17,7 +17,7 @@
 
 #include "yb/encryption/header_manager.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace encryption {

@@ -105,9 +105,6 @@ determine_compiler_cmdline() {
   # Create a command line that can be copied and pasted.
   # As part of that, replace the ccache invocation with the actual compiler executable.
   compiler_cmdline="YB_THIRDPARTY_DIR=$YB_THIRDPARTY_DIR $compiler_cmdline"
-  if using_linuxbrew; then
-    compiler_cmdline="PATH=$YB_LINUXBREW_DIR/bin:\$PATH $compiler_cmdline"
-  fi
   compiler_cmdline="&& $compiler_cmdline"
   compiler_cmdline=${compiler_cmdline// ccache compiler/ $compiler_executable}
   determine_compiler_cmdline_rv="cd \"$PWD\" $compiler_cmdline"
@@ -734,8 +731,6 @@ fi
 if [[ ${#compiler_args[@]} -gt 0 ]]; then
   cmd+=( "${compiler_args[@]}" )
 fi
-
-add_brew_bin_to_path
 
 if [[ $PWD == $BUILD_ROOT/postgres_build ||
       $PWD == $BUILD_ROOT/postgres_build/* ]]; then

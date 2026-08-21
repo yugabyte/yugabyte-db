@@ -576,7 +576,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("schedulingFrequency", 10000000000L);
     bodyJson.put("frequencyTimeUnit", "HOURS");
     bodyJson.remove("cronExpression");
-    System.out.println("***N Is: " + bodyJson);
     r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     resultJson = Json.parse(contentAsString(r));
     assertValue(

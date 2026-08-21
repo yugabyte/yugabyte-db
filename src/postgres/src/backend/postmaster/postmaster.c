@@ -139,6 +139,7 @@
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
+#include "utils/elog.h"
 #include "yb/util/debug/leak_annotations.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_shared_mem.h"
@@ -987,10 +988,9 @@ PostmasterMain(int argc, char *argv[])
 	 * Register the apply launcher.  It's probably a good idea to call this
 	 * before any modules had a chance to take the background worker slots.
 	 *
-	 * Logical replication is not supported in YugaByte mode currently and the
-	 * registration is disabled.
+	 * In YugaByte mode, only register if pg_subscription support is enabled.
 	 */
-	if (!YBIsEnabledInPostgresEnvVar())
+	if (!YBIsEnabledInPostgresEnvVar() || yb_enable_pg_subscription)
 		ApplyLauncherRegister();
 
 	if (YBIsEnabledInPostgresEnvVar())
@@ -1427,7 +1427,7 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * Load configuration files for client authentication.
 	 */
-	if (!load_hba())
+	if (!load_hba(NULL /* yb_validate_conf_file */ ))
 	{
 		/*
 		 * It makes no sense to continue if we fail to load the HBA file,
@@ -1437,7 +1437,7 @@ PostmasterMain(int argc, char *argv[])
 		/* translator: %s is a configuration file */
 				(errmsg("could not load %s", HbaFileName)));
 	}
-	if (!load_ident(NULL /* yb_ident_context */ ))
+	if (!load_ident(NULL, NULL /* yb_validate_conf_file */ ))
 	{
 		/*
 		 * We can start up without the IDENT file, although it means that you
@@ -2218,12 +2218,12 @@ process_pm_reload_request(void)
 		SignalChildren(SIGHUP, btmask_all_except(B_DEAD_END_BACKEND));
 
 		/* Reload authentication config files too */
-		if (!load_hba())
+		if (!load_hba(NULL /* yb_validate_conf_file */ ))
 			ereport(LOG,
 			/* translator: %s is a configuration file */
 					(errmsg("%s was not reloaded", HbaFileName)));
 
-		if (!load_ident(NULL /* yb_ident_context */ ))
+		if (!load_ident(NULL, NULL /* yb_validate_conf_file */ ))
 			ereport(LOG,
 					(errmsg("%s was not reloaded", IdentFileName)));
 

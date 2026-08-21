@@ -33,8 +33,9 @@ public enum NodeActionType {
   HARD_REBOOT,
   // Re-provision node with already stopped processes.
   REPROVISION,
-  // REplace an node.
+  // Replace an node.
   REPLACE,
+  // Release and delete the node from the cluster.
   DECOMMISSION;
 
   NodeActionType() {

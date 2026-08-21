@@ -32,6 +32,8 @@
 
 #include "yb/master/catalog_loaders.h"
 
+#include "yb/cdc/cdc_util.h"
+
 #include "yb/common/colocated_util.h"
 #include "yb/common/constants.h"
 
@@ -604,6 +606,26 @@ Status ObjectLockLoader::Visit(const std::string& host_uuid, const SysObjectLock
 // Config Loader
 ////////////////////////////////////////////////////////////
 
+namespace {
+
+// Repair any pre-11482d6 SchemaVersionsPB entries in memory. See #31533.
+void RepairOldSchemaVersionsInClusterConfig(SysClusterConfigEntryPB* pb) {
+  if (!pb->has_consumer_registry()) {
+    return;
+  }
+  auto* producer_map = pb->mutable_consumer_registry()->mutable_producer_map();
+  for (auto& [_, producer_entry] : *producer_map) {
+    for (auto& [_, stream_entry] : *producer_entry.mutable_stream_map()) {
+      cdc::RepairOldSchemaVersionsPB(*stream_entry.mutable_schema_versions());
+      for (auto& [_, colocated] : *stream_entry.mutable_colocated_schema_versions()) {
+        cdc::RepairOldSchemaVersionsPB(colocated);
+      }
+    }
+  }
+}
+
+}  // namespace
+
 Status ClusterConfigLoader::Visit(
     const std::string& unused_id, const SysClusterConfigEntryPB& metadata) {
   if (FLAGS_TEST_slow_cluster_config_load_secs > 0) {
@@ -618,6 +640,8 @@ Status ClusterConfigLoader::Visit(
   {
     auto l = config->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
+
+    RepairOldSchemaVersionsInClusterConfig(&l.mutable_data()->pb);
 
     // Update in memory state.
     catalog_manager_->cluster_config_ = config;

@@ -85,6 +85,24 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
       String resourceNamespace = drConfig.getMetadata().getNamespace();
       log.info("Creating DR config: {}", resourceName);
 
+      // Validate spec universes resolve before we stamp a finalizer or create the task.
+      String specSourceName = drConfig.getSpec().getSourceUniverse();
+      String specTargetName = drConfig.getSpec().getTargetUniverse();
+      Universe specSourceUniverse =
+          operatorUtils.getUniverseFromNameAndNamespace(
+              cust.getId(), specSourceName, resourceNamespace);
+      Universe specTargetUniverse =
+          operatorUtils.getUniverseFromNameAndNamespace(
+              cust.getId(), specTargetName, resourceNamespace);
+      if (specSourceUniverse == null || specTargetUniverse == null) {
+        String reason =
+            buildMissingUniverseReason(
+                specSourceName, specSourceUniverse, specTargetName, specTargetUniverse);
+        log.warn("DR config {} cannot be created: {}", resourceName, reason);
+        updateDrConfigCrStatus(drConfig, "Failed to create task. " + reason + ".", null);
+        return;
+      }
+
       // Set finalizer if not already set
       ObjectMeta objectMeta = drConfig.getMetadata();
       if (CollectionUtils.isEmpty(objectMeta.getFinalizers())) {
@@ -181,16 +199,11 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
           operatorUtils.getUniverseFromNameAndNamespace(cust.getId(), specTargetName, namespace);
 
       if (specSourceUniverse == null || specTargetUniverse == null) {
-        log.warn(
-            "DR config {} could not resolve spec universes (source={}, target={}) "
-                + "to YBA universes; ignoring update",
-            resourceName,
-            specSourceName,
-            specTargetName);
-        updateDrConfigCrStatus(
-            drConfig,
-            "Failed to create task. Could not resolve spec universes to YBA universes.",
-            null);
+        String reason =
+            buildMissingUniverseReason(
+                specSourceName, specSourceUniverse, specTargetName, specTargetUniverse);
+        log.warn("DR config {} cannot be updated: {}", resourceName, reason);
+        updateDrConfigCrStatus(drConfig, "Failed to create task. " + reason + ".", null);
         return;
       }
 
@@ -341,6 +354,14 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     drConfigModel.refresh();
     // Check if any update is required
     if (requiresUpdate(drConfig, drConfigModel)) {
+      if (specHasUnresolvableUniverse(drConfig) && statusAlreadyReflectsMissingUniverse(drConfig)) {
+        log.debug(
+            "NoOp Action: DR Config {} has unresolvable universes and status already"
+                + " reflects this; skipping requeue",
+            resourceName);
+        workqueue.resetRetries(mapKey);
+        return;
+      }
       log.debug("NoOp Action: DR Config {} requires update, requeuing Update", resourceName);
       workqueue.requeue(
           mapKey, OperatorWorkQueue.ResourceAction.UPDATE, false /* incrementRetry */);
@@ -396,7 +417,7 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
       return false;
     }
     if (specSourceUniverse == null || specTargetUniverse == null) {
-      return false;
+      return true;
     }
 
     UUID specSourceUuid = specSourceUniverse.getUniverseUUID();
@@ -719,6 +740,21 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     return null;
   }
 
+  private static String buildMissingUniverseReason(
+      String sourceName, Universe sourceUniverse, String targetName, Universe targetUniverse) {
+    if (sourceUniverse == null && targetUniverse == null) {
+      return "source universe '"
+          + sourceName
+          + "' and target universe '"
+          + targetName
+          + "' do not exist";
+    }
+    if (sourceUniverse == null) {
+      return "source universe '" + sourceName + "' does not exist";
+    }
+    return "target universe '" + targetName + "' does not exist";
+  }
+
   private void updateDrConfigCrStatus(DrConfig drConfig, String message, UUID taskUUID) {
     try {
       DrConfigStatus status = drConfig.getStatus();
@@ -737,5 +773,29 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     } catch (Exception e) {
       log.error("Failed to update DR config CR status for {}", drConfig.getMetadata().getName(), e);
     }
+  }
+
+  private boolean specHasUnresolvableUniverse(DrConfig drConfig) {
+    try {
+      Customer cust = operatorUtils.getOperatorCustomer();
+      String ns = drConfig.getMetadata().getNamespace();
+      Universe source =
+          operatorUtils.getUniverseFromNameAndNamespace(
+              cust.getId(), drConfig.getSpec().getSourceUniverse(), ns);
+      Universe target =
+          operatorUtils.getUniverseFromNameAndNamespace(
+              cust.getId(), drConfig.getSpec().getTargetUniverse(), ns);
+      return source == null || target == null;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  private boolean statusAlreadyReflectsMissingUniverse(DrConfig drConfig) {
+    DrConfigStatus status = drConfig.getStatus();
+    if (status == null || status.getMessage() == null) {
+      return false;
+    }
+    return status.getMessage().contains("does not exist");
   }
 }

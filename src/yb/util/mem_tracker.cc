@@ -77,7 +77,7 @@ TAG_FLAG(memory_limit_hard_bytes, stable);
 // NOTE: The default here is for tools and tests; the actual defaults
 // for the TServer and master processes are set in server_main_util.cc.
 DEFINE_NON_RUNTIME_double(default_memory_limit_to_ram_ratio, 0.85,
-    "The percentage of available RAM to use if --memory_limit_hard_bytes is 0. "
+    "The ratio of available RAM to use if --memory_limit_hard_bytes is 0. "
     "The special value " BOOST_PP_STRINGIZE(USE_RECOMMENDED_MEMORY_VALUE)
     " means to instead use a recommended percentage determined "
     "in part by the amount of RAM available.");
@@ -111,8 +111,7 @@ DEFINE_NON_RUNTIME_int64(mem_tracker_update_consumption_interval_us, 2 * 1000 * 
     "Interval that is used to update memory consumption from external source. "
     "For instance from tcmalloc statistics.");
 
-DEFINE_RUNTIME_double(
-    mem_tracker_external_consumption_accuracy_percentage, 1.0,
+DEFINE_RUNTIME_double(mem_tracker_external_consumption_accuracy_percentage, 1.0,
     "If mem tracker consumption changed by more than specified percentage of the soft memory limit "
     "since the last update from external source, update it explicitly from that external source to "
     "avoid too much bias.");
@@ -143,6 +142,8 @@ namespace {
 // Total amount of memory from calls to Release() since the last GC. If this
 // is greater than mem_tracker_tcmalloc_gc_release_bytes, this will trigger a tcmalloc gc.
 Atomic64 released_memory_since_gc;
+
+DEFINE_validator(default_memory_limit_to_ram_ratio, &::yb::internal::ValidateMemoryLimitToRamRatio);
 
 // Marked as unused because this is not referenced in release mode.
 DEFINE_validator(memory_limit_soft_percentage, &::yb::ValidatePercentageFlag);
@@ -990,5 +991,49 @@ bool CheckMemoryPressureWithLogging(
 
   return false;
 }
+
+void MonotonicThreadSafeScopedTrackedConsumption::Init(MemTrackerPtr tracker, int64_t to_consume) {
+  DCHECK(!tracker_);
+  DCHECK(tracker);
+  tracker_ = std::move(tracker);
+  consumption_.store(to_consume, std::memory_order_release);
+  tracker_->Consume(to_consume);
+}
+
+void MonotonicThreadSafeScopedTrackedConsumption::UpdateMonotonic(size_t new_bytes) {
+  if (!tracker_) {
+    return;
+  }
+  const auto value = new_bytes;
+  // Optimistic check: avoid taking the lock if there's nothing to do. A racing thread that
+  // sees a smaller current value will retry under the lock.
+  if (value <= consumption()) {
+    return;
+  }
+  std::lock_guard lock(mutex_);
+  const auto current = consumption();
+  if (value <= current) {
+    return;
+  }
+  tracker_->Consume(value - current);
+  consumption_.store(value, std::memory_order_release);
+}
+
+namespace internal {
+
+bool ValidateMemoryLimitToRamRatio(const char* flag_name, double value) {
+  if (value == USE_RECOMMENDED_MEMORY_VALUE) {
+    return true;  // Special sentinel value is allowed.
+  }
+  if (value <= 0.0 || value > 1.0) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+      << "Must be in the range (0, 1] or "
+      << USE_RECOMMENDED_MEMORY_VALUE << ".";
+    return false;
+  }
+  return true;
+}
+
+} // namespace internal
 
 } // namespace yb

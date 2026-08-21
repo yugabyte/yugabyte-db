@@ -71,7 +71,6 @@
 
 namespace rocksdb {
 
-class FileLock;
 class Logger;
 class Directory;
 struct DBOptions;
@@ -540,16 +539,6 @@ class Logger {
 };
 
 
-// Identifies a locked file.
-class FileLock {
- public:
-  FileLock() { }
-  virtual ~FileLock();
- private:
-  // No copying allowed
-  FileLock(const FileLock&);
-  void operator=(const FileLock&);
-};
 
 extern void LogFlush(const std::shared_ptr<Logger>& info_log);
 

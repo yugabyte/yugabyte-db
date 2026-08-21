@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.alerts.impl;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
@@ -73,6 +74,29 @@ public class AlertTemplateService {
     private String value;
   }
 
+  /**
+   * Environments where an alert template is applicable. Used to skip templates that depend on
+   * metrics not available in the current YBA deployment type (for example container-only K8s
+   * metrics on a VM install, or node-exporter VM metrics on a K8s install).
+   */
+  public enum ApplicableEnvironment {
+    ANY,
+    VM,
+    K8S;
+
+    public boolean matches(boolean ybaRunningInK8s) {
+      switch (this) {
+        case ANY:
+          return true;
+        case VM:
+          return !ybaRunningInK8s;
+        case K8S:
+          return ybaRunningInK8s;
+      }
+      return true;
+    }
+  }
+
   @Data
   public static class AlertTemplateDescription {
     String name;
@@ -91,10 +115,20 @@ public class AlertTemplateService {
     boolean thresholdReadOnly;
     boolean thresholdConditionReadOnly = true;
     String thresholdUnitName = "";
+    ApplicableEnvironment applicableEnvironment = ApplicableEnvironment.ANY;
     TestAlertSettings testAlertSettings = new TestAlertSettings();
     Map<String, String> labels = new HashMap<>();
     Map<String, String> annotations = new HashMap<>();
     Map<String, String> parameters = new HashMap<>();
+
+    /**
+     * @return true when this template is applicable to the current YBA deployment type (VM / K8s).
+     *     Templates marked {@link ApplicableEnvironment#ANY} are always applicable.
+     */
+    public boolean isApplicableToCurrentEnvironment() {
+      return applicableEnvironment.matches(
+          KubernetesEnvironmentVariables.isYbaRunningInKubernetes());
+    }
 
     public String getQueryWithThreshold(
         AlertConfiguration configuration,
@@ -136,6 +170,21 @@ public class AlertTemplateService {
               .replace(
                   QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(threshold.getThreshold()))
               .replace(QUERY_CONDITION_PLACEHOLDER, threshold.getCondition().getValue());
+      // Substitute K8s pod / namespace / PVC placeholders for PLATFORM alerts that scrape YBA's
+      // own containers. When YBA is not running in K8s these placeholders won't appear in the
+      // query so this whole block is a no-op.
+      if (result.contains("__ybaPodName__")) {
+        String ybaPodName = KubernetesEnvironmentVariables.getPodName();
+        result = result.replaceAll("__ybaPodName__", ybaPodName != null ? ybaPodName : "");
+      }
+      if (result.contains("__ybaNamespace__")) {
+        String ybaNamespace = KubernetesEnvironmentVariables.getPodNamespace();
+        result = result.replaceAll("__ybaNamespace__", ybaNamespace != null ? ybaNamespace : "");
+      }
+      if (result.contains("__ybaPvcName__")) {
+        String ybaPvcName = KubernetesEnvironmentVariables.getPvcName();
+        result = result.replaceAll("__ybaPvcName__", ybaPvcName != null ? ybaPvcName : "");
+      }
       for (Map.Entry<String, String> params : templateDescription.getParameters().entrySet()) {
         String placeholder = "{{ " + params.getKey() + " }}";
         ConfKeyInfo<String> keyInfo =

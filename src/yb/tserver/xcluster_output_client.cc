@@ -50,6 +50,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
@@ -688,7 +689,7 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(
     const std::shared_ptr<WriteRequestMsg>& write_request) {
   LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, 1 /* n_secs */, 100 /* max_expected_millis */,
       Format("Rate limiting write request for tablet $0", write_request->tablet_id())) {
-    rate_limiter_->Request(write_request->ByteSizeLong(), IOPriority::kHigh);
+    rate_limiter_->Request(write_request->SerializedSize(), IOPriority::kHigh);
   };
   // TODO: This should be parallelized for better performance with M:N setups.
   auto deadline =

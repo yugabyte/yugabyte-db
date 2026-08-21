@@ -99,6 +99,7 @@ static MemoryContext parsed_hba_context = NULL;
 static const char *const HardcodedHbaLines[] =
 {
 	"local all postgres yb-tserver-key",
+	"local all yb_global_views_user yb-tserver-key",
 };
 
 /*
@@ -2736,9 +2737,11 @@ check_hba(Port *port)
  * On a false result, caller will take care of reporting a FATAL error in case
  * this is the initial startup.  If it happens on reload, we just keep running
  * with the old data.
+ *
+ *  YB: When yb_validate_conf_file is supplied, only validate, do not apply.
  */
 bool
-load_hba(void)
+load_hba(const char *yb_validate_conf_file)
 {
 	FILE	   *file;
 	List	   *hba_lines = NIL;
@@ -2748,24 +2751,31 @@ load_hba(void)
 	MemoryContext oldcxt;
 	MemoryContext hbacxt;
 
-	file = open_auth_file(HbaFileName, LOG, 0, NULL);
+	const char *yb_filename = yb_validate_conf_file
+		? yb_validate_conf_file : HbaFileName;
+	int			yb_elevel = yb_validate_conf_file ? ERROR : LOG;
+
+	Assert(!yb_validate_conf_file || IsUnderPostmaster);
+	file = open_auth_file(yb_filename, yb_elevel, 0, NULL);
 	if (file == NULL)
 	{
 		/* error already logged */
 		return false;
 	}
 
-	tokenize_auth_file(HbaFileName, file, &hba_lines, LOG, 0);
+	tokenize_auth_file(yb_filename, file, &hba_lines, yb_elevel, 0);
 
 	/* YB: Add hardcoded hba config lines in front of user-defined ones. */
 	List	   *hba_lines_hardcoded = NIL;
 
-	yb_tokenize_hardcoded(&hba_lines_hardcoded, LOG);
+	yb_tokenize_hardcoded(&hba_lines_hardcoded, yb_elevel);
 	hba_lines = list_concat(hba_lines_hardcoded, hba_lines);
 
 	/* Now parse all the lines */
-	Assert(PostmasterContext);
-	hbacxt = AllocSetContextCreate(PostmasterContext,
+	MemoryContext yb_parent_cxt = yb_validate_conf_file
+		? CurrentMemoryContext : PostmasterContext;
+	Assert(yb_parent_cxt);
+	hbacxt = AllocSetContextCreate(yb_parent_cxt,
 								   "hba parser context",
 								   ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(hbacxt);
@@ -2781,7 +2791,7 @@ load_hba(void)
 			continue;
 		}
 
-		if ((newline = parse_hba_line(tok_line, LOG)) == NULL)
+		if ((newline = parse_hba_line(tok_line, yb_elevel)) == NULL)
 		{
 			/* Parse error; remember there's trouble */
 			ok = false;
@@ -2804,10 +2814,10 @@ load_hba(void)
 	 */
 	if (ok && new_parsed_lines == NIL)
 	{
-		ereport(LOG,
+		ereport(yb_elevel,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 errmsg("configuration file \"%s\" contains no entries",
-						HbaFileName)));
+						yb_filename)));
 		ok = false;
 	}
 
@@ -2815,14 +2825,15 @@ load_hba(void)
 	free_auth_file(file, 0);
 	MemoryContextSwitchTo(oldcxt);
 
-	if (!ok)
+	if (!ok || yb_validate_conf_file)
 	{
 		/*
 		 * File contained one or more errors, so bail out. MemoryContextDelete
 		 * is enough to clean up everything, including regexes.
 		 */
 		MemoryContextDelete(hbacxt);
-		return false;
+		/* YB: Return early if asked only to validate */
+		return ok;
 	}
 
 	/* Loaded new file successfully, replace the one we use */
@@ -3136,9 +3147,12 @@ check_usermap(const char *usermap_name,
  * the contents.
  *
  * This works the same as load_hba(), but for the user config file.
+ *
+ * YB: When yb_validate_conf_file is supplied, only validate, do not apply.
  */
 bool
-load_ident(MemoryContext yb_ident_context)
+load_ident(MemoryContext yb_ident_context,
+		   const char *yb_validate_conf_file)
 {
 	FILE	   *file;
 	List	   *ident_lines = NIL;
@@ -3149,15 +3163,20 @@ load_ident(MemoryContext yb_ident_context)
 	MemoryContext ident_context;
 	IdentLine  *newline;
 
+	Assert(!yb_validate_conf_file || IsUnderPostmaster);
+	const char *yb_filename = yb_validate_conf_file
+		? yb_validate_conf_file : IdentFileName;
+	int			yb_elevel = yb_validate_conf_file ? ERROR : LOG;
+
 	/* not FATAL ... we just won't do any special ident maps */
-	file = open_auth_file(IdentFileName, LOG, 0, NULL);
+	file = open_auth_file(yb_filename, yb_elevel, 0, NULL);
 	if (file == NULL)
 	{
 		/* error already logged */
 		return false;
 	}
 
-	tokenize_auth_file(IdentFileName, file, &ident_lines, LOG, 0);
+	tokenize_auth_file(yb_filename, file, &ident_lines, yb_elevel, 0);
 
 	/*
 	 * Now parse all the lines
@@ -3186,7 +3205,7 @@ load_ident(MemoryContext yb_ident_context)
 			continue;
 		}
 
-		if ((newline = parse_ident_line(tok_line, LOG)) == NULL)
+		if ((newline = parse_ident_line(tok_line, yb_elevel)) == NULL)
 		{
 			/* Parse error; remember there's trouble */
 			ok = false;
@@ -3206,18 +3225,20 @@ load_ident(MemoryContext yb_ident_context)
 	free_auth_file(file, 0);
 	MemoryContextSwitchTo(oldcxt);
 
-	if (!ok)
+	if (!ok || yb_validate_conf_file)
 	{
 		/*
 		 * File contained one or more errors, so bail out. MemoryContextDelete
 		 * is enough to clean up everything, including regexes.
+		 *
+		 * YB: Cleanup and return in validation mode.
 		 */
 		/*
 		 * YB: ident_context is unused when yb_ident_context is passed as param.
 		 */
 		if (!yb_ident_context)
 			MemoryContextDelete(ident_context);
-		return false;
+		return ok;
 	}
 
 	/* Loaded new file successfully, replace the one we use */

@@ -29,7 +29,7 @@ func NewHttpClient(timeout int, url string) *HttpClient {
 	once.Do(func() {
 		caCertPath := config.String(PlatformCaCertPathKey)
 		if caCertPath != "" {
-			certPool := x509.NewCertPool()
+			certPool = x509.NewCertPool()
 			pem, err := os.ReadFile(caCertPath)
 			if err != nil {
 				panic(err)

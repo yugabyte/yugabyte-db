@@ -6,7 +6,9 @@ import static com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase.getReque
 import static org.apache.commons.validator.routines.UrlValidator.ALLOW_LOCAL_URLS;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.NOT_FOUND;
 
+import api.v2.utils.NormalizedPaginationSpec;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -32,6 +34,7 @@ import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigCreateForm.PitrParams;
 import com.yugabyte.yw.forms.DrConfigEditForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
+import com.yugabyte.yw.forms.DrConfigGetResp;
 import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
 import com.yugabyte.yw.forms.DrConfigRestartForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
@@ -53,6 +56,7 @@ import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.XClusterTableConfig.Status;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.PagedList;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -79,7 +83,6 @@ import org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoRespo
 @Singleton
 public class DrConfigHelper {
 
-  private static final int maxRetryCount = 5;
   private final Commissioner commissioner;
   private final YBClientService ybService;
   private final RuntimeConfGetter confGetter;
@@ -118,10 +121,6 @@ public class DrConfigHelper {
     this.tableHandler = tableHandler;
     this.customerConfigService = customerConfigService;
     this.xClusterUniverseService = xClusterUniverseService;
-  }
-
-  public boolean abortDrConfigTask(UUID taskUUID) {
-    return commissioner.abortTask(taskUUID, false);
   }
 
   public DrConfigTaskResult createDrConfigTask(UUID customerUUID, DrConfigCreateForm createForm) {
@@ -1218,5 +1217,44 @@ public class DrConfigHelper {
         targetTableInfoList,
         new HashSet<>(inboundSourceToTargetTableId.values()),
         CustomerTask.TaskType.Switchover);
+  }
+
+  public PagedList<DrConfig> getPagedDrConfigsForUniverse(
+      UUID customerUUID, UUID universeUUID, NormalizedPaginationSpec normalized) {
+    Universe.getOrNotFound(universeUUID, customerUUID);
+    return DrConfig.getPagedListForUniverse(universeUUID, normalized);
+  }
+
+  public DrConfigGetResp getDrConfigGetResp(UUID customerUUID, UUID drUUID, boolean syncWithDB) {
+    return buildDrConfigGetResp(customerUUID, drUUID, syncWithDB, BAD_REQUEST);
+  }
+
+  public DrConfigGetResp getDrConfigGetRespOrNotFound(
+      UUID customerUUID, UUID drUUID, boolean syncWithDB) {
+    return buildDrConfigGetResp(customerUUID, drUUID, syncWithDB, NOT_FOUND);
+  }
+
+  private DrConfigGetResp buildDrConfigGetResp(
+      UUID customerUUID, UUID drUUID, boolean syncWithDB, int missingEntityStatus) {
+    Customer customer = Customer.getOrHttpError(customerUUID, missingEntityStatus);
+    DrConfig drConfig = DrConfig.getValidConfigOrHttpError(customer, drUUID, missingEntityStatus);
+
+    if (syncWithDB) {
+      XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();
+      xClusterScheduler.syncXClusterConfig(activeXClusterConfig);
+      activeXClusterConfig.refresh();
+
+      for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
+        XClusterConfigTaskBase.updateReplicationDetailsFromDB(
+            xClusterUniverseService,
+            ybService,
+            tableHandler,
+            xClusterConfig,
+            confGetter.getGlobalConf(GlobalConfKeys.xclusterGetApiTimeoutMs),
+            confGetter);
+      }
+    }
+
+    return new DrConfigGetResp(drConfig, drConfig.getActiveXClusterConfig());
   }
 }

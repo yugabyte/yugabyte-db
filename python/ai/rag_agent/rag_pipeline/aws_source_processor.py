@@ -6,6 +6,7 @@ Each processor handles a specific type of work and can be registered with the Ta
 """
 
 import logging
+import mimetypes
 import threading
 import time
 from datetime import datetime
@@ -18,6 +19,7 @@ from source_location_crawlers import S3BucketCrawler
 from db.connection_pool import ConnectionPool
 from work_queue.poller import Poller
 from db.source_document_tracking import SourceDocumentTracking
+from rag_pipeline.document_types import SUPPORTED_DOCUMENT_TYPES
 
 
 class CreateSourceProcessorForAWS_S3(TaskProcessor):
@@ -97,20 +99,27 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
 
             for file_metadata in files_metadata:
                 # nik-todo: generate s3 url from files_metadata
-                # Build S3 URI
-                print(f"Building S3 URI for file: {file_metadata}")
+                self.logger.info(f"Building S3 URI for file: {file_metadata}")
                 s3_uri = self.s3_crawler.build_s3_uri(bucket_name, file_metadata['Key'])
 
-                # Create standard DocumentMetadata object
+                document_type, _ = mimetypes.guess_type(file_metadata['Key'])
+
+                if document_type not in SUPPORTED_DOCUMENT_TYPES:
+                    self.logger.warning(
+                        f"Skipping unsupported file type '{document_type}' "
+                        f"for file: {file_metadata['Key']}"
+                    )
+                    continue
+
                 document_metadata = DocumentMetadata(
                     source_id=source_id,
                     document_name=file_metadata['Key'],
                     document_uri=s3_uri,
                     document_checksum=file_metadata['ETag'],
+                    document_type=document_type,
                     status="QUEUED"
                 )
 
-                # Insert using the standard metadata object
                 self.source_document_tracking.insert_document_metadata(document_metadata)
         else:
             logging.error(f"Invalid source URI: {source_uri}")
@@ -192,24 +201,20 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
                 self.connection_pool.return_connection(connection)
 
     def _mark_task_completed(self, work_queue_id: UUID, source_id: UUID):
-        """
-        Mark a task as completed.
-        """
+
         connection = None
         try:
+            """
+            Mark a CREATE_SOURCE task as completed.
+
+            The work_queue row is removed via :meth:`Poller.mark_completed`
+            (DELETE) so the queue stays compact. The source row is moved to
+            a terminal COMPLETED status -- it is the authoritative record of
+            source ingestion, separate from the dispatch queue.
+            """
+            self.poller.mark_completed(work_queue_id)
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
-
-            # Update work_queue table
-            query_work_queue = """
-            UPDATE dist_rag.work_queue
-            SET task_status = 'COMPLETED',
-                completed_at = CURRENT_TIMESTAMP
-            WHERE id = %s;
-            """
-            cursor.execute(query_work_queue, (work_queue_id,))
-
-            # Update sources table
             query_sources = """
             UPDATE dist_rag.sources
             SET status = 'COMPLETED',
@@ -227,7 +232,7 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
                     connection.rollback()
                 except Exception:
                     pass
-            logging.error(f"Error marking completion for task {work_queue_id}: {str(e)}")
+            logging.error(f"Error marking source completed for task {work_queue_id}: {str(e)}")
             raise
         finally:
             if connection:
@@ -316,5 +321,15 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
             # Clean up the renewal thread on error
             self._lease_renewal_threads.pop(str(work_queue_id), None)
             self._update_create_source_status(work_queue_id=work_queue_id, status="FAILED")
+            # Finalize the work_queue row too -- without this the row stays
+            # IN_PROGRESS and the SQL-side reaper re-queues it on lease
+            # expiry, causing CREATE_SOURCE tasks to be retried forever.
+            try:
+                self.poller.mark_failed(task.id)
+            except Exception as finalize_err:
+                self.logger.error(
+                    f"Failed to mark work_queue row {task.id} FAILED after "
+                    f"create-source error: {str(finalize_err)}"
+                )
             self.logger.error(f"Error processing create source task: {str(e)}")
             raise

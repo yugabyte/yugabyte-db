@@ -422,9 +422,15 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"SSL-Key-Log-File", "D", 64,
 	offsetof(struct pg_conn, sslkeylogfile)},
 
-	{"yb_auto_analyze", NULL, NULL, NULL,
-		"YB-Auto-Analyze", "", 6, /* sizeof("false") = 6 */
-	offsetof(struct pg_conn, yb_auto_analyze)},
+	/*
+	 * Wire name of one of the YbInternalConnKind values (see
+	 * src/include/yb_internal_conn.h). The tserver sets this on connections
+	 * it opens to its own postgres so the backend knows which dedicated
+	 * BackendType to take on (and which preload/auth behavior to apply).
+	 */
+	{"yb_internal_conn_kind", NULL, NULL, NULL,
+		"YB-Internal-Conn-Kind", "", 32,
+	offsetof(struct pg_conn, yb_internal_conn_kind)},
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
@@ -5192,7 +5198,7 @@ freePGconn(PGconn *conn)
 	free(conn->inBuffer);
 	free(conn->outBuffer);
 	free(conn->rowBuf);
-	free(conn->yb_auto_analyze);
+	free(conn->yb_internal_conn_kind);
 	termPQExpBuffer(&conn->errorMessage);
 	termPQExpBuffer(&conn->workBuffer);
 

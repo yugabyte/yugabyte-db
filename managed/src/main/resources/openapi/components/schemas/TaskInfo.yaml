@@ -1,0 +1,79 @@
+title: TaskInfo
+description: |
+  System-generated YugabyteDB Anywhere customer task metadata and status.
+type: object
+properties:
+  uuid:
+    description: Task UUID.
+    type: string
+    format: uuid
+    readOnly: true
+  title:
+    description: Human-readable task title.
+    type: string
+    example: 'Deleted Universe : test-universe'
+    readOnly: true
+  target:
+    description: Target resource type name.
+    type: string
+    example: Universe
+    readOnly: true
+  target_uuid:
+    description: UUID of the target resource.
+    type: string
+    format: uuid
+    readOnly: true
+  type:
+    description: Task action type.
+    type: string
+    example: Delete
+    readOnly: true
+  type_name:
+    description: Friendly task type name.
+    type: string
+    example: Software Upgrade
+    readOnly: true
+  details:
+    description: 'Structured task details (subtasks, upgrade progress, exporter configs).'
+    $ref: "./TaskDetails.yaml"
+    readOnly: true
+  correlation_id:
+    description: 'Correlation id for the task, if any.'
+    type: string
+    readOnly: true
+  create_time:
+    description: Task creation time.
+    type: string
+    format: date-time
+    readOnly: true
+  completion_time:
+    description: 'Task completion time, if finished.'
+    type: string
+    format: date-time
+    readOnly: true
+  status:
+    description: Current task status.
+    type: string
+    example: Success
+    readOnly: true
+  percent_complete:
+    description: Percentage of task completion.
+    type: integer
+    format: int32
+    readOnly: true
+  abortable:
+    description: Whether the task can be aborted.
+    type: boolean
+    readOnly: true
+  retryable:
+    description: Whether the task can be retried.
+    type: boolean
+    readOnly: true
+  can_rollback:
+    description: Whether the task can be rolled back.
+    type: boolean
+    readOnly: true
+  user_email:
+    description: Email of the user who started the task.
+    type: string
+    readOnly: true

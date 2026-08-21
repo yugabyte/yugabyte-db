@@ -97,7 +97,7 @@ class RemoteBootstrapTest : public TabletServerTestBase {
       for (int row_id = 0; row_id < kNumLogRolls * kIncr; row_id += kIncr) {
         InsertTestRowsRemote(0, row_id, kIncr);
         auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
-        ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+        ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
         ASSERT_OK(tablet_peer_->log()->AllocateSegmentAndRollOver());
       }
     }

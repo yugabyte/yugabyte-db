@@ -1,0 +1,10 @@
+name: Maintainer Issue
+description: Template used by maintainers for tracking bug/feature requests
+title: "[bug/feat]: Title"
+body:
+    - type: textarea
+      attributes:
+        label: Description
+        description: A concise description of what you expected to happen.
+      validations:
+        required: false

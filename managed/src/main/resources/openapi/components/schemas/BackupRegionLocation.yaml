@@ -1,0 +1,16 @@
+title: BackupRegionLocation
+description: Per-region backup storage location.
+type: object
+properties:
+  region:
+    description: Cloud region name.
+    type: string
+    readOnly: true
+  location:
+    description: Backup storage location path or URI.
+    type: string
+    readOnly: true
+  host_base:
+    description: Host base path for the backup location.
+    type: string
+    readOnly: true

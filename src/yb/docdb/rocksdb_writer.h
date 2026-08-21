@@ -17,6 +17,7 @@
 
 #include <boost/logic/tribool.hpp>
 
+#include "yb/common/common_types.pb.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -129,6 +130,19 @@ class PostApplyMetadataWriter : public rocksdb::DirectWriter {
 
  private:
   std::span<const PostApplyTransactionMetadata> metadatas_;
+};
+
+class TransactionMetadataUpdateWriter : public rocksdb::DirectWriter {
+ public:
+  TransactionMetadataUpdateWriter(
+      Slice transaction_id, HybridTime update_time, const LWTransactionMetadataPB& metadata_update);
+
+  Status Apply(rocksdb::DirectWriteHandler& handler) override;
+
+ private:
+  Slice transaction_id_;
+  HybridTime update_time_;
+  const LWTransactionMetadataPB& metadata_update_;
 };
 
 YB_STRONGLY_TYPED_BOOL(IgnoreMaxApplyLimit);
@@ -274,6 +288,17 @@ class VectorIndexesUpdater {
   Status FeedPackedRow(
       rocksdb::DirectWriteHandler& handler, size_t prefix_size, Slice key, Slice value);
 
+  // Table-owned vector reverse mapping. When indexes_ is set, also inserts into vector indexes
+  // in the same pass (one FetchValue per vector column; required for V2 decoder).
+  template <class Decoder>
+  Status FeedPackedRowTableOwnedReverseMapping(
+      rocksdb::DirectWriteHandler& handler, Decoder& decoder, Slice key);
+
+  // Legacy reverse mapping and vector index updates driven by the indexes list.
+  template <class Decoder>
+  Status FeedPackedRowLegacyVectorIndexes(
+      rocksdb::DirectWriteHandler& handler, Decoder& decoder, Slice key);
+
   bool ApplyToVectorIndex(size_t index) const {
     return apply_to_storages_.TestVectorIndex(index);
   }
@@ -292,6 +317,7 @@ class VectorIndexesUpdater {
   std::shared_ptr<const dockv::SchemaPacking> schema_packing_;
   SchemaVersion schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
   KeyBuffer schema_packing_table_prefix_;
+  bool schema_packing_owns_vector_reverse_mapping_ = false;
 };
 
 using ApplyIntentsContextCompleteListener = boost::function<void(const ConsensusFrontiers&)>;
@@ -306,7 +332,7 @@ class ApplyIntentsContext : public IntentsWriterContextBase,
       const KeyBounds* key_bounds, SchemaPackingProvider& schema_packing_provider,
       ConsensusFrontiers& frontiers, rocksdb::DB* intents_db,
       DocVectorIndexesPtr vector_indexes, const StorageSet& apply_to_storages,
-      ApplyIntentsContextCompleteListener complete_listener);
+      TableType table_type, ApplyIntentsContextCompleteListener complete_listener);
 
   void Start(const std::optional<Slice>& first_key) override;
 
@@ -334,7 +360,7 @@ class ApplyIntentsContext : public IntentsWriterContextBase,
   const OpId apply_op_id_;
   const KeyBounds* key_bounds_;
   StorageSet apply_to_storages_;
-  VectorIndexesUpdater vector_indexes_updater_;
+  std::optional<VectorIndexesUpdater> vector_indexes_updater_;
 
   ApplyIntentsContextCompleteListener complete_listener_;
   rocksdb::DB* intents_db_;
@@ -380,7 +406,8 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
       HybridTime batch_hybrid_time, rocksdb::DB* intents_db,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider& schema_packing_provider,
-      ConsensusFrontiers& frontiers, const DocVectorIndexesPtr& vector_indexes);
+      ConsensusFrontiers& frontiers, const DocVectorIndexesPtr& vector_indexes,
+      const StorageSet& apply_to_storages, TableType table_type);
 
   bool Empty() const;
 
@@ -414,6 +441,8 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
   Slice intents_db_iter_upperbound_;
   rocksdb::WriteBatch* intents_write_batch_;
   DocVectorIndexesPtr vector_indexes_;
+  StorageSet apply_to_storages_;
+  TableType table_type_;
 };
 
 // Context class for dumping intents records for a transaction.

@@ -25,7 +25,9 @@ import java.sql.Statement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
@@ -152,8 +154,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void enableVersionMatchingAndRestartCluster(boolean higher_version_matching)
       throws Exception {
     Map<String, String> tsFlagMap = new HashMap<>();
-    tsFlagMap.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
-        + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
     tsFlagMap.put("enable_ysql_conn_mgr", "true");
 
     // Keeping sane value for TTL based on GUC Adoption strategy, old backends to expire in 1 second
@@ -668,5 +668,70 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         TestUtils.findBinary("yb-ts-cli"), "--server_address", server.toString(),
         "set_flag", flag, value);
     ProcessUtil.runProcess(args, 60 /* timeoutSeconds */);
+  }
+
+  protected static long getRssForPid(int pid) throws Exception {
+    Process process = Runtime.getRuntime().exec(
+        String.format("ps -p %d -o rss=", pid));
+    try (Scanner scanner = new Scanner(process.getInputStream())) {
+      return scanner.nextLong();
+    }
+  }
+
+  protected static int getOdysseyPid() throws Exception {
+    Process p = Runtime.getRuntime().exec(
+        new String[]{"/bin/sh", "-c", "pgrep -f odyssey | head -1"});
+    try (BufferedReader reader =
+             new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+      String line = reader.readLine();
+      if (line == null || line.trim().isEmpty()) {
+        throw new RuntimeException("Could not find Odyssey process via pgrep");
+      }
+      return Integer.parseInt(line.trim());
+    }
+  }
+
+  protected static int getOdysseyPidForHost(String host) throws Exception {
+    // Defensive: this value is spliced into a shell command below. Test code
+    // always passes an IPv4 literal or a hostname, but reject anything that
+    // could escape the single-quoted awk string.
+    if (host == null || !host.matches("[a-zA-Z0-9._-]+")) {
+      throw new IllegalArgumentException("Invalid host for odyssey lookup: " + host);
+    }
+
+    // For every odyssey PID pgrep finds, ask `ss` whether that PID owns a
+    // listening TCP socket whose local address starts with "<host>:". First
+    // match wins. The trailing comma in the awk match anchors "pid=<pid>"
+    // against the format `users:(("odyssey",pid=12345,fd=7))` so pid=12 does
+    // not accidentally match pid=1234.
+    String script =
+        "for pid in $(pgrep -f odyssey); do "
+        + "  if ss -H -lntp 2>/dev/null "
+        + "       | awk -v pid=\"$pid\" -v ip='" + host + "' "
+        + "             '$4 ~ (\"^\"ip\":\") && $0 ~ (\"pid=\"pid\",\") {f=1} "
+        + "              END { exit !f }'; "
+        + "  then echo \"$pid\"; exit 0; fi; "
+        + "done; "
+        + "exit 1";
+    // After a cluster restart the odyssey process can be up (visible to pgrep)
+    // before it has finished binding its listening socket, so a single ss pass
+    // may miss it. Poll until the socket becomes visible rather than failing on
+    // the first miss.
+    final long deadlineMs = System.currentTimeMillis() + 30000;
+    for (;;) {
+      Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", script});
+      try (BufferedReader reader =
+               new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+        String line = reader.readLine();
+        if (line != null && !line.trim().isEmpty()) {
+          return Integer.parseInt(line.trim());
+        }
+      }
+      if (System.currentTimeMillis() >= deadlineMs) {
+        throw new RuntimeException(
+            "Could not find Odyssey process listening on host " + host);
+      }
+      Thread.sleep(200);
+    }
   }
 }

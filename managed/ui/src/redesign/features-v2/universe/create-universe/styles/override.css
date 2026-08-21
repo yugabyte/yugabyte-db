@@ -14,3 +14,9 @@ h2 {
     font-size: unset;
   }
 }
+
+/* Gflags table on create-universe should scroll with the wizard, not trap wheel events */
+.create-universe-root .gflag-edit-table .react-bs-container-body {
+  max-height: none !important;
+  overflow: visible !important;
+}

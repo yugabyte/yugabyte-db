@@ -46,6 +46,9 @@ export const constructFormPayload = (auditLogConfig: AuditLogConfig | undefined)
       logStatement: ysqlAuditConfig?.logStatement,
       logStatementOnce: ysqlAuditConfig?.logStatementOnce,
       ...(ysqlAuditConfig?.logClient && { logLevel: ysqlAuditConfig?.logLevel }),
+      ...(ysqlAuditConfig?.logRetentionDays != null && {
+        logRetentionDays: ysqlAuditConfig?.logRetentionDays
+      }),
       ...(exportActive &&
         universeLogsExporterConfig?.[0]?.exporterUuid && {
           exporterUuid: universeLogsExporterConfig?.[0]?.exporterUuid

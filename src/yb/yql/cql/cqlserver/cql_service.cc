@@ -82,7 +82,7 @@ DEFINE_RUNTIME_int32(cql_unprepared_stmts_entries_limit, 500,
 DEFINE_RUNTIME_int32(cql_batch_stmts_entries_limit, 500,
             "Limit the number of batch statements that are being tracked.");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(ycql_use_jwt_auth, false, "Use JWT for authentication.");
+DEFINE_NON_RUNTIME_bool(ycql_use_jwt_auth, false, "Use JWT for authentication.");
 
 DEFINE_NON_RUNTIME_string(ycql_jwt_users_to_skip_csv, "",
     "Users that are authenticated via the local password"
@@ -92,14 +92,14 @@ TAG_FLAG(ycql_jwt_users_to_skip_csv, sensitive_info);
 DEFINE_NON_RUNTIME_string(ycql_jwt_conf, "",
     "The space-separated list of options to configure JWT authentication. "
     "The format is a list of 'key=value' pairs separated by space. "
-    "Valid keys are:\n"
+    "Valid keys are: "
     "  * jwt_jwks_url: The URL from where to fetch the Json Web Key Set of the Identity Provider "
-    "(IDP).\n"
+    "(IDP). "
     "  * jwt_audiences: The list of accepted audiences. One of the items within the list must match"
     " the 'aud' claim present in the token. Multiple values can be provided as a comma-separated "
-    "list.\n"
+    "list. "
     "  * jwt_issuers: The comma-separated list of issuers (IDP) that are valid. One of the items "
-    "within the list must match the 'iss' claim present in the token.\n"
+    "within the list must match the 'iss' claim present in the token. "
     "  * jwt_matching_claim_key: Key of the claim which represents the identity of the user on the "
     "Identity Provider (IDP). Some common values are 'sub', 'email', 'groups', 'roles' etc. The "
     "default value is 'sub'.");

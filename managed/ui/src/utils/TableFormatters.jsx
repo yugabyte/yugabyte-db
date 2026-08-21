@@ -92,6 +92,12 @@ export function successStringFormatter(cell, row) {
           <i className="fa fa-ban" /> Aborted
         </span>
       );
+    case 'Paused':
+      return (
+        <span className="yb-warn-color">
+          <i className="fa fa-pause" /> Paused
+        </span>
+      );
     default:
       return (
         <span className="yb-fail-color">

@@ -742,6 +742,170 @@ static od_frontend_status_t od_frontend_local(od_client_t *client)
 	return OD_OK;
 }
 
+static char *yb_prepare_server_key(char *stmt_name, int stmt_name_len, char *query_string,
+								 int query_string_len, char *client_id, int client_id_len,
+								 int *server_key_len);
+
+/*
+ * YB: Invoked when the backend sends YB_BE_SYNC_ACK ('Y'). Postgres emits this
+ * while handling the client's extended-query Sync message (FE type 'S')
+ * If the head of the queue is a SYNC it is consumed immediately (success path).
+ * Otherwise, entries before the next SYNC are stale because the backend silently
+ * dropped them after an error, so we evict them from the server and client hashmaps.
+ */
+void yb_drain_parse_queue_till_sync(od_server_t *server, od_client_t *client)
+{
+	od_instance_t *instance = server->global->instance;
+	yb_od_parse_queue_t *parse_queue = &server->parse_queue;
+	while (!yb_od_parse_queue_empty(parse_queue)) {
+		yb_od_parse_queue_entry_t entry;
+		if (yb_od_parse_queue_peek(parse_queue, &entry) == -1) {
+			/* Shouldn't happen under the while-guard, but the API
+			 * now signals emptiness explicitly; bail out safely. */
+			od_error(&instance->logger, "parse queue cleanup",
+				 client, server,
+				 "peek returned empty despite non-empty queue");
+			return;
+		}
+
+		switch (entry.kind) {
+			case YB_PARSE_QUEUE_SYNC: {
+				int res = yb_od_parse_queue_dequeue(parse_queue);
+				if (res != 0) {
+					od_error(&instance->logger, "parse queue cleanup", client,
+							server, "failed to dequeue parse queue");
+				}
+				return;
+			}
+			case YB_PARSE_QUEUE_PARSE_COMPLETE:
+			case YB_PARSE_QUEUE_NO_PARSE_COMPLETE:
+				break;
+		}
+
+		char *stmt_name = entry.stmt_name;
+
+		if (strcmp(stmt_name, "") == 0) {
+			int res = yb_od_parse_queue_dequeue(parse_queue);
+			if (res != 0) {
+				od_error(&instance->logger, "parse queue cleanup", client,
+						server, "failed to dequeue parse queue");
+			}
+			// TODO(GH#31147): Full unnamed prepared-statement support.
+			od_debug(&instance->logger, "parse queue cleanup", client,
+					server, "unnamed prepared statement support not implemented");
+			continue;
+		}
+
+		int stmt_name_len = strlen(stmt_name) + 1;
+		od_hashmap_elt_t key;
+		key.len = stmt_name_len;
+		key.data = stmt_name;
+		yb_od_hash_64_t keyhash = yb_od_murmur_hash_64(key.data, key.len);
+
+		od_hashmap_elt_t *desc = od_hashmap_find(
+			client->prep_stmt_ids, keyhash, &key);
+		if (desc == NULL) {
+			od_debug(&instance->logger, "parse queue cleanup",
+				 client, server,
+				 "stmt %s not found in client hashmap, skipping",
+				 stmt_name);
+			int res = yb_od_parse_queue_dequeue(parse_queue);
+			if (res != 0) {
+				od_error(&instance->logger, "parse queue cleanup", client,
+						server, "failed to dequeue parse queue");
+			}
+			continue;
+		}
+
+		int server_key_len = 0;
+		char *server_key = yb_prepare_server_key(
+			stmt_name, stmt_name_len,
+			desc->data, desc->len,
+			client->id.id,
+			instance->config.yb_optimized_extended_query_protocol
+				? 0 : strlen(client->id.id),
+			&server_key_len);
+
+		if (!server_key) {
+			od_error(&instance->logger, "parse queue cleanup", client,
+					server, "failed to allocate memory");
+			int res = yb_od_parse_queue_dequeue(parse_queue);
+			if (res != 0) {
+				od_error(&instance->logger, "parse queue cleanup", client,
+						server, "failed to dequeue parse queue");
+			}
+			continue;
+		}
+
+		od_hashmap_elt_t server_key_desc = {server_key,
+							server_key_len};
+		yb_od_hash_64_t yb_stmt_hash = yb_od_murmur_hash_64(
+			server_key_desc.data, server_key_desc.len);
+
+		yb_evict_prep_stmt_by_keyhash(server, "parse queue cleanup", yb_stmt_hash);
+		free(server_key);
+
+		if (entry.kind == YB_PARSE_QUEUE_PARSE_COMPLETE) {
+			od_hashmap_list_item_t *item = yb_od_hashmap_find_item(
+				client->prep_stmt_ids, keyhash, &key);
+			if (item) {
+				od_hashmap_list_item_free(item);
+				od_debug(&instance->logger, "parse queue cleanup",
+					client, server,
+					"evicted %s from client hashmap", stmt_name);
+			}
+		}
+
+		int res = yb_od_parse_queue_dequeue(parse_queue);
+		if (res != 0) {
+			od_error(&instance->logger, "parse queue cleanup", client,
+					server, "failed to dequeue parse queue");
+		}
+	}
+}
+
+static bool yb_is_relay_paused(od_relay_t *relay)
+{
+	return relay->yb_paused;
+}
+
+/*
+ * YB: Resume the client->server relay that was paused by OD_WAIT_SYNC when
+ * od_frontend_remote_client processed a Sync packet. Re-arms the client FD
+ * on epoll and, if bytes pipelined after the Sync are already buffered in
+ * readahead, signals on_read so od_relay_step drains them on the next
+ * iteration without waiting for a new kernel event.
+ */
+static int yb_resume_client_relay(od_client_t *client)
+{
+	od_relay_t *client_relay = &client->relay;
+	if (!client_relay->yb_paused)
+		return 0;
+	client_relay->yb_paused = false;
+	if (client_relay->src && client_relay->src->io)
+	{
+		int rc = od_io_read_start(client_relay->src);
+		if (rc == -1) {
+			od_instance_t *instance = client->global->instance;
+			od_error(&instance->logger, "main", client, client->server,
+				 "failed to start client read after Sync: %s",
+				 od_io_error(client_relay->src));
+			return rc;
+		}
+	}
+	/*
+	 * Only signal on_read when the readahead already holds bytes that the
+	 * paused pipeline did not get to process (e.g. queries pipelined after
+	 * the Sync). If readahead is empty, level-triggered epoll will deliver
+	 * the wakeup naturally once new bytes arrive from the client, avoiding
+	 * a spurious OD_ATTACH that would hold a backend connection idle.
+	 */
+	if (client_relay->src && client_relay->src->on_read &&
+	    od_relay_data_pending(client_relay))
+		machine_cond_signal(client_relay->src->on_read);
+	return 0;
+}
+
 static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 						      char *data, int size)
 {
@@ -768,19 +932,37 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		break;
 	case YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME:
 		// YB: Custom packet not required to be forwarded to client.
-		od_backend_evict_server_hashmap(server, "close prepared statement", data, size);
+		if (instance->config.yb_enable_dealloc_reconciliation)
+			yb_backend_register_close_prep_stmt(server, "close prepared statement", data, size);
+		else
+			od_backend_evict_server_hashmap(server, "close prepared statement", data, size);
 		skip_forward_to_client = true;
 		break;
-	case YB_BE_NO_PARSE_PARSE_COMPLETE:
-		/* YB: No-op, return ParseComplete instead of YBNoParseParseComplete to client.
-		 * Rewrite type byte in-place so the client sees a standard
-		 * ParseComplete; preserves packet position in the relay iov.
-		 */
-		*data = KIWI_BE_PARSE_COMPLETE;
+	case YB_BE_FORCE_PARSE_COMPLETE: {
+		if (instance->config.yb_enable_dealloc_reconciliation)
+			yb_backend_unregister_close_prep_stmt(server, "force parse complete", data, size);
+		machine_msg_t *pmsg = kiwi_be_write_parse_complete(NULL);
+		if (pmsg == NULL)
+			return relay->error_read;
+		rc = machine_iov_add(relay->iov, pmsg);
+		if (rc == -1) {
+			machine_msg_free(pmsg);
+			od_error(&instance->logger, "force parse complete",
+				 client, server, "out of memory");
+			return relay->error_read;
+		}
+		skip_forward_to_client = true;
 		break;
+	}
 	case YB_BE_PARSE_NO_PARSE_COMPLETE:
 		// YB: Custom parse complete packet not required to be forwarded to client.
 		skip_forward_to_client = true;
+		int res = yb_od_parse_queue_dequeue(&server->parse_queue);
+		if (res != 0) {
+			od_error(&instance->logger, "parse queue cleanup", client,
+					server, "failed to dequeue parse queue");
+			return relay->error_read;
+		}
 		break;
 	case KIWI_BE_ERROR_RESPONSE:
 		od_backend_error(server, "main", data, size);
@@ -796,14 +978,62 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 			return relay->error_read;
 		break;
 	case KIWI_BE_COPY_IN_RESPONSE:
+		server->yb_in_response_received++;
+		/*
+		 * YB: Resume the client relay so CopyDone, CopyData
+		 * packets can be forwarded to the backend if not already
+		 * forwarded.
+		 */
+		if (yb_is_server_in_copy_in_mode(server) &&
+			yb_is_relay_paused(&client->relay))
+		{
+			assert(instance->config.yb_wait_for_rfq_on_sync);
+			/*
+				* YB: Copy command has been sent via extended query
+				* protocol, so don't expect a ReadyForQuery nor YB_BE_SYNC_ACK
+				* packet for the sync already forwarded.
+				*/
+			od_server_sync_reply(server);
+			/*
+				* YB: A Sync was enqueued into the parse queue (see KIWI_FE_SYNC
+				* handling) for which no RFQ nor YB_SYNC_ACK would be returned
+				* by backend, therefore dequeue it.
+				* The last entry of the parse queue must be a SYNC.
+				*/
+			yb_od_parse_queue_entry_t tail_entry;
+			if (yb_od_parse_queue_peek_last(&server->parse_queue,
+							&tail_entry) != 0) {
+				od_error(&instance->logger, "copy in response resume relay", client,
+						server, "failed to peek last entry in parse queue");
+				return relay->error_read;
+			}
+			if (tail_entry.kind != YB_PARSE_QUEUE_SYNC) {
+				od_error(&instance->logger, "copy in response resume relay", client,
+						server, "last entry in parse queue is not a SYNC");
+				return relay->error_read;
+			}
+			yb_od_parse_queue_remove_last(&server->parse_queue);
+
+			/* Resume the client relay */
+			rc = yb_resume_client_relay(client);
+			if (rc != 0) {
+				od_error(&instance->logger, "copy in response resume relay", client,
+						server,
+						"failed to resume client read on "
+						"CopyInResponse: %s",
+						od_io_error(client->relay.src));
+				return relay->error_read;
+			}
+		}
+		break;
 	case KIWI_BE_COPY_OUT_RESPONSE:
-		server->in_out_response_received++;
+		server->yb_out_response_received++;
 		break;
 	case KIWI_BE_COPY_DONE:
 		/* should go after copy out
 		* states that backend copy ended
 		*/
-		server->done_fail_response_received++;
+		server->yb_done_fail_for_copy_out_response++;
 		break;
 	case KIWI_BE_COPY_FAIL:
 		/*
@@ -833,12 +1063,34 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 
 		break;
 	}
+	case YB_BE_SYNC_ACK:
+		/*
+		 * If SYNC present at head of parse queue means all parses in this
+		 * SYNC boundary were acknowledged (success path). Otherwise, some
+		 * parses were silently dropped after an error -- evict stale entries.
+		 */
+		yb_drain_parse_queue_till_sync(server, client);
+		if (instance->config.yb_enable_dealloc_reconciliation)
+			yb_backend_drain_close_prep_stmts(server, "sync ack");
+		skip_forward_to_client = true;
+		break;
 #ifndef YB_SUPPORT_FOUND
 	case KIWI_BE_PARSE_COMPLETE:
 		if (route->rule->pool->reserve_prepared_statement) {
 			// skip msg
 			is_deploy = 1;
 		}
+#else
+	case KIWI_BE_PARSE_COMPLETE:
+		if (route->rule->pool->reserve_prepared_statement) {
+			int res = yb_od_parse_queue_dequeue(&server->parse_queue);
+			if (res != 0) {
+				od_error(&instance->logger, "parse queue cleanup", client,
+						server, "failed to dequeue parse queue");
+				return relay->error_read;
+			}
+		}
+		break;
 #endif
 	default:
 		break;
@@ -867,6 +1119,13 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		}
 	} else {
 		if (is_ready_for_query && od_server_synchronized(server)) {
+			int rc = yb_resume_client_relay(client);
+			if (rc != 0) {
+				od_error(&instance->logger, "wait sync", client, server,
+					"failed to resume client read after Sync: %s",
+					od_io_error(client->relay.src));
+				return OD_ECLIENT_READ;
+			}
 			switch (route->rule->pool->pool) {
 			case OD_RULE_POOL_STATEMENT:
 				return OD_DETACH;
@@ -1013,30 +1272,51 @@ static inline od_retcode_t od_frontend_log_bind(od_instance_t *instance,
 	return OK_RESPONSE;
 }
 
-// 8 hex
-#define OD_HASH_LEN 9
+static inline void yb_lru_on_new_insert(od_server_t *server,
+					yb_od_hash_64_t yb_stmt_hash,
+					od_hashmap_elt_t *server_key_desc)
+{
+	od_hashmap_list_item_t *item = yb_od_hashmap_find_item(
+		server->prep_stmts, yb_stmt_hash, server_key_desc);
+	if (item) {
+		od_list_append(&server->yb_prep_stmt_lru, &item->yb_lru_link);
+		server->yb_prep_stmt_count++;
+	}
+}
+
+static inline void yb_lru_on_cache_hit(od_server_t *server,
+				       yb_od_hash_64_t yb_stmt_hash,
+				       od_hashmap_elt_t *server_key_desc)
+{
+	od_hashmap_list_item_t *item = yb_od_hashmap_find_item(
+		server->prep_stmts, yb_stmt_hash, server_key_desc);
+	if (item) {
+		od_list_unlink(&item->yb_lru_link);
+		od_list_append(&server->yb_prep_stmt_lru, &item->yb_lru_link);
+	}
+}
 
 static inline machine_msg_t *od_frontend_rewrite_msg(char *data, int size,
 						     int opname_start_offset,
 						     int operator_name_len,
-						     od_hash_t body_hash)
+						     yb_od_hash_64_t body_hash)
 {
-	machine_msg_t *msg =
-		machine_msg_create(size - operator_name_len + OD_HASH_LEN);
+	machine_msg_t *msg = machine_msg_create(size - operator_name_len +
+						YB_OD_HASH_64_LEN);
 	char *rewrite_data = machine_msg_data(msg);
 
 	// packet header
 	memcpy(rewrite_data, data, opname_start_offset);
 	// prefix for opname
-	od_snprintf(rewrite_data + opname_start_offset, OD_HASH_LEN, "%08x",
-		    body_hash);
+	od_snprintf(rewrite_data + opname_start_offset, YB_OD_HASH_64_LEN,
+		    "%016" PRIx64, body_hash);
 	// rest of msg
-	memcpy(rewrite_data + opname_start_offset + OD_HASH_LEN,
+	memcpy(rewrite_data + opname_start_offset + YB_OD_HASH_64_LEN,
 	       data + opname_start_offset + operator_name_len,
 	       size - opname_start_offset - operator_name_len);
 	// set proper size to package
 	kiwi_header_set_size((kiwi_header_t *)rewrite_data,
-			     size - operator_name_len + OD_HASH_LEN);
+			     size - operator_name_len + YB_OD_HASH_64_LEN);
 
 	return msg;
 }
@@ -1106,7 +1386,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 	case KIWI_FE_COPY_DONE:
 	case KIWI_FE_COPY_FAIL:
 		/* client finished copy */
-		server->done_fail_response_received++;
+		server->yb_done_fail_for_copy_in_response++;
 		/*
 		 * YB: CopyDone/CopyFail packets work like Sync, as the
 		 * backend will exit Copy sub-protocol and then revert to
@@ -1122,9 +1402,28 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 		od_server_sync_request(server, 1);
 		break;
 	case KIWI_FE_FUNCTION_CALL:
+		od_server_sync_request(server, 1);
+		break;
 	case KIWI_FE_SYNC:
+		if (yb_is_server_in_copy_in_mode(server)) {
+			/* YB: User has executed COPY From, forward the packet as it is */
+			break;
+		}
 		/* update server sync state */
 		od_server_sync_request(server, 1);
+		if (route->rule->pool->reserve_prepared_statement) {
+			if (yb_od_parse_queue_enqueue_sync(&server->parse_queue) == -1)
+				return OD_EOOM;
+		}
+		/*
+		 * YB: When yb_wait_for_rfq_on_sync is enabled, pause the
+		 * client->server relay after the Sync until the backend's
+		 * matching ReadyForQuery is forwarded back to the client.
+		 * This preserves extended-query batch ordering across pool
+		 * boundaries.
+		 */
+		if (instance->config.yb_wait_for_rfq_on_sync)
+			retstatus = OD_WAIT_SYNC;
 		break;
 	case KIWI_FE_DESCRIBE:
 		if (instance->config.log_query || route->rule->log_query)
@@ -1170,6 +1469,15 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 				od_stat_parse(&route->stats);
 
+				/*
+				 * TODO(GH#31147): Full unnamed prepared-statement support.
+				 * Pair this synthetic parse with the backend ParseComplete; the
+				 * queue only tracks counts (empty string is not in prep_stmt_ids).
+				 */
+				if (yb_od_parse_queue_enqueue_stmt_name(&server->parse_queue,
+									"", YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
+					return OD_EOOM;
+
 				rc = machine_iov_add(relay->iov, msg_new);
 				if (rc == -1) {
 					od_error(&instance->logger,
@@ -1177,6 +1485,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						 "out of memory");
 					return OD_EOOM;
 				}
+
 				break;
 			}
 
@@ -1191,7 +1500,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			key.len = operator_name_len;
 			key.data = operator_name;
 
-			od_hash_t keyhash = od_murmur_hash(key.data, key.len);
+			yb_od_hash_64_t keyhash =
+				yb_od_murmur_hash_64(key.data, key.len);
 			od_hashmap_elt_t *desc = od_hashmap_find(
 				client->prep_stmt_ids, keyhash, &key);
 
@@ -1205,10 +1515,10 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				return OD_ESERVER_WRITE;
 			}
 
-			od_hash_t body_hash =
-				od_murmur_hash(desc->data, desc->len);
+			yb_od_hash_64_t body_hash =
+				yb_od_murmur_hash_64(desc->data, desc->len);
 
-			od_hash_t client_hash = od_murmur_hash(
+			yb_od_hash_64_t client_hash = yb_od_murmur_hash_64(
 				client->id.id, strlen(client->id.id));
 
 			int server_key_len = 0;
@@ -1226,15 +1536,16 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			od_hashmap_elt_t server_key_desc = {server_key, server_key_len};
 
-			od_hash_t yb_stmt_hash = od_murmur_hash(
+			yb_od_hash_64_t yb_stmt_hash = yb_od_murmur_hash_64(
 				server_key_desc.data, server_key_desc.len);
 
 			od_debug(&instance->logger, "rewrite describe", client,
-				 server, "statement: %.*s, hash: %08x",
+				 server, "statement: %.*s, hash: %016" PRIx64,
 				 desc->len, desc->data, yb_stmt_hash);
 
-			char opname[OD_HASH_LEN];
-			od_snprintf(opname, OD_HASH_LEN, "%08x", yb_stmt_hash);
+			char opname[YB_OD_HASH_64_LEN];
+			od_snprintf(opname, YB_OD_HASH_64_LEN, "%016" PRIx64,
+				    yb_stmt_hash);
 
 			int refcnt = 0;
 			od_hashmap_elt_t value;
@@ -1245,20 +1556,24 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			// send parse msg if needed
 			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
 					      &server_key_desc, &value_ptr) == 0) {
+				yb_lru_on_new_insert(server, yb_stmt_hash,
+					&server_key_desc);
 				od_debug(
 					&instance->logger,
-					"rewrite parse before describe", client,
-					server,
-					"deploy %.*s operator hash %u to server",
-					server_key_desc.len, server_key_desc.data, keyhash);
+					 "rewrite parse before describe", client,
+					 server,
+					 "deploy %.*s operator hash %016" PRIx64
+					 " to server",
+					 server_key_desc.len,
+					 server_key_desc.data, keyhash);
 				free(server_key_desc.data);
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
 
 				machine_msg_t *msg;
 				msg = kiwi_fe_write_parse_description(
-					NULL, opname, OD_HASH_LEN, desc->data,
-					desc->len,
+					NULL, opname, YB_OD_HASH_64_LEN,
+					desc->data, desc->len,
 					YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
 				if (msg == NULL) {
 					return OD_ESERVER_WRITE;
@@ -1281,7 +1596,14 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						 NULL, server, "out of memory");
 					return OD_EOOM;
 				}
+				if (yb_od_parse_queue_enqueue_stmt_name(
+					    &server->parse_queue,
+					    operator_name,
+						YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
+					return OD_EOOM;
 			} else {
+				yb_lru_on_cache_hit(server, yb_stmt_hash,
+						    &server_key_desc);
 				int *refcnt;
 				refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
@@ -1290,7 +1612,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			machine_msg_t *msg;
 			msg = kiwi_fe_write_describe(NULL, 'S', opname,
-						     OD_HASH_LEN);
+						     YB_OD_HASH_64_LEN);
 
 			if (msg == NULL) {
 				return OD_ESERVER_WRITE;
@@ -1338,15 +1660,20 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					return OD_EOOM;
 				}
 
+				/* TODO(GH#31147): See unnamed Describe path — placeholder queue entry. */
+				if (yb_od_parse_queue_enqueue_stmt_name(&server->parse_queue, "",
+					YB_PARSE_QUEUE_PARSE_COMPLETE) == -1)
+					return OD_EOOM;
+
 				server->yb_unnamed_prep_stmt_client_id = client->id;
 
 				break;
 			}
 
-			od_hash_t keyhash = od_murmur_hash(
+			yb_od_hash_64_t keyhash = yb_od_murmur_hash_64(
 				desc.operator_name, desc.operator_name_len);
 			od_debug(&instance->logger, "parse", client, server,
-				 "saving %.*s operator hash %u",
+				 "saving %.*s operator hash %016" PRIx64,
 				 desc.operator_name_len, desc.operator_name,
 				 keyhash);
 
@@ -1366,13 +1693,13 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				return OD_ECLIENT_READ;
 			}
 
-			od_hash_t body_hash =
-				od_murmur_hash(data + opname_start_offset +
-						       desc.operator_name_len,
-					       size - opname_start_offset -
-						       desc.operator_name_len);
+			yb_od_hash_64_t body_hash = yb_od_murmur_hash_64(
+				data + opname_start_offset +
+					desc.operator_name_len,
+				size - opname_start_offset -
+					desc.operator_name_len);
 
-			od_hash_t client_hash = od_murmur_hash(
+			yb_od_hash_64_t client_hash = yb_od_murmur_hash_64(
 				client->id.id, strlen(client->id.id));
 
 			assert(client->prep_stmt_ids);
@@ -1389,12 +1716,13 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					* previous
 					* client allocated prepared stmt with same name
 					*/
-					char buf[OD_HASH_LEN];
-					od_snprintf(buf, OD_HASH_LEN, "%08x",
-						    body_hash);
+					char buf[YB_OD_HASH_64_LEN];
+					od_snprintf(buf, YB_OD_HASH_64_LEN,
+						    "%016" PRIx64, body_hash);
 
 					msg = kiwi_fe_write_close(
-						NULL, 'S', buf, OD_HASH_LEN);
+						NULL, 'S', buf,
+						YB_OD_HASH_64_LEN);
 					if (msg == NULL) {
 						return OD_ESERVER_WRITE;
 					}
@@ -1408,18 +1736,18 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						return OD_ESERVER_WRITE;
 					}
 					msg = kiwi_fe_write_parse_description(
-						NULL, buf, OD_HASH_LEN,
+						NULL, buf, YB_OD_HASH_64_LEN,
 						desc.description,
 						desc.description_len);
 					if (msg == NULL) {
 						return OD_ESERVER_WRITE;
 					}
 				} else {
-					char buf[OD_HASH_LEN];
-					od_snprintf(buf, OD_HASH_LEN, "%08x",
-						    body_hash);
+					char buf[YB_OD_HASH_64_LEN];
+					od_snprintf(buf, YB_OD_HASH_64_LEN,
+						    "%016" PRIx64, body_hash);
 					msg = kiwi_fe_write_parse_description(
-						NULL, buf, OD_HASH_LEN,
+						NULL, buf, YB_OD_HASH_64_LEN,
 						desc.description,
 						desc.description_len);
 					if (msg == NULL) {
@@ -1427,11 +1755,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					}
 				}
 			} else {
-				char buf[OD_HASH_LEN];
-				od_snprintf(buf, OD_HASH_LEN, "%08x",
-					    body_hash);
+				char buf[YB_OD_HASH_64_LEN];
+				od_snprintf(buf, YB_OD_HASH_64_LEN,
+					    "%016" PRIx64, body_hash);
 				msg = kiwi_fe_write_parse_description(
-					NULL, buf, OD_HASH_LEN,
+					NULL, buf, YB_OD_HASH_64_LEN,
 					desc.description, desc.description_len);
 				if (msg == NULL) {
 					return OD_ESERVER_WRITE;
@@ -1465,10 +1793,12 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			od_hashmap_elt_t server_key_desc = {server_key, server_key_len};
 
-			od_hash_t yb_stmt_hash = od_murmur_hash(server_key_desc.data, server_key_desc.len);
+			yb_od_hash_64_t yb_stmt_hash = yb_od_murmur_hash_64(
+				server_key_desc.data, server_key_desc.len);
 
-			char buf[OD_HASH_LEN];
-			od_snprintf(buf, OD_HASH_LEN, "%08x", yb_stmt_hash);
+			char buf[YB_OD_HASH_64_LEN];
+			od_snprintf(buf, YB_OD_HASH_64_LEN, "%016" PRIx64,
+				    yb_stmt_hash);
 
 			key.len = desc.description_len;
 			key.data = desc.description;
@@ -1481,19 +1811,23 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
 					      &server_key_desc, &value_ptr) == 0) {
+				yb_lru_on_new_insert(server, yb_stmt_hash,
+					&server_key_desc);
 				od_debug(
 					&instance->logger,
 					"rewrite parse initial deploy", client,
 					server,
-					"deploy %.*s operator hash %u to server",
+					"deploy %.*s operator hash %016" PRIx64 " to server",
 					server_key_desc.len, server_key_desc.data, keyhash);
 				free(server_key_desc.data);
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
 
 				machine_msg_t *msg;
-				msg = kiwi_fe_write_parse_description(NULL, buf, OD_HASH_LEN,
-					desc.description, desc.description_len, KIWI_FE_PARSE);
+				msg = kiwi_fe_write_parse_description(
+					NULL, buf, YB_OD_HASH_64_LEN,
+					desc.description, desc.description_len,
+					KIWI_FE_PARSE);
 				if (msg == NULL) {
 					return OD_ESERVER_WRITE;
 				}
@@ -1517,7 +1851,14 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						 NULL, server, "out of memory");
 					return OD_EOOM;
 				}
+				if (yb_od_parse_queue_enqueue_stmt_name(
+					    &server->parse_queue,
+					    desc.operator_name,
+						YB_PARSE_QUEUE_PARSE_COMPLETE) == -1)
+					return OD_EOOM;
 			} else {
+				yb_lru_on_cache_hit(server, yb_stmt_hash,
+						    &server_key_desc);
 				int *refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
 				free(server_key_desc.data);
@@ -1527,15 +1868,40 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					od_debug(&instance->logger, "parse",
 						 client, server,
 						 "unoptimized parse, send packet to server");
-					msg = kiwi_fe_write_parse_description(NULL, buf, OD_HASH_LEN,
-						desc.description, desc.description_len, KIWI_FE_PARSE);
+					msg = kiwi_fe_write_parse_description(
+						NULL, buf, YB_OD_HASH_64_LEN,
+						desc.description,
+						desc.description_len,
+						KIWI_FE_PARSE);
+					if (yb_od_parse_queue_enqueue_stmt_name(
+						    &server->parse_queue,
+						    desc.operator_name,
+						    YB_PARSE_QUEUE_PARSE_COMPLETE) == -1)
+						return OD_EOOM;
 				}
-				else { // no-op parse
+				else {
+					/*
+					 * Send a FORCE_PARSE packet instead of a regular Parse. The backend checks
+					 * whether the prepared statement already exists: if not, it allocates one
+					 * and always returns a YBForceParseComplete carrying the statement name.
+					 *
+					 * This is done because if a prepared statement is deallocated and re-prepared
+					 * without an intervening Sync, conn mgr's cached state may be stale, and a
+					 * FORCE_PARSE will be needed to recover.
+					 *
+					 * The parse queue enqueue is skipped here because we needn't remove this entry
+					 * from server hashmap in case of a pipeline error. The next ForceParse will
+					 * parse it transparently.
+					 */
+
 					od_debug(&instance->logger, "parse",
 						 client, server,
-						 "optimized parse, send no-op to server");
-					msg = kiwi_fe_write_parse_description(NULL, buf, OD_HASH_LEN, desc.description,
-						desc.description_len, YB_KIWI_FE_NO_PARSE_PARSE_COMPLETE);
+						 "send ForceParse to server");
+					msg = kiwi_fe_write_parse_description(
+						NULL, buf, YB_OD_HASH_64_LEN,
+						desc.description,
+						desc.description_len,
+						YB_KIWI_FE_FORCE_PARSE);
 				}
 				if (msg == NULL) {
 					return OD_ESERVER_WRITE;
@@ -1609,6 +1975,13 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 
 				od_stat_parse(&route->stats);
+
+				/* TODO(GH#31147): See unnamed Describe path — placeholder queue entry. */
+				if (yb_od_parse_queue_enqueue_stmt_name(&server->parse_queue,
+									"",
+									YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
+					return OD_EOOM;
+
 				rc = machine_iov_add(relay->iov, msg_new);
 				if (rc == -1) {
 					od_error(&instance->logger,
@@ -1617,6 +1990,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						 od_io_error(&server->io));
 					return OD_ESERVER_WRITE;
 				}
+
 				break;
 			}
 
@@ -1630,7 +2004,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			key.len = operator_name_len;
 			key.data = operator_name;
 
-			od_hash_t keyhash = od_murmur_hash(key.data, key.len);
+			yb_od_hash_64_t keyhash =
+				yb_od_murmur_hash_64(key.data, key.len);
 
 			od_hashmap_elt_t *desc =
 				(od_hashmap_elt_t *)od_hashmap_find(
@@ -1645,11 +2020,10 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				return OD_ESERVER_WRITE;
 			}
 
-			od_hash_t body_hash =
-				od_murmur_hash(desc->data, desc->len);
-			od_hash_t client_hash =
-				od_murmur_hash(client->id.id,
-					       strlen(client->id.id));
+			yb_od_hash_64_t body_hash =
+				yb_od_murmur_hash_64(desc->data, desc->len);
+			yb_od_hash_64_t client_hash = yb_od_murmur_hash_64(
+				client->id.id, strlen(client->id.id));
 
 			int server_key_len = 0;
 			char *server_key = yb_prepare_server_key(operator_name, operator_name_len,
@@ -1666,10 +2040,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			od_hashmap_elt_t server_key_desc = {server_key, server_key_len};
 
-			od_hash_t yb_stmt_hash = od_murmur_hash(server_key_desc.data, server_key_desc.len);
+			yb_od_hash_64_t yb_stmt_hash = yb_od_murmur_hash_64(
+				server_key_desc.data, server_key_desc.len);
 
 			od_debug(&instance->logger, "rewrite bind", client,
-				 server, "statement: %.*s, hash: %08x",
+				 server, "statement: %.*s, hash: %016" PRIx64,
 				 desc->len, desc->data, yb_stmt_hash);
 
 			od_hashmap_elt_t value;
@@ -1678,16 +2053,19 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			value.len = sizeof(int);
 			od_hashmap_elt_t *value_ptr = &value;
 
-			char opname[OD_HASH_LEN];
-			od_snprintf(opname, OD_HASH_LEN, "%08x", yb_stmt_hash);
+			char opname[YB_OD_HASH_64_LEN];
+			od_snprintf(opname, YB_OD_HASH_64_LEN, "%016" PRIx64,
+				    yb_stmt_hash);
 
 			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
 					      &server_key_desc, &value_ptr) == 0) {
+				yb_lru_on_new_insert(server, yb_stmt_hash,
+						     &server_key_desc);
 				od_debug(
 					&instance->logger,
 					"rewrite parse before bind", client,
 					server,
-					"deploy %.*s operator hash %u to server",
+					"deploy %.*s operator hash %016" PRIx64 " to server",
 					server_key_desc.len, server_key_desc.data, keyhash);
 				free(server_key_desc.data);
 				// rewrite msg
@@ -1695,8 +2073,9 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 				machine_msg_t *msg;
 				msg = kiwi_fe_write_parse_description(
-					NULL, opname, OD_HASH_LEN, desc->data,
-					desc->len, YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
+					NULL, opname, YB_OD_HASH_64_LEN,
+					desc->data, desc->len,
+					YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
 
 				if (msg == NULL) {
 					return OD_ESERVER_WRITE;
@@ -1720,7 +2099,14 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						 "out of memory");
 					return OD_EOOM;
 				}
+				if (yb_od_parse_queue_enqueue_stmt_name(
+					    &server->parse_queue,
+					    operator_name,
+						YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
+					return OD_EOOM;
 			} else {
+				yb_lru_on_cache_hit(server, yb_stmt_hash,
+						    &server_key_desc);
 				int *refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
 				free(server_key_desc.data);
@@ -1782,13 +2168,15 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					key.len = name_len;
 					key.data = name;
 
-					od_hash_t keyhash = od_murmur_hash(name, name_len);
+					yb_od_hash_64_t keyhash =
+						yb_od_murmur_hash_64(name,
+								     name_len);
 
 					od_hashmap_list_item_t *item = yb_od_hashmap_find_item(
 							client->prep_stmt_ids, keyhash, &key);
 					
 					kiwi_fe_close_type_t close_type;
-					od_hash_t yb_stmt_hash = 0;
+					yb_od_hash_64_t yb_stmt_hash = 0;
 					if (item != NULL) {
 
 						od_hashmap_elt_t *desc = &item->value;
@@ -1813,14 +2201,15 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 						od_hashmap_elt_t server_key_desc = {server_key, server_key_len};
 
-						yb_stmt_hash = od_murmur_hash(server_key_desc.data, server_key_desc.len);
+						yb_stmt_hash = yb_od_murmur_hash_64(server_key_desc.data,server_key_desc.len);
 
 						if (od_hashmap_find(server->prep_stmts, yb_stmt_hash,
 							&server_key_desc)) {
 							close_type = KIWI_FE_CLOSE_PREPARED_STATEMENT;
-							od_debug(&instance->logger, "CLOSE", client, server,
-										"Found %08x entry in server hashmap, CLOSE sent.",
-										yb_stmt_hash);
+							od_debug(
+								&instance->logger, "CLOSE", client, server,
+								"Found %016" PRIx64 " entry in server hashmap, CLOSE sent.",
+								yb_stmt_hash);
 						} else {
 						   /*
 							* YB: In order to return CloseComplete send a dummy CLOSE which
@@ -1828,8 +2217,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 							*/
 							close_type = YB_KIWI_FE_CLOSE_ONLY_CLOSE_COMPLETE;
 							od_debug(&instance->logger, "CLOSE", client, server,
-									"Did not found entry %08x in server hashmap, dummy CLOSE sent.",
-									yb_stmt_hash);
+								"Did not found entry %016" PRIx64 " in server hashmap, dummy CLOSE sent.",
+								yb_stmt_hash);
 						}
 
 						free(server_key_desc.data);
@@ -1845,12 +2234,13 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					}
 
 					machine_msg_t *msg;
-					char buf[OD_HASH_LEN];
-					od_snprintf(buf, OD_HASH_LEN, "%08x",
-								yb_stmt_hash);
+					char buf[YB_OD_HASH_64_LEN];
+					od_snprintf(buf, YB_OD_HASH_64_LEN, "%016" PRIx64,
+						    yb_stmt_hash);
 
 					msg = kiwi_fe_write_close(
-						NULL, close_type, buf, OD_HASH_LEN);
+						NULL, close_type, buf,
+						YB_OD_HASH_64_LEN);
 
 					if (msg == NULL) {
 						return OD_ESERVER_WRITE;
@@ -2216,6 +2606,20 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 
 			/* retry read operation after attach */
 			continue;
+		} else if (status == OD_WAIT_SYNC) {
+			/*
+			 * YB: Park the client read by removing its FD from epoll
+			 * so co-routine doesn't get woken up for any bytes the client
+			 * pipelines after the Sync.
+			 */
+			int rc = od_io_read_stop(client->relay.src);
+			if (rc != 0) {
+				od_error(&instance->logger, "wait sync", client, server,
+					"failed to stop client read: %s",
+					od_io_error(client->relay.src));
+				return OD_ECLIENT_READ;
+			}
+			status = OD_OK;
 		} else if (status != OD_OK) {
 			break;
 		}

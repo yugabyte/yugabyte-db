@@ -1,5 +1,6 @@
 import { useQuery } from 'react-query';
 import { fetchLiveQueries, fetchSlowQueries } from '../../../actions/universe';
+import { isNonEmptyArray } from '@app/utils/ObjectUtils';
 
 const LIVE_QUERY_REFETCH_INTERVAL = 60000;
 

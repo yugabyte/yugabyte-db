@@ -551,6 +551,13 @@ const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
 	{NULL, 0, false}
 };
 
+static const struct config_enum_entry yb_test_force_parallel_options[] = {
+	{"off", YB_FORCE_PARALLEL_OFF, false},
+	{"prefer", YB_FORCE_PARALLEL_PREFER, false},
+	{"force", YB_FORCE_PARALLEL_FORCE, false},
+	{NULL, 0, false}
+};
+
 const struct config_enum_entry yb_sampling_algorithm_options[] = {
 	{"full_table_scan", YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN, false},
 	{"block_based_sampling", YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING, false},

@@ -17,4 +17,8 @@
 { roleid => 'pg_read_all_stats', member => 'pg_monitor' },
 { roleid => 'pg_stat_scan_tables', member => 'pg_monitor' },
 
+# YB: global-view remote queries run as yb_global_views_user, which reads
+# stats via pg_read_all_stats membership.
+{ roleid => 'pg_read_all_stats', member => 'yb_global_views_user' },
+
 ]

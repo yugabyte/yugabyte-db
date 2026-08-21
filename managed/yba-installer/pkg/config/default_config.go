@@ -86,7 +86,7 @@ func addDefaults(v *viper.Viper) {
 
 	// PerfAdvisor (no documented fields)
 	// v.SetDefault("performance_advisor.<field>", <value>) // Not set, no info
-	v.SetDefault("perfAdvisor.enabled", false)
+	v.SetDefault("perfAdvisor.enabled", true)
 	v.SetDefault("perfAdvisor.port", 8443)
 	v.SetDefault("perfAdvisor.restart_seconds", 10)
 	v.SetDefault("perfAdvisor.callhome.enabled", true)
@@ -97,6 +97,17 @@ func addDefaults(v *viper.Viper) {
 	v.SetDefault("perfAdvisor.tls.hsts", true)
 	v.SetDefault("perfAdvisor.tls.keystore_password", "")
 
+	// Node Exporter
+	v.SetDefault("nodeExporter.enabled", true)
+	v.SetDefault("nodeExporter.port", 9300)
+	v.SetDefault("nodeExporter.scheme", "https")
+	v.SetDefault("nodeExporter.enable_auth", false)
+	v.SetDefault("nodeExporter.auth_username", "")
+	v.SetDefault("nodeExporter.auth_password", "")
+
 	// Services (installerConfig.Services)
-	v.SetDefault("installer.services", []string{"postgres", "prometheus", "platform"})
+	// nodeExporter.enabled defaults to true, so include node-exporter here.
+	// perfAdvisor.enabled defaults to true, so include yb-perf-advisor here.
+	v.SetDefault("installer.services",
+		[]string{"postgres", "prometheus", "platform", "node-exporter", "yb-perf-advisor"})
 }

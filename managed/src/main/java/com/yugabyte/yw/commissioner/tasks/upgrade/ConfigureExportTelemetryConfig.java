@@ -8,7 +8,6 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistExportTelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -74,7 +73,7 @@ public class ConfigureExportTelemetryConfig extends UpgradeTaskBase {
           }
 
           // Update the export telemetry config in the PG DB table and sync to universe details.
-          createUpdateAndPersistExportTelemetryConfigTask();
+          updateAndPersistExportTelemetryConfigTask();
 
           // Update the swamper target file.
           createSwamperTargetUpdateTask(false /* removeFile */);
@@ -127,9 +126,7 @@ public class ConfigureExportTelemetryConfig extends UpgradeTaskBase {
         userIntent,
         nodes,
         true, // unified export-telemetry-config flow always installs OTEL collector when needed
-        taskParams().getAuditLogConfig(),
-        taskParams().getQueryLogConfig(),
-        taskParams().getMetricsExportConfig(),
+        taskParams().getTelemetryConfig(),
         nodeDetails ->
             GFlagsUtil.getGFlagsForNode(
                 nodeDetails,
@@ -170,22 +167,10 @@ public class ConfigureExportTelemetryConfig extends UpgradeTaskBase {
             processType,
             UpgradeTaskParams.UpgradeTaskType.GFlags,
             UpgradeTaskParams.UpgradeTaskSubType.None);
-    params.auditLogConfig = taskParams().getAuditLogConfig();
-    params.queryLogConfig = taskParams().getQueryLogConfig();
-    params.metricsExportConfig = taskParams().getMetricsExportConfig();
+    params.telemetryConfig = taskParams().getTelemetryConfig();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
     return task;
-  }
-
-  public void createUpdateAndPersistExportTelemetryConfigTask() {
-    TaskExecutor.SubTaskGroup subTaskGroup =
-        createSubTaskGroup("UpdateAndPersistExportTelemetryConfig");
-    UpdateAndPersistExportTelemetryConfig task =
-        createTask(UpdateAndPersistExportTelemetryConfig.class);
-    task.initialize(taskParams());
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

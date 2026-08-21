@@ -40,6 +40,7 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_replication_origin_d.h"
 #include "catalog/pg_shseclabel_d.h"
+#include "catalog/pg_subscription_d.h"
 #include "catalog/pg_tablespace_d.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
@@ -299,6 +300,9 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				   relid == ReplicationOriginRelationId ||
 				   relid == ReplicationOriginIdentIndex ||
 				   relid == ReplicationOriginNameIndex ||
+				   relid == SubscriptionRelationId ||
+				   relid == SubscriptionObjectIndexId ||
+				   relid == SubscriptionNameIndexId ||
 
 				   relid == DatabaseNameIndexId ||
 				   relid == SharedSecLabelRelationId ||
@@ -398,7 +402,7 @@ YBCApplyInsertRow(YbcPgStatement insert_stmt,
 			pfree(tuple);
 	}
 
-	if (onConflictAction == ONCONFLICT_YB_REPLACE || yb_enable_upsert_mode)
+	if (onConflictAction == ONCONFLICT_YB_REPLACE)
 	{
 		HandleYBStatus(YBCPgInsertStmtSetUpsertMode(insert_stmt));
 	}
@@ -526,7 +530,8 @@ void
 YBCHeapInsert(ResultRelInfo *resultRelInfo,
 			  TupleTableSlot *slot,
 			  YbcPgStatement blockInsertStmt,
-			  EState *estate)
+			  EState *estate,
+			  OnConflictAction onConflictAction)
 {
 	/*
 	 * get information on the (current) result relation
@@ -541,7 +546,7 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 	if (blockInsertStmt)
 	{
 		YBCApplyInsertRow(blockInsertStmt, resultRelationDesc, slot,
-						  ONCONFLICT_NONE, NULL /* ybctid */ ,
+						  onConflictAction, NULL /* ybctid */ ,
 						  YBCFixTransactionSetting(resultRelationDesc,
 												   transaction_setting));
 		return;
@@ -556,7 +561,7 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 	 * transaction that targets a single row (i.e. single-row-modify txn), and
 	 * there are no indices or triggers on the target table.
 	 */
-	YBCExecuteInsertForDb(dboid, resultRelationDesc, slot, ONCONFLICT_NONE,
+	YBCExecuteInsertForDb(dboid, resultRelationDesc, slot, onConflictAction,
 						  NULL /* ybctid */ , transaction_setting);
 }
 
@@ -1390,6 +1395,8 @@ YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
 				 errmsg("missing column ybctid in DELETE request to Yugabyte database")));
 
+	/* For a catalog table, we should never allow skip intents write */
+	Assert(!YbCanSkipIntentsWrite(rel));
 	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_TRANSACTIONAL);
 
 	/* Bind ybctid to identify the current row. */
@@ -1422,6 +1429,9 @@ void
 YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple,
 							  HeapTuple tuple)
 {
+	/* For a catalog table, we should never allow skip intents write */
+	Assert(!YbCanSkipIntentsWrite(rel));
+
 	TupleDesc	tupleDesc = RelationGetDescr(rel);
 	int			natts = RelationGetNumberOfAttributes(rel);
 	YbcPgStatement update_stmt = YbNewUpdateForDb(dboid, rel, YB_TRANSACTIONAL);

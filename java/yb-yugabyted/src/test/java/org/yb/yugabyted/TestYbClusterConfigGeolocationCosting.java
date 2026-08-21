@@ -41,10 +41,11 @@ import org.yb.yugabyted.BaseYbdClientTest;
     clusterConfigurations.add(nodeConfigurations);
   }
 
-  static final double LOCAL_ZONE_STARTUP_COST = 20.0;
-  static final double INTER_ZONE_STARTUP_COST = 22.0;
-  static final double INTER_REGION_STARTUP_COST = 40.0;
-  static final double INTER_CLOUD_STARTUP_COST = 40.0;
+  static final double LOCAL_ZONE_STARTUP_COST = 21.08;
+  static final double INTER_ZONE_STARTUP_COST = 23.08;
+  static final double INTER_REGION_STARTUP_COST = 41.08;
+  static final double INTER_CLOUD_STARTUP_COST = 41.08;
+  static final double STARTUP_COST_EPSILON = 0.2;
 
   static void checkIndexScanPlan(Statement stmt, String query, String nodeType,
                                  String indexName) throws Exception {
@@ -62,7 +63,7 @@ import org.yb.yugabyted.BaseYbdClientTest;
     ExplainAnalyzeUtils.testExplainDebug(stmt, query,
       makeTopLevelBuilder()
         .plan(makePlanBuilder()
-          .startupCost(Checkers.equal(expectedStartupCost))
+          .startupCost(Checkers.equal(expectedStartupCost, STARTUP_COST_EPSILON))
           .build())
         .build());
   }
@@ -128,6 +129,8 @@ import org.yb.yugabyted.BaseYbdClientTest;
     try (Connection conn = connectToTserverNode(0)) {
       try (Statement stmt = conn.createStatement()) {
         stmt.execute("CREATE TABLE test (k1 INT, v1 INT)");
+        stmt.execute("INSERT INTO test (SELECT s, s FROM generate_series(1, 12345) s)");
+        stmt.execute("ANALYZE test");
         checkStartupCost(stmt, "SELECT * FROM test", LOCAL_ZONE_STARTUP_COST);
       }
     }

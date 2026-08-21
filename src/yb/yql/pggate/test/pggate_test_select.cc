@@ -18,13 +18,21 @@
 #include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/client/client.h"
+
+#include "yb/dockv/doc_key.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 
+#include "yb/tools/test_admin_client.h"
+
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 
 #include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/test/pggate_test.h"
@@ -99,7 +107,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -156,7 +164,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
@@ -239,7 +248,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -313,6 +323,19 @@ class PggateTestSelectWithYsql : public PggateTestSelect {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.push_back("--db_block_size_bytes=4096");
     opts->extra_tserver_flags.push_back("--db_write_buffer_size=204800");
+    // Allow the GetRangeShardedTableKeyRanges test to manually split an arbitrarily small tablet.
+    for (const char* master_flag : {
+             "--enable_automatic_tablet_splitting=false",
+             "--tablet_split_low_phase_shard_count_per_node=0",
+             "--tablet_split_high_phase_shard_count_per_node=0",
+             "--tablet_split_low_phase_size_threshold_bytes=0",
+             "--tablet_split_high_phase_size_threshold_bytes=0",
+             "--tablet_force_split_threshold_bytes=0",
+             // Keep the parent tablet around to test it is not included by mistake:
+             "--TEST_skip_deleting_split_tablets=true",
+         }) {
+      opts->extra_master_flags.push_back(master_flag);
+    }
   }
 
   auto PgConnect(const std::string& database_name) {
@@ -327,9 +350,76 @@ class PggateTestSelectWithYsql : public PggateTestSelect {
 
 namespace {
 
-Status CheckRanges(const std::vector<std::string>& end_keys, const bool is_forward) {
-  SCHECK_GT(end_keys.size(), 0, InternalError, "No key ranges");
-  for (size_t i = 0; i + 1 < end_keys.size() - 1; ++i) {
+Status FetchAllTableKeyRanges(
+    YbcPgOid database_oid, YbcPgOid table_oid, bool is_forward, Slice lower_bound_key,
+    Slice upper_bound_key, uint64_t per_call_max, uint64_t range_size_bytes,
+    uint32_t max_key_length, std::vector<std::string>* end_keys, std::string* min_key = nullptr,
+    std::string* max_key = nullptr) {
+  std::function boundary_key_callback =
+      [end_keys, min_key, max_key](const char* key, size_t key_size) {
+        LOG(INFO) << "Range end key: " << Slice(key, key_size).ToDebugHexString();
+        std::string key_str(key, key_size);
+        if (key_size != 0) {
+          if (min_key && (min_key->empty() || key_str < *min_key)) {
+            *min_key = key_str;
+          }
+          if (max_key && (max_key->empty() || key_str > *max_key)) {
+            *max_key = key_str;
+          }
+        }
+        end_keys->push_back(std::move(key_str));
+      };
+
+  std::string moving_bound = (is_forward ? lower_bound_key : upper_bound_key).ToBuffer();
+  for (;;) {
+    const Slice lower = is_forward ? Slice(moving_bound) : lower_bound_key;
+    const Slice upper = is_forward ? upper_bound_key : Slice(moving_bound);
+    const auto prev_size = end_keys->size();
+
+    LOG(INFO) << "Fetching ranges, is_forward: " << is_forward
+              << " lower_bound_key: " << lower.ToDebugHexString()
+              << " upper_bound_key: " << upper.ToDebugHexString()
+              << " per_call_max: " << per_call_max;
+
+    CHECK_YBC_STATUS(YBCGetTableKeyRanges(
+        database_oid, table_oid, lower.cdata(), lower.size(), upper.cdata(), upper.size(),
+        per_call_max, range_size_bytes, is_forward, max_key_length,
+        &InvokeFunctionWithKeyPtrAndSize, &boundary_key_callback));
+
+    const auto size_diff = end_keys->size() - prev_size;
+    LOG(INFO) << "Got " << size_diff << " ranges (limited by " << per_call_max << ")";
+
+    SCHECK_GT(size_diff, 0, InternalError, "Expected some ranges");
+    SCHECK_LE(size_diff, per_call_max, InternalError, "Got more ranges than requested");
+
+    if (end_keys->back().empty()) {
+      break;
+    }
+    moving_bound = end_keys->back();
+  }
+  return Status::OK();
+}
+
+Slice GetYbctid(Slice encoded_doc_key) {
+  dockv::DocKeyDecoder decoder(encoded_doc_key);
+  CHECK_RESULT(decoder.DecodeCotableId());
+  CHECK_RESULT(decoder.DecodeColocationId());
+  return decoder.left_input();
+}
+
+// Verifies the enumerated ranges are correctly ordered, terminate with the empty key, and tile the
+// requested (lower_bound_key, upper_bound_key) window exactly against the actual table rows.
+// Also checks the ranges are balanced.
+Status CheckRanges(
+    pgwrapper::PGConn* conn, const std::string& table_name,
+    const std::vector<std::string>& end_keys, bool is_forward, Slice lower_bound_key,
+    Slice upper_bound_key) {
+  const auto num_ranges = end_keys.size();
+  SCHECK_GT(num_ranges, 0, InternalError, "No key ranges");
+
+  const auto kMaxRangeImbalanceFactor = num_ranges < 20 ? 2.5 : 1.5;
+
+  for (size_t i = 0; i + 1 < num_ranges - 1; ++i) {
     SCHECK(
         is_forward ? end_keys[i] < end_keys[i + 1] : end_keys[i] > end_keys[i + 1], InternalError,
         Format(
@@ -339,37 +429,68 @@ Status CheckRanges(const std::vector<std::string>& end_keys, const bool is_forwa
   SCHECK(
       end_keys.back().empty(), InternalError,
       Format("Wrong last range end key: '$0'", Slice(end_keys.back()).ToDebugHexString()));
+
+  auto get_range_rows_count = [conn, &table_name](Slice lo, Slice hi) -> Result<int64_t> {
+    std::string predicate = "TRUE";
+    if (!lo.empty()) {
+      const auto ybctid = GetYbctid(lo);
+      predicate += Format(
+          " AND ybctid >= decode('$0', 'hex')", strings::b2a_hex(ybctid.cdata(), ybctid.size()));
+    }
+    if (!hi.empty()) {
+      const auto ybctid = GetYbctid(hi);
+      predicate += Format(
+          " AND ybctid < decode('$0', 'hex')", strings::b2a_hex(ybctid.cdata(), ybctid.size()));
+    }
+    return conn->FetchRow<int64_t>(
+        Format("SELECT count(*) FROM $0 WHERE $1", table_name, predicate));
+  };
+
+  const auto window_rows = VERIFY_RESULT(get_range_rows_count(lower_bound_key, upper_bound_key));
+
+  int64_t sum = 0;
+  int64_t max_range_rows = 0;
+  Slice moving = is_forward ? lower_bound_key : upper_bound_key;
+  for (const auto& key : end_keys) {
+    const Slice boundary =
+        key.empty() ? (is_forward ? upper_bound_key : lower_bound_key) : Slice(key);
+    const auto range_rows = VERIFY_RESULT(
+        is_forward ? get_range_rows_count(moving, boundary)
+                   : get_range_rows_count(boundary, moving));
+    sum += range_rows;
+    max_range_rows = range_rows > max_range_rows ? range_rows : max_range_rows;
+    moving = boundary;
+  }
+
+  LOG(INFO) << "Ranges cover " << sum << " of " << window_rows << " window rows across "
+            << num_ranges << " ranges; largest range holds " << max_range_rows << " rows";
+
+  SCHECK_EQ(sum, window_rows, InternalError, "Ranges must tile the requested window exactly");
+
+  if (num_ranges > 2) {
+    SCHECK_LE(
+        max_range_rows, window_rows / num_ranges * kMaxRangeImbalanceFactor, InternalError,
+        Format(
+            "Ranges are not balanced: largest range holds $0 rows, average is $1 across $2 ranges",
+            max_range_rows, window_rows / num_ranges, num_ranges));
+  }
+
+  if (lower_bound_key.empty() && upper_bound_key.empty()) {
+    SCHECK_GT(num_ranges, size_t(2), InternalError, "Expected more than 2 ranges");
+  }
   return Status::OK();
 }
 
 Result<size_t> TestGetTableKeyRanges(
-    YbcPgOid database_oid, YbcPgOid table_oid, Slice lower_bound_key, Slice upper_bound_key,
-    uint64_t range_size_bytes, uint32_t max_key_length, std::string* min_key = nullptr,
-    std::string* max_key = nullptr) {
+    pgwrapper::PGConn* conn, const std::string& table_name, YbcPgOid database_oid,
+    YbcPgOid table_oid, Slice lower_bound_key, Slice upper_bound_key, uint64_t range_size_bytes,
+    uint32_t max_key_length, std::string* min_key = nullptr, std::string* max_key = nullptr) {
   if (min_key) {
     min_key->clear();
   }
   if (max_key) {
     max_key->clear();
   }
-
-  std::vector<std::string> end_keys;
-
-  std::function<void(const char* key, size_t key_size)> func =
-      [&end_keys, min_key, max_key](const char* key, size_t key_size) {
-        LOG(INFO) << "Range end key: " << Slice(key, key_size).ToDebugHexString();
-        std::string key_str(key, key_size);
-        end_keys.push_back(key_str);
-        if (key_size == 0) {
-          return;
-        }
-        if (min_key && (min_key->empty() || key_str < *min_key)) {
-          *min_key = key;
-        }
-        if (max_key && (max_key->empty() || key_str > *max_key)) {
-          *max_key = key;
-        }
-      };
 
   std::unordered_map<bool, size_t> num_boundaries_by_direction;
   for (const auto is_forward : {false, true}) {
@@ -378,70 +499,41 @@ Result<size_t> TestGetTableKeyRanges(
                         << " range_size_bytes: " << range_size_bytes
                         << " max_key_length: " << max_key_length << " is_forward: " << is_forward;
 
-    /* Request server HT on the first call for the key ranges */
-    end_keys.clear();
-    CHECK_YBC_STATUS(YBCGetTableKeyRanges(
-        database_oid, table_oid, lower_bound_key.cdata(), lower_bound_key.size(),
-        upper_bound_key.cdata(), upper_bound_key.size(), std::numeric_limits<uint64_t>::max(),
-        range_size_bytes, is_forward, max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
-    LOG(INFO) << "Got " << end_keys.size() << " ranges";
-
-    RETURN_NOT_OK(CheckRanges(end_keys, is_forward));
-
+    std::vector<std::string> end_keys;
+    RETURN_NOT_OK(FetchAllTableKeyRanges(
+        database_oid, table_oid, is_forward, lower_bound_key, upper_bound_key,
+        /* per_call_max = */ std::numeric_limits<uint64_t>::max(), range_size_bytes, max_key_length,
+        &end_keys, min_key, max_key));
     const auto num_boundaries_received = end_keys.size();
-    const auto num_ranges_limit = num_boundaries_received / 3;
+    LOG(INFO) << "Got " << num_boundaries_received << " ranges";
+    RETURN_NOT_OK(CheckRanges(
+        conn, table_name, end_keys, is_forward, lower_bound_key, upper_bound_key));
 
+    num_boundaries_by_direction[is_forward] = num_boundaries_received;
+
+    const auto num_ranges_limit = num_boundaries_received / 3;
     if (num_ranges_limit == 0) {
       // Only test pagination when we have enough ranges to break them into 3 pieces.
       continue;
     }
 
-    end_keys.clear();
+    // Re-fetch key ranges for the same part of the table with a small per-call limit to exercise
+    // in-tablet paging and verify it yields approximately the same set of boundaries.
+    std::vector<std::string> paged_end_keys;
+    RETURN_NOT_OK(FetchAllTableKeyRanges(
+        database_oid, table_oid, is_forward, lower_bound_key, upper_bound_key, num_ranges_limit,
+        range_size_bytes, max_key_length, &paged_end_keys));
 
-    std::string bound;
-
-    for (;;) {
-      const auto prev_size = end_keys.size();
-
-      LOG(INFO) << "Starting with: " << Slice(bound).ToDebugHexString();
-
-      CHECK_YBC_STATUS(YBCGetTableKeyRanges(
-          database_oid, table_oid, is_forward ? bound.data() : nullptr,
-          is_forward ? bound.size() : 0, is_forward ? nullptr : bound.data(),
-          is_forward ? 0 : bound.size(), num_ranges_limit, range_size_bytes, is_forward,
-          max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
-
-      const auto size_diff = end_keys.size() - prev_size;
-
-      LOG(INFO) << "Got " << size_diff << " ranges (limited by " << num_ranges_limit << ")";
-
-      SCHECK_GT(size_diff, 0, InternalError, "Expected some ranges");
-
-      if (end_keys.back().empty()) {
-        SCHECK_LE(
-            size_diff, num_ranges_limit, InternalError,
-            "Expected no more than specified number of ranges");
-        break;
-      }
-
-      SCHECK_EQ(
-          size_diff, num_ranges_limit, InternalError,
-          "Expected specified number of ranges except for the last response");
-
-      bound = end_keys.back();
-    }
-
-    const int64_t num_boundaries_diff = num_boundaries_received - end_keys.size();
+    const int64_t num_boundaries_diff = num_boundaries_received - paged_end_keys.size();
     SCHECK(
         abs(num_boundaries_diff) <= 2, InternalError,
         Format(
             "Expected approximately the same number of ranges independently of paging but got "
             "without paging: $0, with paging: $1",
-            num_boundaries_received, end_keys.size()));
+            num_boundaries_received, paged_end_keys.size()));
 
-    RETURN_NOT_OK(CheckRanges(end_keys, is_forward));
-
-    num_boundaries_by_direction[is_forward] = num_boundaries_received;
+    RETURN_NOT_OK(CheckRanges(
+        conn, table_name, paged_end_keys, is_forward, lower_bound_key, upper_bound_key));
   }
 
   const int64_t num_boundaries_diff =
@@ -451,7 +543,7 @@ Result<size_t> TestGetTableKeyRanges(
       Format(
           "Expected approximately the same number of ranges independently of direction but got "
           "forward: $0, backward: $1",
-          num_boundaries_by_direction[true], num_boundaries_by_direction[false], end_keys.size()));
+          num_boundaries_by_direction[true], num_boundaries_by_direction[false]));
 
   return std::min(num_boundaries_by_direction[true], num_boundaries_by_direction[false]);
 }
@@ -463,7 +555,8 @@ Result<std::unordered_set<int>> DockeyBoundsForHashPartitionedTablesHelper(
   YbcPgStatement pg_stmt = nullptr;
 
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      db_oid, table_oid, NULL /* prepare_params */, PggateTest::kDefaultTableLocality, &pg_stmt));
+      db_oid, table_oid, NULL /* prepare_params */, PggateTest::kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
   YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
@@ -504,10 +597,8 @@ Result<std::unordered_set<int>> DockeyBoundsForHashPartitionedTablesHelper(
 
 } // namespace
 
-// TODO(get_table_key_ranges): Enable this test as part of
-// https://github.com/yugabyte/yugabyte-db/issues/21090
 TEST_F_EX(
-    PggateTestSelect, YB_DISABLE_TEST(GetRangeShardedTableKeyRanges), PggateTestSelectWithYsql) {
+    PggateTestSelect, GetRangeShardedTableKeyRanges, PggateTestSelectWithYsql) {
   constexpr auto kDatabaseName = "yugabyte";
   constexpr auto kMaxKeyLength = 1_KB;
   constexpr auto kRangeSizeBytes = 16_KB;
@@ -536,16 +627,55 @@ TEST_F_EX(
       "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, 10000) i) tmp"));
 
   ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
+  for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+    ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(ts_idx, {}));
+  }
 
+  // Manually split a bounded middle tablet ([300, 3000), ~2700 rows). A child of a statically
+  // pre-split tablet inherits the parent's open key_bounds_, so its key_bounds_ (e.g. [m, +inf))
+  // is looser than its partition ([m, 3000)). This checks that GetTabletKeyRanges enumerates within
+  // the partition bounds -- otherwise it would treat the child as the last tablet and stop
+  // enumerating after it. The children's SST files still hold the parent's full data until it is
+  // compacted away.
+  {
+    // Pick the middle tablet with the largest bounded range: both partition bounds are non-empty
+    // and it has the most rows, so the split reliably finds a middle key.
+    const auto tablet_id = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT tablet_id FROM yb_local_tablets WHERE table_name = 't' "
+        "AND partition_key_start IS NOT NULL AND partition_key_end IS NOT NULL "
+        "ORDER BY partition_key_end DESC LIMIT 1"));
+    LOG(INFO) << "Splitting tablet: " << tablet_id;
+
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+    TestAdminClient admin_client(cluster_.get(), client.get());
+    ASSERT_OK(admin_client.SplitTabletAndWait(
+        kDatabaseName, "t", /* wait_for_parent_deletion = */ false, tablet_id));
+  }
+
+  // Whole-table enumeration; also checks balance (and, like every call, that the ranges tile the
+  // window and cover the actual rows -- verified inside TestGetTableKeyRanges).
   ASSERT_OK(TestGetTableKeyRanges(
-      db_oid, table_oid, Slice(), Slice(), kRangeSizeBytes, kMaxKeyLength));
+      &conn, "t", db_oid, table_oid, Slice(), Slice(), kRangeSizeBytes, kMaxKeyLength));
 
-  std::string upper_bound;
-  ASSERT_TRUE(strings::ByteStringFromAscii("488000022C21", &upper_bound));
+  // Bounds landing exactly on tablet split points (100, 300, 3000) exercise the inclusive/exclusive
+  // tablet routing when a bound key equals a tablet boundary (see D55359); 556/2000/5000 land in
+  // the middle of tablets. Each is tested as both an upper bound (backward) and a lower bound
+  // (forward).
+  for (const int bound_k : {100, 300, 556, 2000, 3000, 5000}) {
+    const auto bound_encoded_doc_key = dockv::MakeDocKey(bound_k).Encode().ToStringBuffer();
+    ASSERT_OK(TestGetTableKeyRanges(
+        &conn, "t", db_oid, table_oid, /* lower_bound_key = */ Slice(), bound_encoded_doc_key,
+        kRangeSizeBytes, kMaxKeyLength));
+    ASSERT_OK(TestGetTableKeyRanges(
+        &conn, "t", db_oid, table_oid, bound_encoded_doc_key, /* upper_bound_key = */ Slice(),
+        kRangeSizeBytes, kMaxKeyLength));
+  }
 
+  // Mid-table window [2000, 5000) with both bounds set, spanning the 3000 split point.
+  const auto lower_bound = dockv::MakeDocKey(2000).Encode().ToStringBuffer();
+  const auto window_upper = dockv::MakeDocKey(5000).Encode().ToStringBuffer();
   ASSERT_OK(TestGetTableKeyRanges(
-      db_oid, table_oid, Slice(), upper_bound, kRangeSizeBytes, kMaxKeyLength));
-
+      &conn, "t", db_oid, table_oid, lower_bound, window_upper, kRangeSizeBytes, kMaxKeyLength));
 }
 
 TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql) {
@@ -592,8 +722,8 @@ TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql
     std::string max_key;
     ASSERT_GE(
         ASSERT_RESULT(TestGetTableKeyRanges(
-            db_oid, table_oid, Slice(), Slice(), kRangeSizeBytes, kMaxKeyLength, &min_key,
-            &max_key)),
+            &conn, Format("t$0", i), db_oid, table_oid, Slice(), Slice(), kRangeSizeBytes,
+            kMaxKeyLength, &min_key, &max_key)),
         kMinNumRangesExpected);
 
     for (const auto& min_max_key : min_max_keys) {
@@ -726,7 +856,7 @@ class PggateTestBucketizedSelect : public PggateTest {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewInsert(
         kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-        YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
+        YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
 
     // Allocate constant expressions.
     YbcPgExpr expr_bkt;
@@ -779,7 +909,8 @@ class PggateTestBucketizedSelect : public PggateTest {
       const std::vector<YbcSortKey>& sort_keys) {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewSelect(
-        kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+        kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+        false /* skip_intents_read */, &pg_stmt));
 
     // Specify the selected expressions.
     YbcPgExpr colref;
@@ -1376,6 +1507,422 @@ TEST_F_EX(PggateTestSelect, TestGetYbSystemTableInfo, PggateTestSelectWithYbSyst
 
     CHECK_EQ(oid, fetched_table_oid);
     CHECK_EQ(relfilenode, fetched_relfilenode);
+  }
+}
+
+class PggateTestBackwardScanSelect : public PggateTestSelectWithYsql {
+ protected:
+  Result<PgObjectId> CreateTable(
+      const std::string& db_name, const std::string& table_name, int num_tablets, int num_rows) {
+    auto conn = VERIFY_RESULT(PgConnect(db_name));
+    RETURN_NOT_OK(conn.Execute(Format(
+        "CREATE TABLE $0(a INT PRIMARY KEY) SPLIT INTO $1 TABLETS", table_name, num_tablets)));
+    RETURN_NOT_OK(conn.Execute(Format(
+        "INSERT INTO $0 SELECT generate_series(1, $1)", table_name, num_rows)));
+    auto db_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+        "SELECT oid FROM pg_database WHERE datname = '$0'", db_name)));
+    auto table_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+        "SELECT oid FROM pg_class WHERE relname = '$0'", table_name)));
+    return PgObjectId{db_oid, table_oid};
+  }
+
+  int ReadTableBackward(const PgObjectId& pg_table_id) {
+    YbcPgStatement pg_stmt;
+    CHECK_YBC_STATUS(YBCPgNewSelect(
+        pg_table_id.database_oid, pg_table_id.object_oid, NULL /* prepare_params */,
+        kDefaultTableLocality, false /* skip_intents_read */, &pg_stmt));
+
+    // Specify the selected expressions.
+    YbcPgExpr colref;
+    const YbcPgTypeAttrs type_attrs = { 0 };
+    CHECK_YBC_STATUS(YBCPgNewColumnRef(
+        pg_stmt, 1, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        &type_attrs, &colref));
+    CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
+    CHECK_YBC_STATUS(YBCPgSetForwardScan(pg_stmt, false /* is_forward */));
+
+    BeginTransaction();
+    CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
+
+    // Fetching rows and check their contents.
+    uint64_t values;
+    bool isnulls;
+    YbcPgSysColumns syscols;
+    int select_row_count = 0;
+    for (;;) {
+      bool has_data = false;
+      CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, 1, &values, &isnulls, &syscols, &has_data));
+      if (!has_data) {
+        break;
+      }
+      ++select_row_count;
+    }
+    CommitTransaction();
+    return select_row_count;
+  }
+
+};
+
+TEST_F(PggateTestBackwardScanSelect, HashBackwardScanOneTablet) {
+  constexpr auto kDatabaseName = "yugabyte";
+  constexpr auto kTableName = "htab1";
+  constexpr auto kNumRows = 4000;
+  CHECK_OK(Init(
+      "HashBackwardScanOneTablet", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
+  auto pg_table_id = ASSERT_RESULT(CreateTable(kDatabaseName, kTableName, 1, kNumRows));
+  CHECK_EQ(ReadTableBackward(pg_table_id), kNumRows);
+}
+
+TEST_F(PggateTestBackwardScanSelect, HashBackwardScanMultiTablet) {
+  constexpr auto kDatabaseName = "yugabyte";
+  constexpr auto kTableName = "htab3";
+  constexpr auto kNumRows = 4000;
+  CHECK_OK(Init(
+      "HashBackwardScanMultiTablet", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
+  auto pg_table_id = ASSERT_RESULT(CreateTable(kDatabaseName, kTableName, 3, kNumRows));
+  CHECK_EQ(ReadTableBackward(pg_table_id), kNumRows);
+}
+
+class PggateTestRowBounds : public PggateTest {
+ protected:
+  static constexpr const char *tab_name = "h2r2n";
+  static constexpr YbcPgOid tab_oid = 4;
+  static constexpr int kNumRowValues = 5;
+
+  void CreateTestTable(bool range_keys_are_desc) {
+    YbcPgStatement pg_stmt;
+    // Create table in the connected database.
+    CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, tab_name,
+                                         kDefaultDatabaseOid, tab_oid,
+                                         false /* is_shared_table */,
+                                         false /* is_sys_catalog_table */,
+                                         true /* if_not_exist */,
+                                         PG_YBROWID_MODE_NONE,
+                                         true /* is_colocated_via_database */,
+                                         kInvalidOid /* tablegroup_id */,
+                                         kColocationIdNotSet /* colocation_id */,
+                                         kDefaultTablespaceOid,
+                                         false /* is_matview */,
+                                         kInvalidOid /* pg_table_oid */,
+                                         kInvalidOid /* old_relfilenode_oid */,
+                                         false /* is_truncate */,
+                                         &pg_stmt));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "h1", 1 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        true /* is_hash */, false /* is_range */, false /* is_desc */, false /* is_nulls_first */));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "h2", 2 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        true /* is_hash */, false /* is_range */, false /* is_desc */, false /* is_nulls_first */));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "r1", 3 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        false /* is_hash */, true /* is_range */, range_keys_are_desc, false /* is_nulls_first */));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "r2", 4 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        false /* is_hash */, true /* is_range */, range_keys_are_desc, false /* is_nulls_first */));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "n", 5 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        false /* is_hash */, false /* is_range */, false /* is_desc */,
+        false /* is_nulls_first */));
+    ExecCreateTableTransaction(pg_stmt);
+  }
+
+  void PopulateTestTable() {
+    YbcPgStatement pg_stmt;
+    CHECK_YBC_STATUS(YBCPgNewInsert(
+        kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
+        YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
+
+    // First row.
+    YbcPgExpr expr_h1;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, false /* is_null */, &expr_h1));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_h1));
+    YbcPgExpr expr_h2;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, false /* is_null */, &expr_h2));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 2, expr_h2));
+    YbcPgExpr expr_r1;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, false /* is_null */, &expr_r1));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 3, expr_r1));
+    YbcPgExpr expr_r2;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, false /* is_null */, &expr_r2));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 4, expr_r2));
+    YbcPgExpr expr_n;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, false /* is_null */, &expr_n));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 5, expr_n));
+    BeginTransaction();
+    CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
+
+    // Subsequent rows.
+    for (int i = 1; i < 10000; ++i) {
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_h1, i / 1000, false));
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_h2, (i / 100) % 10, false));
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_r1, (i / 10) % 10, false));
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_r2, i % 10, false));
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_n, i, false));
+      CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
+    }
+    CommitTransaction();
+  }
+
+  // datums for hash_code, h1, h2, r1, r2
+  using RowKey = boost::container::small_vector<std::optional<uint64_t>, kNumRowValues>;
+  // PgExprs for hash_code, h1, h2, r1, r2
+  using RowExprs = boost::container::small_vector<YbcPgExpr, kNumRowValues>;
+
+  struct Bound {
+    RowKey key;
+    bool is_inclusive;
+  };
+  struct Bounds {
+    std::optional<Bound> lower = std::nullopt;
+    std::optional<Bound> upper = std::nullopt;
+  };
+  static const Bound InclusiveBound(const RowKey& key) {
+    return { .key = key, .is_inclusive = true };
+  }
+  static const Bound ExclusiveBound(const RowKey& key) {
+    return { .key = key, .is_inclusive = false };
+  }
+  void CheckRowCount(const Bounds& bounds, uint64_t expected_count) {
+    auto pg_stmt = MakeSelect();
+    if (bounds.lower) {
+      auto bound_exprs = MakeRowExprs(pg_stmt, bounds.lower->key);
+      CHECK_YBC_STATUS(YBCPgDmlAddRowLowerBound(
+          pg_stmt, static_cast<int>(bound_exprs.size()), bound_exprs.data(),
+          bounds.lower->is_inclusive));
+    }
+    if (bounds.upper) {
+      auto bound_exprs = MakeRowExprs(pg_stmt, bounds.upper->key);
+      CHECK_YBC_STATUS(YBCPgDmlAddRowUpperBound(
+          pg_stmt, static_cast<int>(bound_exprs.size()), bound_exprs.data(),
+          bounds.upper->is_inclusive));
+    }
+    CHECK_EQ(RowCount(pg_stmt), expected_count) << "Unexpected row count";
+  }
+
+ private:
+  static YbcPgStatement MakeSelect() {
+    YbcPgStatement pg_stmt;
+    CHECK_YBC_STATUS(YBCPgNewSelect(
+        kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+        false /* skip_intents_read */, &pg_stmt));
+
+    // Specify the selected expressions.
+    YbcPgExpr colref;
+    const YbcPgTypeAttrs type_attrs = { 0 };
+    CHECK_YBC_STATUS(YBCPgNewColumnRef(
+        pg_stmt, 5, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        &type_attrs, &colref));
+    CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
+
+    return pg_stmt;
+  }
+
+  RowExprs MakeRowExprs(YbcPgStatement pg_stmt, const RowKey& bound) {
+    RowExprs bound_exprs;
+    for (const auto& opt_val : bound) {
+      YbcPgExpr expr = nullptr;
+      if (opt_val) {
+        CHECK_YBC_STATUS(YBCPgNewConstant(
+            pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+            nullptr /* collation_sortkey */, *opt_val /* datum */, false /* is_null */, &expr));
+      }
+      bound_exprs.push_back(expr);
+    }
+    return bound_exprs;
+  }
+
+  uint64_t RowCount(YbcPgStatement pg_stmt) {
+    BeginTransaction();
+    CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
+
+    // Fetching rows and check their contents.
+    uint64_t values[kNumRowValues];
+    bool isnulls[kNumRowValues];
+    YbcPgSysColumns syscols;
+    uint64_t row_count = 0;
+    for (;;) {
+      bool has_data = false;
+      CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, kNumRowValues, values, isnulls, &syscols, &has_data));
+      if (!has_data) {
+        break;
+      }
+      ++row_count;
+    }
+    CommitTransaction();
+    return row_count;
+  }
+};
+
+TEST_F(PggateTestRowBounds, TestHashBoundsRangeAsc) {
+  CHECK_OK(Init("TestHashBoundsRangeAsc"));
+
+  CreateTestTable(false /* range_keys_are_desc */);
+  PopulateTestTable();
+
+  {
+    // Point select
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey key{ 64798, 5, 5, 5, 5 };
+    CheckRowCount({ .lower = InclusiveBound(key), .upper = InclusiveBound(key) }, 1);
+  }
+
+  {
+    // Small range
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey lower_key{ 64798, 5, 5, 5, 0 };
+    const RowKey upper_key{ 64798, 5, 5, 5, 9 };
+    CheckRowCount({ .lower = ExclusiveBound(lower_key), .upper = ExclusiveBound(upper_key) }, 8);
+  }
+
+  {
+    // Bigger range
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey lower_key{ 64798, 5, 5, 0, 9 };
+    const RowKey upper_key{ 64798, 5, 5, 9, 0 };
+    CheckRowCount({ .lower = InclusiveBound(lower_key), .upper = InclusiveBound(upper_key) }, 82);
+  }
+
+  {
+    // Cross hash buckets range
+    // yb_hash_code(6::int4, 0::int4) = 24820
+    const RowKey lower_key{ 24820, 6, 0, 9, 9 };
+    // yb_hash_code(5::int4, 9::int4) = 54756
+    const RowKey upper_key { 54756, 5, 9, 0, 0 };
+    // There are 50 hash codes in the range (24820, 54756), each with 100 rows.
+    CheckRowCount({ .lower = ExclusiveBound(lower_key), .upper = ExclusiveBound(upper_key) }, 5000);
+  }
+
+  {
+    // As above, but include the values in the bound hash buckets.
+    const RowKey lower_key{ 24820, 6, 0, 0, 0 };
+    const RowKey upper_key { 54756, 5, 9, 9, 9 };
+    CheckRowCount({ .lower = InclusiveBound(lower_key), .upper = InclusiveBound(upper_key) }, 5200);
+  }
+
+  {
+    // Lowest hash bucket yb_hash_code(7::int4, 0::int4) = 416
+    const RowKey upper_key{ 416, 9, 9, 9, 9 };
+    CheckRowCount({ .upper = InclusiveBound(upper_key) }, 100);
+  }
+
+  {
+    // Highest hash bucket yb_hash_code(2::int4, 5::int4) = 64842
+    const RowKey lower_key{ 64842, 0, 0, 0, 0 };
+    CheckRowCount({ .lower = InclusiveBound(lower_key) }, 100);
+  }
+
+  // Incomplete keys
+  {
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey key = { 64798, 5, 5, 5 };
+    CheckRowCount({ .lower = InclusiveBound(key), .upper = InclusiveBound(key) }, 10);
+  }
+
+  {
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey key{ 64798, 5, 5, std::nullopt, 5 };
+    CheckRowCount({ .lower = InclusiveBound(key), .upper = InclusiveBound(key) }, 100);
+  }
+
+  {
+    // The hash bucket has only one pair of hash values
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey key{ 64798, 5 };
+    CheckRowCount({ .lower = InclusiveBound(key), .upper = InclusiveBound(key) }, 100);
+  }
+}
+
+TEST_F(PggateTestRowBounds, TestHashBoundsRangeDesc) {
+  CHECK_OK(Init("TestHashBoundsRangeDesc"));
+
+  CreateTestTable(true /* range_keys_are_desc */);
+  PopulateTestTable();
+
+  {
+    // Point select
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey key{ 2181, 4, 4, 4, 4 };
+    CheckRowCount({ .lower = InclusiveBound(key), .upper = InclusiveBound(key) }, 1);
+  }
+
+  {
+    // Hash key values not matching the hash code
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey lower_key{ 2181, 4, 3 };
+    const RowKey upper_key{ 2181, 4, 5 };
+    CheckRowCount({ .lower = ExclusiveBound(lower_key), .upper = ExclusiveBound(upper_key) }, 100);
+  }
+
+  {
+    // Small range
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey lower_key{ 2181, 4, 4, 5, 2 };
+    const RowKey upper_key{ 2181, 4, 4, 4, 7 };
+    CheckRowCount({ .lower = ExclusiveBound(lower_key), .upper = ExclusiveBound(upper_key) }, 4);
+  }
+
+  {
+    // Bigger range
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey lower_key{ 2181, 4, 4, 8, 8 };
+    const RowKey upper_key{ 2181, 4, 4, 1, 1 };
+    CheckRowCount({ .lower = InclusiveBound(lower_key), .upper = InclusiveBound(upper_key) }, 78);
+  }
+
+  {
+    // Cross hash buckets range
+    // yb_hash_code(7::int4, 6::int4) = 36130
+    const RowKey lower_key{ 36130, 7, 6, 2, 1 };
+    // yb_hash_code(6::int4, 7::int4) = 54731
+    const RowKey upper_key{ 54731, 6, 7, 8, 8 };
+    // There are 34 hash codes in the range (36130, 54731), each with 100 rows
+    // plus 22 rows in the [21, 00] range of the lower bucket
+    // plus 12 rows in [99, 88] range of the upper bucket.
+    CheckRowCount({ .lower = InclusiveBound(lower_key), .upper = InclusiveBound(upper_key) }, 3434);
+  }
+
+  {
+    // Lowest hash bucket yb_hash_code(7::int4, 0::int4) = 416
+    const RowKey upper_key{ 416, 7, 0, 9, 9 };
+    CheckRowCount({ .upper = ExclusiveBound(upper_key) }, 0);
+  }
+
+  {
+    // Highest hash bucket yb_hash_code(2::int4, 5::int4) = 64842
+    const RowKey lower_key{ 64842, 2, 5, 0, 0 };
+    CheckRowCount({ .lower = ExclusiveBound(lower_key) }, 0);
+  }
+
+  // Incomplete keys
+  {
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey key{ 2181, 4, 4, 4 };
+    CheckRowCount({ .lower = ExclusiveBound(key), .upper = ExclusiveBound(key) }, 10);
+  }
+
+  {
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey key{ 2181, 4, 4 };
+    CheckRowCount({ .lower = ExclusiveBound(key), .upper = ExclusiveBound(key) }, 100);
+  }
+
+  {
+    // The hash bucket has only one pair of hash values
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey key{ 2181, 4, std::nullopt, 4, 4 };
+    CheckRowCount({ .lower = ExclusiveBound(key), .upper = ExclusiveBound(key) }, 100);
   }
 }
 

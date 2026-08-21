@@ -51,6 +51,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 
 DEFINE_test_flag(double, fault_crash_before_cmeta_flush, 0.0,
@@ -249,6 +250,20 @@ const RaftConfigPB& ConsensusMetadata::active_config() const {
     return pending_config();
   }
   return committed_config();
+}
+
+OpId ConsensusMetadata::pending_config_op_id_from_rbs() const {
+  return pb_.has_pending_config_op_id_from_rbs()
+             ? OpId::FromPB(pb_.pending_config_op_id_from_rbs())
+             : OpId();
+}
+
+void ConsensusMetadata::set_pending_config_op_id_from_rbs(const OpId& op_id) {
+  op_id.ToPB(pb_.mutable_pending_config_op_id_from_rbs());
+}
+
+void ConsensusMetadata::clear_pending_config_op_id_from_rbs() {
+  pb_.clear_pending_config_op_id_from_rbs();
 }
 
 const string& ConsensusMetadata::leader_uuid() const {

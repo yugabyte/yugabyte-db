@@ -1,10 +1,11 @@
 import { makeStyles, Typography } from '@material-ui/core';
 import { YBTooltip } from '@yugabyte-ui-library/core';
+import { useTranslation } from 'react-i18next';
 
-import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
+import { isNonEmptyString } from '@app/utils/ObjectUtils';
 import { ReleaseOption } from './types';
 
-import InfoIcon from '../../../../assets/info-message.svg?img';
+import InfoIcon from '@app/redesign/assets/info-message.svg';
 
 const MAX_RELEASE_TAG_CHAR = 20;
 
@@ -24,19 +25,26 @@ const useStyles = makeStyles((theme) => ({
 
 export interface DbReleaseAutocompleteOptionProps {
   releaseOption: ReleaseOption;
+  currentDbVersion: string;
 }
 
 export const DbReleaseAutocompleteOption = ({
-  releaseOption
+  releaseOption,
+  currentDbVersion
 }: DbReleaseAutocompleteOptionProps) => {
   const classes = useStyles();
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'universeActions.dbUpgrade.upgradeModal.dbVersionStep'
+  });
 
   const releaseTag = releaseOption?.releaseInfo?.release_tag ?? '';
   const releaseTagExceedsMaxLength = releaseTag.length > MAX_RELEASE_TAG_CHAR;
 
   return (
     <div className={classes.releaseTagContainer}>
-      {releaseOption?.version}
+      {releaseOption?.version === currentDbVersion
+        ? `${releaseOption?.label} (${t('currentVersion').toLocaleLowerCase()})`
+        : releaseOption?.label}
       {isNonEmptyString(releaseOption?.releaseInfo?.release_tag) && (
         <>
           <Typography variant="body2" className={classes.releaseTagBadge}>
@@ -46,7 +54,9 @@ export const DbReleaseAutocompleteOption = ({
           </Typography>
           {releaseTagExceedsMaxLength && (
             <YBTooltip title={releaseTag}>
-              <img src={InfoIcon} alt="info" />
+              <span>
+                <InfoIcon aria-hidden />
+              </span>
             </YBTooltip>
           )}
         </>

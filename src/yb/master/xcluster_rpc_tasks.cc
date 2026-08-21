@@ -28,6 +28,8 @@
 
 #include "yb/rpc/secure.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
@@ -44,12 +46,10 @@ DEFINE_RUNTIME_int32(list_snapshot_max_backoff_sec, 10,
 TAG_FLAG(list_snapshot_max_backoff_sec, stable);
 TAG_FLAG(list_snapshot_max_backoff_sec, advanced);
 
-DEFINE_test_flag(
-    bool, xcluster_fail_to_send_create_snapshot_request, false,
+DEFINE_test_flag(bool, xcluster_fail_to_send_create_snapshot_request, false,
     "Fail to send a CreateSnapshot request to the producer.");
 
-DEFINE_test_flag(
-    bool, xcluster_fail_create_producer_snapshot, false,
+DEFINE_test_flag(bool, xcluster_fail_create_producer_snapshot, false,
     "In the SetupReplicationWithBootstrap flow, fail to create snapshot on producer.");
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);

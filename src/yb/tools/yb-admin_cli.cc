@@ -32,7 +32,10 @@
 
 #include "yb/tools/yb-admin_cli.h"
 
+#include <algorithm>
+#include <limits>
 #include <memory>
+#include <unordered_set>
 #include <utility>
 
 #include <boost/algorithm/string.hpp>
@@ -49,6 +52,7 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/master_backup.pb.h"
@@ -57,6 +61,7 @@
 #include "yb/tools/yb-admin_client.h"
 #include "yb/tools/yb-admin_util.h"
 
+#include "yb/util/enum_parse.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -394,6 +399,30 @@ Status PrintJsonResult(Result<rapidjson::Document>&& action_result) {
   return Status::OK();
 }
 
+// Levenshtein edit distance between two strings, used to suggest the closest command names when
+// the operation the user typed is not a prefix of any registered command. Uses two rolling rows
+// instead of the full matrix since only the previous row is needed.
+size_t EditDistance(const string& lhs, const string& rhs) {
+  vector<size_t> prev(rhs.size() + 1);
+  vector<size_t> curr(rhs.size() + 1);
+  for (size_t j = 0; j <= rhs.size(); ++j) {
+    prev[j] = j;
+  }
+  for (size_t i = 1; i <= lhs.size(); ++i) {
+    curr[0] = i;
+    for (size_t j = 1; j <= rhs.size(); ++j) {
+      const size_t substitution_cost = (lhs[i - 1] == rhs[j - 1]) ? 0 : 1;
+      curr[j] = std::min({
+          prev[j] + 1,                     // deletion
+          curr[j - 1] + 1,                 // insertion
+          prev[j - 1] + substitution_cost  // substitution
+      });
+    }
+    prev.swap(curr);
+  }
+  return prev[rhs.size()];
+}
+
 }  // namespace
 
 std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arguments) {
@@ -410,6 +439,60 @@ std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arg
     }
   }
   return expressions.empty() ? "" : "Definitions: " + expressions;
+}
+
+std::vector<std::string> ClusterAdminCli::GetSuggestedCommands(const std::string& op) const {
+  if (op.empty()) {
+    return {};
+  }
+
+  // Prefer commands that the typed operation is a prefix of, e.g. "list_snapshot_schedule" points
+  // the user at "list_snapshot_schedules". command_indexes_ is sorted, so the prefix matches form
+  // a contiguous range starting at lower_bound(op).
+  std::vector<std::string> candidates;
+  for (auto it = command_indexes_.lower_bound(op); it != command_indexes_.end(); ++it) {
+    if (!boost::starts_with(it->first, op)) {
+      break;
+    }
+    if (!commands_[it->second].hidden_) {
+      candidates.push_back(it->first);
+    }
+  }
+  if (!candidates.empty()) {
+    return candidates;
+  }
+
+  // Otherwise fall back to fuzzy matching so that a typo anywhere in the name - a transposition or
+  // a wrong or missing leading character - still resolves to the closest command(s), e.g.
+  // "list_tabels" -> "list_tables". Scale the tolerance with the length of the operation so that
+  // short names don't match everything, and keep only the commands tied for the smallest distance
+  // so the suggestion list stays short.
+  const size_t max_distance = std::max<size_t>(2, op.size() / 3);
+  size_t best_distance = std::numeric_limits<size_t>::max();
+  for (const auto& [name, index] : command_indexes_) {
+    if (commands_[index].hidden_) {
+      continue;
+    }
+    // The edit distance is at least the difference in lengths, so skip the full computation for
+    // commands that cannot possibly be within the tolerance.
+    const size_t len_diff =
+        op.size() > name.size() ? op.size() - name.size() : name.size() - op.size();
+    if (len_diff > max_distance) {
+      continue;
+    }
+    const size_t distance = EditDistance(op, name);
+    if (distance > max_distance) {
+      continue;
+    }
+    if (distance < best_distance) {
+      best_distance = distance;
+      candidates.clear();
+    }
+    if (distance == best_distance) {
+      candidates.push_back(name);
+    }
+  }
+  return candidates;
 }
 
 Status ClusterAdminCli::RunCommand(
@@ -469,7 +552,19 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
 
   if (cmd == command_indexes_.end()) {
     cerr << "Invalid operation: " << op << endl;
-    return ClusterAdminCli::kInvalidArguments;
+
+    const auto suggestions = GetSuggestedCommands(op);
+    if (!suggestions.empty()) {
+      cerr << "Did you mean one of these?" << endl;
+      for (const auto& suggestion : suggestions) {
+        cerr << "  " << suggestion << endl;
+      }
+    }
+    cerr << "Run '" << prog_name << "' with no operation to see all available operations." << endl;
+
+    // The targeted error and suggestions above are more helpful than the full command list, so
+    // return a non-InvalidArgument status to keep main() from additionally dumping the usage.
+    return STATUS_FORMAT(RuntimeError, "Invalid operation: $0", op);
   }
 
   // Init client.
@@ -501,7 +596,15 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
   ostringstream str;
 
   str << prog_name << " [--master_addresses server1:port,server2:port,server3:port,...] "
-      << " [--timeout_ms <millisec>] [--certs_dir_name <dir_name>] <operation>" << endl
+      << " [--timeout_ms <millisec>] [--certs_dir_name <dir_name>]" << endl
+      << "  [--flagfile <path/to/master/conf/server.conf>]" << endl
+      << "  <operation>" << endl
+      << endl
+      << "Tip: Use --flagfile with the master's server.conf to automatically pick up" << endl
+      << "master_addresses and certs_dir, avoiding manual flag entry." << endl
+      << "Example: " << prog_name
+      << " --flagfile master/conf/server.conf list_all_masters" << endl
+      << endl
       << "<operation> must be one of:" << endl;
 
   for (size_t i = 0; i < commands_.size(); ++i) {
@@ -1133,7 +1236,7 @@ Status change_leader_blacklist_action(
   return ChangeBlacklist(client, args, true, "Unable to change leader blacklist");
 }
 
-const auto master_leader_stepdown_args = "[<dest_uuid>]";
+const auto master_leader_stepdown_args = "[<new_leader_id>]";
 Status master_leader_stepdown_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   return MasterLeaderStepDown(client, args);
@@ -1918,7 +2021,8 @@ Status write_universe_key_to_file_action(
 
 const auto create_change_data_stream_args =
     "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>] "
-    "[<dynamic_tables_option>] (default DYNAMIC_TABLES_ENABLED)";
+    "[<dynamic_tables_option>] (default DYNAMIC_TABLES_ENABLED) "
+    "[<bound_table_ids>]";
 Status create_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
@@ -1929,6 +2033,7 @@ Status create_change_data_stream_action(
   cdc::CDCRecordType record_type_pb = cdc::CDCRecordType::CHANGE;
   std::string consistent_snapshot_option = "EXPORT_SNAPSHOT";
   std::string dynamic_tables_option = "DYNAMIC_TABLES_ENABLED";
+  std::unordered_set<std::string> bound_table_ids;
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
   std::string uppercase_consistent_snapshot_option;
@@ -1970,13 +2075,28 @@ Status create_change_data_stream_action(
     dynamic_tables_option = uppercase_dynamic_tables_option;
   }
 
+  if (args.size() > 5) {
+    std::vector<std::string> raw_ids;
+    boost::split(raw_ids, args[5], boost::is_any_of(","));
+    for (auto& id : raw_ids) {
+      boost::trim(id);
+      if (id.empty()) {
+        continue;
+      }
+      bound_table_ids.insert(std::move(id));
+    }
+    if (bound_table_ids.empty()) {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+  }
+
   const string namespace_name = args[0];
   const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
   RETURN_NOT_OK_PREPEND(
       client->CreateCDCSDKDBStream(
           database, checkpoint_type, record_type_pb, consistent_snapshot_option,
-          dynamic_tables_option == "DYNAMIC_TABLES_ENABLED"),
+          dynamic_tables_option == "DYNAMIC_TABLES_ENABLED", bound_table_ids),
       Format("Unable to create CDC stream for database $0", namespace_name));
   return Status::OK();
 }
@@ -2899,19 +3019,51 @@ Status unsafe_release_object_locks_global_action(
   return client->ReleaseObjectLocksGlobal(txn_id, subtxn_id);
 }
 
-const auto get_table_hash_args = "<table_id> [read_ht]";
+// Decodes a hex-encoded partition-key argument, rejecting malformed input rather than silently
+// truncating it: strings::a2b_hex drops a trailing odd nibble and turns non-hex bytes into garbage,
+// which would quietly hash the wrong range instead of reporting a bad argument.
+Result<std::string> DecodeHexPartitionKey(const std::string& arg) {
+  SCHECK(
+      arg.size() % 2 == 0, InvalidArgument,
+      Format("hex key '$0' must have an even number of digits", arg));
+  for (const char c : arg) {
+    SCHECK(
+        ascii_isxdigit(static_cast<unsigned char>(c)), InvalidArgument,
+        Format("hex key '$0' contains a non-hex character", arg));
+  }
+  return strings::a2b_hex(arg);
+}
+
+const auto get_table_hash_args = "<table_id> [read_ht] [start_key_hex] [end_key_hex]";
 Status get_table_hash_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1 || args.size() > 2) {
+  if (args.size() < 1 || args.size() > 4) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
   const auto table_id = args[0];
   uint64_t read_ht = 0;
-  if (args.size() == 2) {
+  if (args.size() >= 2 && !args[1].empty()) {
     read_ht = VERIFY_RESULT(CheckedStoll(args[1]));
   }
-  return client->GetTableXorHash(table_id, read_ht);
+  // Optional partition-key sub-range, hex-encoded (same encoding as the partition_key_start /
+  // partition_key_end shown by list_tablets). start_key is inclusive, end_key is exclusive; an
+  // empty argument means unbounded on that side. A key range scopes a single table, so table_id
+  // must be a concrete table (not a colocation parent id) when a range is given.
+  std::string start_key, end_key;
+  if (args.size() >= 3 && !args[2].empty()) {
+    start_key = VERIFY_RESULT(DecodeHexPartitionKey(args[2]));
+  }
+  if (args.size() >= 4 && !args[3].empty()) {
+    end_key = VERIFY_RESULT(DecodeHexPartitionKey(args[3]));
+  }
+  // start_key is inclusive and end_key exclusive, so a bounded range must have start_key < end_key
+  // (raw partition-key byte order, matching the server's comparison). An empty bound is unbounded
+  // on that side and imposes no ordering constraint.
+  SCHECK(
+      start_key.empty() || end_key.empty() || start_key < end_key, InvalidArgument,
+      "start_key must be strictly less than end_key (start_key is inclusive, end_key exclusive)");
+  return client->GetTableXorHash(table_id, read_ht, start_key, end_key);
 }
 
 const auto xcluster_failover_args = "<replication_group_id>";

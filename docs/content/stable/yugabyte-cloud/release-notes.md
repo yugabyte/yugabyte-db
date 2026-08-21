@@ -21,6 +21,52 @@ rightNav:
 
 ### 2026
 
+#### July 24, 2026
+
+##### Improvements
+
+- Support for three-region [Replicate across Regions](../cloud-basics/create-clusters/create-clusters-multisync/) clusters that are resilient to 2 availability zone failures. This configuration requires a minimum of 5 nodes, across 5 availability zones, across 3 regions: two regions have 2 zones while the third region has a single zone. This [replication factor](/stable/architecture/docdb-replication/replication/#replication-factor) 5 cluster provides quicker failover; with two replicas in the preferred region, when a leader fails, a local follower can be elected as a leader, rather than a follower in a different region. The cluster can be scaled in increments of 2-2-1 nodes per region.
+
+##### Database
+
+- Extended track updated to v2024.2.10.0.
+- Rapid track updated to v2025.2.4.1.
+
+#### June 30, 2026
+
+##### Improvements
+
+- {{<tags/feature/ga>}}Support for [point-in-time recovery](../cloud-clusters/aeon-pitr/) using database clones is now GA. Create a zero-copy, independent writable clone of your database at a point in time for recovery or testing.
+
+##### Database
+
+- Extended track updated to v2024.2.9.1.
+- Rapid track updated to v2025.2.3.2.
+
+#### May 27, 2026
+
+##### New features
+
+- [Release Tracks](../cloud-basics/create-clusters-overview/#yugabytedb-version) simplified. Release tracks have been reduced from four to two new tracks: _Extended_, for mission-critical workloads, and _Rapid_, for early access to the latest YugabyteDB capabilities. Clusters previously on the Innovation and Production tracks are now on Extended; and those on the Early Access and Preview tracks are now on Rapid.
+
+##### Database
+
+- Extended (previously Production) track updated to v2024.2.9.0.
+- Rapid (previously Early Access) track updated to v2025.2.3.0.
+- Innovation migrated to Extended.
+- Preview migrated to Rapid.
+
+#### April 28, 2026
+
+##### New features
+
+- {{<tags/feature/ga>}}[Disaster Recovery](../cloud-clusters/disaster-recovery/). A turnkey solution for business continuity and disaster recovery, allowing you to recover from an unplanned outage (failover) or to perform a planned switchover. Available for clusters running {{<release "2025.2.2.1">}} or later.
+- {{<tags/feature/ea>}}[Multi-account](../managed-security/manage-accounts/) support. Create multiple accounts for your organization, each with its own access control. For example, you might create separate accounts for different environments, such as development, staging, and production. To try this feature, contact {{% support-cloud %}}.
+
+##### Database
+
+- Early Access track updated to 2025.2.2.2.
+
 #### March 27, 2026
 
 ##### New features
@@ -705,7 +751,7 @@ rightNav:
 
 ##### New features
 
-- Additional [performance metrics](../cloud-monitor/overview/). The new cluster **Performance>Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements.
+- Additional [performance metrics](../cloud-monitor/monitor-performance/). The new cluster **Performance>Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements.
 - Ability to review running queries using the [Live Queries](../cloud-monitor/cloud-queries-live/) on the cluster **Performance** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
 - Ability to review slow YSQL queries using the [YSQL Slow Queries](../cloud-monitor/cloud-queries-slow/) on the cluster **Performance** tab. You can use this information to identify slower-running database operations, look at query execution times over time, and discover potential queries for tuning.
 

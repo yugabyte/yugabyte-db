@@ -22,6 +22,9 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 namespace yb {
+
+constexpr auto kDefaultYsqlDatabaseName = "yugabyte";
+
 // Utility class to use postgres with MiniCluster in tests
 class PostgresMiniCluster {
  public:
@@ -43,4 +46,5 @@ class PostgresMiniCluster {
   Status InitPostgres(size_t pg_ts_idx, uint16_t pg_port);
   void ShutdownPostgres();
 };
+
 }  // namespace yb

@@ -20,7 +20,7 @@
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/docdb/ql_storage_interface.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace docdb {

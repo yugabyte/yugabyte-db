@@ -26,13 +26,16 @@ import java.util.Scanner;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.BasePgSQLTest;
 import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.BuildTypeUtil;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestDropAndRenameDb extends BaseYsqlConnMgr {
   private static final String GET_CURRENT_DB_QUERY = "SELECT current_database()";
 

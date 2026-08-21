@@ -16,33 +16,34 @@ public class YCQLAuditConfig {
   @ApiModelProperty(value = "Enabled", accessMode = READ_WRITE)
   private boolean enabled;
 
-  @NotNull
   @ApiModelProperty(value = "Included categories", accessMode = READ_WRITE)
   private Set<YCQLAuditCategory> includedCategories;
 
-  @NotNull
   @ApiModelProperty(value = "Excluded Categories", accessMode = READ_WRITE)
   private Set<YCQLAuditCategory> excludedCategories;
 
-  @NotNull
   @ApiModelProperty(value = "Included Users", accessMode = READ_WRITE)
   private Set<String> includedUsers;
 
-  @NotNull
   @ApiModelProperty(value = "Excluded Users", accessMode = READ_WRITE)
   private Set<String> excludedUsers;
 
-  @NotNull
   @ApiModelProperty(value = "Included Keyspaces", accessMode = READ_WRITE)
   private Set<String> includedKeyspaces;
 
-  @NotNull
   @ApiModelProperty(value = "Excluded Keyspaces", accessMode = READ_WRITE)
   private Set<String> excludedKeyspaces;
 
-  @NotNull
   @ApiModelProperty(value = "Log Level", accessMode = READ_WRITE)
   private YCQLAuditLogLevel logLevel;
+
+  @ApiModelProperty(
+      value =
+          "Number of days to keep gzipped YCQL audit log archives on the node."
+              + " 0 or unset disables the dedicated audit-log retention pipeline and keeps the"
+              + " default size-based tserver log purge behavior.",
+      accessMode = READ_WRITE)
+  private Integer logRetentionDays;
 
   public enum YCQLAuditCategory {
     QUERY,

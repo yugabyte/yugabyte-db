@@ -30,7 +30,7 @@ void MarkChildProcess();
 
 #define DCHECK_PARENT_PROCESS() DCHECK(!IsChildProcess()) << "Access from child process not allowed"
 
-class [[nodiscard]] SCOPED_CAPABILITY ParentProcessGuard { // NOLINT(whitespace/braces)
+class [[nodiscard]] SCOPED_CAPABILITY ParentProcessGuard {
  private:
   struct CAPABILITY("parent process") ParentProcessCapability { };
 

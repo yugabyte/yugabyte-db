@@ -19,13 +19,16 @@ import java.sql.SQLException;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.ConnectionEndpoint;
 import com.google.gson.JsonObject;
 import java.sql.Statement;
 import java.sql.ResultSet;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestAuthPoolTimeout extends BaseYsqlConnMgr {
 
     private static final int NUM_CONNECTIONS = 10;

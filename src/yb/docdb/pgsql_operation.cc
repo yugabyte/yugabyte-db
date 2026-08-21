@@ -85,6 +85,8 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+#include "ybgate/ybgate_api.h"
+
 using namespace std::literals;
 
 DECLARE_bool(ysql_disable_index_backfill);
@@ -92,46 +94,46 @@ DECLARE_bool(ysql_disable_index_backfill);
 DEPRECATE_FLAG(double, ysql_scan_timeout_multiplier, "10_2022");
 
 DEFINE_UNKNOWN_uint64(ysql_scan_deadline_margin_ms, 1000,
-              "Scan deadline is calculated by adding client timeout to the time when the request "
-              "was received. It defines the moment in time when client has definitely timed out "
-              "and if the request is yet in processing after the deadline, it can be canceled. "
-              "Therefore to prevent client timeout, the request handler should return partial "
-              "result and paging information some time before the deadline. That's what the "
-              "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
-              "delays.");
+    "Scan deadline is calculated by adding client timeout to the time when the request "
+    "was received. It defines the moment in time when client has definitely timed out "
+    "and if the request is yet in processing after the deadline, it can be canceled. "
+    "Therefore to prevent client timeout, the request handler should return partial "
+    "result and paging information some time before the deadline. That's what the "
+    "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
+    "delays.");
 
 DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
-            "Whether to enforce consistency of data returned for second page and beyond for YSQL "
-            "queries on transactional tables. If true, read restart errors could be returned to "
-            "prevent inconsistency. If false, no read restart errors are returned but the data may "
-            "be stale. The latter is preferable for long scans. The data returned for the first "
-            "page of results is never stale regardless of this flag.");
+    "Whether to enforce consistency of data returned for second page and beyond for YSQL "
+    "queries on transactional tables. If true, read restart errors could be returned to "
+    "prevent inconsistency. If false, no read restart errors are returned but the data may "
+    "be stale. The latter is preferable for long scans. The data returned for the first "
+    "page of results is never stale regardless of this flag.");
 
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
-                 "If set > 0, slows down the response to pgsql aggregate read by this amount.");
+    "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
 // Disable packed row by default in debug builds.
 constexpr bool kYsqlEnablePackedRowTargetVal = !yb::kIsDebug;
 DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kExternal,
-                         !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
-                         "Whether packed row is enabled for YSQL.");
+    !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
+    "Whether packed row is enabled for YSQL.");
 
 DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, true,
-                    "Whether to enable packed row for colocated tables.");
+    "Whether to enable packed row for colocated tables.");
 
-DEFINE_UNKNOWN_uint64(
-    ysql_packed_row_size_limit, 0,
+DEFINE_UNKNOWN_uint64(ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
 
 DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
-                    "Whether to enable packed row for full row update.");
+    "Whether to enable packed row for full row update.");
 
 DEFINE_RUNTIME_bool(ysql_mark_update_packed_row, false,
-                    "Whether to mark packed rows created from UPDATE operations with a flag. "
-                    "This allows CDC to differentiate between INSERT and UPDATE packed rows."
-                    "Default is false.");
-DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
-                            "Whether to use packed row V2 when row packing is enabled.");
+    "Whether to mark packed rows created from UPDATE operations with a flag. "
+    "This allows CDC to differentiate between INSERT and UPDATE packed rows."
+    "Default is false.");
+
+DEFINE_RUNTIME_AUTO_bool(ysql_use_packed_row_v2, kExternal, false, true,
+    "Whether to use packed row V2 when row packing is enabled.");
 
 DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "By default DocDB operations for YSQL take row-level locks. If set to true, DocDB will instead "
@@ -139,7 +141,7 @@ DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "data integrity for operations with implicit dependencies between columns.");
 
 DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
-                    "Whether to skip filter check during vector index search.");
+    "Whether to skip filter check during vector index search.");
 
 DEFINE_RUNTIME_bool(vector_index_no_deletions_skip_filter_check, true,
     "Whether to skip filter check during vector index search if table does not have "
@@ -151,6 +153,7 @@ DECLARE_bool(vector_index_dump_stats);
 
 namespace yb::docdb {
 
+bool TEST_vector_index_clear_result_entries_once = false;
 bool TEST_vector_index_filter_allowed = true;
 size_t TEST_vector_index_max_checked_entries = std::numeric_limits<size_t>::max();
 
@@ -374,8 +377,17 @@ class DocKeyAccessor {
     return Status::OK();
   }
 
-  Status Apply(const PgsqlExpressionMsg& ybctid) {
-    const auto& value = ybctid.value().binary_value();
+  Status Apply(const PgsqlExpressionPB& ybctid) {
+    return ApplyExpr(ybctid);
+  }
+
+  Status Apply(const LWPgsqlExpressionPB& ybctid) {
+    return ApplyExpr(ybctid);
+  }
+
+  template <class ExprPB>
+  Status ApplyExpr(const ExprPB& ybctid) {
+    Slice value(ybctid.value().binary_value());
     SCHECK(!value.empty(), InternalError, "empty ybctid");
     source_.emplace<Slice>(value);
     pk_is_known_ = true;
@@ -786,10 +798,10 @@ class ExpressionHelper {
       }
     }
     auto executor = VERIFY_RESULT(builder.Build(request.col_refs()));
-    return ResultToStatus(executor.Exec(table_row, &results_));
+    return ResultToStatus(executor.Exec(table_row, &request.arena(), &results_));
   }
 
-  QLExprResult* NextResult(const PgsqlColumnValueMsg& column_value) {
+  qlexpr::LWExprResult* NextResult(const PgsqlColumnValueMsg& column_value) {
     if (!IsExpression(column_value)) {
       return nullptr;
     }
@@ -798,7 +810,7 @@ class ExpressionHelper {
   }
 
  private:
-  std::vector<QLExprResult> results_;
+  std::vector<qlexpr::LWExprResult> results_;
   size_t next_result_idx_ = 0;
 };
 
@@ -923,8 +935,17 @@ class VectorIndexKeyProvider {
       result_entries_.erase(range.begin(), range.end());
     }
 
-    VLOG_WITH_FUNC(4) << vector_index_.ToString()
+    // Simulates reverse-mapping misses shrinking the result entries below the skip count.
+    // There are several scenarios where this can happen in production, for example: intents
+    // deduplication (a couple of lines above), reverse-mapping misses, etc.
+    if (TEST_vector_index_clear_result_entries_once && num_top_vectors_to_remove_ > 0) {
+      result_entries_.clear();
+      ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_clear_result_entries_once) = false;
+    }
+
+    VLOG_WITH_FUNC(1) << vector_index_.ToString()
                       << ", could_have_more_data_: " << could_have_more_data_
+                      << ", found_intents_: " << found_intents_
                       << ", result_entries_.size(): " << result_entries_.size()
                       << ", max_results_: " << max_results_
                       << ", num_top_vectors_to_remove_: " << num_top_vectors_to_remove_;
@@ -933,8 +954,10 @@ class VectorIndexKeyProvider {
       std::ranges::sort(result_entries_, [](const auto& lhs, const auto& rhs) {
         return lhs.encoded_distance < rhs.encoded_distance;
       });
+
+      const auto num_to_skip = std::min(num_top_vectors_to_remove_, result_entries_.size());
       result_entries_.erase(
-          result_entries_.begin(), result_entries_.begin() + num_top_vectors_to_remove_);
+          result_entries_.begin(), result_entries_.begin() + num_to_skip);
       std::ranges::sort(result_entries_, cmp_keys);
     }
 
@@ -1038,11 +1061,17 @@ class PgsqlVectorFilter {
     if (!row_) {
       return true;
     }
+    if (!status_.ok()) {
+      return false;
+    }
     ++num_checked_entries_;
 
-    // TODO(vector_index) handle failure
-    auto ybctid = CHECK_RESULT(reverse_mapping_reader_->FetchYbctid(vector_id));
-    if (ybctid.empty()) {
+    auto ybctid = reverse_mapping_reader_->FetchYbctid(vector_id);
+    if (!ybctid.ok()) {
+      status_ = std::move(ybctid.status());
+      return false;
+    }
+    if (ybctid->empty()) {
       ++num_removed_;
       return false;
     }
@@ -1053,13 +1082,17 @@ class PgsqlVectorFilter {
     if (need_refresh_) {
       iter_.Refresh();
     }
-    auto fetch_result = CHECK_RESULT(iter_.FetchTuple(ybctid, &*row_));
+    auto fetch_result = iter_.FetchTuple(*ybctid, &*row_);
+    if (!fetch_result.ok()) {
+      status_ = std::move(fetch_result.status());
+      return false;
+    }
     // TODO(vector_index) Actually we already have all necessary info to generate response,
     // but we don't know whether this row will be in top or not.
     // So need to extend usearch interface to also provide us ability to store fetched row.
 
-    need_refresh_ = fetch_result == FetchResult::NotFound;
-    if (fetch_result != FetchResult::Found) {
+    need_refresh_ = *fetch_result == FetchResult::NotFound;
+    if (*fetch_result != FetchResult::Found) {
       return false;
     }
     ++num_found_entries_;
@@ -1077,11 +1110,23 @@ class PgsqlVectorFilter {
     ++num_accepted_entries_;
     return true;
   }
+
+  const Status& status() const {
+    return status_;
+  }
+
+  // The reader used to resolve candidates, or nullptr when the filter is inactive; Search reuses it
+  // to resolve ybctids on the same snapshot.
+  docdb::DocVectorIndexReverseMappingReader* reverse_mapping_reader() const {
+    return reverse_mapping_reader_.get();
+  }
+
  private:
   const docdb::DocVectorIndexMetrics& metrics_;
   FilteringIterator iter_;
   dockv::ReaderProjection projection_;
   docdb::DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
+  Status status_;
   size_t index_column_index_ = std::numeric_limits<size_t>::max();
   std::optional<dockv::PgTableRow> row_;
   bool need_refresh_ = false;
@@ -1345,7 +1390,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
         table_row.projection().columns[column_idx].data_type, &existing_value_buffer);
 
     // Evaluate column value.
-    QLExprResult expr_result;
+    qlexpr::LWExprResult expr_result(&response_->arena());
     RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
     new_value_buffer.Clear();
     RETURN_NOT_OK(pggate::WriteColumn(expr_result.Value(), &new_value_buffer));
@@ -1450,7 +1495,8 @@ Status PgsqlWriteOperation::InsertColumn(
     return DoInsertColumn(data, column_id, column, value, pack_context);
   }
 
-  dockv::DocVectorValue vector_value(value, vector_index::VectorId::GenerateRandom());
+  dockv::DocVectorValue vector_value(
+    doc_read_context_->vector_value_format(), value, vector_index::VectorId::GenerateRandom());
   return DoInsertColumn(data, column_id, column, vector_value, pack_context);
 }
 
@@ -1480,11 +1526,11 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       VLOG_WITH_FUNC(3) << "Applying backfill insert at DocDB layer"
                         << ", read_time: " << data.read_time()
                         << ", doc_key: " << doc_key_
-                        << ", request: " << request_.DebugString();
+                        << ", request: " << AsString(request_);
       if (VERIFY_RESULT(HasDuplicateUniqueIndexValue(data))) {
         // Unique index value conflict found.
         response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
-        response_->set_error_message("Duplicate key found in unique index");
+        response_->ref_error_message("Duplicate key found in unique index");
         return Status::OK();
       }
     } else {
@@ -1496,7 +1542,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
         VLOG(4) << "Duplicate row: " << table_row.ToString();
         // Primary key or unique index value found.
         response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
-        response_->set_error_message("Duplicate key found in primary key or unique index");
+        response_->ref_error_message("Duplicate key found in primary key or unique index");
         return Status::OK();
       }
     }
@@ -1513,6 +1559,11 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       key_bytes.AppendRawBytes(*it++);
       auto key = key_bytes.AsSlice();
       Slice packed_value(*it++);
+      // TODO(vector_index): This pass-through writes the pggate-packed row (from BindPackedRow)
+      // directly without intercepting vector columns. Vector columns won't get a VectorId
+      // assigned. When owns_vector_reverse_mapping tables are enabled, vector columns must be
+      // intercepted here (e.g. by falling through to the unpack-repack path below for tables
+      // with vectors).
       if (pack_row &&
           packed_value.size() < dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
@@ -1594,7 +1645,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
 Status PgsqlWriteOperation::UpdateColumn(
     const DocOperationApplyData& data, const dockv::PgTableRow& table_row,
     const PgsqlColumnValueMsg& column_value, dockv::PgTableRow* returning_table_row,
-    QLExprResult* result, RowPackContext* pack_context) {
+    qlexpr::LWExprResult* result, RowPackContext* pack_context) {
   // Get the column.
   if (!column_value.has_column_id()) {
     return STATUS_FORMAT(InternalError, "column id missing: $0", column_value);
@@ -1605,7 +1656,7 @@ Status PgsqlWriteOperation::UpdateColumn(
   DCHECK(!doc_read_context_->schema().is_key_column(column_id));
 
   // Evaluate column value.
-  QLExprResult result_holder;
+  qlexpr::LWExprResult result_holder(&column_value);
   if (!result) {
     // Check column-write operator.
     SCHECK(qlexpr::GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert,
@@ -1626,7 +1677,9 @@ Status PgsqlWriteOperation::UpdateColumn(
     return DoUpdateColumn(data, column_id, column, result->Value(), pack_context);
   }
 
-  dockv::DocVectorValue vector_value(result->Value(), vector_index::VectorId::GenerateRandom());
+  dockv::DocVectorValue vector_value(
+      doc_read_context_->vector_value_format(), result->Value(),
+      vector_index::VectorId::GenerateRandom());
   return DoUpdateColumn(data, column_id, column, vector_value, pack_context);
 }
 
@@ -1689,7 +1742,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();
     if (FLAGS_ysql_enable_pack_full_row_update &&
         ShouldYsqlPackRow(schema.is_colocated()) &&
-        make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
+        request_.column_new_values().size() == num_non_key_columns) {
       RowPackContext pack_context(
           request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)),
           FLAGS_ysql_mark_update_packed_row /* is_update */);
@@ -1735,7 +1788,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     // table.
     bool is_match = true;
     if (request_.has_where_expr()) {
-      QLExprResult match(&request_);
+      qlexpr::LWExprResult match(&request_);
       RETURN_NOT_OK(EvalExpr(request_.where_expr(), table_row, match.Writer()));
       is_match = match.Value().bool_value();
     }
@@ -1756,7 +1809,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
             InternalError, "Illegal write instruction");
 
         // Evaluate column value.
-        QLExprResult expr_result(&request_);
+        qlexpr::LWExprResult expr_result(&request_);
         RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
         // Inserting into specified column.
@@ -1909,7 +1962,7 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
 
   // Update the sequence row
   if (!is_called->bool_value()) {
-    QLValuePB new_is_called;
+    LWQLValuePB new_is_called(nullptr);
     new_is_called.set_bool_value(true);
     DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(is_called_column_id));
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
@@ -1917,7 +1970,7 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
         data.read_operation_data, request_.stmt_id()));
   }
   if (last_value->int64_value() != last_fetched) {
-    QLValuePB new_last_value;
+    LWQLValuePB new_last_value(nullptr);
     new_last_value.set_int64_value(last_fetched);
     DocPath sub_path(encoded_doc_key_.as_slice(),
                      KeyEntryValue::MakeColumnId(last_value_column_id));
@@ -1997,7 +2050,7 @@ Status PgsqlWriteOperation::PopulateResultSet(const dockv::PgTableRow* table_row
   ++result_rows_;
   for (const auto& expr : request_.targets()) {
     if (expr.has_column_id()) {
-      QLExprResult value;
+      qlexpr::LWExprResult value(response_);
       if (expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
         // Strip cotable ID / colocation ID from the serialized DocKey before returning it
         // as ybctid.
@@ -2007,7 +2060,7 @@ Status PgsqlWriteOperation::PopulateResultSet(const dockv::PgTableRow* table_row
         } else if (tuple_id.starts_with(dockv::KeyEntryTypeAsChar::kColocationId)) {
           tuple_id.remove_prefix(1 + sizeof(ColocationId));
         }
-        value.Writer().NewValue().set_binary_value(tuple_id.data(), tuple_id.size());
+        value.Writer().NewValue().dup_binary_value(tuple_id);
       } else {
         RETURN_NOT_OK(EvalExpr(expr, *table_row, value.Writer()));
       }
@@ -2116,6 +2169,8 @@ class PgsqlReadRequestYbctidProvider {
       PgsqlResponseMsg& response)
       : request_(request), response_(response) {
     const auto& batch_args = request_.batch_arguments();
+
+    VLOG_WITH_FUNC(3) << "batch_args.size(): " << batch_args.size();
 
     Slice min_arg;
     Slice max_arg;
@@ -2689,6 +2744,18 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   RSTATUS_DCHECK(
       data_.vector_index->BackfillDone(), IllegalState,
       "Vector index query on non ready index: $0", *data_.vector_index);
+
+  // Resolve ybctids with the filter's reader so Search sees the same snapshot the filter used
+  // (avoids a spurious "Vector not found" when a DELETE applies between the two reads). When the
+  // filter is inactive it has no reader, so create one here.
+  auto* reverse_mapping_reader = filter.reverse_mapping_reader();
+  DocVectorIndexReverseMappingReaderPtr owned_reader;
+  if (reverse_mapping_reader == nullptr) {
+    owned_reader = VERIFY_RESULT(data_.vector_index->context().CreateReverseMappingReader(
+        data_.read_operation_data.read_time, data_.read_operation_data.statistics));
+    reverse_mapping_reader = owned_reader.get();
+  }
+
   auto result = VERIFY_RESULT(data_.vector_index->Search(
       vector_slice,
       vector_index::SearchOptions {
@@ -2697,8 +2764,9 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
         .filter = std::ref(filter),
       },
       could_have_missing_entries,
-      data_.read_operation_data.statistics
+      *reverse_mapping_reader
   ));
+  RETURN_NOT_OK(filter.status());
   VLOG_WITH_FUNC(2) << "Search results: " << result.ToString();
 
   // TODO(vector_index) Order keys by ybctid for fetching.
@@ -2989,12 +3057,23 @@ Result<bool> PgsqlReadOperation::SetPagingState(
   auto* paging_state = response_.mutable_paging_state();
   auto encoded_row_key = row_key.Encode().ToStringBuffer();
   if (schema.num_hash_key_columns() > 0) {
-    paging_state->set_next_partition_key(
-        dockv::PartitionSchema::EncodeMultiColumnHashValue(row_key.doc_key().hash()));
+    auto hash_code = row_key.doc_key().hash();
+    if (request_.is_forward_scan()) {
+      paging_state->dup_next_partition_key(
+          dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code));
+    } else {
+      // In backward scan the partition key is exclusive.
+      if (hash_code == dockv::PartitionSchema::kMaxPartitionKey) {
+        paging_state->clear_next_partition_key();
+      } else {
+        paging_state->dup_next_partition_key(
+            dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code + 1));
+      }
+    }
   } else {
-    paging_state->set_next_partition_key(encoded_row_key);
+    paging_state->dup_next_partition_key(encoded_row_key);
   }
-  paging_state->set_next_row_key(std::move(encoded_row_key));
+  paging_state->dup_next_row_key(encoded_row_key);
 
   BindReadTimeToPagingState(read_time);
 
@@ -3090,10 +3169,7 @@ Result<Slice> PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id) {
 }
 
 Status PgsqlReadOperation::EvalAggregate(const dockv::PgTableRow& table_row) {
-  if (aggr_result_.empty()) {
-    int column_count = request_.targets().size();
-    aggr_result_.resize(column_count);
-  }
+  PrepareAggregateResults(request_.targets().size());
 
   int aggr_index = 0;
   for (const auto& expr : request_.targets()) {
@@ -3103,15 +3179,14 @@ Status PgsqlReadOperation::EvalAggregate(const dockv::PgTableRow& table_row) {
 }
 
 Status PgsqlReadOperation::PopulateAggregate(WriteBuffer *result_buffer) {
-  int column_count = request_.targets().size();
-  for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
+  for (auto rscol_index : Range(request_.targets().size())) {
     RETURN_NOT_OK(pggate::WriteColumn(aggr_result_[rscol_index].Value(), result_buffer));
   }
   return Status::OK();
 }
 
 Status GetIntents(
-    const PgsqlReadRequestPB& request, const Schema& schema, IsolationLevel level,
+    const LWPgsqlReadRequestPB& request, const Schema& schema, IsolationLevel level,
     LWKeyValueWriteBatchPB* out) {
   const auto row_mark = request.has_row_mark_type() ? request.row_mark_type() : ROW_MARK_ABSENT;
   if (IsValidRowMarkType(row_mark)) {

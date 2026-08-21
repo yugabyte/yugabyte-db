@@ -20,6 +20,7 @@
 #include "yb/util/net/net_util.h"
 
 namespace yb {
+class Cgroup;
 namespace cdc {
 
 class CDCServiceContext {
@@ -45,6 +46,16 @@ class CDCServiceContext {
   // Uses DesiredHostPort logic with the local server's cloud info to ensure
   // endpoint verification succeeds with DNS-based server addresses.
   virtual Result<HostPort> GetDesiredHostPortForLocal() const = 0;
+
+  // Whether each local peer should update its own retention barriers independently.
+  // When false, the leader propagates retention barriers to all peers.
+  virtual bool ShouldLocalPeerUpdateOwnBarriers() const = 0;
+
+#ifdef __linux__
+  // Returns the system-high cgroup for moving latency-sensitive threads into.
+  // Returns nullptr when QoS cgroup management is not enabled.
+  virtual Cgroup* SystemHighCgroup() const { return nullptr; }
+#endif
 
   virtual ~CDCServiceContext() = default;
 };

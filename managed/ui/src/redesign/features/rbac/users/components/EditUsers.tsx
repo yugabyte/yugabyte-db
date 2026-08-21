@@ -10,6 +10,13 @@ import { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { UserPermission } from '../../common/rbac_constants';
+import { isSuperAdminUser } from '../../common/RbacUtils';
+import {
+  getAllowSuperadminUserGroupMapping,
+  OIDC_RUNTIME_CONFIGS_QUERY_KEY
+} from '../../groups/components/GroupUtils';
+import { api } from '../../../universe/universe-form/utils/api';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useToggle } from 'react-use';
 import { toast } from 'react-toastify';
@@ -24,6 +31,7 @@ import { YBButton, YBInputField } from '../../../../components';
 import { editUsersRolesBindings, getRoleBindingsForUser } from '../../api';
 import { convertRbacBindingsToUISchema } from './UserUtils';
 import { RbacValidator, hasNecessaryPerm } from '../../common/RbacApiPermValidator';
+import { ControlComp } from '../../common/validator/ValidatorUtils';
 import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
 
 import { RbacUserWithResources } from '../interface/Users';
@@ -93,6 +101,11 @@ export const EditUser = () => {
 
   const [showDeleteModal, toggleDeleteModal] = useToggle(false);
 
+  const { isLoading: isGlobalRuntimeConfigLoading, data: runtimeConfig } = useQuery(
+    OIDC_RUNTIME_CONFIGS_QUERY_KEY,
+    () => api.fetchRunTimeConfigs(true)
+  );
+
   const editUser = useMutation(
     () => editUsersRolesBindings(currentUser!.uuid!, methods.getValues()),
     {
@@ -121,7 +134,7 @@ export const EditUser = () => {
     }
   );
 
-  if (isLoading) return <YBLoadingCircleIcon />;
+  if (isLoading || isGlobalRuntimeConfigLoading) return <YBLoadingCircleIcon />;
 
   let userRoles: Role[] = [];
   let isSuperAdmin = false;
@@ -132,6 +145,38 @@ export const EditUser = () => {
       find(ForbiddenRoles, { name: role.name, roleType: role.roleType })
     );
   }
+
+  const rbacPermissions = (window as unknown as { rbac_permissions?: UserPermission[] })
+    .rbac_permissions;
+  const allowSuperAdminRoleSelection =
+    !!runtimeConfig &&
+    getAllowSuperadminUserGroupMapping(runtimeConfig) &&
+    !!rbacPermissions &&
+    isSuperAdminUser(rbacPermissions);
+
+  const loggedInUserId = localStorage.getItem('userId');
+  const isEditingSelf = currentUser?.uuid === loggedInUserId;
+  const canDeleteUser =
+    hasNecessaryPerm({
+      ...ApiPermissionMap.DELETE_USER,
+      onResource: { USER: currentUser?.uuid }
+    }) &&
+    !isEditingSelf &&
+    !isSuperAdmin;
+
+  const deleteUserButton = (
+    <YBButton
+      variant="secondary"
+      size="large"
+      startIcon={<Delete />}
+      onClick={() => {
+        toggleDeleteModal(true);
+      }}
+      data-testid={`rbac-resource-delete-user`}
+    >
+      {t('delete')}
+    </YBButton>
+  );
 
   return (
     <Container
@@ -165,35 +210,19 @@ export const EditUser = () => {
             />
             {t('title')}
           </div>
-          <RbacValidator
-            accessRequiredOn={{
-              ...ApiPermissionMap.DELETE_USER,
-              onResource: { USER: currentUser?.uuid }
-            }}
-            customValidateFunction={() => {
-              return (
-                hasNecessaryPerm({
-                  ...ApiPermissionMap.DELETE_USER,
-                  onResource: { USER: currentUser?.uuid }
-                }) &&
-                currentUser?.uuid !== localStorage.getItem('userId') &&
-                !isSuperAdmin
-              );
-            }}
-            isControl
-          >
-            <YBButton
-              variant="secondary"
-              size="large"
-              startIcon={<Delete />}
-              onClick={() => {
-                toggleDeleteModal(true);
+          {canDeleteUser ? (
+            <RbacValidator
+              accessRequiredOn={{
+                ...ApiPermissionMap.DELETE_USER,
+                onResource: { USER: currentUser?.uuid }
               }}
-              data-testid={`rbac-resource-delete-user`}
+              isControl
             >
-              {t('delete')}
-            </YBButton>
-          </RbacValidator>
+              {deleteUserButton}
+            </RbacValidator>
+          ) : (
+            ControlComp({ children: deleteUserButton })
+          )}
         </div>
         <FormProvider {...methods}>
           <form className={classes.form}>
@@ -206,7 +235,7 @@ export const EditUser = () => {
               disabled
               className={classes.email}
             />
-            <RolesAndResourceMapping />
+            <RolesAndResourceMapping allowSuperAdminRoleSelection={allowSuperAdminRoleSelection} />
             {errors.roleResourceDefinitions?.message && (
               <FormHelperText required error>
                 {errors.roleResourceDefinitions.message}

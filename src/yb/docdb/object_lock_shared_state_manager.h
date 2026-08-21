@@ -51,7 +51,7 @@ class ObjectLockOwnerRegistry {
   class Impl;
 
  public:
-  class [[nodiscard]] RegistrationGuard { // NOLINT(whitespace/braces)
+  class [[nodiscard]] RegistrationGuard {
    public:
     RegistrationGuard(Impl& registry, SessionLockOwnerTag tag) : registry_(registry), tag_(tag) {}
     ~RegistrationGuard();

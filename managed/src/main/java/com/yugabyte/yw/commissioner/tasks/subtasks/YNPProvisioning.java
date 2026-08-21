@@ -9,7 +9,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessContext;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeAgent;
@@ -28,7 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 public class YNPProvisioning extends NodeTaskBase {
   private final YNPConfigGenerator ynpConfigGenerator;
   private ShellProcessContext shellContext =
-      ShellProcessContext.builder().logCmdOutput(true).build();
+      ShellProcessContext.builder().useSshConnectionOnly(true).logCmdOutput(true).build();
 
   @Inject
   protected YNPProvisioning(
@@ -42,6 +42,10 @@ public class YNPProvisioning extends NodeTaskBase {
     public UUID customerUuid;
     public String nodeAgentInstallDir;
     public boolean isYbPrebuiltImage;
+    // True when re-provisioning a node of an existing universe (vs. provisioning a brand-new
+    // node). Propagated to the YNP config so configure_cgroup honors the persisted flag rather
+    // than the provider default for existing universes.
+    public boolean isReprovision;
   }
 
   @Override
@@ -69,6 +73,7 @@ public class YNPProvisioning extends NodeTaskBase {
             .universe(universe)
             .userIntent(userIntent)
             .isYbPrebuiltImage(taskParams().isYbPrebuiltImage)
+            .isReprovision(taskParams().isReprovision)
             .build();
     return ynpConfigGenerator.generateConfigFile(configParams);
   }
@@ -81,23 +86,20 @@ public class YNPProvisioning extends NodeTaskBase {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
-    Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
 
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+    Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
+    Provider provider = Util.getProviderForNode(node, universe);
 
     /*
      *  But First, setup the dual NIC on YBM if needed. Let's do that even before we run
      *  YNP based provisioning because dual NIC setup will require a reboot which might
      *  clean up the tmp directory where the YNP config is created.
      */
-    AnsibleSetupServer.Params ansibleParams = buildDualNicSetupParams(universe, node, provider);
+    AnsibleSetupServer.Params ansibleParams =
+        buildDualNicSetupParams(universe, node, provider, taskParams().userIntent);
     nodeManager
         .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
         .processErrors("Dual NIC setup failed");
-    boolean disableGolangYnpDriver =
-        confGetter.getGlobalConf(GlobalConfKeys.disableGolangYnpDriver);
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     String targetConfigPath =
@@ -115,9 +117,6 @@ public class YNPProvisioning extends NodeTaskBase {
     sb.append(" && mv -f ").append(targetConfigPath);
     sb.append(" config.json && chmod +x node-agent-provision.sh");
     sb.append(" && ./node-agent-provision.sh --extra_vars config.json");
-    if (disableGolangYnpDriver) {
-      sb.append(" --use_python_driver");
-    }
     sb.append(" --cloud_type ").append(node.cloudInfo.cloud);
     if (provider.getDetails().airGapInstall) {
       sb.append(" --is_airgap");
@@ -132,11 +131,13 @@ public class YNPProvisioning extends NodeTaskBase {
   }
 
   private AnsibleSetupServer.Params buildDualNicSetupParams(
-      Universe universe, NodeDetails node, Provider provider) {
-    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+      Universe universe, NodeDetails node, Provider provider, UserIntent taskUserIntent) {
+    UserIntent userIntent =
+        taskUserIntent == null
+            ? universe.getCluster(node.placementUuid).userIntent
+            : taskUserIntent;
     AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
-    fillSetupParamsForNode(ansibleParams, userIntent, node);
-    ansibleParams.skipAnsiblePlaybook = true;
+    fillSetupParamsForNode(ansibleParams, universe.getCluster(node.placementUuid), node);
     ansibleParams.sshUserOverride = node.sshUserOverride;
     ansibleParams.sshPortOverride = node.sshPortOverride;
     return ansibleParams;

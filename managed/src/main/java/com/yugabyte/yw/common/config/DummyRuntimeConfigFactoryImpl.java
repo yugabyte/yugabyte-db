@@ -15,6 +15,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import java.util.UUID;
 
 /**
  * Always returns to application config. This should be used for older branches where there is no
@@ -51,5 +52,15 @@ public class DummyRuntimeConfigFactoryImpl implements RuntimeConfigFactory {
   @Override
   public Config staticApplicationConf() {
     return appConfig;
+  }
+
+  @Override
+  public void invalidateScope(UUID scopeUuid) {
+    // No-op: this implementation has no runtime config cache.
+  }
+
+  @Override
+  public void invalidateAllScopes() {
+    // No-op: this implementation has no runtime config cache.
   }
 }

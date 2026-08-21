@@ -1,7 +1,10 @@
 -- ===================================================================
 -- create FDW objects
 -- ===================================================================
-CREATE EXTENSION postgres_fdw;
+-- YB: postgres_fdw is created by default during initdb (global views), so use
+-- IF NOT EXISTS to tolerate the pre-installed extension.
+CREATE EXTENSION IF NOT EXISTS postgres_fdw;
+NOTICE:  extension "postgres_fdw" already exists, skipping
 CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
 NOTICE:  no server_type specified. Defaulting to PostgreSQL.
 HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
@@ -73,13 +76,13 @@ CREATE TABLE "S 1"."T 4" (
 );
 -- Disable autovacuum for these tables to avoid unexpected effects of that
 ALTER TABLE "S 1"."T 1" SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE "S 1"."T 2" SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE "S 1"."T 3" SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE "S 1"."T 4" SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 INSERT INTO "S 1"."T 1"
 	SELECT id,
 	       id % 10,
@@ -225,16 +228,33 @@ ALTER FOREIGN TABLE ft2 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
 ALTER FOREIGN TABLE ft2 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
 \det+
-                              List of foreign tables
- Schema | Table |  Server   |              FDW options              | Description 
---------+-------+-----------+---------------------------------------+-------------
- public | ft1   | loopback  | (schema_name 'S 1', table_name 'T 1') | 
- public | ft2   | loopback  | (schema_name 'S 1', table_name 'T 1') | 
- public | ft4   | loopback  | (schema_name 'S 1', table_name 'T 3') | 
- public | ft5   | loopback  | (schema_name 'S 1', table_name 'T 4') | 
- public | ft6   | loopback2 | (schema_name 'S 1', table_name 'T 4') | 
- public | ft7   | loopback3 | (schema_name 'S 1', table_name 'T 4') | 
-(6 rows)
+                                                                             List of foreign tables
+   Schema   |              Table               |         Server         |                                       FDW options                                       | Description 
+------------+----------------------------------+------------------------+-----------------------------------------------------------------------------------------+-------------
+ pg_catalog | gv$pg_stat_activity              | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_activity_with_server_uuid')              | 
+ pg_catalog | gv$pg_stat_all_indexes           | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_all_indexes_with_server_uuid')           | 
+ pg_catalog | gv$pg_stat_all_tables            | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_all_tables_with_server_uuid')            | 
+ pg_catalog | gv$pg_stat_database              | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_database_with_server_uuid')              | 
+ pg_catalog | gv$pg_stat_progress_analyze      | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_progress_analyze_with_server_uuid')      | 
+ pg_catalog | gv$pg_stat_progress_copy         | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_progress_copy_with_server_uuid')         | 
+ pg_catalog | gv$pg_stat_progress_create_index | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_progress_create_index_with_server_uuid') | 
+ pg_catalog | gv$pg_stat_replication           | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_replication_with_server_uuid')           | 
+ pg_catalog | gv$pg_stat_replication_slots     | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_replication_slots_with_server_uuid')     | 
+ pg_catalog | gv$pg_stat_statements            | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_statements_with_server_uuid')            | 
+ pg_catalog | gv$pg_stat_user_functions        | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_user_functions_with_server_uuid')        | 
+ pg_catalog | gv$pg_stat_user_indexes          | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_user_indexes_with_server_uuid')          | 
+ pg_catalog | gv$pg_stat_user_tables           | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_user_tables_with_server_uuid')           | 
+ pg_catalog | gv$yb_active_session_history     | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_active_session_history_with_server_uuid')     | 
+ pg_catalog | gv$yb_pg_stat_plans              | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_pg_stat_plans_with_server_uuid')              | 
+ pg_catalog | gv$yb_pg_stat_plans_insights     | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_pg_stat_plans_insights_with_server_uuid')     | 
+ pg_catalog | gv$yb_terminated_queries         | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_terminated_queries_with_server_uuid')         | 
+ public     | ft1                              | loopback               | (schema_name 'S 1', table_name 'T 1')                                                   | 
+ public     | ft2                              | loopback               | (schema_name 'S 1', table_name 'T 1')                                                   | 
+ public     | ft4                              | loopback               | (schema_name 'S 1', table_name 'T 3')                                                   | 
+ public     | ft5                              | loopback               | (schema_name 'S 1', table_name 'T 4')                                                   | 
+ public     | ft6                              | loopback2              | (schema_name 'S 1', table_name 'T 4')                                                   | 
+ public     | ft7                              | loopback3              | (schema_name 'S 1', table_name 'T 4')                                                   | 
+(23 rows)
 
 -- Test that alteration of server options causes reconnection
 -- Remote's errors might be non-English, so hide them to ensure stable results
@@ -6770,7 +6790,7 @@ ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c2negative;
 CREATE FUNCTION row_before_insupd_trigfunc() RETURNS trigger AS $$BEGIN NEW.a := NEW.a + 10; RETURN NEW; END$$ LANGUAGE plpgsql;
 CREATE TABLE base_tbl (a int, b int);
 ALTER TABLE base_tbl SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 CREATE TRIGGER row_before_insupd_trigger BEFORE INSERT OR UPDATE ON base_tbl FOR EACH ROW EXECUTE PROCEDURE row_before_insupd_trigfunc();
 CREATE FOREIGN TABLE foreign_tbl (a int, b int)
   SERVER loopback OPTIONS (table_name 'base_tbl');
@@ -6814,7 +6834,7 @@ DROP TABLE base_tbl;
 -- test WCO for partitions
 CREATE TABLE child_tbl (a int, b int);
 ALTER TABLE child_tbl SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 CREATE TRIGGER row_before_insupd_trigger BEFORE INSERT OR UPDATE ON child_tbl FOR EACH ROW EXECUTE PROCEDURE row_before_insupd_trigfunc();
 CREATE FOREIGN TABLE foreign_tbl (a int, b int)
   SERVER loopback OPTIONS (table_name 'child_tbl');
@@ -6867,7 +6887,7 @@ DROP FUNCTION row_before_insupd_trigfunc;
 -- ===================================================================
 create table loc1 (f1 serial, f2 text);
 alter table loc1 set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 create foreign table rem1 (f1 serial, f2 text)
   server loopback options(table_name 'loc1');
 select pg_catalog.setval('rem1_f1_seq', 10, false);
@@ -6905,7 +6925,7 @@ create table gloc1 (
   a int,
   b int generated always as (a * 2) stored);
 alter table gloc1 set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 create foreign table grem1 (
   a int,
   b int generated always as (a * 2) stored)
@@ -7621,9 +7641,9 @@ DROP TRIGGER trig_row_after_delete ON rem1;
 CREATE TABLE a (aa TEXT);
 CREATE TABLE loct (aa TEXT, bb TEXT);
 ALTER TABLE a SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE loct SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
   SERVER loopback OPTIONS (table_name 'loct');
 INSERT INTO a(aa) VALUES('aaa');
@@ -7766,9 +7786,9 @@ DROP TABLE loct;
 create table loct1 (f1 int, f2 int, f3 int);
 create table loct2 (f1 int, f2 int, f3 int);
 alter table loct1 set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 alter table loct2 set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 create table foo (f1 int, f2 int);
 create foreign table foo2 (f3 int) inherits (foo)
   server loopback options (table_name 'loct1');
@@ -7776,9 +7796,9 @@ create table bar (f1 int, f2 int);
 create foreign table bar2 (f3 int) inherits (bar)
   server loopback options (table_name 'loct2');
 alter table foo set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 alter table bar set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 insert into foo values(1,1);
 insert into foo values(3,3);
 insert into foo2 values(2,2,2);
@@ -8756,7 +8776,7 @@ drop table loct2;
 -- ===================================================================
 create table loc2 (f1 int, f2 text);
 alter table loc2 set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 create foreign table rem2 (f1 int, f2 text) server loopback options(table_name 'loc2');
 -- Test basic functionality
 copy rem2 from stdin;
@@ -9516,9 +9536,9 @@ CREATE TABLE fprt1 (a int, b int, c varchar) PARTITION BY RANGE(a);
 CREATE TABLE fprt1_p1 (LIKE fprt1);
 CREATE TABLE fprt1_p2 (LIKE fprt1);
 ALTER TABLE fprt1_p1 SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE fprt1_p2 SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 INSERT INTO fprt1_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 2) i;
 INSERT INTO fprt1_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 2) i;
 CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (0) TO (250)
@@ -9532,9 +9552,9 @@ CREATE TABLE fprt2 (a int, b int, c varchar) PARTITION BY RANGE(b);
 CREATE TABLE fprt2_p1 (LIKE fprt2);
 CREATE TABLE fprt2_p2 (LIKE fprt2);
 ALTER TABLE fprt2_p1 SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 ALTER TABLE fprt2_p2 SET (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 INSERT INTO fprt2_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 3) i;
 INSERT INTO fprt2_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 3) i;
 CREATE FOREIGN TABLE ftprt2_p1 (b int, c varchar, a int)
@@ -9906,7 +9926,7 @@ DO $d$
     END;
 $d$;
 ERROR:  invalid option "password"
-HINT:  Valid options in this context are: service, passfile, channel_binding, connect_timeout, dbname, host, hostaddr, port, options, application_name, keepalives, keepalives_idle, keepalives_interval, keepalives_count, tcp_user_timeout, sslmode, sslcompression, sslcert, sslkey, sslrootcert, sslcrl, sslcrldir, sslsni, requirepeer, ssl_min_protocol_version, ssl_max_protocol_version, gssencmode, krbsrvname, gsslib, target_session_attrs, yb_auto_analyze, use_remote_estimate, fdw_startup_cost, fdw_tuple_cost, extensions, updatable, truncatable, fetch_size, batch_size, async_capable, parallel_commit, keep_connections, server_type
+HINT:  Valid options in this context are: service, passfile, channel_binding, connect_timeout, dbname, host, hostaddr, port, options, application_name, keepalives, keepalives_idle, keepalives_interval, keepalives_count, tcp_user_timeout, sslmode, sslcompression, sslcert, sslkey, sslrootcert, sslcrl, sslcrldir, sslsni, requirepeer, ssl_min_protocol_version, ssl_max_protocol_version, gssencmode, krbsrvname, gsslib, target_session_attrs, yb_internal_conn_kind, use_remote_estimate, fdw_startup_cost, fdw_tuple_cost, extensions, updatable, truncatable, fetch_size, batch_size, async_capable, parallel_commit, keep_connections, server_type
 CONTEXT:  SQL statement "ALTER SERVER loopback_nopw OPTIONS (ADD password 'dummypw')"
 PL/pgSQL function inline_code_block line 3 at EXECUTE
 -- If we add a password for our user mapping instead, we should get a different

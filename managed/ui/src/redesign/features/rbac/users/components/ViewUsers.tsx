@@ -25,6 +25,13 @@ import { YBSearchInput } from '../../../../../components/common/forms/fields/YBS
 
 import { RbacValidator, hasNecessaryPerm } from '../../common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
+import { UserPermission } from '../../common/rbac_constants';
+import { isSuperAdminUser } from '../../common/RbacUtils';
+import {
+  getAllowSuperadminUserGroupMapping,
+  OIDC_RUNTIME_CONFIGS_QUERY_KEY
+} from '../../groups/components/GroupUtils';
+import { api } from '../../../universe/universe-form/utils/api';
 import { getAllUsers, getRoleBindingsForAllUsers } from '../../api';
 import { RbacBindings } from './UserUtils';
 import { RoleTypeComp } from '../../common/RbacUtils';
@@ -35,6 +42,8 @@ import { RbacUser, UserTypes } from '../interface/Users';
 import { Add, ArrowDropDown } from '@material-ui/icons';
 import User from '../../../../assets/user.svg';
 import Delete from '../../../../assets/trashbin.svg';
+
+const OIDC_ENABLE_AUTO_CREATE_USERS_KEY = 'yb.security.oidc_enable_auto_create_users';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -119,6 +128,12 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
     }
   );
 
+  const { isLoading: isGlobalRuntimeConfigLoading, data: runtimeConfig } = useQuery(
+    OIDC_RUNTIME_CONFIGS_QUERY_KEY,
+    () =>
+    api.fetchRunTimeConfigs(true)
+  );
+
   const { t } = useTranslation('translation', {
     keyPrefix: 'rbac.users.list'
   });
@@ -131,7 +146,8 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
 
   const [searchText, setSearchText] = useState('');
 
-  if (isLoading || isRoleBindingsLoading) return <YBLoadingCircleIcon />;
+  if (isLoading || isRoleBindingsLoading || isGlobalRuntimeConfigLoading)
+    return <YBLoadingCircleIcon />;
 
   let filteredUsers = users;
 
@@ -151,11 +167,26 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
     );
   }
 
+  const rbacPermissions = (window as unknown as { rbac_permissions?: UserPermission[] })
+    .rbac_permissions;
+  const editorMayOverrideLdapOidcRbac =
+    !!runtimeConfig &&
+    getAllowSuperadminUserGroupMapping(runtimeConfig) &&
+    !!rbacPermissions &&
+    isSuperAdminUser(rbacPermissions);
+
   const getActions = (_: undefined, user: RbacUser) => {
     const userRoles: Role[] = [...(roleBindings?.[user.uuid] ?? [])].map((r) => r.role);
     const isSuperAdmin = userRoles.some((role) =>
       find(ForbiddenRoles, { name: role.name, roleType: role.roleType })
     );
+
+    const oidcAutoCreate =
+      find(runtimeConfig?.configEntries, { key: OIDC_ENABLE_AUTO_CREATE_USERS_KEY })?.value ===
+      'true';
+    const rbacLockedForRoleEdit =
+      (user.userType === UserTypes.LDAP && user.ldapSpecifiedRole) ||
+      ((user.userType as string) === 'oidc' && oidcAutoCreate);
 
     return (
       <MoreActionsMenu
@@ -187,7 +218,8 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
                 </RbacValidator>
               );
             },
-            disabled: isSuperAdmin || (user.userType === UserTypes.LDAP && user.ldapSpecifiedRole)
+            disabled:
+              isSuperAdmin || (rbacLockedForRoleEdit && !editorMayOverrideLdapOidcRbac)
           },
           {
             text: t('table.moreActions.deleteUser'),

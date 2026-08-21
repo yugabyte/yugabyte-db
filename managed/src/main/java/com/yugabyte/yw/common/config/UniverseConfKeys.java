@@ -101,6 +101,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "timeout is reached",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> ybUpgradeBlacklistLeaderWaitAfterCompletion =
+      new ConfKeyInfo<>(
+          "yb.upgrade.blacklist_leader_wait_after_completion",
+          ScopeType.UNIVERSE,
+          "YB Upgrade Wait After Leader Blacklist Completion",
+          "Additional time to wait after the leader-blacklist operation completes and before "
+              + "stopping a tserver during rolling restarts/upgrades, giving resident tablet "
+              + "leaders extra time to drain. Defaults to 0 (disabled).",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybUpgradeMaxFollowerLagThresholdMs =
       new ConfKeyInfo<>(
           "yb.upgrade.max_follower_lag_threshold_ms",
@@ -416,55 +426,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Disable Slow queries aggregation",
           "If enabled, slow queries data will be stored for universe, once per hour.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<String> ansibleStrategy =
-      new ConfKeyInfo<>(
-          "yb.ansible.strategy",
-          ScopeType.UNIVERSE,
-          "Ansible Strategy",
-          "strategy can be linear, mitogen_linear or debug",
-          ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Integer> ansibleConnectionTimeoutSecs =
-      new ConfKeyInfo<>(
-          "yb.ansible.conn_timeout_secs",
-          ScopeType.UNIVERSE,
-          "Ansible Connection Timeout Duration",
-          "This is the default timeout for connection plugins to use.",
-          ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Integer> ansibleVerbosity =
-      new ConfKeyInfo<>(
-          "yb.ansible.verbosity",
-          ScopeType.UNIVERSE,
-          "Ansible Verbosity Level",
-          "verbosity of ansible logs, 0 to 4 (more verbose)",
-          ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> ansibleDebug =
-      new ConfKeyInfo<>(
-          "yb.ansible.debug",
-          ScopeType.UNIVERSE,
-          "Ansible Debug Output",
-          "Debug output (can include secrets in output)",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> ansibleDiffAlways =
-      new ConfKeyInfo<>(
-          "yb.ansible.diff_always",
-          ScopeType.UNIVERSE,
-          "Ansible Diff Always",
-          "Configuration toggle to tell modules to show differences "
-              + "when in 'changed' status, equivalent to --diff.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<String> ansibleLocalTemp =
-      new ConfKeyInfo<>(
-          "yb.ansible.local_temp",
-          ScopeType.UNIVERSE,
-          "Ansible Local Temp Directory",
-          "Temporary directory for Ansible to use on the controller.",
-          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
       new ConfKeyInfo<>(
@@ -826,6 +787,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout for memory check in secs",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> checkCpuCgroupTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.checks.cpu_cgroup.timeout",
+          ScopeType.UNIVERSE,
+          "CPU cgroup precheck timeout",
+          "Timeout (in seconds) for the CPU cgroup precheck script executed on each on-prem node",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> sleepTimeBeforeRestoreXClusterSetup =
       new ConfKeyInfo<>(
           "yb.xcluster.sleep_time_before_restore",
@@ -887,6 +856,17 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "in sync with replication group in DB. If they are not in sync and this is true, "
               + "getting the xCluster object will throw an exception and the user has to resync "
               + "the xCluster config.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipXClusterSnapshotSchedules =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.skip_snapshot_schedules",
+          ScopeType.UNIVERSE,
+          "Skip PITR snapshot schedules for DB-scoped xCluster configs",
+          "When enabled, YBA skips creating PITR snapshot schedules during DB-scoped xCluster/DR"
+              + " setup. DR failover then uses the DB-side XClusterFailover RPC which creates"
+              + " on-demand snapshots at failover time instead of relying on continuous PITR"
+              + " snapshot schedules.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> customHealthCheckPorts =
@@ -967,6 +947,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The timeout for restoring a universe using a PITR config",
           "It is the maximum time that the restore PITR config subtask waits for the restore"
               + " operation using PITR to be completed; otherwise, it will fail the operation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> restoreSnapshotScheduleTimeout =
+      new ConfKeyInfo<>(
+          "yb.client.restore_snapshot_schedule_timeout",
+          ScopeType.UNIVERSE,
+          "YB client timeout for restoring a snapshot schedule",
+          "The admin operation and socket read timeout used by the YB client when restoring a"
+              + " snapshot schedule",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> pitrCreateTimeout =
@@ -1137,6 +1126,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "and the node does not have any tablets assigned to it in the tserver quorum.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> checkShellConnectivity =
+      new ConfKeyInfo<>(
+          "yb.checks.check_shell_connectivity",
+          ScopeType.UNIVERSE,
+          "Enable shell connectivity check",
+          "If enabled, performs a pre-check to verify YSQL/YCQL client connectivity"
+              + " before kubernetes software upgrades.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> clusterMembershipCheckTimeout =
       new ConfKeyInfo<>(
           "yb.checks.cluster_membership.timeout",
@@ -1187,6 +1185,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If the RPC call to create the bootstrap streams on the source universe does not return"
               + " before this timeout, the task will retry with exponential backoff until it"
               + " fails.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xclusterStreamRunningStatusWaitTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.stream_running_status_wait_timeout",
+          ScopeType.UNIVERSE,
+          "Maximum timeout for xCluster streams to reach Running status",
+          "Maximum timeout to wait for stream statuses associated with xCluster setup tables to "
+              + "reach Running before failing the task.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xclusterPauseRpcTimeout =
@@ -1278,6 +1285,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "rolling upgrades (e.g. node connectivity and service/command checks). Disable to "
               + "skip these checks.",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> comprehensivePrecheckCheckServiceLivenessTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.comprehensive_prechecks.check_service_liveness_timeout",
+          ScopeType.UNIVERSE,
+          "CheckServiceLiveness timeout for comprehensive prechecks",
+          "Timeout for CheckServiceLiveness subtasks during comprehensive prechecks "
+              + "(universe create/edit and rolling upgrades).",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
   public static final ConfKeyInfo<Integer> nodesAreSafeToTakeDownParallelism =
@@ -1386,14 +1403,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " process",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> nodeAgentNodeActionUseJavaClient =
-      new ConfKeyInfo<>(
-          "yb.node_agent.node_action.use_java_client",
-          ScopeType.UNIVERSE,
-          "Use Node Agent Java Client for Node Actions",
-          "Use node agent java client to run node actions on the remote nodes",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> xClusterSyncOnUniverse =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_sync_on_universe",
@@ -1569,6 +1578,17 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipCpuCgroupCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.skip_cpu_cgroup_check",
+          ScopeType.UNIVERSE,
+          "Skip CPU Cgroup Precheck",
+          "If true, YBA will skip the on-prem CPU cgroup precheck that verifies the yb-tserver "
+              + "is in the yugabyte-db cgroup and that the yugabyte user can create child "
+              + "cgroups. This precheck runs during ConfigureDBApis when enabling multi-tenancy "
+              + "QoS on an on-prem universe.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> otelCollectorMaxMemory =
       new ConfKeyInfo<>(
           "yb.universe.otel_collector_max_memory",
@@ -1577,6 +1597,24 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> masterLogsAdditionalDropPatterns =
+      new ConfKeyInfo<>(
+          "yb.universe.telemetry.master_logs_additional_drop_patterns",
+          ScopeType.UNIVERSE,
+          "Additional master log redaction drop patterns",
+          "Comma-separated substrings; matching yb-master log lines are dropped before export, on"
+              + " top of the hardcoded redaction list.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> tserverLogsAdditionalDropPatterns =
+      new ConfKeyInfo<>(
+          "yb.universe.telemetry.tserver_logs_additional_drop_patterns",
+          ScopeType.UNIVERSE,
+          "Additional tserver log redaction drop patterns",
+          "Comma-separated substrings; matching yb-tserver log lines are dropped before export, on"
+              + " top of the hardcoded redaction list.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowDisableMasterOnNonMasterNodeSubtask =
       new ConfKeyInfo<>(
           "yb.universe.allow_disable_master_on_non_master_node_subtask",
@@ -1758,6 +1796,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Skip auto flags and YSQL migration files validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> ysqlMajorUpgradeMinStableDbVersion =
+      new ConfKeyInfo<>(
+          "yb.upgrade.ysql_major_upgrade_min_stable_db_version",
+          ScopeType.UNIVERSE,
+          "YSQL major upgrade minimum stable DB version",
+          "Minimum DB software version required on stable release tracks before a YSQL major"
+              + " version upgrade can proceed. Preview release tracks use a fixed platform"
+              + " minimum. Use a valid YBA DB version string (for example 2024.2.3.0-b1).",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> ybcPerDiskIoRequestSize =
       new ConfKeyInfo<>(
           "ybc.disk_io_request_size_bytes",
@@ -1834,15 +1882,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enables new Performance Monitoring UI via Performance Tab",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> editUniverseV2UiEnabled =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.edit_universe_v2_ui_enabled",
-          ScopeType.UNIVERSE,
-          "Enable Edit Universe V2 UI",
-          "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
-
   // Node Script API configs (Internal)
   public static final ConfKeyInfo<Boolean> nodeScriptEnabled =
       new ConfKeyInfo<>(
@@ -1851,7 +1890,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable All Nodes Script APIs",
           "Enables the all node script APIs for this universe",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableCanaryUpgrade =
       new ConfKeyInfo<>(
           "yb.upgrade.enable_canary_upgrade",
@@ -1879,5 +1918,47 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " the default functionality, and which can still be overwritten with an api"
               + " payload.",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowMultiTenancy =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_multi_tenancy",
+          ScopeType.UNIVERSE,
+          "Allow users to enable multi-tenancy",
+          "If this flag is enabled, user will be able to enable the multi-tenancy QoS feature on"
+              + " universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> flushTabletsTimeoutOnStopTserver =
+      new ConfKeyInfo<>(
+          "yb.task.flush_tablets_timeout_on_stop_tserver",
+          ScopeType.UNIVERSE,
+          "Flush Tablets Timeout on Stop TServer",
+          "Timeout for flushing tablets when stopping tserver",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> multitenancySkipYcqlPrecheck =
+      new ConfKeyInfo<>(
+          "yb.universe.multitenancy_skip_ycql_precheck",
+          ScopeType.UNIVERSE,
+          "Skip YCQL precheck when enabling multi-tenancy",
+          "If this flag is enabled, the precheck that requires YCQL to be disabled is skipped",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowMultiTenancyTestUi =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_multi_tenancy_test_ui",
+          ScopeType.UNIVERSE,
+          "Show multi-tenancy controls in the UI for testing",
+          "When true, YugabyteDB Anywhere shows a test UI for multi-tenancy (QoS). API enablement"
+              + " still requires yb.universe.allow_multi_tenancy.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> nodeAgentServerWaitTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.wait_timeout",
+          ScopeType.UNIVERSE,
+          "Node Agent Server Wait Timeout",
+          "Timeout for waiting for node agent server to be ready",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -35,7 +35,7 @@ COPY x (a, b, c, d, e) from stdin;
 
 -- Note: expect more rows with Connection Manager, pg_stat_progress_copy stores one row per backend
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
-          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy ORDER BY bytes_processed;
 
 -- non-existent column in column list: should fail
 COPY x (xyz) from stdin;
@@ -187,6 +187,28 @@ ROLLBACK;
 BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NULL(b));
 ROLLBACK;
+
+-- Test NOT NULL constraint enforcement on columns omitted from the COPY column
+-- list.
+CREATE TABLE notnulltest (a INT PRIMARY KEY, b INT NOT NULL);
+-- should fail with not-null constraint violation on omitted column b
+BEGIN;
+COPY notnulltest (a) FROM STDIN;
+1
+\.
+ROLLBACK;
+SELECT * FROM notnulltest ORDER BY a;
+-- same through partition routing
+CREATE TABLE notnullpart (a INT, b INT NOT NULL, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE notnullpart1 (a INT NOT NULL, b INT NOT NULL, PRIMARY KEY (a));
+ALTER TABLE notnullpart ATTACH PARTITION notnullpart1 FOR VALUES FROM (0) TO (100);
+-- should fail with not-null constraint violation on omitted column b
+BEGIN;
+COPY notnullpart (a) FROM STDIN;
+1
+\.
+ROLLBACK;
+SELECT * FROM notnullpart ORDER BY a;
 
 CREATE TABLE t(k INT PRIMARY KEY, v INT);
 CREATE UNIQUE INDEX ON t(v);
@@ -444,7 +466,56 @@ copy copy_options from stdin with (format csv, freeze);
 
 select * from copy_options order by a;
 
+-- Test: upsert mode guardrail with secondary indexes
+-- When upsert mode (via yb_enable_upsert_mode or COPY REPLACE) is used on a
+-- table with secondary indexes, upsert mode is silently disabled and the
+-- operation falls back to a normal insert. Non-conflicting rows succeed;
+-- conflicting rows get a standard duplicate key error.
+
+-- Test A: COPY REPLACE on table with secondary index (multiple rows)
+-- First row is new (succeeds as normal insert), second row conflicts (error).
+-- COPY is transactional so the entire batch is rolled back.
+create table upsert_guard_test1 (h int primary key, v1 int, v2 int);
+create index upsert_guard_idx1 on upsert_guard_test1 (v1);
+insert into upsert_guard_test1 values (1, 10, 100), (2, 20, 200), (3, 30, 300);
+
+copy upsert_guard_test1 from stdin with (format csv, replace);
+4,40,400
+1,11,111
+5,50,500
+\.
+
+-- All original rows should be intact (COPY rolled back on conflict).
+select * from upsert_guard_test1 order by h;
+
+-- Index should be consistent with base table.
+/*+IndexOnlyScan(upsert_guard_test1 upsert_guard_idx1)*/
+select v1 from upsert_guard_test1 where v1 > 0 order by v1;
+
+-- Test C: COPY (non-replace) with yb_enable_upsert_mode on table with secondary index
+-- First row is new (succeeds), second row conflicts (error), COPY rolls back.
+create table upsert_guard_test3 (h int primary key, v1 int, v2 int);
+create index upsert_guard_idx3 on upsert_guard_test3 (v1);
+insert into upsert_guard_test3 values (1, 10, 100), (2, 20, 200);
+
+set yb_enable_upsert_mode = true;
+copy upsert_guard_test3 from stdin with (format csv);
+3,30,300
+1,11,111
+4,40,400
+\.
+set yb_enable_upsert_mode = false;
+
+-- All original rows should be intact (COPY rolled back on conflict).
+select * from upsert_guard_test3 order by h;
+
+-- Index should be consistent with base table.
+/*+IndexOnlyScan(upsert_guard_test3 upsert_guard_idx3)*/
+select v1 from upsert_guard_test3 where v1 > 0 order by v1;
+
 -- clean up
+DROP TABLE upsert_guard_test1;
+DROP TABLE upsert_guard_test3;
 DROP TABLE forcetest;
 DROP TABLE x;
 DROP TABLE y;

@@ -60,23 +60,46 @@ The local cluster setup on a single host is intended for development and learnin
 
 Note that the Docker option to run local clusters is recommended only for advanced Docker users. This is due to the fact that running stateful applications such as YugabyteDB in Docker is more complex and error-prone than running stateless applications.
 
-## Install YugabyteDB
-
-### Prerequisites
+## Prerequisites
 
 Before installing YugabyteDB, ensure that you have the Docker runtime installed on your localhost. To download and install Docker, select one of the following environments:
 
-<i class="fa-brands fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
+<ul class="nav yb-pills">
 
-<i class="fa-brands fa-centos"></i> [Docker for CentOS](https://store.docker.com/editions/community/docker-ce-server-centos)
+  <li>
+    <a href="https://store.docker.com/editions/community/docker-ce-desktop-mac" class="orange">
+      <i class="fa-brands fa-apple"></i>
+      Mac
+    </a>
+  </li>
+  <li>
+    <a href="https://store.docker.com/editions/community/docker-ce-server-centos" class="orange">
+      <i class="fa-brands fa-centos"></i>
+      CentOS
+    </a>
+  </li>
+  <li>
+    <a href="https://store.docker.com/editions/community/docker-ce-server-ubuntu" class="orange">
+      <i class="fa-brands fa-ubuntu"></i>
+      Ubuntu
+    </a>
+  </li>
+  <li>
+    <a href="https://store.docker.com/editions/community/docker-ce-server-debian" class="orange">
+      <i class="fa-brands fa-debian"></i>
+      Debian
+    </a>
+  </li>
+  <li>
+    <a href="https://store.docker.com/editions/community/docker-ce-desktop-windows" class="orange">
+      <i class="fa-brands fa-windows"></i>
+      Windows
+    </a>
+  </li>
 
-<i class="fa-brands fa-ubuntu"></i> [Docker for Ubuntu](https://store.docker.com/editions/community/docker-ce-server-ubuntu)
+</ul>
 
-<i class="icon-debian"></i> [Docker for Debian](https://store.docker.com/editions/community/docker-ce-server-debian)
-
-<i class="fa-brands fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
-
-### Install
+## Install
 
 Pull the YugabyteDB container by executing the following command:
 
@@ -134,38 +157,42 @@ docker exec -it yugabyte yugabyted status
 
 ### Run Docker in a persistent volume
 
-In the preceding `docker run` command, the data stored in YugabyteDB does not persist across container restarts. To make YugabyteDB persist data across restarts, you can add a volume mount option to the docker run command, as follows:
+In the preceding `docker run` command, data is stored in the container's writable layer. That data survives `docker stop` / `docker start`, but is lost if you remove the container (`docker rm`). To persist data across container recreation, use a host volume mount **instead of** the preceding command, as follows:
 
-- Create a `~/yb_data` directory by executing the following command:
+1. If you already started a container named `yugabyte`, remove it:
 
-  ```sh
-  mkdir ~/yb_data
-  ```
+    ```sh
+    docker rm -f yugabyte
+    ```
 
-- Run Docker with the volume mount option by executing the following command:
+1. Create a `~/yb_data` directory by executing the following command:
 
-  ```sh
-  docker run -d --name yugabyte01 --hostname yugabyte01 \
-            -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
-            yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} bin/yugabyted start \
-            --base_dir=/home/yugabyte/yb_data \
-            --background=false
-  ```
+    ```sh
+    mkdir ~/yb_data
+    ```
 
-  If running macOS Monterey, replace `-p 7000:7000` with `-p 7001:7000`.
+1. Run Docker with the volume mount option by executing the following command:
 
-{{< note title="Base directory" >}}
+    ```sh
+    docker run -d --name yugabyte --hostname yugabyte \
+              -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
+              -v ~/yb_data:/home/yugabyte/yb_data \
+              yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} bin/yugabyted start \
+              --base_dir=/home/yugabyte/yb_data \
+              --background=false
+    ```
 
-yugabyted uses `$HOME/var` by default to store data, configurations, and logs. You can change the base directory when starting a cluster using the `--base_dir` flag. If you change the base directory, you _must_ specify the base directory using the `--base-dir` flag when running subsequent commands on the cluster.
+    If you are running macOS Monterey, use the same port mapping change described above.
 
-For example, to get the status of the cluster you just created, you would enter `bin/yugabyted status --base_dir=/home/yugabyte/yb_data`.
-{{< /note >}}
+    It is important to use a static container hostname to avoid startup errors if the hostname changes, such as when recreating the container with the same volume.
 
-{{< note title="Hostname" >}}
+    yugabyted uses `$HOME/var` by default to store data, configurations, and logs. You can change the [base directory](../../reference/configuration/yugabyted/#base-directory) when starting a cluster using the `--base_dir` flag. If you change the base directory, you _must_ specify the base directory using the `--base_dir` flag when running subsequent commands on the cluster.
 
-It is important to use a static container hostname to avoid startup errors if the hostname changes, such as when recreating the container with the same volume.
+    For example, to check the status of the cluster you just created:
 
-{{< /note >}}
+    ```sh
+    docker exec -it yugabyte yugabyted status --base_dir=/home/yugabyte/yb_data
+    ```
 
 ## Connect to the database
 
@@ -189,7 +216,9 @@ Type "help" for help.
 yugabyte=#
 ```
 
-To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](/stable/sample-data/retail-analytics/).
+`--host $(hostname)` is required: ysqlsh defaults to `localhost`, but inside the container YugabyteDB listens on the container hostname (its Docker network address), not on loopback.
+
+To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](/stable/develop/sample-data/retail-analytics/).
 
 ## Monitor your cluster
 

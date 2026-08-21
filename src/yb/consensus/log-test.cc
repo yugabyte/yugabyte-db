@@ -69,6 +69,8 @@ DECLARE_int32(o_direct_block_size_bytes);
 
 DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
 
+DECLARE_int64(TEST_simulate_free_space_bytes);
+
 namespace yb::log {
 
 using namespace std::literals;
@@ -167,6 +169,9 @@ class LogTest : public LogTestBase {
                         Status expected_status, int expected_entries);
 
   void DoReuseLastSegmentTest(bool durable_wal_write);
+
+  void DoCopyToFromInitializedStateWithReuseThresholdTest(
+      int64_t reuse_unclosed_segment_threshold_bytes);
 
   Result<std::vector<OpId>> AppendAndCopy(size_t num_batches, size_t num_entries_per_batch);
 
@@ -874,7 +879,7 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(4, segments.size()) << DumpSegmentsToString(segments);
   ASSERT_OK(log_anchor_registry_->GetEarliestRegisteredLogIndex(&anchored_index));
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(4, segments.size()) << DumpSegmentsToString(segments);
 
@@ -890,12 +895,12 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   {
     google::FlagSaver saver;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 10;
-    ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+    ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
     ASSERT_EQ(0, num_gced_segments);
   }
 
   // Try again without the modified flag.
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(2, num_gced_segments) << DumpSegmentsToString(segments);
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(2, segments.size()) << DumpSegmentsToString(segments);
@@ -904,7 +909,7 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   // last rolled segment.
   ASSERT_OK(log_anchor_registry_->Unregister(anchors[2]));
   ASSERT_OK(log_anchor_registry_->GetEarliestRegisteredLogIndex(&anchored_index));
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(0, num_gced_segments) << DumpSegmentsToString(segments);
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(2, segments.size()) << DumpSegmentsToString(segments);
@@ -951,7 +956,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   // Run a GC on an op in the second index chunk. We should remove only the
   // earliest segment, because we are set to retain 4.
   int num_gced_segments = 0;
-  ASSERT_OK(log_->GC(entries_per_chunk + 6, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(entries_per_chunk + 6, &num_gced_segments));
   ASSERT_EQ(1, num_gced_segments);
 
   // And we should still be able to read ops in the retained segment, even though
@@ -964,7 +969,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   // If we drop the retention count down to 1, we can now GC, and the log index
   // chunk should also be GCed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
-  ASSERT_OK(log_->GC(entries_per_chunk + 3, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(entries_per_chunk + 3, &num_gced_segments));
   ASSERT_EQ(1, num_gced_segments);
 
   auto result = log_reader->LookupOpId(entries_per_chunk - 5);
@@ -1017,7 +1022,7 @@ TEST_F(LogTest, TestLogReopenAndGC) {
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(3, segments.size());
   ASSERT_OK(log_anchor_registry_->GetEarliestRegisteredLogIndex(&anchored_index));
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(3, segments.size());
 
@@ -1046,14 +1051,14 @@ TEST_F(LogTest, TestLogReopenAndGC) {
   // If we set the min_seconds_to_retain high, then we'll retain the logs even
   // though we could GC them based on our anchoring.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 500;
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(0, num_gced_segments);
 
   // Turn off the time-based retention and try GCing again. This time
   // we should succeed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   log_->set_wal_retention_secs(0);
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(2, num_gced_segments);
 
   // After GC there should be only one left, besides the one currently being
@@ -1367,7 +1372,7 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
     }
 
     int num_gced = 0;
-    ASSERT_OK(log_->GC(gc_index, &num_gced));
+    ASSERT_OK(log_->TEST_GC(gc_index, &num_gced));
     gc_index += RandomUniformInt(0, 9);
   }
 }
@@ -1629,7 +1634,7 @@ TEST_F(LogTest, CopyToWithConcurrentGc) {
     while (!stop_gc.load()) {
       auto gc_index = log->GetLatestEntryOpId().index;
       int num_gced = 0;
-      ASSERT_OK(log->GC(gc_index, &num_gced));
+      ASSERT_OK(log->TEST_GC(gc_index, &num_gced));
     }
   });
 
@@ -1881,6 +1886,141 @@ TEST_F(LogTest, CopyUpTo) {
   ASSERT_OK(log_->Close());
 }
 
+struct RaftLogData {
+  LogEntries entries;
+  std::vector<LogEntryMetadata> entries_metadata;
+};
+
+Result<RaftLogData> ReadRaftLogData(LogReader* log_reader) {
+  SegmentSequence segments;
+  RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+  RaftLogData result;
+  for (const auto& segment : segments) {
+    auto read_entries = segment->ReadEntries();
+    RETURN_NOT_OK(read_entries.status);
+    for (size_t i = 0; i < read_entries.entries.size(); ++i) {
+      result.entries.push_back(read_entries.entries[i]);
+      result.entries_metadata.push_back(read_entries.entry_metadata[i]);
+    }
+  }
+  return result;
+}
+
+// Verifies a Raft log holds exactly the expected entries in the same order and that the on-disk log
+// index is correct.
+void VerifyRaftLogOps(LogReader* log_reader, const LogEntries& expected_entries) {
+  auto log_data = ASSERT_RESULT(ReadRaftLogData(log_reader));
+
+  const auto num_entries = log_data.entries.size();
+  ASSERT_EQ(num_entries, expected_entries.size());
+  for (size_t i = 0; i < num_entries; ++i) {
+    ASSERT_EQ(log_data.entries[i]->ShortDebugString(), expected_entries[i]->ShortDebugString());
+  }
+
+  std::map<int64_t, std::pair<OpId, LogEntryMetadata>> meta_by_index;
+  for (size_t i = 0; i < num_entries; ++i) {
+    if (!log_data.entries[i]->has_replicate()) {
+      continue;
+    }
+    const auto op_id = OpId::FromPB(log_data.entries[i]->replicate().id());
+    meta_by_index[op_id.index] = std::make_pair(op_id, log_data.entries_metadata[i]);
+  }
+  const int64_t last_op_index = meta_by_index.empty() ? 0 : meta_by_index.rbegin()->first;
+  ASSERT_OK(CheckLogIndex(log_reader, meta_by_index, last_op_index));
+}
+
+// Parametrized on reuse_unclosed_segment_threshold_bytes to test both Log::CopyTo ->
+// EnsureSegmentInitialized branches when it closes the footerless last segment before rolling over:
+// large threshold -> the segment is reused as the writable active segment.
+// small threshold -> the segment's footer is rebuilt and a fresh active segment is allocated.
+void LogTest::DoCopyToFromInitializedStateWithReuseThresholdTest(
+    int64_t reuse_unclosed_segment_threshold_bytes) {
+  constexpr auto kFirstSegmentEntries = 5;
+  constexpr auto kLastSegmentEntries = 5;
+
+  // Rollovers are triggered manually below.
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+
+  BuildLog();
+
+  // First segment: append then roll over cleanly so it gets a proper footer.
+  AppendReplicateBatchToLog(kFirstSegmentEntries, AppendSync::kTrue);
+  ASSERT_OK(log_->AllocateSegmentAndRollOver());
+
+  // Last segment: append, then crash without closing it, so it is left without a footer.
+  AppendReplicateBatchToLog(kLastSegmentEntries, AppendSync::kTrue);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_file_close) = true;
+  ASSERT_OK(log_->Close());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) =
+      reuse_unclosed_segment_threshold_bytes;
+
+  // Reopen lazily so CopyTo runs in kLogInitialized state.
+  BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
+
+  const auto total_entries = kFirstSegmentEntries + kLastSegmentEntries;
+
+  auto* source_reader = ASSERT_RESULT(log_->GetLogReader());
+  const auto expected = ASSERT_RESULT(ReadRaftLogData(source_reader));
+  ASSERT_EQ(expected.entries.size(), static_cast<size_t>(total_entries));
+
+  const auto copy_idx = 0;
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(copy_idx)));
+
+  auto log_reader = ASSERT_RESULT(GetLogCopyReader(copy_idx));
+  VerifyRaftLogOps(log_reader.get(), expected.entries);
+
+  ASSERT_OK(log_->Close());
+}
+
+// Large threshold: the footerless last segment is reused as the active segment.
+TEST_F(LogTest, CopyToFromInitializedStateReusingLastSegment) {
+  DoCopyToFromInitializedStateWithReuseThresholdTest(
+      /* reuse_unclosed_segment_threshold_bytes = */ std::numeric_limits<int64_t>::max());
+}
+
+// Zero threshold: the footerless last segment's footer is rebuilt and a new segment is allocated.
+TEST_F(LogTest, CopyToFromInitializedStateRebuildingLastSegment) {
+  DoCopyToFromInitializedStateWithReuseThresholdTest(
+      /* reuse_unclosed_segment_threshold_bytes = */ 0);
+}
+
+// All operations live in a single footerless segment.  Reopens the log lazily (kLogInitialized,
+// as tablet bootstrap does), and verifies Log::CopyTo copies every operation - including those
+// in the reopened footerless last segment.
+TEST_F(LogTest, CopyToFromInitializedStateFooterlessSingleSegment) {
+  constexpr auto kNumEntries = 10;
+
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+
+  BuildLog();
+
+  AppendReplicateBatchToLog(kNumEntries, AppendSync::kTrue);
+
+  // Crash without closing the only segment, leaving it footerless.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_file_close) = true;
+  ASSERT_OK(log_->Close());
+
+  // Reopen lazily: the log stays in kLogInitialized (no active segment) until first append, so the
+  // subsequent CopyTo exercises the kLogInitialized code path.
+  BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
+
+  auto* source_reader = ASSERT_RESULT(log_->GetLogReader());
+  const auto source_log_entries = ASSERT_RESULT(ReadRaftLogData(source_reader)).entries;
+  ASSERT_EQ(source_log_entries.size(), static_cast<size_t>(kNumEntries));
+
+  // Copy while still in kLogInitialized state.
+  const auto copy_idx = 0;
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(copy_idx)));
+
+  auto log_reader = ASSERT_RESULT(GetLogCopyReader(copy_idx));
+  VerifyRaftLogOps(log_reader.get(), source_log_entries);
+
+  ASSERT_OK(log_->Close());
+}
+
 // This test generate segments with random commits, term changes and some empty segments. We should
 // be able to read older ops that are not in the log cache after a log restart.
 TEST_F(LogTest, TestLogIndex) {
@@ -1981,6 +2121,60 @@ TEST_F(LogTest, AsyncRolloverMarker) {
 
   AppendReplicateBatchToLog(kNumEntriesPerBatch, AppendSync::kTrue);
   ASSERT_EQ(log_->active_segment_sequence_number(), seq_no + 1);
+}
+
+// Verifies that when asynchronous WAL segment allocation fails (e.g., disk full), DoAppend
+// detects kAllocationFailed, returns the IO error to the caller, and resets allocation_state_
+// to kAllocationNotStarted. Then, after the fault condition clears (disk space restored), the
+// next append retriggers allocation and the WAL segment rolls over normally.
+TEST_F(LogTest, YB_RELEASE_ONLY_TEST(TestSegmentAllocationFailureAndRecovery)) {
+  const int kSmallSegmentSize = 500;
+  options_.segment_size_bytes = kSmallSegmentSize;
+  options_.async_preallocate_segments = true;
+
+  BuildLog();
+
+  ASSERT_EQ(log_->num_segments(), 1);
+  const auto initial_seq_no = log_->active_segment_sequence_number();
+
+  // Phase 1: Simulate disk full:  PreAllocate will fail with ENOSPC.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = 0;
+
+  const int kEntriesPerBatch = 20;
+  OpIdPB op_id = MakeOpId(1, 1);
+
+  // Appending entries will trigger segment allocation (due to overflow), which will fail with
+  // ENOSPC. When DoAppend detects kAllocationFailed, it returns the IO error and resets
+  // allocation_state_ to kAllocationNotStarted for retry.
+  auto s = AppendNoOps(&op_id, kEntriesPerBatch);
+  ASSERT_TRUE(s.IsIOError()) << "Expected IOError, got: " << s;
+
+  // Rollover never happened: still on the same segment.
+  ASSERT_EQ(log_->active_segment_sequence_number(), initial_seq_no);
+
+  // Verify that SegmentAllocationTask captured the IOError in allocation_status_.
+  auto alloc_status = log_->TEST_GetAllocationStatus();
+  ASSERT_TRUE(alloc_status.IsIOError()) << "Expected IOError, got: " << alloc_status;
+
+  // DoAppend's kAllocationFailed handler already reset the state to kAllocationNotStarted.
+  ASSERT_EQ(log_->allocation_state(), SegmentAllocationState::kAllocationNotStarted);
+
+  // Phase 2: Simulate disk space recovery and verify WAL rollover.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = -1;
+
+  // Write more data. The segment is already past the size limit, so the next append will
+  // trigger a new allocation attempt. With the fault cleared, it succeeds.
+  ASSERT_OK(AppendNoOps(&op_id, kEntriesPerBatch));
+
+  // The allocation should succeed and rollover should happen.
+  ASSERT_OK(WaitFor([&] {
+    return log_->active_segment_sequence_number() > initial_seq_no;
+  }, 10s, "segment rollover after recovery"));
+
+  ASSERT_GT(log_->active_segment_sequence_number(), initial_seq_no);
+  ASSERT_GT(log_->num_segments(), 1);
+
+  ASSERT_OK(log_->Close());
 }
 
 } // namespace yb::log

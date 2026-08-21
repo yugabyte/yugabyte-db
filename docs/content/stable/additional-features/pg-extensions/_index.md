@@ -58,6 +58,7 @@ YugabyteDB supports the following additional extensions, some of which you must 
 | <div style="width:120px">Extension</div> | <div style="width:100px">Status</div> | Description |
 | :-------- | :----- | :---------- |
 | [Anonymizer](extension-pganon/) | Pre-bundled | Mask or replace personally identifiable information (PII) or commercially sensitive data in a database. |
+| [DocumentDB](extension-documentdb/){{<tags/feature/tp>}} | Pre-bundled | Adds a BSON data type, document-store APIs, and a wire-protocol gateway. Lets applications use MongoDB drivers and tools against YugabyteDB. |
 | [HypoPG](extension-hypopg/) | Pre-bundled | Create hypothetical indexes to test whether an index can increase performance for problematic queries without consuming any actual resources. |
 | Orafce | Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB.<br/>For more information, see the [Orafce](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/third-party-extensions/orafce/README.asciidoc) documentation. |
 | [PGAudit](../../secure/audit-logging/audit-logging-ysql/) | Pre-bundled | The PostgreSQL Audit Extension (pgaudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. |
@@ -66,5 +67,5 @@ YugabyteDB supports the following additional extensions, some of which you must 
 | [pg_parquet](extension-pgparquet/){{<tags/feature/tp>}} | Pre-bundled | Allows you to read and write Parquet files from S3, Azure Blob Storage, Google Cloud Storage, http(s) endpoints or file system via COPY TO/FROM commands. Not recommended for use in production as it may get replaced by another extension in future.|
 | [pg_partman](extension-pgpartman/) | Pre-bundled | Creates and manages time-based and serial-based table partition sets.|
 | pg_stat_monitor {{<tags/feature/tp>}} | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module.<br/>For more information, see the [pg_stat_monitor](https://docs.percona.com/pg-stat-monitor/index.html) documentation. |
-| [pgvector](extension-pgvector) | Pre-bundled | Allows you to store and query vectors, for use in vector similarity searching. |
+| [pgvector](extension-pgvector){{<tags/feature/ea idea="944">}} | Pre-bundled | Allows you to store and query vectors, for use in vector similarity searching. |
 | [postgresql-hll](extension-postgresql-hll) | Pre-bundled | Adds the data type `hll`, which is a HyperLogLog data structure. |

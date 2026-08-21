@@ -362,7 +362,7 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
   int32_t key = 0;
   const std::string kStringValue("string value");
   for (auto& item : items) {
-    auto op = item.table->NewInsertOp();
+    auto op = item.table->NewInsertOp(item.session->arena());
     auto req = op->mutable_request();
     QLAddInt32HashValue(req, ++key);
     item.table->AddInt32ColumnValue(req, item.table->schema().columns()[1].name(), -key);

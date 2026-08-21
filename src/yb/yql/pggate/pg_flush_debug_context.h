@@ -63,6 +63,7 @@ class PgFlushDebugContext {
       PgOid table_oid, std::string_view table_name);
   [[nodiscard]] static PgFlushDebugContext ConflictingKeyWrite(
       PgOid table_oid, std::string_view table_name, std::string_view key = {});
+  [[nodiscard]] static PgFlushDebugContext SwitchSkipIntentsMode();
 
   [[nodiscard]] const std::string& ToString() const { return value_; }
 

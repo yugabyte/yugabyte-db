@@ -84,6 +84,7 @@
 
 #include "yb/qlexpr/index.h"
 
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -218,12 +219,21 @@ Status SysCatalogTable::Start(ElectedLeaderCallback leader_cb) {
 }
 
 void SysCatalogTable::StartShutdown() {
+  // A removed master going into shell mode (GoIntoShellMode) can race with process shutdown
+  // (CatalogManager::StartShutdown / CompleteShutdown). Both drive the tablet peer's two-phase
+  // shutdown, so the controller makes each phase run at most once and in order.
+  auto scope = shutdown_controller_.CheckedStartShutdown();
+  if (!scope) {
+    return;
+  }
+
   if (mem_manager_) {
     mem_manager_->Shutdown();
   }
   auto peer = tablet_peer();
   if (peer) {
-    CHECK(peer->StartShutdown());
+    CHECK(peer->StartShutdown(
+        tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse));
   }
 
   if (multi_raft_manager_) {
@@ -232,9 +242,14 @@ void SysCatalogTable::StartShutdown() {
 }
 
 void SysCatalogTable::CompleteShutdown() {
+  auto scope = shutdown_controller_.CheckedCompleteShutdown();
+  if (!scope) {
+    return;
+  }
+
   auto peer = tablet_peer();
   if (peer) {
-    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
+    peer->CompleteShutdown();
   }
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
@@ -401,7 +416,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
   // starting up, so this should be fine to do.
   DCHECK(master_->messenger());
   RaftConfigPB resolved_config;
-  resolved_config.set_opid_index(consensus::kInvalidOpIdIndex);
+  resolved_config.set_committed_op_index(consensus::kInvalidOpIdIndex);
 
   ScopedDnsTracker dns_tracker(setup_config_dns_stats_);
   for (const auto& list : *options.GetMasterAddresses()) {
@@ -677,6 +692,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet,
           master_->mem_tracker(),
           master_->messenger(),
+          master_->messenger()->ThreadPoolPtr(),
           &master_->proxy_cache(),
           log,
           tablet->GetTableMetricsEntity(),
@@ -735,7 +751,8 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     return STATUS(InternalError, "Injected random failure for testing.");
   }
 
-  auto resp = std::make_shared<tserver::WriteResponseMsg>();
+  auto arena = SharedThreadSafeArena();
+  auto resp = arena->NewArenaObject<tserver::WriteResponseMsg>();
   // If this is a PG write, them the pgsql write batch is not empty.
   //
   // If this is a QL write, then it is a normal sys_catalog write, so ignore writes that might
@@ -749,9 +766,10 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   auto latch = std::make_shared<CountDownLatch>(1);
   auto query = std::make_unique<tablet::WriteQuery>(
       writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
-      tablet, nullptr, resp.get());
+      tablet, /* rpc_context= */ nullptr, resp);
   query->set_client_request(writer->req());
-  query->set_callback(tablet::MakeLatchOperationCompletionCallback(latch, resp));
+  query->set_callback(tablet::MakeLatchOperationCompletionCallback(
+      latch, SharedField(arena, resp)));
 
   tablet_peer()->WriteAsync(std::move(query));
   peer_write_count->Increment();
@@ -1398,7 +1416,7 @@ Result<PgOidToOidMap> SysCatalogTable::ReadPgClassColumnWithOidValueMap(
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
   {
-    docdb::DocPgsqlScanSpec spec(schema, nullptr);
+    docdb::DocPgsqlScanSpec spec(schema, /* condition= */ nullptr);
 
     RETURN_NOT_OK(iter->Init(spec));
   }
@@ -1517,7 +1535,7 @@ Result<PgOidToStringMap> SysCatalogTable::ReadPgNamespaceNspnameMap(const PgOid 
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
   {
-    docdb::DocPgsqlScanSpec spec(schema, /*condition=*/nullptr);
+    docdb::DocPgsqlScanSpec spec(schema, /* condition= */ nullptr);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1668,7 +1686,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
   {
-    docdb::DocPgsqlScanSpec spec(schema, /*condition=*/ nullptr);
+    docdb::DocPgsqlScanSpec spec(schema, /* condition= */ nullptr);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1824,7 +1842,7 @@ Result<MaxOidPerSpace> SysCatalogTable::ReadHighestPreservableOids(uint32_t data
     {
       // We are doing a full table scan in the forward direction here because there is no index for
       // relfilenode.
-      docdb::DocPgsqlScanSpec spec(schema, /*condition=*/ nullptr);
+      docdb::DocPgsqlScanSpec spec(schema, /* condition= */ nullptr);
       RETURN_NOT_OK(iter->Init(spec));
     }
 
@@ -1935,7 +1953,7 @@ Status SysCatalogTable::WriteBatchIfNeeded(size_t max_batch_bytes,
   if (max_batch_bytes == 0 || (rows_so_far % 128) != 0) {
     return Status::OK();
   }
-  auto batch_bytes = writer->req().ByteSizeLong();
+  auto batch_bytes = writer->req().SpaceUsedLong();
   if (batch_bytes > max_batch_bytes) {
     RETURN_NOT_OK(SyncWrite(writer.get()));
 
@@ -1955,7 +1973,7 @@ Status SysCatalogTable::FinishWrite(std::unique_ptr<SysCatalogWriter>& writer,
                                     size_t& batch_count) {
   if (writer->req().pgsql_write_batch_size() > 0) {
     RETURN_NOT_OK(SyncWrite(writer.get()));
-    auto batch_bytes = writer->req().ByteSizeLong();
+    auto batch_bytes = writer->req().SpaceUsedLong();
     total_bytes += batch_bytes;
     ++batch_count;
     LOG(INFO) << "FinishWrite: Batch# " << batch_count << " wrote "
@@ -2219,7 +2237,7 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
   {
-    docdb::DocPgsqlScanSpec spec(schema, /*condition=*/ nullptr);
+    docdb::DocPgsqlScanSpec spec(schema, /* condition= */ nullptr);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -2294,6 +2312,26 @@ Status SysCatalogTable::ForceWrite(
   return SyncWrite(writer.get());
 }
 
+Result<int64_t> SysCatalogTable::CountPgYbMigrationRows(
+    uint32_t database_oid, const ReadHybridTime& read_time) {
+  auto read_data = VERIFY_RESULT(
+      TableReadData(database_oid, kPgYbMigrationTableOid, read_time));
+  const auto& schema = read_data.schema();
+  dockv::ReaderProjection projection(schema);
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    docdb::DocPgsqlScanSpec spec(schema, /*condition=*/nullptr);
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+  qlexpr::QLTableRow row;
+  int64_t count = 0;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    ++count;
+  }
+  return count;
+}
+
 Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) {
   TRACE_EVENT0("master", __func__);
   auto read_data =
@@ -2308,7 +2346,7 @@ Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) 
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
   {
-    docdb::DocPgsqlScanSpec spec(schema, nullptr);
+    docdb::DocPgsqlScanSpec spec(schema, /* condition= */ nullptr);
     RETURN_NOT_OK(iter->Init(spec));
   }
 

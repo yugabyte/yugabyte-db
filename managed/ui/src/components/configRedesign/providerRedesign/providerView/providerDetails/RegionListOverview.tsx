@@ -73,7 +73,11 @@ export const RegionListOverview = ({ providerConfig }: RegionListOverviewProps) 
         )}
         {fields.includes(RegionItemField.VIRTUAL_NETWORK_NAME) && (
           <TableHeaderColumn dataField={RegionItemField.VIRTUAL_NETWORK_NAME}>
-            {providerConfig.code === ProviderCode.AZU ? 'Virtual Network Name' : 'VPC ID'}
+            {providerConfig.code === ProviderCode.AZU
+              ? 'Virtual Network Name'
+              : providerConfig.code === ProviderCode.OCI
+                ? 'VCN ID'
+                : 'VPC ID'}
           </TableHeaderColumn>
         )}
         <TableHeaderColumn dataField={RegionItemField.ZONES} dataFormat={formatZones}>
@@ -123,6 +127,19 @@ const adaptToListItems = (
           [RegionItemField.ZONES]: region.zones,
           [RegionItemField.SECURITY_GROUP_ID]: region.details.cloudInfo.azu.securityGroupId,
           [RegionItemField.VIRTUAL_NETWORK_NAME]: region.details.cloudInfo.azu.vnet
+        }))
+      };
+    case ProviderCode.OCI:
+      return {
+        fields: [
+          RegionItemField.NAME,
+          RegionItemField.ZONES,
+          RegionItemField.VIRTUAL_NETWORK_NAME
+        ] as const,
+        regionListItems: providerConfig.regions.map((region) => ({
+          [RegionItemField.NAME]: region.name,
+          [RegionItemField.ZONES]: region.zones,
+          [RegionItemField.VIRTUAL_NETWORK_NAME]: region.details?.cloudInfo?.oci?.vnet
         }))
       };
     case ProviderCode.GCP:

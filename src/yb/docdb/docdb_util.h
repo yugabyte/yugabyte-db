@@ -25,6 +25,7 @@
 #include "yb/master/master_replication.pb.h"
 
 #include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/listener.h"
 
 namespace yb {
 
@@ -166,6 +167,12 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
+  Status SetPrimitive(
+      const dockv::DocPath& doc_path,
+      const LWQLValuePB& value,
+      HybridTime hybrid_time,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max());
+
   Status AddExternalIntents(
       const TransactionId& txn_id,
       SubTransactionId subtransaction_id,
@@ -191,7 +198,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max()) {
     return InsertSubDocument(
-        doc_path, ValueRef(value), hybrid_time, ttl, read_ht);
+        doc_path, ValueRef(*MakeLWValue(value)), hybrid_time, ttl, read_ht);
   }
 
   Status ExtendSubDocument(
@@ -208,7 +215,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max()) {
     return ExtendSubDocument(
-        doc_path, ValueRef(value), hybrid_time, ttl, read_ht);
+        doc_path, ValueRef(*MakeLWValue(value)), hybrid_time, ttl, read_ht);
   }
 
   Status ExtendList(
@@ -246,7 +253,9 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
   void DocDBDebugDumpToConsole();
 
-  Status FlushRocksDbAndWait();
+  // Waits for regular DB flush. Pass `kYbBulkLoadTool` from `yb-bulk_load`; DocDB tests
+  // typically pass `kTestOnly`.
+  Status FlushRocksDbAndWait(rocksdb::FlushReason flush_reason);
 
   void SetTableTTL(uint64_t ttl_msec);
 
@@ -311,13 +320,13 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   InitMarkerBehavior init_marker_behavior_ = InitMarkerBehavior::kOptional;
   HybridTime delete_marker_retention_time_ = HybridTime::kMax;
 
- private:
   Result<CompactionSchemaInfo> CotablePacking(
       const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
   Result<CompactionSchemaInfo> ColocationPacking(
       ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
+ private:
   std::atomic<int64_t> monotonic_counter_{0};
   std::optional<DocWriteBatch> doc_write_batch_;
   std::once_flag doc_reader_context_init_once_;

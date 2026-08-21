@@ -11,16 +11,28 @@
 package com.yugabyte.yw.common.kms.util;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.oracle.bmc.Region;
 import com.oracle.bmc.auth.AuthenticationDetailsProvider;
+import com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
 import com.oracle.bmc.keymanagement.KmsCryptoClient;
 import com.oracle.bmc.keymanagement.KmsManagementClient;
 import com.oracle.bmc.keymanagement.KmsVaultClient;
+import com.oracle.bmc.keymanagement.model.Key;
+import com.oracle.bmc.keymanagement.responses.GetKeyResponse;
+import com.oracle.bmc.model.BmcException;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
@@ -52,6 +64,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
   private String vaultOcid = "ocid1.vault.oc1..fake";
   private String region = "us-phoenix-1";
   private String keyOcid = "ocid1.key.oc1..fake";
+  private String keyName = "fake-key-name";
   private Customer customer;
   private Universe universe;
 
@@ -68,15 +81,18 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
 
     fakeAuthConfig = mapper.createObjectNode();
     fakeAuthConfig.put("name", authConfigName);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.TENANCY_OCID.fieldName, tenancyOcid);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.USER_OCID.fieldName, userOcid);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.FINGERPRINT.fieldName, fingerprint);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.PRIVATE_KEY.fieldName, privateKey);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociTenancyId.fieldName, tenancyOcid);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociUserId.fieldName, userOcid);
     fakeAuthConfig.put(
-        OciEARServiceUtil.OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName, compartmentOcid);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName, vaultOcid);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_REGION.fieldName, region);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_KEY_OCID.fieldName, keyOcid);
+        OciEARServiceUtil.OciKmsAuthConfigField.ociFingerprint.fieldName, fingerprint);
+    fakeAuthConfig.put(
+        OciEARServiceUtil.OciKmsAuthConfigField.ociPrivateKeyContent.fieldName, privateKey);
+    fakeAuthConfig.put(
+        OciEARServiceUtil.OciKmsAuthConfigField.ociCompartmentId.fieldName, compartmentOcid);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociVaultId.fieldName, vaultOcid);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociRegion.fieldName, region);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociKeyName.fieldName, keyName);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociKeyOcid.fieldName, keyOcid);
 
     doReturn(fakeclient).when(mockOciEARServiceUtil).getKmsVaultClient(configUUID, fakeAuthConfig);
     doReturn(fakeKmsManagementClient)
@@ -125,17 +141,37 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
     assertEquals(keyOcid, result);
   }
 
+  @Test
+  public void testResolveKeyOcid_cachedOcid_returnsWithoutLookup() {
+    // When an OCID is already cached, it is returned as-is.
+    String result = mockOciEARServiceUtil.resolveKeyOcid(configUUID, fakeAuthConfig);
+    assertEquals(keyOcid, result);
+  }
+
+  @Test
+  public void testResolveKeyOcid_fromName_resolvesAndCaches() {
+    ObjectNode form = fakeAuthConfig.deepCopy();
+    form.remove(OciEARServiceUtil.OciKmsAuthConfigField.ociKeyOcid.fieldName);
+
+    doReturn(keyOcid).when(mockOciEARServiceUtil).getKeyOcidByName(any(), any(), eq(keyName));
+
+    String result = mockOciEARServiceUtil.resolveKeyOcid(configUUID, form);
+    assertEquals(keyOcid, result);
+    assertEquals(
+        keyOcid, form.path(OciEARServiceUtil.OciKmsAuthConfigField.ociKeyOcid.fieldName).asText());
+  }
+
   @Test(expected = RuntimeException.class)
   public void testGetCredentials_missingField_throws() {
     ObjectNode bad = fakeAuthConfig.deepCopy();
-    bad.put(OciEARServiceUtil.OciKmsAuthConfigField.PRIVATE_KEY.fieldName, "");
+    bad.put(OciEARServiceUtil.OciKmsAuthConfigField.ociPrivateKeyContent.fieldName, "");
     mockOciEARServiceUtil.getCredentials(bad);
   }
 
   @Test
   public void testValidateKMSProviderConfigFormData_missingCompartment_throws() {
     ObjectNode form = fakeAuthConfig.deepCopy();
-    form.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName, "");
+    form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociCompartmentId.fieldName, "");
     try {
       mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
     } catch (RuntimeException e) {
@@ -146,7 +182,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
   @Test
   public void testValidateKMSProviderConfigFormData_missingVault_throws() {
     ObjectNode form = fakeAuthConfig.deepCopy();
-    form.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName, "");
+    form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociVaultId.fieldName, "");
     try {
       mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
     } catch (RuntimeException e) {
@@ -157,11 +193,124 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
   @Test
   public void testValidateKMSProviderConfigFormData_missingRegion_throws() {
     ObjectNode form = fakeAuthConfig.deepCopy();
-    form.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_REGION.fieldName, "");
+    form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociRegion.fieldName, "");
     try {
       mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
     } catch (RuntimeException e) {
       assertTrue(e.getMessage().contains("OCI_REGION"));
+    }
+  }
+
+  @Test
+  public void testValidateKMSProviderConfigFormData_invalidRegionString_throws() {
+    ObjectNode form = fakeAuthConfig.deepCopy();
+    form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociRegion.fieldName, "not-a-real-region");
+    try {
+      mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
+    } catch (RuntimeException e) {
+      assertTrue(e.getMessage().contains("not-a-real-region"));
+      assertTrue(e.getMessage().contains("OCI_REGION"));
+    }
+  }
+
+  @Test
+  public void testValidateKMSProviderConfigFormData_invalidCredentials_throws() {
+    // Stub the protected credential-validation helper to simulate an OCI 401 response.
+    BmcException authFailure = mock(BmcException.class);
+    when(authFailure.getStatusCode()).thenReturn(401);
+    doThrow(authFailure)
+        .when(mockOciEARServiceUtil)
+        .validateCredentialsWithIdentityService(
+            any(Region.class), any(SimpleAuthenticationDetailsProvider.class));
+
+    try {
+      mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig);
+    } catch (RuntimeException e) {
+      assertTrue(e.getMessage().contains("TENANCY_OCID, USER_OCID, FINGERPRINT, and PRIVATE_KEY"));
+    }
+  }
+
+  @Test
+  public void testValidateKMSProviderConfigFormData_vaultNotFound_throws() {
+    // Credentials pass; vault lookup returns 404.
+    doNothing()
+        .when(mockOciEARServiceUtil)
+        .validateCredentialsWithIdentityService(
+            any(Region.class), any(SimpleAuthenticationDetailsProvider.class));
+    doReturn(fakeclient).when(mockOciEARServiceUtil).getKmsVaultClient(null, fakeAuthConfig);
+    BmcException notFound = mock(BmcException.class);
+    when(notFound.getStatusCode()).thenReturn(404);
+    doThrow(notFound).when(mockOciEARServiceUtil).getVaultFromId(fakeclient, vaultOcid);
+
+    try {
+      mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig);
+    } catch (RuntimeException e) {
+      assertTrue(e.getMessage().contains("OCI_VAULT_OCID"));
+      assertTrue(e.getMessage().contains(vaultOcid));
+      assertTrue(e.getMessage().contains("OCI_REGION"));
+    }
+  }
+
+  // ---- checkKeyExists tests ----
+
+  @Test
+  public void testCheckKeyExists_blankKeyOcid_returnsFalse() {
+    assertFalse(mockOciEARServiceUtil.checkKeyExists(fakeAuthConfig, ""));
+    assertFalse(mockOciEARServiceUtil.checkKeyExists(fakeAuthConfig, null));
+  }
+
+  @Test
+  public void testCheckKeyExists_keyNotFound_returnsFalse() {
+    doReturn(fakeKmsManagementClient)
+        .when(mockOciEARServiceUtil)
+        .getKmsManagementClient(null, fakeAuthConfig);
+    BmcException notFound = mock(BmcException.class);
+    when(notFound.getStatusCode()).thenReturn(404);
+    doThrow(notFound).when(fakeKmsManagementClient).getKey(any());
+
+    assertFalse(mockOciEARServiceUtil.checkKeyExists(fakeAuthConfig, keyOcid));
+  }
+
+  @Test(expected = RuntimeException.class)
+  public void testCheckKeyExists_insufficientPermissions_throws() {
+    doReturn(fakeKmsManagementClient)
+        .when(mockOciEARServiceUtil)
+        .getKmsManagementClient(null, fakeAuthConfig);
+    BmcException forbidden = mock(BmcException.class);
+    when(forbidden.getStatusCode()).thenReturn(403);
+    doThrow(forbidden).when(fakeKmsManagementClient).getKey(any());
+
+    mockOciEARServiceUtil.checkKeyExists(fakeAuthConfig, keyOcid);
+  }
+
+  @Test
+  public void testCheckKeyExists_keyFound_returnsTrue() {
+    doReturn(fakeKmsManagementClient)
+        .when(mockOciEARServiceUtil)
+        .getKmsManagementClient(null, fakeAuthConfig);
+
+    Key existingKey = mock(Key.class);
+    GetKeyResponse response = mock(GetKeyResponse.class);
+    when(response.getKey()).thenReturn(existingKey);
+    doReturn(response).when(fakeKmsManagementClient).getKey(any());
+
+    assertTrue(mockOciEARServiceUtil.checkKeyExists(fakeAuthConfig, keyOcid));
+  }
+
+  @Test
+  public void testCheckKeyExists_403_errorMessageMentionsPermissions() {
+    doReturn(fakeKmsManagementClient)
+        .when(mockOciEARServiceUtil)
+        .getKmsManagementClient(null, fakeAuthConfig);
+    BmcException forbidden = mock(BmcException.class);
+    when(forbidden.getStatusCode()).thenReturn(403);
+    doThrow(forbidden).when(fakeKmsManagementClient).getKey(any());
+
+    try {
+      mockOciEARServiceUtil.checkKeyExists(fakeAuthConfig, keyOcid);
+    } catch (RuntimeException e) {
+      assertTrue(e.getMessage().contains("Insufficient permissions"));
+      assertTrue(e.getMessage().contains(keyOcid));
     }
   }
 }

@@ -1,0 +1,31 @@
+-- We should be able to use duckdb-only functions even when
+-- duckdb.force_execution is turned off
+SET duckdb.force_execution = false;
+\set pwd `pwd`
+select r['usmallint'] from read_parquet(:'pwd' || '/data/unsigned_types.parquet') r;
+ usmallint 
+-----------
+     65535
+(1 row)
+
+select r['usmallint'] from read_parquet(ARRAY[:'pwd' || '/data/unsigned_types.parquet']) r;
+ usmallint 
+-----------
+     65535
+(1 row)
+
+select r['column00'] from read_csv(:'pwd' || '/data/web_page.csv') r LIMIT 2;
+ column00 
+----------
+        1
+        2
+(2 rows)
+
+select r['column00'] from read_csv(ARRAY[:'pwd' || '/data/web_page.csv']) r LIMIT 2;
+ column00 
+----------
+        1
+        2
+(2 rows)
+
+-- TODO: Add a test for scan_iceberg once we have a test table

@@ -23,6 +23,8 @@
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 
 using std::string;
 
@@ -35,6 +37,10 @@ class PgHeapSnapshotTest : public PgMiniTestBase {
   void SetUp() override {
     if (CURRENT_TEST_CASE_AND_TEST_NAME_STR() == "PgHeapSnapshotTest.TestYsqlHeapSnapshotSimple") {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_invalidation_messages) = false;
+      // Object locking and concurrent DDL require invalidation messages (see the gflag validator in
+      // common_flags.cc), so keep them consistent with the flag disabled above.
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     }
     LOG(INFO) << "FLAGS_ysql_yb_enable_invalidation_messages: "
               << FLAGS_ysql_yb_enable_invalidation_messages;
@@ -49,7 +55,7 @@ class PgHeapSnapshotTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(PgHeapSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYsqlHeapSnapshotSimple)) {
+TEST_F(PgHeapSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYsqlHeapSnapshotSimple)) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
 

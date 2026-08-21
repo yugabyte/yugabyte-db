@@ -57,6 +57,10 @@ Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add 
 
 To create a single region three-node cluster, refer to [Create a single-region cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
 
+To create a multi-region cluster, refer to [Replicate across regions](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/).
+
+To create a multi-region cluster using the [Global database pattern](/stable/develop/build-global-apps/global-database/) with a [replication factor](/stable/architecture/key-concepts/#replication-factor-rf) of 5, refer to [Replicate across regions](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/); under **Data Distribution**, choose **Advanced Options** and set **Replication Factor** to RF5.
+
 Save your cluster credentials in a convenient location. You will use them to connect to your cluster.
 
 ## Connect to your clusters

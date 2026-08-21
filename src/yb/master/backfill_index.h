@@ -27,6 +27,7 @@
 
 #include "yb/ash/wait_state.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/transaction.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/integral_types.h"
@@ -34,6 +35,7 @@
 
 #include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/ysql_ddl_verification_task.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -67,7 +69,9 @@ class MultiStageAlterTable {
   // INDEX_PERM_DELETE_ONLY -> INDEX_PERM_WRITE_AND_DELETE -> BACKFILL
   static Status LaunchNextTableInfoVersionIfNecessary(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& Info, uint32_t current_version,
-      const LeaderEpoch& epoch, bool respect_backfill_deferrals = true,
+      const LeaderEpoch& epoch,
+      std::optional<TransactionMetadata> requester_transaction,
+      bool respect_backfill_deferrals = true,
       bool update_ysql_to_backfill = false);
 
   // Clears the fully_applied_* state for the given table and optionally sets it to RUNNING.
@@ -94,10 +98,13 @@ class MultiStageAlterTable {
 
  private:
   // Start Index Backfill process/step for the specified table/index.
+  // If requester_transaction is provided it will be used to monitor the liveness of the
+  // PG backend that initiated the backfill.
   static Status StartBackfillingData(
       CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
       const std::vector<IndexInfoPB>& idx_infos, std::optional<uint32_t> expected_version,
-      const LeaderEpoch& epoch);
+      const LeaderEpoch& epoch,
+      std::optional<TransactionMetadata> requester_transaction);
 };
 
 class BackfillTablet;
@@ -112,7 +119,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
                 const scoped_refptr<TableInfo> &indexed_table,
                 std::vector<IndexInfoPB> indexes,
                 const scoped_refptr<NamespaceInfo> &ns_info,
-                LeaderEpoch epoch);
+                LeaderEpoch epoch,
+                std::optional<TransactionMetadata> requester_transaction);
 
   Status Launch();
 
@@ -132,8 +140,18 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   std::string description() const;
 
+  enum class State : uint8_t {
+    kRunning,
+    kSuccess,
+    kFailed,
+  };
+
+  State state() const {
+    return state_.load(std::memory_order_acquire);
+  }
+
   bool done() const {
-    return done_.load(std::memory_order_acquire);
+    return state() != State::kRunning;
   }
 
   bool timestamp_chosen() const {
@@ -169,6 +187,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   static void UnsetIndexTableRetainsDeleteMarkers(PersistentTableInfo* index_table);
 
+  Status Abort(bool from_liveness = false);
+
  private:
   void LaunchBackfillOrAbort();
   Status WaitForTabletSplitting();
@@ -188,7 +208,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status AlterTableStateToAbort();
   Status AlterTableStateToSuccess();
 
-  Status Abort();
+  void StartRequesterLivenessMonitor();
+  void StopLivenessMonitor();
   Status CheckIfDone();
   Status UpdateIndexPermissionsForIndexes();
   Status ClearCheckpointStateInTablets();
@@ -216,7 +237,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   const std::vector<IndexInfoPB> index_infos_;
   int32_t schema_version_;
 
-  std::atomic_bool done_{false};
+  std::atomic<State> state_{State::kRunning};
   std::atomic_bool timestamp_chosen_{false};
   std::atomic<size_t> tablets_pending_;
   std::atomic<size_t> num_tablets_;
@@ -230,7 +251,10 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   const scoped_refptr<NamespaceInfo> ns_info_;
   LeaderEpoch epoch_;
   ash::WaitStateInfoPtr wait_state_;
+  std::optional<TransactionMetadata> requester_transaction_;
+  std::weak_ptr<DdlRequesterLivenessTask> liveness_task_ GUARDED_BY(mutex_);
 };
+
 
 class BackfillTableJob : public server::MonitoredTask {
  public:

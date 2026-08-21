@@ -33,8 +33,6 @@ public class TestPgCatalogConsistency extends BasePgSQLTest {
     if (isTestRunningWithConnectionManager()) {
       Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
         {
-          put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
-              + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
           put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
           put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", "-1");
         }

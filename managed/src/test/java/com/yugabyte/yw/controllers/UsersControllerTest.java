@@ -204,6 +204,26 @@ public class UsersControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeleteSuperAdminUserAsAdminFails() throws IOException {
+    Users superAdminUser =
+        ModelFactory.testUser(customer1, "superadmin-delete@test.com", Role.SuperAdmin);
+    Http.Cookie adminCookie = Http.Cookie.builder("authToken", authToken1).build();
+    Result result =
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest(
+                            "DELETE",
+                            String.format(
+                                "%s/%s",
+                                String.format(baseRoute, customer1.getUuid()),
+                                superAdminUser.getUuid()))
+                        .cookie(adminCookie)));
+    assertEquals(BAD_REQUEST, result.status());
+    assertNotNull(Users.get(superAdminUser.getUuid()));
+  }
+
+  @Test
   public void testRoleChange() throws IOException {
     Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
     assertEquals(testUser1.getRole(), Role.Admin);
@@ -449,6 +469,30 @@ public class UsersControllerTest extends FakeDBApplication {
                 .bodyJson(params));
     testUser1 = Users.get(testUser1.getUuid());
     assertEquals(testUser1.getTimezone(), testTimezone2);
+    assertAuditEntry(1, customer1.getUuid());
+  }
+
+  @Test
+  public void testUpdateUserProfileNewUniverseUiTourCompleted() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    assertNull(testUser1.getNewUniverseUiTourCompleted());
+    String authTokenTest = testUser1.createAuthToken();
+    ObjectNode params = Json.newObject();
+    params.put("newUniverseUiTourCompleted", true);
+    params.put("role", "Admin");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertOk(result);
+    testUser1 = Users.get(testUser1.getUuid());
+    assertEquals(Boolean.TRUE, testUser1.getNewUniverseUiTourCompleted());
     assertAuditEntry(1, customer1.getUuid());
   }
 

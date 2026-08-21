@@ -286,7 +286,14 @@ message CloneNamespaceRequestPB {
   optional NamespaceIdentifierPB source_namespace = 1;
   optional fixed64 restore_ht = 2;
   optional string target_namespace_name = 3;
-  optional string pg_source_owner = 4;
+  // Reserved: previously held pg_source_owner. ysql_dump now derives the
+  // source DB owner from pg_database.datdba (see its --rename-owner option),
+  // so the source owner no longer travels through the clone RPCs.
+  reserved 4;
+  // Raw role name of the new database owner, forwarded to ysql_dump as
+  // --rename-owner=<pg_target_owner>. Identifier escaping is handled by
+  // ysql_dump (fmtId), so this is the unquoted role name as stored in
+  // pg_authid.rolname.
   optional string pg_target_owner = 5;
 }
 

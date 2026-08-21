@@ -1,0 +1,4 @@
+# src/test/regress/yb_foreign_key_when_types_mismatch_schedule
+# This schedule includes YB-introduced tests related to foreign key constraint
+# when types of the column(s) in the constraint do not all match.
+test: yb.orig.foreign_key_when_types_mismatch

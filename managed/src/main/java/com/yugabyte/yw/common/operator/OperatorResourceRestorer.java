@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -74,9 +75,10 @@ public class OperatorResourceRestorer {
   }
 
   /**
-   * Applies all resources from the operator_resource table to Kubernetes when they are newer than
-   * the Kubernetes version or absent from the cluster. Intended to be called after HA restore so
-   * that the promoted standby's Kubernetes state matches the database.
+   * Applies all live resources from the operator_resource table to Kubernetes when they are newer
+   * than the Kubernetes version or absent from the cluster, then deletes K8s resources that were
+   * soft-deleted in the database (tombstones from a prior failover). Intended to be called after HA
+   * restore so that the promoted standby's Kubernetes state matches the database.
    */
   public void restoreOperatorResources() {
     if (!confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
@@ -84,15 +86,23 @@ public class OperatorResourceRestorer {
       return;
     }
 
-    List<OperatorResource> allResources = OperatorResource.getAll();
-    if (allResources.isEmpty()) {
-      log.info("No operator resources to restore");
+    List<OperatorResource> liveResources = OperatorResource.getAll();
+    List<OperatorResource> deletedResources = OperatorResource.getDeleted();
+
+    if (liveResources.isEmpty() && deletedResources.isEmpty()) {
+      log.info("No operator resources to restore or clean up");
       return;
     }
 
-    log.info("Restoring {} operator resources to Kubernetes", allResources.size());
+    log.info(
+        "Restoring {} live and cleaning up {} deleted operator resources",
+        liveResources.size(),
+        deletedResources.size());
     String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     io.fabric8.kubernetes.client.Config k8sConfig = operatorUtils.getK8sClientConfig();
+
+    UUID localInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    log.info("Adding local instance uuid '{}' to operator resources", localInstanceUuid);
 
     try (KubernetesClient client =
         kubernetesClientFactory.getKubernetesClientWithConfig(k8sConfig)) {
@@ -100,9 +110,10 @@ public class OperatorResourceRestorer {
       int skipped = 0;
       int errors = 0;
 
-      for (OperatorResource storedResource : allResources) {
+      for (OperatorResource storedResource : liveResources) {
         try {
           if (applyIfNewer(client, storedResource)) {
+            OperatorResource.addPlatformInstance(storedResource.getName(), localInstanceUuid);
             applied++;
           } else {
             skipped++;
@@ -113,11 +124,14 @@ public class OperatorResourceRestorer {
         }
       }
 
+      int pruned = deleteStaleResources(client, deletedResources, localInstanceUuid);
+
       log.info(
-          "Operator resource restore complete: applied={}, skipped={}, errors={}",
+          "Operator resource restore complete: applied={}, skipped={}, errors={}, pruned={}",
           applied,
           skipped,
-          errors);
+          errors,
+          pruned);
     }
   }
 
@@ -184,6 +198,78 @@ public class OperatorResourceRestorer {
         k8sResourceVersion,
         storedResourceVersion);
     return false;
+  }
+
+  /**
+   * Deletes K8s resources corresponding to soft-deleted tombstone rows, then removes the local
+   * platform instance UUID from them. When no platform instances remain referencing the resource,
+   * the row is hard-deleted from the database.
+   *
+   * @return the number of K8s resources successfully deleted
+   */
+  private int deleteStaleResources(
+      KubernetesClient client, List<OperatorResource> deletedResources, UUID localInstanceUuid) {
+    int pruned = 0;
+    for (OperatorResource tombstone : deletedResources) {
+      try {
+        if (deleteFromK8sIfPresent(client, tombstone)) {
+          pruned++;
+        }
+        boolean removed =
+            OperatorResource.removePlatformInstance(tombstone.getName(), localInstanceUuid);
+        if (!removed) {
+          OperatorResource.hardDelete(tombstone.getName());
+        }
+      } catch (Exception e) {
+        log.error("Failed to delete stale K8s resource: {}", tombstone.getName(), e);
+      }
+    }
+    return pruned;
+  }
+
+  /**
+   * Attempts to delete a single resource from Kubernetes based on its tombstone DB row.
+   *
+   * @return true if the resource was found and deleted from K8s, false if it was already absent
+   */
+  private boolean deleteFromK8sIfPresent(KubernetesClient client, OperatorResource tombstone) {
+    String yamlData = tombstone.getData();
+    KubernetesResourceDetails details =
+        KubernetesResourceDetails.fromResourceName(tombstone.getName());
+    String ns = details.getNamespace();
+
+    if (StringUtils.isBlank(yamlData)) {
+      log.debug(
+          "Tombstone {} has no YAML data, skipping K8s deletion (DB row will be purged)",
+          tombstone.getName());
+      return false;
+    }
+
+    Class<? extends HasMetadata> clazz = RESOURCE_TYPE_MAP.get(details.getResourceType());
+    if (clazz == null) {
+      log.warn(
+          "Unknown resource type '{}' in tombstone: {}",
+          details.getResourceType(),
+          tombstone.getName());
+      return false;
+    }
+
+    HasMetadata resource = Serialization.unmarshal(yamlData, clazz);
+    resource.getMetadata().setResourceVersion(null);
+
+    HasMetadata existing = getExistingResource(client, resource, ns);
+    if (existing == null) {
+      log.debug("Tombstone resource {}/{} already absent from K8s", ns, details.getName());
+      return false;
+    }
+
+    log.info(
+        "Deleting stale K8s resource {}/{} (type={}) that was removed on the failover cluster",
+        ns,
+        details.getName(),
+        clazz.getSimpleName());
+    client.resource(existing).inNamespace(ns).delete();
+    return true;
   }
 
   private HasMetadata getExistingResource(

@@ -24,10 +24,13 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestReplicationConn extends BaseYsqlConnMgr {
   private static final int YSQ_MAX_CONNECTIONS = 14;
   private static final int MAX_REPLICATION_SLOTS = 50;

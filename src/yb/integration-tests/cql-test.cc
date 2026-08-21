@@ -40,6 +40,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/json_document.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/status_log.h"
@@ -57,6 +58,10 @@ DECLARE_bool(ycql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(consensus_rpc_timeout_ms);
+DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(TEST_delay_tablet_export_metadata_ms);
@@ -66,7 +71,6 @@ DECLARE_int32(yb_client_admin_rpc_timeout_sec);
 
 DECLARE_int32(cql_unprepared_stmts_entries_limit);
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
-DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(disable_truncate_table);
 DECLARE_bool(cql_always_return_metadata_in_execute_response);
 DECLARE_bool(cql_check_table_schema_in_paging_state);
@@ -74,6 +78,7 @@ DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_allow_non_authenticated_password_reset);
 DECLARE_bool(TEST_disable_connection_timeout);
 DECLARE_uint32(TEST_read_deadline_check_granularity);
+DECLARE_uint64(arena_warn_threshold_bytes);
 
 namespace yb {
 
@@ -431,10 +436,30 @@ TEST_F(CqlTest, TestTruncateTable) {
 }
 
 TEST_F(CqlTest, TestTruncateTableWithIndexes) {
+#ifdef __APPLE__
+  // On macOS, truncating 161 tablets (table + 5 indexes x 32 tablets) replays
+  // synchronous RocksDB destroy+reopen on the consensus apply thread, which
+  // takes ~14 s per UpdateConsensus and ~33 s end-to-end. Raise the consensus
+  // RPC timeout above the apply time so the leader-lease cascade doesn't
+  // trigger, and pass a matching per-statement timeout for the TRUNCATE so
+  // the CQL driver's default 20 s deadline doesn't fire before the server
+  // finishes. Linux apply stays under 3 s, so no override is needed there.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_rpc_timeout_ms) = 60'000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 60'000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_rpc_timeout_ms) = 60'000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 12.0;
+  constexpr uint32_t kTruncateTimeoutMs = 120'000;
+#else
+  // Use driver default.
+  constexpr uint32_t kTruncateTimeoutMs = 0;
+#endif
+
   master::CatalogManager& catalog_manager = CHECK_NOTNULL(ASSERT_RESULT(
       cluster_->GetLeaderMiniMaster()))->catalog_manager_impl();
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
-  auto cql = [&](const string query) { ASSERT_OK(session.ExecuteQuery(query)); };
+  auto cql = [&](const string& query, uint32_t timeout_ms = 0) {
+    ASSERT_OK(session.ExecuteQuery(query, timeout_ms));
+  };
 
   cql("create table tbl (h1 int primary key, c1 int, c2 int, c3 int, c4 int, c5 int) "
       "with transactions = {'enabled' : true} and tablets = 1");
@@ -479,7 +504,7 @@ TEST_F(CqlTest, TestTruncateTableWithIndexes) {
   };
 
   check_table_and_indexes("Check tasks before TRUNCATE tbl");
-  cql("truncate table tbl");
+  cql("truncate table tbl", kTruncateTimeoutMs);
   check_table_and_indexes("Check tasks after TRUNCATE tbl");
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -526,14 +551,15 @@ TEST_F(CqlTest, ReadTimeoutTest) {
 
   ASSERT_OK(cluster_->FlushTablets());
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_connection_timeout) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_deadline_check_granularity) = 1;
   starting_time = CoarseMonoClock::now();
   auto result = session.ExecuteAndRenderToString(
       "select acctid from test_t WHERE custid = '123' AND roletitle = 'Manager'");
+  // Use a slightly lower bound to account for clock granularity and propagation latency on macOS.
   ASSERT_GE(MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds(),
-      FLAGS_client_read_write_timeout_ms);
+      FLAGS_client_read_write_timeout_ms - 1);
   // Verify that read operation failed due to passed deadline.
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Deadline for query passed");
@@ -1458,6 +1484,41 @@ TEST_F(CqlTest, SelectAggregateFunctions) {
   }
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Exercises the aggregate-private arena recycling path in DocExprExecutor by
+// scanning many rows whose column values would grow the arena far past the
+// arena-warn threshold if the recycling logic were not in place.
+TEST_F(CqlTest, AggregateArenaReset) {
+  constexpr int kNumRows = 1000;
+  constexpr size_t kValueLen = 1000;
+
+  // Without the aggregate-arena recycling, ~1 MB of varchar data would flow
+  // through a single arena and trip this warning. With recycling, each arena
+  // generation stays well below the threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_arena_warn_threshold_bytes) = 256_KB;
+  StringWaiterLogSink arena_warning_sink("exceeded warning threshold");
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE tbl (k INT PRIMARY KEY, v TEXT) WITH tablets = 1"));
+
+  std::string expected_min;
+  for (int i = 0; i < kNumRows; ++i) {
+    auto v = RandomHumanReadableString(kValueLen);
+    if (expected_min.empty() || v < expected_min) {
+      expected_min = v;
+    }
+    ASSERT_OK(session.ExecuteQuery(
+        Format("INSERT INTO tbl (k, v) VALUES ($0, '$1')", i, v)));
+  }
+
+  CassandraStatement stmt("SELECT min(v) FROM tbl");
+  stmt.SetPageSize(100);
+  auto res = ASSERT_RESULT(session.ExecuteWithResult(stmt));
+  ASSERT_EQ(expected_min, res.RenderToString());
+
+  ASSERT_EQ(arena_warning_sink.GetEventCount(), 0);
 }
 
 TEST_F(CqlTest, CheckStateAfterDrop) {

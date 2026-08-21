@@ -24,6 +24,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/physical_time.h"
+#include "yb/util/status_log.h"
 
 DEFINE_RUNTIME_uint64(connectivity_check_interval_ms, 60000,
     "Milliseconds interval to check connectivity between cluster nodes");
@@ -115,8 +116,8 @@ class ConnectivityPoller::Impl : public MasterLeaderPollerInterface {
         poll_scheduler_(finder_, *this) {
   }
 
-  Status Start() {
-    return poll_scheduler_.Start();
+  Status Start(Cgroup* cgroup = nullptr) {
+    return poll_scheduler_.Start(cgroup);
   }
 
   void Shutdown() {
@@ -220,8 +221,8 @@ ConnectivityPoller::ConnectivityPoller(server::RpcServerBase& server, const std:
 
 ConnectivityPoller::~ConnectivityPoller() = default;
 
-Status ConnectivityPoller::Start() {
-  return impl_->Start();
+Status ConnectivityPoller::Start(Cgroup* cgroup) {
+  return impl_->Start(cgroup);
 }
 
 void ConnectivityPoller::Shutdown() {

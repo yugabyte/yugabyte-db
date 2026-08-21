@@ -662,6 +662,8 @@ const char *yb_metric_counter_label[] = {
 	BUILD_METRIC_LABEL("docdb_obsolete_keys_found"),
 	[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND_PAST_CUTOFF] =
 	BUILD_METRIC_LABEL("docdb_obsolete_keys_found_past_cutoff"),
+	[YB_STORAGE_COUNTER_BACKFILL_READS_REJECTED_BELOW_HISTORY_CUTOFF] =
+	BUILD_METRIC_LABEL("backfill_reads_rejected_below_history_cutoff"),
 };
 
 const char *yb_metric_event_label[] = {
@@ -1374,8 +1376,11 @@ ExplainOneUtility(Node *utilityStmt, IntoClause *into, ExplainState *es,
 			(*post_parse_analyze_hook) (pstate, ctas_query, jstate);
 		rewritten = QueryRewrite(ctas_query);
 		Assert(list_length(rewritten) == 1);
+		/* YB: parallel query is disabled for DDLs by default. */
 		ExplainOneQuery(linitial_node(Query, rewritten),
-						CURSOR_OPT_PARALLEL_OK, ctas->into, es,
+						(IsYugaByteEnabled() && yb_disable_parallel_query_in_ddl) ?
+						0 : CURSOR_OPT_PARALLEL_OK,
+						ctas->into, es,
 						pstate, params);
 	}
 	else if (IsA(utilityStmt, DeclareCursorStmt))
@@ -3591,6 +3596,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	if (yb_is_agg_pushdown)
 		ExplainPropertyBool("Partial Aggregate", true, es);
 
+	if (IsYugaByteEnabled() && es->yb_debug && planstate->instrument->yb_instr.max_read_ahead)
+		ExplainPropertyUInteger("Max Read Ahead", NULL, planstate->instrument->yb_instr.max_read_ahead, es);
+
 	/*
 	 * Prepare per-worker JIT instrumentation.  As with the overall JIT
 	 * summary, this is printed only if printing costs is enabled.
@@ -3812,7 +3820,9 @@ show_plan_tlist(PlanState *planstate, List *ancestors, ExplainState *es)
 
 		result = lappend(result,
 						 deparse_expression((Node *) tle->expr, context,
-											useprefix, false));
+											useprefix, false,
+											false /* yb_pretty */ ,
+											es->ybMaskConstants));
 	}
 
 	/* Print results */
@@ -3836,12 +3846,9 @@ show_expression(Node *node, const char *qlabel,
 									   ancestors);
 
 	/* Deparse the expression */
-	if (YBCPgIsYugaByteEnabled())
-		exprstr =
-			yb_deparse_expression(node, context, useprefix, false,
-								  es->verbose);
-	else
-		exprstr = deparse_expression(node, context, useprefix, false);
+	exprstr = deparse_expression(node, context, useprefix, false,
+								 !(es->verbose) ,
+								 es->ybMaskConstants);
 
 	/* And add to es->str */
 	ExplainPropertyText(qlabel, exprstr, es);
@@ -4057,7 +4064,9 @@ show_grouping_set_keys(PlanState *planstate,
 				elog(ERROR, "no tlist entry for key %d", keyresno);
 			/* Deparse the expression, showing any top-level cast */
 			exprstr = deparse_expression((Node *) target->expr, context,
-										 useprefix, true);
+										 useprefix, true,
+										 false /* yb_pretty */ ,
+										 es->ybMaskConstants);
 
 			result = lappend(result, exprstr);
 		}
@@ -4136,7 +4145,9 @@ show_sort_group_keys(PlanState *planstate, const char *qlabel,
 			elog(ERROR, "no tlist entry for key %d", keyresno);
 		/* Deparse the expression, showing any top-level cast */
 		exprstr = deparse_expression((Node *) target->expr, context,
-									 useprefix, true);
+									 useprefix, true,
+									 false /* yb_pretty */ ,
+									 es->ybMaskConstants);
 		resetStringInfo(&sortkeybuf);
 		appendStringInfoString(&sortkeybuf, exprstr);
 		/* Append sort order information, if relevant */
@@ -4309,7 +4320,9 @@ show_window_keys(StringInfo buf, PlanState *planstate,
 			elog(ERROR, "no tlist entry for key %d", keyresno);
 		/* Deparse the expression, showing any top-level cast */
 		exprstr = deparse_expression((Node *) target->expr, context,
-									 useprefix, true);
+									 useprefix, true,
+									 false /* yb_pretty */ ,
+									 es->ybMaskConstants);
 		if (keyno > 0)
 			appendStringInfoString(buf, ", ");
 		appendStringInfoString(buf, exprstr);
@@ -4376,11 +4389,15 @@ show_tablesample(TableSampleClause *tsc, PlanState *planstate,
 
 		params = lappend(params,
 						 deparse_expression(arg, context,
-											useprefix, false));
+											useprefix, false,
+											false /* yb_pretty */ ,
+											es->ybMaskConstants));
 	}
 	if (tsc->repeatable)
 		repeatable = deparse_expression((Node *) tsc->repeatable, context,
-										useprefix, false);
+										useprefix, false,
+										false /* yb_pretty */ ,
+										es->ybMaskConstants);
 	else
 		repeatable = NULL;
 
@@ -4985,7 +5002,9 @@ show_memoize_info(MemoizeState *mstate, List *ancestors, ExplainState *es)
 		appendStringInfoString(&keystr, separator);
 
 		appendStringInfoString(&keystr, deparse_expression(expr, context,
-														   useprefix, false));
+														   useprefix, false,
+														   false /* yb_pretty */ ,
+														   es->ybMaskConstants));
 		separator = ", ";
 	}
 
@@ -5881,7 +5900,7 @@ show_yb_bitmap_scan_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 								  planinfo->estimated_num_bmscan_nexts_prevs,
 								  -1,
 								  planinfo->estimated_num_bmscan_result_pages,
-								  planinfo->estimated_docdb_result_width,
+								  planinfo->estimated_ybctid_width,
 								  es);
 }
 
@@ -6345,7 +6364,7 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 		idxNames = lappend(idxNames, indexname);
 	}
 
-	if (node->onConflictAction != ONCONFLICT_NONE)
+	if (YbOnConflictClauseIsExplicitlySpecified(node->onConflictAction))
 	{
 		const char *resolution = NULL;
 
@@ -6947,7 +6966,9 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 
 			/* Deparse the expression, showing any top-level cast */
 			exprstr = deparse_expression((Node *) indextle->expr, context,
-										 useprefix, true);
+										 useprefix, true,
+										 false /* yb_pretty */ ,
+										 es->ybMaskConstants);
 			resetStringInfo(&distinct_prefix_key_buf);
 			appendStringInfoString(&distinct_prefix_key_buf, exprstr);
 			/* Emit one property-list item per key */
@@ -6998,7 +7019,9 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 			elog(ERROR, "no tlist entry for key %d", item->indexcol);
 		/* Deparse the expression, showing any top-level cast */
 		exprstr = deparse_expression((Node *) target->expr, context,
-									 useprefix, true);
+									 useprefix, true,
+									 false /* yb_pretty */ ,
+									 es->ybMaskConstants);
 
 		saop_keys = lappend(saop_keys, exprstr);
 		saops = lappend(saops, item->saop);
@@ -7020,7 +7043,9 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 			elog(ERROR, "no tlist entry for key %d", keyresno);
 		/* Deparse the expression, showing any top-level cast */
 		exprstr = deparse_expression((Node *) target->expr, context,
-									 useprefix, true);
+									 useprefix, true,
+									 false /* yb_pretty */ ,
+									 es->ybMaskConstants);
 		resetStringInfo(&sortkeybuf);
 		appendStringInfoString(&sortkeybuf, exprstr);
 		/* Append sort order information */

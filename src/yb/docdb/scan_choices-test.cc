@@ -380,7 +380,7 @@ void ScanChoicesTest::CheckSkipTargetsUpTo(
 
     auto expected_keybytes = DocKey(expected_keyentries).Encode();
     Slice expected_slice = expected_keybytes.AsSlice();
-    EXPECT_TRUE(choices_->CurrentTargetMatchesKey(expected_slice, nullptr))
+    EXPECT_TRUE(choices_->CurrentTargetMatchesKey(expected_slice))
         << "Expected: " << DocKey::DebugSliceToString(expected_slice)
         << "but got: " << DocKey::DebugSliceToString(choices_->scan_target_.AsSlice());
   }

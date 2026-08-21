@@ -147,6 +147,7 @@
 #include "executor/ybModifyTable.h"
 #include "nodes/bitmapset.h"
 #include "parser/analyze.h"
+#include "pg_yb_utils.h"
 #include "statistics/statistics.h"
 #include "utils/plancache.h"
 #include "utils/regproc.h"
@@ -1166,6 +1167,14 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 					IsCatalogNamespace(namespaceId))
 				   ? BOOTSTRAP_SUPERUSERID :
 				   GetUserId());
+
+	/*
+	 * YB: Keep the SPLIT clause and the yb_presplit reloption in sync so that
+	 * the table is created with the right pre-split values and yb_presplit is
+	 * persisted for TRUNCATE, REFRESH, and dump/restore.
+	 */
+	if (IsYugaByteEnabled())
+		YbSyncSplitOptionsAndPresplit(&stmt->split_options, &stmt->options);
 
 	/*
 	 * Parse and validate reloptions, if any.
@@ -4192,9 +4201,11 @@ SetRelationTableSpace(Relation rel,
 	table_close(pg_class, RowExclusiveLock);
 
 	/*
-	 * YB: For YB relations, the PK index is the same as the base table.
-	 * Also update the primary key index's pg_class.reltablespace and
-	 * pg_shdepend entries.
+	 * YB: For YB relations, the PK index is the same as the base table, and a
+	 * copartitioned index (e.g. the ybhnsw vector index) is stored on the
+	 * table's own tablets.  Both kinds of index always follow the table's
+	 * placement, so keep their pg_class.reltablespace and pg_shdepend entries
+	 * in sync with the table's tablespace.
 	 */
 	if (IsYBRelation(rel) &&
 		(rel->rd_rel->relkind == RELKIND_RELATION ||
@@ -4202,7 +4213,7 @@ SetRelationTableSpace(Relation rel,
 	{
 		List	   *indexIds = RelationGetIndexList(rel);
 		ListCell   *lc;
-		Oid			newPrimaryKeyTableSpaceId = (newTableSpaceId == MyDatabaseTableSpace) ?
+		Oid			newIndexTableSpaceId = (newTableSpaceId == MyDatabaseTableSpace) ?
 			InvalidOid : newTableSpaceId;
 
 		foreach(lc, indexIds)
@@ -4212,10 +4223,14 @@ SetRelationTableSpace(Relation rel,
 			bool		isPrimaryIndex = (idxRel != NULL &&
 										  idxRel->rd_index &&
 										  idxRel->rd_index->indisprimary);
+			bool		isCopartitionedIndex = (idxRel != NULL &&
+												idxRel->rd_indam &&
+												idxRel->rd_indam->yb_amiscopartitioned);
 
 			RelationClose(idxRel);
 
-			if (!isPrimaryIndex)
+			/* Only PK and copartitioned indexes follow the table's tablespace. */
+			if (!isPrimaryIndex && !isCopartitionedIndex)
 				continue;
 
 			Relation	idx_pg_class = table_open(RelationRelationId,
@@ -4227,20 +4242,17 @@ SetRelationTableSpace(Relation rel,
 				elog(ERROR, "cache lookup failed for relation %u", idxOid);
 			Form_pg_class idx_rd_rel = (Form_pg_class) GETSTRUCT(idx_tuple);
 
-			/* Update PK's pg_class entry */
-			idx_rd_rel->reltablespace = newPrimaryKeyTableSpaceId;
+			/* Update the index's pg_class entry */
+			idx_rd_rel->reltablespace = newIndexTableSpaceId;
 			CatalogTupleUpdate(idx_pg_class, &idx_tuple->t_self, idx_tuple);
 			UnlockTuple(idx_pg_class, &idx_tuple->t_self, InplaceUpdateTupleLock);
 
-			/* Update PK's pg_shdepend entry */
+			/* Update the index's pg_shdepend entry */
 			changeDependencyOnTablespace(RelationRelationId, idxOid,
-										 newPrimaryKeyTableSpaceId);
+										 newIndexTableSpaceId);
 
 			heap_freetuple(idx_tuple);
 			table_close(idx_pg_class, RowExclusiveLock);
-
-			/* Only one primary key index per table */
-			break;
 		}
 
 		list_free(indexIds);
@@ -5908,7 +5920,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 											   AT_NUM_PASSES,
 											   main_relid,
 											   &yb_rollback_handle,
-											   false /* isPartitionOfAlteredTable */ );
+											   false /* isPartitionOfAlteredTable */ ,
+											   lockmode);
 
 	if (yb_rollback_handle)
 		*yb_rollback_handles = lappend(*yb_rollback_handles, yb_rollback_handle);
@@ -5935,7 +5948,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 														 AT_NUM_PASSES,
 														 childrelid,
 														 &yb_child_rollback_handle,
-														 true /* isPartitionOfAlteredTable */ );
+														 true /* isPartitionOfAlteredTable */ ,
+														 lockmode);
 		ListCell   *listcell = NULL;
 
 		foreach(listcell, child_handles)
@@ -10197,6 +10211,22 @@ ATPrepDropColumn(List **wqueue, Relation rel, bool recurse, bool recursing,
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("cannot drop column from typed table")));
+
+	/*
+	 * YB: ALTER TYPE ... DROP ATTRIBUTE is applied only to the PG catalog and is
+	 * not propagated to DocDB. Disallow it from cascading into a typed table
+	 * (the recursion that reaches the typed table here), whose DocDB schema would
+	 * otherwise silently diverge from the catalog. Skipped during binary
+	 * upgrade (IsBinaryUpgrade) and binary restore (yb_binary_restore), where
+	 * a type is always altered before its dependent tables are created.
+	 */
+	if (IsYugaByteEnabled() && !IsBinaryUpgrade && !yb_binary_restore &&
+		rel->rd_rel->reloftype && recursing)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("drop attribute on the type of a typed table is not supported yet"),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "30577. React with thumbs up to raise its priority")));
 
 	if (rel->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
 		ATTypedTableRecursion(wqueue, rel, cmd, lockmode, context);
@@ -15100,6 +15130,14 @@ validateForeignKeyConstraint(char *conname,
 	MemoryContext perTupCxt;
 	TupleTableSlot *ybSlot;
 
+	/*
+	 * YB: For xCluster targets in automatic mode, we skip validating existing
+	 * rows against the foreign key. The source universe has already validated
+	 * the constraint.
+	 */
+	if (yb_xcluster_automatic_mode_target_ddl)
+		return;
+
 	ereport(DEBUG1,
 			(errmsg_internal("validating foreign key constraint \"%s\"", conname)));
 
@@ -15122,8 +15160,11 @@ validateForeignKeyConstraint(char *conname,
 	 * indicates we must proceed with the fire-the-trigger method. We can't do
 	 * a LEFT JOIN for temporal FKs yet, but we can once we support temporal
 	 * left joins.
-	 * Note: YB handles LEFT JOIN inefficiently. So skip this approach and
+	 * YB Note: YB handles LEFT JOIN inefficiently. So skip this approach and
 	 * call trigger on each row instead. As triggers can buffer the FK check.
+	 * We skip this approach by adding the condition !IsYBRelation(rel).
+	 * The original condition in vanilla postgres is only
+	 *   if (RI_Initial_Check(&trig, rel, pkrel))
 	 */
 	if (!IsYBRelation(rel) && !hasperiod && RI_Initial_Check(&trig, rel, pkrel))
 		return;
@@ -18319,6 +18360,19 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacen
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot set tablespace for primary key index")));
 
+	if (IsYugaByteEnabled() && tablespacename &&
+		rel->rd_index &&
+		rel->rd_indam && rel->rd_indam->yb_amiscopartitioned)
+		/*
+		 * YB: Disable setting a tablespace directly on a copartitioned index
+		 * (e.g. the ybhnsw vector index).  It is stored on the indexed table's
+		 * own tablets and always follows the indexed table's tablespace, so it
+		 * can only be moved by moving the indexed table.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot set tablespace for a vector index")));
+
 	if (IsYugaByteEnabled() && !yb_cascade && MyDatabaseColocated &&
 		YbGetTableProperties(rel)->is_colocated)
 	{
@@ -18466,6 +18520,27 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("WITH CHECK OPTION is supported only on automatically updatable views"),
 						 errhint("%s", _(view_updatable_error))));
+		}
+	}
+
+	/*
+	 * YB: ensure the new yb_presplit value (if any) is compatible with the
+	 * relation's hash/range partitioning.  Syntactic validation already ran
+	 * via the reloption validate_cb.
+	 */
+	if (IsYBRelation(rel) && newOptions != (Datum) 0)
+	{
+		ListCell   *lc;
+
+		foreach(lc, untransformRelOptions(newOptions))
+		{
+			DefElem    *def = (DefElem *) lfirst(lc);
+
+			if (strcmp(def->defname, "yb_presplit") == 0)
+			{
+				YbValidatePresplitForRelation(rel, defGetString(def));
+				break;
+			}
 		}
 	}
 
@@ -18687,71 +18762,8 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 	}
 
 	if (IsYBRelation(rel))
-	{
-		Datum	   *options;
-		int			num_options;
-
-		yb_get_tablespace_options(&options, &num_options, newTableSpace);
-		/*
-		 * Validation should only happen on tablespaces that have a defined
-		 * replica placement
-		 */
-		const char *placement_prefix = "replica_placement=";
-		const char *read_prefix = "read_replica_placement=";
-		const int	placement_prefix_len = strlen(placement_prefix);
-		const int	read_prefix_len = strlen(read_prefix);
-
-		char	   *live_option = NULL;
-		char	   *read_option = NULL;
-
-		for (int i = 0; i < num_options; i++)
-		{
-			char	   *option = text_to_cstring(DatumGetTextP(options[i]));
-
-			if (strncmp(option, placement_prefix, placement_prefix_len) == 0)
-			{
-				if (live_option != NULL)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("duplicate replica_placement option found")));
-				live_option = option;
-				continue;
-			}
-			else if (strncmp(option, read_prefix, read_prefix_len) == 0)
-			{
-				if (read_option != NULL)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("duplicate read_replica_placement option found."
-									"Only one read_replica_placement option is supported via "
-									"tablespaces.")));
-				read_option = option;
-				continue;
-			}
-			else
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("expected replica_placement or read_replica_placement "
-								"option. Got %s", option)));
-			}
-
-			pfree(option);
-		}
-
-		const char *live_value = live_option ?
-			live_option + placement_prefix_len : NULL;
-		const char *read_value = read_option ?
-			read_option + read_prefix_len : NULL;
-
-		YBCValidatePlacements(live_value, read_value,
-								true /* check_satisfiable */ );
-
-		if (live_option)
-			pfree(live_option);
-		if (read_option)
-			pfree(read_option);
-	}
+		yb_validate_tablespace_placement_by_oid(newTableSpace,
+											true /* check_satisfiable */ );
 
 	/* Update can be done, so change reltablespace */
 	SetRelationTableSpace(rel, newTableSpace, InvalidOid);
@@ -18948,9 +18960,11 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 			continue;
 
 		/*
-		 * In YB, a primary key index is an intrinsic part of its base table.
-		 * For a primary key index, we only need to update the
-		 * new_tablespaceoid field in pg_class.
+		 * In YB, a primary key index is an intrinsic part of its base table,
+		 * and a copartitioned index (e.g. the ybhnsw vector index) is stored on
+		 * its base table's tablets.  Neither owns separate tablets, so we only
+		 * update their new_tablespaceoid field in pg_class rather than moving
+		 * them independently.
 		 */
 		if (relForm->relkind == RELKIND_INDEX ||
 			relForm->relkind == RELKIND_PARTITIONED_INDEX)
@@ -18958,15 +18972,19 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 			yb_index_rel = RelationIdGetRelation(relOid);
 			bool		isPrimaryIndex = (yb_index_rel != NULL &&
 										  yb_index_rel->rd_index->indisprimary);
+			bool		isCopartitionedIndex = (yb_index_rel != NULL &&
+												yb_index_rel->rd_indam &&
+												yb_index_rel->rd_indam->yb_amiscopartitioned);
 
 			RelationClose(yb_index_rel);
 
-			if (isPrimaryIndex)
+			if (isPrimaryIndex || isCopartitionedIndex)
 			{
 				/*
-				 * We move the primary key indexes along with the tables that
-				 * they are associated with when using the following commands
-				 * ALTER TABLE/INDEX/MATERIALIZED VIEW ... SET TABLESPACE ...
+				 * We move primary key and copartitioned indexes along with the
+				 * tables that they are associated with when using the following
+				 * commands ALTER TABLE/INDEX/MATERIALIZED VIEW ... SET
+				 * TABLESPACE ...
 				 */
 				if (yb_cascade || (!yb_cascade && stmt->objtype == OBJECT_TABLE))
 				{
@@ -25968,7 +25986,30 @@ YbATGetCloneTableStmt(const char *namespace_name, const char *table_name,
 	}
 
 	if (clone_split_options)
+	{
 		create_stmt->split_options = YbGetSplitOptions(rel);
+
+		/*
+		 * Filter out yb_presplit from cloned reloptions since we are
+		 * also setting split_options.  DefineRelation will re-derive
+		 * yb_presplit from split_options.  Without this, DefineRelation
+		 * would see both and raise a duplicate parameter error.
+		 */
+		if (create_stmt->options)
+		{
+			ListCell   *lc;
+			List	   *filtered_options = NIL;
+
+			foreach(lc, create_stmt->options)
+			{
+				DefElem    *def = (DefElem *) lfirst(lc);
+
+				if (strcmp(def->defname, "yb_presplit") != 0)
+					filtered_options = lappend(filtered_options, def);
+			}
+			create_stmt->options = filtered_options;
+		}
+	}
 
 	/*
 	 * Set attributes and their defaults.

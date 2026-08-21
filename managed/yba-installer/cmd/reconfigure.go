@@ -38,6 +38,11 @@ var reconfigureCmd = &cobra.Command{
 			log.Fatal("invalid reconfigure: " + err.Error())
 		}
 
+		// Set any necessary config values due to changes
+		if err := common.FixConfigValues(); err != nil {
+			log.Fatal(fmt.Sprintf("Error changing default config values: %s", err.Error()))
+		}
+
 		// Handle PerfAdvisor service installation/uninstallation if enabled flag changed
 		perfAdvisorWasEnabled := state.Services.PerfAdvisor
 		perfAdvisorNowEnabled := viper.GetBool("perfAdvisor.enabled")
@@ -64,6 +69,30 @@ var reconfigureCmd = &cobra.Command{
 			}
 		}
 
+		// Handle node-exporter service installation/uninstallation if enabled flag changed
+		nodeExporterWasEnabled := state.Services.NodeExporter
+		nodeExporterNowEnabled := viper.GetBool("nodeExporter.enabled")
+
+		if nodeExporterWasEnabled != nodeExporterNowEnabled {
+			nodeExporterService := serviceManager.ServiceByName("node-exporter")
+			if nodeExporterService == nil {
+				log.Warn("node-exporter service not found in service manager")
+			} else if nodeExporterNowEnabled {
+				log.Info("nodeExporter enabled changed from false to true. Installing node-exporter service.")
+				if err := nodeExporterService.Install(); err != nil {
+					log.Fatal("Failed to install node-exporter: " + err.Error())
+				}
+				if err := nodeExporterService.Initialize(); err != nil {
+					log.Fatal("Failed to initialize node-exporter: " + err.Error())
+				}
+			} else {
+				log.Info("nodeExporter enabled changed from true to false. Uninstalling node-exporter service.")
+				if err := nodeExporterService.Uninstall(false); err != nil {
+					log.Fatal("Failed to uninstall node-exporter: " + err.Error())
+				}
+			}
+		}
+
 		if err := handleCertReconfig(state); err != nil {
 			log.Fatal("failed to handle cert reconfig: " + err.Error())
 		}
@@ -81,11 +110,6 @@ var reconfigureCmd = &cobra.Command{
 		// Change into the dir we are in so that we can specify paths relative to ourselves
 		// TODO(minor): probably not a good idea in the long run
 		os.Chdir(common.GetBinaryDir())
-
-		// Set any necessary config values due to changes
-		if err := common.FixConfigValues(); err != nil {
-			log.Fatal(fmt.Sprintf("Error changing default config values: %s", err.Error()))
-		}
 
 		for service := range serviceManager.Services() {
 			if err := service.Reconfigure(); err != nil {
@@ -107,6 +131,7 @@ var reconfigureCmd = &cobra.Command{
 
 		// Update state to reflect current service configuration
 		state.Services.PerfAdvisor = viper.GetBool("perfAdvisor.enabled")
+		state.Services.NodeExporter = viper.GetBool("nodeExporter.enabled")
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("failed to write state: " + err.Error())
 		}

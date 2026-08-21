@@ -24,12 +24,12 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_test_flag(
-    bool, enable_ysql_operation_lease_expiry_check, true,
+DEFINE_test_flag(bool, enable_ysql_operation_lease_expiry_check, true,
     "Whether tservers should monitor their ysql op lease and kill their hosted pg "
     "sessions when it expires. Only available as a flag for tests.");
 

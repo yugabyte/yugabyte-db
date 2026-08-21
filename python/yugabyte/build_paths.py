@@ -20,8 +20,8 @@ from typing import Optional, Set
 class BuildPaths:
     build_root: str
     llvm_path: Optional[str]
+    gcc_path: Optional[str]
     thirdparty_path: Optional[str]
-    linuxbrew_path: Optional[str]
 
     file_existence_checking_cache: Set[str]
 
@@ -44,8 +44,8 @@ class BuildPaths:
             raise IOError("Build root directory does not exist: %s" % build_root)
 
         self.llvm_path = self._read_path_file('llvm_path.txt') or os.getenv('YB_LLVM_TOOLCHAIN_DIR')
+        self.gcc_path = self._read_path_file('gcc_path.txt') or os.getenv('YB_GCC_TOOLCHAIN_DIR')
         self.thirdparty_path = self._read_path_file('thirdparty_path.txt')
-        self.linuxbrew_path = self._read_path_file('linuxbrew_path.txt')
 
         self.file_existence_checking_cache = set()
 
@@ -53,9 +53,9 @@ class BuildPaths:
         assert self.llvm_path is not None
         return self.llvm_path
 
-    def get_linuxbrew_path(self) -> str:
-        assert self.linuxbrew_path is not None
-        return self.linuxbrew_path
+    def get_gcc_path(self) -> str:
+        assert self.gcc_path is not None
+        return self.gcc_path
 
     def get_thirdparty_path(self) -> str:
         assert self.thirdparty_path is not None
@@ -70,5 +70,10 @@ class BuildPaths:
 
     def get_llvm_tool_path(self, tool_name: str) -> str:
         tool_path = os.path.join(self.get_llvm_path(), 'bin', tool_name)
+        self._check_file_existence(tool_path)
+        return tool_path
+
+    def get_gcc_tool_path(self, tool_name: str) -> str:
+        tool_path = os.path.join(self.get_gcc_path(), 'bin', tool_name)
         self._check_file_existence(tool_path)
         return tool_path

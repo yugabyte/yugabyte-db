@@ -9,8 +9,8 @@ fi
 
 # Root mode: Also add to yb_user's bashrc
 if [ "$SUDO_ACCESS" = "true" ]; then
-  if ! grep -qxF "$no_proxy_env" {{ yb_home_dir }}/.bashrc >/dev/null 2>&1; then
-      su - {{ yb_user }} -c "echo '$no_proxy_env' >> {{ yb_home_dir }}/.bashrc"
+  if ! grep -qxF "$no_proxy_env" {{ yb_user_home }}/.bashrc >/dev/null 2>&1; then
+      su - {{ yb_user }} -c "echo '$no_proxy_env' >> {{ yb_user_home }}/.bashrc"
   fi
 fi
 

@@ -61,6 +61,10 @@ INSERT INTO t1m
       lpad(sha512((tmp1.v#tmp2.v#tmp3.v)::bpchar::bytea)::bpchar, 1536, '-')
   FROM tmp1 JOIN tmp2 USING (id) JOIN tmp3 USING(id);
 
+ALTER TABLE t1m ALTER COLUMN k1 SET STATISTICS 500;
+ALTER TABLE t1m ALTER COLUMN k2 SET STATISTICS 500;
+ALTER TABLE t1m ALTER COLUMN k3 SET STATISTICS 500;
+
 ANALYZE t1m;
 
 
@@ -122,26 +126,18 @@ SELECT k1, k2, k3 FROM t1m t WHERE k1 BETWEEN 5000-(4/2 - 1) AND 5000+(4/2);
 --
 
 EXPLAIN (COSTS off, SUMMARY off)
-SELECT sum(k1), sum(k2), sum(k3), avg(k1+id), avg(k2+k3)
-FROM (SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500000+(10/2)
-      UNION ALL
-      SELECT -1, k1, k2, k3 FROM t1m t2 WHERE k1 = 5000
-      UNION ALL
-      SELECT -2, k1, k2, k3 len FROM t1m t3 WHERE id = 100
-      UNION ALL
-      SELECT -3, k1, k2, k3 FROM t1m t4 WHERE k1 = 4500
-) v;
-
-EXPLAIN (COSTS off, SUMMARY off)
-SELECT sum(k1), sum(k2), sum(k3), avg(k1+id), avg(k2+k3)
-FROM (SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500000+(10/2)
-      UNION ALL
-      SELECT -1, k1, k2, k3 FROM t1m t2 WHERE k1 = 5000
-      UNION ALL
-      SELECT -2, k1, k2, k3 len FROM t1m t3 WHERE id = 100
-      UNION ALL
-      SELECT -3, k1, k2, k3 FROM t1m t4 WHERE k1 <= 300
-) v;
+SELECT k1, k2, k3, count(*)
+FROM (
+    SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500000+(10/2)
+    UNION ALL
+    SELECT -1, k1, k2, k3 FROM t1m t2 WHERE k1 <= 50
+    UNION ALL
+    SELECT -2, k1, k2, k3 FROM t1m t3 WHERE k1 IN (100, 200, 1000, 2000, 5000, 8000)
+    UNION ALL
+    SELECT -3, k1, k2, k3 FROM t1m t4 WHERE k1 IN (1000, 3000, 5000, 6000, 7000)
+) v
+GROUP BY k1, k2, k3
+ORDER BY k1, k2, k3;
 
 
 --
@@ -151,6 +147,8 @@ FROM (SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT id, k1, k2, k3, length(v) FROM t1m t;
 
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT k1, k2, k3, length(v) FROM t1m t WHERE k1 >= 1000 ORDER BY k3;
 
 --
 -- Should choose PARALLEL index scan
@@ -177,23 +175,45 @@ SELECT id, k1, k2, k3, length(v) FROM t1m t ORDER BY id;
 --
 
 EXPLAIN (COSTS off, SUMMARY off)
-SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(1000/2 - 1) AND 5000+(1000/2);
+SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(900/2 - 1) AND 5000+(900/2);
 
 
 --
--- Should choose PARALLEL append/gather plan
+-- Should choose PARALLEL append + gather plan
 --
 
 EXPLAIN (COSTS off, SUMMARY off)
-SELECT sum(k1), sum(k2), sum(k3), avg(k1+id), avg(k2+k3)
-FROM (SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500000+(10/2)
-      UNION ALL
-      SELECT -1, k1, k2, k3 FROM t1m t2 WHERE k3 = 5000
-      UNION ALL
-      SELECT -2, k1, k2, k3 len FROM t1m t3 WHERE id = 100
-      UNION ALL
-      SELECT -3, k1, k2, k3 FROM t1m t4 WHERE k3 <= 300
-) v;
+SELECT k1, k2, k3, count(*)
+FROM (
+    SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500000+(10/2)
+    UNION ALL
+    SELECT -1, k1, k2, k3 FROM t1m t2 WHERE k3 = 5000
+    UNION ALL
+    SELECT -2, k1, k2, k3 FROM t1m t3 WHERE k2 = 2000
+    UNION ALL
+    SELECT -3, k1, k2, k3 FROM t1m t4 WHERE k1 = 3000
+) v
+GROUP BY k1, k2, k3
+ORDER BY k1, k2, k3;
+
+
+--
+-- Should choose PARALLEL append + partial agg + gather MERGE plan
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT id, k3, count(*), avg(length(v))
+FROM (
+    SELECT id, k1, k2, k3, v FROM t1m t1 WHERE id BETWEEN 500000-(10000/2-1) AND 500000+(10000/2)
+    UNION ALL
+    SELECT id, k1, k2, k3, v FROM t1m t2 WHERE k3 <= 100
+    UNION ALL
+    SELECT id, k1, k2, k3, v FROM t1m t3 WHERE k2 <= 100
+    UNION ALL
+    SELECT id, k1, k2, k3, v FROM t1m t4 WHERE k1 <= 100
+) v
+GROUP BY k3, id
+ORDER BY k3, id;
 
 
 --
@@ -225,28 +245,9 @@ SELECT 0 FROM t1m t;
  *
  * The following function borrowed from explain.sql.
  */
--- To produce stable regression test output, it's usually necessary to
--- ignore details such as exact costs or row counts.  These filter
--- functions replace changeable output details with fixed strings.
-
--- To produce valid JSON output, replace numbers with "0" or "0.0" not "N"
-create function explain_filter_to_json(text) returns jsonb
-language plpgsql as
-$$
-declare
-    data text := '';
-    ln text;
-begin
-    for ln in execute $1
-    loop
-        -- Replace any numeric word with just '0'
-        ln := regexp_replace(ln, '\m\d+\M', '0', 'g');
-        data := data || ln;
-    end loop;
-    return data::jsonb;
-end;
-$$;
-
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explain_filters.sql'
+\i :filename
 
 CREATE TABLE t10k (id int, k1 int, k2 int, k3 int, v char(1536),
     PRIMARY KEY (id ASC)) WITH (COLOCATION = on);

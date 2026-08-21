@@ -38,6 +38,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "replication/yb_virtual_wal_client.h"
 
 /* Private data for writing out data */
 typedef struct DecodingOutputState
@@ -102,11 +103,12 @@ static Datum
 pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool binary)
 {
 	if (IsYugaByteEnabled()
-		&& !yb_enable_replication_slot_consumption)
+		&& !(yb_enable_replication_slot_query_api && yb_disable_catalog_version_check))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("getting logical slot changes is unavailable"),
-				 errdetail("yb_enable_replication_slot_consumption "
+				 errdetail("yb_enable_replication_slot_query_api "
+						   "or yb_disable_catalog_version_check "
 						   "is false.")));
 
 	Name		name;
@@ -123,6 +125,8 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 	Size		ndim;
 	List	   *options = NIL;
 	DecodingOutputState *p;
+
+	int			yb_num_consecutive_empty_records = 0;
 
 	CheckSlotPermissions();
 
@@ -202,11 +206,18 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 
 	/*
 	 * Compute the current end-of-wal.
+	 *
+	 * YB: Not applicable in YB as the read loop terminates when
+	 * YBCReadRecord returns NULL for 3 consecutive retries or
+	 * upto_lsn/upto_nchanges limits are hit.
 	 */
-	if (!RecoveryInProgress())
-		end_of_wal = GetFlushRecPtr(NULL);
-	else
-		end_of_wal = GetXLogReplayRecPtr(NULL);
+	if (!IsYugaByteEnabled())
+	{
+		if (!RecoveryInProgress())
+			end_of_wal = GetFlushRecPtr(NULL);
+		else
+			end_of_wal = GetXLogReplayRecPtr(NULL);
+	}
 
 	ReplicationSlotAcquire(NameStr(*name), true, true);
 
@@ -259,13 +270,31 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 		/* invalidate non-timetravel entries */
 		InvalidateSystemCaches();
 
+		if (IsYugaByteEnabled())
+			YBCInitVirtualWal(ctx->options.yb_publication_names);
+
 		/* Decode until we run out of records */
-		while (ctx->reader->EndRecPtr < end_of_wal)
+		while (IsYugaByteEnabled() || ctx->reader->EndRecPtr < end_of_wal)
 		{
 			XLogRecord *record;
 			char	   *errm = NULL;
 
-			record = XLogReadRecord(ctx->reader, &errm);
+			YbVirtualWalRecord *yb_record = NULL;
+
+			if (IsYugaByteEnabled())
+			{
+				yb_record = YBXLogReadRecord(ctx->reader,
+					ctx->options.yb_publication_names,
+					&errm);
+
+				/*
+				 * Explicitly set record to NULL so that the NULL check below is only
+				 * dependent on yb_record.
+				 */
+				record = NULL;
+			}
+			else
+				record = XLogReadRecord(ctx->reader, &errm);
 			if (errm)
 				elog(ERROR, "could not find record for logical decoding: %s", errm);
 
@@ -273,7 +302,7 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 			 * The {begin_txn,change,commit_txn}_wrapper callbacks above will
 			 * store the description into our tuplestore.
 			 */
-			if (record != NULL)
+			if ((IsYugaByteEnabled() && yb_record != NULL) || record != NULL)
 			{
 				LogicalDecodingProcessRecord(ctx, ctx->reader);
 
@@ -284,6 +313,24 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 				 * battle-tested.
 				 */
 				Assert(CurrentResourceOwner == old_resowner);
+			}
+
+			if (IsYugaByteEnabled())
+			{
+				if (yb_record == NULL)
+				{
+					yb_num_consecutive_empty_records++;
+
+					/*
+					 * The virtual WAL can return an empty response even when we
+					 * have data to send. To account for that, we retry the
+					 * GetConsistentChanges API 3 times.
+					 */
+					if (yb_num_consecutive_empty_records >= 3)
+						break;
+				}
+				else
+					yb_num_consecutive_empty_records = 0;
 			}
 
 			/* check limits */
@@ -316,18 +363,30 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 			 * Dirty the slot so it's written out at the next checkpoint.
 			 * We'll still lose its position on crash, as documented, but it's
 			 * better than always losing the position even on clean restart.
+			 *
+			 * YB Note: Not needed for YB since slot state is persisted in
+			 * yb-master by LogicalConfirmReceivedLocation via
+			 * YBCCalculatePersistAndGetRestartLSN.
 			 */
-			ReplicationSlotMarkDirty();
+			if (!IsYugaByteEnabled())
+				ReplicationSlotMarkDirty();
 		}
 
 		/* free context, call shutdown callback */
 		FreeDecodingContext(ctx);
 
 		ReplicationSlotRelease();
+
+		/* YB: Destroy the virtual WAL client and its memory contexts. */
+		if (IsYugaByteEnabled())
+			YBCDestroyVirtualWal();
 		InvalidateSystemCaches();
 	}
 	PG_CATCH();
 	{
+		/* YB: Clean up virtual WAL on error as well. */
+		if (IsYugaByteEnabled())
+			YBCDestroyVirtualWal();
 		/* clear all timetravel entries */
 		InvalidateSystemCaches();
 

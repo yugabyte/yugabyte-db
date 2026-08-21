@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <boost/range/iterator_range.hpp>
+
 #include "yb/dockv/key_entry_value.h"
 
 namespace yb::dockv {

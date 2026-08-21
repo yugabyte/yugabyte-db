@@ -39,8 +39,21 @@ export const UniverseHealthCheckList = (props) => {
     );
   }
 
+  // Universe creation never finished successfully: the backend intentionally skips health
+  // checks for such universes (they never reached a working baseline). Mirror the plain
+  // placeholder style used on the xCluster tab ("No replications to show.") so this doesn't
+  // look like a monitoring outage.
+  const creationSucceeded =
+    currentUniverse?.data?.universeDetails?.creationSucceeded !== false;
+
   let content = <span />;
-  if (getPromiseState(healthCheck).isLoading()) {
+  if (!creationSucceeded) {
+    content = (
+      <div>
+        {"Health checks are not running - universe creation did not complete successfully."}
+      </div>
+    );
+  } else if (getPromiseState(healthCheck).isLoading()) {
     content = <YBLoading />;
   } else if (
     getPromiseState(healthCheck).isEmpty() ||

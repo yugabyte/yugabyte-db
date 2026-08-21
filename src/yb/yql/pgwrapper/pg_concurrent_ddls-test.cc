@@ -35,10 +35,9 @@ class PgConcurrentDDLsTest : public LibPqTestBase {
         "--enable_object_locking_for_table_locks=true");
     opts->extra_tserver_flags.emplace_back(
         "--ysql_yb_ddl_transaction_block_enabled=true");
-    opts->extra_tserver_flags.emplace_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=20000");
-    opts->extra_tserver_flags.emplace_back(
-        yb::Format("--ysql_pg_conf_csv=$0", "yb_enable_concurrent_ddl=true"));
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     opts->extra_master_flags.emplace_back(
         "--master_ysql_operation_lease_ttl_ms=10000");
   }
@@ -96,6 +95,104 @@ TEST_F(PgConcurrentDDLsTest, CreateIndexAndConcurrentAnalyze) {
 }
 #endif
 
+TEST_F(PgConcurrentDDLsTest, WholerowRaceCondition) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test_wholerow (k INT PRIMARY KEY, v INT, v2 INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_wholerow VALUES (1, 100, 200)"));
+
+  TestThreadHolder thread_holder;
+
+  thread_holder.AddThreadFunctor([this] {
+    auto dml_conn = ASSERT_RESULT(Connect());
+
+    // Set GUCs to induce the race
+    ASSERT_OK(dml_conn.Execute("SET yb_test_sleep_before_executor_start_ms = 15000"));
+
+    // Prepare statement so it plans without any secondary indexes.
+    // We use a non-PK condition so it does a SeqScan, ensuring yb_fetch_target_tuple is true.
+    ASSERT_OK(dml_conn.Execute("PREPARE my_dml AS DELETE FROM test_wholerow WHERE v = 100"));
+
+    // Execute the statement. The test GUC will cause it to sleep inside standard_ExecutorStart
+    // for 15 seconds (between planning and actual execution).
+    // Meanwhile, the main thread creates an index and bumps the catalog version.
+    // Upon waking up and proceeding, the backend will process background catalog invalidation
+    // messages from the tablet server (due to object locking/heartbeats), causing it to
+    // realize the schema changed.
+    // It should throw schema version mismatch.
+    auto status = dml_conn.Execute("EXECUTE my_dml");
+
+    LOG(INFO) << "Execute returned status " << status;
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "schema version mismatch");
+  });
+
+  // Wait a little bit to ensure the DML thread starts executing and goes to sleep
+  std::this_thread::sleep_for(1s);
+
+  // Session 2: DDL
+  auto ddl_conn = ASSERT_RESULT(Connect());
+
+  // Disable wait so that CREATE INDEX CONCURRENTLY finishes instantly
+  // instead of hanging while waiting for the sleeping DML transaction.
+  ASSERT_OK(ddl_conn.Execute("SET yb_disable_wait_for_backends_catalog_version = true"));
+
+  LOG(INFO) << "Creating concurrent index...";
+  ASSERT_OK(ddl_conn.Execute("CREATE INDEX CONCURRENTLY idx_wholerow ON test_wholerow(v2)"));
+  LOG(INFO) << "Created concurrent index successfully.";
+
+  thread_holder.Stop();
+  thread_holder.JoinAll();
+}
+
+// Test for #32080.
+//
+// When object locking is enabled, the catalog version mismatch check is not required
+// since object locking and invalidation messages ensure that any concurrent DML/ DDL
+// reads the latest data.
+//
+// Before the fix, a concurrent transaction will result in a  MISMATCHED_SCHEMA ("the
+// catalog snapshot used for this transaction has been invalidated") error.
+TEST_F(PgConcurrentDDLsTest, CatalogVersionCheckDisabled) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE ctas_src (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO ctas_src SELECT s, s FROM generate_series(1, 2000) AS s"));
+
+  // An entirely unrelated table + index. Only the index will be renamed.
+  ASSERT_OK(conn.Execute("CREATE TABLE unrelated (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX unrelated_idx ON unrelated(v)"));
+
+  // Delay every transactional read so the paginated scan reliably spans the
+  // concurrent index rename.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_transactional_read_delay_ms", "800"));
+
+  TestThreadHolder thread_holder;
+  Status victim_status;
+  thread_holder.AddThreadFunctor([this, &victim_status] {
+    auto victim_conn = ASSERT_RESULT(Connect());
+    // Small fetch limit => the CTAS source scan issues many read RPCs over time, each
+    // carrying the catalog version pinned when the scan began.
+    ASSERT_OK(victim_conn.Execute("SET yb_fetch_row_limit = 100"));
+    victim_status =
+        victim_conn.Execute("CREATE TABLE ctas_dst AS SELECT * FROM ctas_src");
+    LOG(INFO) << "CTAS returned status: " << victim_status;
+  });
+
+  // Let the scan get a few read RPCs in, then bump the catalog version with a breaking
+  // ALTER INDEX ... RENAME on the unrelated index.
+  SleepFor(2s);
+  LOG(INFO) << "Renaming unrelated index concurrently with the scan";
+  ASSERT_OK(conn.Execute("ALTER INDEX unrelated_idx RENAME TO unrelated_idx_renamed"));
+
+  thread_holder.JoinAll();
+
+  // Renaming an unrelated index must not abort the scan: with object locking the
+  // catalog-version (last breaking version) check is disabled.
+  ASSERT_OK(victim_status);
+}
+
 TEST_F(PgConcurrentDDLsTest, ConcurrentCreateIndex) {
   auto kNumTables = 2;
   // TODO(#30015): If multiple threads create indexes on the same table, the "only a single oid is
@@ -126,20 +223,29 @@ TEST_F(PgConcurrentDDLsTest, ConcurrentCreateIndex) {
 class PgConcurrentCreateIndexWithSlowOtherDDLTest : public PgConcurrentDDLsTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back(
-        "--ysql_yb_wait_for_backends_catalog_version_timeout=20000");
-    options->extra_master_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=10000");
-    options->extra_master_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms=5000");
-    options->extra_master_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=3000");
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_wait_for_backends_catalog_version_timeout=20000");
-    options->extra_tserver_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=10000");
-    options->extra_tserver_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=3000");
+    // Scale RPC/operation budgets by kTimeMultiplier so that under sanitizers, where a freshly
+    // forked PG backend can take several seconds to reach ReadyForQuery, the master->tserver
+    // probes do not time out and trigger an avalanche of retried local PG connections (and
+    // therefore an avalanche of newly forked backends).
+    options->extra_master_flags.push_back(Format(
+        "--ysql_yb_wait_for_backends_catalog_version_timeout=$0", 20000 * kTimeMultiplier));
+    options->extra_master_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=$0",
+        10000 * kTimeMultiplier));
+    options->extra_master_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms=$0",
+        5000 * kTimeMultiplier));
+    options->extra_master_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=$0",
+        3000 * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_yb_wait_for_backends_catalog_version_timeout=$0", 20000 * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=$0",
+        10000 * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=$0",
+        3000 * kTimeMultiplier));
 
     PgConcurrentDDLsTest::UpdateMiniClusterOptions(options);
   }
@@ -185,36 +291,41 @@ TEST_F(PgConcurrentCreateIndexWithSlowBackfillTest, SlowBackfillTest) {
 // This is the SlowBackfillTest for partitioned table, where we can allow concurrent
 // execution of CREATE INDEX on child partitions to speed up indexing process.
 TEST_F(PgConcurrentCreateIndexWithSlowBackfillTest, PartitionedSlowBackfillTest) {
+  // TSAN amplifies catalog-cache and cluster startup overhead. 50 rows still keep
+  // the 1 row/sec backfill active across the 10s stagger with three tablets.
+  constexpr int kRowsPerPartition = NonTsanVsTsan(100, 50);
   auto setup_script =
-    R"#(
+    Format(R"#(
 CREATE TABLE parent_partition(c1 int, c2 int) PARTITION BY RANGE (c1);
-CREATE TABLE child_part_1 PARTITION OF parent_partition FOR VALUES FROM (0) to (100);
-CREATE TABLE child_part_2 PARTITION OF parent_partition FOR VALUES FROM (101) to (201);
+CREATE TABLE child_part_1 PARTITION OF parent_partition FOR VALUES FROM (0) to ($0);
+CREATE TABLE child_part_2 PARTITION OF parent_partition FOR VALUES FROM ($1) to ($2);
 CREATE INDEX parent_index ON ONLY parent_partition (c1, c2);
--- Insert 200 rows of data
--- 100 rows into child_part_1 (c1 from 0 to 99)
--- 100 rows into child_part_2 (c1 from 101 to 200)
+-- Insert rows of data into both partitions.
 INSERT INTO parent_partition (c1, c2)
 SELECT
     CASE
-        WHEN i <= 100 THEN i - 1      -- 0 to 99
-        ELSE i                        -- 101 to 200
+        WHEN i <= $0 THEN i - 1
+        ELSE i
     END,
-    (random() * 1000)::int            -- random data for c2
-FROM generate_series(1, 200) AS i;
-        )#";
-  // Verify each partition has 100 rows.
+    (random() * 1000)::int
+FROM generate_series(1, $3) AS i;
+        )#",
+           kRowsPerPartition,
+           kRowsPerPartition + 1,
+           2 * kRowsPerPartition + 1,
+           2 * kRowsPerPartition);
+  // Verify each partition has the expected number of rows.
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(setup_script));
   auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FROM child_part_1"));
-  ASSERT_EQ(count, 100);
+  ASSERT_EQ(count, kRowsPerPartition);
   count = ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FROM child_part_2"));
-  ASSERT_EQ(count, 100);
+  ASSERT_EQ(count, kRowsPerPartition);
   count = ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FROM parent_partition"));
-  ASSERT_EQ(count, 200);
+  ASSERT_EQ(count, 2 * kRowsPerPartition);
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([this] {
       auto conn = ASSERT_RESULT(Connect());
@@ -260,13 +371,24 @@ TEST_P(PgConcurrentCreateIndexWithSlowRefreshMatViewTest,
   ASSERT_OK(conn.Execute("CREATE TABLE base_table(k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO base_table VALUES (1, 1)"));
 
-  // This query generates (2000 * 2000) rows internally.
-  ASSERT_OK(conn.Execute(
+  // The refresh only needs to run long enough to still be an in-flight "lagging" backend while the
+  // concurrent CREATE INDEX runs (which takes tens of seconds in the slowest build). In release the
+  // executor is fast enough that 2000*2000 = 4M rows fits within the test timeout, but in debug and
+  // fastdebug builds materializing 4M rows for both the initial CREATE and the later REFRESH cannot
+  // finish in time, so use a much smaller inner dimension there. Keeping the inner bound below
+  // 10000 preserves uniqueness of unique_key = s1 * 10000 + s2 (required by the concurrent index
+  // variant).
+#ifdef NDEBUG
+  constexpr int kInnerSeriesMax = 2000;
+#else
+  constexpr int kInnerSeriesMax = 250;
+#endif
+  ASSERT_OK(conn.ExecuteFormat(
       "CREATE MATERIALIZED VIEW slow_mv AS "
       "SELECT (s1 * 10000 + s2) AS unique_key, t1.v "
       "FROM base_table t1 "
       "CROSS JOIN generate_series(1, 2000) s1 "
-      "CROSS JOIN generate_series(1, 2000) s2"));
+      "CROSS JOIN generate_series(1, $0) s2", kInnerSeriesMax));
 
   LOG(INFO) << "Created slow_mv";
   if (is_concurrent_refresh) {
@@ -428,4 +550,218 @@ TEST_F(PgConcurrentDDLsTest, ConcurrentCreateDropDatabase) {
 }
 #endif
 
+// https://github.com/yugabyte/yugabyte-db/issues/30908
+class PgDdlTransactionWithoutConcurrentDDLSupportTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    LibPqTestBase::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        "--enable_object_locking_for_table_locks=true");
+    opts->extra_tserver_flags.emplace_back(
+        "--ysql_yb_ddl_transaction_block_enabled=true");
+    // 30908 only appears when concurrent DDL is disabled.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+  }
+};
+
+TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest, ParallelDdlTransactionBlockCrash) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  std::atomic<bool> bug_reproduced{false};
+  std::string reproduced_msg;
+  std::mutex msg_mutex;
+
+  std::string table1 = "sample";
+  std::string table2 = "sample1";
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, v INT)", table1));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, v INT)", table2));
+
+  auto is_bug_reproduced = [&reproduced_msg, &msg_mutex](const yb::Status& status) {
+    if (status.ok()) return false;
+    const auto msg = status.ToString();
+    if (msg.find("server closed the connection unexpectedly") != std::string::npos ||
+        msg.find("unexpected state END") != std::string::npos) {
+      std::lock_guard<std::mutex> lock(msg_mutex);
+      reproduced_msg = msg;
+      return true;
+    }
+    return false;
+  };
+
+  auto run_ddl = [&bug_reproduced, &is_bug_reproduced, this](
+      const std::string& table_name) {
+    auto thread_conn = ASSERT_RESULT(Connect());
+
+    for (int iter = 0; iter < 40; ++iter) {
+      if (bug_reproduced.load(std::memory_order_acquire)) {
+        break;
+      }
+
+      ASSERT_OK(thread_conn.Execute("BEGIN"));
+
+      auto status = thread_conn.ExecuteFormat(
+          "ALTER TABLE $0 ADD COLUMN a_$1 INT", table_name, iter);
+
+      if (status.ok()) {
+        auto commit_status = thread_conn.Execute("COMMIT");
+        if (is_bug_reproduced(commit_status)) {
+          bug_reproduced.store(true, std::memory_order_release);
+          return;
+        }
+
+        ASSERT_OK(thread_conn.Execute("BEGIN"));
+
+        auto drop_status = thread_conn.ExecuteFormat(
+            "ALTER TABLE $0 DROP COLUMN a_$1", table_name, iter);
+        if (drop_status.ok()) {
+          commit_status = thread_conn.Execute("COMMIT");
+          if (is_bug_reproduced(commit_status)) {
+            bug_reproduced.store(true, std::memory_order_release);
+            return;
+          }
+        } else {
+          auto rollback_status = thread_conn.Execute("ROLLBACK");
+          if (is_bug_reproduced(rollback_status)) {
+            bug_reproduced.store(true, std::memory_order_release);
+            return;
+          }
+        }
+      } else {
+        auto rollback_status = thread_conn.Execute("ROLLBACK");
+        if (is_bug_reproduced(rollback_status)) {
+          bug_reproduced.store(true, std::memory_order_release);
+          return;
+        }
+      }
+    }
+  };
+
+  std::thread t1([&, table1] { run_ddl(table1); });
+  std::thread t2([&, table2] { run_ddl(table2); });
+
+  t1.join();
+  t2.join();
+
+  if (bug_reproduced.load(std::memory_order_acquire)) {
+    FAIL() << "Bug 30908 was reproduced successfully! Status message: " << reproduced_msg;
+  }
+}
+
+// Test that serialization error is properly translated to 40001 to the client
+// instead of internal error YB003.
+// See https://github.com/yugabyte/yugabyte-db/issues/31736
+
+TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest,
+       TestReportProperSerializationErrorInRepeatableRead) {
+  auto conn0 = ASSERT_RESULT(Connect());
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  // Create initial schema
+  ASSERT_OK(conn0.Execute("CREATE TABLE tab1 (id SERIAL PRIMARY KEY)"));
+  ASSERT_OK(conn0.Execute("CREATE TABLE tab2 (id SERIAL PRIMARY KEY)"));
+
+  // Execute concurrent (interleaved) DDL
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn2.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn1.Execute("ALTER TABLE tab1 ADD COLUMN new_col INT"));
+  ASSERT_OK(conn2.Execute("ALTER TABLE tab2 ADD COLUMN new_col INT"));
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  ASSERT_NOK_STR_CONTAINS(conn2.Execute("COMMIT"), "pgsql error 40001");
+}
+
+// Test that concurrent "CREATE OR REPLACE FUNCTION" and "DROP FUNCTION"
+// on the same function does not crash the backend process.
+// See issue: https://github.com/yugabyte/yugabyte-db/issues/31247
+
+class PgConcurrentCreateOrReplaceCrashTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    LibPqTestBase::UpdateMiniClusterOptions(opts);
+    // Object locking would serialize DDLs on the same object and close the
+    // stale-syscache race window, so it must be disabled to reproduce.
+    opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+  }
+
+  static bool IsBackendCrash(const Status& status) {
+    if (status.ok()) {
+      return false;
+    }
+    const auto msg = status.ToString();
+    return msg.find("server closed the connection unexpectedly") != std::string::npos ||
+           msg.find("terminating connection due to") != std::string::npos;
+  }
+};
+
+TEST_F(PgConcurrentCreateOrReplaceCrashTest, ConcurrentCreateOrReplaceWithDropCrash) {
+  constexpr int kNumReplacers = 4;
+  const int kNumIterations = NonTsanVsTsan(200, 80);
+  const std::string kCreateOrReplace =
+      "CREATE OR REPLACE FUNCTION add_fn(INTEGER, INTEGER) RETURNS INTEGER "
+      "LANGUAGE SQL AS 'SELECT $1 + $2;'";
+  const std::string kCreate =
+      "CREATE FUNCTION add_fn(INTEGER, INTEGER) RETURNS INTEGER "
+      "LANGUAGE SQL AS 'SELECT $1 + $2;'";
+  const std::string kDrop =
+      "DROP FUNCTION IF EXISTS add_fn(INTEGER, INTEGER)";
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute(kCreate));
+
+  std::atomic<bool> crashed{false};
+  std::string crash_msg;
+  std::mutex crash_mutex;
+  auto record_crash = [&](const Status& status) {
+    if (IsBackendCrash(status)) {
+      std::lock_guard<std::mutex> lock(crash_mutex);
+      crash_msg = status.ToString();
+      crashed.store(true, std::memory_order_release);
+      return true;
+    }
+    return false;
+  };
+
+  TestThreadHolder thread_holder;
+
+  // Replacer threads: hammer CREATE OR REPLACE on the same function so that they
+  // contend on the same pg_proc row and frequently run with a stale syscache.
+  for (int i = 0; i < kNumReplacers; ++i) {
+    thread_holder.AddThreadFunctor([&] {
+      auto conn = ASSERT_RESULT(Connect());
+      for (int j = 0; j < kNumIterations && !crashed.load(std::memory_order_acquire); ++j) {
+        // A stale-syscache replace can either crash (the bug) or fail benignly
+        // because the function was concurrently dropped. Only a crash fails the
+        // test; benign DDL errors are expected under this raciness.
+        record_crash(conn.Execute(kCreateOrReplace));
+      }
+    });
+  }
+
+  // Churn thread: keep dropping and recreating the function so its OID (and thus
+  // the pg_proc row's ybctid) changes underneath the replacers' stale caches.
+  thread_holder.AddThreadFunctor([&] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int j = 0; j < kNumIterations && !crashed.load(std::memory_order_acquire); ++j) {
+      if (record_crash(conn.Execute(kDrop))) {
+        return;
+      }
+      record_crash(conn.Execute(kCreate));
+    }
+  });
+
+  thread_holder.JoinAll();
+
+  ASSERT_FALSE(crashed.load(std::memory_order_acquire))
+      << "backend crashed during concurrent CREATE OR REPLACE. "
+      << "Status: " << crash_msg;
+
+  // Even when no backend crashes, we would like to further assert that
+  // pg_proc's secondary index (pg_proc_proname_args_nsp_index)
+  // is consistent with the base pg_proc table in the face of
+  // concurrent updates to pg_proc and its secondary index.
+  ASSERT_OK(
+      setup_conn.Fetch("SELECT yb_index_check('pg_proc_proname_args_nsp_index'::regclass)"));
+}
 }  // namespace yb::pgwrapper

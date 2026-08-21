@@ -34,4 +34,6 @@ extern int yb_auth_frontend_passthrough(od_client_t *, od_server_t *);
 
 extern void yb_handle_fatalforlogicalconnection_pkt(od_client_t*, od_server_t*);
 
+extern bool yb_is_control_pool(od_route_t *);
+
 #endif /* YB_AUTH_PASSTHROUGH_H */

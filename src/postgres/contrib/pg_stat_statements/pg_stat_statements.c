@@ -552,7 +552,8 @@ static void pgss_store(const char *query, int64 queryId,
 					   int parallel_workers_to_launch,
 					   int parallel_workers_launched,
 					   PlannedStmtOrigin planOrigin,
-					   bool yb_is_sensitive_stmt);
+					   bool yb_is_sensitive_stmt,
+					   YbInstrumentation *yb_stats);
 static void pg_stat_statements_internal(FunctionCallInfo fcinfo,
 										pgssVersion api_version,
 										bool showtext);
@@ -1549,7 +1550,8 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, const JumbleState *jst
 				   0,
 				   0,
 				   PLAN_STMT_UNKNOWN,
-				   false /* yb_is_sensitive_stmt */ );
+				   false /* yb_is_sensitive_stmt */ ,
+				   NULL /* yb_stats */ );
 	}
 }
 
@@ -1633,7 +1635,8 @@ pgss_planner(Query *parse,
 				   0,
 				   0,
 				   result->planOrigin,
-				   false /* yb_is_sensitive_stmt */ );
+				   false /* yb_is_sensitive_stmt */ ,
+				   NULL /* yb_stats */ );
 	}
 	else
 	{
@@ -1752,7 +1755,8 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 				   queryDesc->estate->es_parallel_workers_to_launch,
 				   queryDesc->estate->es_parallel_workers_launched,
 				   queryDesc->plannedstmt->planOrigin,
-				   false /* yb_is_sensitive_stmt */ );
+				   false /* yb_is_sensitive_stmt */ ,
+				   &queryDesc->yb_query_stats->yb_instr);
 	}
 
 	if (prev_ExecutorEnd)
@@ -1903,7 +1907,8 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					   0,
 					   0,
 					   pstmt->planOrigin,
-					   false /* yb_is_sensitive_stmt */ );
+					   false /* yb_is_sensitive_stmt */ ,
+					   YBGetUtilityOperationStats());
 			pfree(norm_query);
 		}
 		else
@@ -1922,7 +1927,8 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					   0,
 					   0,
 					   pstmt->planOrigin,
-					   true /* yb_is_sensitive_stmt */ );
+					   true /* yb_is_sensitive_stmt */ ,
+					   YBGetUtilityOperationStats());
 		}
 	}
 	else
@@ -1988,7 +1994,8 @@ pgss_store(const char *query, int64 queryId,
 		   int parallel_workers_to_launch,
 		   int parallel_workers_launched,
 		   PlannedStmtOrigin planOrigin,
-		   bool yb_is_sensitive_stmt)
+		   bool yb_is_sensitive_stmt,
+		   YbInstrumentation *yb_stats)
 {
 	pgssHashKey key;
 	pgssEntry  *entry;
@@ -2253,31 +2260,27 @@ pgss_store(const char *query, int64 queryId,
 
 		if (kind == PGSS_EXEC)
 		{
-			/*
-			 * YB: These stats are collected for both regular and utility
-			 * statements, unlike EXPLAIN
-			 */
-			YbInstrumentation yb_instr = {0};
+			if (yb_stats)
+			{
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_READ_RPCS] +=
+					yb_stats->tbl_reads.count + yb_stats->index_reads.count;
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_RPCS] +=
+					yb_stats->write_flushes.count;
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_READ_OPS] +=
+					yb_stats->tbl_read_ops + yb_stats->index_read_ops;
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_OPS] +=
+					yb_stats->tbl_writes + yb_stats->index_writes;
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED] +=
+					yb_stats->tbl_reads.rows_scanned + yb_stats->index_reads.rows_scanned;
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_RETURNED] +=
+					yb_stats->tbl_reads.rows_received + yb_stats->index_reads.rows_received;
 
-			YbUpdateSessionStats((YbInstrumentation *) &yb_instr);
-			entry->counters.yb_counters.counters[YB_INT_DOCDB_READ_RPCS] +=
-				yb_instr.tbl_reads.count + yb_instr.index_reads.count;
-			entry->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_RPCS] +=
-				yb_instr.write_flushes.count;
-			entry->counters.yb_counters.counters[YB_INT_DOCDB_READ_OPS] +=
-				yb_instr.tbl_read_ops + yb_instr.index_read_ops;
-			entry->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_OPS] +=
-				yb_instr.tbl_writes + yb_instr.index_writes;
-			entry->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED] +=
-				yb_instr.tbl_reads.rows_scanned + yb_instr.index_reads.rows_scanned;
-			entry->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_RETURNED] +=
-				yb_instr.tbl_reads.rows_received + yb_instr.index_reads.rows_received;
-
-			entry->counters.yb_counters.counters_dbl[YB_DBL_CATALOG_WAIT_TIME_MS] +=
-				(yb_instr.catalog_reads.wait_time) / 1000000.0;
-			entry->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WAIT_TIME_MS] +=
-				(yb_instr.tbl_reads.wait_time + yb_instr.write_flushes.wait_time +
-				 yb_instr.index_reads.wait_time) / 1000000.0;
+				entry->counters.yb_counters.counters_dbl[YB_DBL_CATALOG_WAIT_TIME_MS] +=
+					(yb_stats->catalog_reads.wait_time) / 1000000.0;
+				entry->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WAIT_TIME_MS] +=
+					(yb_stats->tbl_reads.wait_time + yb_stats->write_flushes.wait_time +
+					 yb_stats->index_reads.wait_time) / 1000000.0;
+			}
 
 			/* Update retry statistics, only after the statement has completed */
 			entry->counters.yb_counters.counters[YB_INT_CONFLICT_RETRIES] +=
@@ -2286,32 +2289,32 @@ pgss_store(const char *query, int64 queryId,
 				YbGetRetryCount(YB_TXN_RESTART_READ);
 			entry->counters.yb_counters.counters[YB_INT_TOTAL_RETRIES] += YbGetTotalRetryCount();
 
-			if (yb_instr.read_metrics.version)
+			if (yb_stats && yb_stats->read_metrics.version)
 			{
 				entry->counters.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED] +=
-					yb_instr.read_metrics.counters[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND];
+					yb_stats->read_metrics.counters[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND];
 				entry->counters.yb_counters.counters[YB_INT_DOCDB_SEEKS] +=
-					yb_instr.read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK];
+					yb_stats->read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK];
 				entry->counters.yb_counters.counters[YB_INT_DOCDB_NEXTS] +=
-					yb_instr.read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
+					yb_stats->read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
 				entry->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
-					yb_instr.read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
+					yb_stats->read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
 				entry->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_READ_TIME_MS] +=
-					yb_instr.read_metrics.events[YB_STORAGE_EVENT_QL_READ_LATENCY].sum / 1000.0;
+					yb_stats->read_metrics.events[YB_STORAGE_EVENT_QL_READ_LATENCY].sum / 1000.0;
 			}
 
-			if (yb_instr.write_metrics.version)
+			if (yb_stats && yb_stats->write_metrics.version)
 			{
 				entry->counters.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED] +=
-					yb_instr.write_metrics.counters[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND];
+					yb_stats->write_metrics.counters[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND];
 				entry->counters.yb_counters.counters[YB_INT_DOCDB_SEEKS] +=
-					yb_instr.write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK];
+					yb_stats->write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK];
 				entry->counters.yb_counters.counters[YB_INT_DOCDB_NEXTS] +=
-					yb_instr.write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
+					yb_stats->write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
 				entry->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
-					yb_instr.write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
+					yb_stats->write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
 				entry->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WRITE_TIME_MS] +=
-					yb_instr.write_metrics.events[YB_STORAGE_EVENT_QL_WRITE_LATENCY].sum / 1000.0;
+					yb_stats->write_metrics.events[YB_STORAGE_EVENT_QL_WRITE_LATENCY].sum / 1000.0;
 			}
 		}
 

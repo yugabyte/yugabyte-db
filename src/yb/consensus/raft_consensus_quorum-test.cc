@@ -116,7 +116,7 @@ class RaftConsensusQuorumTest : public YBTest {
   // All of the peers start as followers.
   void BuildInitialRaftConfigPB(int num) {
     config_ = BuildRaftConfigPBForTests(num);
-    config_.set_opid_index(kInvalidOpIdIndex);
+    config_.set_committed_op_index(kInvalidOpIdIndex);
     peers_.reset(new TestPeerMapManager(config_));
   }
 

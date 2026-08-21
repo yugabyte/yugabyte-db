@@ -139,19 +139,6 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
-  public static final ConfKeyInfo<Boolean> showDrXClusterConfig =
-      new ConfKeyInfo<>(
-          "yb.ui.xcluster.dr.show_xcluster_config",
-          ScopeType.CUSTOMER,
-          "Show underlying xCluster configs from DR setup",
-          "YBA creates an underlying transactional xCluster config when setting "
-              + "up an active-active single-master disaster recovery (DR) config. During regular "
-              + "operation you should manage the DR config through the DR UI instead of the "
-              + "xCluster UI. This feature flag serves as a way to expose the underlying "
-              + "xCluster config for troubleshooting.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-
   public static final ConfKeyInfo<Boolean> enableSkipBootstrapping =
       new ConfKeyInfo<>(
           "yb.ui.xcluster.enable_skip_bootstrapping",
@@ -234,14 +221,6 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Knob that can be used to make lesser number of calls to DB",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> useAnsibleProvisioning =
-      new ConfKeyInfo<>(
-          "yb.node_agent.use_ansible_provisioning",
-          ScopeType.CUSTOMER,
-          "Use Ansible for provisioning",
-          "If enabled use Ansible for provisioning",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> notifyUserOnPasswordReset =
       new ConfKeyInfo<>(
           "yb.user.send_password_reset_notification",
@@ -276,7 +255,7 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "When enabled, newly created universes are automatically registered with the "
               + "first PA Collector for the customer.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 
   public static final ConfKeyInfo<Boolean> paAutoRegistrationAdvancedObservability =
       new ConfKeyInfo<>(
@@ -286,5 +265,5 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "When PA auto-registration is enabled, also enable advanced observability "
               + "(metrics export to Prometheus) for the universe.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

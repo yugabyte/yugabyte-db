@@ -1380,6 +1380,10 @@ replorigin_session_reset(void)
 void
 replorigin_session_advance(XLogRecPtr remote_commit, XLogRecPtr local_commit)
 {
+	/* Shared origin sessions only tag writes and do not track progress. */
+	if (yb_enable_replication_origin_shared && session_replication_state == NULL)
+		return;
+
 	Assert(session_replication_state != NULL);
 	Assert(session_replication_state->roident != InvalidReplOriginId);
 
@@ -1529,6 +1533,12 @@ pg_replication_origin_session_setup(PG_FUNCTION_ARGS)
 	int			pid;
 
 	replorigin_check_prerequisites(true, false);
+	if (yb_enable_replication_origin_shared &&
+		session_replication_state == NULL &&
+		replorigin_xact_state.origin != InvalidReplOriginId)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("replication origin session already setup")));
 
 	name = text_to_cstring((text *) DatumGetPointer(PG_GETARG_DATUM(0)));
 	origin = replorigin_by_name(name, false);
@@ -1536,6 +1546,50 @@ pg_replication_origin_session_setup(PG_FUNCTION_ARGS)
 	replorigin_session_setup(origin, pid);
 
 	replorigin_xact_state.origin = origin;
+
+	pfree(name);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * Setup a replication origin for this session without acquiring an exclusive
+ * slot. This allows multiple sessions to tag their writes with the same
+ * xrepl_origin_id concurrently. No progress tracking is performed. This is
+ * only suitable for write tagging (e.g., CDC origin filtering).
+ */
+Datum
+yb_replication_origin_session_setup_shared(PG_FUNCTION_ARGS)
+{
+	char	   *name;
+	ReplOriginId origin;
+
+	if (!yb_enable_replication_origin_shared)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("yb_replication_origin_session_setup_shared requires yb_enable_replication_origin_shared to be enabled")));
+
+	replorigin_check_prerequisites(true, false);
+
+	if (session_replication_state != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("cannot use shared replication origin session while an exclusive one is active")));
+
+	if (replorigin_xact_state.origin != InvalidReplOriginId)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("replication origin session already setup")));
+
+	name = text_to_cstring((text *) DatumGetPointer(PG_GETARG_DATUM(0)));
+	origin = replorigin_by_name(name, false);
+
+	replorigin_xact_state.origin = origin;
+	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Incrementing sticky object count for setting shared replication origin in session");
+		increment_sticky_object_count();
+	}
 
 	pfree(name);
 
@@ -1553,6 +1607,37 @@ pg_replication_origin_session_reset(PG_FUNCTION_ARGS)
 	replorigin_session_reset();
 
 	replorigin_xact_clear(true);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * Reset a shared replication origin previously set with
+ * yb_replication_origin_session_setup_shared(). Simply clears the
+ * session variable without touching shared-memory slots.
+ */
+Datum
+yb_replication_origin_session_reset_shared(PG_FUNCTION_ARGS)
+{
+	if (!yb_enable_replication_origin_shared)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("yb_replication_origin_session_reset_shared requires yb_enable_replication_origin_shared to be enabled")));
+
+	if (session_replication_state != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("cannot reset shared replication origin session while an exclusive one is active"),
+				 errhint("Use pg_replication_origin_session_reset() instead.")));
+
+	if (replorigin_xact_state.origin == InvalidReplOriginId)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("no replication origin is setup for this session")));
+
+	replorigin_xact_state.origin = InvalidReplOriginId;
+	replorigin_xact_state.origin_lsn = InvalidXLogRecPtr;
+	replorigin_xact_state.origin_timestamp = 0;
 
 	PG_RETURN_VOID();
 }

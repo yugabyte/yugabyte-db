@@ -40,14 +40,11 @@ macro(yb_find_third_party_installed_dir)
 
   # We support a layout of third-party dependencies where there are build-type-specific
   # subdirectories inside "build" and "installed" directories, such as clang15-x86_64,
-  # clang15-full-lto-x86_64, or clang15-linuxbrew-full-lto-x86_64. The logic below should match how
+  # or clang15-full-lto-x86_64. The logic below should match how
   # the subdir_items list is constructed in https://bit.ly/yb_thirdparty_fs_layout_py.
 
   set(YB_THIRDPARTY_INSTALLED_DIR_BASE "${YB_THIRDPARTY_DIR}/installed")
   set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_COMPILER_TYPE}")
-  if(USING_LINUXBREW)
-    set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-linuxbrew")
-  endif()
   if(YB_LTO_ENABLED)
     set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-${YB_LINKING_TYPE}")
   endif()
@@ -101,26 +98,25 @@ macro(yb_find_third_party_dependencies)
     SHARED_LIB "${GLOG_SHARED_LIB}")
   list(APPEND YB_BASE_LIBS glog)
 
-  if (NOT APPLE)
-    ## libunwind (dependent of glog)
-    ## Doesn't build on OSX.
-    if(IS_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0")
-      set(UNWIND_HAS_ARCH_SPECIFIC_LIB FALSE)
-    else()
-      set(UNWIND_HAS_ARCH_SPECIFIC_LIB TRUE)
-    endif()
-    find_package(LibUnwind REQUIRED)
-    include_directories(SYSTEM ${UNWIND_INCLUDE_DIR})
-    ADD_THIRDPARTY_LIB(unwind
-      STATIC_LIB "${UNWIND_STATIC_LIB}"
-      SHARED_LIB "${UNWIND_SHARED_LIB}")
-    if(UNWIND_HAS_ARCH_SPECIFIC_LIB)
-      ADD_THIRDPARTY_LIB(unwind-arch
-          STATIC_LIB "${UNWIND_STATIC_ARCH_LIB}"
-          SHARED_LIB "${UNWIND_SHARED_ARCH_LIB}")
-    endif()
-    list(APPEND YB_BASE_LIBS unwind)
+  ## libunwind (dependent of glog)
+  if(IS_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0")
+    set(UNWIND_HAS_ARCH_SPECIFIC_LIB FALSE)
+  else()
+    set(UNWIND_HAS_ARCH_SPECIFIC_LIB TRUE)
+  endif()
+  find_package(LibUnwind REQUIRED)
+  include_directories(SYSTEM ${UNWIND_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(unwind
+    STATIC_LIB "${UNWIND_STATIC_LIB}"
+    SHARED_LIB "${UNWIND_SHARED_LIB}")
+  if(UNWIND_HAS_ARCH_SPECIFIC_LIB)
+    ADD_THIRDPARTY_LIB(unwind-arch
+        STATIC_LIB "${UNWIND_STATIC_ARCH_LIB}"
+        SHARED_LIB "${UNWIND_SHARED_ARCH_LIB}")
+  endif()
+  list(APPEND YB_BASE_LIBS unwind)
 
+  if (NOT APPLE)
     ## libuuid -- also only needed on Linux as it is part of system libraries on macOS.
     find_package(LibUuid REQUIRED)
     include_directories(SYSTEM ${LIBUUID_INCLUDE_DIR})
@@ -259,9 +255,16 @@ macro(yb_find_third_party_dependencies)
       ADD_CXX_FLAGS("-DYB_GPERFTOOLS_TCMALLOC")
     endif()
 
-    # We link tcmalloc statically into every executable, so we are not interested in the shared
-    # tcmalloc library here.
-    ADD_THIRDPARTY_LIB(tcmalloc STATIC_LIB "${TCMALLOC_STATIC_LIB}")
+    # On macOS we link the shared tcmalloc: gperftools installs itself as a malloc zone at load
+    # time (rather than by symbol interposition), so the static-initialization ordering that
+    # motivates static linking does not apply, and linking the shared library lets undefined
+    # tcmalloc API symbols (MallocExtension, MallocHook, HeapProfiler) resolve at link time. On
+    # other platforms we link tcmalloc statically into every executable.
+    if(APPLE)
+      ADD_THIRDPARTY_LIB(tcmalloc SHARED_LIB "${TCMALLOC_SHARED_LIB}")
+    else()
+      ADD_THIRDPARTY_LIB(tcmalloc STATIC_LIB "${TCMALLOC_STATIC_LIB}")
+    endif()
     ADD_CXX_FLAGS("-DYB_TCMALLOC_ENABLED")
   else()
     message("Not using tcmalloc, YB_TCMALLOC_ENABLED is '${YB_TCMALLOC_ENABLED}'")

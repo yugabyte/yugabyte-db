@@ -33,6 +33,8 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.pgsql.ConnectionEndpoint;
 
@@ -43,7 +45,8 @@ import org.yb.pgsql.ConnectionEndpoint;
  * Tests are organized by (strategy, TTL) combinations, and each test runs all 4 ALTER types in
  * precedence order (lowest to highest) to minimize cluster restarts.
  */
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestAlterStatements extends BaseYsqlConnMgr {
 
     // Reduced timeout since we now have only 6 tests with 1 restart each (vs 36 restarts before)
@@ -196,10 +199,11 @@ public class TestAlterStatements extends BaseYsqlConnMgr {
      */
     private void restartClusterWithAlterGucFlags(String strategy, int ttlMs) throws Exception {
         Map<String, String> tserverFlags = new HashMap<>();
-        tserverFlags.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
-                + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
         tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", strategy);
         tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(ttlMs));
+        // Disable warmup mode, we want to explicitly control the backends here
+        tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+        tserverFlags.put("ysql_conn_mgr_dowarmup", "false");
         restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
     }
 

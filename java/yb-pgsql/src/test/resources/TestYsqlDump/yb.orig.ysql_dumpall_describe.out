@@ -26,6 +26,7 @@
  yb_db_admin                                   | No inheritance, Cannot login
  yb_extension                                  | Cannot login
  yb_fdw                                        | Cannot login
+ yb_global_views_user                          | 
  yugabyte                                      | Superuser, Create role, Create DB, Replication, Bypass RLS
  yugabyte_test                                 | Superuser, Create role, Create DB, Bypass RLS
 

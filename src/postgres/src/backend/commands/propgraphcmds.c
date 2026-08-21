@@ -1122,8 +1122,12 @@ check_element_properties(Oid peoid)
 						elform = (Form_pg_propgraph_element) GETSTRUCT(tuple3);
 						dpcontext = deparse_context_for(get_rel_name(elform->pgerelid), elform->pgerelid);
 
-						dpa = deparse_expression(na, dpcontext, false, false);
-						dpb = deparse_expression(nb, dpcontext, false, false);
+						dpa = deparse_expression(na, dpcontext, false, false,
+												 false /* yb_pretty */ ,
+												 false /* yb_maskconstants */ );
+						dpb = deparse_expression(nb, dpcontext, false, false,
+												 false /* yb_pretty */ ,
+												 false /* yb_maskconstants */ );
 
 						/*
 						 * show in sorted order to keep output independent of

@@ -183,7 +183,7 @@ endif()
 
 ADD_YB_LIBRARY(rocksdb
                SRCS ${ROCKSDB_SRCS}
-               DEPS gflags gutil snappy z lz4 yb_common yb_storage yb_util)
+               DEPS gflags gutil snappy z lz4 yb_common yb_storage yb_util yb_ash)
 
 add_library(rocksdb_tools
   tools/ldb_cmd.cc
@@ -239,6 +239,7 @@ ADD_YB_TEST(db/skiplist_test)
 ADD_YB_TEST(db/table_properties_collector_test)
 ADD_YB_TEST(db/user_op_id_test)
 ADD_YB_TEST(db/version_builder_test)
+ADD_YB_TEST(db/version_edit_test)
 ADD_YB_TEST(db/version_set_test)
 ADD_YB_TEST(db/wal_manager_test)
 ADD_YB_TEST(db/write_batch_test)
@@ -309,7 +310,6 @@ ADD_YB_TEST(db/deletefile_test)
 ADD_YB_TEST(db/fault_injection_test)
 ADD_YB_TEST(db/listener_test)
 ADD_YB_TEST(db/plain_table_db_test)
-ADD_YB_TEST(db/version_edit_test)
 ADD_YB_TEST(db/write_callback_test)
 ADD_YB_TEST(tools/ldb_cmd_test)
 ADD_YB_TEST(tools/reduce_levels_test)

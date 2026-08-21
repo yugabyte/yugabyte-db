@@ -17,6 +17,9 @@
 
 #include "yb/common/opid.pb.h"
 
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+
 namespace yb::storage {
 
 void TestUserFrontier::ToPB(google::protobuf::Any* pb) const {

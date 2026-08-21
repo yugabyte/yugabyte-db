@@ -26,7 +26,6 @@ public class DecommissionNodeInstance extends AbstractTaskBase {
   @Override
   public void run() {
     NodeInstance nodeInstance = NodeInstance.getOrBadRequest(taskParams().getNodeUuid());
-
     if (nodeInstance.getState() != NodeInstance.State.FREE) {
       throw new RuntimeException(
           String.format(
@@ -34,7 +33,6 @@ public class DecommissionNodeInstance extends AbstractTaskBase {
                   + " be in %s state to be recommissioned.",
               nodeInstance.getNodeUuid(), nodeInstance.getState(), NodeInstance.State.FREE));
     }
-
     nodeInstance.setState(State.DECOMMISSIONED);
     nodeInstance.setManuallyDecommissioned(true);
     nodeInstance.update();

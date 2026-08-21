@@ -33,6 +33,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetSta
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterDbReplicationSetup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterFailoverWithOnDemandSnapshot;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromOutboundReplicationGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromTargetUniverse;
 import com.yugabyte.yw.common.DrConfigStates;
@@ -114,6 +115,7 @@ import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.GetUniverseReplicationInfoResponse;
 import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
+import org.yb.client.ListCDCStreamsResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -142,6 +144,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static final String MINIMUN_VERSION_TRANSACTIONAL_XCLUSTER_SUPPORT = "2.18.1.0-b1";
   public static final int LOGICAL_CLOCK_NUM_BITS_IN_HYBRID_CLOCK = 12;
   public static final String TXN_XCLUSTER_SAFETIME_LAG_NAME = "consumer_safe_time_lag";
+  private static final Duration STREAM_STATE_RUNNING_POLL_INTERVAL = Duration.ofSeconds(1);
+  private static final Duration STREAM_STATE_RUNNING_INITIAL_CHECK_WINDOW = Duration.ofSeconds(10);
+  private static final Duration STREAM_STATE_RUNNING_MAX_BACKOFF_POLL_INTERVAL =
+      Duration.ofSeconds(30);
 
   public static final List<XClusterConfig.XClusterConfigStatusType>
       X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST =
@@ -480,6 +486,26 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   protected SubTaskGroup createSetReplicationPausedTask(
       XClusterConfig xClusterConfig, String status) {
     return createSetReplicationPausedTask(xClusterConfig, status.equals("Paused"));
+  }
+
+  /**
+   * Creates a subtask that initiates the DB-side XClusterFailover RPC and polls until the failover
+   * completes. This replaces the PITR-based failover path when on-demand failover is enabled.
+   */
+  protected SubTaskGroup createXClusterFailoverWithOnDemandSnapshotTask(
+      XClusterConfig xClusterConfig) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterFailoverWithOnDemandSnapshot");
+    XClusterFailoverWithOnDemandSnapshot.Params params =
+        new XClusterFailoverWithOnDemandSnapshot.Params();
+    params.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    params.xClusterConfig = xClusterConfig;
+
+    XClusterFailoverWithOnDemandSnapshot task =
+        createTask(XClusterFailoverWithOnDemandSnapshot.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   protected SubTaskGroup createXClusterConfigRenameTask(
@@ -825,6 +851,112 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
   }
 
+  protected void waitForTaskTableStreamsInActiveStatus(
+      XClusterConfig xClusterConfig, Universe sourceUniverse, Set<String> tableIds) {
+    Duration timeout =
+        confGetter.getConfForScope(
+            sourceUniverse, UniverseConfKeys.xclusterStreamRunningStatusWaitTimeout);
+    Map<String, String> tableIdToStreamId = xClusterConfig.getTableIdStreamIdMap(tableIds);
+    Map<String, String> streamIdToTableId = new HashMap<>();
+    for (Map.Entry<String, String> entry : tableIdToStreamId.entrySet()) {
+      String tableId = entry.getKey();
+      String streamId = entry.getValue();
+      if (Objects.isNull(streamId)) {
+        throw new RuntimeException(
+            String.format(
+                "Cannot verify stream status for table %s in xCluster config %s because stream id "
+                    + "is null",
+                tableId, xClusterConfig.getUuid()));
+      }
+      streamIdToTableId.put(streamId, tableId);
+    }
+
+    long startTime = System.currentTimeMillis();
+    int attempt = 1;
+    int backoffAttempt = 1;
+    Map<String, String> tableIdToState = new HashMap<>();
+    try (YBClient sourceClient = ybService.getUniverseClient(sourceUniverse)) {
+      while ((System.currentTimeMillis() - startTime) < timeout.toMillis()) {
+        Map<String, String> observedTableIdToState = new HashMap<>();
+        tableIds.forEach(tableId -> observedTableIdToState.put(tableId, "NOT_FOUND"));
+        try {
+          ListCDCStreamsResponse response =
+              sourceClient.listCDCStreams(
+                  null /* tableId */, null /* namespace */, null /* idType */);
+          if (response.hasError()) {
+            throw new RuntimeException(response.errorMessage());
+          }
+          for (CDCStreamInfo streamInfo : response.getStreams()) {
+            if (!isStreamInfoForXCluster(streamInfo)) {
+              continue;
+            }
+            String tableId = streamIdToTableId.get(streamInfo.getStreamId());
+            if (Objects.isNull(tableId)) {
+              continue;
+            }
+            String state =
+                streamInfo.getOptions() != null ? streamInfo.getOptions().get("state") : null;
+            observedTableIdToState.put(tableId, state);
+          }
+        } catch (Exception e) {
+          log.warn(
+              "Failed to fetch stream status for xCluster config {} (attempt {}): {}",
+              xClusterConfig.getUuid(),
+              attempt,
+              e.getMessage());
+        }
+
+        tableIdToState = observedTableIdToState;
+        if (areAllTaskTableStreamsActive(tableIdToState, tableIds)) {
+          return;
+        }
+        Duration elapsedTime = Duration.ofMillis(System.currentTimeMillis() - startTime);
+        long remainingWaitMillis = timeout.toMillis() - elapsedTime.toMillis();
+        if (remainingWaitMillis <= 0) {
+          break;
+        }
+        Duration waitDuration;
+        if (elapsedTime.compareTo(STREAM_STATE_RUNNING_INITIAL_CHECK_WINDOW) < 0) {
+          waitDuration = STREAM_STATE_RUNNING_POLL_INTERVAL;
+        } else {
+          long exponentialBackoffSeconds = 1L << Math.min(backoffAttempt, 30);
+          long boundedBackoffSeconds =
+              Math.min(
+                  exponentialBackoffSeconds,
+                  STREAM_STATE_RUNNING_MAX_BACKOFF_POLL_INTERVAL.getSeconds());
+          waitDuration = Duration.ofSeconds(boundedBackoffSeconds);
+          backoffAttempt++;
+        }
+        if (waitDuration.toMillis() > remainingWaitMillis) {
+          waitDuration = Duration.ofMillis(remainingWaitMillis);
+        }
+        waitFor(waitDuration);
+        attempt++;
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(
+          String.format(
+              "Failed while waiting for stream status for xCluster config %s: %s",
+              xClusterConfig.getUuid(), e.getMessage()),
+          e);
+    }
+    throw new RuntimeException(
+        String.format(
+            "Timed out after %s waiting for streams to be in Running status for tableIds %s in "
+                + "xCluster config %s; latest states: %s",
+            timeout, tableIds, xClusterConfig.getUuid(), tableIdToState));
+  }
+
+  private boolean areAllTaskTableStreamsActive(
+      Map<String, String> tableIdToState, Set<String> tableIds) {
+    return tableIds.stream()
+        .allMatch(
+            tableId -> {
+              String state = tableIdToState.get(tableId);
+              return "Active".equalsIgnoreCase(state);
+            });
+  }
+
   public static CatalogEntityInfo.SysClusterConfigEntryPB getClusterConfig(
       YBClient client, UUID universeUuid) throws Exception {
     GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
@@ -1127,9 +1259,21 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   public static boolean isStreamInfoForXCluster(CDCStreamInfo streamInfo) {
     Map<String, String> options = streamInfo.getOptions();
-    return options != null
-        && Objects.equals(options.get("record_format"), "WAL")
-        && Objects.equals(options.get("source_type"), "XCLUSTER");
+    if (options == null) {
+      return false;
+    }
+
+    if (!"WAL".equals(options.get("record_format"))) {
+      return false;
+    }
+
+    String sourceType = options.get("source_type");
+    if (sourceType != null) {
+      return "XCLUSTER".equals(sourceType);
+    }
+
+    // Backward compatibility.
+    return "CHANGE".equals(options.get("record_type"));
   }
 
   public static Map<String, String> getSourceTableIdTargetTableIdMap(
@@ -1152,7 +1296,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                 targetTablesInfoList.stream()
                     .filter(tableInfo -> tableInfo.getTableType().equals(tableType))
                     .collect(Collectors.toList()));
-    log.debug("targetNamespaceNameTablesInfoListMap is {}", targetNamespaceNameTablesInfoListMap);
+    log.trace("targetNamespaceNameTablesInfoListMap is {}", targetNamespaceNameTablesInfoListMap);
 
     groupByNamespaceName(requestedSourceTablesInfoList)
         .forEach(
@@ -1441,7 +1585,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           client.getTablesList(
               null /* nameFilter */, false /* excludeSystemTables */, null /* namespace */);
       tableInfoList = listTablesResponse.getTableInfoList();
-      log.debug(
+      log.trace(
           "getTableInfoList for universe {} returned {}",
           universe.getUniverseUUID(),
           tableInfoList);
@@ -2057,7 +2201,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       log.warn(
           "The target universe for the xCluster config {} is not found; ignoring gathering"
               + " replication stream statuses",
-          xClusterConfig);
+          xClusterConfig.getUuid());
       return;
     }
 
@@ -2531,7 +2675,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
     MoreExecutors.shutdownAndAwaitTermination(executorService, timeoutMs, TimeUnit.MILLISECONDS);
     if (confGetter.getGlobalConf(GlobalConfKeys.xClusterTableStatusLoggingEnabled)) {
-      log.info(
+      log.trace(
           "Replication cluster data collected for xCluster config {}: {}",
           xClusterConfig.getUuid(),
           data);

@@ -41,6 +41,7 @@
 #include "yb/yql/pggate/pg_doc_op_fetch_stream.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_op.h"
+#include "yb/yql/pggate/pg_read_range.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
@@ -523,8 +524,24 @@ class PgDocReadOp : public PgDocOp {
   const LWPgsqlReadRequestPB& GetTemplateReadReq() const { return read_op_->read_request(); }
 
  private:
+  // Structure to hold information about a hash permutations batch associated with a partition.
+  // - read_op: The partition's read operation.
+  // - rhs_values: The pointer into the IN predicate where new row expressions representing the
+  //   hash permutation are added.
+  // - request_range: The range of the operation request, if different from the partition range.
+  //   Used to filter out the out of bounds hash permutations.
+  // The fields are initialized lazily when the first hash permutation is bound to the partition.
+  // If the operation has empty range, like if the template request range does not intersect with
+  // the partition range, the rhs_values and request_range fields are not initialized. The operation
+  // remains associated with the partition batch, to prevent re-initialization attempts. Such
+  // operations are never activated and not executed.
+  struct PartitionBatch {
+    PgsqlReadOp* read_op = nullptr;
+    LWPgsqlExpressionPB* rhs_values = nullptr;
+    std::optional<PgReadRange> request_range = std::nullopt;
+  };
   using QLValuePBs = std::vector<const LWQLValuePB*>;
-  using PartitionBatches = std::vector<std::pair<bool, LWPgsqlExpressionPB*>>;
+  using PartitionBatches = std::vector<PartitionBatch>;
 
   // Check request conditions if they allow to limit the scan range
   // Returns true if resulting range is not empty, false otherwise
@@ -541,7 +558,7 @@ class PgDocReadOp : public PgDocOp {
 
   bool IsHashBatchingEnabled();
 
-  bool IsBatchFlushRequired() const;
+  bool IsBatchFlushRequired(size_t limit) const;
 
   // Create operators by partition arguments.
   // - Optimization for statement:

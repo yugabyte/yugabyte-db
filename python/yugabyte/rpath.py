@@ -19,7 +19,6 @@ from typing import Optional, List
 from sys_detection import local_sys_conf, OsReleaseVars
 
 from yugabyte.common_util import find_executable
-from yugabyte.linuxbrew import get_linuxbrew_home, LinuxbrewHome
 
 
 g_chrpath_path_initialized: bool = False
@@ -37,9 +36,6 @@ def get_patchelf_path() -> Optional[str]:
     if g_patchelf_path_initialized:
         return g_patchelf_path
 
-    linuxbrew_home: Optional[LinuxbrewHome] = get_linuxbrew_home()
-    if linuxbrew_home is not None:
-        g_patchelf_path = linuxbrew_home.patchelf_path
     if not g_patchelf_path:
         g_patchelf_path = find_executable('patchelf')
 

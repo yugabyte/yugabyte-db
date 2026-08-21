@@ -96,7 +96,10 @@ public class CreateSupportBundle extends AbstractTaskBase {
       supportBundle.setStatus(SupportBundleStatusType.Success);
       operatorStatusUpdater.markSupportBundleFinished(
           supportBundle, taskParams().getKubernetesResourceDetails(), gzipPath);
-    } catch (Exception e) {
+    } catch (Throwable t) {
+      // Catch Throwable (not just Exception) so unchecked Errors like
+      // ExceptionInInitializerError / UnsatisfiedLinkError / NoClassDefFoundError
+      // still flip the bundle out of Running before the finally-block persists it.
       TaskInfo taskInfo = getRunnableTask().getTaskInfo();
       if (taskInfo.getTaskState().equals(TaskInfo.State.Abort)) {
         log.info("Marking support bundle with UUID: {} as aborted.", supportBundle.getBundleUUID());
@@ -105,8 +108,8 @@ public class CreateSupportBundle extends AbstractTaskBase {
         supportBundle.setStatus(SupportBundleStatusType.Failed);
         operatorStatusUpdater.markSupportBundleFailed(
             supportBundle, taskParams().getKubernetesResourceDetails());
-        Throwables.throwIfUnchecked(e);
-        throw new RuntimeException(e);
+        Throwables.throwIfUnchecked(t);
+        throw new RuntimeException(t);
       }
     } finally {
       supportBundle.update();

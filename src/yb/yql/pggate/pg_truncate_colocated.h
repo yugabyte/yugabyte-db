@@ -30,7 +30,7 @@ class PgTruncateColocated final : public PgStatementLeafBase<PgDmlWrite, StmtOp:
       YbcPgTransactionSetting transaction_setting) {
     std::unique_ptr<PgTruncateColocated> result{new PgTruncateColocated{
         pg_session, transaction_setting}};
-    RETURN_NOT_OK(result->Prepare(table_id, locality_info));
+    RETURN_NOT_OK(result->Prepare(table_id, locality_info, false /* skip_intents_write */ ));
     return result;
   }
 

@@ -21,8 +21,7 @@
 
 namespace yb::master {
 
-YB_DEFINE_ENUM(
-    ClusterBalancerWarningType,
+YB_DEFINE_ENUM(ClusterBalancerWarningType,
     (kSkipTableLoadBalancing)
     (kTableRemoveReplicas)
     (kTableAddReplicas)

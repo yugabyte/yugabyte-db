@@ -18,7 +18,11 @@ services:
       # Perf Advisor Security Configuration
       pa.security.api.token.secret={{ yamlPath "perfAdvisor.paSecret" }}
       # CORS allowed origins: host(s) and platform support origin URL(s), comma-separated
-      pa.security.cors.origin={{ yamlPath "host" }}
+      {{- if eq (yamlPath "platform.port") "443" }}
+      pa.security.cors.origin=https://{{ yamlPath "host" }}
+      {{- else }}
+      pa.security.cors.origin=https://{{ yamlPath "host" }}:{{ yamlPath "platform.port" }}
+      {{- end }}
       {{- if ne (yamlPath "platform.support_origin_url") "" }}
       {{- ","}}{{ yamlPath "platform.support_origin_url" }}{{ end }}
 
@@ -58,6 +62,7 @@ services:
 
       pa.metrics.export.jsonl.directory={{ .DataDir }}/collected/metrics
       pa.support-bundle.path={{ .DataDir }}/support-bundle
+      pa.log.dir={{ .PALogDir }}
 
   - name: perfAdvisorMetricsExportTopology
     fileName: "{{ .MetricExportConfLocation }}"
@@ -100,8 +105,7 @@ services:
       Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
 
       ExecStart=/bin/sh -c "{{ .PABin }}/perf-advisor \
-        --spring.config.additional-location=file:{{ .ConfFileLocation }} \
-        &>> {{ .PALogDir }}/perf-advisor.log"
+        --spring.config.additional-location=file:{{ .ConfFileLocation }}"
 
       Restart=always
       RestartSec={{ yamlPath "perfAdvisor.restartSeconds"}}

@@ -230,9 +230,7 @@ PITR functionality has several limitations, primarily related to interactions wi
 
 ### CDC
 
-Using PITR and [CDC](../../../additional-features/change-data-capture/) together is currently not supported.
-
-Tracking issue: [12773](https://github.com/yugabyte/yugabyte-db/issues/12773)
+For databases and tables with [CDC](../../../additional-features/change-data-capture/) configured, you need to create new CDC streams or replication slots after the restore is complete, and start streaming from that point. Creating new streams or slots ensures that you start streaming from the correct checkpoints.
 
 ### xCluster replication
 
@@ -275,5 +273,6 @@ YugabyteDB Anywhere [supports PITR](../../../yugabyte-platform/back-up-restore-u
 
 ### Other limitations
 
-- PITR works only with _in-cluster_ distributed snapshots. PITR support for off-cluster backups is under consideration for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
+- PITR works only with _in-cluster_ distributed snapshots. PITR support for off-cluster backups is under consideration for the future. See issue {{<issue 8847>}}.
 - Issuing DDLs against a database while it is being restored is not recommended.
+- Restoring to a time during which DDLs were in flight may fail or produce inconsistent results. See issue {{<issue 12797>}}.

@@ -60,6 +60,7 @@ SYS_CATALOG_TABLET_ID = '0' * 32
 
 THIRDPARTY_DIR_RE_STR = '/opt/yb-build/thirdparty/yugabyte-db-thirdparty-[0-9a-z_.-]+'
 LLVM_TOOLCHAIN_DIR_RE_STR = '/opt/yb-build/llvm/yb-llvm-[0-9a-z_.-]+'
+GCC_TOOLCHAIN_DIR_RE_STR = '/opt/yb-build/gcc/yb-gcc-[0-9a-z_.-]+'
 
 
 def normalize_daemon_id(s: str) -> str:
@@ -490,6 +491,14 @@ class LogRewriter:
             llvm_toolchain_dir = llvm_toolchain_dir_candidates[0]
         if llvm_toolchain_dir:
             self.add_env_var_mapping(llvm_toolchain_dir, 'YB_LLVM_TOOLCHAIN_DIR')
+
+        gcc_toolchain_dir_candidates = self.egrep_sort_uniq(
+            ['-o', GCC_TOOLCHAIN_DIR_RE_STR], count=False)
+        gcc_toolchain_dir: Optional[str] = None
+        if len(gcc_toolchain_dir_candidates):
+            gcc_toolchain_dir = gcc_toolchain_dir_candidates[0]
+        if gcc_toolchain_dir:
+            self.add_env_var_mapping(gcc_toolchain_dir, 'YB_GCC_TOOLCHAIN_DIR')
 
         # Only replace the home directory and the test host name at the end, after all other
         # replacements of longer paths that may start with the home directory have been made.

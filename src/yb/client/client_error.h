@@ -18,15 +18,14 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/tostring.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
 
 using namespace std::literals;
 
 namespace yb::client {
 
-YB_DEFINE_ENUM(
-    ClientErrorCode,
+YB_DEFINE_ENUM(ClientErrorCode,
     // Special value used to indicate no error of this type.
     (kNone)
     (kTablePartitionListIsStale)

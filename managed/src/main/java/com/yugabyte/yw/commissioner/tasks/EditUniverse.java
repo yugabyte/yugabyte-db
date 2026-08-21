@@ -18,11 +18,13 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
@@ -33,6 +35,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +45,11 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Abortable
 @Retryable
+// TODO(PLAT-21484): add @CanRollback here once RollbackUniverseEdit (PLAT-21484), the
+// state_transition_details safe-window gate (PLAT-21387 / PLAT-21483) and the runtime flag
+// (PLAT-21488) are in place. The TaskRollbackComputer registry already has a placeholder
+// (EditUniverseRollbackComputer) that rejects until those land. Annotating before they exist
+// would surface canRollback=true in the UI/API while the rollback action is not yet implemented.
 public class EditUniverse extends EditUniverseTaskBase {
   private final AtomicBoolean dedicatedNodesChanged = new AtomicBoolean();
   private final AtomicBoolean primaryRFChanged = new AtomicBoolean();
@@ -73,10 +81,6 @@ public class EditUniverse extends EditUniverseTaskBase {
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       createTablespaceValidationOnRemoveTask(primaryCluster.uuid);
     }
-  }
-
-  protected void freezeUniverseInTxn(Universe universe) {
-    super.freezeUniverseInTxn(universe);
   }
 
   @Override
@@ -141,13 +145,16 @@ public class EditUniverse extends EditUniverseTaskBase {
         if (cluster.clusterType == ClusterType.PRIMARY && dedicatedNodesChanged.get()) {
           updateGFlagsForTservers(cluster, universe);
         }
+        Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
         editCluster(
             universe,
             clusters,
             cluster,
             getNodesInCluster(cluster.uuid, addedMasters),
             getNodesInCluster(cluster.uuid, removedMasters),
-            cluster.userIntent.providerType == CloudType.onprem /* force destroy servers */,
+            node ->
+                providerGetter.apply(node).getCloudCode()
+                    == CloudType.onprem /* force destroy servers */,
             false /* moveMastersFirst */);
         // Updating placement info and userIntent in DB
         createUpdateUniverseIntentTask(cluster);

@@ -323,7 +323,7 @@ extern void ExecSetTupleBound(int64 tuples_needed, PlanState *child_node);
  * in execProcnode.c.
  */
 extern TupleTableSlot *ExecProcNodeInstr(PlanState *node);
-extern const char *YbGetExecNodeSpanName(PlanState *node);
+extern TupleTableSlot *YbExecProcNodeTrace(PlanState *node);
 
 
 /* ----------------------------------------------------------------

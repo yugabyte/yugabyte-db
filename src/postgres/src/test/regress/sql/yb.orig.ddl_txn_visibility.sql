@@ -26,14 +26,14 @@ BEGIN;
 
 CREATE TABLE self_insert_test (id INT PRIMARY KEY);
 
-INSERT INTO self_insert_test SELECT i FROM generate_series(1, 10) i;
+INSERT INTO self_insert_test SELECT i FROM generate_series(1, 100000) i;
 
--- The SELECT must find the first 10 rows in the Regular DB.
--- The INSERT then writes 10 new rows (ID 11-20) to the Regular DB.
+-- The SELECT must find the first 100000 rows in the Regular DB.
+-- The INSERT then writes 100000 new rows (ID 100001-200000) to the Regular DB.
 -- This must NOT loop indefinitely.
-INSERT INTO self_insert_test SELECT id + 10 FROM self_insert_test;
+INSERT INTO self_insert_test SELECT id + 100000 FROM self_insert_test;
 
--- Final count should be exactly 20.
+-- Final count should be exactly 200000.
 SELECT count(*) FROM self_insert_test;
 
 COMMIT;
@@ -45,7 +45,7 @@ BEGIN;
 CREATE TABLE mixed_visibility_test (id INT PRIMARY KEY, balance INT);
 
 -- First batch
-INSERT INTO mixed_visibility_test VALUES (1, 100), (2, 200);
+INSERT INTO mixed_visibility_test VALUES (1, 100000), (2, 200000);
 
 -- Use a statement that references the data to perform a calculation
 INSERT INTO mixed_visibility_test
@@ -71,10 +71,43 @@ INSERT INTO increment_test VALUES (1, 10);
 -- 4. 11 < 100 is still TRUE.
 -- 5. UPDATE writes val=12... and so on.
 
-UPDATE increment_test SET val = val + 1 WHERE val < 100;
+UPDATE increment_test SET val = val + 1 WHERE val < 100000;
 
 -- EXPECTED (Correct Isolation): val = 11
--- ACTUAL (If Isolation Fails): val = 100 (or the query loops/times out)
+-- ACTUAL (If Isolation Fails): val = 100000 (or the query loops/times out)
 SELECT * FROM increment_test;
+
+COMMIT;
+
+-- -----------------------------------------------------------------------------
+-- TEST 5: Interleaved Modifying CTEs Visibility (YB vs PG deviation)
+-- -----------------------------------------------------------------------------
+BEGIN;
+
+CREATE TABLE mcte_test (id INT PRIMARY KEY);
+
+-- YugabyteDB deviates from PostgreSQL here due to how in_txn_limit is picked (GHI #10142).
+-- In PostgreSQL, same-transaction visibility uses CommandId which is fixed before the
+-- statement begins, so the read CTE will not see the INSERT from the write CTE.
+-- Expected PG result: 0.
+-- In YugabyteDB, the in_txn_limit is picked by the read operation. Because the read
+-- is forced to execute after the write via LATERAL correlation, the picked in_txn_limit
+-- includes the write that just occurred in the same statement.
+-- Expected YB result: 1.
+WITH
+  w_write AS (
+    INSERT INTO mcte_test VALUES (10) RETURNING id
+  ),
+  w_read AS (
+    SELECT x.cnt AS c
+    FROM w_write w
+    CROSS JOIN LATERAL (
+      SELECT count(*) AS cnt
+      FROM mcte_test g
+      WHERE g.id <= w.id
+    ) x
+  )
+SELECT r.c AS count_after_write
+FROM w_read r;
 
 COMMIT;

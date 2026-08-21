@@ -6,9 +6,10 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.nodeagent.ConfigureServiceInput;
@@ -50,14 +51,13 @@ public class ConfigureOOMServiceOnNode extends NodeTaskBase {
     if (node == null) {
       throw new IllegalStateException("Failed to find node with name " + nodeName);
     }
-    Optional<NodeAgent> nodeAgent =
-        nodeUniverseManager.maybeUpgradeAndGetNodeAgent(universe, node, true);
+    Optional<NodeAgent> nodeAgent = nodeUniverseManager.maybeUpgradeAndGetNodeAgent(universe, node);
     if (nodeAgent.isEmpty()) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, "Cannot upgrade " + nodeName + ": node agent is not available");
     }
-    String homeDir =
-        GFlagsUtil.getYbHomeDir(universe.getCluster(node.placementUuid).userIntent.provider);
+    Provider provider = Util.getProviderForNode(node, universe);
+    String homeDir = provider.getYbHome();
     AdditionalServicesStateData.EarlyoomConfig earlyoomConfig = taskParams().earlyoomConfig;
     EarlyoomConfig.Builder earlyoomConfigBuilder =
         EarlyoomConfig.newBuilder()

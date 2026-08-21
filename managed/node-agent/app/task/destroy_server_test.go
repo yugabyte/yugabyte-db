@@ -29,12 +29,21 @@ func setupCleanupTestDir(t *testing.T, baseDir string) (string, map[string]struc
 	createdPaths[symlinkTarget] = struct{}{}
 	// Create some test files and directories
 	subDirs := []string{
-		"dir1",
-		"dir2",
 		"node-agent",
 		".yugabyte",
 		".yugabyte/inner_dir",
 		".yugabytedb",
+		"bin",
+		"master",
+		"tserver",
+		"controller",
+		"releases",
+		"yb-software",
+		"metrics",
+		"otel-collector",
+		"yugabyte-client-tls-config",
+		"yugabyte-tls-config",
+		"dont_delete_me",
 	}
 	for _, dir := range subDirs {
 		subPath := filepath.Join(testHomeDir, dir)
@@ -45,7 +54,7 @@ func setupCleanupTestDir(t *testing.T, baseDir string) (string, map[string]struc
 		createdPaths[subPath] = struct{}{}
 	}
 	// Add a symlink inside testHomeDir pointing to symlinkTarget outside testHomeDir.
-	symlinkPath := filepath.Join(testHomeDir, "symlink_to_target")
+	symlinkPath := filepath.Join(testHomeDir, "cores")
 	err = os.Symlink(symlinkTarget, symlinkPath)
 	if err != nil {
 		t.Fatalf("Failed to create symlink: %s", err.Error())
@@ -72,6 +81,7 @@ func TestCleanInstance(t *testing.T) {
 		filepath.Join(testHomeDir, "node-agent"),
 		filepath.Join(testHomeDir, ".yugabyte"),
 		filepath.Join(testHomeDir, ".yugabyte/inner_dir"),
+		filepath.Join(testHomeDir, "dont_delete_me"),
 	}
 	for path := range createdPaths {
 		_, err := os.Stat(path)

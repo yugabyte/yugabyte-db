@@ -112,7 +112,7 @@ Status DBImpl::TEST_CompactRange(int level, const Slice* begin,
 }
 
 Status DBImpl::TEST_FlushMemTable(bool wait) {
-  FlushOptions fo;
+  FlushOptions fo(FlushReason::kTestOnly);
   fo.wait = wait;
   return FlushMemTable(default_cf_handle_->cfd(), fo);
 }
@@ -198,6 +198,17 @@ CompactionFileExcluderPtr DBImpl::TEST_SetExcludeFromCompaction(
     InstrumentedMutexLock lock(&mutex_);
     return cfd->TEST_SetExcludeFromCompaction(std::move(exclude_from_compaction));
   }
+}
+
+yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
+  InstrumentedMutexLock lock(&mutex_);
+  return default_cf_handle_->cfd()->current()->TEST_GetLargestSstTableReader();
+}
+
+yb::Result<uint64_t> DBImpl::TEST_Cross(Slice key) {
+  InstrumentedMutexLock lock(&mutex_);
+  auto internal_key = InternalKey::MinPossibleForUserKey(key);
+  return default_cf_handle_->cfd()->current()->Cross(internal_key.Encode());
 }
 
 }  // namespace rocksdb

@@ -94,7 +94,9 @@ RESET ROLE;
 SELECT COUNT(name)>5 FROM pg_settings WHERE name LIKE 'anon.%';
 
 -- Bug #259 - anon should not interact with other extensions
-DROP EXTENSION pg_stat_statements; -- YB: pg_stat_statements is installed by default, so drop first
+-- YB: pg_stat_statements is created by default during initdb and
+-- the gv$ wrappers depend on it, so CASCADE to drop them before recreating it.
+DROP EXTENSION pg_stat_statements CASCADE;
 CREATE EXTENSION pg_stat_statements;
 
 

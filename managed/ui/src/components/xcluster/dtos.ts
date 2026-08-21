@@ -57,10 +57,14 @@ export interface XClusterConfig {
  * Source: src/main/java/com/yugabyte/yw/models/XClusterTableConfig.java
  */
 export const XClusterReplicationStatusError = {
+  UNKNOWN_ERROR: 'Unknown error',
   MISSING_OP: 'Missing op ID',
   SCHEMA_MISMATCH: 'Schema mismatch',
   MISSING_TABLE: 'Missing table',
-  AUTO_FLAG_CONFIG_MISMATCH: 'Auto flag config mismatch'
+  ERROR_UNINITIALIZED: 'Uninitialized',
+  AUTO_FLAG_CONFIG_MISMATCH: 'Auto flag config mismatch',
+  SOURCE_UNREACHABLE: 'Source unreachable',
+  SYSTEM_ERROR: 'System error'
 } as const;
 export type XClusterReplicationStatusError = typeof XClusterReplicationStatusError[keyof typeof XClusterReplicationStatusError];
 

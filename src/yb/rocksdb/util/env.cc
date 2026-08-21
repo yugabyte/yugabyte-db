@@ -119,9 +119,6 @@ Status Env::CreateDirs(const std::string& dirname) {
 Logger::~Logger() {
 }
 
-FileLock::~FileLock() {
-}
-
 void LogFlush(Logger *info_log) {
   if (info_log) {
     info_log->Flush();

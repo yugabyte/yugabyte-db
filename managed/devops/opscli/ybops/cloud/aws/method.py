@@ -120,7 +120,7 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
 
         super(AwsCreateInstancesMethod, self).callback(args)
 
-    def run_ansible_create(self, args):
+    def run_create_instance(self, args):
         self.cloud.create_instance(args)
 
 
@@ -137,8 +137,8 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
         self.parser.add_argument("--key_pair_name", default=os.environ.get("YB_EC2_KEY_PAIR_NAME"),
                                  help="AWS Key Pair name")
 
-    def update_ansible_vars_with_args(self, args):
-        super(AwsProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
+    def update_extra_vars_with_args(self, args):
+        super(AwsProvisionInstancesMethod, self).update_extra_vars_with_args(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
         self.extra_vars.update({"aws_key_pair_name": args.key_pair_name})
 
@@ -157,7 +157,7 @@ class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
         args.auto_delete_boot_disk = False
         args.num_volumes = 0
 
-        self.create_method.run_ansible_create(args)
+        self.create_method.run_create_instance(args)
         host_info = self.cloud.get_host_info(args)
 
         self.delete_instance(args, host_info["id"])
@@ -284,7 +284,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
         if host_info["instance_state"] != "stopped":
             logging.warning(f"Expected instance {args.search_pattern} to be stopped, "
                             f"got {host_info['instance_state']}")
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         server_ports = self.get_server_ports_to_check(args)
         self.cloud.start_instance(host_info, server_ports, args.capacity_reservation)
 

@@ -6,7 +6,7 @@
 -- The ORDER BY on the primary key with a parallel scan should produce a Gather Merge plan.
 \set query ':P SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;'
 BEGIN;
-\i :iter_P2
+\i :run_query
 COMMIT;
 -- Also run outside a transaction block.
-\i :iter_P2
+\i :run_query

@@ -38,7 +38,7 @@
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/coding.h"
 

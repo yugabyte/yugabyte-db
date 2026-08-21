@@ -160,6 +160,10 @@ message PgVectorIdxOptionsPB {
   // Permanent index id. It should be unique for tablet, but when tablet is cloned,
   // index id in new tablet remains the same.
   optional string id = 8;
+
+  // Deprecated: skip_reverse_mapping_backfill. TablePropertiesPB.owns_vector_reverse_mapping
+  // on the indexed table is used instead.
+  reserved 9;
 }
 
 message PgHnswReadOptionsPB {
@@ -215,6 +219,12 @@ message TablePropertiesPB {
   optional uint32 partitioning_version = 11;
 
   optional PgReplicaIdentity ysql_replica_identity = 12;
+
+  // When true, the base table owns vector reverse mapping lifecycle: mappings are written on
+  // row insert/update regardless of whether a vector index exists, and backfill skips reverse
+  // mapping. Set at table creation on the master from `enable_table_owned_vector_reverse_mapping`
+  // gflag and cannot be changed afterwards.
+  optional bool owns_vector_reverse_mapping = 13;
 }
 
 message SchemaPB {
@@ -787,6 +797,11 @@ message CDCSDKStreamCreateOptionsPB {
   optional ReplicationSlotLsnType lsn_type = 12 [default = ReplicationSlotLsnType_SEQUENCE];
   optional ReplicationSlotOrderingMode ordering_mode =
     13 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
+  optional CDCSDKBoundTableIds bound_table_ids = 14;
+}
+
+message CDCSDKBoundTableIds {
+  repeated string table_ids = 1;
 }
 
 message TserverMetricsInfoPB {

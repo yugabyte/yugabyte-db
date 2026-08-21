@@ -18,7 +18,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
@@ -222,18 +221,18 @@ public class UniverseMetricProvider implements MetricsProvider {
             // Assumption both the primary & rr cluster uses the same provider.
             UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
             if (userIntent != null) {
-              UUID imageBundleUUID = userIntent.imageBundleUUID;
               int universeOSUpdateRequired = 0;
-              if (imageBundleMap != null && imageBundleMap.containsKey(imageBundleUUID)) {
-                ImageBundle bundle = ImageBundle.get(imageBundleUUID);
-                if (bundle != null
-                    && bundle.getMetadata() != null
-                    && bundle.getMetadata().getType() != null
-                    && bundle.getMetadata().getType() == ImageBundleType.YBA_DEPRECATED) {
-                  universeOSUpdateRequired = 1;
+              for (UUID imageBundleUUID : userIntent.getAllImageBundles()) {
+                if (imageBundleMap != null && imageBundleMap.containsKey(imageBundleUUID)) {
+                  ImageBundle bundle = ImageBundle.get(imageBundleUUID);
+                  if (bundle != null
+                      && bundle.getMetadata() != null
+                      && bundle.getMetadata().getType() != null
+                      && bundle.getMetadata().getType() == ImageBundleType.YBA_DEPRECATED) {
+                    universeOSUpdateRequired++;
+                  }
                 }
               }
-
               if (universeOSUpdateRequired > 0) {
                 universeGroup.metric(
                     createUniverseMetric(
@@ -258,7 +257,7 @@ public class UniverseMetricProvider implements MetricsProvider {
           if (universe.getUniverseDetails().nodeDetailsSet != null) {
             UserIntent primaryUserIntent =
                 universe.getUniverseDetails().getPrimaryCluster().userIntent;
-            boolean isK8SUniverse = CloudType.kubernetes.equals(primaryUserIntent.providerType);
+            boolean isK8SUniverse = Util.isKubernetesBasedUniverse(universe);
             Map<UUID, Map<String, Object>> finalUniverseOverridesAZMap =
                 isK8SUniverse
                     ? KubernetesUtil.getFinalOverrides(

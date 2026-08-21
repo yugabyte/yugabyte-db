@@ -5,7 +5,7 @@ export const QueryApi = {
   YSQL: 'ysql',
   YCQL: 'ycql'
 } as const;
-export type QueryApi = typeof QueryApi[keyof typeof QueryApi];
+export type QueryApi = (typeof QueryApi)[keyof typeof QueryApi];
 
 export const YBTableRelationType = {
   SYSTEM_TABLE_RELATION: 'SYSTEM_TABLE_RELATION',
@@ -14,7 +14,7 @@ export const YBTableRelationType = {
   MATVIEW_TABLE_RELATION: 'MATVIEW_TABLE_RELATION',
   COLOCATED_PARENT_TABLE_RELATION: 'COLOCATED_PARENT_TABLE_RELATION'
 } as const;
-export type YBTableRelationType = typeof YBTableRelationType[keyof typeof YBTableRelationType];
+export type YBTableRelationType = (typeof YBTableRelationType)[keyof typeof YBTableRelationType];
 
 export const YBAHost = {
   GCP: 'gcp',
@@ -33,7 +33,7 @@ export const SortOrder = {
   ASCENDING: 'asc',
   DESCENDING: 'desc'
 } as const;
-export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
+export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder];
 
 export const RuntimeConfigKey = {
   PROVIDER_REDESIGN_UI_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign',
@@ -50,7 +50,6 @@ export const RuntimeConfigKey = {
   USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG: 'yb.use_k8s_custom_resources',
   IS_TAGS_ENFORCED: 'yb.universe.user_tags.is_enforced',
   DEFAULT_DEV_TAGS: 'yb.universe.user_tags.dev_tags',
-  SHOW_DR_XCLUSTER_CONFIG: 'yb.ui.xcluster.dr.show_xcluster_config',
   IS_GFLAG_MULTILINE_ENABLED: 'yb.ui.feature_flags.gflag_multiline_conf',
   ENABLE_NODE_AGENT: 'yb.node_agent.client.enabled',
   GFLAGS_ALLOW_DURING_PREFINALIZE: 'yb.gflags.allow_during_prefinalize',
@@ -77,6 +76,7 @@ export const RuntimeConfigKey = {
   ENABLE_ROLLBACK_SUPPORT: 'yb.upgrade.enable_rollback_support',
   PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics',
   ENABLE_CONNECTION_POOLING: 'yb.universe.allow_connection_pooling',
+  ALLOW_MULTI_TENANCY_TEST_UI: 'yb.universe.allow_multi_tenancy_test_ui',
   USE_ANSIBLE_PROVISIONING: 'yb.node_agent.use_ansible_provisioning',
   RF_CHANGE_FEATURE_FLAG: 'yb.ui.feature_flags.enable_rf_change',
   NODE_AGENT_CLIENT_ENABLE: 'yb.node_agent.client.enabled',
@@ -91,8 +91,11 @@ export const RuntimeConfigKey = {
   METRICS_EXPORT_FEATURE_FLAG: 'yb.universe.metrics_export_enabled',
   ENABLE_V2_EDIT_UNIVERSE_UI: 'yb.ui.feature_flags.edit_universe_v2_ui_enabled',
   ENABLE_NEW_PERF_ADVISOR_UI: 'yb.ui.feature_flags.enable_new_perf_advisor_ui',
+  ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION:
+    'yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option',
   ENABLE_AZ_OVERRIDES_K8S: 'yb.ui.feature_flags.enable_az_overrides_k8s',
-  ENABLE_CANARY_UPGRADE: 'yb.upgrade.enable_canary_upgrade'
+  ENABLE_CANARY_UPGRADE: 'yb.upgrade.enable_canary_upgrade',
+  SKIP_XCLUSTER_SNAPSHOT_SCHEDULES: 'yb.xcluster.db_scoped.skip_snapshot_schedules'
 } as const;
 
 /**
@@ -130,6 +133,7 @@ export const UNIVERSE_ACTION_TO_FROZEN_TASK_MAP = {
   ENCRYPTION_AT_REST: 'EnableEncryptionAtRest_Universe',
   ENCRYPTION_IN_TRANSIT: 'TlsToggle_Universe',
   INSTALL_NODE_AGENT: 'Install_NodeAgent',
+  REPROVISION_NODES_WITH_YNP: 'ProvisionUniverseNodes_Universe',
 
   // xCluster replication Tab - refer to the button where you can disable (check api is called from)
   CONFIGURE_REPLICATION: 'Create_XClusterConfig',
@@ -184,6 +188,7 @@ export const UNIVERSE_TASKS = {
   ENCRYPTION_AT_REST: 'ENCRYPTION_AT_REST',
   ENCRYPTION_IN_TRANSIT: 'ENCRYPTION_IN_TRANSIT',
   INSTALL_NODE_AGENT: 'INSTALL_NODE_AGENT',
+  REPROVISION_NODES_WITH_YNP: 'REPROVISION_NODES_WITH_YNP',
 
   // xCluster replication actions
   CONFIGURE_REPLICATION: 'CONFIGURE_REPLICATION',

@@ -51,6 +51,7 @@
 #include "yb/util/status_format.h"
 
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
 namespace yb {
@@ -155,6 +156,9 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
   proxies_.reset();
+  // Once a tserver is marked as faulty it remains that way until it reregisters here.
+  // If it is still faulty, then it will be marked again as part of UpdateFromHeartbeat afterwards.
+  has_faulty_drive_ = false;
   return std::move(l);
 }
 
@@ -393,8 +397,11 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
   ts_metrics_.uptime_seconds = metrics.uptime_seconds();
   ts_metrics_.path_metrics.clear();
   for (const auto& path_metric : metrics.path_metrics()) {
-    ts_metrics_.path_metrics[path_metric.path_id()] =
-        { path_metric.used_space(), path_metric.total_space() };
+    ts_metrics_.path_metrics[path_metric.path_id()] = {
+        path_metric.used_space(),
+        path_metric.total_space(),
+        path_metric.has_storage_tier() ? path_metric.storage_tier() : std::string(),
+    };
   }
   ts_metrics_.disable_tablet_split_if_default_ttl = metrics.disable_tablet_split_if_default_ttl();
 }
@@ -414,6 +421,9 @@ void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
     new_path_metric->set_path_id(path_metric.first);
     new_path_metric->set_used_space(path_metric.second.used_space);
     new_path_metric->set_total_space(path_metric.second.total_space);
+    if (!path_metric.second.storage_tier.empty()) {
+      new_path_metric->set_storage_tier(path_metric.second.storage_tier);
+    }
   }
   metrics->set_disable_tablet_split_if_default_ttl(ts_metrics_.disable_tablet_split_if_default_ttl);
 }
@@ -486,6 +496,11 @@ bool TSDescriptor::IsLiveAndHasReported() const {
   return IsLive() && has_tablet_report();
 }
 
+bool TSDescriptor::HasYsqlCatalogLease() const {
+  return TimeSinceHeartbeat().ToMilliseconds() <
+         FLAGS_master_ts_ysql_catalog_lease_ms && !IsReplaced();
+}
+
 std::string TSDescriptor::ToString() const {
   SharedLock<decltype(mutex_)> l(mutex_);
   return Format("{ permanent_uuid: $0 registration: $1 placement_id: $2 }",
@@ -502,11 +517,13 @@ bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const
 
 std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
   auto proto_lock = LockForWrite();
-  SharedLock<decltype(mutex_)> transient_lock(mutex_);
+  std::lock_guard<decltype(mutex_)> transient_lock(mutex_);
   if (proto_lock->pb.state() == SysTabletServerEntryPB::LIVE && last_heartbeat_ &&
       time.GetDeltaSince(last_heartbeat_).ToMilliseconds() >
           FLAGS_tserver_unresponsive_timeout_ms) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
+    // Force a full tablet report on recovery.
+    set_has_tablet_report_unlocked(false);
     const auto& addr = DesiredHostPort(proto_lock->pb.registration(), local_master_cloud_info_);
     LOG(WARNING) << "Marking tserver " << permanent_uuid()
                  << " (" << addr.host() << ":" << addr.port() << ")"

@@ -16,9 +16,12 @@
 #include <boost/range/iterator_range_core.hpp>
 #include <boost/version.hpp>
 
+#include "yb/ash/ash_fwd.h"
+
 #include "yb/client/in_flight_op.h"
 #include "yb/client/tablet_rpc.h"
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/opid.h"
 #include "yb/common/read_hybrid_time.h"
@@ -27,6 +30,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/metrics_fwd.h"
 
 namespace yb {
@@ -53,6 +57,7 @@ struct AsyncRpcMetrics {
   scoped_refptr<EventStats> time_to_send;
   scoped_refptr<Counter> consistent_prefix_successful_reads;
   scoped_refptr<Counter> consistent_prefix_failed_reads;
+  scoped_refptr<Counter> skip_intents_writes;
 };
 
 using InFlightOps = boost::iterator_range<std::vector<InFlightOp>::iterator>;
@@ -62,10 +67,12 @@ struct AsyncRpcData {
   RemoteTablet* tablet = nullptr;
   bool allow_local_calls_in_curr_thread = false;
   bool need_consistent_read = false;
+  bool skip_intents = false;
+  ThreadSafeArenaPtr arena;
   InFlightOps ops;
   bool need_metadata = false;
   bool use_async_write = false;
-  int64_t leader_term = OpId::kUnknownTerm;
+  OpId pending_async_write_op_id = OpId::Invalid();
 };
 
 struct FlushExtraResult {
@@ -102,7 +109,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
  protected:
   void Finished(const Status& status) override;
 
-  void HandleFinished(const Status& status);
+  void HandleFinished(RefCntBuffer data_holder, const Status& status);
 
   void SendRpcToTserver(int attempt_num) override;
 
@@ -110,12 +117,12 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
   // This is the last step where errors and responses are collected from the response and
   // stored in batcher. If there's a callback from the user, it is done in this step.
-  virtual void ProcessResponseFromTserver(const Status& status) = 0;
+  virtual void ProcessResponseFromTserver(RefCntBuffer data_holder, const Status& status) = 0;
 
   // See FlushExtraResult for details.
   virtual FlushExtraResult MakeFlushExtraResult() = 0;
 
-  virtual Status SwapResponses() = 0;
+  virtual Status SwapResponses(RefCntBuffer data_holder) = 0;
 
   void Failed(const Status& status) override;
 
@@ -123,11 +130,11 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   bool IsLocalCall() const;
 
   Status CheckResponseCount(
-      const char* op, const char* name, int found, int expected);
+      const char* op, const char* name, size_t found, size_t expected);
 
   Status CheckResponseCount(
-      const char* op, int redis_found, int redis_expected, int ql_found, int ql_expected,
-      int pgsql_found, int pgsql_expected);
+      const char* op, size_t redis_found, size_t redis_expected, size_t ql_found,
+      size_t ql_expected, size_t pgsql_found, size_t pgsql_expected);
 
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.
@@ -144,6 +151,9 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   rpc::RpcCommandPtr retained_self_;
 
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
+
+  // Wait state captured at AsyncRpc construction
+  ash::WaitStateInfoPtr wait_state_;
 };
 
 template <class Req, class Resp>
@@ -168,54 +178,56 @@ class AsyncRpcBase : public AsyncRpc {
 
   virtual void NotifyBatcher(const Status& status) = 0;
 
-  void ProcessResponseFromTserver(const Status& status) override;
+  void ProcessResponseFromTserver(RefCntBuffer data_holder, const Status& status) override;
 
  protected: // TODO replace with private
-  TabletServerErrorPtr response_error() const override {
-    return TabletServerErrorPtr(resp_.has_error() ? &resp_.error() : nullptr);
-  }
+  TabletServerErrorPtr response_error() const override;
 
   FlushExtraResult MakeFlushExtraResult() override;
 
-  Req req_;
-  Resp resp_;
+  Req& req_;
+  Resp& resp_;
 };
 
-class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResponsePB> {
+class WriteRpc : public AsyncRpcBase<tserver::LWWriteRequestPB, tserver::LWWriteResponsePB> {
  public:
   // Relies on ops requests to be not on arena.
-  explicit WriteRpc(const AsyncRpcData& data);
+  explicit WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag = 0);
 
   virtual ~WriteRpc();
 
   std::string GetRpcName() override { return "Write"; }
 
  private:
-  Status SwapResponses() override;
+  Status SwapResponses(RefCntBuffer data_holder) override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
 };
 
-class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadResponsePB> {
+class ReadRpc : public AsyncRpcBase<tserver::LWReadRequestPB, tserver::LWReadResponsePB> {
  public:
   // Relies on ops requests to be not on arena.
-  explicit ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level);
+  ReadRpc(
+      const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level,
+      rpc::ThreadPoolTag pool_tag = 0);
 
   virtual ~ReadRpc();
 
   std::string GetRpcName() override { return "Read"; }
 
  private:
-  Status SwapResponses() override;
+  Status SwapResponses(RefCntBuffer data_holder) override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
 };
 
 class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
  public:
+  // Uses partition_key to handle potential tablet splits. tracking_tablet_id always points to the
+  // original parent for tracking purposes.
   WaitForAsyncWriteRpc(
-      const BatcherPtr& batcher, const TabletId& tablet_id,
-      std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy, const OpId& op_id);
+      const BatcherPtr& batcher, TabletId tracking_tablet_id, PartitionKey partition_key,
+      const std::shared_ptr<const YBTable>& table, const OpId& op_id);
 
   ~WaitForAsyncWriteRpc() = default;
 
@@ -234,10 +246,15 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
   void Failed(const Status& status) override;
 
  private:
-  const TabletId tablet_id_;
+  void OnKeyLookup(const Result<internal::RemoteTabletPtr>& result);
+  void FinishOrRetry(Status&& status);
+
+  const TabletId tracking_tablet_id_;
+  const PartitionKey partition_key_;
   const OpId op_id_;
   BatcherPtr batcher_;
-  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
+  const std::shared_ptr<const YBTable> table_;
+  TabletInvoker tablet_invoker_;
   tserver::WaitForAsyncWriteRequestPB req_;
   tserver::WaitForAsyncWriteResponsePB resp_;
 

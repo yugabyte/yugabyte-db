@@ -116,13 +116,14 @@ const char* const kTimedOutInQueue = "Call waited in the queue past deadline";
 
 class ServicePoolImpl final : public InboundCallHandler {
  public:
-  ServicePoolImpl(size_t max_tasks,
-                  ThreadPool* thread_pool,
-                  Scheduler* scheduler,
-                  ServiceIfPtr service,
-                  const scoped_refptr<MetricEntity>& entity)
+  ServicePoolImpl(
+      size_t max_tasks,
+      ThreadPoolProvider thread_pool_provider,
+      Scheduler* scheduler,
+      ServiceIfPtr service,
+      const scoped_refptr<MetricEntity>& entity)
       : max_queued_calls_(max_tasks),
-        thread_pool_(*thread_pool),
+        thread_pool_provider_(std::move(thread_pool_provider)),
         scheduler_(*scheduler),
         service_(std::move(service)),
         incoming_queue_time_(METRIC_rpc_incoming_queue_time.Instantiate(entity)),
@@ -180,7 +181,8 @@ class ServicePoolImpl final : public InboundCallHandler {
   void Process(InboundCallPtr call, Queue queue) {
     LOG_IF(DFATAL, closing_.load(std::memory_order_relaxed))
         << "Calling Process on closed service pool";
-    if (!queue && thread_pool_.OwnsThisThread()) {
+    auto thread_pool = thread_pool_provider_(call->pool_tag());
+    if (!queue && thread_pool->OwnsThisThread()) {
       Handle(std::move(call));
       return;
     }
@@ -200,7 +202,7 @@ class ServicePoolImpl final : public InboundCallHandler {
       ScheduleCheckTimeout(call_deadline);
     }
 
-    thread_pool_.Enqueue(task);
+    thread_pool->Enqueue(task);
   }
 
   const Counter* RpcsTimedOutInQueueMetricForTests() const {
@@ -411,7 +413,7 @@ class ServicePoolImpl final : public InboundCallHandler {
   }
 
   const size_t max_queued_calls_;
-  ThreadPool& thread_pool_;
+  ThreadPoolProvider thread_pool_provider_;
   Scheduler& scheduler_;
   ServiceIfPtr service_;
   scoped_refptr<EventStats> incoming_queue_time_;
@@ -468,13 +470,14 @@ class ServicePoolImpl final : public InboundCallHandler {
   std::string log_prefix_;
 };
 
-ServicePool::ServicePool(size_t max_tasks,
-                         ThreadPool* thread_pool,
-                         Scheduler* scheduler,
-                         ServiceIfPtr service,
-                         const scoped_refptr<MetricEntity>& metric_entity)
+ServicePool::ServicePool(
+    size_t max_tasks,
+    ThreadPoolProvider thread_pool_provider,
+    Scheduler* scheduler,
+    ServiceIfPtr service,
+    const scoped_refptr<MetricEntity>& metric_entity)
     : impl_(new ServicePoolImpl(
-        max_tasks, thread_pool, scheduler, std::move(service), metric_entity)) {
+        max_tasks, std::move(thread_pool_provider), scheduler, std::move(service), metric_entity)) {
 }
 
 ServicePool::~ServicePool() {

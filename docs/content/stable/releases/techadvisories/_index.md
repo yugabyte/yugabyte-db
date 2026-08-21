@@ -21,10 +21,46 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 32220>}}
+| Unique index inconsistency after primary-key updates on rows with NULL key columns
+| {{<product "ysql">}}
+| {{<release "2024.2.0.0">}} to {{<release "2024.2.10.0">}},<br>{{<release "2025.1.0.0">}} to {{<release "2025.1.4.0">}}, {{<release "2025.2.0.0">}} to {{<release "2025.2.4.0">}}, {{<release "2026.1.0.0">}}
+| {{<nobreak "9 July 2026">}}
+|
+| {{<ta 31187>}}
+| Logical replication might cause increase in disk storage footprint
+| {{<product "cdc">}}
+| {{<release "2024.1.x">}},<br>{{<release "2024.2.0.0">}} to {{<release "2024.2.9.0">}}, {{<release "2025.1.0.0">}} to {{<release "2025.1.4.0">}}, {{<release "2025.2.0.0">}} to {{<release "2025.2.3.0">}}
+| {{<nobreak "26 June 2026">}}
+|
+| {{<ta 31688>}}
+| Potential for missing or spurious rows with multikey lookups larger than 64 bytes
+| {{<product "ysql">}}
+| {{<release "2025.2.0.0">}} to {{<release "2025.2.3.0">}}
+| {{<nobreak "5 June 2026">}}
+|
+| {{<ta 31533>}}
+| An xCluster target universe's YB-Master may crash when certain types of schema changes are applied after database upgrade
+| {{<product "ybdb">}}
+| {{<release "2025.1.1.0">}}+, {{<release "2025.2.0.0">}} to {{<release "2025.2.3.0">}}
+| {{<nobreak "28 May 2026">}}
+|
+| {{<ta 24007>}}
+| Warning gap for index rewrites during ALTER TABLE .. ALTER COLUMN TYPE
+| {{<product "ysql">}}
+| {{<release "2024.1.0.0">}}+
+| {{<nobreak "13 May 2026">}}
+|
+| {{<ta 30772>}}
+| Potential database inconsistency with very large transactions
+| {{<product "ysql">}}
+| {{<release "All">}}
+| {{<nobreak "13 May 2026">}}
+|
 | {{<ta 30653>}}
 | Index inconsistency with in-place update on INCLUDE column
 | {{<product "ysql">}}
-| {{<release "2024.2.0.0">}} to {{<release "2024.2.8.0">}}, {{<release "2025.1.0.0">}} to {{<release "2025.1.3.0">}}, {{<release "2025.2.0.0">}} to {{<release "2025.2.1.0">}}
+| {{<release "2024.2.0.0">}} to {{<release "2024.2.8.0">}}, {{<release "2025.1.0.0">}} to {{<release "2025.1.3.0">}}, {{<release "2025.2.0.0">}} to {{<release "2025.2.2.1">}}
 | {{<nobreak "8 April 2026">}}
 |
 | {{<ta 26910>}}

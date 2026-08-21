@@ -230,6 +230,10 @@ PgFlushDebugContext PgFlushDebugContext::ConflictingKeyWrite(
       table_oid, table_name, AsHexPrinter{key}};
 }
 
+PgFlushDebugContext PgFlushDebugContext::SwitchSkipIntentsMode() {
+  return {"due to switching skip intents mode"};
+}
+
 template<class... Args>
 PgFlushDebugContext::PgFlushDebugContext(const char* format, const Args&... args) {
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {

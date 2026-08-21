@@ -289,7 +289,13 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
     ConfigureDBApiParams requestParams = getGeneralizedConfigureDBApiParams(request, universe);
     ConfigureYSQLFormData formData = parseJsonAndValidate(request, ConfigureYSQLFormData.class);
     formData.mergeWithConfigureDBApiParams(requestParams);
-    UUID taskUUID = universeYbDbAdminHandler.configureYSQL(requestParams, customer, universe);
+    UUID taskUUID =
+        universeYbDbAdminHandler.configureYSQL(
+            requestParams, customer, universe, formData.validateParams);
+    if (taskUUID == null) {
+      // validateParams was set; no task was submitted, so skip auditing the request as a change.
+      return YBPSuccess.withMessage("Configure YSQL request params validated successfully.");
+    }
     auditService()
         .createAuditEntryWithReqBody(
             request,

@@ -95,6 +95,7 @@ Indexes:
 Not-null constraints:
     "testsplitat_a_not_null" NOT NULL "a"
     "testsplitat_b_not_null" NOT NULL "b"
+Options: yb_presplit=((-100, 'bar'), (250, 'foo'))
 
 SELECT yb_get_range_split_clause('testlikesplitat'::regclass);
            yb_get_range_split_clause           
@@ -124,6 +125,7 @@ Indexes:
 Not-null constraints:
     "testsplitinto_a_not_null" NOT NULL "a"
     "testsplitinto_b_not_null" NOT NULL "b"
+Options: yb_presplit=2
 
 SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('testlikesplitinto'::regclass);
  num_tablets | num_hash_key_columns 

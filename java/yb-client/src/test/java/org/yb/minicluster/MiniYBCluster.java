@@ -902,6 +902,15 @@ public class MiniYBCluster implements AutoCloseable {
       }
       if (clusterParameters.startYsqlProxy) {
         masterCmdLine.add("--master_auto_run_initdb");
+        // Avoid GitHub #31029 startup race: initdb's postgres bootstrap calls CreateTable on the
+        // master (to create the global transaction status table) and fails with "Not enough live
+        // tablet servers ..." if no tservers have registered yet. Have the master wait for our
+        // tservers to register before launching initdb. numTservers is the right ceiling because
+        // (a) we are about to start exactly that many tservers immediately after, and (b) the
+        // master's own RF requirement is min(numTservers, FLAGS_replication_factor), so any test
+        // that survives the bootstrap eventually needs all numTservers to come up anyway.
+        masterCmdLine.add(
+            "--TEST_master_min_live_tservers_before_initdb=" + clusterParameters.numTservers);
       }
       final HostAndPort masterHostAndPort = HostAndPort.fromParts(masterBindAddress, masterRpcPort);
       masterProcesses.put(masterHostAndPort,
@@ -1083,6 +1092,9 @@ public class MiniYBCluster implements AutoCloseable {
   private void destroyDaemonAndWait(MiniYBDaemon daemon) throws Exception {
     destroyDaemon(daemon);
     daemon.getProcess().waitFor();
+    // A daemon we asked to shut down (SIGTERM) is expected to exit cleanly; if it crashed instead
+    // (e.g. a failed CHECK during shutdown), fail the test right away.
+    daemon.checkForCrash();
   }
 
   /**
@@ -1106,6 +1118,21 @@ public class MiniYBCluster implements AutoCloseable {
             addr.getHostName().equals(hostPort.getHost())));
     destroyDaemonAndWait(ts);
     usedBindIPs.remove(hostPort.getHost());
+  }
+
+  /**
+   * Force-kills (SIGKILL) a tserver and restarts it with the same data directory and UUID.
+   * Masters are not affected. This simulates a tserver crash followed by restart.
+   */
+  public void crashAndRestartTServer(HostAndPort hostPort) throws Exception {
+    MiniYBDaemon ts = tserverProcesses.get(hostPort);
+    if (ts == null) {
+      throw new IllegalArgumentException("No tserver at " + hostPort);
+    }
+    ts.getProcess().destroyForcibly();
+    ts.getProcess().waitFor();
+    ts = restart(ts);
+    tserverProcesses.put(ts.getHostAndPort(), ts);
   }
 
   public Map<HostAndPort, MiniYBDaemon> getTabletServers() {
@@ -1267,12 +1294,32 @@ public class MiniYBCluster implements AutoCloseable {
       syncClient.shutdown();
       syncClient = null;
     }
+    // Fail the test if a daemon crashed (e.g. a failed CHECK) instead of shutting down cleanly.
+    List<String> crashes = new ArrayList<>();
+    for (MiniYBDaemon daemon : workerDaemons) {
+      collectCrash(daemon, crashes);
+    }
+    for (MiniYBDaemon daemon : masterProcesses.values()) {
+      collectCrash(daemon, crashes);
+    }
+    if (!crashes.isEmpty()) {
+      fail(String.join("\n", crashes));
+    }
     if (!(workersGraceful && mastersGraceful)) {
       final String errorMessage =
           "Cluster failed to gracefully terminate within " + PROCESS_TERMINATE_TIMEOUT_MS +
           " ms, had to forcibly kill some processes (see logs above).";
       LOG.error(errorMessage);
       fail(errorMessage);
+    }
+  }
+
+  private static void collectCrash(MiniYBDaemon daemon, List<String> crashes) {
+    try {
+      daemon.checkForCrash();
+    } catch (AssertionError e) {
+      LOG.error(e.getMessage());
+      crashes.add(e.getMessage());
     }
   }
 

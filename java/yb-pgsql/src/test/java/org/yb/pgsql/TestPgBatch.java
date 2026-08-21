@@ -167,12 +167,13 @@ public class TestPgBatch extends BasePgSQLTest {
         Statement s2 = c2.createStatement()) {
       // Run UPDATE statement for the sole purpose of a caching catalog version.
       s1.execute("UPDATE t SET v=2 WHERE k=0");
-      // With connection manager in round robin mode, UPDATE statement would run on backend 1,
-      // the below SELECT * statement will run on backend 2, ALTER TABLE on backend 3 and
-      // UPDATE batch statements on backend 1 again as in the test without connection manager.
-      // The next "UPDATE t SET v=2 WHERE k=0" is to bring test parity with connection manager.
+      // With connection manager, The next update statement is run on all
+      // backends in round robin mode so as to populate the relcache on all backends
+      // by making sure the `UPDATE` DML is executed against each backend.
       if (isTestRunningWithConnectionManager()) {
-        s1.execute("UPDATE t SET v=2 WHERE k=0");
+        for (int i = 1; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+          s1.execute("UPDATE t SET v=2 WHERE k=0");
+        }
       }
       // Add more than one statement to the batch to ensure that
       // YB treats this as batched execution mode.

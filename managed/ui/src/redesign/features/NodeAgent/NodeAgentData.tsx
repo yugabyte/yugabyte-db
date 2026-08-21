@@ -347,6 +347,7 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
           isUniverseAction={false}
           isReinstall={true}
           nodeName={selectedNodeAgent.name}
+          universeName={selectedNodeAgent.universeName ?? ''}
           modalProps={{ open: isInstallNodeAgentModalOpen, onClose: closeInstallNodeAgentModal }}
         />
       )}

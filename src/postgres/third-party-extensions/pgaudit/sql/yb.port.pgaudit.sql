@@ -1712,7 +1712,7 @@ SET pgaudit.log_level = 'warning';
 
 CREATE EXTENSION pg_stat_statements; -- YB: already installed by default
 ALTER EXTENSION pg_stat_statements UPDATE TO '1.13-yb-1.0'; -- YB: change to latest version number
-DROP EXTENSION pg_stat_statements;
+DROP EXTENSION pg_stat_statements CASCADE; -- YB: CASCADE drops the gv$ global-view wrappers
 
 SET pgaudit.log_level = 'notice';
 

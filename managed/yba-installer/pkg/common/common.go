@@ -200,8 +200,15 @@ func CheckDataVersionFile() error {
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
 func copyBits(vers string) error {
 	yugabundleBinary := "yugabundle-" + vers + "-centos-x86_64.tar.gz"
+	// Stash the PA collector tarball next to the other installer bits so that
+	// later toggle-enable flows (e.g. `yba-ctl reconfigure` flipping
+	// perfAdvisor.enabled from false to true) can locate it without requiring
+	// the user to be cd'd into the extracted bundle.
+	// The stashed copy lives under <software>/<version>/yba_installer/ and is
+	// cleaned up automatically with the rest of the version dir by
+	// PrunePastInstalls() on upgrade and by Uninstall() on full uninstall.
 	neededFiles := []string{GoBinaryName, VersionMetadataJSON, yugabundleBinary,
-		GetJavaPackagePath(), GetPostgresPackagePath()}
+		GetJavaPackagePath(), GetPostgresPackagePath(), bundlePACollectorPackagePath()}
 
 	for _, file := range neededFiles {
 		fp := AbsoluteBundlePath(file)

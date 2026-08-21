@@ -393,7 +393,7 @@ void FullStackInsertScanTest::FlushToDisk() {
     auto peers = ts->tablet_manager()->GetTabletPeers();
     for (const std::shared_ptr<TabletPeer>& peer : peers) {
       auto tablet = ASSERT_RESULT(peer->shared_tablet());
-      ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+      ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
     }
   }
 }

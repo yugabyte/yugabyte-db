@@ -87,6 +87,9 @@ public class YNPProvisioningTest extends FakeDBApplication {
                 any(), any(), anyString(), any(), any(), anyString()))
         .thenReturn(List.of("/dev/sdb", "/dev/sdc"));
     when(baseTaskDependencies.getConfGetter()).thenReturn(confGetter);
+    when(confGetter.getConfForScope(any(Provider.class), eq(ProviderConfKeys.ybUserHomeOverride)))
+        .thenReturn("");
+    when(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerRequestLogLevel)).thenReturn(0);
     YNPConfigGenerator ynpConfigGenerator =
         new YNPConfigGenerator(
             confGetter, mockCloudQueryHelper, mockImageBundleUtil, mockFileHelperService);
@@ -181,6 +184,13 @@ public class YNPProvisioningTest extends FakeDBApplication {
     lenient()
         .when(confGetter.getGlobalConf(eq(GlobalConfKeys.accessLogExcludeRegex)))
         .thenReturn(Collections.emptyList());
+    lenient()
+        .when(confGetter.getGlobalConf(eq(GlobalConfKeys.pitrListSnapshotSchedulesCacheTtlMs)))
+        .thenReturn(60_000);
+    lenient()
+        .when(
+            confGetter.getGlobalConf(eq(GlobalConfKeys.pitrListSnapshotSchedulesCacheMaxUniverses)))
+        .thenReturn(100);
 
     // Mock getGlobalConf() without parameters - needed by QueryHelper
     // Create a real Config with the required value to avoid ClassCastException
@@ -324,6 +334,160 @@ public class YNPProvisioningTest extends FakeDBApplication {
   }
 
   @Test
+  public void testConfigureCgroupUsesPersistedFieldNotProviderConfig() throws Exception {
+    // Legacy universe re-provisioning scenario: the universe was created on an older YBA before
+    // cpu cgroup support, so isCpuCgroupConfigured is false, but the provider-level
+    // enableCgroupConfiguration runtime config is true (the default). The generated config must
+    // NOT enable configure_cgroup, otherwise YNP writes a systemd unit that references the
+    // yb-tserver-cgroup-exec.sh wrapper which the ConfigureServer step never ships, and the DB
+    // process fails to start.
+    Universe universe = ModelFactory.createUniverse("test-universe", customer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", CloudType.aws));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+
+    NodeDetails primaryNode = universe.getNodes().iterator().next();
+
+    UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
+    primaryUserIntent.providerType = CloudType.aws;
+    primaryUserIntent.provider = provider.getUuid().toString();
+    primaryUserIntent.deviceInfo = new DeviceInfo();
+    primaryUserIntent.deviceInfo.numVolumes = 1;
+    // Legacy universe: field was never persisted.
+    primaryUserIntent.setCpuCgroupConfigured(false);
+
+    // Provider config wants cgroup, but it must be ignored for an existing universe.
+    when(confGetter.getConfForScope(
+            any(Provider.class), eq(ProviderConfKeys.enableCgroupConfiguration)))
+        .thenReturn(true);
+
+    primaryNode.cloudInfo = new CloudSpecificInfo();
+    primaryNode.cloudInfo.cloud = "aws";
+    primaryNode.cloudInfo.private_ip = "10.0.0.1";
+    primaryNode.cloudInfo.region = "us-west-2";
+    primaryNode.cloudInfo.instance_type = "m5.large";
+
+    YNPProvisioning.Params params = new YNPProvisioning.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = primaryNode.nodeName;
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.numVolumes = 1;
+    // Re-provisioning an existing universe node: honor the persisted flag, ignore provider config.
+    params.isReprovision = true;
+    setTaskParams(params);
+
+    Path tempFile = Files.createTempFile("ynp-test-cgroup-off-", ".json");
+    Path nodeAgentHome = Paths.get("/tmp/node-agent");
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
+    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome, null);
+
+    JsonNode rootNode = objectMapper.readTree(Files.readAllBytes(tempFile));
+    assertEquals(false, rootNode.get("ynp").get("configure_cgroup").asBoolean());
+
+    Files.deleteIfExists(tempFile);
+  }
+
+  @Test
+  public void testConfigureCgroupEnabledWhenPersistedFieldTrue() throws Exception {
+    // A universe created with cpu cgroup support persists isCpuCgroupConfigured=true. The generated
+    // config must enable configure_cgroup so the systemd wrapper (shipped by ConfigureServer) is
+    // used, independent of the provider-level enableCgroupConfiguration runtime config.
+    Universe universe = ModelFactory.createUniverse("test-universe", customer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", CloudType.aws));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+
+    NodeDetails primaryNode = universe.getNodes().iterator().next();
+
+    UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
+    primaryUserIntent.providerType = CloudType.aws;
+    primaryUserIntent.provider = provider.getUuid().toString();
+    primaryUserIntent.deviceInfo = new DeviceInfo();
+    primaryUserIntent.deviceInfo.numVolumes = 1;
+    primaryUserIntent.setCpuCgroupConfigured(true);
+
+    // Provider config is disabled (default mock), but the persisted field must still win.
+    primaryNode.cloudInfo = new CloudSpecificInfo();
+    primaryNode.cloudInfo.cloud = "aws";
+    primaryNode.cloudInfo.private_ip = "10.0.0.1";
+    primaryNode.cloudInfo.region = "us-west-2";
+    primaryNode.cloudInfo.instance_type = "m5.large";
+
+    YNPProvisioning.Params params = new YNPProvisioning.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = primaryNode.nodeName;
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.numVolumes = 1;
+    // Re-provisioning an existing universe node: honor the persisted flag.
+    params.isReprovision = true;
+    setTaskParams(params);
+
+    Path tempFile = Files.createTempFile("ynp-test-cgroup-on-", ".json");
+    Path nodeAgentHome = Paths.get("/tmp/node-agent");
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
+    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome, null);
+
+    JsonNode rootNode = objectMapper.readTree(Files.readAllBytes(tempFile));
+    assertEquals(true, rootNode.get("ynp").get("configure_cgroup").asBoolean());
+
+    Files.deleteIfExists(tempFile);
+  }
+
+  @Test
+  public void testConfigureCgroupNewProvisioningFallsBackToProviderConfig() throws Exception {
+    // Brand-new node provisioning (not re-provisioning): isCpuCgroupConfigured is not frozen yet,
+    // so the decision must fall back to the provider-level enableCgroupConfiguration. This guards
+    // against regressing new universe creation when the persisted flag is still false.
+    Universe universe = ModelFactory.createUniverse("test-universe", customer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", CloudType.aws));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+
+    NodeDetails primaryNode = universe.getNodes().iterator().next();
+
+    UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
+    primaryUserIntent.providerType = CloudType.aws;
+    primaryUserIntent.provider = provider.getUuid().toString();
+    primaryUserIntent.deviceInfo = new DeviceInfo();
+    primaryUserIntent.deviceInfo.numVolumes = 1;
+    // Not frozen yet at provisioning time.
+    primaryUserIntent.setCpuCgroupConfigured(false);
+
+    // Provider config enables cgroup; new provisioning must honor it.
+    when(confGetter.getConfForScope(
+            any(Provider.class), eq(ProviderConfKeys.enableCgroupConfiguration)))
+        .thenReturn(true);
+
+    primaryNode.cloudInfo = new CloudSpecificInfo();
+    primaryNode.cloudInfo.cloud = "aws";
+    primaryNode.cloudInfo.private_ip = "10.0.0.1";
+    primaryNode.cloudInfo.region = "us-west-2";
+    primaryNode.cloudInfo.instance_type = "m5.large";
+
+    YNPProvisioning.Params params = new YNPProvisioning.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = primaryNode.nodeName;
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.numVolumes = 1;
+    // Brand-new provisioning path.
+    params.isReprovision = false;
+    setTaskParams(params);
+
+    Path tempFile = Files.createTempFile("ynp-test-cgroup-new-", ".json");
+    Path nodeAgentHome = Paths.get("/tmp/node-agent");
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
+    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome, null);
+
+    JsonNode rootNode = objectMapper.readTree(Files.readAllBytes(tempFile));
+    assertEquals(true, rootNode.get("ynp").get("configure_cgroup").asBoolean());
+
+    Files.deleteIfExists(tempFile);
+  }
+
+  @Test
   public void testGetProvisionArgumentsUpdatedUserIntent() throws Exception {
     // Create universe with primary cluster
     Universe universe = ModelFactory.createUniverse("test-universe", customer.getId());
@@ -356,6 +520,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
 
     // Set primary cluster user intent with clockbound
     UserIntent updatedUserIntent = universeDetails.getPrimaryCluster().userIntent.clone();
+    // This should not affect.
     updatedUserIntent.setUseClockbound(true);
     updatedUserIntent.providerType = CloudType.aws;
     updatedUserIntent.provider = provider.getUuid().toString();
@@ -380,7 +545,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertNotNull(ynpNode);
     assertEquals("10.0.0.1", ynpNode.get("node_ip").asText());
     assertEquals(false, ynpNode.get("is_install_node_agent").asBoolean());
-    assertEquals(true, ynpNode.get("is_configure_clockbound").asBoolean());
+    assertEquals(false, ynpNode.get("is_configure_clockbound").asBoolean());
     assertEquals(false, ynpNode.get("is_yb_prebuilt_image").asBoolean());
     assertEquals("/mnt/d0 /mnt/d1", rootNode.get("extra").get("mount_paths").asText());
 
@@ -494,7 +659,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     // but the test verifies the actual behavior
     // The clockbound value should come from the read replica cluster's user intent
     // but currently it uses primary cluster's user intent (bug)
-    assertEquals(true, ynpNode.get("is_configure_clockbound").asBoolean());
+    assertEquals(false, ynpNode.get("is_configure_clockbound").asBoolean());
 
     // Verify extra node
     JsonNode extraNode = rootNode.get("extra");
@@ -636,7 +801,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertEquals("10.0.0.20", rrRoot.get("ynp").get("node_ip").asText());
     // Note: This currently shows the bug - it uses primary cluster's clockbound setting
     // instead of read replica's setting
-    assertEquals(true, rrRoot.get("ynp").get("is_configure_clockbound").asBoolean());
+    assertEquals(false, rrRoot.get("ynp").get("is_configure_clockbound").asBoolean());
 
     // Clean up
     Files.deleteIfExists(tempFilePrimary);

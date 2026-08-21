@@ -116,7 +116,7 @@ CREATE TABLE public.htest_1 (
     v1 integer,
     v2 text
 )
-WITH (colocation_id='234567');
+WITH (colocation_id='234567', yb_presplit='');
 
 
 \unrestrict <key>
@@ -152,7 +152,7 @@ CREATE TABLE public.tbl (
     v integer,
     CONSTRAINT tbl_pkey PRIMARY KEY(k ASC)
 )
-WITH (colocation_id='20001');
+WITH (colocation_id='20001', yb_presplit='');
 
 
 \unrestrict <key>
@@ -189,7 +189,7 @@ CREATE TABLE public.tbl2 (
     v2 text,
     CONSTRAINT tbl2_pkey PRIMARY KEY(k ASC)
 )
-WITH (colocation_id='20002');
+WITH (colocation_id='20002', yb_presplit='');
 
 
 \unrestrict <key>
@@ -225,7 +225,7 @@ CREATE TABLE public.tbl3 (
     v integer,
     CONSTRAINT tbl3_pkey PRIMARY KEY((k) HASH)
 )
-WITH (colocation='false')
+WITH (colocation='false', yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -263,7 +263,7 @@ CREATE TABLE public.tbl4 (
     v2 text,
     CONSTRAINT tbl4_pkey PRIMARY KEY((k) HASH)
 )
-WITH (colocation='false')
+WITH (colocation='false', yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -294,7 +294,7 @@ CREATE TABLE public.tbl5 (
     k integer,
     v integer
 )
-WITH (colocation_id='20005');
+WITH (colocation_id='20005', yb_presplit='');
 
 
 \unrestrict <key>
@@ -508,7 +508,7 @@ CREATE INDEX NONCONCURRENTLY tbl2_v2_idx ON public.tbl2 USING lsm (v2 ASC) WITH 
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16406'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16406'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY tbl3_v_idx ON public.tbl3 USING lsm (v HASH) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY tbl3_v_idx ON public.tbl3 USING lsm (v HASH) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -539,36 +539,42 @@ CREATE UNIQUE INDEX NONCONCURRENTLY tbl_v_idx ON public.tbl USING lsm (v DESC) W
 
 
 --
--- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict <key>
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
+\restrict <key>
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict <key>
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
+\restrict <key>
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict <key>
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
+\restrict <key>
 
 
 --

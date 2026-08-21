@@ -28,12 +28,24 @@ tags:
     description: Operations related to universe backup and restore
   - name: Continuous Backup
     description: CRUD operations for Continuous YBA Backups
+  - name: Customer Configuration
+    description: Customer configuration management
+  - name: Disaster Recovery
+    description: Disaster recovery configuration management
+  - name: Encryption at rest
+    description: Encryption at rest management
+  - name: Image Bundle
+    description: Image bundle management
   - name: Isolated Backup
     description: Isolated backup/restore of YBA to local filesystem
   - name: Job Scheduler
     description: Job Scheduler
   - name: Metrics
     description: CRUD operations for YBA metrics
+  - name: PITR
+    description: Point-in-time recovery configuration management
+  - name: Task
+    description: Customer task management
   - name: Telemetry Provider
     description: Operations for Telemetry Providers
   - name: Universe

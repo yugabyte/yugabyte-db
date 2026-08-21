@@ -48,7 +48,7 @@ DECLARE_int32(replication_factor);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_string(ysql_pg_conf_csv);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_uint64(ysql_lease_refresher_interval_ms);
 
 namespace yb::pgwrapper {
@@ -94,7 +94,7 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     // Support DDL concurrency with object locks.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_enable_concurrent_ddl=true";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = true;
     PgMiniTestBase::SetUp();
     SpawnSupervisors();
   }

@@ -31,7 +31,9 @@
 //
 // Tests for the yb-admin command-line tool.
 
+#include <algorithm>
 #include <regex>
+#include <thread>
 
 #include <boost/algorithm/string.hpp>
 #include <gtest/gtest.h>
@@ -40,10 +42,12 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/json_util.h"
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
@@ -64,6 +68,7 @@
 #include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 
@@ -202,6 +207,69 @@ class AdminCliTest : public AdminTestBase {
 
   TmpDirProvider tmp_dir_;
 };
+
+// Verify the "did you mean" help for a misspelled operation, none of which needs a running
+// cluster (the operation is checked before yb-admin connects to the master): prefix matches,
+// fuzzy (edit-distance) matches, and that an invalid operation no longer dumps the full command
+// list (the original complaint in the issue) while running with no operation still prints the
+// full usage as help.
+TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
+  const auto exe_path = GetAdminToolPath();
+  constexpr auto kUnusedMasterAddress = "127.0.0.1:0";
+  // This marker only appears in the full usage/command listing (which is printed to stdout).
+  constexpr auto kFullUsageMarker = "<operation> must be one of";
+  std::string output;
+  std::string error;
+
+  // Prefix match: an unambiguous typo suggests the single command it is a prefix of.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(
+          exe_path, "--master_addresses", kUnusedMasterAddress, "list_snapshot_schedule"),
+      /* output */ nullptr, &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_STR_CONTAINS(error, "list_snapshot_schedules");
+
+  // Prefix match: a prefix of several commands lists every candidate and a hint, and must not dump
+  // the full command list on either stream.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "list_table"), &output,
+      &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_STR_CONTAINS(error, "list_tables");
+  ASSERT_STR_CONTAINS(error, "list_tablets");
+  ASSERT_STR_CONTAINS(error, "to see all available operations");
+  ASSERT_STR_NOT_CONTAINS(output, kFullUsageMarker);
+  ASSERT_STR_NOT_CONTAINS(error, kFullUsageMarker);
+
+  // Fuzzy match: a transposition ("tabels" instead of "tables") is not a prefix but is close.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "list_tabels"), nullptr,
+      &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_STR_CONTAINS(error, "list_tables");
+
+  // Fuzzy match: a missing leading character ("ist_tables") is one edit away from "list_tables".
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "ist_tables"), nullptr,
+      &error));
+  ASSERT_STR_CONTAINS(error, "list_tables");
+
+  // An empty operation is a prefix of every command, but should not list all of them.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, ""), nullptr, &error));
+  ASSERT_STR_NOT_CONTAINS(error, "Did you mean one of these?");
+
+  // A far-off garbage string is beyond the edit-distance tolerance, so nothing is suggested.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "zzzzzzzzzzzzzzzzzz"),
+      nullptr, &error));
+  ASSERT_STR_NOT_CONTAINS(error, "Did you mean one of these?");
+
+  // Running with no operation at all should still print the full usage as help on stdout.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress), &output, &error));
+  ASSERT_STR_CONTAINS(output, kFullUsageMarker);
+}
 
 // Test yb-admin config change while running a workload.
 // 1. Instantiate external mini cluster with 3 TS.
@@ -547,7 +615,20 @@ TEST_F(AdminCliTest, TestLeaderStepdown) {
   const auto tablet_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+)"));
   out = ASSERT_RESULT(CallAdmin("list_tablet_servers", tablet_id));
   const auto tserver_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+FOLLOWER)"));
-  ASSERT_OK(CallAdmin("leader_stepdown", tablet_id, tserver_id));
+
+  // On a freshly-started cluster the chosen follower may not yet be caught up to the leader,
+  // in which case leader_stepdown returns "Suggested peer is not caught up yet". Retry until
+  // the follower catches up.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto result = CallAdmin("leader_stepdown", tablet_id, tserver_id);
+    if (result.ok()) {
+      return true;
+    }
+    if (result.status().ToString().find("not caught up") != std::string::npos) {
+      return false;
+    }
+    return result.status();
+  }, 10s, "Leader stepdown call succeeds"));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     out = VERIFY_RESULT(CallAdmin("list_tablet_servers", tablet_id));
@@ -852,6 +933,260 @@ class AdminCliTestWithYSQL : public AdminCliTest {
     options->enable_ysql = true;
   }
 };
+
+// Returns the colocation parent table id for a database created WITH colocation = true. Such a
+// database uses GA (tablegroup) colocation, whose parent id is keyed by the implicit tablegroup --
+// not the legacy "<namespace>.colocated.parent.uuid" that GetColocatedDbParentTableId() builds and
+// which does not exist here. Look it up by name, the way a user finds it via list_tables.
+Result<TableId> GetColocationParentTableId(client::YBClient* client, const std::string& database) {
+  auto parents = VERIFY_RESULT(client->ListTables(
+      kColocationParentTableNameSuffix, /* exclude_ysql = */ false, database));
+  SCHECK_EQ(
+      parents.size(), 1U, IllegalState,
+      Format("Expected exactly one colocation parent table in database $0", database));
+  return parents.front().table_id();
+}
+
+// Test get_table_hash scoping on a colocated tablet: a child colocated table id hashes just that
+// table, the colocation parent table id hashes the whole tablet, and the per-table hashes
+// recombine to the whole-tablet hash.
+TEST_F(AdminCliTestWithYSQL, TestGetTableXorHashColocated) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE codb WITH colocation = true"));
+  auto codb = ASSERT_RESULT(cluster_->ConnectToDB("codb"));
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_a (k int PRIMARY KEY, v int)"));
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_b (k int PRIMARY KEY, v int)"));
+  // Distinct data and row counts so the two tables' hashes differ.
+  ASSERT_OK(codb.Execute("INSERT INTO colo_a SELECT g, g * 10 FROM generate_series(1, 50) g"));
+  ASSERT_OK(codb.Execute("INSERT INTO colo_b SELECT g, g * 7  FROM generate_series(1, 30) g"));
+
+  auto get_table_id = [this](const std::string& name) -> Result<TableId> {
+    auto tables = VERIFY_RESULT(client_->ListTables(name));
+    SCHECK_EQ(tables.size(), 1U, IllegalState, Format("Expected one table named $0", name));
+    return tables.front().table_id();
+  };
+  const auto table_a = ASSERT_RESULT(get_table_id("colo_a"));
+  const auto table_b = ASSERT_RESULT(get_table_id("colo_b"));
+
+  // The colocation parent table id addresses the whole tablet (looked up by name -- see
+  // GetColocationParentTableId, since WITH colocation uses GA tablegroup colocation).
+  const auto parent_table = ASSERT_RESULT(GetColocationParentTableId(client_.get(), "codb"));
+
+  // Fixed read time so all three calls observe identical data.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto parse_totals = [](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    const auto row_prefix = "Total row count: ";
+    const auto hash_prefix = "Total XOR hash: ";
+    auto rp = output.find(row_prefix);
+    auto hp = output.find(hash_prefix);
+    CHECK(rp != std::string::npos && hp != std::string::npos) << output;
+    return {std::stoull(output.substr(rp + strlen(row_prefix))),
+            std::stoull(output.substr(hp + strlen(hash_prefix)))};
+  };
+
+  // A child colocated table id scopes the hash to that single table.
+  auto [rows_a, hash_a] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", table_a, ht.ToUint64())));
+  auto [rows_b, hash_b] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", table_b, ht.ToUint64())));
+
+  ASSERT_EQ(rows_a, 50);
+  ASSERT_EQ(rows_b, 30);
+  ASSERT_NE(hash_a, 0);
+  ASSERT_NE(hash_b, 0);
+  ASSERT_NE(hash_a, hash_b);
+
+  // The colocation parent table id hashes the whole colocated tablet, so its totals must equal the
+  // combination of the two per-table results.
+  auto [rows_all, hash_all] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", parent_table, ht.ToUint64())));
+  ASSERT_EQ(rows_all, rows_a + rows_b);
+  ASSERT_EQ(hash_all, hash_a ^ hash_b);
+}
+
+// Test get_table_hash with a partition-key sub-range on a colocated (range-partitioned) table.
+//
+// Colocated tables are range-only and share a single tablet, so -- unlike a hash-partitioned table
+// -- there is no trivial midpoint key (e.g. 0x8000) and no tablet boundary to crib bytes from. To
+// obtain real, mid-data range split keys without baking in any client-side key-encoding
+// assumptions, we create a throwaway NON-colocated table with the identical primary key, split it
+// AT VALUES ((4), (8)), and read back the partition_key_starts the server assigned to its tablets.
+// Those byte strings are the server's own encoding of the range keys for id=4 and id=8. Because the
+// range-column encoding is independent of colocation (colocation only prepends a per-table prefix,
+// which the server adds separately from the table id), the same bytes are valid split points inside
+// the colocated table's slice of the shared tablet.
+TEST_F(AdminCliTestWithYSQL, TestGetTableXorHashColocatedKeyRange) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE codb WITH colocation = true"));
+  auto codb = ASSERT_RESULT(cluster_->ConnectToDB("codb"));
+
+  // Colocated table (range-partitioned on id ASC) holding ids 1..10 in the single shared tablet.
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_range (id INT, name TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(codb.Execute(
+      "INSERT INTO colo_range (id, name) SELECT i, 'test' || i FROM generate_series(1, 10) i"));
+
+  // Throwaway non-colocated table with the SAME primary key, split at ids 4 and 8, used only to
+  // read the server-encoded range keys for those ids from the resulting tablet boundaries.
+  ASSERT_OK(codb.Execute(
+      "CREATE TABLE split_probe (id INT, name TEXT, PRIMARY KEY (id ASC)) "
+      "WITH (colocation = false) SPLIT AT VALUES ((4), (8))"));
+
+  auto get_table_id = [this](const std::string& name) -> Result<TableId> {
+    auto tables = VERIFY_RESULT(client_->ListTables(name, /* exclude_ysql = */ false, "codb"));
+    SCHECK_EQ(tables.size(), 1U, IllegalState, Format("Expected one table named $0", name));
+    return tables.front().table_id();
+  };
+  const auto colocated_tbl_id = ASSERT_RESULT(get_table_id("colo_range"));
+  const auto probe_tbl_id = ASSERT_RESULT(get_table_id("split_probe"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> probe_tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(probe_tbl_id, /*max_tablets=*/0, &probe_tablets));
+  // SPLIT AT VALUES ((4), (8)) yields three tablets: [-inf, key(4)), [key(4), key(8)),
+  // [key(8), +inf). The two split keys are the non-empty partition_key_starts (a partition key
+  // carries no table-id prefix); sort them ascending since tablet order is not guaranteed.
+  ASSERT_EQ(probe_tablets.size(), 3);
+  std::vector<std::string> split_keys;
+  for (const auto& tablet : probe_tablets) {
+    if (!tablet.partition().partition_key_start().empty()) {
+      split_keys.push_back(tablet.partition().partition_key_start());
+    }
+  }
+  ASSERT_EQ(split_keys.size(), 2) << "expected two tablet boundaries from SPLIT AT VALUES";
+  std::sort(split_keys.begin(), split_keys.end());
+  const auto key4_hex = strings::b2a_hex(split_keys[0]);  // boundary for id=4
+  const auto key8_hex = strings::b2a_hex(split_keys[1]);  // boundary for id=8
+
+  // Fixed read time so every call below observes identical data.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto parse_totals = [](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    const auto row_prefix = "Total row count: ";
+    const auto hash_prefix = "Total XOR hash: ";
+    auto rp = output.find(row_prefix);
+    auto hp = output.find(hash_prefix);
+    CHECK(rp != std::string::npos && hp != std::string::npos) << output;
+    return {std::stoull(output.substr(rp + strlen(row_prefix))),
+            std::stoull(output.substr(hp + strlen(hash_prefix)))};
+  };
+
+  auto [full_rows, full_hash] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", colocated_tbl_id, ht.ToUint64())));
+  ASSERT_EQ(full_rows, 10);
+  ASSERT_NE(full_hash, 0);
+
+  // Explicit open bounds (start == -inf, end == +inf) must reproduce the full-table result.
+  auto [open_rows, open_hash] = parse_totals(ASSERT_RESULT(CallAdmin(
+      "get_table_hash", colocated_tbl_id, ht.ToUint64(), std::string(), std::string())));
+  ASSERT_EQ(open_rows, full_rows);
+  ASSERT_EQ(open_hash, full_hash);
+
+  // A key range is scoped to a single table by passing that (child) colocated table's id. Split
+  // the table into three disjoint, complementary segments (start inclusive, end exclusive); the
+  // middle segment specifies BOTH bounds:
+  //   lo  = [-inf,  key(4))  -> ids 1..3   (3 rows)
+  //   mid = [key(4), key(8)) -> ids 4..7   (4 rows)   <- both bounds set
+  //   hi  = [key(8), +inf)   -> ids 8..10  (3 rows)
+  auto [lo_rows, lo_hash] = parse_totals(ASSERT_RESULT(CallAdmin(
+      "get_table_hash", colocated_tbl_id, ht.ToUint64(), std::string(), key4_hex)));
+  auto [mid_rows, mid_hash] = parse_totals(ASSERT_RESULT(CallAdmin(
+      "get_table_hash", colocated_tbl_id, ht.ToUint64(), key4_hex, key8_hex)));
+  auto [hi_rows, hi_hash] = parse_totals(ASSERT_RESULT(CallAdmin(
+      "get_table_hash", colocated_tbl_id, ht.ToUint64(), key8_hex, std::string())));
+
+  // Real narrowing, including a both-bounded middle segment.
+  ASSERT_EQ(lo_rows, 3);
+  ASSERT_EQ(mid_rows, 4);
+  ASSERT_EQ(hi_rows, 3);
+  // Recombination: the three disjoint segments partition the rows, so counts sum and hashes XOR
+  // back to the full-table totals (the colocated tablet hosts only this one user table).
+  ASSERT_EQ(lo_rows + mid_rows + hi_rows, full_rows);
+  ASSERT_EQ(lo_hash ^ mid_hash ^ hi_hash, full_hash);
+
+  // A key range against the colocation parent table id (which would hash every colocated table)
+  // is ambiguous and must be rejected rather than silently returning a whole-tablet result.
+  const auto parent_tbl_id = ASSERT_RESULT(GetColocationParentTableId(client_.get(), "codb"));
+  ASSERT_NOK(CallAdmin("get_table_hash", parent_tbl_id, ht.ToUint64(), std::string(), key4_hex));
+}
+
+// Test get_table_hash with a partition-key sub-range on a NON-colocated, multi-tablet, range-
+// sharded table (PRIMARY KEY (k ASC) with SPLIT AT VALUES). The range here crosses real tablet
+// boundaries, so this also exercises the client-side tablet skipping (PartitionRangeOverlaps) on
+// range -- not hash -- keys. Split keys come from the table's own tablet boundaries; the CLI takes
+// them hex-encoded, so arbitrary key bytes round-trip safely.
+TEST_F(AdminCliTestWithYSQL, TestGetTableXorHashKeyRangeRangeSharded) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  // Range-sharded on a text key, split into three tablets at 'd' and 'h'.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE range_split_tbl (k TEXT, v INT, PRIMARY KEY (k ASC)) "
+      "SPLIT AT VALUES (('d'), ('h'))"));
+  // 10 rows keyed 'a'..'j'; splits at 'd','h' place [a,b,c] [d,e,f,g] [h,i,j] in three tablets.
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO range_split_tbl (k, v) SELECT chr(96 + i), i FROM generate_series(1, 10) i"));
+
+  auto get_table_id = [this](const std::string& name) -> Result<TableId> {
+    auto tables = VERIFY_RESULT(client_->ListTables(name, /* exclude_ysql = */ false, "yugabyte"));
+    SCHECK_EQ(tables.size(), 1U, IllegalState, Format("Expected one table named $0", name));
+    return tables.front().table_id();
+  };
+  const auto table_id = ASSERT_RESULT(get_table_id("range_split_tbl"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(table_id, /*max_tablets=*/0, &tablets));
+  ASSERT_EQ(tablets.size(), 3);
+  // The two non-empty partition_key_starts are the server-encoded boundaries for 'd' and 'h'.
+  std::vector<std::string> split_keys;
+  for (const auto& tablet : tablets) {
+    if (!tablet.partition().partition_key_start().empty()) {
+      split_keys.push_back(tablet.partition().partition_key_start());
+    }
+  }
+  ASSERT_EQ(split_keys.size(), 2);
+  std::sort(split_keys.begin(), split_keys.end());
+  const auto keyd_hex = strings::b2a_hex(split_keys[0]);  // boundary for 'd'
+  const auto keyh_hex = strings::b2a_hex(split_keys[1]);  // boundary for 'h'
+
+  // Fixed read time so every call below observes identical data.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto parse_totals = [](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    const auto row_prefix = "Total row count: ";
+    const auto hash_prefix = "Total XOR hash: ";
+    auto rp = output.find(row_prefix);
+    auto hp = output.find(hash_prefix);
+    CHECK(rp != std::string::npos && hp != std::string::npos) << output;
+    return {std::stoull(output.substr(rp + strlen(row_prefix))),
+            std::stoull(output.substr(hp + strlen(hash_prefix)))};
+  };
+
+  auto [full_rows, full_hash] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_EQ(full_rows, 10);
+  ASSERT_NE(full_hash, 0);
+
+  // Three disjoint, complementary segments, each landing in a different tablet:
+  //   lo  = [-inf, key('d'))     -> a,b,c    (3 rows)
+  //   mid = [key('d'), key('h')) -> d,e,f,g  (4 rows)
+  //   hi  = [key('h'), +inf)     -> h,i,j    (3 rows)
+  auto [lo_rows, lo_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), std::string(), keyd_hex)));
+  auto [mid_rows, mid_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), keyd_hex, keyh_hex)));
+  auto [hi_rows, hi_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), keyh_hex, std::string())));
+
+  ASSERT_EQ(lo_rows, 3);
+  ASSERT_EQ(mid_rows, 4);
+  ASSERT_EQ(hi_rows, 3);
+  ASSERT_EQ(lo_rows + mid_rows + hi_rows, full_rows);
+  ASSERT_EQ(lo_hash ^ mid_hash ^ hi_hash, full_hash);
+}
 
 // Test that partition ranges are displayed in correct format for both hash and range partitioning
 // (similar to the :9000/tablets endpoint format)
@@ -1919,6 +2254,8 @@ TEST_F(AdminCliTest, TestAdminCommandTimeout) {
 
   // Update flags.
   ASSERT_OK(cluster_->SetFlagOnMasters(
+    "refresh_waiter_timeout_ms", std::to_string(kMasterRpcTimeout)));
+  ASSERT_OK(cluster_->SetFlagOnMasters(
       "master_ts_rpc_timeout_ms", std::to_string(kMasterRpcTimeout)));
   ASSERT_OK(cluster_->SetFlagOnTServers(
       "TEST_pause_tablet_compact_flush_ms", std::to_string(kCompactionPause)));
@@ -1969,6 +2306,8 @@ TEST_F(AdminCliTest, TestAdminRpcTimeout) {
   constexpr size_t kMasterRpcTimeout = kAdminRpcTimeout / 2;
 
   // Update flags.
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+    "refresh_waiter_timeout_ms", std::to_string(kMasterRpcTimeout)));
   ASSERT_OK(cluster_->SetFlagOnMasters(
       "master_ts_rpc_timeout_ms", std::to_string(kMasterRpcTimeout)));
   ASSERT_OK(cluster_->SetFlagOnTServers(
@@ -2224,6 +2563,65 @@ TEST_F(AdminCliTest, TestRemoveTabletServer) {
   EXPECT_EQ(find_tserver_result, std::nullopt);
 }
 
+// Regression test for https://github.com/yugabyte/yugabyte-db/issues/32681:
+// list_tablet_server_log_locations must not abort on DEAD tservers, and must
+// sort alive tservers ahead of dead ones.
+TEST_F(AdminCliTest, TestListTabletServerLogLocationsWithDeadTServer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+  BuildAndStart({}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000"});
+
+  // Kill tserver 0 (the one that sorts first by host/port) and keep tserver 1
+  // alive, so alive-first ordering must actively reorder the two entries rather
+  // than coincidentally matching the host/port tie-break.
+  auto* dead_ts = cluster_->tablet_server(0);
+  auto* alive_ts = cluster_->tablet_server(1);
+  const auto dead_uuid = dead_ts->uuid();
+  const auto alive_uuid = alive_ts->uuid();
+
+  // Helper: extract the LogLocation column for a given tserver UUID.
+  auto log_location_for = [](const std::string& output, const std::string& uuid) -> std::string {
+    std::smatch match;
+    if (!std::regex_search(output, match, std::regex(uuid + R"(\s+\S+\s+(\S+))"))) {
+      return "";
+    }
+    return match[1].str();
+  };
+
+  // While both are alive, both report a real log directory (no N/A).
+  auto output_alive = ASSERT_RESULT(CallAdmin("list_tablet_server_log_locations"));
+  ASSERT_STR_CONTAINS(output_alive, dead_uuid);
+  ASSERT_STR_CONTAINS(output_alive, alive_uuid);
+  ASSERT_STR_NOT_CONTAINS(output_alive, "N/A");
+
+  dead_ts->Shutdown();
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  ASSERT_OK(WaitFor(
+      [&cluster_client, &dead_uuid]() -> Result<bool> {
+        auto tserver = VERIFY_RESULT(cluster_client.GetTabletServer(dead_uuid));
+        return tserver && !tserver->alive();
+      },
+      30s, "tserver not marked dead"));
+
+  // Must succeed (not connect-timeout abort) and list both tservers.
+  auto output = ASSERT_RESULT(CallAdmin("list_tablet_server_log_locations"));
+  ASSERT_STR_CONTAINS(output, dead_uuid);
+  ASSERT_STR_CONTAINS(output, alive_uuid);
+
+  // Alive tserver reports a real log location; dead tserver reports N/A.
+  ASSERT_NE(log_location_for(output, alive_uuid), "N/A");
+  ASSERT_NE(log_location_for(output, alive_uuid), "");
+  ASSERT_EQ(log_location_for(output, dead_uuid), "N/A");
+
+  // Alive tserver sorts ahead of the dead one.
+  const auto alive_pos = output.find(alive_uuid);
+  const auto dead_pos = output.find(dead_uuid);
+  ASSERT_NE(alive_pos, std::string::npos);
+  ASSERT_NE(dead_pos, std::string::npos);
+  ASSERT_LT(alive_pos, dead_pos);
+}
+
 TEST_F(AdminCliTest, TestDisallowImplicitStreamCreation) {
   std::string test_namespace = "pg_namespace_cdc";
   BuildAndStart();
@@ -2314,6 +2712,212 @@ TEST_F(AdminCliTest, TestGetTableXorHash) {
   ASSERT_GT(row_count2, 100);
   ASSERT_NE(xor_hash2, 0);
   ASSERT_NE(xor_hash, xor_hash2);
+}
+
+// DB-21953: get_table_hash at a read_ht below the history-retention cutoff must fail with
+// SnapshotTooOld, not return a wrong hash over a compacted view. Before the fix it returned OK.
+TEST_F(AdminCliTest, TestGetTableHashRejectsTooOldReadTime) {
+  // No history retention, so one compaction pushes the cutoff past any earlier read time.
+  std::vector<std::string> ts_flags = {
+    "--timestamp_history_retention_interval_sec=0"s,
+  };
+  std::vector<std::string> master_flags;
+  BuildAndStart(ts_flags, master_flags);
+
+  const auto table_name =
+      YBTableName(YQLDatabase::YQL_DATABASE_CQL, kTableName.namespace_name(), "too_old_table");
+  client::TableHandle table;
+  ASSERT_OK(table.Create(
+      table_name, /* num_tablets */ 1, client::YBSchema(schema_), client_.get()));
+
+  TestYcqlWorkload workload(cluster_.get());
+  workload.set_table_name(table_name);
+  workload.Setup();
+  workload.Start();
+  workload.WaitInserted(200);
+  workload.StopAndJoin();
+
+  auto tables = ASSERT_RESULT(client_->ListTables(table_name.table_name()));
+  ASSERT_EQ(1, tables.size());
+  const auto table_id = tables.front().table_id();
+
+  // Grab a read time that's valid now; it'll fall below the cutoff once we compact.
+  const auto too_old_ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  // Reading at it now works (still within the window).
+  ASSERT_OK(CallAdmin("get_table_hash", table_id, too_old_ht.ToUint64()));
+
+  // More writes + compaction GC the history below the cutoff and push the cutoff past too_old_ht.
+  workload.Start();
+  workload.WaitInserted(workload.rows_inserted() + 200);
+  workload.StopAndJoin();
+
+  // Cutoff tracks safe time, so sleep to make sure too_old_ht is strictly behind it.
+  SleepFor(2s * kTimeMultiplier);
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
+
+  // Now the same read must be rejected, not return a stale hash.
+  auto result = CallAdmin("get_table_hash", table_id, too_old_ht.ToUint64());
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Snapshot too old");
+
+  // A default (safe time) read still works -- only the too-old path is rejected.
+  ASSERT_OK(CallAdmin("get_table_hash", table_id));
+}
+
+// DB-21953: get_table_hash registers its read time with the retention policy, which also pins the
+// history cutoff for the whole call. That pin is what stops a compaction running alongside the scan
+// from garbage-collecting row versions the scan still needs.
+//
+// To actually exercise the pin we need a scan that opens more than one iterator at the same read
+// time: a single open iterator is already safe, since it holds onto its RocksDB files until it
+// finishes. A colocated tablet gives us exactly that -- one whole-tablet scan walks each colocated
+// table with its own iterator, all under a single read time T. So we get the scan going on the
+// first table, kick off a compaction (with history retention off it would push the cutoff past T
+// and drop the old versions), and then check that the rest of the scan still reads the data as it
+// was at T.
+//
+// TEST_fetch_next_delay_ms slows the scan down so the compaction reliably lands in the middle of
+// it. With the fix the cutoff stays pinned and the totals match the pre-update baseline; without it
+// the second table reads the compacted view and the hash comes back wrong.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashPinsCutoffDuringConcurrentCompaction) {
+  std::vector<std::string> ts_flags = {
+    "--timestamp_history_retention_interval_sec=0"s,
+  };
+  std::vector<std::string> master_flags;
+  BuildAndStart(ts_flags, master_flags);
+
+  // Two colocated tables sharing one tablet, so one whole-tablet scan opens two iterators in turn.
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE codb WITH colocation = true"));
+  auto codb = ASSERT_RESULT(cluster_->ConnectToDB("codb"));
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_a (k int PRIMARY KEY, v int)"));
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_b (k int PRIMARY KEY, v int)"));
+  constexpr int kRowsPerTable = 50;
+  ASSERT_OK(codb.ExecuteFormat(
+      "INSERT INTO colo_a SELECT g, g * 10 FROM generate_series(1, $0) g", kRowsPerTable));
+  ASSERT_OK(codb.ExecuteFormat(
+      "INSERT INTO colo_b SELECT g, g * 7  FROM generate_series(1, $0) g", kRowsPerTable));
+
+  // The colocation parent id addresses the whole tablet (both tables).
+  const auto parent_table = ASSERT_RESULT(GetColocationParentTableId(client_.get(), "codb"));
+
+  auto parse_totals = [](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    const auto row_prefix = "Total row count: ";
+    const auto hash_prefix = "Total XOR hash: ";
+    auto rp = output.find(row_prefix);
+    auto hp = output.find(hash_prefix);
+    CHECK(rp != std::string::npos && hp != std::string::npos) << output;
+    return {std::stoull(output.substr(rp + strlen(row_prefix))),
+            std::stoull(output.substr(hp + strlen(hash_prefix)))};
+  };
+
+  // Read time T captured while every row still holds its original value.
+  const auto read_ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+  auto [baseline_rows, baseline_hash] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", parent_table, read_ht.ToUint64())));
+  ASSERT_EQ(baseline_rows, 2 * kRowsPerTable);
+
+  // Overwrite every row in both tables *after* T. The old values now sit below T; a compaction
+  // whose cutoff passes T would GC them, so a fresh iterator reading at T would miss those rows.
+  ASSERT_OK(codb.Execute("UPDATE colo_a SET v = v + 100000"));
+  ASSERT_OK(codb.Execute("UPDATE colo_b SET v = v + 100000"));
+
+  // Slow every per-table scan (both tables have column "v") so the whole-tablet scan stays in
+  // flight long enough for a compaction to land between its two per-table iterators.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_fetch_next_delay_column", "v"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_fetch_next_delay_ms", "200"));
+
+  // Whole-tablet scan in the background under a single read time T.
+  Result<std::string> scan_output = STATUS(Uninitialized, "");
+  std::thread scan_thread([&] {
+    scan_output = CallAdmin("get_table_hash", parent_table, read_ht.ToUint64());
+  });
+  auto joiner = ScopeExit([&scan_thread] {
+    if (scan_thread.joinable()) {
+      scan_thread.join();
+    }
+  });
+
+  // Wait long enough for the scan to register read time T and open the first table's iterator (the
+  // FetchNext delay keeps it on the first table for ~kRowsPerTable * 200ms), then compact. The
+  // compaction completes well before the scan moves on to the second table's fresh iterator.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
+
+  scan_thread.join();
+
+  // The pinned scan must still see the original (pre-update) data across both tables.
+  ASSERT_OK(scan_output);
+  auto [scan_rows, scan_hash] = parse_totals(*scan_output);
+  ASSERT_EQ(scan_rows, baseline_rows);
+  ASSERT_EQ(scan_hash, baseline_hash);
+}
+
+// Test get_table_hash with a partition-key sub-range on a (non-colocated) hash-partitioned table.
+// Exercises the infimum/supremum encoding (empty start_key = -inf, empty end_key = +inf) and that
+// a complementary split recombines to the full-table totals.
+TEST_F(AdminCliTest, TestGetTableXorHashKeyRange) {
+  BuildAndStart();
+  const auto table_name =
+      YBTableName(YQLDatabase::YQL_DATABASE_CQL, kTableName.namespace_name(), "range_table");
+
+  client::TableHandle table;
+  const auto num_tablets = 4;
+  ASSERT_OK(table.Create(table_name, num_tablets, client::YBSchema(schema_), client_.get()));
+
+  TestYcqlWorkload workload(cluster_.get());
+  workload.set_table_name(table_name);
+  workload.Setup();
+  workload.Start();
+  workload.WaitInserted(300);
+  workload.StopAndJoin();
+
+  auto tables = ASSERT_RESULT(client_->ListTables(table_name.table_name()));
+  ASSERT_EQ(1, tables.size());
+  const auto table_id = tables.front().table_id();
+
+  // Fixed read time so every call below observes identical data.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  // Parse just the totals; ranged calls process a variable number of tablets, so we do not assert
+  // on the per-tablet line count here.
+  auto parse_totals = [](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    const auto total_row_count_prefix = "Total row count: ";
+    const auto total_xor_hash_prefix = "Total XOR hash: ";
+    auto row_count_pos = output.find(total_row_count_prefix);
+    auto xor_hash_pos = output.find(total_xor_hash_prefix);
+    CHECK(row_count_pos != std::string::npos && xor_hash_pos != std::string::npos) << output;
+    auto row_count = std::stoull(output.substr(row_count_pos + strlen(total_row_count_prefix)));
+    auto xor_hash = std::stoull(output.substr(xor_hash_pos + strlen(total_xor_hash_prefix)));
+    return std::make_pair(row_count, xor_hash);
+  };
+
+  auto [full_rows, full_hash] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_GT(full_rows, 0);
+
+  // Explicit empty bounds (start == -inf, end == +inf) must reproduce the full-table result.
+  auto [open_rows, open_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), std::string(), std::string())));
+  ASSERT_EQ(open_rows, full_rows);
+  ASSERT_EQ(open_hash, full_hash);
+
+  // Split the 2-byte hash partition-key space at 0x8000 into two complementary, disjoint ranges:
+  //   lower = [-inf, 0x8000)   (empty start_key = infimum)
+  //   upper = [0x8000, +inf)   (empty end_key   = supremum)
+  // Every row falls in exactly one side (start inclusive, end exclusive), so the row counts must
+  // sum and the XOR hashes must recombine to the full-table totals.
+  const std::string kMidKey = "8000";  // hex-encoded raw partition key.
+  auto [lo_rows, lo_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), std::string(), kMidKey)));
+  auto [hi_rows, hi_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), kMidKey, std::string())));
+
+  ASSERT_GT(lo_rows, 0);
+  ASSERT_GT(hi_rows, 0);
+  ASSERT_EQ(lo_rows + hi_rows, full_rows);
+  ASSERT_EQ(lo_hash ^ hi_hash, full_hash);
 }
 
 }  // namespace tools

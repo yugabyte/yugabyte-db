@@ -244,8 +244,10 @@ class TestGenerateEmbeddings:
     def test_generate_embeddings_embedding_failure(
         self, mock_oai_cls, mock_pdf, mock_pt
     ):
-        """Test generate_embeddings when embedding generation fails for a chunk.
-        The current implementation catches the error per-chunk and continues."""
+        """Embedding API failures must propagate so the pipeline can mark
+        the task FAILED. Previously the text path swallowed the exception
+        which caused docs to be reported as completed with zero embeddings
+        persisted. Verify it is re-raised."""
         test_content = "Test content for embedding failure."
 
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
@@ -256,12 +258,36 @@ class TestGenerateEmbeddings:
             gen, mock_embedder = _create_generator(mock_oai_cls)
             mock_embedder.embed_documents.side_effect = Exception("API Error")
 
-            # The current code catches per-chunk errors and continues,
-            # so no exception is raised - we just get no results
-            results = list(gen.generate_embeddings(
-                pipeline_id=PIPELINE_ID, file_location=temp_file
-            ))
-            assert len(results) == 0
+            with pytest.raises(Exception, match="API Error"):
+                list(gen.generate_embeddings(
+                    pipeline_id=PIPELINE_ID, file_location=temp_file
+                ))
+        finally:
+            os.unlink(temp_file)
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.OpenAIEmbeddings')
+    def test_generate_embeddings_zero_yielded_raises(
+        self, mock_oai_cls, mock_pdf, mock_pt
+    ):
+        """If embed_documents returns an empty vector list for every batch,
+        the post-condition guard must raise so a doc with non-empty chunks
+        cannot be silently marked completed with zero embeddings."""
+        test_content = "Test content with real text in it."
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+            f.write(test_content)
+            temp_file = f.name
+
+        try:
+            gen, mock_embedder = _create_generator(mock_oai_cls)
+            mock_embedder.embed_documents.return_value = []
+
+            with pytest.raises(RuntimeError, match="0 vectors"):
+                list(gen.generate_embeddings(
+                    pipeline_id=PIPELINE_ID, file_location=temp_file
+                ))
         finally:
             os.unlink(temp_file)
 
@@ -417,6 +443,81 @@ Third paragraph with more content."""
                 assert len(results) > 0
         finally:
             os.unlink(temp_file)
+
+
+class TestEmbeddingsGeneratorProviderDispatch:
+    """Tests covering ai_provider dispatch in EmbeddingsGenerator."""
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.HTMLProcessor')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.BedrockEmbeddings')
+    @patch('embeddings.embed.OpenAIEmbeddings')
+    def test_aws_bedrock_provider_uses_bedrock_embeddings(
+        self, mock_oai_cls, mock_brk_cls, mock_pdf, mock_html, mock_pt,
+        monkeypatch
+    ):
+        """AWS_BEDROCK provider should construct BedrockEmbeddings, not OpenAIEmbeddings."""
+        monkeypatch.setenv("AWS_REGION", "us-east-1")
+
+        mock_brk_embedder = Mock()
+        mock_brk_cls.return_value = mock_brk_embedder
+
+        model_params = {
+            "model": "amazon.titan-embed-text-v2:0",
+            "dimensions": 1024,
+        }
+        gen = EmbeddingsGenerator(
+            embedding_model="amazon.titan-embed-text-v2:0",
+            embedding_model_params=model_params,
+            ai_provider="AWS_BEDROCK",
+        )
+
+        mock_brk_cls.assert_called_once_with(
+            model_id="amazon.titan-embed-text-v2:0",
+            region_name="us-east-1",
+        )
+        mock_oai_cls.assert_not_called()
+        assert gen.embedder is mock_brk_embedder
+        assert gen.ai_provider == "AWS_BEDROCK"
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.HTMLProcessor')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.BedrockEmbeddings')
+    @patch('embeddings.embed.OpenAIEmbeddings')
+    def test_default_provider_is_openai(
+        self, mock_oai_cls, mock_brk_cls, mock_pdf, mock_html, mock_pt
+    ):
+        """When ai_provider is omitted, OpenAI should be the default."""
+        mock_oai_embedder = Mock()
+        mock_oai_cls.return_value = mock_oai_embedder
+
+        gen = EmbeddingsGenerator(
+            embedding_model="text-embedding-ada-002",
+            embedding_model_params={"dimensions": 1536},
+        )
+
+        mock_oai_cls.assert_called_once()
+        mock_brk_cls.assert_not_called()
+        assert gen.ai_provider == "OPENAI"
+        assert gen.embedder is mock_oai_embedder
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.HTMLProcessor')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.BedrockEmbeddings')
+    @patch('embeddings.embed.OpenAIEmbeddings')
+    def test_unsupported_provider_raises(
+        self, mock_oai_cls, mock_brk_cls, mock_pdf, mock_html, mock_pt
+    ):
+        """Unknown ai_provider values should raise ValueError."""
+        with pytest.raises(ValueError, match="Unsupported ai_provider"):
+            EmbeddingsGenerator(
+                embedding_model="some-model",
+                embedding_model_params={"dimensions": 1536},
+                ai_provider="GOOGLE_VERTEX",
+            )
 
 
 if __name__ == "__main__":

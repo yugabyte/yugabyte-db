@@ -1,0 +1,8 @@
+title: PitrConfig
+description: PITR configuration for a universe.
+type: object
+properties:
+  spec:
+    $ref: "./PitrConfigSpec.yaml"
+  info:
+    $ref: "./PitrConfigInfo.yaml"

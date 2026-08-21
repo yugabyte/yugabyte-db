@@ -73,7 +73,7 @@ concept ConvertibleResultValueType = std::convertible_to<ResultValueType<R>, TVa
 void StatusCheck(bool);
 
 template<class TValue>
-class [[nodiscard]] Result { // NOLINT
+class [[nodiscard]] Result {
   using Traits = result::internal::ResultTraits<TValue>;
 
  public:

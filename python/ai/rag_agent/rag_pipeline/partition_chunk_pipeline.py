@@ -1,10 +1,10 @@
-from typing import Generator, Any, Dict
+from typing import Generator, Any, Dict, Optional
 import os
 import boto3
 import logging
 import requests
-from rag_pipeline.chunk import chunk
-
+from rag_pipeline.chunk import chunk, get_splitter_for_filetype
+from observability import meko_observe
 
 def read_file_stream(
     file_location: str, chunk_size: int = 1024 * 1024
@@ -82,7 +82,7 @@ def read_file_stream(
                     break
                 yield chunk
 
-
+@meko_observe(name="Chunking & Partitioning", as_type="span")
 def stream_partition_and_chunk(
     pipeline_id: int,  # pipeline id of the document being processed
     file_location: str,
@@ -114,14 +114,116 @@ def stream_partition_and_chunk(
         if buffer:
             yield buffer
 
+    # nikhil-todo: chunk args should be configured from the request chunk_embedding_kwargs.
+    auto_splitter, auto_args = get_splitter_for_filetype(file_location)
+    splitter = chunk_args.get('splitter', auto_splitter)
+    args = chunk_args.get('args', auto_args)
+    logging.info(
+        f"Using splitter '{splitter}' for file: {file_location} "
+        f"(auto-detected: '{auto_splitter}')"
+    )
+
     text_chunks = read_file_stream(file_location)
     lines_iter = line_iterator_from_chunks(text_chunks)
     logging.debug(f"generated lines_iter for file: {file_location}")
     for paragraph in paragraph_stream(lines_iter):
-        # nikhil-todo: chunk args should be configured from the request chunk_embedding_kwargs.
-        # Use default splitter and args if not provided
-        splitter = chunk_args.get('splitter', 'recursive_character')
-        args = chunk_args.get('args', '{"chunk_size": 1000, "chunk_overlap": 100}')
-        logging.debug(f"chunking paragraph: with splitter: {splitter} and args: {args}")
         for chunked_text in chunk(splitter, paragraph, args):
             yield chunked_text
+
+def enforce_size_limit(
+    file_location: str,
+    size_bytes: Optional[int],
+    max_size_bytes: Optional[int],
+) -> None:
+    if size_bytes is None or max_size_bytes is None:
+        return
+    if size_bytes > max_size_bytes:
+        raise ValueError(
+            f"File {file_location} is {size_bytes} bytes which exceeds "
+            f"the {max_size_bytes}-byte "
+            f"({max_size_bytes // (1024 * 1024)} MiB) size limit; "
+            f"rejecting."
+        )
+
+def read_whole_file(
+    file_location: str,
+    max_size_bytes: Optional[int] = None,
+) -> str:
+    if file_location.startswith("s3://"):
+        return _read_s3_whole(file_location, max_size_bytes)
+
+    size_bytes = os.path.getsize(file_location)
+    enforce_size_limit(file_location, size_bytes, max_size_bytes)
+    logging.debug(
+        f"Reading file from local: {file_location} ({size_bytes} bytes)"
+    )
+    with open(file_location, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def _read_s3_whole(
+    file_location: str,
+    max_size_bytes: Optional[int],
+) -> str:
+    path = file_location[5:]
+    bucket, key = path.split("/", 1)
+
+    logging.debug(f"Reading file from S3: {file_location}")
+    try:
+        s3 = boto3.client("s3")
+        obj = s3.get_object(Bucket=bucket, Key=key)
+        enforce_size_limit(
+            file_location, obj.get("ContentLength"), max_size_bytes
+        )
+        return obj["Body"].read().decode("utf-8")
+    except ValueError:
+        raise
+    except Exception as e:
+        no_credentials = (
+            "NoCredentialsError" in str(type(e).__name__)
+            or "Unable to locate credentials" in str(e)
+        )
+        if not no_credentials:
+            logging.error(f"Error accessing S3 file {file_location}: {e}")
+            raise RuntimeError(
+                f"Failed to access S3 file {file_location}: {e}"
+            )
+
+        public_url = f"https://{bucket}.s3.amazonaws.com/{key}"
+        logging.warning(
+            f"S3 credentials not found, falling back to public URL for "
+            f"{file_location}: {public_url}"
+        )
+        try:
+            with requests.get(public_url, stream=True) as response:
+                response.raise_for_status()
+                content_length_header = response.headers.get("Content-Length")
+                if content_length_header is not None:
+                    enforce_size_limit(
+                        file_location,
+                        int(content_length_header),
+                        max_size_bytes,
+                    )
+                return response.content.decode("utf-8")
+        except ValueError:
+            raise
+        except requests.exceptions.RequestException as req_e:
+            logging.error(
+                f"Failed to download S3 file using public URL "
+                f"{public_url}: {req_e}"
+            )
+            raise RuntimeError(
+                f"S3 file {file_location} is not accessible via boto3 "
+                f"(no credentials) or as a public URL. Please ensure "
+                f"the S3 object has public read permissions or "
+                f"configure AWS credentials."
+            )
+        except Exception as alt_e:
+            logging.error(
+                f"Unexpected error with alternative S3 download method: "
+                f"{alt_e}"
+            )
+            raise RuntimeError(
+                f"Failed to access S3 file {file_location} using both "
+                f"boto3 and public URL methods: {alt_e}"
+            )

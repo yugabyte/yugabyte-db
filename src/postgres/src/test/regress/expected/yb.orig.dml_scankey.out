@@ -28,7 +28,6 @@ HINT:  Use explicit casts to ensure input types are as desired.
 \set filter 'row(i, yb_hash_code(k)) > row(1, yb_hash_code(4))'
 \set query 'SELECT * FROM hashcode_rowfilter WHERE :filter ORDER BY j'
 \set is '/*+IndexScan(hashcode_rowfilter)*/'
--- TODO(#18347): fix output.
 :explain :query; :explain :is :query; :query; :is :query;
                         QUERY PLAN                         
 -----------------------------------------------------------
@@ -43,8 +42,9 @@ HINT:  Use explicit casts to ensure input types are as desired.
  Sort
    Sort Key: j
    ->  Index Scan using hashcode_rowfilter_k_j_i_idx on hashcode_rowfilter
-         Index Cond: (ROW(i, yb_hash_code(k)) > ROW(1, 40623))
-(4 rows)
+         Index Cond: (i >= 1)
+         Filter: (ROW(i, yb_hash_code(k)) > ROW(1, 40623))
+(5 rows)
 
  i | j | k 
 ---+---+---
@@ -142,18 +142,24 @@ ERROR:  cannot use more than 64 predicates in a table or index scan
  2 | 3 | 4
 (2 rows)
 
--- TODO(#18347): fix output.
 \set filter 'row(:sixtyi,i,i,i,yb_hash_code(k)) >= row(:sixty0,0,0,0,0)'
 :explain :is :query; :is :query;
-                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                   
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: j
    ->  Index Scan using hashcode_rowfilter_k_j_i_idx on hashcode_rowfilter
-         Index Cond: (ROW(i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, yb_hash_code(k)) >= ROW(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
-(4 rows)
+         Index Cond: (ROW(i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i) >= ROW(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+         Filter: (ROW(i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, yb_hash_code(k)) >= ROW(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+(5 rows)
 
-ERROR:  cannot use more than 64 predicates in a table or index scan
+ i | j | k 
+---+---+---
+ 1 | 2 | 4
+ 2 | 3 | 4
+ 3 | 4 | 5
+(3 rows)
+
 --
 -- Hash code filter should have no limit.
 --

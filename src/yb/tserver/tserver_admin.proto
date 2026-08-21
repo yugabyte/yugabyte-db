@@ -172,6 +172,11 @@ message CreateTabletRequestPB {
 
   // If set to true, retention barriers will be set on the tablet.
   optional bool cdc_sdk_set_retention_barriers = 20;
+
+  // Tiered storage: storage tier label (e.g. "ssd", "hdd") that this tablet's home directory
+  // should be placed on, derived from the storage_tier of the tablespace the tablet's table
+  // belongs to. Empty/unset means no tier preference (default disk-selection policy).
+  optional string target_storage_tier = 21;
 }
 
 message CreateTabletResponsePB {
@@ -232,8 +237,26 @@ message DeleteTabletRequestPB {
   optional bytes transaction_id = 9; // 16 byte uuid
 }
 
+// Describes a single on-disk directory that DeleteTablet attempted to reclaim.
+message DeletedDirectoryPB {
+  // Absolute path of the directory on this tablet server.
+  optional string path = 1;
+
+  // Whether the directory is still present after the delete completed.
+  optional bool still_present_after = 2;
+}
+
 message DeleteTabletResponsePB {
   optional TabletServerErrorPB error = 1;
+
+  // Directories involved in the delete, each with whether it is still present afterwards.
+  repeated DeletedDirectoryPB directories = 2;
+
+  // The tablet's data state before and after this delete ran.
+  optional tablet.TabletDataState prev_data_state = 5;
+  optional tablet.TabletDataState final_data_state = 6;
+
+  optional string table_name = 8;
 }
 
 // TODO: rename this to FlushOrCompactTabletsRequestPB
@@ -379,7 +402,14 @@ message ClonePgSchemaRequestPB {
   optional bytes source_db_name = 1;
   optional bytes target_db_name = 2;
   optional fixed64 restore_ht = 3;
-  optional bytes source_owner = 4;
+  // Reserved: previously held source_owner. The source DB owner is now
+  // derived inside ysql_dump from pg_database.datdba (see its --rename-owner
+  // option), so it no longer needs to be sent over the wire.
+  reserved 4;
+  // Raw role name (as stored in pg_authid.rolname) of the new database
+  // owner. Forwarded to ysql_dump as --rename-owner=<target_owner>;
+  // ysql_dump applies fmtId() at emission time, so no pre-quoting is
+  // needed here.
   optional bytes target_owner = 5;
 }
 

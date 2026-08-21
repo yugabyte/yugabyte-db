@@ -35,6 +35,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 #include "yb/util/unique_lock.h"
 
@@ -175,24 +177,49 @@ TopoSortByBackgroundTxnDependency(const tserver::DdlLockEntriesPB& entries) {
 
   std::vector<const tserver::AcquireObjectLockRequestPB*> result;
   result.reserve(entries.lock_entries_size());
-  while (!queue.empty()) {
-    auto txn_id = std::move(queue.front());
-    queue.pop_front();
-    auto it = entries_by_txn.find(txn_id);
-    if (it != entries_by_txn.end()) {
-      for (const auto* req : it->second) {
-        result.push_back(req);
+  auto drain_queue = [&]() {
+    while (!queue.empty()) {
+      auto txn_id = std::move(queue.front());
+      queue.pop_front();
+      auto it = entries_by_txn.find(txn_id);
+      if (it != entries_by_txn.end()) {
+        for (const auto* req : it->second) {
+          result.push_back(req);
+        }
       }
-    }
-    auto dep_it = txn_dependents.find(txn_id);
-    if (dep_it != txn_dependents.end()) {
-      for (const auto& dep_txn_id : dep_it->second) {
-        if (--in_degree[dep_txn_id] == 0) {
-          queue.push_back(dep_txn_id);
+      auto dep_it = txn_dependents.find(txn_id);
+      if (dep_it != txn_dependents.end()) {
+        for (const auto& dep_txn_id : dep_it->second) {
+          if (--in_degree[dep_txn_id] == 0) {
+            queue.push_back(dep_txn_id);
+          }
         }
       }
     }
+  };
+  drain_queue();
+
+  // Handle 2-length cycles as either replay order is valid. Such edges are expected during
+  // CREATE INDEX, where the kPlain and kPgSession txns each declare the other as their bg txn.
+  for (auto& [txn_id, deg] : in_degree) {
+    if (deg != 1) {
+      continue;
+    }
+    auto bg_it = bg_txn_map.find(txn_id);
+    if (bg_it == bg_txn_map.end()) {
+      continue;
+    }
+    const auto& bg_txn_id = bg_it->second;
+    if (in_degree[bg_txn_id] != 1) {
+      continue;
+    }
+    auto peer_bg_it = bg_txn_map.find(bg_txn_id);
+    if (peer_bg_it != bg_txn_map.end() && peer_bg_it->second == txn_id) {
+      deg = 0;
+      queue.push_back(txn_id);
+    }
   }
+  drain_queue();
 
   SCHECK_EQ(
       result.size(), static_cast<size_t>(entries.lock_entries_size()), IllegalState,
@@ -531,6 +558,34 @@ class TSLocalLockManager::Impl {
     return was_a_blocker;
   }
 
+  void WaitForLockersAsync(
+      const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
+      CoarseTimePoint deadline,
+      StdStatusCallback&& callback,
+      const TransactionId& background_txn_id) {
+    auto s = CheckShutdown();
+    if (!s.ok()) {
+      callback(s);
+      return;
+    }
+    s = WaitUntilBootstrapped(deadline);
+    if (!s.ok()) {
+      callback(s);
+      return;
+    }
+    auto keys_to_check = DetermineObjectsToLock(object_locks);
+    if (!keys_to_check.ok()) {
+      callback(keys_to_check.status());
+      return;
+    }
+    if (keys_to_check->lock_batch.empty()) {
+      callback(Status::OK());
+      return;
+    }
+    object_lock_manager_.WaitForConflictingLockers(
+        *keys_to_check, std::move(callback), deadline, background_txn_id);
+  }
+
   void Poll() {
     object_lock_manager_.Poll();
   }
@@ -731,6 +786,14 @@ Result<docdb::TxnBlockedTableLockRequests> TSLocalLockManager::ReleaseObjectLock
   auto ret = impl_->ReleaseObjectLocks(req, deadline);
   DVLOG_WITH_FUNC(3) << "Dumping after release : " << impl_->DumpLocksToHtml();
   return ret;
+}
+
+void TSLocalLockManager::WaitForLockersAsync(
+    const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
+    CoarseTimePoint deadline,
+    StdStatusCallback&& callback,
+    const TransactionId& background_txn_id) {
+  impl_->WaitForLockersAsync(object_locks, deadline, std::move(callback), background_txn_id);
 }
 
 void TSLocalLockManager::Start(

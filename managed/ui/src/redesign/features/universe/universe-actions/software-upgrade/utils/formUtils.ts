@@ -10,11 +10,33 @@ import type { UniverseSoftwareUpgradeReqBody } from '@app/v2/api/yugabyteDBAnywh
 import { DbUpgradeFormStep, UpgradePace } from '../constants';
 import type { AzUpgradeStep, CanaryUpgradeConfig, DBUpgradeFormFields } from '../types';
 
+const DEFAULT_REPLICATION_FACTOR = 3;
+
 interface PlacementAzMetadata {
   azUuid: string;
   displayName: string;
   displayNameWithoutRegion: string;
 }
+
+/**
+ * Display name for an AZ in software-upgrade UI (flag, AZ name, region in parentheses),
+ * using placement from the universe cluster that matches `clusterUUID`.
+ */
+export const getPlacementAzDisplayNameForCluster = (
+  clusters: ClusterSpec[],
+  clusterUuid: string,
+  azUuid: string,
+  fallbackDisplayName: string
+): string => {
+  const matchingCluster = clusters.find((clusterSpec) => clusterSpec.uuid === clusterUuid);
+  if (!matchingCluster) {
+    return fallbackDisplayName;
+  }
+  const placementRow = getPlacementAzMetadataList(matchingCluster).find(
+    (placementAz) => placementAz.azUuid === azUuid
+  );
+  return placementRow?.displayName ?? fallbackDisplayName;
+};
 
 /**
  * Get placement AZ metadata list for a cluster.
@@ -38,24 +60,43 @@ export const getPlacementAzMetadataList = (cluster: ClusterSpec | null): Placeme
   );
 };
 
+const getUniqueAzCountInCluster = (cluster: ClusterSpec | null) => {
+  const metadataList = getPlacementAzMetadataList(cluster);
+  const uniqueIds = new Set(
+    metadataList.map((metadata) => metadata.azUuid).filter((azUuid) => azUuid.length > 0)
+  );
+  return uniqueIds.size;
+};
+
+/**
+ * Returns true if this universe is eligible for canary upgrade.
+ */
+export const getIsCanaryUpgradeAvailable = (clusters: ClusterSpec[]) => {
+  const primaryCluster = getPrimaryCluster(clusters);
+  if (!primaryCluster) {
+    return false;
+  }
+  const replicationFactor = primaryCluster.replication_factor ?? DEFAULT_REPLICATION_FACTOR;
+  const primaryClusterAzCount = getUniqueAzCountInCluster(primaryCluster);
+  if (primaryClusterAzCount < replicationFactor) {
+    return false;
+  }
+  const readOnlyCluster = getReadOnlyCluster(clusters);
+  const readOnlyClusterAzCount = getUniqueAzCountInCluster(readOnlyCluster);
+  // There should be at least two AZs across primary plus read replica so that it is meaningful to test
+  // while pausing after upgrading some AZs.
+  if (primaryClusterAzCount + readOnlyClusterAzCount < 2) {
+    return false;
+  }
+  return true;
+};
+
 /**
  * Build default canary upgrade config from v2 API cluster specs.
  */
 export const getDefaultCanaryUpgradeConfig = (clusters: ClusterSpec[]): CanaryUpgradeConfig => {
   const primaryCluster = getPrimaryCluster(clusters);
   const readReplicaCluster = getReadOnlyCluster(clusters);
-
-  const primaryClusterPlacementAzs = getPlacementAzMetadataList(primaryCluster);
-  const primaryClusterAzOrder = primaryClusterPlacementAzs.map((placementAz) => placementAz.azUuid);
-  const primaryClusterAzSteps: Record<string, AzUpgradeStep> = {};
-  primaryClusterPlacementAzs.forEach((placementAz, index) => {
-    primaryClusterAzSteps[placementAz.azUuid] = {
-      azUuid: placementAz.azUuid,
-      displayName: placementAz.displayName,
-      displayNameWithoutRegion: placementAz.displayNameWithoutRegion,
-      pauseAfterTserverUpgrade: index === 0
-    };
-  });
 
   const readReplicaClusterPlacementAzs = getPlacementAzMetadataList(readReplicaCluster);
   const readReplicaClusterAzOrder = readReplicaClusterPlacementAzs.map(
@@ -70,6 +111,23 @@ export const getDefaultCanaryUpgradeConfig = (clusters: ClusterSpec[]): CanaryUp
       pauseAfterTserverUpgrade: false
     };
   });
+
+  const primaryClusterPlacementAzs = getPlacementAzMetadataList(primaryCluster);
+  const primaryClusterAzOrder = primaryClusterPlacementAzs.map((placementAz) => placementAz.azUuid);
+  const primaryClusterAzSteps: Record<string, AzUpgradeStep> = {};
+  const totalClusterPlacementAzsCount =
+    primaryClusterPlacementAzs.length + readReplicaClusterPlacementAzs.length;
+  primaryClusterPlacementAzs.forEach((placementAz, index) => {
+    primaryClusterAzSteps[placementAz.azUuid] = {
+      azUuid: placementAz.azUuid,
+      displayName: placementAz.displayName,
+      displayNameWithoutRegion: placementAz.displayNameWithoutRegion,
+      // Pause after the first AZ by default for primary cluster if there are at least 2 AZs in the cluster across
+      // primary and read replica.
+      pauseAfterTserverUpgrade: totalClusterPlacementAzsCount >= 2 && index === 0
+    };
+  });
+
   return {
     pauseAfterMasters: false,
     primaryClusterAzOrder,

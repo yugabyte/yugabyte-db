@@ -70,20 +70,15 @@ class FlushJob {
  public:
   // TODO(icanadi) make effort to reduce number of parameters here
   // IMPORTANT: mutable_cf_options needs to be alive while FlushJob is alive
-  FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
-           const DBOptions& db_options,
-           const MutableCFOptions& mutable_cf_options,
-           const EnvOptions& env_options, VersionSet* versions,
-           InstrumentedMutex* db_mutex, std::atomic<bool>* shutting_down,
-           std::atomic<bool>* disable_flush_on_shutdown_,
-           std::vector<SequenceNumber> existing_snapshots,
-           SequenceNumber earliest_write_conflict_snapshot,
-           MemTableFilter mem_table_flush_filter,
-           FileNumbersProvider* file_number_provider,
-           JobContext* job_context, LogBuffer* log_buffer,
-           Directory* db_directory, Directory* output_file_directory,
-           CompressionType output_compression, Statistics* stats,
-           EventLogger* event_logger);
+  FlushJob(
+      const std::string& dbname, ColumnFamilyData* cfd, const DBOptions& db_options,
+      const MutableCFOptions& mutable_cf_options, const EnvOptions& env_options,
+      VersionSet* versions, InstrumentedMutex* db_mutex, std::atomic<bool>* shutting_down,
+      std::atomic<bool>* disable_flush_on_shutdown_, std::vector<SequenceNumber> existing_snapshots,
+      SequenceNumber earliest_write_conflict_snapshot, MemTableFilter mem_table_flush_filter,
+      FileNumbersProvider* file_number_provider, JobContext* job_context, LogBuffer* log_buffer,
+      Directory* db_directory, Directory* output_file_directory, CompressionType output_compression,
+      Statistics* stats, FlushReason flush_reason, EventLogger* event_logger);
 
   ~FlushJob();
 
@@ -114,6 +109,7 @@ class FlushJob {
   Directory* output_file_directory_;
   CompressionType output_compression_;
   Statistics* stats_;
+  const FlushReason flush_reason_;
   EventLogger* event_logger_;
   yb::ash::WaitStateInfoPtr wait_state_;
   TableProperties table_properties_;

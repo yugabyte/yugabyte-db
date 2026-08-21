@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/util/enums.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb::docdb {
 

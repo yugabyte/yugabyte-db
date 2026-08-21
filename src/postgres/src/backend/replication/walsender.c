@@ -1680,11 +1680,19 @@ DropReplicationSlot(DropReplicationSlotCmd *cmd)
 				 errdetail("yb_enable_replication_commands is false or a "
 						   "system upgrade is in progress")));
 
-	if (IsYugaByteEnabled() && cmd->wait)
+	/*
+	 * YB: WAIT works via the cluster-wide slot advisory lock taken by
+	 * ReplicationSlotAcquire(); without it there is no way to wait for the
+	 * slot to become inactive.
+	 */
+	if (IsYugaByteEnabled() && cmd->wait &&
+		!yb_enable_replication_slot_exclusive_lock)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("waiting for a replication slot is not yet"
-						" supported")));
+						" supported"),
+				 errhint("Enable yb_enable_replication_slot_exclusive_lock to"
+						 " use DROP_REPLICATION_SLOT ... WAIT.")));
 
 	ReplicationSlotDrop(cmd->slotname, !cmd->wait, /* yb_force = */ false,
 						/* yb_if_exists= */ false);

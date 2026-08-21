@@ -84,6 +84,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/safe_math.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
@@ -338,7 +339,7 @@ Status MetricsSnapshotter::Thread::DoPrometheusMetricsSnapshot(const client::Tab
     shared_ptr<YBSession> session, const std::string& entity_type, const std::string& entity_id,
     const std::string& metric_name, int64_t metric_val,
     const rapidjson::Document* details = nullptr) {
-  auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
   auto req = op->mutable_request();
 
   QLAddStringHashValue(req, server_->permanent_uuid());

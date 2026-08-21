@@ -78,6 +78,9 @@ public class BackupReconcilerTest extends FakeDBApplication {
     BackupSpec spec = new BackupSpec();
     spec.setBackupType(BackupType.PGSQL_TABLE_TYPE);
     spec.setSse(false);
+    spec.setUseTablespaces(true);
+    spec.setUseRoles(true);
+    spec.setUsePrivileges(false);
     backup.setSpec(spec);
     backup.setMetadata(metadata);
     backup.setStatus(null);

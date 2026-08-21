@@ -3,11 +3,6 @@ set -euo pipefail
 
 function print_usage {
   echo "Usage: ./set-runtime-config.sh <yw_url> <api_token> <key> <value> <optional_Scope>"
-  echo "Examples:"
-  echo "In below command default scope is global:"
-  echo "$ ./set-runtime-config.sh http://portal.dev.yugabyte.com 3d32b451-eb02-4c22-93ea-eef8d7048218 yb.ansible.verbosity 4"
-  echo "Override config value for some limited scope UUID (like limit the config change for universe or provider UUID):"
-  echo "$ ./set-runtime-config.sh http://portal.dev.yugabyte.com 3d32b451-eb02-4c22-93ea-eef8d7048218 yb.ansible.verbosity 4 11d78d93-1381-4d1d-8393-ba76f47ba7a6"
   exit 1
 }
 

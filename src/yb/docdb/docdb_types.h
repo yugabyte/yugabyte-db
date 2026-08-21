@@ -30,13 +30,13 @@ YB_STRONGLY_TYPED_BOOL(IncludeBinary);
 YB_DEFINE_ENUM(StorageDbType, (kRegular)(kIntents));
 
 // Type of keys written by DocDB into RocksDB.
-YB_DEFINE_ENUM(
-    KeyType,
+YB_DEFINE_ENUM(KeyType,
     (kEmpty)
     (kIntentKey)
     (kReverseTxnKey)
     (kPlainSubDocKey)
     (kTransactionMetadata)
+    (kTransactionMetadataUpdate)
     (kPostApplyTransactionMetadata)
     (kExternalIntents)
     (kApplyState)

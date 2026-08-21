@@ -8,9 +8,8 @@ import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collections;
@@ -83,38 +82,47 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
 
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      Customer customer = Customer.get(universe.getCustomerId());
-
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
 
       preTaskActions();
+
+      // Persist isCpuCgroupConfigured from the provider setting up front so the YNP systemd gate
+      // and the ConfigureServer wrapper copy stay in sync; otherwise a legacy universe gets a
+      // systemd unit pointing at a wrapper that was never shipped and the DB fails to start
+      // (PLAT-21526).
+      // TODO(PLAT-21526): revisit where this runs. ReprovisionNode is node-level, but this persists
+      // a universe-wide flag from the provider default and does so up front. Setting it too early
+      // (before the node is actually re-provisioned) can desync it from real node state, and a
+      // later YNP provisioning that reads the persisted flag could drop the cgroup config. Persist
+      // it at the right granularity/point instead.
+      createPersistCpuCgroupConfiguredTask(universe);
 
       // Update node state to Reprovisioning.
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Reprovisioning)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
 
       Set<NodeDetails> nodeCollection = Collections.singleton(currentNode);
-      boolean useAnsibleProvisioning =
-          confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)
-              || !userIntent.useSystemd;
-
       // Need to reinstall node agent.
       createRemoveNodeAgentTasks(universe, nodeCollection, true /*forceRemove*/);
-      if (userIntent.providerType != CloudType.local) {
+      // YNP setup and provisioning require sudo access. For manually provisioned on-prem
+      // universes (skip_provisioning), these steps are performed out-of-band by running
+      // node-agent-provision.sh, so skip them here to avoid failing on the missing sudo
+      // SSH access.
+      boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
+      if (!userIntent.getAllCloudTypes().contains(CloudType.local)
+          && !isUniverseManuallyProvisioned) {
         createSetupYNPTask(universe, nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        if (!useAnsibleProvisioning) {
-          createYNPProvisioningTask(universe, nodeCollection, false /*isYBPrebuiltImage*/)
-              .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        }
+        createYNPProvisioningTask(universe, nodeCollection, false /*isYBPrebuiltImage*/)
+            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       }
       createInstallNodeAgentTasks(universe, nodeCollection)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeCollection)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
 
-      if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
+      if (userIntent.getAllCloudTypes().contains(CloudType.local)) {
         createSetupServerTasks(nodeCollection, params -> {})
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
       }

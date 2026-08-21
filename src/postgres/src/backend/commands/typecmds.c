@@ -938,7 +938,8 @@ DefineDomain(ParseState *pstate, CreateDomainStmt *stmt)
 						 */
 						defaultValue =
 							deparse_expression(defaultExpr,
-											   NIL, false, false);
+											   NIL, false, false,
+											   false, false); /* yb_pretty, yb_maskconstants */
 						defaultValueBin = nodeToString(defaultExpr);
 					}
 				}
@@ -2725,8 +2726,9 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 			 * require a valid textual representation (mainly to make life
 			 * easier for pg_dump).
 			 */
-			defaultValue = deparse_expression(defaultExpr,
-											  NIL, false, false);
+		defaultValue = deparse_expression(defaultExpr,
+										  NIL, false, false,
+										  false, false); /* yb_pretty, yb_maskconstants */
 
 			/*
 			 * Form an updated tuple with the new default and write it back.

@@ -5,10 +5,12 @@ import {
   AZURE_CLOUD_OPTION,
   GCP_CLOUD_OPTION,
   K8S_CLOUD_OPTION,
+  OCI_CLOUD_OPTION,
   ON_PREM_CLOUD_OPTION,
   YBCloudSelectField
 } from '@yugabyte-ui-library/core';
 import { CloudType } from '../../../../../features/universe/universe-form/utils/dto';
+import { useEffectOnce } from 'react-use';
 
 interface CloudFieldProps<T> {
   name: string;
@@ -16,29 +18,32 @@ interface CloudFieldProps<T> {
 }
 
 export const CloudField = <T,>({ name, label }: CloudFieldProps<T>): ReactElement => {
-  const { control, getValues, setValue } = useFormContext<
-    T extends FieldValues ? T : FieldValues
-  >();
+  const { control, getValues, setValue } =
+    useFormContext<T extends FieldValues ? T : FieldValues>();
   const clouds = [
-    AWS_CLOUD_OPTION,
-    GCP_CLOUD_OPTION,
+    {...AWS_CLOUD_OPTION, value: CloudType.aws},
+    {...GCP_CLOUD_OPTION, value: CloudType.gcp},
     {
       ...AZURE_CLOUD_OPTION,
       value: CloudType.azu
     },
-    {
-      ...K8S_CLOUD_OPTION,
-      value: CloudType.kubernetes
-    },
-    ON_PREM_CLOUD_OPTION
+    {...K8S_CLOUD_OPTION, value: CloudType.kubernetes},
+    {...ON_PREM_CLOUD_OPTION, value: CloudType.onprem},
+    {...OCI_CLOUD_OPTION, value: CloudType.oci},
   ];
+
+  useEffectOnce(() => {
+    if (!getValues(name as Path<T extends FieldValues ? T : FieldValues>)) {
+      setValue(name as Path<T extends FieldValues ? T : FieldValues>, CloudType.aws as any);
+    }
+  });
 
   return (
     <YBCloudSelectField
       name={name}
       label={label}
       options={clouds as any}
-      control={(control as unknown) as Control<FieldValues>}
+      control={control as unknown as Control<FieldValues>}
       value={getValues(name as Path<T extends FieldValues ? T : FieldValues>)}
       onChange={(value: FieldValues) => {
         setValue(name as Path<T extends FieldValues ? T : FieldValues>, value as any);

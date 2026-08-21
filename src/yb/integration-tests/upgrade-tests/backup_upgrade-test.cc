@@ -20,7 +20,7 @@ namespace yb {
 
 class BackupUpgradeTest : public UpgradeTestBase {
  public:
-  BackupUpgradeTest() : UpgradeTestBase(kBuild_2_25_0_0) {}
+  BackupUpgradeTest() : UpgradeTestBase(kBuild_2025_1_1_0) {}
 
   void SetUp() {
     TEST_SETUP_SUPER(UpgradeTestBase);

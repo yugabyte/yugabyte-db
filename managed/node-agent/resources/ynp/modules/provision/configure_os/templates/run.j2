@@ -2,6 +2,18 @@ is_cloud={{ is_cloud | default(false) }}
 is_yb_prebuilt_image={{ is_yb_prebuilt_image | default(false) }}
 bin_path="/usr/local/bin"
 
+{% if os_distribution == "ubuntu" %}
+# Ubuntu's apport service rewrites kernel.core_pattern when it starts, clobbering
+# the value sysctl loads from /etc/sysctl.conf and breaking YB core dump capture.
+if systemctl is-enabled apport.service >/dev/null 2>&1; then
+  echo "Disabling Apport service..."
+  systemctl disable --now apport.service || true
+  if [[ -f /etc/default/apport ]]; then
+    sed -i 's/^enabled=.*/enabled=0/' /etc/default/apport
+  fi
+fi
+{% endif %}
+
 # Set system limits
 # Append limits to /etc/security/limits.conf if they don't already exist
 #
@@ -96,7 +108,7 @@ if [[ -z "$GZIP_PATH" ]]; then
   echo "gzip not found, aborting." >> "$DUMP_DIR/custom_core_dump.log"
   exit 1
 fi
-/usr/bin/gzip >> "$CORE_FILE"
+"$GZIP_PATH" -c >> "$CORE_FILE"
 chmod 644 "$CORE_FILE"
 EOF
 
@@ -127,12 +139,6 @@ EOF
 
   # Apply the changes system-wide
   sysctl --system
-
-  # Ensure metrics directory exists
-  yb_metrics_dir="{{ yb_home_dir }}/metrics"
-  mkdir -p "$yb_metrics_dir"
-  chown -R "{{ yb_user }}:{{ yb_user }}" "$yb_metrics_dir"
-  chmod -R 755 "$yb_metrics_dir"
 
   if [[ "{{ os_family }}" == "RedHat" ]]; then
     # Check if tuned is installed
@@ -206,8 +212,8 @@ runtime_dir="/run/user/${yb_user_id}"
 xdg_runtime_env="export XDG_RUNTIME_DIR=$runtime_dir"
 
 # Add XDG_RUNTIME_DIR to .bashrc if not present
-if ! grep -qxF "${xdg_runtime_env}" {{ yb_home_dir }}/.bashrc >/dev/null 2>&1; then
-    su - {{ yb_user }} -c "echo '${xdg_runtime_env}' >> {{ yb_home_dir }}/.bashrc"
+if ! grep -qxF "${xdg_runtime_env}" {{ yb_user_home }}/.bashrc >/dev/null 2>&1; then
+    su - {{ yb_user }} -c "echo '${xdg_runtime_env}' >> {{ yb_user_home }}/.bashrc"
 fi
 
 # Determine the PLATFORM_ID

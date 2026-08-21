@@ -603,26 +603,7 @@ public class DrConfigController extends AuthenticatedController {
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result get(UUID customerUUID, UUID drUUID, boolean syncWithDB) {
     log.info("Received get DrConfig({}) request", drUUID);
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drUUID);
-
-    XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();
-    if (syncWithDB) {
-      xClusterScheduler.syncXClusterConfig(activeXClusterConfig);
-      activeXClusterConfig.refresh();
-
-      for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
-        XClusterConfigTaskBase.updateReplicationDetailsFromDB(
-            xClusterUniverseService,
-            ybService,
-            tableHandler,
-            xClusterConfig,
-            confGetter.getGlobalConf(GlobalConfKeys.xclusterGetApiTimeoutMs),
-            this.confGetter);
-      }
-    }
-
-    DrConfigGetResp resp = new DrConfigGetResp(drConfig, activeXClusterConfig);
+    DrConfigGetResp resp = drConfigHelper.getDrConfigGetResp(customerUUID, drUUID, syncWithDB);
     return PlatformResults.withData(resp);
   }
 
@@ -1218,7 +1199,7 @@ public class DrConfigController extends AuthenticatedController {
               safetimeEpochSeconds);
       ArrayList<MetricQueryResponse.Entry> queryResult =
           this.metricQueryHelper.queryDirect(promQuery);
-      log.debug("Response to query {} is {}", promQuery, queryResult);
+      log.trace("Response to query {} is {}", promQuery, queryResult);
       if (queryResult.size() != 1) {
         log.error(
             "Could not get the estimatedDataLoss: Prometheus did not return only one entry:"

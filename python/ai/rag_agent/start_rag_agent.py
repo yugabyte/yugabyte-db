@@ -1,13 +1,18 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from db.connection_pool import ConnectionPool
+from db.system_connection_pool import SystemConnectionPool
 from work_queue.poller import Poller
 from work_queue.task_router import get_router
 from work_queue.task_type_keys import TaskTypeKeys
 from rag_pipeline import CreateSourceProcessorForAWS_S3, DocumentPreprocessor, UserPromptEmbedder
+from rag_pipeline.document_types import (
+    DEFAULT_WORKER_TYPE,
+    WORKER_TYPE_TO_MIME_TYPES,
+)
 from models.work_queue_task import WorkQueueTask
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, List
 from contextlib import asynccontextmanager
 import asyncio
 import logging
@@ -16,6 +21,7 @@ import sys
 import threading
 import time
 import signal
+import uuid
 import psycopg
 import random
 
@@ -40,6 +46,11 @@ polling_active = False
 embedding_generation_poller = None
 embedding_generation_poller_thread = None
 embedding_generation_poller_active = False
+
+POLL_IDLE_SLEEP = int(os.getenv("POLL_IDLE_SLEEP_SECONDS", "1"))
+POLL_ERROR_BACKOFF = int(os.getenv("POLL_ERROR_BACKOFF_SECONDS", "60"))
+EMBEDDING_POLL_IDLE_SLEEP = int(os.getenv("EMBEDDING_POLL_IDLE_SLEEP_SECONDS", "1"))
+EMBEDDING_POLL_ERROR_BACKOFF = int(os.getenv("EMBEDDING_POLL_ERROR_BACKOFF_SECONDS", "60"))
 
 
 def route_task(task: WorkQueueTask) -> Dict[str, Any]:
@@ -70,8 +81,6 @@ def embedding_generation_worker():
         embedding_generation_poller = Poller()
         while embedding_generation_poller_active:
             try:
-                # Get the worker ID from environment or generate one
-                import uuid
                 # nik-todo: make worker_id configurable from CLI args.
                 worker_id = str(uuid.uuid4())
                 # nik-todo: make lease_duration configurable from CLI args.
@@ -92,7 +101,7 @@ def embedding_generation_worker():
                     status = route_task(task)
                 else:
                     # No task available, sleep briefly before polling again
-                    sleep_duration = 1
+                    sleep_duration = EMBEDDING_POLL_IDLE_SLEEP
                     time.sleep(sleep_duration)
                     logger.info(
                         f"No user prompt embedding task available, sleeping "
@@ -101,10 +110,10 @@ def embedding_generation_worker():
 
             except Exception as e:
                 logger.error(f"Error in polling loop: {e}")
-                time.sleep(60)  # Back off before retrying
+                time.sleep(EMBEDDING_POLL_ERROR_BACKOFF)
                 logger.info(
-                    "Error in polling loop, sleeping for 60 seconds "
-                    "before retrying"
+                    f"Error in polling loop, sleeping for "
+                    f"{EMBEDDING_POLL_ERROR_BACKOFF} seconds before retrying"
                 )
     finally:
         logger.info("Embedding generation worker thread shutting down")
@@ -117,22 +126,103 @@ def generate_embeddings():
     return True
 
 
+def _resolve_worker_document_types() -> List[str]:
+    """
+    Resolve the MIME types this polling worker should process based on the
+    WORKER_DOCUMENT_TYPE env var.
+
+    Returns:
+        List of MIME types to filter PREPROCESS tasks by.
+
+    Falls back to DEFAULT_WORKER_TYPE when the env var is unset (info log)
+    or unrecognized (warning log with the raw value).
+    """
+    raw_value = os.getenv("WORKER_DOCUMENT_TYPE", "")
+    worker_type = raw_value.strip().upper()
+
+    if worker_type not in WORKER_TYPE_TO_MIME_TYPES:
+        if worker_type:
+            logger.warning(
+                f"WORKER_DOCUMENT_TYPE '{raw_value}' is not supported. "
+                f"Valid values: {list(WORKER_TYPE_TO_MIME_TYPES.keys())}. "
+                f"Defaulting to '{DEFAULT_WORKER_TYPE}'."
+            )
+        else:
+            logger.info(
+                f"WORKER_DOCUMENT_TYPE not set, defaulting to "
+                f"'{DEFAULT_WORKER_TYPE}'."
+            )
+        worker_type = DEFAULT_WORKER_TYPE
+
+    document_types = WORKER_TYPE_TO_MIME_TYPES[worker_type]
+    logger.info(
+        f"Resolved polling worker type "
+        f"(WORKER_DOCUMENT_TYPE: {worker_type}, MIME types: {document_types})"
+    )
+    return document_types
+
+
+def _maybe_preload_docling_models():
+    """Preload Docling PDF->Markdown models when this worker handles PDFs.
+
+    Only runs when fine-tuning is enabled (``ENABLE_FINETUNING=true``) AND this
+    worker is configured to process PDFs, so non-PDF/text workers never pay the
+    model-loading cost. Failures are logged but non-fatal -- per-document
+    conversion will surface a clear error if artifacts are missing.
+    """
+    finetuning_enabled = (
+        os.getenv("ENABLE_FINETUNING", "false").strip().lower() == "true"
+    )
+    if not finetuning_enabled:
+        logger.info("Fine-tuning disabled; skipping Docling model preload")
+        return
+
+    document_types = _resolve_worker_document_types()
+    if "application/pdf" not in document_types:
+        logger.info(
+            "Worker does not handle PDFs; skipping Docling model preload"
+        )
+        return
+
+    try:
+        from pdf_processing.docling_loader import preload_docling_models
+
+        logger.info("Preloading Docling PDF models for fine-tuning...")
+        if preload_docling_models():
+            logger.info("Docling PDF models preloaded successfully")
+        else:
+            logger.error(
+                "Docling model preload reported failure; PDF fine-tuning tasks "
+                "will error until model artifacts are available"
+            )
+    except Exception as e:
+        logger.error(
+            f"Unexpected error preloading Docling models: {e}", exc_info=True
+        )
+
+
 def polling_worker():
     """
     Synchronous worker thread that continuously polls for work queue tasks.
     Gets tasks from the queue and starts processing them.
+
+    Uses WORKER_DOCUMENT_TYPE env var to determine which document types to
+    process:
+      - ``PDF``  -> GPU worker; only PDF files.
+      - ``TEXT`` -> non-GPU worker; every other supported MIME type.
+    Defaults to TEXT (non-GPU) if unset or invalid, so GPU workers must be
+    explicitly opted into.
     """
     global poller
 
-    logger.info("Polling worker thread started")
+    document_types = _resolve_worker_document_types()
 
     try:
         poller = Poller()
+        idle_since = None
 
         while polling_active:
             try:
-                # Get the worker ID from environment or generate one
-                import uuid
                 # nik-todo: make worker_id configurable from CLI args.
                 worker_id = str(uuid.uuid4())
                 # nik-todo: make lease_duration configurable from CLI args.
@@ -141,10 +231,12 @@ def polling_worker():
                 # Poll for a task
                 task = poller.poll(
                     worker_id=worker_id,
-                    lease_duration_seconds=lease_duration
+                    lease_duration_seconds=lease_duration,
+                    document_types=document_types
                 )
 
                 if task:
+                    idle_since = None
                     logger.info(
                         f"Acquired task: id={task.id}, "
                         f"type={task.task_type}, "
@@ -153,19 +245,21 @@ def polling_worker():
                     status = route_task(task)
                 else:
                     # No task available, sleep briefly before polling again
-                    sleep_duration = 60  # 1 minute
+                    sleep_duration = POLL_IDLE_SLEEP
+                    if idle_since is None:
+                        idle_since = time.time()
+                        logger.info(
+                            f"No tasks available, entering idle polling every "
+                            f"{sleep_duration} seconds"
+                        )
                     time.sleep(sleep_duration)
-                    logger.info(
-                        f"No task available, sleeping for "
-                        f"{sleep_duration} seconds before polling again"
-                    )
 
             except Exception as e:
                 logger.error(f"Error in polling loop: {e}")
-                time.sleep(60)  # Back off before retrying
+                time.sleep(POLL_ERROR_BACKOFF)
                 logger.info(
-                    "Error in polling loop, sleeping for 60 seconds "
-                    "before retrying"
+                    f"Error in polling loop, sleeping for "
+                    f"{POLL_ERROR_BACKOFF} seconds before retrying"
                 )
     finally:
         logger.info("Polling worker thread shutting down")
@@ -257,6 +351,14 @@ async def lifespan(app: FastAPI):
         ConnectionPool.initialize(db_connection_string)
         logger.info("ConnectionPool initialized successfully")
 
+        # Initialize the system connection pool when a dedicated meko_system
+        # connection string is configured. Used for the Langfuse key lookup,
+        # which lives in a different database than the shared pool serves.
+        system_connection_string = os.getenv("YUGABYTEDB_SYSTEM_CONN_STRING")
+        if system_connection_string:
+            SystemConnectionPool.initialize(system_connection_string)
+            logger.info("SystemConnectionPool initialized successfully")
+
         # Initialize task router and register processors
         router = get_router()
         router.register(
@@ -272,6 +374,8 @@ async def lifespan(app: FastAPI):
             UserPromptEmbedder()
         )
         logger.info("Task processors registered successfully")
+
+        _maybe_preload_docling_models()
 
         # Start the polling worker thread
         poller_thread = threading.Thread(target=polling_worker, daemon=True)
@@ -302,6 +406,9 @@ async def lifespan(app: FastAPI):
 
         ConnectionPool.close_all()
         logger.info("ConnectionPool closed successfully")
+
+        SystemConnectionPool.close_all()
+        logger.info("SystemConnectionPool closed successfully")
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
 

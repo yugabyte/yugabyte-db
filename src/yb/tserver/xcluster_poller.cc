@@ -35,6 +35,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/unique_lock.h"
@@ -76,8 +77,7 @@ DEFINE_test_flag(bool, xcluster_simulate_get_changes_response_error, false,
 DEFINE_test_flag(bool, xcluster_disable_poller_term_check, false,
     "If true, the poller will not check the leader term.");
 
-DEFINE_test_flag(
-    double, xcluster_simulate_random_failure_after_apply, 0,
+DEFINE_test_flag(double, xcluster_simulate_random_failure_after_apply, 0,
     "If non-zero, simulate a random failure after writing rows to the target tablet.");
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
@@ -442,9 +442,8 @@ void XClusterPoller::DoPoll() {
                 std::make_shared<cdc::GetChangesResponsePB>(std::move(resp))));
       });
 
-  SetHandleAndSendRpc(handle);
-
   SET_WAIT_STATUS(XCluster_WaitingForGetChanges);
+  SetHandleAndSendRpc(handle);
 }
 
 Status XClusterPoller::DoPausePoller() {

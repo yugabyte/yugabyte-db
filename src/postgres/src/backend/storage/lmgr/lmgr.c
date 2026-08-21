@@ -29,6 +29,7 @@
 /* YB includes */
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 
 /*
@@ -1075,10 +1076,7 @@ WaitForLockersMultiple(List *locktags, LOCKMODE lockmode, bool progress)
 	int			total = 0;
 	int			done = 0;
 
-	/*
-	 * TODO(#27719): Propagate wait to tserver's object lock manager.
-	 */
-	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
+	if (YBGetObjectLockMode() == YB_OBJECT_LOCK_DISABLED)
 	{
 		return;
 	}
@@ -1086,6 +1084,30 @@ WaitForLockersMultiple(List *locktags, LOCKMODE lockmode, bool progress)
 	/* Done if no locks to wait for */
 	if (locktags == NIL)
 		return;
+
+	if (YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED)
+	{
+		int			num_locks = list_length(locktags);
+		YbcObjectLockId *lock_ids = palloc(num_locks * sizeof(YbcObjectLockId));
+		int			i = 0;
+
+		foreach(lc, locktags)
+		{
+			LOCKTAG    *locktag = lfirst(lc);
+			lock_ids[i++] = (YbcObjectLockId)
+			{
+				.db_oid = locktag->locktag_field1,
+				.relation_oid = locktag->locktag_field2,
+				.object_oid = locktag->locktag_field3,
+				.object_sub_oid = locktag->locktag_field4,
+			};
+		}
+
+		HandleYBStatus(YBCWaitForLockersMultiple(lock_ids,
+												 (YbcObjectLockMode) lockmode, num_locks));
+		pfree(lock_ids);
+		return;
+	}
 
 	/* Collect the transactions we need to wait on */
 	foreach(lc, locktags)
@@ -1157,15 +1179,6 @@ void
 WaitForLockers(LOCKTAG heaplocktag, LOCKMODE lockmode, bool progress)
 {
 	List	   *l;
-
-	/*
-	 * TODO(#27719): Propagate wait to tserver's object lock manager.
-	 */
-	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
-	{
-		return;
-	}
-
 	l = list_make1(&heaplocktag);
 	WaitForLockersMultiple(l, lockmode, progress);
 	list_free(l);

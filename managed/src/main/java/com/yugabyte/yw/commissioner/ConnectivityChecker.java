@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.metrics.MetricService.STATUS_NOT_OK;
 import static com.yugabyte.yw.common.metrics.MetricService.STATUS_OK;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -120,7 +121,8 @@ public class ConnectivityChecker {
     }
   }
 
-  private void collectAndSaveConnectivityMetrics(Customer customer, Universe universe) {
+  @VisibleForTesting
+  void collectAndSaveConnectivityMetrics(Customer customer, Universe universe) {
     try {
       List<NodeDetails> tservers =
           universe.getTServers().stream()
@@ -162,10 +164,19 @@ public class ConnectivityChecker {
               if (peerUuid == null) {
                 continue;
               }
-              healthy = healthy && entry.getAlive();
+              String peerEndpoint = entry.hasEndpoint() ? entry.getEndpoint().getHost() : "unknown";
               if (!entry.getAlive()) {
-                String peerEndpoint =
-                    entry.hasEndpoint() ? entry.getEndpoint().getHost() : "unknown";
+                log.debug(
+                    "Node {} reports peer {} (uuid={}) as not alive",
+                    node.nodeName,
+                    peerEndpoint,
+                    peerUuid);
+                continue;
+              }
+              boolean peerHasIssue =
+                  entry.getLastFailure() != null && !entry.getLastFailure().isEmpty();
+              healthy = healthy && !peerHasIssue;
+              if (peerHasIssue) {
                 log.warn(
                     "Node {} reports peer {} (uuid={}) as unreachable: {}",
                     node.nodeName,

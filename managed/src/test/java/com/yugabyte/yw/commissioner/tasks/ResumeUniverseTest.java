@@ -45,7 +45,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -60,6 +59,7 @@ import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
@@ -95,6 +95,49 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
             Json.newObject().put("test_key", "test_val"),
             "some config name");
     when(mockNodeAgentClient.isClientEnabled(any(), any())).thenReturn(true);
+  }
+
+  @Test
+  public void testResumeUniverseWithCRGcpSuccess() throws Exception {
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationGcp.getKey(), "true");
+    setupUniverse(gcpProvider, false, 3);
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    verifyCapacityReservationGcp(
+        defaultUniverse.getUniverseUUID(),
+        Map.of(
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", new ZoneData("region-1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
+
+    // GCP reservation names are random "r-<uuid>"; capture them and map by zone.
+    ArgumentCaptor<String> nameCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> zoneCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> typeCaptor = ArgumentCaptor.forClass(String.class);
+    org.mockito.Mockito.verify(gcpProjectApiClient, org.mockito.Mockito.atLeast(0))
+        .createCapacityReservation(
+            nameCaptor.capture(),
+            zoneCaptor.capture(),
+            typeCaptor.capture(),
+            org.mockito.Mockito.anyInt(),
+            org.mockito.Mockito.anyMap());
+
+    Map<String, String> zoneToName = new HashMap<>();
+    for (int idx = 0; idx < nameCaptor.getAllValues().size(); idx++) {
+      zoneToName.put(zoneCaptor.getAllValues().get(idx), nameCaptor.getAllValues().get(idx));
+    }
+
+    verifyNodeInteractionsCapacityReservation(
+        3,
+        NodeManager.NodeCommandType.Resume,
+        params -> ((ResumeServer.Params) params).capacityReservation,
+        Map.of(zoneToName.get("az-1"), Arrays.asList("host-n1", "host-n2", "host-n3")));
   }
 
   private void setupUniverse(boolean updateInProgress, int numOfNodes) {
@@ -235,13 +278,13 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
                 Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
 
     verifyNodeInteractionsCapacityReservation(
-        12,
+        6,
         NodeManager.NodeCommandType.Resume,
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
                 defaultUniverse.getUniverseUUID(),
-                CommonUtils.getClusterType(region.getProvider(), defaultUniverse),
+                DoCapacityReservation.getProviderStr(region.getProvider(), defaultUniverse),
                 region.getCode()),
             Arrays.asList("host-n1", "host-n2", "host-n3")));
   }
@@ -311,18 +354,18 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
                     Arrays.asList("host-n4-readonly", "host-n5-readonly", "host-n6-readonly")))));
 
     verifyNodeInteractionsCapacityReservation(
-        21,
+        12,
         NodeManager.NodeCommandType.Resume,
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
                 defaultUniverse.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 region.getCode()),
             Arrays.asList("host-n1", "host-n2", "host-n3"),
             DoCapacityReservation.getCapacityReservationGroupName(
                 defaultUniverse.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.ASYNC,
+                UniverseDefinitionTaskParams.ClusterType.ASYNC.name(),
                 region1.getCode()),
             Arrays.asList("host-n4-readonly", "host-n5-readonly", "host-n6-readonly")));
   }
@@ -347,13 +390,13 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
 
     verifyNodeInteractionsCapacityReservation(
-        9,
+        3,
         NodeManager.NodeCommandType.Resume,
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 defaultUniverse.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-1",
                 defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             Arrays.asList("host-n1", "host-n2", "host-n3")));

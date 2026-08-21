@@ -564,6 +564,9 @@ message StartRemoteBootstrapRequestPB {
   // present on the destination and has not applied the clone yet.
   optional uint32 clone_source_seq_no = 14;
   optional string clone_source_tablet_id = 15;
+
+  // The leader's pending Raft config change operation id, if any.
+  optional OpIdPB pending_config_op_id = 16;
 }
 
 message StartRemoteBootstrapResponsePB {

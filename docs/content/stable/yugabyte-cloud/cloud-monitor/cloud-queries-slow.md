@@ -7,7 +7,7 @@ headcontent: Identify candidates for YSQL query optimization
 menu:
   stable_yugabyte-cloud:
     identifier: cloud-queries-slow
-    parent: cloud-monitor
+    parent: monitor-performance
     weight: 200
 type: docs
 ---

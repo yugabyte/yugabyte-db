@@ -45,6 +45,7 @@ policy = yugabyte_policy
 
 unique_subject = no
 copy_extensions = copy
+x509_extensions = my_extensions
 
 [ yugabyte_policy ]
 commonName = supplied
@@ -55,6 +56,10 @@ distinguished_name = yugabyte_distinguished_name
 
 [ yugabyte_distinguished_name ]
 commonName = $common_name
+
+[ my_extensions ]
+basicConstraints = critical, CA:true
+keyUsage = critical, keyCertSign, cRLSign
 EOT
 
   cat > "$dir/ca.conf" <<-EOT

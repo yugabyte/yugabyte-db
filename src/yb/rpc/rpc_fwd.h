@@ -38,6 +38,7 @@ class Strand;
 class StrandTask;
 class ThreadPoolTask;
 class YBThreadPool;
+class YBTaggedThreadPools;
 
 namespace rpc {
 
@@ -128,7 +129,10 @@ using ServiceIfPtr = std::shared_ptr<ServiceIf>;
 
 using Strand = yb::Strand;
 using StrandTask = yb::StrandTask;
+using TaggedThreadPools = YBTaggedThreadPools;
 using ThreadPool = YBThreadPool;
+using ThreadPoolPtr = std::shared_ptr<ThreadPool>;
+using ThreadPoolTag = uint64_t;
 using ThreadPoolTask = yb::ThreadPoolTask;
 
 using Publisher = std::function<int(const std::string&, const std::string&)>;

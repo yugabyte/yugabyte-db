@@ -43,7 +43,7 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
-The following instructions are for Ubuntu 20.04 and 22.04.
+The following instructions are for Ubuntu 22.04 and 24.04.
 
 ## TLDR
 
@@ -53,22 +53,6 @@ The following instructions are for Ubuntu 20.04 and 22.04.
 # Modify to your preference:
 shellrc=~/.bashrc
 
-source <(cat /etc/os-release | grep '^VERSION_ID=')
-case "$VERSION_ID" in
-  20.04)
-    gcc_version=10
-    # 20.04 needs deadsnakes repo for python3.11 installed below
-    sudo add-apt-repository ppa:deadsnakes/ppa
-    sudo apt update
-    ;;
-  22.04)
-    gcc_version=11
-    ;;
-  *)
-    echo "Unknown version $VERSION_ID"
-    exit 1
-esac
-
 sudo apt update
 DEBIAN_FRONTEND=noninteractive sudo apt upgrade -y
 packages=(
@@ -77,8 +61,6 @@ packages=(
   ccache
   curl
   file
-  g++-"$gcc_version"
-  gcc-"$gcc_version"
   gettext
   git
   golang-1.20
@@ -117,14 +99,7 @@ source <(echo 'export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"' \
 
 git clone https://github.com/yugabyte/yugabyte-db
 cd yugabyte-db
-case "$VERSION_ID" in
-  20.04)
-    ./yb_release --build_args=--clang16
-    ;;
-  22.04)
-    ./yb_release --build_args=--clang17
-    ;;
-esac
+./yb_release
 ```
 
 ## Detailed instructions
@@ -157,11 +132,6 @@ sudo locale-gen en_US.UTF-8
 {{% readfile "includes/python.md" %}}
 
 ```sh
-# 20.04 needs deadsnakes repo for python3.11 installed below.
-if grep -q '20.04' /etc/os-release; then
-  sudo add-apt-repository ppa:deadsnakes/ppa
-  sudo apt update
-fi
 sudo apt install -y libffi-dev python3.11 python3.11-dev python3.11-venv
 ```
 
@@ -205,14 +175,6 @@ sudo apt install -y ninja-build
 sudo apt install -y ccache
 # Also add the following line to your .bashrc or equivalent.
 export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
-```
-
-### GCC (optional)
-
-To compile with GCC, install the following packages, and adjust the version numbers to match the GCC version you plan to use.
-
-```sh
-sudo apt install -y gcc-13 g++-13
 ```
 
 ## Build the code

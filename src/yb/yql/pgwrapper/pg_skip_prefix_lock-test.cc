@@ -20,6 +20,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/logging.h"

@@ -45,6 +45,7 @@
 /* YB includes */
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
+#include "yb_internal_conn.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <arpa/inet.h>
 
@@ -193,7 +194,7 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 	 * YB: Initialize custom vars to avoid issue in control/auth backend startup
 	 */
 	port->yb_is_auth_passthrough_req = false;
-	port->yb_has_auth_passthrough_failed = false;
+	port->yb_has_auth_passthrough_finished = false;
 	port->yb_is_tserver_auth_method = false;
 	port->yb_is_ssl_enabled_in_logical_conn = false;
 
@@ -538,7 +539,8 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char	   *yb_auth_backend_remote_host = NULL;
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
-	bool		yb_auto_analyze_backend = false;
+	YbInternalConnKind yb_internal_conn_kind = YB_INTERNAL_CONN_KIND_NONE;
+	bool		yb_is_control_conn = false;
 	bool		yb_is_auth_via_conn_mgr = false;
 
 	pq_startmsgread();
@@ -869,15 +871,34 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 				yb_logical_conn_type_provided = true;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_auto_analyze") == 0)
+					 && strcmp(nameptr, "yb_is_control_conn") == 0)
 			{
-				if (!parse_bool(valptr, &yb_auto_analyze_backend))
+				if (!parse_bool(valptr, &yb_is_control_conn))
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_auto_analyze",
+									"yb_is_control_conn",
 									valptr),
 							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
+				/* Client needs to be connected on the unix domain socket */
+				if (port->raddr.addr.ss_family != AF_UNIX)
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("yb_is_control_conn can only be set "
+									"if the connection is made over unix domain "
+									"socket")));
+			}
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_internal_conn_kind") == 0)
+			{
+				yb_internal_conn_kind = YbLookupInternalConnKindByName(valptr);
+				if (yb_internal_conn_kind == YB_INTERNAL_CONN_KIND_NONE)
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for parameter \"%s\": \"%s\"",
+									"yb_internal_conn_kind", valptr),
+							 errhint("Value must be one of the registered "
+									 "YbInternalConnKind wire names.")));
 			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{
@@ -936,6 +957,24 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	yb_is_auth_via_conn_mgr = yb_is_auth_backend ||
 		port->yb_is_auth_passthrough_req;
 
+	/*
+	 * YB: Connection Manager's auth-passthrough control backends are long-lived
+	 * pooled backends that authenticate external clients via the 'A' packet
+	 * flow. Both CM auth backends and CM auth-passthrough control backends use
+	 * the CM control pool (yb_is_control_conn=1), but auth backends are
+	 * one-shot and identified separately via yb_authonly=1. They are excluded
+	 * here so this flag only marks the reusable AP control backends.
+	 *
+	 * The `if` condition is required as incoming AP requests also parse the
+	 * startup packet via ProcessStartupPacket, thus this would unset this var
+	 * on control backends because those startup packets are forwarded "as-is"
+	 * without adding the yb_is_control_conn flag. So, the flag is made set-only
+	 * and is never unset on a control backend.
+	 */
+	if (!yb_conn_mgr_is_auth_passthrough_backend)
+		yb_conn_mgr_is_auth_passthrough_backend = yb_is_control_conn &&
+			!yb_is_auth_backend;
+
 	if (YBIsEnabledInPostgresEnvVar())
 	{
 		if (yb_auth_backend_remote_host != NULL)
@@ -950,9 +989,10 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 			/*
 			 * HARD Code connection type between client and ysql_conn_mgr to
 			 * AF_INET which is the only supported connection type for
-			 * authentication.
+			 * authentication. Also set salen for ipv4 address.
 			 */
 			port->raddr.addr.ss_family = AF_INET;
+			port->raddr.salen = sizeof(struct sockaddr_in);
 			port->remote_host = yb_auth_backend_remote_host;
 
 			struct sockaddr_in *ip_address_1;
@@ -997,8 +1037,11 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	Assert(MyBackendType == B_BACKEND || MyBackendType == B_DEAD_END_BACKEND);
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
-	else if (yb_auto_analyze_backend)
-		MyBackendType = YB_AUTO_ANALYZE_BACKEND;
+	else if (yb_internal_conn_kind != YB_INTERNAL_CONN_KIND_NONE)
+		MyBackendType =
+			YbInternalConnKindDescriptors[yb_internal_conn_kind].backend_type;
+	else if (YbIsAuthPassthroughControlBackend())
+		MyBackendType = YB_YSQL_CONN_MGR_CTRL;
 
 	/*
 	 * Normal walsender backends, e.g. for streaming replication, are not

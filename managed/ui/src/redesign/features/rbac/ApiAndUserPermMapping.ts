@@ -711,6 +711,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/universes/$uniUUID<[^/]+>/status'
     },
+    GET_STATE_TRANSITION: {
+        requestType: ApiRequestType.GET,
+        endpoint: '/universes/$uniUUID<[^/]+>/state_transition'
+    },
 
     CREATE_SUPPORT_BUNDLE: {
         requestType: ApiRequestType.POST,
@@ -829,6 +833,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/restart'
     },
+    UPGRADE_UNIVERSE_PROVISION_NODES: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/upgrade/provision_nodes'
+    },
     UPGRADE_UNIVERSE_ROLLBACK: {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/rollback'
@@ -836,6 +844,10 @@ export const ApiPermissionMap = {
     UPGRADE_UNIVERSE_SOFTWARE: {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/software'
+    },
+    UPGRADE_UNIVERSE_RESUME_CANARY: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/upgrade/software/resume-canary'
     },
     UPGRADE_NEW_UNIVERSE_SOFTWARE: {
         requestType: ApiRequestType.POST,
@@ -1184,5 +1196,21 @@ export const ApiPermissionMap = {
     DELETE_TELEMETRY_PROVIDER_BY_ID : {
         requestType : ApiRequestType.DELETE,
         endpoint : '/telemetry_provider/$intUUID<[^/]+>'
+    },
+    EDIT_V2_UNIVERSE_PLACEMENT: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/clusters'
+    },
+    EDIT_V2_UNIVERSE_CLUSTER: {
+        requestType: ApiRequestType.PUT,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>'
+    },
+    ADD_V2_READ_REPLICA: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/clusters'
+    },
+    DELETE_V2_READ_REPLICA: {
+        requestType: ApiRequestType.DELETE,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/clusters/$clsUUID<[^/]+>'
     }
 } satisfies ApiPermissionMapType;

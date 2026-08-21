@@ -67,6 +67,29 @@ services:
           - files:
               - '{{ .DataDir }}/swamper_targets/otel.*.json'
 
+      {{- if eq (yamlPath "nodeExporter.enabled") "true" }}
+      - job_name: 'yba-node-exporter'
+        scrape_interval: {{ yamlPath "prometheus.scrapeInterval" }}
+        scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
+        {{ if eq (yamlPath "nodeExporter.scheme") "https" }}
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        {{ end }}
+        {{ if eq (yamlPath "nodeExporter.enableAuth") "true" }}
+        basic_auth:
+          username: {{ yamlPath "nodeExporter.authUsername" }}
+          password: {{ yamlPath "nodeExporter.authPassword" }}
+        {{ end }}
+        static_configs:
+          - targets: ['{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "nodeExporter.port" }}']
+        metric_relabel_configs:
+        - source_labels: ["__name__"]
+          regex: "(.*)"
+          target_label: "saved_name"
+          replacement: "$1"
+      {{- end }}
+
       - job_name: "node"
         scheme: {{ yamlPath "prometheus.scrapeConfig.node.scheme" }}
         file_sd_configs:

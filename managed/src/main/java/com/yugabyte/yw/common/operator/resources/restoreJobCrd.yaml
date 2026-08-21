@@ -59,3 +59,17 @@ spec:
                 keyspace:
                   description: Name of the keyspace to be restored.
                   type: string
+                useTablespaces:
+                  description: Restore tablespace information from the backup.
+                  type: boolean
+                  default: false
+                useRoles:
+                  description: Restore global YSQL roles from the backup.
+                  type: boolean
+                  default: false
+                usePrivileges:
+                  description: >
+                    Restore privileges for roles.
+                    If false, --no-privileges will be added to the restore command.
+                  type: boolean
+                  default: true

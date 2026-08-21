@@ -66,9 +66,12 @@ class UserPromptEmbedder(TaskProcessor):
             if connection:
                 self.connection_pool.return_connection(connection)
 
-    def _retrieve_embedding_parameters(self, index_name: str) -> Dict[str, Any]:
+    def _retrieve_embedding_parameters(self, index_name: str):
         """
-        Retrieve the embedding parameters for the source.
+        Retrieve the AI provider and embedding parameters for the index.
+
+        Returns:
+            Tuple of (ai_provider, embedding_model_params).
         """
 
         connection = None
@@ -76,24 +79,24 @@ class UserPromptEmbedder(TaskProcessor):
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
             query = """
-                SELECT embedding_model_params
+                SELECT ai_provider, embedding_model_params
                 FROM dist_rag.vector_indexes
                 WHERE index_name = %s
             """
             cursor.execute(query, (str(index_name),))
             result = cursor.fetchone()
             if result:
-                return result[0]  # embedding_model_params is the first column
+                return result[0], result[1]
             else:
                 self.logger.error(f"No vector_indexes entry found for index_id: {index_name}")
-                return {}
+                return None, {}
 
         except Exception as e:
             if connection:
                 connection.rollback()
             self.logger.error(
-                f"Error fetching embedding_model_params for index_name "
-                f"{index_name}: {str(e)}"
+                f"Error fetching ai_provider/embedding_model_params for "
+                f"index_name {index_name}: {str(e)}"
             )
             raise
         finally:
@@ -101,12 +104,12 @@ class UserPromptEmbedder(TaskProcessor):
                 cursor.close()
             if connection:
                 self.connection_pool.return_connection(connection)
-        return None
 
     def _embed_prompt(
         self,
         prompt: str,
-        embedding_model_params: dict
+        embedding_model_params: dict,
+        ai_provider: str = None
     ):
         """
         Embed the prompt using the specified AI provider and embedding model parameters.
@@ -115,7 +118,8 @@ class UserPromptEmbedder(TaskProcessor):
             embedding_model = embedding_model_params.get('model')
             embedder = EmbeddingsGenerator(
                 embedding_model=embedding_model,
-                embedding_model_params=embedding_model_params
+                embedding_model_params=embedding_model_params,
+                ai_provider=ai_provider
             )
             embedding = embedder.generate_user_prompt_embeddings(prompt)
             return embedding
@@ -154,12 +158,17 @@ class UserPromptEmbedder(TaskProcessor):
             index_name = task.task_details.get('index_name')
 
             try:
-                embedding_model_params = self._retrieve_embedding_parameters(
-                    index_name=index_name
+                ai_provider, embedding_model_params = (
+                    self._retrieve_embedding_parameters(index_name=index_name)
                 )
                 if not embedding_model_params:
                     raise ValueError(
                         f"Failed to retrieve embedding parameters for "
+                        f"index_name: {index_name}"
+                    )
+                if not ai_provider:
+                    raise ValueError(
+                        f"Failed to retrieve ai_provider for "
                         f"index_name: {index_name}"
                     )
             except Exception as e:
@@ -171,7 +180,8 @@ class UserPromptEmbedder(TaskProcessor):
                 self.logger.info(f"Embedding user prompt: {user_prompt_id}")
                 embedding = self._embed_prompt(
                     task.task_details.get('user_prompt'),
-                    embedding_model_params
+                    embedding_model_params,
+                    ai_provider=ai_provider
                 )
                 self.logger.info(
                     f"Succesfully generated embedding for user prompt id "

@@ -35,6 +35,9 @@ class ConsensusRoundCallback {
   // Should initialize appropriate replicate message.
   virtual Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id) = 0;
 
+  // Invoked once the round has been accepted into the leader's consensus queue.
+  virtual void SubmittedToLeaderQueue() {}
+
   // Invoked when appropriate operation replication finished.
   virtual void ReplicationFinished(
       const Status& status, int64_t leader_term, OpIds* applied_op_ids) = 0;
@@ -74,6 +77,8 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   }
 
   Status NotifyAddedToLeader(const OpId& op_id, const OpId& committed_op_id);
+
+  void NotifySubmittedToLeaderQueue();
 
   // If a continuation was set, notifies it that the round has been replicated.
   void NotifyReplicationFinished(

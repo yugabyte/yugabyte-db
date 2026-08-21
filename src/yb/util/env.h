@@ -493,86 +493,6 @@ struct WritableFileOptions {
 // A file abstraction for sequential writing.  The implementation
 // must provide buffering since callers may append small fragments
 // at a time to the file.
-class WritableFile {
- public:
-  enum FlushMode {
-    FLUSH_SYNC,
-    FLUSH_ASYNC
-  };
-
-  WritableFile() { }
-  virtual ~WritableFile();
-
-  // Pre-allocates 'size' bytes for the file in the underlying filesystem.
-  // size bytes are added to the current pre-allocated size or to the current
-  // offset, whichever is bigger. In no case is the file truncated by this
-  // operation.
-  virtual Status PreAllocate(uint64_t size) = 0;
-
-  virtual Status Append(const Slice& data) = 0;
-
-  // If possible, uses scatter-gather I/O to efficiently append
-  // multiple buffers to a file. Otherwise, falls back to regular I/O.
-  //
-  // For implementation specific quirks and details, see comments in
-  // implementation source code (e.g., env_posix.cc)
-  Status AppendVector(const std::vector<Slice>& data_vector);
-
-  virtual Status AppendSlices(const Slice* slices, size_t num) = 0;
-
-  Status AppendSlices(const Slice* begin, const Slice* end);
-
-  virtual Status Close() = 0;
-
-  // Flush all dirty data (not metadata) to disk.
-  //
-  // If the flush mode is synchronous, will wait for flush to finish and
-  // return a meaningful status.
-  virtual Status Flush(FlushMode mode) = 0;
-
-  virtual Status Sync() = 0;
-
-  virtual uint64_t Size() const = 0;
-
-  // Get the logical file size visible to the users.
-  virtual Result<uint64_t> SizeOnDisk() const = 0;
-
-  // Returns the filename provided when the WritableFile was constructed.
-  virtual const std::string& filename() const = 0;
-
- private:
-  // No copying allowed
-  WritableFile(const WritableFile&);
-  void operator=(const WritableFile&);
-};
-
-// An implementation of WritableFile that forwards all calls to another
-// WritableFile. May be useful to clients who wish to override just part of the
-// functionality of another WritableFile.
-// It's declared as friend of WritableFile to allow forwarding calls to
-// protected virtual methods.
-class WritableFileWrapper : public WritableFile {
- public:
-  explicit WritableFileWrapper(std::unique_ptr<WritableFile> t) : target_(std::move(t)) { }
-  virtual ~WritableFileWrapper() { }
-
-  // Return the target to which this WritableFile forwards all calls.
-  WritableFile* target() const { return target_.get(); }
-
-  Status PreAllocate(uint64_t size) override;
-  Status Append(const Slice& data) override;
-  Status AppendSlices(const Slice* slices, size_t num) override;
-  Status Close() override;
-  Status Flush(FlushMode mode) override;
-  Status Sync() override;
-  uint64_t Size() const override { return target_->Size(); }
-  Result<uint64_t> SizeOnDisk() const override { return target_->SizeOnDisk(); }
-  const std::string& filename() const override { return target_->filename(); }
-
- private:
-  std::unique_ptr<WritableFile> target_;
-};
-
 // Creation-time options for RWFile
 struct RWFileOptions {
   // Call Sync() during Close().
@@ -639,8 +559,9 @@ class RWFile {
   // 'length' to disk. If length is 0, all bytes from 'offset' to the end
   // of the file are flushed.
   //
-  // If the flush mode is synchronous, will wait for flush to finish and
-  // return a meaningful status.
+  // If the flush mode is synchronous, will wait for the range to be written
+  // before returning. This differs from Sync(): it operates on a range
+  // rather than the whole file, and does not fsync metadata.
   virtual Status Flush(FlushMode mode, uint64_t offset, size_t length) = 0;
 
   // Synchronously flushes all dirty file data and metadata to disk. Upon
@@ -660,17 +581,6 @@ class RWFile {
 
  private:
   DISALLOW_COPY_AND_ASSIGN(RWFile);
-};
-
-// Identifies a locked file.
-class FileLock {
- public:
-  FileLock() { }
-  virtual ~FileLock();
- private:
-  // No copying allowed
-  FileLock(const FileLock&);
-  void operator=(const FileLock&);
 };
 
 // A utility routine: write "data" to the named file.

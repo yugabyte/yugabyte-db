@@ -13,7 +13,11 @@
 // C wrappers around some YB utilities. Suitable for inclusion into C codebases such as our modified
 // version of PostgreSQL.
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_UTIL_YBC_UTIL_H
+#define YB_YQL_PGGATE_UTIL_YBC_UTIL_H
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -35,16 +39,19 @@ bool YBCStatusIsNotFound(YbcStatus s);
 bool YBCStatusIsUnknownSession(YbcStatus s);
 bool YBCStatusIsSnapshotTooOld(YbcStatus s);
 bool YBCStatusIsTryAgain(YbcStatus s);
+bool YBCStatusIsTimedOut(YbcStatus s);
 bool YBCStatusIsAlreadyPresent(YbcStatus s);
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s);
-bool YBCStatusIsFatalError(YbcStatus s);
 uint32_t YBCStatusPgsqlError(YbcStatus s);
 void YBCFreeStatus(YbcStatus s);
 
-const char* YBCStatusFilename(YbcStatus s);
-int YBCStatusLineNumber(YbcStatus s);
-const char* YBCStatusFuncname(YbcStatus s);
-size_t YBCStatusMessageLen(YbcStatus s);
+typedef struct YbcStatusErrorLocationInfo {
+    const char *filename;
+    int lineno;
+    const char *funcname;
+} YbcStatusErrorLocationInfo;
+
+YbcStatusErrorLocationInfo YBCStatusErrorLocation(YbcStatus s);
 const char* YBCStatusMessageBegin(YbcStatus s);
 const char* YBCMessageAsCString(YbcStatus s);
 unsigned int YBCStatusRelationOid(YbcStatus s);
@@ -169,6 +176,8 @@ void YBCUpdateInitPostgresMetrics();
 uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key_len);
 uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len);
 
+char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len);
+
 bool YBCIsObjectLockingEnabled();
 void YBCPgSetClampUncertaintyWindow(bool clamp);
 
@@ -179,3 +188,5 @@ void YBCSetupCgroups();
 #ifdef __cplusplus
 } // extern "C"
 #endif
+
+#endif  // YB_YQL_PGGATE_UTIL_YBC_UTIL_H

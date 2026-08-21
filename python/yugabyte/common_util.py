@@ -62,6 +62,10 @@ _YB_LLVM_TOOLCHAIN_DIR = (
         os.path.realpath(os.environ.get("YB_LLVM_TOOLCHAIN_DIR", ""))
         if os.environ.get("YB_LLVM_TOOLCHAIN_DIR") is not None else None)
 
+_YB_GCC_TOOLCHAIN_DIR = (
+        os.path.realpath(os.environ.get("YB_GCC_TOOLCHAIN_DIR", ""))
+        if os.environ.get("YB_GCC_TOOLCHAIN_DIR") is not None else None)
+
 GLOBAL_DOWNLOAD_CACHE_DIR = '/opt/yb-build/download_cache'
 attempted_to_create_download_cache_dir = False
 
@@ -69,6 +73,17 @@ attempted_to_create_download_cache_dir = False
 def get_thirdparty_dir() -> str:
     global _YB_THIRDPARTY_DIR
     return _YB_THIRDPARTY_DIR
+
+
+def build_machine_dirs_to_strip(thirdparty_dir: str, build_root: str) -> List[str]:
+    """The directory prefixes whose -I switches must be stripped from the compiler flags an
+    installed package exports (see sanitize_pg_compiler_config).  This is the single definition of
+    that set, shared by every place that sanitizes those flags (today, the pg_config bake in
+    build_postgres.py and the Makefile.global rewrite in library_packager.py), so they cannot drift.
+    Each caller must supply thirdparty_dir and build_root because it obtains them from its own
+    context (cmake cache or environment, build args or packaging context).
+    """
+    return [thirdparty_dir, YB_SRC_ROOT, build_root]
 
 
 def set_thirdparty_dir(thirdparty_dir: str) -> None:
@@ -86,6 +101,17 @@ def set_llvm_toolchain_dir(llvm_toolchain_dir: str) -> None:
     global _YB_LLVM_TOOLCHAIN_DIR
     _YB_LLVM_TOOLCHAIN_DIR = llvm_toolchain_dir
     os.environ["YB_LLVM_TOOLCHAIN_DIR"] = llvm_toolchain_dir
+
+
+def get_gcc_toolchain_dir() -> Optional[str]:
+    global _YB_GCC_TOOLCHAIN_DIR
+    return _YB_GCC_TOOLCHAIN_DIR
+
+
+def set_gcc_toolchain_dir(gcc_toolchain_dir: str) -> None:
+    global _YB_GCC_TOOLCHAIN_DIR
+    _YB_GCC_TOOLCHAIN_DIR = gcc_toolchain_dir
+    os.environ["YB_GCC_TOOLCHAIN_DIR"] = gcc_toolchain_dir
 
 
 def sorted_grouped_by(

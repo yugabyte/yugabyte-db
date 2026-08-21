@@ -34,6 +34,13 @@ spec:
                   The new volume fields are mutually exclusive with the old deviceInfo fields.
                 rule: >
                   !has(self.masterVolume) || (!has(self.deviceInfo) && !has(self.masterDeviceInfo))
+              - message: rootCA cannot be removed once set.
+                rule: >
+                  !self.enableNodeToNodeEncrypt && !self.enableClientToNodeEncrypt
+                  || has(self.rootCA) || !has(oldSelf.rootCA)
+              - message: rootCA cannot be set when both node-to-node and client-to-node TLS are disabled.
+                rule: >
+                  self.enableNodeToNodeEncrypt || self.enableClientToNodeEncrypt || !has(self.rootCA)
             properties:
               universeName:
                 type: string
@@ -94,8 +101,20 @@ spec:
                                 description: Number of nodes for the zone.
                               preferred:
                                 type: boolean
-                                description: Whether the zone is preferred. Defaults to true.
-                                default: true
+                                description: >
+                                  Deprecated: use leaderPreference instead. Whether the zone
+                                  is preferred for leader placement. Only honored when
+                                  leaderPreference is not set; when neither is set the zone
+                                  defaults to preferred (leaderPreference 1).
+                              leaderPreference:
+                                type: integer
+                                description: >
+                                  Leader affinity priority for the zone. Non-negative
+                                  contiguous integers; 0 means the zone is not prioritized,
+                                  and a lower positive value indicates higher leader priority.
+                                  Multiple zones may share the same value. When set, this
+                                  takes precedence over the deprecated preferred field.
+                                minimum: 0
               gFlags:
                 description: >
                   Configuration flags for the universe.
@@ -143,9 +162,6 @@ spec:
                   This encrypts the data in transit between nodes.
                 type: boolean
                 default: true
-                x-kubernetes-validations:
-                - message: enableNodeToNodeEncrypt cannot be changed
-                  rule: self == oldSelf
               enableClientToNodeEncrypt:
                 description: >
                   Enable client to node encryption in the universe.
@@ -153,20 +169,54 @@ spec:
                   client and database.
                 type: boolean
                 default: true
-                x-kubernetes-validations:
-                - message: enableClientToNodeEncrypt cannot be changed
-                  rule: self == oldSelf
               rootCA:
                 description: >
                   Specify the name of the rootCA certificate to be used for cert-manager
                   or cert-manager certificates. If empty, YBA will create its own certificate.
                 type: string
-                x-kubernetes-validations:
-                - message: rootCA cannot be changed once set
-                  rule: self == oldSelf
               ybSoftwareVersion:
                 description: Version of DB software to use in the universe.
                 type: string
+              upgradeOption:
+                description: >
+                  Strategy to use when performing upgrade operations (software upgrade,
+                  GFlags upgrade, Kubernetes overrides upgrade, certificate rotation and
+                  YBC toggle). "Rolling" upgrades nodes one at a time, "Non-Rolling"
+                  upgrades all nodes simultaneously with a restart, and "Non-Restart"
+                  applies the change without restarting nodes. Defaults to "Rolling".
+                type: string
+                enum:
+                - Rolling
+                - Non-Rolling
+                - Non-Restart
+                default: Rolling
+              rollMaxBatchSize:
+                description: >
+                  Maximum number of nodes to roll (restart) at a time during a rolling
+                  upgrade. Only honored when upgradeOption is "Rolling". When unset, nodes
+                  are rolled one at a time.
+                type: object
+                properties:
+                  primaryBatchSize:
+                    description: Number of nodes to roll at a time in the primary cluster.
+                    type: integer
+                    default: 1
+                  readReplicaBatchSize:
+                    description: Number of nodes to roll at a time in the read replica cluster.
+                    type: integer
+                    default: 1
+              tserverWaitSeconds:
+                description: >
+                  Time in seconds to wait after restarting a TServer node before
+                  proceeding to the next node during a rolling upgrade.
+                type: integer
+                default: 180
+              masterWaitSeconds:
+                description: >
+                  Time in seconds to wait after restarting a Master node before
+                  proceeding to the next node during a rolling upgrade.
+                type: integer
+                default: 180
               useYbdbInbuiltYbc:
                 description: >
                   Use YBDB inbuilt YBC (immutable YBC) for the universe. When true, YBC runs from
@@ -311,19 +361,23 @@ spec:
                     default: 100
                   numVolumes:
                     type: integer
-                    description: Number of volumes per tserver( defaults to 2 )
+                    description: >
+                      Number of volumes per tserver( defaults to 2 ). Modifying values supported with 
+                      DB software versions 2026.1.0 and above.
                     default: 2
                   storageClass:
                     type: string
                     description: >
                       Storage class for the volumes. Provider storage class takes precedence over this
                       since it is at AZ level. To use this, provider storage class values should be empty.
+                      Modifying values supported with DB software versions 2026.1.0 and above.
                   perAZ:
                     description: >
                       Per availability zone volume overrides. Maps AZ codes to volume configuration.
-                      This takes precedence over provider/base volume configuration. When this is being used,
-                      the provider values for storageClass and other volume overrides are not used. If some
-                      AZs are not provided as overrides, the values are picked from base tserverVolume.
+                      This takes precedence over provider/base volume configuration.  Once this is used, the
+                      provider values are no longer used for volume configuration. If some
+                      AZs are not provided as overrides, the values are picked from base tserverVolume. This
+                      can be set to {} to make all AZs use base tserverVolume.
                     type: object
                     additionalProperties:
                       type: object
@@ -333,13 +387,19 @@ spec:
                           description: Volume size in GiB for this AZ
                         numVolumes:
                           type: integer
-                          description: Number of volumes per tserver for this AZ
+                          description: >
+                            Number of volumes per tserver for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
                         storageClass:
                           type: string
-                          description: Storage class for this AZ
+                          description: >
+                            Storage class for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
                 x-kubernetes-validations:
                   - message: tserverVolume cannot be removed once set.
                     rule: self != null || oldSelf == null
+                  - message: perAZ in tserverVolume cannot be removed once set.
+                    rule: "!has(oldSelf.perAZ) || has(self.perAZ)"
               masterVolume:
                 description: >
                   Volume configuration for masters in the universe.
@@ -352,19 +412,23 @@ spec:
                     default: 50
                   numVolumes:
                     type: integer
-                    description: Number of volumes per master( defaults to 1 )
+                    description: >
+                      Number of volumes per master( defaults to 1 ). Modifying values supported with 
+                      DB software versions 2026.1.0 and above.
                     default: 1
                   storageClass:
                     type: string
                     description: >
                       Storage class for the volumes. Provider storage class takes precedence over this
                       since it is at AZ level. To use this, provider storage class values should be empty.
+                      Modifying values supported with DB software versions 2026.1.0 and above.
                   perAZ:
                     description: >
                       Per availability zone volume overrides. Maps AZ codes to volume configuration.
-                      This takes precedence over provider/base volume configuration. When this is being used,
-                      the provider values for storageClass and other volume overrides are not used. If some
-                      AZs are not provided as overrides, the values are picked from base masterVolume.
+                      This takes precedence over provider/base volume configuration. Once this is used, the
+                      provider values are no longer used for volume configuration. If some
+                      AZs are not provided as overrides, the values are picked from base masterVolume. This 
+                      can be set to {} to make all AZs use base masterVolume.
                     type: object
                     additionalProperties:
                       type: object
@@ -374,13 +438,19 @@ spec:
                           description: Volume size in GiB for this AZ
                         numVolumes:
                           type: integer
-                          description: Number of volumes per master for this AZ
+                          description: >
+                            Number of volumes per master for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
                         storageClass:
                           type: string
-                          description: Storage class for this AZ
+                          description: >
+                            Storage class for this AZ. Modifying values supported with 
+                            DB software versions 2026.1.0 and above.
                 x-kubernetes-validations:
                   - message: masterVolume cannot be removed once set.
                     rule: self != null || oldSelf == null
+                  - message: perAZ in masterVolume cannot be removed once set.
+                    rule: "!has(oldSelf.perAZ) || has(self.perAZ)"
               tserverResourceSpec:
                 description: >
                   Resource specification for the tserver pods in the universe.
@@ -459,18 +529,22 @@ spec:
                         description: Volume size in GiB
                       numVolumes:
                         type: integer
-                        description: Number of volumes per tserver
+                        description: >
+                          Number of volumes per tserver. Modifying values supported with 
+                          DB software versions 2026.1.0 and above.
                       storageClass:
                         type: string
                         description: >
                           Storage class for the volumes. Provider storage class takes precedence over this
                           since it is at AZ level. To use this, provider storage class values should be empty.
+                          Modifying values supported with DB software versions 2026.1.0 and above.
                       perAZ:
                         description: >
                           Per availability zone volume overrides. Maps AZ codes to volume configuration.
-                          This takes precedence over provider/base volume configuration. When this is being used,
-                          the provider values for storageClass and other volume overrides are not used. If some
-                          AZs are not provided as overrides, the values are picked from base tserverVolume.
+                          This takes precedence over provider/base volume configuration.  Once this is used, the
+                          provider values are no longer used for volume configuration. If some
+                          AZs are not provided as overrides, the values are picked from base tserverVolume. This 
+                          can be set to {} to make all AZs use base tserverVolume.
                         type: object
                         additionalProperties:
                           type: object
@@ -480,13 +554,19 @@ spec:
                               description: Volume size in GiB for this AZ
                             numVolumes:
                               type: integer
-                              description: Number of volumes per tserver for this AZ
+                              description: >
+                                Number of volumes per tserver for this AZ. Modifying values supported with 
+                                DB software versions 2026.1.0 and above.
                             storageClass:
                               type: string
-                              description: Storage class for this AZ
+                              description: >
+                                Storage class for this AZ. Modifying values supported with 
+                                DB software versions 2026.1.0 and above.
                     x-kubernetes-validations:
                       - message: tserverVolume cannot be removed once set.
                         rule: self != null || oldSelf == null
+                      - message: perAZ in readReplica tserverVolume cannot be removed once set.
+                        rule: "!has(oldSelf.perAZ) || has(self.perAZ)"
                   tserverResourceSpec:
                     description: >
                       Resource specification for the tserver pods in the universe.

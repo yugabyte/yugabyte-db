@@ -70,23 +70,22 @@ This is the result:
              42
 ```
 
-Now suppose you realise that _security definer_ was the wrong choice and that you want to set the _statement_timeout_ attribute (never mind that this is unrealistic here). Suppose, too, that: you want to call the procedure _q()_ instead of _p()_; and you want it to be in schema _s2_ and not in schema _s1_. You must use three `ALTER` statements to do this, thus:
+Now suppose you want to change the security attribute, set a configuration parameter, rename the procedure, and move it to a different schema. You must use separate `ALTER` statements for each change:
 
 ```plpgsql
-alter procedure s1.p(int)
-  security invoker
-  set statement_timeout = 1;
+alter procedure s1.p(int) security invoker;
+alter procedure s1.p(int) set statement_timeout = '1s';
+alter procedure s1.p(int) rename to q;
 ```
 
-The attempt draws a warning in the current _preview_ version of YugabyteDB, thus:
+Create a schema to move the procedure to:
 
-```output
-0A000: ALTER PROCEDURE not supported yet
+```plpgsql
+create schema s2;
+alter procedure s1.q(int) set schema s2;
 ```
 
-and the _hint_ refers you to [GitHub Issue #2717](https://github.com/YugaByte/yugabyte-db/issues/2717)
-
-In spite of the warning, the attempt actually has the intended effect. You can see this by inspecting the procedure's metadata. See the section [The "pg_proc" catalog table for subprograms](../../../user-defined-subprograms-and-anon-blocks/pg-proc-catalog-table/) for information on how to  query subprogram metadata.
+You can verify the changes by querying the procedure's metadata. See the section [The "pg_proc" catalog table for subprograms](../../../user-defined-subprograms-and-anon-blocks/pg-proc-catalog-table/) for information on how to query subprogram metadata:
 
 ```plpgsql
 select
@@ -99,58 +98,37 @@ select
   proconfig                         as settings
 from pg_proc
 where
-  proowner::regrole::text = 'u1' and
-  proname::text in ('p', 'q');
+  proname::text in ('p', 'q')
+order by proname;
 ```
 
-This is the result:
+This shows the updated procedure:
 
 ```output
  name | schema | security |       settings
 ------+--------+----------+-----------------------
- p    | s1     | invoker  | {statement_timeout=1}
+ q    | s2     | invoker  | {statement_timeout=1s}
 ```
 
-Now rename the procedure:
+### Mark extension dependencies
 
-```plpgsql
-alter procedure s1.p(int) rename to q;
+Use `DEPENDS ON EXTENSION` to mark a procedure as dependent on an extension:
+
+```sql
+CREATE EXTENSION "uuid-ossp";
+
+-- Mark the procedure as dependent on the extension
+ALTER PROCEDURE s2.q(int) DEPENDS ON EXTENSION "uuid-ossp";
+
+-- Remove the dependency mark if needed
+ALTER PROCEDURE s2.q(int) NO DEPENDS ON EXTENSION "uuid-ossp";
 ```
 
-You get the _0A000_ warning (_"not supported yet"_) again. But, again, you get the intended result. Confirm this by re-running the _pg_prpc_ query:
-
-This is new result:
-
-```output
- name | schema | security |       settings
-------+--------+----------+-----------------------
- q    | s1     | invoker  | {statement_timeout=1}
-```
-
-Now change the schema:
-
-
-```plpgsql
-create schema s2;
-alter procedure s1.q(int) set schema s2;
-```
-
-This time you get a differently spelled warning:
-
-```output
-0A000: ALTER PROCEDURE SET SCHEMA not supported yet
-```
-
-but when you check the procedure's metadata you see, once again, that the schema is actually changed as intended:
-
-```output
- name | schema | security |       settings
-------+--------+----------+-----------------------
- q    | s2     | invoker  | {statement_timeout=1}
-```
+When an extension is dropped, all dependent objects are dropped or updated accordingly.
 
 ## See also
 
+- [`ALTER ROUTINE`](../ddl_alter_routine)
 - [`CREATE PROCEDURE`](../ddl_create_procedure)
 - [`DROP PROCEDURE`](../ddl_drop_procedure)
 - [`CREATE FUNCTION`](../ddl_create_function)

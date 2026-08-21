@@ -281,13 +281,14 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 */
 
 	/*
-	 * YB expects system tables to be created only during YSQL cluster upgrade.
-	 * Both table_oid and row_type_oid should be specified for CREATE statment.
-	 * They should match the ones defined in pg_xxx.h headers, but I don't
-	 * see an easy way to do a sanity check.
+	 * YB expects system tables to be created only during YSQL cluster upgrade
+	 * and global initDB. Both table_oid and row_type_oid should be specified
+	 * for CREATE statement. They should match the ones defined in pg_xxx.h headers,
+	 * but I don't see an easy way to do a sanity check.
 	 */
 	cxt.isSystem = IsCatalogNamespace(namespaceid);
-	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade)
+	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade &&
+		!(YBCIsInitDbModeEnvVarSet() && cxt.isforeign))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to create \"%s.%s\"",
@@ -438,6 +439,16 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 			 * reloptions parsing will do the bounds check for us.
 			 */
 		}
+		else if (strncmp(def->defname, "yb_auto_analyze_",
+						 strlen("yb_auto_analyze_")) == 0)
+		{
+			/*
+			 * Acknowledge YB auto analyze reloptions (yb_auto_analyze_enabled,
+			 * yb_auto_analyze_threshold, yb_auto_analyze_scale_factor,
+			 * yb_auto_analyze_cooldown_scale_factor, yb_auto_analyze_min_cooldown,
+			 * yb_auto_analyze_max_cooldown).
+			 */
+		}
 		else if (strcmp(def->defname, "row_type_oid") == 0)
 		{
 			if (!cxt.isSystem)
@@ -445,6 +456,13 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						 errmsg("only system tables may have row_type_oid set")));
 			specifies_type_oid = true;
+		}
+		else if (strcmp(def->defname, "yb_presplit") == 0)
+		{
+			/*
+			 * Acknowledge we recognize the reloption for SPLIT options.
+			 * reloptions parsing will handle the value.
+			 */
 		}
 		else
 			ereport(WARNING,
@@ -463,7 +481,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 				 errmsg("'colocated' syntax is deprecated and will be removed in a future release"),
 				 errhint("Use 'colocation' instead of 'colocated'.")));
 
-	if (IsYsqlUpgrade && cxt.isSystem &&
+	if (IsYsqlUpgrade && cxt.isSystem && !cxt.isforeign &&
 		(!OidIsValid(cxt.relOid) || !specifies_type_oid))
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						errmsg("system tables must specify both table_oid and row_type_oid "
@@ -2393,11 +2411,29 @@ generateClonedIndexStmt(RangeVar *heapRel, Relation source_idx,
 
 		index->indexIncludingParams = lappend(index->indexIncludingParams, iparam);
 	}
-	/* Copy reloptions if any */
+	/* Copy reloptions if any, but filter out yb_presplit */
 	datum = SysCacheGetAttr(RELOID, ht_idxrel,
 							Anum_pg_class_reloptions, &isnull);
 	if (!isnull)
-		index->options = untransformRelOptions(datum);
+	{
+		List	   *options = untransformRelOptions(datum);
+		ListCell   *lc;
+		List	   *filtered_options = NIL;
+
+		/*
+		 * YB: Filter out yb_presplit from copied options. Split options
+		 * should not be copied via LIKE INCLUDING ALL - the new index
+		 * should use default split behavior.
+		 */
+		foreach(lc, options)
+		{
+			DefElem    *def = (DefElem *) lfirst(lc);
+
+			if (strcmp(def->defname, "yb_presplit") != 0)
+				filtered_options = lappend(filtered_options, def);
+		}
+		index->options = filtered_options;
+	}
 
 	/* If it's a partial index, decompile and append the predicate */
 	datum = SysCacheGetAttr(INDEXRELID, ht_idx,
@@ -2681,7 +2717,11 @@ transformIndexConstraints(CreateStmtContext *cxt)
 
 	Bitmapset  *oids_used = NULL;
 
-	if (cxt->isSystem)
+	/*
+	 * YB: Foreign tables in pg_catalog (created for global views
+	 * during initdb) don't have a table_oid
+	 */
+	if (cxt->isSystem && !cxt->isforeign)
 	{
 		Assert(OidIsValid(cxt->relOid));
 		oids_used = bms_make_singleton(cxt->relOid);
@@ -5537,10 +5577,11 @@ transformPartitionBound(ParseState *pstate, Relation parent,
 			colname = get_attname(RelationGetRelid(parent),
 								  key->partattrs[0], false);
 		else
-			colname = deparse_expression((Node *) linitial(partexprs),
-										 deparse_context_for(RelationGetRelationName(parent),
-															 RelationGetRelid(parent)),
-										 false, false);
+		colname = deparse_expression((Node *) linitial(partexprs),
+									 deparse_context_for(RelationGetRelationName(parent),
+														 RelationGetRelid(parent)),
+									 false, false,
+									 false, false); /* yb_pretty, yb_maskconstants */
 		/* Need its type data too */
 		coltype = get_partition_col_typid(key, 0);
 		coltypmod = get_partition_col_typmod(key, 0);
@@ -5689,10 +5730,11 @@ transformPartitionRangeBounds(ParseState *pstate, List *blist,
 									  key->partattrs[i], false);
 			else
 			{
-				colname = deparse_expression((Node *) list_nth(partexprs, j),
-											 deparse_context_for(RelationGetRelationName(parent),
-																 RelationGetRelid(parent)),
-											 false, false);
+			colname = deparse_expression((Node *) list_nth(partexprs, j),
+										 deparse_context_for(RelationGetRelationName(parent),
+															 RelationGetRelid(parent)),
+										 false, false,
+										 false, false); /* yb_pretty, yb_maskconstants */
 				++j;
 			}
 

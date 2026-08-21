@@ -801,7 +801,8 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
     const auto key =
         VERIFY_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(producer_info));
 
-    const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const auto op = safe_time_table_->NewWriteOp(
+        session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddStringHashValue(req, key.replication_group_id_column_value().ToString());
     QLAddStringHashValue(req, key.tablet_id_column_value());

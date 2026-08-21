@@ -96,6 +96,13 @@ struct TabletCDCCheckpointInfo {
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
 };
 
+struct RollbackBarrierInfo {
+  int64_t cdc_min_replicated_index;
+  OpId cdc_sdk_min_checkpoint_op_id;
+  HybridTime cdc_sdk_safe_time;
+  MonoDelta cdc_sdk_op_id_expiration;
+};
+
 struct ReplicationSlotHashRange {
   ReplicationSlotHashRange() = delete;
   explicit ReplicationSlotHashRange(uint32_t start, uint32_t end)
@@ -112,8 +119,7 @@ using StreamIdSet = std::set<xrepl::StreamId>;
 using StreamIdHybridTimeMap = std::unordered_map<xrepl::StreamId, HybridTime>;
 using TableIdToStreamIdMap =
     std::unordered_map<TableId, std::pair<TabletId, std::unordered_set<xrepl::StreamId>>>;
-using RollBackTabletIdCheckpointMap =
-    std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
+using RollBackTabletIdCheckpointMap = std::unordered_map<const std::string*, RollbackBarrierInfo>;
 
 // Non-exhaustive list of simulated error codes for the errors that can occur in GetChanges().
 // Currently these error codes are being employed to test errors retryable by virtual WAL.
@@ -143,13 +149,13 @@ class CDCServiceImpl : public CDCServiceIf {
       std::unique_ptr<CDCServiceContext> context,
       const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
       const std::shared_future<client::YBClient*>& client_future,
-      const std::function<int32()>& get_update_peers_interval);
+      const std::function<int32()>& get_update_peers_interval, bool is_master = false);
 
   CDCServiceImpl(
       std::unique_ptr<CDCServiceContext> context,
       const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
       int get_changes_concurrency, const std::shared_future<client::YBClient*>& client_future,
-      const std::function<int32()>& get_update_peers_interval);
+      const std::function<int32()>& get_update_peers_interval, bool is_master = false);
 
   CDCServiceImpl(const CDCServiceImpl&) = delete;
   void operator=(const CDCServiceImpl&) = delete;
@@ -249,7 +255,7 @@ class CDCServiceImpl : public CDCServiceIf {
       bool initial_retention_barrier = false);
 
   void RollbackCdcReplicatedIndexEntry(
-      const std::string& tablet_id, const std::pair<int64_t, OpId>& rollback_checkpoint_info);
+      const std::string& tablet_id, const RollbackBarrierInfo& rollback_info);
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
@@ -345,6 +351,10 @@ class CDCServiceImpl : public CDCServiceIf {
 
   auto GetXClusterMinRequiredIndexFunc() {
     return std::bind_front(&CDCServiceImpl::GetXClusterMinRequiredIndex, this);
+  }
+
+  bool HasCDCMasterBgTaskRunOnce() const {
+    return cdc_master_bg_task_ran_once_.load(std::memory_order_acquire);
   }
 
  private:
@@ -486,6 +496,23 @@ class CDCServiceImpl : public CDCServiceIf {
   //   then it records the checkpoint info in the tablet if it is under CDCSDK replication.
   void UpdatePeersAndMetrics();
 
+  // Runs periodically on master only. Orchestrates:
+  // - computing retention barriers info for the sys_catalog tablet
+  // - updating gRPC slot entries' restart time in cdc_state
+  // - propagating the retention barriers info to the sys_catalog tablet
+  // - cleaning up of expired sys_catalog tables.
+  void CDCMasterBgTask();
+
+  // Computes sys_catalog barrier info into TabletCDCCheckpointInfo. Also returns per-gRPC-stream
+  // min(cdc_sdk_safe_time) for gRPC slot entry updates. Returns std::nullopt when no CDCSDK
+  // stream entry is visible in cdc_state, signalling that there is nothing for the caller to
+  // advance or update on this BG task iteration.
+  Result<std::optional<std::pair<TabletCDCCheckpointInfo, StreamIdHybridTimeMap>>>
+  PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* expired_tables_map);
+
+  // Writes computed restart_time values to gRPC slot entries in cdc_state.
+  Status UpdateGRPCSlotEntries(const StreamIdHybridTimeMap& grpc_stream_to_min_safe_time);
+
   Status GetTabletIdsToPoll(
       const xrepl::StreamId stream_id,
       const std::set<TabletId>& active_or_hidden_tablets,
@@ -598,6 +625,12 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Status PersistActivePidInSlotEntry(const xrepl::StreamId& stream_id, uint64_t active_pid);
 
+  void set_cdc_master_bg_task_ran_once() {
+    if (!cdc_master_bg_task_ran_once_.load(std::memory_order_relaxed)) {
+      cdc_master_bg_task_ran_once_.store(true, std::memory_order_release);
+    }
+  }
+
   rpc::Rpcs rpcs_;
 
   std::unique_ptr<CDCServiceContext> context_;
@@ -636,6 +669,10 @@ class CDCServiceImpl : public CDCServiceIf {
   // CDC service proxy.
   CDCServiceProxyMap cdc_service_map_ GUARDED_BY(mutex_);
 
+  bool is_master_ = false;
+
+  std::atomic<bool> cdc_master_bg_task_ran_once_{false};
+
   // Thread with a few functions:
   //
   // Read the cdc_state table and get the minimum checkpoint for each tablet
@@ -647,6 +684,10 @@ class CDCServiceImpl : public CDCServiceIf {
   //
   // Periodically update lag metrics (FLAGS_update_metrics_interval_ms).
   scoped_refptr<Thread> update_peers_and_metrics_thread_;
+
+  // Thread for master-only periodic function that updates gRPC slot entries and
+  // sys_catalog retention barriers.
+  scoped_refptr<Thread> cdc_master_bg_task_thread_;
 
   std::shared_ptr<std::unordered_set<TabletStreamInfo>> last_seen_tablet_stream_entries_;
 

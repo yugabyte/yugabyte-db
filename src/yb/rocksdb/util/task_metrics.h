@@ -97,7 +97,6 @@ struct RocksDBTaskStateMetrics {
   RocksDBTaskMetrics background;
   RocksDBTaskMetrics full;
   RocksDBTaskMetrics postsplit;
-  RocksDBTaskMetrics total; // deprecated, TODO remove as part of GI-15048
 
   // Returns a pointer to the RocksDBTaskMetrics struct that corresponds to the
   // given CompactionReason.
@@ -139,8 +138,6 @@ struct RocksDBTaskStateMetrics {
 
 // Contains metrics related to tasks of each particular state in a PriorityThreadPool.
 struct RocksDBPriorityThreadPoolMetrics {
-  RocksDBTaskStateMetrics queued; // deprecated, TODO remove as part of GI-15048
-  RocksDBTaskStateMetrics paused; // deprecated, TODO remove as part of GI-15048
   RocksDBTaskStateMetrics active;
   RocksDBTaskStateMetrics nonactive;
 };
@@ -177,15 +174,9 @@ struct RocksDBPriorityThreadPoolMetrics {
     ROCKSDB_TASK_METRICS_DEFINE(entity, BOOST_PP_CAT(name, _full_compaction), \
         label " RocksDB Full Compaction"); \
     ROCKSDB_TASK_METRICS_DEFINE(entity, BOOST_PP_CAT(name, _post_split_compaction), \
-        label " RocksDB Post-Split Compaction"); \
-    ROCKSDB_TASK_METRICS_DEFINE(entity, BOOST_PP_CAT(name, _task_metrics_compaction), \
-        label " RocksDB total compactions (DEPRECATED)");
+        label " RocksDB Post-Split Compaction")
 
 #define ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(entity) \
-    ROCKSDB_COMPACTION_TASK_METRICS_TYPE_DEFINE( \
-        entity, queued, "Queued (DEPRECATED)"); \
-    ROCKSDB_COMPACTION_TASK_METRICS_TYPE_DEFINE( \
-        entity, paused, "Paused (DEPRECATED)"); \
     ROCKSDB_COMPACTION_TASK_METRICS_TYPE_DEFINE( \
         entity, active, "Active"); \
     ROCKSDB_COMPACTION_TASK_METRICS_TYPE_DEFINE( \
@@ -217,15 +208,12 @@ struct RocksDBPriorityThreadPoolMetrics {
   rocksdb::RocksDBTaskStateMetrics { \
     ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _background_compaction)), \
     ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _full_compaction)), \
-    ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _post_split_compaction)), \
-    ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _task_metrics_compaction)) \
+    ROCKSDB_TASK_METRICS_INSTANCE(entity, BOOST_PP_CAT(name, _post_split_compaction)) \
   }
 
 
 #define ROCKSDB_PRIORITY_THREAD_POOL_METRICS_INSTANCE(entity) \
     rocksdb::RocksDBPriorityThreadPoolMetrics { \
-        ROCKSDB_COMPACTION_TASK_METRICS_TYPE_INSTANCE(entity, queued), \
-        ROCKSDB_COMPACTION_TASK_METRICS_TYPE_INSTANCE(entity, paused), \
         ROCKSDB_COMPACTION_TASK_METRICS_TYPE_INSTANCE(entity, active), \
         ROCKSDB_COMPACTION_TASK_METRICS_TYPE_INSTANCE(entity, nonactive) \
     }

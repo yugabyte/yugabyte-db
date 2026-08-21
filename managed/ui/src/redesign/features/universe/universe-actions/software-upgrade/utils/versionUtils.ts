@@ -1,5 +1,5 @@
 import { compareYBSoftwareVersions, isVersionStable } from '@app/utils/universeUtilsTyped';
-import type { YbdbRelease } from '../dtos';
+import type { YbdbRelease, YbdbReleaseArtifact } from '../dtos';
 import type { ReleaseOption } from '../types';
 
 /**
@@ -27,19 +27,30 @@ const sortReleasesDesc = (releases: YbdbRelease[]): YbdbRelease[] =>
  * - Latest stable (if current is stable or skipVersionChecks)
  * - Latest from current series
  * - All eligible versions grouped by series
+ *
+ * Releases without an artifact matching `currentReleaseArchitecture` are excluded,
+ * since we cannot upgrade to a release that does not ship a binary for the universe's CPU arch.
+ * If `currentReleaseArchitecture` is undefined (arch unknown), no architecture filtering is applied.
  */
 export const buildVersionOptions = (
   releases: YbdbRelease[],
   currentReleaseVersion: string,
+  currentReleaseArchitecture: YbdbReleaseArtifact['architecture'] | undefined,
   skipVersionChecks: boolean
 ): ReleaseOption[] => {
   if (releases.length === 0) {
     return [];
   }
 
+  const archFilteredReleases = currentReleaseArchitecture
+    ? releases.filter((release) =>
+        release.artifacts?.some((artifact) => artifact.architecture === currentReleaseArchitecture)
+      )
+    : releases;
+
   const options: ReleaseOption[] = [];
   const isCurrentVersionStable = isVersionStable(currentReleaseVersion);
-  const sortedReleases = sortReleasesDesc(releases);
+  const sortedReleases = sortReleasesDesc(archFilteredReleases);
 
   const shouldIncludeLatestStableRelease = isCurrentVersionStable || skipVersionChecks;
   if (shouldIncludeLatestStableRelease) {
@@ -56,7 +67,7 @@ export const buildVersionOptions = (
         version: latestStableRelease.version,
         releaseInfo: latestStableRelease,
         label: latestStableRelease.version,
-        series: 'Latest Stable release'
+        series: 'Latest stable release'
       });
     }
   }

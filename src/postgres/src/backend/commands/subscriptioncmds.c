@@ -56,6 +56,9 @@
 #include "utils/pg_lsn.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /*
  * Options that can be specified by the user in CREATE/ALTER SUBSCRIPTION
  * command.
@@ -615,6 +618,12 @@ ObjectAddress
 CreateSubscription(ParseState *pstate, CreateSubscriptionStmt *stmt,
 				   bool isTopLevel)
 {
+	if (IsYugaByteEnabled() && !yb_enable_pg_subscription)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("CREATE SUBSCRIPTION is unavailable"),
+				 errdetail("yb_enable_pg_subscription is false")));
+
 	Relation	rel;
 	ObjectAddress myself;
 	Oid			subid;
@@ -1413,6 +1422,12 @@ ObjectAddress
 AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 				  bool isTopLevel)
 {
+	if (IsYugaByteEnabled() && !yb_enable_pg_subscription)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("ALTER SUBSCRIPTION is unavailable"),
+				 errdetail("yb_enable_pg_subscription is false")));
+
 	Relation	rel;
 	ObjectAddress myself;
 	bool		nulls[Natts_pg_subscription];
@@ -2175,6 +2190,12 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 void
 DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 {
+	if (IsYugaByteEnabled() && !yb_enable_pg_subscription)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("DROP SUBSCRIPTION is unavailable"),
+				 errdetail("yb_enable_pg_subscription is false")));
+
 	Relation	rel;
 	ObjectAddress myself;
 	HeapTuple	tup;
@@ -2631,6 +2652,12 @@ AlterSubscriptionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 ObjectAddress
 AlterSubscriptionOwner(const char *name, Oid newOwnerId)
 {
+	if (IsYugaByteEnabled() && !yb_enable_pg_subscription)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("ALTER SUBSCRIPTION OWNER is unavailable"),
+				 errdetail("yb_enable_pg_subscription is false")));
+
 	Oid			subid;
 	HeapTuple	tup;
 	Relation	rel;
@@ -2667,6 +2694,12 @@ AlterSubscriptionOwner(const char *name, Oid newOwnerId)
 void
 AlterSubscriptionOwner_oid(Oid subid, Oid newOwnerId)
 {
+	if (IsYugaByteEnabled() && !yb_enable_pg_subscription)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("ALTER SUBSCRIPTION OWNER is unavailable"),
+				 errdetail("yb_enable_pg_subscription is false")));
+
 	HeapTuple	tup;
 	Relation	rel;
 

@@ -1,0 +1,177 @@
+# Copyright (c) YugabyteDB, Inc.
+# OCI (Oracle Cloud Infrastructure) Region Metadata
+# Regions from: https://docs.oracle.com/en-us/iaas/Content/General/Concepts/regions.htm
+
+# North America
+us-ashburn-1:
+  name: US East (Ashburn)
+  latitude: 39.0458
+  longitude: -77.4874
+  availabilty_zones: [us-ashburn-1-AD-1, us-ashburn-1-AD-2, us-ashburn-1-AD-3]
+us-phoenix-1:
+  name: US West (Phoenix)
+  latitude: 33.4484
+  longitude: -112.0740
+  availabilty_zones: [us-phoenix-1-AD-1, us-phoenix-1-AD-2, us-phoenix-1-AD-3]
+us-sanjose-1:
+  name: US West (San Jose)
+  latitude: 37.3382
+  longitude: -121.8863
+  availabilty_zones: [us-sanjose-1-AD-1]
+us-chicago-1:
+  name: US Midwest (Chicago)
+  latitude: 41.8781
+  longitude: -87.6298
+  availabilty_zones: [us-chicago-1-AD-1]
+ca-toronto-1:
+  name: Canada Southeast (Toronto)
+  latitude: 43.6532
+  longitude: -79.3832
+  availabilty_zones: [ca-toronto-1-AD-1]
+ca-montreal-1:
+  name: Canada Southeast (Montreal)
+  latitude: 45.5017
+  longitude: -73.5673
+  availabilty_zones: [ca-montreal-1-AD-1]
+
+# Europe
+eu-frankfurt-1:
+  name: Germany Central (Frankfurt)
+  latitude: 50.1109
+  longitude: 8.6821
+  availabilty_zones: [eu-frankfurt-1-AD-1, eu-frankfurt-1-AD-2, eu-frankfurt-1-AD-3]
+eu-amsterdam-1:
+  name: Netherlands Northwest (Amsterdam)
+  latitude: 52.3676
+  longitude: 4.9041
+  availabilty_zones: [eu-amsterdam-1-AD-1]
+eu-zurich-1:
+  name: Switzerland North (Zurich)
+  latitude: 47.3769
+  longitude: 8.5417
+  availabilty_zones: [eu-zurich-1-AD-1]
+eu-madrid-1:
+  name: Spain Central (Madrid)
+  latitude: 40.4168
+  longitude: -3.7038
+  availabilty_zones: [eu-madrid-1-AD-1]
+eu-marseille-1:
+  name: France South (Marseille)
+  latitude: 43.2965
+  longitude: 5.3698
+  availabilty_zones: [eu-marseille-1-AD-1]
+eu-milan-1:
+  name: Italy Northwest (Milan)
+  latitude: 45.4642
+  longitude: 9.1900
+  availabilty_zones: [eu-milan-1-AD-1]
+eu-paris-1:
+  name: France Central (Paris)
+  latitude: 48.8566
+  longitude: 2.3522
+  availabilty_zones: [eu-paris-1-AD-1]
+eu-stockholm-1:
+  name: Sweden Central (Stockholm)
+  latitude: 59.3293
+  longitude: 18.0686
+  availabilty_zones: [eu-stockholm-1-AD-1]
+
+# UK
+uk-london-1:
+  name: UK South (London)
+  latitude: 51.5074
+  longitude: -0.1278
+  availabilty_zones: [uk-london-1-AD-1, uk-london-1-AD-2, uk-london-1-AD-3]
+uk-cardiff-1:
+  name: UK West (Cardiff)
+  latitude: 51.4816
+  longitude: -3.1791
+  availabilty_zones: [uk-cardiff-1-AD-1]
+
+# Asia Pacific
+ap-tokyo-1:
+  name: Japan East (Tokyo)
+  latitude: 35.6762
+  longitude: 139.6503
+  availabilty_zones: [ap-tokyo-1-AD-1]
+ap-osaka-1:
+  name: Japan Central (Osaka)
+  latitude: 34.6937
+  longitude: 135.5023
+  availabilty_zones: [ap-osaka-1-AD-1]
+ap-seoul-1:
+  name: South Korea Central (Seoul)
+  latitude: 37.5665
+  longitude: 126.9780
+  availabilty_zones: [ap-seoul-1-AD-1]
+ap-chuncheon-1:
+  name: South Korea North (Chuncheon)
+  latitude: 37.8747
+  longitude: 127.7342
+  availabilty_zones: [ap-chuncheon-1-AD-1]
+ap-singapore-1:
+  name: Singapore
+  latitude: 1.3521
+  longitude: 103.8198
+  availabilty_zones: [ap-singapore-1-AD-1]
+ap-sydney-1:
+  name: Australia East (Sydney)
+  latitude: -33.8688
+  longitude: 151.2093
+  availabilty_zones: [ap-sydney-1-AD-1]
+ap-melbourne-1:
+  name: Australia Southeast (Melbourne)
+  latitude: -37.8136
+  longitude: 144.9631
+  availabilty_zones: [ap-melbourne-1-AD-1]
+ap-mumbai-1:
+  name: India West (Mumbai)
+  latitude: 19.0760
+  longitude: 72.8777
+  availabilty_zones: [ap-mumbai-1-AD-1]
+ap-hyderabad-1:
+  name: India South (Hyderabad)
+  latitude: 17.3850
+  longitude: 78.4867
+  availabilty_zones: [ap-hyderabad-1-AD-1]
+
+# Middle East
+me-jeddah-1:
+  name: Saudi Arabia West (Jeddah)
+  latitude: 21.4858
+  longitude: 39.1925
+  availabilty_zones: [me-jeddah-1-AD-1]
+me-dubai-1:
+  name: UAE East (Dubai)
+  latitude: 25.2048
+  longitude: 55.2708
+  availabilty_zones: [me-dubai-1-AD-1]
+il-jerusalem-1:
+  name: Israel Central (Jerusalem)
+  latitude: 31.7683
+  longitude: 35.2137
+  availabilty_zones: [il-jerusalem-1-AD-1]
+
+# South America
+sa-saopaulo-1:
+  name: Brazil East (Sao Paulo)
+  latitude: -23.5505
+  longitude: -46.6333
+  availabilty_zones: [sa-saopaulo-1-AD-1]
+sa-santiago-1:
+  name: Chile Central (Santiago)
+  latitude: -33.4489
+  longitude: -70.6693
+  availabilty_zones: [sa-santiago-1-AD-1]
+sa-vinhedo-1:
+  name: Brazil Southeast (Vinhedo)
+  latitude: -23.0396
+  longitude: -46.9758
+  availabilty_zones: [sa-vinhedo-1-AD-1]
+
+# Africa
+af-johannesburg-1:
+  name: South Africa Central (Johannesburg)
+  latitude: -26.2041
+  longitude: 28.0473
+  availabilty_zones: [af-johannesburg-1-AD-1]

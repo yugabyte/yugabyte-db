@@ -1,5 +1,5 @@
 $(function() {
-    $('#memtrackerstable').on('click', '.toggle', function() {
+    $('.collapsable-table').on('click', '.toggle', function() {
       //Gets all <tr>'s  of greater depth
       //below element in the table
       var findChildren = function(tr) {

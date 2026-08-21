@@ -1,0 +1,5 @@
+description: Customer configurations visible to the caller for this page
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/CustomerConfigPagedResp.yaml"

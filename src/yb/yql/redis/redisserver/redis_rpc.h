@@ -143,28 +143,25 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   static Slice static_serialized_remote_method();
 
-  void Respond(size_t idx, bool is_success, RedisResponsePB* resp);
+  void Respond(size_t idx, bool is_success, std::shared_ptr<LWRedisResponsePB> resp);
 
   void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
 
   void RespondFailure(size_t idx, const Status& status);
   void RespondSuccess(size_t idx,
                       const rpc::RpcMethodMetrics& metrics,
-                      RedisResponsePB* resp);
+                      std::shared_ptr<LWRedisResponsePB> resp);
   void MarkForClose() { quit_.store(true, std::memory_order_release); }
 
   size_t ObjectSize() const override { return sizeof(*this); }
 
-  size_t DynamicMemoryUsage() const override {
-    return QueueableInboundCall::DynamicMemoryUsage() +
-           DynamicMemoryUsageOf(responses_, ready_, client_batch_);
-  }
+  size_t DynamicMemoryUsage() const override;
 
  private:
 
   // The connection on which this inbound call arrived.
   static constexpr size_t batch_capacity = RedisClientBatch::static_capacity;
-  boost::container::small_vector<RedisResponsePB, batch_capacity> responses_;
+  boost::container::small_vector<std::shared_ptr<LWRedisResponsePB>, batch_capacity> responses_;
   boost::container::small_vector<Atomic64, batch_capacity> ready_;
   std::atomic<size_t> ready_count_{0};
   std::atomic<bool> had_failures_{false};

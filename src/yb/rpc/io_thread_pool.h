@@ -22,12 +22,15 @@
 #include "yb/util/net/net_fwd.h"
 
 namespace yb {
+
+class Cgroup;
+
 namespace rpc {
 
 // Runs io service in specified number of threads.
 class IoThreadPool {
  public:
-  IoThreadPool(const std::string& name, size_t num_threads);
+  IoThreadPool(const std::string& name, size_t num_threads, Cgroup* cgroup = nullptr);
   ~IoThreadPool();
 
   void Shutdown();

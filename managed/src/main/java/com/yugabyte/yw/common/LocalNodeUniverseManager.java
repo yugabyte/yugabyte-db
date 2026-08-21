@@ -218,10 +218,31 @@ public class LocalNodeUniverseManager {
                 });
         return ShellResponse.create(ERROR_CODE_SUCCESS, "Command output: " + sb.toString());
       }
+      if (isGFlagsCliVersionCheck(commandArguments)) {
+        return ShellResponse.create(
+            results.getFirst(), ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + results.getSecond());
+      }
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);
     }
     return ShellResponse.create(ERROR_CODE_SUCCESS, "Command output: Linux x86_64");
+  }
+
+  /** Only gflags CLI validation runs yb-master/yb-tserver --version and needs real exit codes. */
+  private static boolean isGFlagsCliVersionCheck(List<String> commandArguments) {
+    if (commandArguments.isEmpty()) {
+      return false;
+    }
+    String executable = commandArguments.get(0);
+    boolean isYbServerBinary =
+        executable.endsWith("/yb-master")
+            || executable.endsWith("/yb-tserver")
+            || executable.endsWith("yb-master")
+            || executable.endsWith("yb-tserver");
+    if (!isYbServerBinary) {
+      return false;
+    }
+    return commandArguments.stream().skip(1).anyMatch("--version"::equals);
   }
 
   private Pair<Integer, String> runProcess(
@@ -285,6 +306,6 @@ public class LocalNodeUniverseManager {
     if (gflags.containsKey(GFlagsUtil.TMP_DIRECTORY)) {
       return localNodeManager.getTmpDir(gflags, node.getNodeName(), cluster.userIntent);
     }
-    return GFlagsUtil.getCustomTmpDirectory(node, universe);
+    return "/tmp";
   }
 }

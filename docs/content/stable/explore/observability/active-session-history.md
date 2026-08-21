@@ -4,8 +4,6 @@ headerTitle: Active Session History
 linkTitle: Active Session History
 description: Use Active Session History to get current and past views of the database system activity.
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues
-tags:
-  feature: early-access
 menu:
   stable:
     identifier: ash
@@ -18,7 +16,7 @@ Active Session History (ASH) provides a current and historical view of system ac
 
 ASH exposes session activity in the form of [SQL views](../../ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues.
 
-Currently, ASH is available for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and [YB-TServer](../../../architecture/yb-tserver/). ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
+Currently, ASH is available for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and [YB-TServer](../../../architecture/yb-tserver/). ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _RPCWait_, and _Disk IO_.
 
 Analyzing the wait events and wait event types lets you troubleshoot, answer the following questions, and subsequently tune performance:
 
@@ -141,7 +139,7 @@ ORDER BY
 
 ### Detect a hot shard
 
-In this example, you can see that a particular tablet is getting a lot of requests as compared to the other tablets. The `wait_event_aux` field contains the `tablet_id` in case of YB-TServer events.
+In this example, a particular tablet is getting many more requests than others. For TServer events tied to a tablet, `wait_event_aux` contains the first 15 characters of the tablet ID.
 
 ```sql
 SELECT

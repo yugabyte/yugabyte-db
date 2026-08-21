@@ -15,7 +15,7 @@ import json
 
 from googleapiclient import discovery
 from googleapiclient.errors import HttpError
-import oauth2client
+import google.auth
 from six.moves import http_client
 
 from ybops.common.exceptions import YBOpsRuntimeError
@@ -78,9 +78,7 @@ def gcp_exception_handler(e):
         # in a ValueError if the response was invalid. Until that is fixed in
         # oauth2client, need to handle it here.
         logging.warning('Response content was invalid (%s), retrying', e)
-    elif (isinstance(e, oauth2client.client.HttpAccessTokenRefreshError) and
-          (e.status == TOO_MANY_REQUESTS or
-           e.status >= 500)):
+    elif isinstance(e, google.auth.exceptions.RefreshError) and e.retryable:
         logging.warning('Caught transient credential refresh error (%s), retrying', e)
     elif (isinstance(e, HttpError) and
           (e.resp.status == TOO_MANY_REQUESTS or
@@ -551,7 +549,7 @@ class GoogleCloudAdmin():
         #   GOOGLE_APPLICATION_CREDENTIALS: set to the path of the credentials json file
         # If these are not provided, then get_application_default will try to use the service
         # account associated with the instance we're running on, if one exists.
-        self.credentials = oauth2client.client.GoogleCredentials.get_application_default()
+        self.credentials, _ = google.auth.default()
         self.compute = discovery.build(
             "compute", "v1", credentials=self.credentials, num_retries=3)
         # If we have specified a GCE_PROJECT, use that, else, try the instance metadata, else fail.
@@ -761,7 +759,7 @@ class GoogleCloudAdmin():
                         "Instance %s's volume %s has not changed from %s",
                         instance, disk["deviceName"], disk["diskSizeGb"])
 
-    def change_instance_type(self, zone, instance_name, instance_type):
+    def change_instance_type(self, zone, instance_name, instance_type, capacity_reservation=None):
         new_machine_type = f"zones/{zone}/machineTypes/{instance_type}"
         body = {
             "machineType": new_machine_type
@@ -798,7 +796,27 @@ class GoogleCloudAdmin():
         if operation:
             self.waiter.wait(operation=operation, zone=zone)
 
-    def start_instance(self, zone, instance_name):
+    def start_instance(self, zone, instance_name, capacity_reservation=None):
+        if capacity_reservation:
+            logging.info(f'Setting capacity reservation: {capacity_reservation}')
+
+            # First, set the reservation affinity while instance is stopped
+            scheduling_body = {
+                "reservationAffinity": {
+                    "consumeReservationType": "ANY_RESERVATION"
+                }
+            }
+
+            # Set scheduling (including reservation affinity)
+            set_operation = self.compute.instances().setScheduling(
+                project=self.project,
+                zone=zone,
+                instance=instance_name,
+                body=scheduling_body
+            ).execute()
+
+            # Wait for the scheduling change to complete
+            self.waiter.wait(set_operation, zone=zone)
         operation = self.compute.instances().start(project=self.project,
                                                    zone=zone,
                                                    instance=instance_name).execute()
@@ -976,7 +994,7 @@ class GoogleCloudAdmin():
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
                         assign_static_public_ip=False, ssh_keys=None, boot_script=None,
                         auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None,
-                        gcp_instance_template=None, disk_iops=None, disk_throughput=None):
+                        gcp_instance_template=None, disk_iops=None, disk_throughput=None, capacity_reservation=None):
         # Name of the project that target VPC network belongs to.
         shared_vpc_project = self.get_shared_vpc_project()
 
@@ -1058,11 +1076,23 @@ class GoogleCloudAdmin():
                 "items": get_firewall_tags()
             }
         }
+
+        if capacity_reservation:
+            logging.info(f'[app] Using capacity reservation: {capacity_reservation}')
+            body["reservationAffinity"] = {
+                "consumeReservationType": "ANY_RESERVATION"
+            }
+
         if use_spot_instance:
             logging.info(f'[app] Using GCP spot instances')
             body["scheduling"] = {
                 "provisioningModel": "SPOT"
             }
+            # Spot instances cannot consume capacity reservations
+            if capacity_reservation:
+                logging.warning("[app] Warning: Spot instances cannot use capacity reservations. "
+                              "Reservation will be ignored.")
+                body.pop("reservationAffinity", None)
         # Attach a secondary network interface if present.
         if cloud_subnet_secondary:
             body["networkInterfaces"].append({

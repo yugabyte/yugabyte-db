@@ -1,0 +1,7 @@
+title: CustomerConfigPagedQuerySpec
+description: |
+  Paged list of customer configurations (storage, alerts, call-home, password policy, etc.)
+  for a customer. Rows are ordered by config name (case-insensitive), then UUID. The order is ascending by default.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"

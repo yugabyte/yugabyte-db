@@ -13,6 +13,7 @@
 
 #include "yb/util/dist_trace.h"
 
+#include <deque>
 #include <memory>
 
 #include "opentelemetry/context/propagation/global_propagator.h"
@@ -20,6 +21,7 @@
 #include "opentelemetry/context/runtime_context.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_options.h"
+#include "opentelemetry/sdk/common/global_log_handler.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_factory.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_options.h"
 #include "opentelemetry/sdk/trace/tracer_provider.h"
@@ -28,6 +30,8 @@
 #include "opentelemetry/trace/context.h"
 #include "opentelemetry/trace/propagation/http_trace_context.h"
 #include "opentelemetry/trace/provider.h"
+#include "opentelemetry/trace/span.h"
+#include "opentelemetry/trace/span_metadata.h"
 #include "opentelemetry/trace/tracer.h"
 
 #include "yb/util/flag_validators.h"
@@ -37,6 +41,14 @@
 DEFINE_NON_RUNTIME_PREVIEW_string(otel_collector_traces_endpoint, "",
     "OTLP HTTP endpoint for the OpenTelemetry collector. When set, distributed tracing is "
     "enabled and spans are exported to this endpoint on each query execution.");
+
+DEFINE_NON_RUNTIME_string(otel_ssl_ca_cert_path, "",
+    "CA certificate bundle path for OTLP HTTPS trace export. Takes precedence over "
+    "otel_ssl_ca_cert_string when configured.");
+
+DEFINE_NON_RUNTIME_string(otel_ssl_ca_cert_string, "",
+    "CA certificate bundle contents for OTLP HTTPS trace export. Used only when no CA certificate "
+    "bundle path is configured.");
 
 DEFINE_NON_RUNTIME_uint32(otel_batch_max_queue_size, 2048,
     "Maximum number of spans that can be buffered in the batch span processor queue. "
@@ -51,21 +63,108 @@ DEFINE_NON_RUNTIME_uint32(otel_batch_max_export_batch_size, 512,
     "Maximum number of spans exported in a single batch. Must be greater than 0 and no "
     "larger than otel_batch_max_queue_size.");
 
+DEFINE_NON_RUNTIME_string(otel_internal_log_level, "info",
+    "Minimum OpenTelemetry SDK internal log level forwarded to YugabyteDB logging. Allowed "
+    "values are debug, info, warning, error, and none.");
+
 DEFINE_validator(otel_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
+
+DEFINE_validator(otel_internal_log_level,
+    FLAG_IN_SET_VALIDATOR("debug", "info", "warning", "error", "none"));
 
 namespace yb::dist_trace {
 
 namespace trace_sdk = opentelemetry::sdk::trace;
-namespace trace = opentelemetry::trace;
 namespace resource_sdk = opentelemetry::sdk::resource;
 namespace otlp_exporter = opentelemetry::exporter::otlp;
+namespace internal_log = opentelemetry::sdk::common::internal_log;
 namespace context = opentelemetry::context;
-namespace nostd = opentelemetry::nostd;
 
 namespace {
 
 const nostd::string_view ysql_resource_name = "ysql";
+
+// Owns string attribute data and maintains a parallel vector of string_view/AttributeValue pairs
+// that can be passed directly to the OTel Tracer::StartSpan API. Uses std::deque for pointer
+// stability -- unlike std::vector, deque does not relocate existing elements on insertion, so
+// string_views into earlier entries remain valid.
+class RpcSpanAttrs {
+ public:
+  void AddStringAttr(std::string key, std::string value) {
+    auto& owned_key = owned_keys_.emplace_back(std::move(key));
+    auto& owned_val = owned_values_.emplace_back(std::move(value));
+    attrs_.emplace_back(owned_key, owned_val);
+  }
+
+  const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs()
+      const {
+    return attrs_;
+  }
+
+  void clear() {
+    attrs_.clear();
+    owned_keys_.clear();
+    owned_values_.clear();
+  }
+
+ private:
+  std::deque<std::string> owned_keys_;
+  std::deque<std::string> owned_values_;
+  std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>> attrs_;
+};
+
+thread_local RpcSpanAttrs pending_rpc_attrs;
+
+internal_log::LogLevel GetOtelInternalLogLevel() {
+  const auto& flag_value = FLAGS_otel_internal_log_level;
+  if (flag_value == "debug") {
+    return internal_log::LogLevel::Debug;
+  }
+  if (flag_value == "info") {
+    return internal_log::LogLevel::Info;
+  }
+  if (flag_value == "warning") {
+    return internal_log::LogLevel::Warning;
+  }
+  if (flag_value == "error") {
+    return internal_log::LogLevel::Error;
+  }
+  if (flag_value == "none") {
+    return internal_log::LogLevel::None;
+  }
+  LOG(DFATAL) << "Unknown otel_internal_log_level: " << flag_value;
+  return internal_log::LogLevel::Info;
+}
+
+class YbOtelLogHandler : public internal_log::LogHandler {
+ public:
+  void Handle(
+      internal_log::LogLevel level, const char* file, int line, const char* msg,
+      const opentelemetry::sdk::common::AttributeMap& attributes) noexcept override {
+    (void)attributes;
+
+    const char* safe_file = file ? file : "unknown";
+    const char* safe_msg = msg ? msg : "";
+
+    switch (level) {
+      case internal_log::LogLevel::Error:
+        LOG(ERROR) << "[" << safe_file << ":" << line << "]: " << safe_msg;
+        break;
+      case internal_log::LogLevel::Warning:
+        LOG(WARNING) << "[" << safe_file << ":" << line << "]: " << safe_msg;
+        break;
+      case internal_log::LogLevel::Info:
+        LOG(INFO) << "[" << safe_file << ":" << line << "]: " << safe_msg;
+        break;
+      case internal_log::LogLevel::Debug:
+        LOG(INFO) << "[" << safe_file << ":" << line << "] Debug: " << safe_msg;
+        break;
+      case internal_log::LogLevel::None:
+        break;
+    }
+  }
+};
 
 resource_sdk::Resource CreateResource(int64_t process_pid, nostd::string_view node_uuid) {
   resource_sdk::ResourceAttributes attrs;
@@ -80,7 +179,19 @@ auto CreateExporter() {
   otlp_exporter::OtlpHttpExporterOptions opts;
   opts.url = FLAGS_otel_collector_traces_endpoint;
   opts.content_type = otlp_exporter::HttpRequestContentType::kBinary;
+
+  if (!FLAGS_otel_ssl_ca_cert_path.empty()) {
+    opts.ssl_ca_cert_path = FLAGS_otel_ssl_ca_cert_path;
+    opts.ssl_ca_cert_string.clear();
+  } else if (!FLAGS_otel_ssl_ca_cert_string.empty()) {
+    opts.ssl_ca_cert_path.clear();
+    opts.ssl_ca_cert_string = FLAGS_otel_ssl_ca_cert_string;
+  }
+
   LOG(INFO) << "OTEL: Exporting traces to collector at " << opts.url;
+  if (!opts.ssl_ca_cert_path.empty()) {
+    LOG(INFO) << "OTEL: Using CA certificate bundle at " << opts.ssl_ca_cert_path;
+  }
   return otlp_exporter::OtlpHttpExporterFactory::Create(opts);
 }
 
@@ -141,6 +252,13 @@ bool IsDistTraceEnabled() {
 void InitDistTrace(int64_t process_pid, nostd::string_view node_uuid) {
   DCHECK(IsDistTraceEnabled());
 
+  internal_log::GlobalLogHandler::SetLogHandler(
+      opentelemetry::nostd::shared_ptr<internal_log::LogHandler>(new YbOtelLogHandler()));
+
+  // OTel macros filter first using GlobalLogHandler::GetLogLevel(). Accepted messages
+  // are mapped to LOG(...), where YB logging applies its own routing.
+  internal_log::GlobalLogHandler::SetLogLevel(GetOtelInternalLogLevel());
+
   auto resource_attrs = CreateResource(process_pid, node_uuid);
   const auto status = InitDistTraceProvider(resource_attrs);
   if (!status.ok()) {
@@ -152,7 +270,6 @@ void InitDistTrace(int64_t process_pid, nostd::string_view node_uuid) {
       nostd::shared_ptr<context::propagation::TextMapPropagator>(
           new trace::propagation::HttpTraceContext()));
 
-  // TODO(#30723): Integrate Otel logs with Yugabyte logs.
   LOG(INFO) << "OTEL: Initialized tracing for service: " << ysql_resource_name
             << "\nBatchSpanProcessor config: max_queue_size=" << FLAGS_otel_batch_max_queue_size
             << ", schedule_delay_ms=" << FLAGS_otel_batch_schedule_delay_ms
@@ -193,6 +310,48 @@ trace::SpanContext GetTraceparentSpanContext(const char* traceparent) {
 
   // Return the SpanContext from the parent context.
   return trace::GetSpan(parent_context)->GetContext();
+}
+
+bool HasActiveContext() {
+  if (!IsDistTraceEnabled()) {
+    return false;
+  }
+  auto current_span = trace::Tracer::GetCurrentSpan();
+  return current_span && current_span->GetContext().IsValid();
+}
+
+nostd::shared_ptr<trace::Span> StartSpan(
+    std::string_view op_name,
+    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs,
+    trace::StartSpanOptions options) {
+  DCHECK(HasActiveContext());
+
+  return GetDistTracer()->StartSpan(
+      nostd::string_view(op_name.data(), op_name.size()), attrs, options);
+}
+
+nostd::shared_ptr<trace::Span> StartSpan(
+    std::string_view op_name,
+    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>&
+        attrs) {
+  return StartSpan(op_name, attrs, {});
+}
+
+nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name) {
+  return StartSpan(op_name, {});
+}
+
+void AddPendingRpcStringAttr(std::string key, std::string value) {
+  pending_rpc_attrs.AddStringAttr(std::move(key), std::move(value));
+}
+
+const std::vector<std::pair<nostd::string_view,
+                            opentelemetry::common::AttributeValue>>& GetPendingRpcAttrPairs() {
+  return pending_rpc_attrs.attrs();
+}
+
+void ClearPendingRpcAttrs() {
+  pending_rpc_attrs.clear();
 }
 
 }  // namespace yb::dist_trace

@@ -1,0 +1,189 @@
+-- Create database objects used by planner's seek/next estimate tests
+set client_min_messages to 'warning';
+drop database if exists seeknext_test with (force);
+create database seeknext_test with colocation = true;
+alter database seeknext_test set yb_explain_hide_non_deterministic_fields = off;
+alter database seeknext_test set yb_enable_cbo = on;
+\c seeknext_test
+set client_min_messages to 'warning';
+drop function if exists explain_query_json cascade;
+create function explain_query_json(query_sql text, with_analyze bool)
+returns table (explain_line json)
+language plpgsql as
+$$
+begin
+  return query execute
+    case when with_analyze then
+      'explain (format json, analyze, debug, dist, summary off) '
+    else
+      'explain (format json, summary off) '
+    end
+    || query_sql;
+end;
+$$;
+drop type if exists index_plan_rows cascade;
+create type index_plan_rows as (
+    "Node Type" text,
+    "Scan Direction" text,
+    "Index Name" text,
+    "Index Cond" text,
+    "Storage Index Filter" text,
+    "Storage Filter" text,
+    "Filter" text,
+    "Plan Rows" float8,
+    "Total Cost" float8,
+    "Estimated Seeks" float8,
+    "Estimated Nexts And Prevs" float8,
+    "Metric rocksdb_number_db_seek" float8,
+    "Metric rocksdb_number_db_next" float8,
+    "Metric rocksdb_number_db_prev" float8
+);
+drop table if exists r;
+create table r (
+    pk int,
+    -- discrete uniform distribution
+    f1 int,
+    f2 int,
+    f3 int,
+    f4 int,
+    f5 int,
+    f10 int,
+    f100 int,
+    f1000 int,
+    dv1 int,
+    -- discrete normal distribution
+    skw1 int,
+    skw2 int,
+    skw3 int,
+    -- stub data
+    v int,
+    vv char(512),
+    primary key (pk asc)
+) with (colocation = off);
+alter table r alter column skw1 set statistics 500;
+alter table r alter column skw2 set statistics 500;
+alter table r alter column skw3 set statistics 500;
+create index nonconcurrently r_f1_idx on r (f1 asc);
+create index nonconcurrently r_f2_idx on r (f2 asc);
+create index nonconcurrently r_f3_idx on r (f3 asc);
+create index nonconcurrently r_f4_idx on r (f4 asc);
+create index nonconcurrently r_f5_idx on r (f5 asc);
+create index nonconcurrently r_f10_idx on r (f10 asc);
+create index nonconcurrently r_f100_idx on r (f100 asc);
+create index nonconcurrently r_f1000_idx on r (f1000 asc);
+create index nonconcurrently r_dv1_idx on r (dv1 asc);
+create index nonconcurrently r_skw1_idx on r (skw1 asc);
+create index nonconcurrently r_skw2_idx on r (skw2 asc);
+create index nonconcurrently r_skw3_idx on r (skw3 asc);
+-- make index ybctids and table rows uncorrelated
+set seed = 0.1234;
+with t as (
+    select
+        i, rn,
+        -- discrete normal distribution (mean = 0, sigmas = 2, 5, 50)
+        round((sqrt(-2.0 * ln(1.0 - random())) * cos(2.0 * pi() * random())) * 2.0)::integer skw1,
+        round((sqrt(-2.0 * ln(1.0 - random())) * cos(2.0 * pi() * random())) * 5.0)::integer skw2,
+        round((sqrt(-2.0 * ln(1.0 - random())) * cos(2.0 * pi() * random())) * 10.0)::integer skw3
+    from (
+        select i, row_number() over (order by random()) rn
+        from generate_series(1, 12345) i
+    ) v
+)
+insert into r
+    select
+        rn,
+        i,
+        (i - 1) / 2 + 1,
+        (i - 1) / 3 + 1,
+        (i - 1) / 4 + 1,
+        (i - 1) / 5 + 1,
+        (i - 1) / 10 + 1,
+        (i - 1) / 100 + 1,
+        (i - 1) / 1000 + 1,
+        1,
+        -- shift the values so the values starts with 1
+        skw1 - min(skw1) over () + 1 skw1,
+        skw2 - min(skw2) over () + 1 skw2,
+        skw3 - min(skw3) over () + 1 skw3,
+        rn,
+        lpad(sha512(i::bpchar::bytea)::bpchar, 512, '-')
+    from t;
+analyze r;
+create table rC (like r including constraints including indexes including statistics)
+    with (colocation = on);
+insert into rC select * from r;
+analyze rC;
+drop table if exists queries cascade;
+create table queries (qid int, query text, primary key (qid asc));
+create table explain_query_options (with_analyze bool not null);
+insert into explain_query_options values (false);
+drop view if exists check_seeknext_estimates;
+create view check_seeknext_estimates as
+select
+    qid,
+    query,
+    nid,
+    "Node Type",
+    "Index Name",
+    "Index Cond",
+    "Storage Index Filter",
+    "Storage Filter",
+    "Filter",
+    case when error_seeks > 0.05 and abs(diff_seeks) > 1 then
+        'failed' else 'passed' end "Seek Estimates",
+    case when error_nexts_prevs > 0.05 and diff_nexts_prevs > 1 then
+        'failed' else 'passed' end "Next/Prev Estimates"
+from (
+    select
+        qid,
+        query,
+        nid,
+        "Node Type",
+        "Index Name",
+        "Index Cond",
+        "Storage Index Filter",
+        "Storage Filter",
+        "Filter",
+        "Estimated Seeks",
+        "Estimated Nexts And Prevs",
+        actual_seeks "Actual Seeks",
+        actual_nexts + actual_prevs "Actual Nexts and Prevs",
+        abs("Estimated Seeks" - actual_seeks)
+            / greatest(1, actual_seeks) error_seeks,
+        abs("Estimated Nexts And Prevs" - (actual_nexts + actual_prevs))
+            / greatest(1, actual_nexts + actual_prevs) error_nexts_prevs,
+        "Estimated Seeks" - actual_seeks diff_seeks,
+        "Estimated Nexts And Prevs" - (actual_nexts + actual_prevs) diff_nexts_prevs
+    from (
+        select
+            qid,
+            query,
+            row_number() over (partition by qid) nid,
+            "Node Type"||case when "Scan Direction" = 'Backward'
+                then ' Backward' else '' end "Node Type",
+            "Index Name",
+            "Index Cond",
+            "Storage Index Filter",
+            "Storage Filter",
+            "Filter",
+            "Plan Rows",
+            "Total Cost",
+            "Estimated Seeks",
+            "Estimated Nexts And Prevs",
+            coalesce("Metric rocksdb_number_db_seek", 0) actual_seeks,
+            coalesce("Metric rocksdb_number_db_next", 0) actual_nexts,
+            coalesce("Metric rocksdb_number_db_prev", 0) actual_prevs
+        from
+            queries,
+            explain_query_options opt,
+            lateral explain_query_json(query, opt.with_analyze) js,
+            lateral jsonb_path_query(
+                js.explain_line::jsonb,
+                'strict $.** ? (@."Node Type" like_regex "Index.* Scan")'
+            ) pln,
+            lateral jsonb_populate_record(
+                null::index_plan_rows,
+                coalesce(pln, '{}'::jsonb) || coalesce(pln->'Read Metrics', '{}'::jsonb)
+            ) rec
+    ) v
+) vv;

@@ -1076,6 +1076,46 @@ std::unordered_map<std::string, uint64_t> DBHolder::GetAllSSTFiles(
   return res;
 }
 
+Status DelayedCompactionFeed::Feed(const Slice& key, const Slice& value) {
+  auto status = next_feed_.Feed(key, value);
+  const auto ns = delay_ns_.load();
+  if (ns > 0) {
+    base::SleepForNanoseconds(ns);
+  }
+  return status;
+}
+
+void CompactionContextFactoryDelayer::SetDelayForNextCompactions(yb::MonoDelta delay) {
+  data_->delay_ns = delay.ToNanoseconds();
+}
+
+void CompactionContextFactoryDelayer::SetDelayForAllCompactions(yb::MonoDelta delay) {
+  data_->delay_ns = delay.ToNanoseconds();
+  std::lock_guard lock(data_->mutex);
+  for (auto* context : data_->contexts) {
+    context->Feed()->SetDelayNs(data_->delay_ns);
+  }
+}
+
+std::shared_ptr<CompactionContextFactory> CompactionContextFactoryDelayer::WrapFactory(
+    std::shared_ptr<CompactionContextFactory> original) {
+  return std::make_shared<CompactionContextFactory>(
+      [original, data = data_](CompactionFeed* feed, const CompactionContextOptions& options) {
+        auto original_context = (*original)(feed, options);
+        auto result = std::make_unique<DelayedCompactionContext>(
+            std::move(original_context), data->delay_ns.load(),
+            [data](DelayedCompactionContext* context) {
+              std::lock_guard lock(data->mutex);
+              data->contexts.erase(context);
+            });
+        {
+          std::lock_guard lock(data->mutex);
+          data->contexts.insert(result.get());
+        }
+        return result;
+      });
+}
+
 void ConfigureLoggingToGlog(Options* options, const std::string& log_prefix) {
   options->log_prefix = log_prefix;
   options->info_log_level = InfoLogLevel::INFO_LEVEL;

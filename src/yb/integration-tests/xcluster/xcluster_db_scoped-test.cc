@@ -27,8 +27,10 @@ DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
-DECLARE_string(ysql_pg_conf_csv);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 
 using namespace std::chrono_literals;
 
@@ -1077,9 +1079,9 @@ TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndex) {
 TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndexConcurrentDDL) {
   // Disable auto analyze becauses the query plan changes
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
-  auto& csv = FLAGS_ysql_pg_conf_csv;
-  ANNOTATE_UNPROTECTED_WRITE(csv) =
-      Format("$0$1yb_enable_concurrent_ddl=true", csv, csv.empty() ? "" : ",");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = true;
   ASSERT_OK(SetUpClusters());
 
   ASSERT_OK(CheckpointReplicationGroup());

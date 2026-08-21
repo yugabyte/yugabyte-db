@@ -100,10 +100,10 @@ class PosixMmapFile : public WritableFile {
   Status Truncate(uint64_t size) override;
   Status Close() override;
   Status Append(const Slice& data) override;
-  Status Flush() override;
+  Status Flush(FlushMode mode) override;
   Status Sync() override;
   Status Fsync() override;
-  uint64_t GetFileSize() override;
+  uint64_t Size() const override;
   Status InvalidateCache(size_t offset, size_t length) override;
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   Status Allocate(uint64_t offset, uint64_t len) override;

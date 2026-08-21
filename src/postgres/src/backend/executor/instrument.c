@@ -186,11 +186,7 @@ ExecProcNodeInstr(PlanState *node)
 	InstrStartNode(node->instrument);
 
 	if (YBCIsDistTraceActive())
-	{
-		YB_DIST_TRACE_START_SPAN(YbGetExecNodeSpanName(node));
-		result = node->ExecProcNodeReal(node);
-		YB_DIST_TRACE_END_SPAN();
-	}
+		result = YbExecProcNodeTrace(node);
 	else
 		result = node->ExecProcNodeReal(node);
 

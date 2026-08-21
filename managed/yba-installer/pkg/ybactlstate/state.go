@@ -48,8 +48,9 @@ type Config struct {
 }
 
 type Services struct {
-	PerfAdvisor bool `json:"yb-perf-advisor"`
-	Platform    bool `json:"yb-platform"`
+	PerfAdvisor  bool `json:"yb-perf-advisor"`
+	Platform     bool `json:"yb-platform"`
+	NodeExporter bool `json:"node-exporter"`
 }
 
 func New() *State {

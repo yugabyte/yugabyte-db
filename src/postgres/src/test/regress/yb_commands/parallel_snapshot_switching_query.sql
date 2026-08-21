@@ -5,7 +5,7 @@
 \set P2
 \set query ':P SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;'
 BEGIN;
-\i :iter_P2
+\i :run_query
 COMMIT;
 -- Also run outside a transaction block.
-\i :iter_P2
+\i :run_query

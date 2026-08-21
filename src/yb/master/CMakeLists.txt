@@ -293,6 +293,11 @@ endif()
 if(YB_LTO_ENABLED)
   # In LTO mode, the master executable can also function as the tablet server.
   list(APPEND YB_MASTER_EXE_DEPS tserver_main_impl)
+  # The LTO binary statically merges docdb, which calls the ybgate C API in yb_pgbackend.  yb_docdb
+  # links yb_pgbackend PRIVATE, so (unlike the dynamic build, which resolves it at load time via
+  # libyb_docdb.so's DT_NEEDED) the flattened LTO link needs yb_pgbackend on the executable link
+  # line for lto.py to pull in its objects.
+  list(APPEND YB_MASTER_EXE_DEPS yb_pgbackend)
 endif()
 target_link_libraries(
   "${YB_MASTER_DYNAMIC_EXE_NAME}"

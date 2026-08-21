@@ -112,7 +112,7 @@ struct Range {
 typedef std::unordered_map<std::string, std::shared_ptr<const TableProperties>>
     TablePropertiesCollection;
 
-using UserFrontierRange = std::pair<yb::storage::UserFrontierPtr, yb::storage::UserFrontierPtr>;
+using UserFrontierRange = yb::storage::UserFrontierRange;
 
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
@@ -646,7 +646,7 @@ class DB {
     return SetOptions(DefaultColumnFamily(), new_options, dump_options);
   }
 
-  virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+  virtual void SetDisableFlushOnShutdown() {}
   virtual void StartShutdown() {}
 
   // CompactFiles() inputs a list of files specified by file numbers and
@@ -733,6 +733,8 @@ class DB {
     return Flush(options, DefaultColumnFamily());
   }
 
+  virtual Status UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) = 0;
+
   // Wait for end of mem-table data flushing.
   virtual Status WaitForFlush(ColumnFamilyHandle* column_family) = 0;
   virtual Status WaitForFlush() {
@@ -775,6 +777,8 @@ class DB {
   // ever growing file, but only the portion specified by manifest_file_size is
   // valid for this snapshot.
   // Setting flush_memtable to true does Flush before recording the live files.
+  // flush_reason tags that flush for observability; callers must pass an explicit reason
+  // (e.g. `kCheckpointCreation` for `CreateCheckpoint`, `kTestOnly` for tests).
   // Setting flush_memtable to false is useful when we don't want to wait for
   // flush which may have to wait for compaction to complete taking an
   // indeterminate time.
@@ -783,9 +787,9 @@ class DB {
   // you still need to call GetSortedWalFiles after GetLiveFiles to compensate
   // for new data that arrived to already-flushed column families while other
   // column families were flushing
-  virtual Status GetLiveFiles(std::vector<std::string>&,
-                              uint64_t* manifest_file_size,
-                              bool flush_memtable = true) = 0;
+  virtual Status GetLiveFiles(
+      std::vector<std::string>&, uint64_t* manifest_file_size, bool flush_memtable,
+      FlushReason flush_reason) = 0;
 
   // Retrieve the sorted list of all wal files with earliest file first
   virtual Status GetSortedWalFiles(VectorLogPtr* files) = 0;
@@ -838,7 +842,33 @@ class DB {
     return result;
   }
 
-  virtual yb::storage::UserFrontierPtr GetFlushedFrontier() { return nullptr; }
+  // Computes the requested frontiers atomically (under a single lock) so the returned views are
+  // mutually consistent. This is the single primitive subclasses override; the accessors below are
+  // expressed in terms of it.
+  virtual yb::storage::FrontierInfo GetFrontiers(yb::storage::FrontierKinds kinds) {
+    return {};
+  }
+
+  yb::storage::UserFrontierPtr GetFlushedFrontier() {
+    return GetFrontiers(yb::storage::FrontierKinds{yb::storage::FrontierKind::kFlushed}).flushed;
+  }
+
+  // Returns the (smallest, largest) frontiers of the in-memory (not yet flushed) state.
+  UserFrontierRange GetInMemoryFrontiers() {
+    return GetFrontiers(yb::storage::FrontierKinds{
+        yb::storage::FrontierKind::kInMemorySmallest,
+        yb::storage::FrontierKind::kInMemoryLargest}).in_memory;
+  }
+
+  // Returns the smallest or largest frontier of the in-memory (not yet flushed) state.
+  yb::storage::UserFrontierPtr GetInMemoryFrontier(yb::storage::UpdateUserValueType type) {
+    if (type == yb::storage::UpdateUserValueType::kSmallest) {
+      return GetFrontiers(yb::storage::FrontierKinds{
+          yb::storage::FrontierKind::kInMemorySmallest}).in_memory.smallest;
+    }
+    return GetFrontiers(yb::storage::FrontierKinds{
+        yb::storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
+  }
 
   virtual Status ModifyFlushedFrontier(
       yb::storage::UserFrontierPtr values,
@@ -853,14 +883,6 @@ class DB {
   virtual yb::storage::UserFrontierPtr GetMutableMemTableFrontier(
       yb::storage::UpdateUserValueType type) {
     return nullptr;
-  }
-
-  virtual yb::storage::UserFrontierPtr CalcMemTableFrontier(yb::storage::UpdateUserValueType type) {
-    return nullptr;
-  }
-
-  virtual UserFrontierRange CalcMemTableFrontiers() {
-    return {};
   }
 
   virtual void ListenFilesChanged(std::function<void()> listener) {}
@@ -940,6 +962,8 @@ class DB {
 
   virtual bool NeedsDelay() { return false; }
 
+  virtual bool AreWritesStopped() { return false; }
+
   // Returns approximate middle key (see Version::GetMiddleKey).
   virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) = 0;
 
@@ -956,6 +980,11 @@ class DB {
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}
+
+  // Returns the sum of SeekOffsetOf(key) across all SSTs in the current version.
+  virtual yb::Result<uint64_t> TEST_Cross(Slice key) {
+    return STATUS(NotSupported, "");
+  }
 
  private:
   // No copying allowed

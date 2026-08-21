@@ -1,0 +1,4 @@
+# contrib/pgcrypto/yb_orig_schedule
+# YB-original regression tests for pgcrypto.
+
+test: yb.orig.pgp-fips-cipher

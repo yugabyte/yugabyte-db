@@ -13,9 +13,6 @@
 
 #pragma once
 
-#include <boost/algorithm/string/replace.hpp>
-#include <boost/regex.hpp>
-
 #include "yb/common/hybrid_time.h"
 
 #include "yb/util/net/net_util.h"
@@ -44,30 +41,41 @@ class YsqlDumpRunner : public YsqlBinaryRunner {
     return YsqlDumpRunner(tool_path, pg_host_port);
   }
 
+  // Dumps the schema of `db_name` as of `read_time`.
+  //
+  // When `target_db_name` is non-empty, ysql_dump rewrites every CREATE/ALTER/COMMENT/SECURITY
+  // LABEL on DATABASE, GRANT/REVOKE on DATABASE, and \connect line to refer to that name (via the
+  // --rename-database flag). Escaping is handled by ysql_dump.
+  //
+  // When `target_owner` is non-empty, ysql_dump rewrites every "OWNER TO X" clause whose owner
+  // equals the source database owner (read from pg_database.datdba) to "OWNER TO target_owner"
+  // (via --rename-owner). `target_owner` must be the raw role name as stored in
+  // pg_authid.rolname; ysql_dump quotes it via fmtId() at emission time.
   Result<std::string> DumpSchemaAsOfTime(
-      const std::string& db_name, const std::optional<HybridTime>& read_time = std::nullopt);
-
-  Result<std::string> RunAndModifyForClone(
-      const std::string& source_db_name, const std::string& target_db_name,
-      const std::string& source_owner, const std::string& target_owner,
+      const std::string& db_name,
+      const std::string& target_db_name = "",
+      const std::string& target_owner = "",
       const std::optional<HybridTime>& read_time = std::nullopt);
 
-  std::string ModifyDbOwnerInScript(
-      const std::string& dump_output, const std::string& source_owner,
-      const std::string& target_owner);
+  // Clone-specific entry point: dump the source DB schema with renames applied by ysql_dump,
+  // then wrap every \connect line in the output with ALTER DATABASE ... datallowconn = {true,
+  // false} so the script can connect to a target whose datallowconn was set to false at creation.
+  // The wrap is gated by the runtime flag ysql_clone_disable_connections.
+  Result<std::string> RunAndModifyForClone(
+      const std::string& source_db_name, const std::string& target_db_name,
+      const std::string& target_owner,
+      const std::optional<HybridTime>& read_time = std::nullopt);
 
-  std::string ModifyDbNameInScript(
-      const std::string& dump_output, const std::string& new_db,
-      bool disallow_db_connections = false);
+  // Insert a "set datallowconn = true" prologue and a matching "set datallowconn = false" epilogue
+  // around every \connect line in `dump_output`. Used during DB cloning to allow the in-script
+  // \connect to succeed against a freshly-created database whose connections are temporarily
+  // disabled. Public so callers (e.g. tests) can invoke the post-processor independently.
+  std::string WrapConnectWithAllowConnections(
+      const std::string& dump_output, const std::string& new_db);
 
  private:
   YsqlDumpRunner(std::string tool_path, HostPort pg_host_port)
       : YsqlBinaryRunner(tool_path, pg_host_port) {}
-
-  std::string ModifyDbNameInLine(
-      std::string line, const std::string& new_db, bool disallow_db_connections = false);
-  std::string ModifyDbOwnerInLine(
-      std::string line, const std::string& source_owner, const std::string& target_owner);
 };
 
 class YsqlshRunner : public YsqlBinaryRunner {

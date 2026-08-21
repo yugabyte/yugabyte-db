@@ -79,6 +79,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yaml.snakeyaml.Yaml;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.IsServerReadyResponse;
@@ -163,7 +164,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getTestUserIntent(r, kubernetesProvider, i, 3);
     userIntent.replicationFactor = 1;
-    userIntent.dedicatedNodes = true;
+    ApiUtils.configureDedicatedMasterFields(userIntent);
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
@@ -415,6 +416,17 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     }
   }
 
+  // Reads the "partition" map from the helm override file that was passed to helmUpgrade(...).
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> readPartitionOverrides(String overrideFilePath) {
+    try (InputStream is = new FileInputStream(new File(overrideFilePath))) {
+      Map<String, Object> overrides = new Yaml().loadAs(is, Map.class);
+      return (Map<String, Object>) overrides.get("partition");
+    } catch (IOException e) {
+      throw new RuntimeException("Could not read helm override file: " + overrideFilePath, e);
+    }
+  }
+
   @Test
   public void testAddNode() {
     setupUniverseSingleAZ(/* Create Masters */ true);
@@ -497,6 +509,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(NODE_PREFIX, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
+    // Tserver scale-up (master count unchanged) is a non-rolling operation: it must not set
+    // partition to 0, otherwise a prior non-restart template change would roll all existing
+    // master/tserver pods at once. Partition must protect the existing pods.
+    Map<String, Object> partition = readPartitionOverrides(expectedOverrideFile.getValue());
+    assertEquals(1, partition.get("master"));
+    assertEquals(3, partition.get("tserver"));
+
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -573,6 +592,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(NODE_PREFIX, expectedNodePrefix.getValue());
     assertEquals(NODE_PREFIX, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+
+    // Tserver scale-down (keepDeployment) is a non-rolling operation: it must not set partition
+    // to 0, otherwise a prior non-restart template change would roll all surviving master/tserver
+    // pods at once. Partition must equal the post-scale-down pod counts.
+    Map<String, Object> partition = readPartitionOverrides(expectedOverrideFile.getValue());
+    assertEquals(1, partition.get("master"));
+    assertEquals(2, partition.get("tserver"));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =

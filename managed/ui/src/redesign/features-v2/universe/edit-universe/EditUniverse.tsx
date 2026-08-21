@@ -1,18 +1,28 @@
-import { FC, useState } from 'react';
+import { FC, useEffect, useMemo } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
+import { browserHistory, withRouter, WithRouterProps } from 'react-router';
+import { Divider } from '@material-ui/core';
 import { mui, YBTab, YBTabs } from '@yugabyte-ui-library/core';
+
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { api } from '@app/redesign/helpers/api';
 import { useGetUniverse } from '@app/v2/api/universe/universe';
+import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { getClusterByType } from './EditUniverseUtils';
 import {
   EditUniverseContext,
   EditUniverseTabs,
   InitialEditUniverseContextState
 } from './EditUniverseContext';
 import { SwitchEditUniverseTabs } from './SwitchEditUniverseTabs';
-import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+import {
+  getEditUniverseSettingsRoute,
+  isValidEditUniverseTab,
+  parseEditUniverseTabFromPath
+} from './editUniverseTabUtils';
 
-const { Grid, styled } = mui;
+const { Grid2: Grid, styled, Box } = mui;
 
 interface EditUniverseProps {
   universeUUID: string;
@@ -22,16 +32,47 @@ const TabItem = styled(YBTab)(({ theme }) => ({
   alignItems: 'flex-start'
 }));
 
-export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
+const StyledDivider = styled(Divider)(({ theme }) => ({
+  width: '200px',
+  marginBottom: theme.spacing(1)
+}));
+
+const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
+  universeUUID,
+  params,
+  location
+}) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.tabs' });
 
-  const [selectedTab, setSelectedTab] = useState<EditUniverseTabs>(
-    InitialEditUniverseContextState.activeTab
-  );
+  const pathTab = params?.settingsTab as string | undefined;
+  const selectedTab = useMemo(() => parseEditUniverseTabFromPath(pathTab), [pathTab]);
+
+  useEffect(() => {
+    if (!universeUUID || !location) return;
+
+    const settingsBasePath = `/universes/${universeUUID}/settings`;
+    if (!location.pathname.startsWith(settingsBasePath)) {
+      return;
+    }
+
+    const isBareSettingsRoute = location.pathname === settingsBasePath;
+    if (isBareSettingsRoute || !pathTab || !isValidEditUniverseTab(pathTab)) {
+      browserHistory.replace(getEditUniverseSettingsRoute(universeUUID, EditUniverseTabs.GENERAL));
+    }
+  }, [pathTab, universeUUID, location?.pathname]);
+
+  const handleTabChange = (_event: unknown, newValue: EditUniverseTabs) => {
+    if (newValue === selectedTab) return;
+
+    browserHistory.push(getEditUniverseSettingsRoute(universeUUID, newValue));
+  };
 
   const { data: universeData, isLoading, isSuccess } = useGetUniverse(universeUUID);
 
-  const providerUUID = universeData?.spec?.clusters[0].provider_spec.provider;
+  const primaryCluster = universeData
+    ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
+    : undefined;
+  const providerUUID = primaryCluster?.provider_spec?.provider;
 
   const { data: providerRegions, isLoading: isProviderLoading } = useQuery(
     [universeUUID, providerUUID],
@@ -41,38 +82,105 @@ export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
     }
   );
 
+  const contextValue = useMemo(
+    () => ({
+      ...InitialEditUniverseContextState,
+      activeTab: selectedTab,
+      universeData: universeData ?? null,
+      providerRegions: providerRegions ?? []
+    }),
+    [selectedTab, universeData, providerRegions]
+  );
+
   if (isLoading || !universeData || isProviderLoading || !providerRegions) {
     return <YBLoadingCircleIcon />;
   }
 
   return (
-    <Grid container direction="row" spacing={2}>
-      <Grid item sx={{ width: '230px' }}>
-        <YBTabs
-          orientation="vertical"
-          value={selectedTab}
-          onChange={(_event, newValue) => setSelectedTab(newValue)}
+    <Box
+      sx={{
+        display: 'flex',
+        flex: 1,
+        width: '100%',
+        overflow: 'hidden'
+      }}
+    >
+      <Grid
+        container
+        spacing={{ xs: 1.5, md: 1.5, lg: 1.5, xl: 3 }}
+        sx={{ flex: 1, minHeight: 0, width: '100%', flexWrap: 'nowrap' }}
+      >
+        <Grid sx={{ overflowY: 'auto', flexShrink: 0 }} size="auto">
+          <Box sx={{ display: 'flex', flexDirection: 'column', width: '232px' }}>
+            <YBTabs
+              orientation="vertical"
+              variant="secondary"
+              tabWidth={200}
+              value={selectedTab}
+              onChange={handleTabChange}
+            >
+              <TabItem value={EditUniverseTabs.GENERAL} label={t('general')} />
+              <TabItem value={EditUniverseTabs.PLACEMENT} label={t('placement')} />
+              <TabItem value={EditUniverseTabs.HARDWARE} label={t('hardware')} />
+              <TabItem value={EditUniverseTabs.SECURITY} label={t('security')} />
+              <TabItem value={EditUniverseTabs.DATABASE} label={t('database')} />
+              <TabItem value={EditUniverseTabs.ADVANCED} label={t('advanced')} />
+              <StyledDivider orientation="horizontal" />
+              <TabItem value={EditUniverseTabs.LOGS} label={t('logs')} />
+              <TabItem value={EditUniverseTabs.TELEMETRY_EXPORT} label={t('telemetryExport')} />
+            </YBTabs>
+          </Box>
+        </Grid>
+        <Grid
+          container
+          direction={'column'}
+          size="grow"
+          spacing={0}
+          sx={{ flex: 1, minHeight: 0, minWidth: 0 }}
         >
-          <TabItem value={EditUniverseTabs.GENERAL} label={t('general')} />
-          <TabItem value={EditUniverseTabs.PLACEMENT} label={t('placement')} />
-          <TabItem value={EditUniverseTabs.HARDWARE} label={t('hardware')} />
-          <TabItem value={EditUniverseTabs.SECURITY} label={t('security')} />
-          <TabItem value={EditUniverseTabs.DATABASE} label={t('database')} />
-          <TabItem value={EditUniverseTabs.ADVANCED} label={t('advanced')} />
-        </YBTabs>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              minWidth: '856px',
+              width: '100%',
+              mt: 2
+            }}
+          >
+            <EditUniverseContext.Provider value={contextValue}>
+              <SwitchEditUniverseTabs />
+            </EditUniverseContext.Provider>
+          </Box>
+        </Grid>
       </Grid>
-      <Grid item sx={{ flexGrow: 1, flex: 1 }}>
-        <EditUniverseContext.Provider
-          value={{
-            ...InitialEditUniverseContextState,
-            activeTab: selectedTab,
-            universeData,
-            providerRegions
-          }}
-        >
-          <SwitchEditUniverseTabs />
-        </EditUniverseContext.Provider>
-      </Grid>
-    </Grid>
+    </Box>
+    // <Grid container direction="row" spacing={2}>
+    //   <Grid item sx={{ width: '230px' }}>
+    //     <YBTabs
+    //       orientation="vertical"
+    //       variant="secondary"
+    //       tabWidth={200}
+    //       value={selectedTab}
+    //       onChange={handleTabChange}
+    //     >
+    //       <TabItem value={EditUniverseTabs.GENERAL} label={t('general')} />
+    //       <TabItem value={EditUniverseTabs.PLACEMENT} label={t('placement')} />
+    //       <TabItem value={EditUniverseTabs.HARDWARE} label={t('hardware')} />
+    //       <TabItem value={EditUniverseTabs.SECURITY} label={t('security')} />
+    //       <TabItem value={EditUniverseTabs.DATABASE} label={t('database')} />
+    //       <TabItem value={EditUniverseTabs.ADVANCED} label={t('advanced')} />
+    //       <StyledDivider orientation="horizontal" />
+    //       <TabItem value={EditUniverseTabs.LOGS} label={t('logs')} />
+    //       <TabItem value={EditUniverseTabs.TELEMETRY_EXPORT} label={t('telemetryExport')} />
+    //     </YBTabs>
+    //   </Grid>
+    //   <Grid item sx={{ flexGrow: 1, flex: 1 }}>
+    //     <EditUniverseContext.Provider value={contextValue}>
+    //       <SwitchEditUniverseTabs />
+    //     </EditUniverseContext.Provider>
+    //   </Grid>
+    // </Grid>
   );
 };
+
+export const EditUniverse = withRouter(EditUniverseComponent);

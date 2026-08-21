@@ -61,6 +61,7 @@ DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_bool(TEST_xcluster_consumer_fail_after_process_split_op);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
+DECLARE_int32(load_balancer_num_idle_runs);
 DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_collect_cdc_metrics);
@@ -187,8 +188,10 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
     google::SetVLOGLevel("cdc*", 4);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
     // Set before creating tests so that the first run doesn't wait 30s.
-    // Lowering to 5s here to speed up tests.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 5;
+    // Lowering to 1s here to speed up tests.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+    // Speed up time it takes for LB to say it is balanced down to 2s instead of 5s.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_num_idle_runs) = 2;
     TabletSplitITest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
@@ -393,7 +396,7 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   // tablet can't be found).
   // Either of these statuses is fine and means that this tablet no longer exists and was deleted.
   LOG(INFO) << "GetChanges status: " << status;
-  ASSERT_TRUE(status.IsNotFound() || status.IsTabletSplit());
+  ASSERT_TRUE(status.IsNotFound() || status.IsDeleted() || status.IsTabletSplit());
 }
 
 class CdcTabletSplitThreeMastersITest : public CdcTabletSplitITest {
@@ -824,8 +827,8 @@ TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
       auto res = client::kv_table_test::WriteRow(
           &producer_table, producer_session, key, key,
           client::WriteOpType::INSERT, client::Flush::kTrue);
-      if (!res.ok() && res.status().IsNotFound()) {
-        LOG(INFO) << "Encountered NotFound error on write : " << res;
+      if (!res.ok() && (res.status().IsNotFound() || res.status().IsDeleted())) {
+        LOG(INFO) << "Encountered NotFound or Deleted error on write : " << res;
       } else {
         ASSERT_OK(res);
         key++;

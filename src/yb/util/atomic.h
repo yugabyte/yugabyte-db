@@ -350,4 +350,14 @@ bool IsAcceptableAtomicImpl(const std::atomic<T>& atomic_variable) {
   return atomic_internal::IsAcceptableAtomicImpl(atomic_variable);
 }
 
+template <class T>
+T LoadValue(const T* value) {
+  return *value;
+}
+
+template <class T>
+T LoadValue(const std::atomic<T>* value) {
+  return value->load(std::memory_order_acquire);
+}
+
 } // namespace yb

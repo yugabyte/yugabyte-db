@@ -31,6 +31,7 @@
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb_internal_conn.h"
 
 
 /* ----------
@@ -319,8 +320,9 @@ pgstat_bestart_initial(void)
 	/* YB: Increment the total connections counter */
 	if (lbeentry.st_procpid > 0 &&
 		(lbeentry.st_backendType == B_BACKEND ||
-		 lbeentry.st_backendType == YB_AUTO_ANALYZE_BACKEND ||
-		 lbeentry.st_backendType == YB_YSQL_CONN_MGR))
+		 lbeentry.st_backendType == YB_YSQL_CONN_MGR ||
+		 lbeentry.st_backendType == YB_YSQL_CONN_MGR_CTRL ||
+		 YbIsInternalConnBackendType(lbeentry.st_backendType)))
 		(*yb_new_conn)++;
 
 	/*
@@ -495,9 +497,10 @@ pgstat_bestart_final(void)
 	if (MyBackendType == B_BACKEND
 		|| MyBackendType == B_WAL_SENDER
 		|| MyBackendType == B_BG_WORKER
-		|| MyBackendType == YB_AUTO_ANALYZE_BACKEND
 		|| MyBackendType == YB_YSQL_CONN_MGR
-		|| MyBackendType == YB_YSQL_CONN_MGR_WAL_SENDER)
+		|| MyBackendType == YB_YSQL_CONN_MGR_WAL_SENDER
+		|| MyBackendType == YB_YSQL_CONN_MGR_CTRL
+		|| YbIsInternalConnBackendType(MyBackendType))
 		userid = GetSessionUserId();
 	else
 		userid = InvalidOid;

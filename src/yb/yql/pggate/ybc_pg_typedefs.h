@@ -13,7 +13,11 @@
 // This module contains C definitions for all YugaByte structures that are used to exhange data
 // and metadata between Postgres and YBClient libraries.
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
+#define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -64,6 +68,9 @@ YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
 
 // Handle to a distributed trace span context.
 YB_DEFINE_HANDLE_TYPE(OtelSpanContext);
+
+// Handle to a live distributed-trace span for a single executor plan node.
+YB_DEFINE_HANDLE_TYPE(OtelNodeSpan);
 
 // Represents STATUS_* definitions from src/postgres/src/include/c.h.
 #define YBC_STATUS_OK     (0)
@@ -729,6 +736,7 @@ typedef struct {
   YbcPgRowMessage* rows;
   bool needs_publication_table_list_refresh;
   uint64_t publication_refresh_time;
+  bool explicit_alter_publication_detected;
 } YbcPgChangeRecordBatch;
 
 typedef struct {
@@ -888,6 +896,8 @@ typedef struct {
   const char** replicas;
   size_t replicas_count;
   bool is_hash_partitioned;
+  const char* tablet_state;
+  YbcPgOid pg_table_oid;
 } YbcPgGlobalTabletsDescriptor;
 
 typedef struct {
@@ -940,7 +950,11 @@ typedef struct {
   // The clone time in microseconds since the unix epoch (not a hybrid time).
   uint64_t clone_time;
   const char* src_db_name;
-  const char* src_owner;
+  // Raw role name (as stored in pg_authid.rolname) of the new database owner.
+  // ysql_dump consumes this via its --rename-owner option and quotes it via
+  // fmtId() at emission time, so this must be passed unquoted. The source DB
+  // owner is no longer carried on this struct: ysql_dump derives it itself
+  // from pg_database.datdba.
   const char* tgt_owner;
 } YbcCloneInfo;
 
@@ -1085,6 +1099,10 @@ typedef struct {
   // So the response PB is stored in this uint8_t* and later converted to PGresult.
   uint8_t* pgresult;
   size_t pgresult_size;
+  // Human-readable error description when the remote query failed.
+  // NULL when the query succeeded. Owned by PgGlobalViewRead and valid
+  // until the next ExecScan call on the same handle.
+  const char* error_message;
 } YbcRemotePgExecResult;
 
 typedef struct YbcCloudInfo {
@@ -1100,8 +1118,17 @@ typedef struct YbcReplicationInfo {
   const YbcCloudInfo *affinitized_leaders;
 } YbcReplicationInfo;
 
+typedef uint64_t YbcIsExplicitlyLockedRowSkippedCheckHandle;
+
+typedef struct YbcIsExplicitlyLockedRowSkippedCheckHandleOptional {
+  bool has_value;
+  YbcIsExplicitlyLockedRowSkippedCheckHandle value;
+} YbcIsExplicitlyLockedRowSkippedCheckHandleOptional;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
 #undef YB_DEFINE_HANDLE_TYPE
+
+#endif  // YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H

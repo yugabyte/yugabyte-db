@@ -233,8 +233,8 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
         R"(\{\s*physical:\s*\d+(?:\s+logical:\s*\d+)?(?:\s+w:\s*\d+)?\s*\})");
     result = std::regex_replace(result, physical_pattern, "{ days: 0 time: 0 }");
 
-    // replace { days: 20323 time: 00:36:36.771470 } to { days: 0 time: 0 }
-    std::regex ht_pattern(R"(\{ days: [^\}]*\})");
+    // replace { years: 55 days: 167 time: 00:36:36.771470 } to { days: 0 time: 0 }
+    std::regex ht_pattern(R"(\{ (?:years: \d+ )?days: [^\}]*\})");
     result = std::regex_replace(result, ht_pattern, "{ days: 0 time: 0 }");
 
     // Replace 'status_tablet: <hex_string>' with 'status_tablet: 0'

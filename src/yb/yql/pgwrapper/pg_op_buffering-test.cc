@@ -15,6 +15,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <tuple>
 
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
@@ -65,6 +66,17 @@ Status CreateTable(PGConn* conn, const std::string& name = kTable) {
     "CREATE TABLE $0(k INT CONSTRAINT $1 PRIMARY KEY, v INT DEFAULT 1) SPLIT INTO 1 TABLETS",
     name, PKConstraintName(name)));
   return Status::OK();
+}
+
+constexpr size_t NumBatches(size_t num_rows, size_t batch_size) {
+  return (num_rows + batch_size - 1) / batch_size;
+}
+
+Result<std::tuple<int64_t, int64_t>> GetTempFileStats(PGConn* conn) {
+  RETURN_NOT_OK(conn->Fetch("SELECT pg_stat_force_next_flush()"));
+  RETURN_NOT_OK(conn->Fetch("SELECT pg_stat_clear_snapshot()"));
+  return conn->FetchRow<int64_t, int64_t>(
+      "SELECT temp_files, temp_bytes FROM pg_stat_database WHERE datname = current_database()");
 }
 
 Status EnsureDupKeyError(Status status, const std::string& constraint_name) {
@@ -179,6 +191,155 @@ TEST_F(PgOpBufferingTest, MaxBatchSize) {
         }));
     ASSERT_EQ(write_rpc_count, std::ceil(static_cast<double>(items_for_insert) / max_batch_size));
   }
+}
+
+TEST_F(PgOpBufferingTest, TransitionTablesLargeNumberOfRows) {
+  auto conn =
+      ASSERT_RESULT(SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
+  constexpr size_t kBatchSize = 64;
+  constexpr size_t kInsertRows = 1000;
+  constexpr size_t kDeleteRows = 500;
+  constexpr size_t kUpdateRows = 100;
+  constexpr size_t kPayloadBytes = 1024;
+  constexpr size_t kInsertBatches = NumBatches(kInsertRows, kBatchSize);
+  constexpr size_t kDeleteBatches = NumBatches(kDeleteRows, kBatchSize);
+  constexpr size_t kUpdateBatches = NumBatches(kUpdateRows, kBatchSize);
+  constexpr size_t kStatementInsertWriteRpcs = 2 * kInsertBatches;
+  constexpr size_t kStatementDeleteWriteRpcs = 2 * kDeleteBatches;
+  constexpr size_t kStatementUpdateWriteRpcs = 3 * kUpdateBatches;
+  constexpr size_t kRowTriggerInsertWriteRpcs = kInsertBatches + kInsertRows;
+  ASSERT_OK(SetMaxBatchSize(&conn, kBatchSize));
+  ASSERT_OK(conn.Execute("SET work_mem = '64kB'"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_test (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_insert_log (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_delete_log (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_update_old_log (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_update_new_log (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE FUNCTION tt_write_large_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO tt_insert_log SELECT id, val FROM new_table;
+      RETURN NULL;
+    END;
+    $$;
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE FUNCTION tt_write_large_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO tt_delete_log SELECT id, val FROM old_table;
+      RETURN NULL;
+    END;
+    $$;
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE FUNCTION tt_write_large_update() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO tt_update_old_log SELECT id, val FROM old_table;
+      INSERT INTO tt_update_new_log SELECT id, val FROM new_table;
+      RETURN NULL;
+    END;
+    $$;
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE TRIGGER tt_test_ins AFTER INSERT ON tt_test
+      REFERENCING NEW TABLE AS new_table
+      FOR EACH STATEMENT EXECUTE FUNCTION tt_write_large_insert()
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE TRIGGER tt_test_del AFTER DELETE ON tt_test
+      REFERENCING OLD TABLE AS old_table
+      FOR EACH STATEMENT EXECUTE FUNCTION tt_write_large_delete()
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE TRIGGER tt_test_upd AFTER UPDATE ON tt_test
+      REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+      FOR EACH STATEMENT EXECUTE FUNCTION tt_write_large_update()
+  )"));
+
+  const auto insert_query_template = Format(
+      "INSERT INTO tt_test "
+      "SELECT g, repeat('x', $0) || g FROM generate_series($$0, $$1) AS g",
+      kPayloadBytes);
+  const auto [temp_files_before_insert, temp_bytes_before_insert] =
+      ASSERT_RESULT(GetTempFileStats(&conn));
+  const auto insert_rpc_count =
+      ASSERT_RESULT(write_rpc_watcher_->Delta([&conn, &insert_query_template, kInsertRows] {
+        return conn.ExecuteFormat(insert_query_template, 1, kInsertRows);
+      }));
+  ASSERT_EQ(insert_rpc_count, kStatementInsertWriteRpcs);
+  const auto [temp_files_after_insert, temp_bytes_after_insert] =
+      ASSERT_RESULT(GetTempFileStats(&conn));
+  ASSERT_GT(temp_files_after_insert, temp_files_before_insert);
+  ASSERT_GT(temp_bytes_after_insert, temp_bytes_before_insert);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_test")), kInsertRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_insert_log")),
+      kInsertRows);
+
+  const auto delete_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn] {
+    return conn.Execute("DELETE FROM tt_test WHERE id <= 500");
+  }));
+  ASSERT_EQ(delete_rpc_count, kStatementDeleteWriteRpcs);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_test")),
+      kInsertRows - kDeleteRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_delete_log")),
+      kDeleteRows);
+
+  const auto update_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn] {
+    return conn.Execute("UPDATE tt_test SET val = 'bulk_' || val WHERE id > 500 AND id <= 600");
+  }));
+  ASSERT_EQ(update_rpc_count, kStatementUpdateWriteRpcs);
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          conn.FetchRow<int64_t>(
+              "SELECT count(*) FROM tt_test WHERE id > 500 AND id <= 600 AND val LIKE 'bulk_%'")),
+      kUpdateRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_update_old_log")),
+      kUpdateRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_update_new_log")),
+      kUpdateRows);
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_row_test (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_row_insert_log (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE FUNCTION tt_row_write_large_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO tt_row_insert_log VALUES (NEW.id, NEW.val);
+      RETURN NULL;
+    END;
+    $$;
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE TRIGGER tt_row_test_ins AFTER INSERT ON tt_row_test
+      FOR EACH ROW EXECUTE FUNCTION tt_row_write_large_insert()
+  )"));
+
+  const auto row_insert_query_template = Format(
+      "INSERT INTO tt_row_test "
+      "SELECT g, repeat('y', $0) || g FROM generate_series($$0, $$1) AS g",
+      kPayloadBytes);
+  const auto row_insert_rpc_count =
+      ASSERT_RESULT(write_rpc_watcher_->Delta([&conn, &row_insert_query_template, kInsertRows] {
+        return conn.ExecuteFormat(row_insert_query_template, 1, kInsertRows);
+      }));
+  ASSERT_EQ(row_insert_rpc_count, kRowTriggerInsertWriteRpcs);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_row_test")),
+      kInsertRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_row_insert_log")),
+      kInsertRows);
 }
 
 // The test checks that buffering mechanism flushes currently buffered operations in case of
@@ -366,13 +527,21 @@ void TestBulkLoadUseFastPathForColocated(PGConn* conn, const std::string& table_
   const int total_write_entries = num_rows * (num_indices + 1);
   ASSERT_OK(CreateTableWithIndex(conn, table_name, num_indices));
   ASSERT_OK(conn->Execute("SET yb_fast_path_for_colocated_copy=true"));
+
+  // COPY REPLACE is not supported on tables with secondary indexes, triggers,
+  // or FK constraints. Use plain COPY when indexes are present (table is empty
+  // so there are no duplicates anyway).
+  const std::string copy_options = num_indices > 0
+      ? "FORMAT CSV, HEADER"
+      : "FORMAT CSV, HEADER, REPLACE";
+
   // will take 2 buffers if not adjusted
   ASSERT_OK(SetMaxBatchSize(conn, total_write_entries - 1));
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
-      [&conn, &csv_filename, &table_name](){
+      [&conn, &csv_filename, &table_name, &copy_options](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
-            table_name, csv_filename);
+            "copy $0 from '$1' WITH ($2)",
+            table_name, csv_filename, copy_options);
       }));
 
   if (num_indices > 0) {
@@ -383,13 +552,20 @@ void TestBulkLoadUseFastPathForColocated(PGConn* conn, const std::string& table_
     ASSERT_EQ(write_rpc_count, 2);
   }
 
+  // Truncate before the second COPY to avoid duplicate key errors.
+  ASSERT_OK(conn->ExecuteFormat("TRUNCATE TABLE $0", table_name));
+
+  const std::string copy_options_with_batch = num_indices > 0
+      ? "FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 20000"
+      : "FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 20000, REPLACE";
+
   // For colocated table, if ROWS_PER_TRANSACTION is set explicitly, distributed transaction
   // will be used, so the buffer batch size will not be adjusted.
   write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
-      [&conn, &csv_filename, table_name](){
+      [&conn, &csv_filename, table_name, &copy_options_with_batch](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, ROWS_PER_TRANSACTION 20000, REPLACE)",
-            table_name, csv_filename);
+            "copy $0 from '$1' WITH ($2)",
+            table_name, csv_filename, copy_options_with_batch);
       }));
   // the buffer size is not adjusted, all write will take 2 rpc.
   ASSERT_EQ(write_rpc_count, 2);
@@ -412,10 +588,12 @@ void CheckBulkLoadForColocatedFK(PGConn* conn, const std::string& table_name,
                                  std::optional<SingleMetricWatcher>& write_rpc_watcher) {
   ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 1,
                                  /* fk = */ true, num_rows));
+  // COPY REPLACE is not supported on tables with secondary indexes, triggers,
+  // or FK constraints. Use plain COPY (table is empty, no duplicates).
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
   ASSERT_EQ(write_rpc_count, 2);
@@ -440,10 +618,12 @@ void CheckBulkLoadForColocatedTrigger(PGConn* conn, const std::string& table_nam
       " FOR EACH ROW EXECUTE FUNCTION update_column()";
   ASSERT_OK(conn->ExecuteFormat(create_trigger_sql));
 
+  // COPY REPLACE is not supported on tables with triggers.
+  // Use plain COPY (table is empty, no duplicates).
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
   ASSERT_EQ(write_rpc_count, 2);
@@ -455,11 +635,13 @@ void CheckBulkLoadForColocatedExplicitTxn(PGConn* conn, const std::string& table
                                           const std::string& csv_filename,
                                           std::optional<SingleMetricWatcher>& write_rpc_watcher) {
   ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 1));
+  // COPY REPLACE is not supported on tables with secondary indexes.
+  // Use plain COPY (table is empty, no duplicates).
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn->ExecuteFormat(
             "begin transaction isolation level repeatable read;"
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
   ASSERT_EQ(write_rpc_count, 2);
@@ -472,10 +654,12 @@ void CheckBulkLoadForColocatedTempTable(PGConn* conn, const std::string& table_n
                                         std::optional<SingleMetricWatcher>& write_rpc_watcher) {
   ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 1, /* fk = */ false,
       /* num_rows*/ 0, /* temporary_table */ true));
+  // COPY REPLACE is not supported on tables with secondary indexes, triggers,
+  // or FK constraints. Use plain COPY (table is empty, no duplicates).
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
   ASSERT_EQ(write_rpc_count, 0);
@@ -512,13 +696,15 @@ TEST_F(PgOpBufferingTest, BulkLoadForNonColocatedTest) {
   ASSERT_OK(CreateTableWithIndex(&conn, table_name, /* num_indices = */ 1));
   ASSERT_OK(SetMaxBatchSize(&conn, num_rows * 2 - 1));
   ASSERT_OK(conn.Execute("SET yb_fast_path_for_colocated_copy=true"));
+  // COPY REPLACE is not supported on tables with secondary indexes.
+  // Use plain COPY (table is empty, no duplicates).
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn.ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
-  // For non-colcated table, table and index may be located in separate tables, so it takes
+  // For non-colocated table, table and index may be located in separate tables, so it takes
   // at least 2 rpc.
   ASSERT_GE(write_rpc_count, 2);
 }
@@ -537,7 +723,7 @@ void CheckBulkLoadForColocatedCheckConstraint(
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
          return conn->ExecuteFormat(
-             "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+             "copy $0 from '$1' WITH (FORMAT CSV, HEADER, REPLACE)",
              table_name, csv_filename);
       }));
   // The buffer size will be adjusted so the number of rpc should be 1.
@@ -549,7 +735,7 @@ void CheckBulkLoadForColocatedCheckConstraint(
   std::string check_constraint_sql_2 =
       "ALTER TABLE " + table_name + " ADD CONSTRAINT check_constraint_test CHECK (v0 < 99)";
   ASSERT_OK(conn->ExecuteFormat(check_constraint_sql_2));
-  const auto status = conn->ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+  const auto status = conn->ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV, HEADER, REPLACE)",
       table_name, csv_filename);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(), "violates check constraint");
@@ -571,7 +757,7 @@ void CheckBulkLoadForColocatedUniqueIndex(PGConn* conn, const std::string& table
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
   // The buffer size will be adjusted so the number of rpc should be 1.
@@ -584,7 +770,7 @@ void CheckBulkLoadForColocatedUniqueIndex(PGConn* conn, const std::string& table
   std::string truncate_table_sql = "TRUNCATE TABLE " + table_name;
   ASSERT_OK(conn->ExecuteFormat(truncate_table_sql));
   ASSERT_OK(SetMaxBatchSize(conn, 20000));
-  auto status = conn->ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV,HEADER)",
+  auto status = conn->ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
                                     table_name, csv_filename);
   LOG(INFO) << "copy status: " << status;
   ASSERT_NOK(status);

@@ -29,6 +29,18 @@ std::string ColumnAlignmentToHtmlAttr(HtmlTableCellAlignment alignment) {
   FATAL_INVALID_ENUM_VALUE(HtmlTableCellAlignment, alignment);
 }
 
+const char* RowColorToStyle(HtmlTableRowColor color) {
+  switch (color) {
+    case HtmlTableRowColor::Red:
+      return " style=\"background-color: #f8d7da\"";
+    case HtmlTableRowColor::Yellow:
+      return " style=\"background-color: #fff3cd\"";
+    case HtmlTableRowColor::Default:
+      return "";
+  }
+  FATAL_INVALID_ENUM_VALUE(HtmlTableRowColor, color);
+}
+
 // This script is used to sort and filter tables in the html page.
 const char* const kSortAndFilterTableScript = R"(
 <script>
@@ -232,7 +244,7 @@ void HtmlTablePrintHelper::Print() {
   for (const auto& row_set : table_row_sets_) {
     output_ << "<tbody>";
     for (const auto& row : row_set.rows_) {
-      output_ << "<tr>";
+      output_ << "<tr" << RowColorToStyle(row.color_) << ">";
       for (size_t i = 0; i < row.column_values_.size(); ++i) {
         const auto& column_value = row.column_values_[i];
         output_ << "<td";
@@ -260,7 +272,7 @@ void HtmlTablePrintHelper::Print() {
 namespace {
 static constexpr auto kFieldsetStart =
     "<br><fieldset style=\"border: solid; border-width: thin;padding: 10px 10px;border-color:  "
-    "#a8a8a8;\">\n";
+    "#a8a8a8;overflow-x: auto;\">\n";
 static constexpr auto kFieldsetEnd = "</fieldset>\n";
 static constexpr auto kFieldsetLegendStart =
     "<legend visible=\"true\" style=\"width:auto;padding: 0px 10px;\">";

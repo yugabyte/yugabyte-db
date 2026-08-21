@@ -1,0 +1,12 @@
+title: ImageBundle
+description: |
+  Image bundle for a provider.
+
+  Contains the user-provided `spec` and system-generated `info`.
+  Returned as response payload for image bundle APIs.
+type: object
+properties:
+  spec:
+    $ref: "./ImageBundleSpec.yaml"
+  info:
+    $ref: "./ImageBundleInfo.yaml"

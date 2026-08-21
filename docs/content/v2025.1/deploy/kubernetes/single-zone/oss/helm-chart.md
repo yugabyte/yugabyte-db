@@ -360,6 +360,44 @@ tserver:
     timeoutSeconds: 10
 ```
 
+### Liveness probes
+
+[Liveness probes](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#container-probes) determine whether Kubernetes should restart the YugabyteDB container. After enough consecutive failures, the kubelet restarts the container. Readiness probes only govern whether traffic is sent to the pod.
+
+Like readiness, liveness behavior comes from the Helm chart used for direct installs and for [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides).
+
+YB-Master and YB-TServer pods share the top-level `livenessProbe` and `customLivenessProbe` entries in [`values.yaml`](https://github.com/yugabyte/charts/blob/master/stable/yugabyte/values.yaml).
+
+With persistent volume storage (`storage.ephemeral` is false), the chart installs a default `exec` probe that writes a timestamp into `disk.check` under each data directory (`/mnt/disk0`, `/mnt/disk1`, and so on, according to the configured disk count) and runs `sync` on those files. That touches the data disks so stuck or read-only volumes are more likely to fail the probe than a socket-only check.
+
+If `storage.ephemeral` is true, the chart omits this disk-based liveness probe and the startup probes rendered in the same conditional block.
+
+`livenessProbe.enabled` defaults to true. Tune `failureThreshold`, `periodSeconds`, `successThreshold`, and `timeoutSeconds` on the default probe.
+
+Disable the default probe:
+
+```yaml
+livenessProbe:
+  enabled: false
+```
+
+Set `customLivenessProbe` to a complete Kubernetes probe specification (`exec`, `httpGet`, or `tcpSocket`) to replace the default disk probe.
+
+```yaml
+customLivenessProbe:
+  exec:
+    command:
+      - /custom/health/check
+  failureThreshold: 3
+  periodSeconds: 10
+  timeoutSeconds: 1
+  successThreshold: 1
+```
+
+On each `Services` entry for `yb-masters` or `yb-tservers`, `skipHealthChecks: true` skips the disk-based liveness and startup probes from that template; readiness is still configured on its own.
+
+Preflight values (`preflight.skipAll` and related flags) affect startup checks only and do not change liveness probes.
+
 ### Independent LoadBalancers
 
 By default, the YugabyteDB Helm chart exposes the client API endpoints and master UI endpoint using two load balancers. If you want to expose the client APIs using independent LoadBalancers, you can execute the following command:

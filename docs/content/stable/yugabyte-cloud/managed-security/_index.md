@@ -17,6 +17,12 @@ Invite team members to your YugabyteDB Aeon account so that they can create, man
 {{<index/block>}}
 
   {{<index/item
+    title="Manage accounts"
+    body="Create and manage multiple accounts for your organization."
+    href="manage-accounts/"
+    icon="fa-thin fa-building">}}
+
+  {{<index/item
     title="Manage account users"
     body="Invite other users to your account so that they can perform tasks in YugabyteDB Aeon."
     href="manage-access/"

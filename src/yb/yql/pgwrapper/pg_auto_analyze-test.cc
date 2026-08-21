@@ -12,7 +12,9 @@
 
 #include <chrono>
 #include <memory>
+#include <span>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -22,9 +24,11 @@
 #include "yb/gutil/integral_types.h"
 
 #include "yb/client/session.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/entity_ids.h"
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/schema.h"
 
@@ -34,6 +38,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
+#include "yb/tserver/stateful_services/pg_auto_analyze_table.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -53,6 +58,7 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
 DECLARE_uint32(ysql_cluster_level_mutation_persist_interval_ms);
 DECLARE_uint32(ysql_auto_analyze_threshold);
@@ -88,6 +94,7 @@ namespace {
 class PgAutoAnalyzeTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = true;
 
     // Set low values for the node level mutation reporting and the cluster level persisting
@@ -103,6 +110,43 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
 
     ASSERT_OK(CreateClient());
     ASSERT_OK(client_->WaitForCreateTableToFinish(kAutoAnalyzeFullyQualifiedTableName));
+  }
+
+  void DoTearDown() override {
+    // Stop auto-analyze and wait for it to become fully idle before tearing PostgreSQL down. These
+    // tests can drive ANALYZE almost continuously, so an internal auto-analyze connection may be
+    // mid-cycle when PgSupervisor issues fast shutdown; aborting that in-flight distributed
+    // transaction during shutdown can keep a backend busy long enough (especially under ASAN) to
+    // exceed the fixed 60s graceful-exit deadline, aborting the test. After disabling the service,
+    // at most one already-started cycle can still run. It is not enough to wait only for ANALYZE
+    // statements: between its statements the service backend is momentarily "idle in transaction"
+    // while still holding an open distributed transaction, which is exactly the state that stalls
+    // fast shutdown. So wait until no other client backend is active or holding a transaction for a
+    // continuous settle window.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    // Best effort: if the test already failed or the cluster is down we cannot connect, so just
+    // proceed with teardown.
+    auto conn = Connect();
+    if (conn.ok()) {
+      const int64_t settle_ms = 3000 * kTimeMultiplier;
+      auto last_active = MonoTime::Now();
+      auto status = WaitFor([&]() -> Result<bool> {
+        auto count = conn->FetchRow<pgwrapper::PGUint64>(
+            "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() "
+            "AND backend_type = 'client backend' AND state <> 'idle'");
+        if (!count.ok() || *count != 0) {
+          last_active = MonoTime::Now();
+          return false;
+        }
+        return (MonoTime::Now() - last_active).ToMilliseconds() >= settle_ms;
+      }, 90s * kTimeMultiplier, "Wait for auto-analyze to become idle");
+      LOG_IF(WARNING, !status.ok())
+          << "Auto-analyze did not become idle before teardown: " << status;
+    } else {
+      LOG(WARNING) << "Skipping auto-analyze drain, cannot connect: " << conn.status();
+    }
+
+    PgMiniTestBase::DoTearDown();
   }
 
   // TODO(#26103): Change this to 3 to test cross tablet server mutation aggregation.
@@ -126,6 +170,31 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     for (const auto& row : rowblock->rows()) {
       (*table_mutations)[row.column(0).string_value()] = row.column(1).int64_value();
     }
+  }
+
+  Status SetTableMutationCountInCQLTable(const TableId& table_id, int64_t mutations) {
+    client::TableHandle table;
+    RETURN_NOT_OK(table.Open(kAutoAnalyzeFullyQualifiedTableName, client_.get()));
+
+    auto session = NewSession();
+    std::vector<client::YBOperationPtr> ops;
+    ops.reserve(2);
+
+    const auto update_op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
+    auto* const update_req = update_op->mutable_request();
+    QLAddStringHashValue(update_req, table_id);
+    table.AddInt64ColumnValue(update_req, master::kPgAutoAnalyzeMutations, mutations);
+    update_req->mutable_if_expr()->mutable_condition()->set_op(QL_OP_EXISTS);
+    ops.push_back(update_op);
+
+    const auto insert_op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
+    auto* const insert_req = insert_op->mutable_request();
+    QLAddStringHashValue(insert_req, table_id);
+    table.AddInt64ColumnValue(insert_req, master::kPgAutoAnalyzeMutations, mutations);
+    insert_req->mutable_if_expr()->mutable_condition()->set_op(QL_OP_NOT_EXISTS);
+    ops.push_back(insert_op);
+
+    return session->TEST_ApplyAndFlush(ops);
   }
 
   Result<stateful_service::AutoAnalyzeInfoMap> GetAutoAnalyzeInfoFromCQLTable() {
@@ -281,9 +350,65 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
 
     return Status::OK();
   }
+
+  Status WaitForTableMutationCount(const TableId& table_id, uint64 expected_mutations) {
+    RETURN_NOT_OK(WaitFor([this, &table_id, expected_mutations]() -> Result<bool> {
+      std::unordered_map<TableId, uint64> table_mutations_in_cql_table;
+      GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
+      const auto it = table_mutations_in_cql_table.find(table_id);
+      if (it == table_mutations_in_cql_table.end()) {
+        return expected_mutations == 0;
+      }
+      LOG(INFO) << table_id << " mutations: " << it->second
+                << ", expected: " << expected_mutations;
+      return it->second == expected_mutations;
+    }, 10s * kTimeMultiplier, "Check expected mutations count"));
+
+    return Status::OK();
+  }
 };
 
+// Parameterized over (ysql_enable_auto_analyze_infra, ysql_enable_auto_analyze). Manual ANALYZE
+// must be a no-op (no warnings) whenever EITHER flag is disabled, so we exercise all three
+// "disabled" permutations: both off, infra-only off, and auto-analyze-only off.
+class PgAutoAnalyzeDisabledTest : public PgMiniTestBase,
+                                  public ::testing::WithParamInterface<std::tuple<bool, bool>> {
+ protected:
+  void SetUp() override {
+    const auto& [enable_infra, enable_auto_analyze] = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = enable_infra;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = enable_auto_analyze;
+
+    PgMiniTestBase::SetUp();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    AutoAnalyzeDisabledFlags, PgAutoAnalyzeDisabledTest,
+    ::testing::Values(
+        std::make_tuple(false, false),    // both disabled
+        std::make_tuple(false, true),     // infra disabled, auto-analyze enabled
+        std::make_tuple(true, false)));   // infra enabled, auto-analyze disabled
+
 } // namespace
+
+TEST_P(PgAutoAnalyzeDisabledTest, ManualAnalyzeDoesNotWarnWhenAutoAnalyzeDisabled) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE manual_analyze_disabled_test (h1 INT PRIMARY KEY, v1 INT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO manual_analyze_disabled_test "
+      "SELECT s, s FROM generate_series(1, 10) AS s"));
+
+  std::vector<std::string> warnings;
+  conn.SetNoticeProcessor(
+      [](void* arg, const char* message) {
+        static_cast<std::vector<std::string>*>(arg)->emplace_back(message);
+      },
+      &warnings);
+
+  ASSERT_OK(conn.Execute("ANALYZE manual_analyze_disabled_test"));
+  ASSERT_TRUE(warnings.empty()) << AsString(warnings);
+}
 
 TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
   // Set auto analyze threshold to a large number to prevent running ANALYZEs in this test.
@@ -477,6 +602,176 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeSingleTable) {
   ASSERT_OK(WaitForTableReltuples(conn, table_name, 102));
 }
 
+TEST_F(PgAutoAnalyzeTest, MutationCountHelperResetAndSaturatingSubtract) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kTableName = "mutation_count_helper_test";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (h1 INT PRIMARY KEY, v1 INT)", kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableId(kTableName));
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(kAutoAnalyzeFullyQualifiedTableName, client_.get()));
+
+  ASSERT_OK(SetTableMutationCountInCQLTable(table_id, 15));
+  stateful_service::PgAutoAnalyzeMutationSnapshot snapshot{
+      .table_id = table_id,
+      .mutations = 10,
+  };
+  auto session = NewSession();
+  ASSERT_OK(stateful_service::SubtractPgAutoAnalyzeMutationCounts(
+      table, *session, std::span(&snapshot, 1)));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 5));
+
+  ASSERT_OK(SetTableMutationCountInCQLTable(table_id, 5));
+  snapshot.mutations = 10;
+  session = NewSession();
+  ASSERT_OK(stateful_service::SubtractPgAutoAnalyzeMutationCounts(
+      table, *session, std::span(&snapshot, 1)));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+
+  ASSERT_OK(SetTableMutationCountInCQLTable(table_id, 7));
+  session = NewSession();
+  ASSERT_OK(stateful_service::ResetPgAutoAnalyzeMutationCounts(
+      table, *session, std::span(&table_id, 1)));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+}
+
+TEST_F(PgAutoAnalyzeTest, ManualAnalyzeResetsMutationCount) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kTableName = "manual_analyze_test";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT PRIMARY KEY, v1 INT)", kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableId(kTableName));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO manual_analyze_test "
+            "SELECT s, s FROM generate_series(1, 10) AS s"));
+      },
+      {{table_id, 10}}));
+
+  ASSERT_OK(conn.Execute("ANALYZE manual_analyze_test"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+
+  auto wait_for_mutation_reporting_and_persisting_ms =
+      FLAGS_ysql_node_level_mutation_reporting_interval_ms +
+      FLAGS_ysql_cluster_level_mutation_persist_interval_ms + 50 * kTimeMultiplier;
+  std::this_thread::sleep_for(wait_for_mutation_reporting_and_persisting_ms * 1ms);
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO manual_analyze_test "
+            "SELECT s, s FROM generate_series(11, 15) AS s"));
+      },
+      {{table_id, 5}}));
+  ASSERT_OK(conn.Execute("ANALYZE manual_analyze_test(v1)"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 5));
+
+  ASSERT_OK(conn.Execute("VACUUM ANALYZE manual_analyze_test"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO manual_analyze_test "
+            "SELECT s, s FROM generate_series(16, 20) AS s"));
+      },
+      {{table_id, 5}}));
+  ASSERT_OK(conn.Execute("VACUUM ANALYZE manual_analyze_test(v1)"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 5));
+}
+
+TEST_F(PgAutoAnalyzeTest, InternalAnalyzeDoesNotResetMutationCount) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kTableName = "internal_analyze_test";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT PRIMARY KEY, v1 INT)", kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableId(kTableName));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO internal_analyze_test "
+            "SELECT s, s FROM generate_series(1, 10) AS s"));
+      },
+      {{table_id, 10}}));
+
+  ASSERT_OK(conn.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+  ASSERT_OK(conn.Execute("ANALYZE internal_analyze_test"));
+  ASSERT_OK(conn.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 10));
+
+  ASSERT_OK(conn.Execute("ANALYZE internal_analyze_test"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+}
+
+TEST_F(PgAutoAnalyzeTest, ManualAnalyzeDoesNotResetMutationCountWhenTestGucSet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kTableName = "manual_analyze_test_guc";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT PRIMARY KEY, v1 INT)", kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableId(kTableName));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO manual_analyze_test_guc "
+            "SELECT s, s FROM generate_series(1, 10) AS s"));
+      },
+      {{table_id, 10}}));
+
+  // With the test GUC set, a manual ANALYZE must not reset the mutation count.
+  ASSERT_OK(conn.Execute("SET yb_test_analyze_dont_reset_mutations=true"));
+  ASSERT_OK(conn.Execute("ANALYZE manual_analyze_test_guc"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 10));
+
+  // Once the GUC is cleared, a manual ANALYZE resets the mutation count again.
+  ASSERT_OK(conn.Execute("SET yb_test_analyze_dont_reset_mutations=false"));
+  ASSERT_OK(conn.Execute("ANALYZE manual_analyze_test_guc"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+}
+
+TEST_F(PgAutoAnalyzeTest, ManualAnalyzePartitionedTableResetsPartitionMutationCounts) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE partitioned_analyze_test (h1 INT, v1 INT) PARTITION BY RANGE (h1)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE partitioned_analyze_test_p1 "
+      "PARTITION OF partitioned_analyze_test FOR VALUES FROM (0) TO (10)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE partitioned_analyze_test_p2 "
+      "PARTITION OF partitioned_analyze_test FOR VALUES FROM (10) TO (20)"));
+
+  const auto partition1_id = ASSERT_RESULT(GetTableId("partitioned_analyze_test_p1"));
+  const auto partition2_id = ASSERT_RESULT(GetTableId("partitioned_analyze_test_p2"));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO partitioned_analyze_test_p1 "
+            "SELECT s, s FROM generate_series(1, 5) AS s"));
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO partitioned_analyze_test_p2 "
+            "SELECT s, s FROM generate_series(11, 15) AS s"));
+      },
+      {{partition1_id, 5}, {partition2_id, 5}}));
+
+  ASSERT_OK(conn.Execute("ANALYZE partitioned_analyze_test"));
+  ASSERT_OK(WaitForTableMutationCount(partition1_id, 0));
+  ASSERT_OK(WaitForTableMutationCount(partition2_id, 0));
+}
+
 TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeMultiTablesMultiDBs) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.1;
@@ -656,6 +951,10 @@ TEST_F(PgAutoAnalyzeTest, CheckDDLMutationsCount) {
   auto database_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
       "SELECT oid FROM pg_database WHERE datname = 'yugabyte'"));
   auto pg_class_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
+
+  // Build template1's relcache init file up front to make sure relcache init file
+  // is already built. This avoids a FATAL in the test during shutdown.
+  auto template1_conn = ASSERT_RESULT(ConnectToDB("template1"));
 
   ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn] {
@@ -1187,7 +1486,15 @@ TEST_F(PgAutoAnalyzeTest, PerTableCooldown) {
     auto start_time = std::chrono::system_clock::now();
 
     while (std::chrono::system_clock::now() - start_time < test_duration) {
-      ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v1 = v1 + 1", table_name));
+      // A concurrent auto-analyze ANALYZE bumps the catalog version and reads this table while
+      // this heavy full-table UPDATE runs, so an individual autocommit statement can fail
+      // transiently (e.g. catalog version mismatch or a conflict). The loop only needs to
+      // accumulate mutations to keep ANALYZE coming off cooldown, so tolerate such errors and
+      // keep going instead of failing the whole test on one transient statement error.
+      auto update_status = conn.ExecuteFormat("UPDATE $0 SET v1 = v1 + 1", table_name);
+      if (!update_status.ok()) {
+        LOG(WARNING) << "Ignoring transient UPDATE failure: " << update_status;
+      }
     }
 
     // The cooldown starts with min_analyze_interval and scales by scale_factor each time.
@@ -1321,6 +1628,154 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
   ASSERT_EQ(1000 * cooldown_value, history_event["cooldown"].GetInt64());
 }
 
+// Verify that setting yb_auto_analyze_enabled=false on a table prevents auto analyze from running
+// on that table, while other tables are still analyzed. Also verify that re-enabling
+// yb_auto_analyze_enabled allows the table to be analyzed again.
+TEST_F(PgAutoAnalyzeTest, PerTableAutoAnalyzeEnabledFalse) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string enabled_table = "enabled_tbl";
+  const std::string disabled_table = "disabled_tbl";
+  const std::string table_creation_stmt =
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))";
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, enabled_table));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, disabled_table));
+
+  ASSERT_OK(
+      conn.ExecuteFormat("ALTER TABLE $0 SET (yb_auto_analyze_enabled = false)", disabled_table));
+
+  // Insert one row per table to populate name cache and reltuples, reloptions caches.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", enabled_table));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", disabled_table));
+  auto wait_for_cache_ms =
+      FLAGS_ysql_node_level_mutation_reporting_interval_ms +
+      FLAGS_ysql_cluster_level_mutation_persist_interval_ms * 2 + 5000 * kTimeMultiplier;
+  std::this_thread::sleep_for(wait_for_cache_ms * 1ms);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(2, 100) AS s", enabled_table));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(2, 100) AS s", disabled_table));
+
+  ASSERT_OK(WaitForTableReltuples(conn, enabled_table, 100));
+  ASSERT_OK(
+      WaitForTableReltuples(conn, disabled_table, -1, true /* ensure_analyze_not_triggered */));
+
+  // Re-enable auto analyze. The accumulated mutations should now trigger analyze.
+  ASSERT_OK(
+      conn.ExecuteFormat("ALTER TABLE $0 SET (yb_auto_analyze_enabled = true)", disabled_table));
+  ASSERT_OK(WaitForTableReltuples(conn, disabled_table, 100));
+}
+
+// Verify that per-table yb_auto_analyze_threshold and yb_auto_analyze_scale_factor
+// override the global ysql_auto_analyze_threshold and ysql_auto_analyze_scale_factor flags.
+TEST_F(PgAutoAnalyzeTest, PerTableAnalyzeThreshold) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string low_threshold_table = "low_threshold_tbl";
+  const std::string high_threshold_table = "high_threshold_tbl";
+  const std::string table_creation_stmt =
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))";
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, low_threshold_table));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, high_threshold_table));
+
+  // Per-table low threshold of 5 (below global 50) should trigger analyze sooner.
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 SET (yb_auto_analyze_threshold = 5, "
+      "yb_auto_analyze_scale_factor = 0)",
+      low_threshold_table));
+  // Per-table threshold of 1000 (above global 50) should prevent premature analyze.
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 SET (yb_auto_analyze_threshold = 1000)", high_threshold_table));
+
+  ASSERT_OK(WaitForTableReltuples(conn, low_threshold_table, -1));
+  ASSERT_OK(WaitForTableReltuples(conn, high_threshold_table, -1));
+
+  // Insert 20 rows: above per-table low threshold (5) but below both global (50) and
+  // per-table high (1000).
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(1, 20) AS s", low_threshold_table));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(1, 20) AS s", high_threshold_table));
+
+  ASSERT_OK(WaitForTableReltuples(conn, low_threshold_table, 20));
+  ASSERT_OK(WaitForTableReltuples(
+      conn, high_threshold_table, -1, true /* ensure_analyze_not_triggered */));
+}
+
+// Verify that per-table cooldown settings (yb_auto_analyze_cooldown_scale_factor,
+// yb_auto_analyze_min_cooldown, yb_auto_analyze_max_cooldown) override the global flags.
+// A table with a very short cooldown should be analyzed again quickly.
+TEST_F(PgAutoAnalyzeTest, PerTableCooldownSettings) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  // Global cooldown: 10 minutes so that without per-table override, re-analyze won't happen
+  // quickly.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_min_cooldown_per_table) = 600000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_max_cooldown_per_table) = 600000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string fast_table = "fast_cooldown_tbl";
+  // Per-table: min 100ms, max 200ms, scale 1
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1)) "
+      "WITH (yb_auto_analyze_min_cooldown = 100, "
+      "yb_auto_analyze_max_cooldown = 200, "
+      "yb_auto_analyze_cooldown_scale_factor = 1)",
+      fast_table));
+
+  // First batch: trigger initial analyze.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(1, 10) AS s", fast_table));
+  ASSERT_OK(WaitForTableReltuples(conn, fast_table, 10));
+
+  // Second batch: despite the 600s global cooldown, per-table 100ms cooldown allows re-analyze.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(11, 30) AS s", fast_table));
+  ASSERT_OK(WaitForTableReltuples(conn, fast_table, 30));
+}
+
+// Verify that ALTER TABLE SET can change per-table cooldown settings.
+TEST_F(PgAutoAnalyzeTest, AlterTableCooldownSettings) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_min_cooldown_per_table) = 600000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_max_cooldown_per_table) = 600000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string table_name = "alter_cooldown_tbl";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))", table_name));
+
+  // Trigger initial analyze under the 600s global cooldown.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(1, 10) AS s", table_name));
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, 10));
+
+  // With the global cooldown, this should NOT trigger re-analyze within 10 mins.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(11, 30) AS s", table_name));
+  std::this_thread::sleep_for(3s);
+  ASSERT_OK(WaitForTableReltuples(
+      conn, table_name, 10, true /* ensure_analyze_not_triggered */));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 SET ("
+      "yb_auto_analyze_min_cooldown = 100, "
+      "yb_auto_analyze_max_cooldown = 200, "
+      "yb_auto_analyze_cooldown_scale_factor = 1)", table_name));
+
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, 30));
+}
+
 class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -1330,6 +1785,10 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     // The test verifies a long ANALYZE can be interrupted by another DDL. However, table lock
     // prevents this so we're disabling it to keep the test's original intent.
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
 
     // The test is specifically written for cases when txn ddl is disabled.
     // For the enabled case, see PgConcurrentDDLAnalyzeTestTxnDDL below.
@@ -1339,7 +1798,7 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
         options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
 
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpqutils*=1";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils*=1";
   }
 
   void testConcurrentDDLAnalyze() {
@@ -1486,13 +1945,11 @@ class PgConcurrentCreateIndexTest : public PgConcurrentDDLAnalyzeTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
-            "--ysql_yb_wait_for_backends_catalog_version_timeout=10000");
+            Format("--ysql_yb_wait_for_backends_catalog_version_timeout=$0",
+                   5000 * kTimeMultiplier));
     options->extra_tserver_flags.emplace_back(
             "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=1000");
-    options->extra_tserver_flags.emplace_back(
-            "--TEST_ysql_bypass_auto_analyze_auth_check=true");
-    options->extra_master_flags.emplace_back(
-            "--master_ysql_operation_lease_ttl_ms=5000");
+    options->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=10000");
     PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -1510,12 +1967,14 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
       .host = ts1->bind_host(),
       .port = ts1->ysql_port(),
     }).Connect());
-    auto conn2 = ASSERT_RESULT(PGConnBuilder({
-      .host = PgDeriveSocketDir(HostPort(ts2->bind_host(), ts2->ysql_port())),
-      .port = ts2->ysql_port(),
-      .user = "yugabyte",
-      .yb_auto_analyze = true,
-    }).Connect());
+    const uint64_t pg_auth_key = ASSERT_RESULT(GetPostgresAuthKey(ts2));
+    auto conn2 = ASSERT_RESULT(
+        pgwrapper::CreateInternalPGConnBuilder(
+            HostPort(ts2->bind_host(), ts2->ysql_port()), "yugabyte",
+            pgwrapper::PGConnSettings::kDefaultUser, pg_auth_key,
+            /*deadline=*/std::nullopt,
+            pgwrapper::YbInternalConnKindWireName::kAutoAnalyze)
+            .Connect());
 
     ASSERT_OK(conn1.Execute("CREATE TABLE test (k TEXT PRIMARY KEY)"));
     ASSERT_OK(conn1.Execute("INSERT INTO test SELECT repeat('abcdefg', 100) || '-' || s::TEXT "

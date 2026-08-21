@@ -25,6 +25,7 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -320,9 +321,14 @@ class ColumnFamilyData {
 
   void ResetThreadLocalSuperVersions();
 
-  // Protected by DB mutex
-  void set_pending_flush(bool value) { pending_flush_ = value; }
-  bool pending_flush() { return pending_flush_; }
+  // Protected by DB mutex. When engaged, a flush is scheduled / in progress for this CF.
+  bool pending_flush() const { return pending_flush_.has_value(); }
+  // Best-effort reason for the in-flight or scheduled flush; kUnknown when unset or unknown.
+  FlushReason pending_flush_reason() const {
+    return pending_flush_.value_or(FlushReason::kUnknown);
+  }
+  void mark_pending_flush(FlushReason reason) { pending_flush_ = reason; }
+  void clear_pending_flush() { pending_flush_.reset(); }
 
   void PendingCompactionAdded(CompactionSizeKind compaction_size_kind);
   void PendingCompactionRemoved(CompactionSizeKind compaction_size_kind);
@@ -344,6 +350,11 @@ class ColumnFamilyData {
   // a write stall
   void RecalculateWriteStallConditions(
       const MutableCFOptions& mutable_cf_options);
+
+  // Forces writes to this column family to stop (as if a hard write stall condition were active)
+  // and keeps them stopped until the column family is destroyed. Used in tests to simulate a write
+  // stall that never clears. Must be triggered under the DB's mutex.
+  void TEST_StopWrites();
 
   // Used in testing to replace current exclude_from_compaction functor. Returns current functor.
   // Must be triggered under DBs mutex.
@@ -412,8 +423,13 @@ class ColumnFamilyData {
 
   std::unique_ptr<WriteControllerToken> write_controller_token_;
 
-  // If true --> this ColumnFamily is currently present in DBImpl::flush_queue_
-  bool pending_flush_;
+  // When set (via TEST_StopWrites), RecalculateWriteStallConditions forces a stop token regardless
+  // of the actual memtable/compaction state. Used in tests to simulate a write stall that never
+  // clears.
+  bool TEST_stop_writes_ = false;
+
+  // Engaged while a flush is scheduled / in flight for this CF (DB mutex). Value is best-effort.
+  std::optional<FlushReason> pending_flush_;
 
   // How many times this ColumnFamily is currently present in DBImpl::compaction_queue_.
   // Note: in general it might be not effective to use such nearly aligned atomics. This is not a

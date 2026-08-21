@@ -19,8 +19,12 @@
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_backends_manager.h"
+
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/flags.h"
 
@@ -99,6 +103,19 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
     rpc.RespondSuccess();
   }
 
+  void ClientUpgradeYsql(
+      const ClientUpgradeYsqlRequestPB* req,
+      ClientUpgradeYsqlResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
+    if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
+      return;
+    }
+    auto s = ForwardUpgradeYsqlToClosestTserver(req, &rpc);
+    CheckRespErrorOrSetUnknown(s, resp);
+    rpc.RespondSuccess();
+  }
+
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
       CatalogManager,
       (AddTransactionStatusTablet)
@@ -146,6 +163,27 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
       (RollbackYsqlMajorCatalogVersion)
       (GetYsqlMajorCatalogUpgradeState)
   )
+
+ private:
+  Status ForwardUpgradeYsqlToClosestTserver(
+      const ClientUpgradeYsqlRequestPB* req, rpc::RpcContext* rpc) {
+    auto closest_ts = VERIFY_RESULT(server_->catalog_manager_impl()->GetClosestLiveTserver());
+
+    std::shared_ptr<tserver::TabletServerAdminServiceProxy> proxy;
+    RETURN_NOT_OK(closest_ts->GetProxy(&proxy));
+
+    tserver::UpgradeYsqlRequestPB ts_req;
+    ts_req.set_use_single_connection(req->use_single_connection());
+    tserver::UpgradeYsqlResponsePB ts_resp;
+    rpc::RpcController controller;
+    controller.set_deadline(rpc->GetClientDeadline());
+
+    RETURN_NOT_OK(proxy->UpgradeYsql(ts_req, &ts_resp, &controller));
+    if (ts_resp.has_error()) {
+      return StatusFromPB(ts_resp.error().status());
+    }
+    return Status::OK();
+  }
 };
 
 } // namespace

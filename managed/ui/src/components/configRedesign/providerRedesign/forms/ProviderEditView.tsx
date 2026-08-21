@@ -14,6 +14,7 @@ import { AWSProviderEditForm } from './aws/AWSProviderEditForm';
 import { AZUProviderEditForm } from './azu/AZUProviderEditForm';
 import { GCPProviderEditForm } from './gcp/GCPProviderEditForm';
 import { K8sProviderEditForm } from './k8s/K8sProviderEditForm';
+import { OCIProviderEditForm } from './oci/OCIProviderEditForm';
 import { OnPremProviderEditForm } from './onPrem/OnPremProviderEditForm';
 import { ProviderCode } from '../constants';
 import { UseCreateProviderParams, useEditProvider } from '../../../../redesign/helpers/hooks';
@@ -145,6 +146,14 @@ export const ProviderEditView = ({ linkedUniverses, providerConfig }: ProviderEd
     case ProviderCode.AZU:
       return (
         <AZUProviderEditForm
+          providerConfig={providerConfig}
+          editProvider={editProvider}
+          linkedUniverses={linkedUniverses}
+        />
+      );
+    case ProviderCode.OCI:
+      return (
+        <OCIProviderEditForm
           providerConfig={providerConfig}
           editProvider={editProvider}
           linkedUniverses={linkedUniverses}

@@ -59,4 +59,6 @@ extern CommandTag GetCommandTagEnum(const char *commandname);
 extern Size BuildQueryCompletionString(char *buff, const QueryCompletion *qc,
 									   bool nameonly);
 
+extern int	YbGetCommandTagCount(void);
+
 #endif							/* CMDTAG_H */
