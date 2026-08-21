@@ -757,9 +757,13 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
     metricsLibs.push_back("pg_documentdb_gw_host");
   }
 
-  if (FLAGS_ysql_yb_enable_mage) {
-    metricsLibs.push_back("mage");
-  }
+  // YB_TODO_PG19MERGE: mage is not currently built in the YB PG19 tree
+  // (not in build_postgres.py external_extension_subdirs). Preloading it
+  // makes every backend fail to start when ysql_yb_enable_mage is set,
+  // which TestYbBackup does clusterwide. Re-add with the mage port.
+  // if (FLAGS_ysql_yb_enable_mage) {
+  //   metricsLibs.push_back("mage");
+  // }
 
   if (FLAGS_ysql_yb_enable_pg_duckdb) {
     metricsLibs.push_back("pg_duckdb");
