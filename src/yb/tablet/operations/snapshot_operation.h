@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <string>
 
@@ -73,6 +74,11 @@ class SnapshotOperation :
       const OpId& id, consensus::OperationType op_type) const override;
 
   Status DoCheckOperationRequirements();
+
+  // Whether AddedAsPending registered this operation as the tablet's operation filter. The abort
+  // path can run without the operation ever having been added as pending (see
+  // RemovedFromPending).
+  std::atomic<bool> filter_registered_{false};
 };
 
 }  // namespace tablet

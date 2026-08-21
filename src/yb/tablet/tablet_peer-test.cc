@@ -35,6 +35,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_fwd.h"
@@ -57,14 +58,18 @@
 #include "yb/server/clock.h"
 #include "yb/server/logical_clock.h"
 
+#include "yb/tablet/operations/snapshot_operation.h"
+#include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_splitter.h"
 #include "yb/tablet/write_query.h"
 
 #include "yb/tserver/tserver.messages.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -86,6 +91,7 @@ DECLARE_int32(retryable_request_timeout_secs);
 
 DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_bool(quick_leader_election_on_create);
+DECLARE_bool(TEST_fail_operation_added_to_leader);
 DECLARE_bool(TEST_pause_before_copying_bootstrap_state);
 DECLARE_bool(TEST_pause_before_flushing_bootstrap_state);
 DECLARE_bool(TEST_pause_before_submitting_flush_bootstrap_state);
@@ -289,13 +295,13 @@ class TabletPeerTest : public YBTabletTest {
     AddTestRowDelete(delete_counter_++, write_req);
   }
 
-  void ExecuteWrite(TabletPeer* tablet_peer, const WriteRequestPB& req) {
+  Status ExecuteWriteAndReturnStatus(TabletPeer* tablet_peer, const WriteRequestPB& req) {
     auto arena = SharedThreadSafeArena();
     auto& resp = *arena->NewArenaObject<tserver::LWWriteResponsePB>();
     auto& lw_req = *arena->NewArenaObject<tserver::LWWriteRequestPB>(req);
     auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
-        ASSERT_RESULT(tablet_peer->shared_tablet()), /* rpc_context= */ nullptr, &resp);
+        VERIFY_RESULT(tablet_peer->shared_tablet()), /* rpc_context= */ nullptr, &resp);
     query->set_client_request(lw_req);
 
     CountDownLatch rpc_latch(1);
@@ -303,8 +309,11 @@ class TabletPeerTest : public YBTabletTest {
 
     tablet_peer->WriteAsync(std::move(query));
     rpc_latch.Wait();
-    CHECK(!resp.has_error())
-        << "\nResp:\n" << resp.ShortDebugString() << "Req:\n" << req.ShortDebugString();
+    return resp.has_error() ? StatusFromPB(resp.error().status()) : Status::OK();
+  }
+
+  void ExecuteWrite(TabletPeer* tablet_peer, const WriteRequestPB& req) {
+    CHECK_OK(ExecuteWriteAndReturnStatus(tablet_peer, req));
   }
 
   template<class Callback>
@@ -383,6 +392,127 @@ class TabletPeerTest : public YBTabletTest {
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 };
+
+// When Operation::AddedToLeader fails (e.g. the tablet is acquired while it shuts down), the
+// Raft index allocated for the operation must be rolled back, exactly like the
+// AddPendingOperation failure path right after it. Without the rollback the index is silently
+// skipped: the log ends before it while the next replicate is assigned a later one.
+TEST_F(TabletPeerTest, PendingStateCleanedUpWhenAddedToLeaderFails) {
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+  auto consensus = ASSERT_RESULT(tablet_peer_->GetConsensus());
+  // Let the leader-election no-op commit so the OpId comparisons below are stable.
+  ASSERT_OK(LoggedWaitFor(
+      [&] {
+        const auto committed_op_id = consensus->GetLastCommittedOpId();
+        return committed_op_id.index > 0 &&
+               committed_op_id == tablet_peer_->log()->GetLatestEntryOpId();
+      },
+      MonoDelta::FromSeconds(5), "leader-election no-op to commit"));
+  const auto initial_op_id = consensus->GetLastCommittedOpId();
+
+  // The write is rejected after its Raft index was allocated but before any WAL append or
+  // pending-operation side effects.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_operation_added_to_leader) = true;
+  WriteRequestPB req;
+  GenerateSequentialInsertRequest(&req);
+  const auto status = ExecuteWriteAndReturnStatus(tablet_peer_.get(), req);
+  ASSERT_TRUE(status.IsIllegalState()) << status;
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "simulated AddedToLeader failure");
+  ASSERT_EQ(initial_op_id, consensus->GetLastCommittedOpId());
+  ASSERT_EQ(initial_op_id, tablet_peer_->log()->GetLatestEntryOpId());
+
+  // With the injection removed, the next write succeeds and reuses the rejected index.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_operation_added_to_leader) = false;
+  WriteRequestPB retry_req;
+  GenerateSequentialInsertRequest(&retry_req);
+  ASSERT_OK(ExecuteWriteAndReturnStatus(tablet_peer_.get(), retry_req));
+  ASSERT_EQ(initial_op_id.index + 1, consensus->GetLastCommittedOpId().index);
+  ASSERT_EQ(consensus->GetLastCommittedOpId(), tablet_peer_->log()->GetLatestEntryOpId());
+}
+
+namespace {
+
+class FakeTabletSplitter : public TabletSplitter {
+ public:
+  Status ApplyTabletSplit(
+      SplitOperation* operation, log::Log* raft_log,
+      std::optional<consensus::RaftConfigPB> raft_config) override {
+    LOG(FATAL) << "Unexpected ApplyTabletSplit call";
+  }
+
+  Status ApplyCloneTablet(
+      CloneOperation* operation, log::Log* raft_log,
+      std::optional<consensus::RaftConfigPB> raft_config) override {
+    LOG(FATAL) << "Unexpected ApplyCloneTablet call";
+  }
+};
+
+// Submits the operation on the leader with AddedToLeader failure injected and asserts a clean
+// abort: the failure status is surfaced, and -- because the operation registers an operation
+// filter in AddedAsPending, which never ran -- the abort path must not unregister a
+// never-registered filter (that corrupts the tablet's operation-filter list).
+void SubmitAndCheckAbortedBeforePending(
+    std::unique_ptr<Operation> operation, consensus::Consensus* consensus,
+    TabletPeer* tablet_peer) {
+  const auto initial_op_id = consensus->GetLastCommittedOpId();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_operation_added_to_leader) = true;
+  auto synchronizer = std::make_shared<Synchronizer>();
+  operation->set_completion_callback(
+      MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
+  tablet_peer->Submit(std::move(operation), /* term= */ 1);
+  const auto status = synchronizer->Wait();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_operation_added_to_leader) = false;
+
+  ASSERT_TRUE(status.IsIllegalState()) << status;
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "simulated AddedToLeader failure");
+  ASSERT_EQ(initial_op_id, consensus->GetLastCommittedOpId());
+  ASSERT_EQ(initial_op_id, tablet_peer->log()->GetLatestEntryOpId());
+}
+
+}  // namespace
+
+TEST_F(TabletPeerTest, SplitAbortBeforePendingDoesNotUnregisterFilter) {
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+  auto consensus = ASSERT_RESULT(tablet_peer_->GetConsensus());
+  ASSERT_OK(LoggedWaitFor(
+      [&] {
+        const auto committed_op_id = consensus->GetLastCommittedOpId();
+        return committed_op_id.index > 0 &&
+               committed_op_id == tablet_peer_->log()->GetLatestEntryOpId();
+      },
+      MonoDelta::FromSeconds(5), "leader-election no-op to commit"));
+
+  FakeTabletSplitter fake_splitter;
+  auto operation = std::make_unique<SplitOperation>(
+      ASSERT_RESULT(tablet_peer_->shared_tablet()), &fake_splitter);
+  operation->AllocateRequest()->dup_tablet_id(tablet()->tablet_id());
+  ASSERT_NO_FATALS(SubmitAndCheckAbortedBeforePending(
+      std::move(operation), consensus.get(), tablet_peer_.get()));
+}
+
+TEST_F(TabletPeerTest, SnapshotAbortBeforePendingDoesNotUnregisterFilter) {
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+  auto consensus = ASSERT_RESULT(tablet_peer_->GetConsensus());
+  ASSERT_OK(LoggedWaitFor(
+      [&] {
+        const auto committed_op_id = consensus->GetLastCommittedOpId();
+        return committed_op_id.index > 0 &&
+               committed_op_id == tablet_peer_->log()->GetLatestEntryOpId();
+      },
+      MonoDelta::FromSeconds(5), "leader-election no-op to commit"));
+
+  auto operation = std::make_unique<SnapshotOperation>(
+      ASSERT_RESULT(tablet_peer_->shared_tablet()));
+  // RESTORE operations are the ones that register an operation filter.
+  operation->AllocateRequest()->set_operation(
+      tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
+  ASSERT_NO_FATALS(SubmitAndCheckAbortedBeforePending(
+      std::move(operation), consensus.get(), tablet_peer_.get()));
+}
 
 // Ensure that Log::GC() doesn't delete logs with anchors.
 TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {

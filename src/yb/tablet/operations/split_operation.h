@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <condition_variable>
 
 #include "yb/common/entity_ids_types.h"
@@ -68,6 +69,11 @@ class SplitOperation
       const OpId& id, consensus::OperationType op_type) const override;
 
   TabletSplitter& tablet_splitter_;
+
+  // Whether AddedAsPending registered this operation as the tablet's operation filter. The abort
+  // path can run without the operation ever having been added as pending (see
+  // RemovedFromPending).
+  std::atomic<bool> filter_registered_{false};
 };
 
 }  // namespace tablet
