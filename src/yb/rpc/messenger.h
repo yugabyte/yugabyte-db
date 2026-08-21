@@ -377,6 +377,10 @@ class Messenger : public ProxyContext {
 
   void ShutdownThreadPools();
 
+  rpc::ThreadPool& GetOrCreateCallbackThreadPool(
+      rpc::ThreadPoolPtr* pool, std::atomic<bool>* ready,
+      const std::string& name_suffix, Cgroup* cgroup);
+
   void BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing);
   void RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing);
 
@@ -460,9 +464,13 @@ class Messenger : public ProxyContext {
   std::atomic<bool> high_priority_thread_pool_ready_;
 
   // Pools used to invoke outbound call response callbacks, separate from the pools that serve
-  // inbound calls.
+  // inbound calls. Created on first use: a messenger that never issues outbound calls of a given
+  // priority never creates the matching pool.
+  std::mutex mutex_callback_thread_pools_;
   rpc::ThreadPoolPtr normal_callback_thread_pool_;
+  std::atomic<bool> normal_callback_thread_pool_ready_{false};
   rpc::ThreadPoolPtr high_priority_callback_thread_pool_;
+  std::atomic<bool> high_priority_callback_thread_pool_ready_{false};
 
   std::unique_ptr<DnsResolver> resolver_;
 

@@ -446,11 +446,36 @@ const ThreadPoolPtr& Messenger::ThreadPoolPtr(ServicePriority priority) {
 rpc::ThreadPool& Messenger::CallbackThreadPool(ServicePriority priority) {
   switch (priority) {
     case ServicePriority::kNormal:
-      return *normal_callback_thread_pool_;
+      return GetOrCreateCallbackThreadPool(
+          &normal_callback_thread_pool_, &normal_callback_thread_pool_ready_, "-cb",
+          system_med_cgroup_);
     case ServicePriority::kHigh:
-      return *high_priority_callback_thread_pool_;
+      return GetOrCreateCallbackThreadPool(
+          &high_priority_callback_thread_pool_, &high_priority_callback_thread_pool_ready_,
+          "-high-pri-cb", system_high_cgroup_);
   }
   FATAL_INVALID_ENUM_VALUE(ServicePriority, priority);
+}
+
+rpc::ThreadPool& Messenger::GetOrCreateCallbackThreadPool(
+    rpc::ThreadPoolPtr* pool, std::atomic<bool>* ready, const std::string& name_suffix,
+    Cgroup* cgroup) {
+  if (ready->load(std::memory_order_acquire)) {
+    return **pool;
+  }
+  std::lock_guard lock(mutex_callback_thread_pools_);
+  if (ready->load(std::memory_order_acquire)) {
+    return **pool;
+  }
+  *pool = std::make_shared<rpc::ThreadPool>(
+      rpc::ThreadPoolOptions {
+        .name = name_ + name_suffix,
+        .max_workers = FLAGS_rpc_callback_workers_limit > 0
+            ? FLAGS_rpc_callback_workers_limit : thread_pool_workers_limit_,
+        .cgroup = cgroup,
+      });
+  ready->store(true, std::memory_order_release);
+  return **pool;
 }
 
 Result<ThreadPoolPtr> Messenger::TaggedThreadPool(TaggedThreadPools::Tag tag) {
@@ -467,11 +492,14 @@ Status Messenger::RegisterService(
 
 void Messenger::ShutdownThreadPools() {
   normal_thread_pools_->Shutdown();
-  if (normal_callback_thread_pool_) {
-    normal_callback_thread_pool_->Shutdown();
-  }
-  if (high_priority_callback_thread_pool_) {
-    high_priority_callback_thread_pool_->Shutdown();
+  {
+    std::lock_guard lock(mutex_callback_thread_pools_);
+    if (normal_callback_thread_pool_) {
+      normal_callback_thread_pool_->Shutdown();
+    }
+    if (high_priority_callback_thread_pool_) {
+      high_priority_callback_thread_pool_->Shutdown();
+    }
   }
   std::lock_guard lock(mutex_high_priority_thread_pool_);
   if (high_priority_thread_pool_) {
@@ -672,21 +700,6 @@ Reactor* Messenger::RemoteToReactor(const Endpoint& remote, uint32_t idx) {
 
 Status Messenger::Init(const MessengerBuilder &bld) {
   default_normal_thread_pool_ = VERIFY_RESULT(normal_thread_pools_->Pool(/*tag=*/0));
-
-  auto callback_workers_limit = FLAGS_rpc_callback_workers_limit > 0
-      ? FLAGS_rpc_callback_workers_limit : thread_pool_workers_limit_;
-  normal_callback_thread_pool_ = std::make_shared<rpc::ThreadPool>(
-      rpc::ThreadPoolOptions {
-        .name = name_ + "-cb",
-        .max_workers = callback_workers_limit,
-        .cgroup = system_med_cgroup_,
-      });
-  high_priority_callback_thread_pool_ = std::make_shared<rpc::ThreadPool>(
-      rpc::ThreadPoolOptions {
-        .name = name_ + "-high-pri-cb",
-        .max_workers = callback_workers_limit,
-        .cgroup = system_high_cgroup_,
-      });
 
   reactors_.reserve(bld.num_reactors_);
   ReactorMonitor* reactor_monitor = nullptr;
