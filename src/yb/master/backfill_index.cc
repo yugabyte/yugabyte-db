@@ -115,6 +115,10 @@ DEFINE_test_flag(int32, slowdown_backfill_alter_table_rpcs_ms, 0,
 DEFINE_test_flag(int32, slowdown_backfill_job_deletion_ms, 0,
     "Slows down backfill job deletion so that backfill job can be read by test.");
 
+DEFINE_test_flag(bool, fail_backfill_job_deletion_once, false,
+    "Fails the sys-catalog write that clears the backfill job, then resets itself. Simulates a "
+    "transient write failure on the last of the backfill completion writes.");
+
 DEFINE_test_flag(bool, skip_index_backfill, false,
     "Skips backfilling the data on tservers and leaves the index in inconsistent state.");
 
@@ -1071,9 +1075,21 @@ Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& f
     }
     LOG_WITH_PREFIX(INFO) << "Completed backfilling the index table.";
     StopLivenessMonitor();
-    RETURN_NOT_OK_PREPEND(
-        MarkAllIndexesAsSuccess(), "Failed to mark indexes as successfully backfilled.");
-    RETURN_NOT_OK_PREPEND(UpdateIndexPermissionsForIndexes(), "Failed to complete backfill.");
+    const auto completion_status = [this]() -> Status {
+      RETURN_NOT_OK_PREPEND(
+          MarkAllIndexesAsSuccess(), "Failed to mark indexes as successfully backfilled.");
+      RETURN_NOT_OK_PREPEND(UpdateIndexPermissionsForIndexes(), "Failed to complete backfill.");
+      return Status::OK();
+    }();
+    if (!completion_status.ok()) {
+      state_.store(State::kFailed, std::memory_order_release);
+      LOG_WITH_PREFIX(WARNING) << "Failed to complete the backfill: " << completion_status;
+      RETURN_NOT_OK_PREPEND(
+          MarkIndexesAsFailed(requested_index_ids_, completion_status.message().ToBuffer()),
+          "Couldn't mark indexes as failed");
+      RETURN_NOT_OK(CheckIfDone());
+      return completion_status;
+    }
   } else {
     VLOG_WITH_PREFIX(1) << "Still backfilling " << tablets_pending_ << " more tablets.";
   }
@@ -1319,6 +1335,10 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
     DCHECK_LE(l.data().pb.backfill_jobs_size(), 1) << "For now we only expect to have up to 1 "
                                                        "outstanding backfill job.";
     l.mutable_data()->pb.clear_backfill_jobs();
+    if (PREDICT_FALSE(FLAGS_TEST_fail_backfill_job_deletion_once)) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_backfill_job_deletion_once) = false;
+      return STATUS(InternalError, "TEST: could not clear backfilling timestamp.");
+    }
     RETURN_NOT_OK_PREPEND(
         master_->catalog_manager_impl()->sys_catalog_->Upsert(
             epoch_, indexed_table_),
