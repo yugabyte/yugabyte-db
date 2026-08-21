@@ -66,4 +66,5 @@ yugabyte=# DROP TYPE feature_range RESTRICT;
 
 ## See also
 
+- [`ALTER TYPE`](../ddl_alter_type)
 - [`CREATE TYPE`](../ddl_create_type)

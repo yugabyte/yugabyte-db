@@ -136,4 +136,5 @@ yugabyte=# CREATE TYPE shell_type;
 
 ## See also
 
+- [`ALTER TYPE`](../ddl_alter_type)
 - [`DROP TYPE`](../ddl_drop_type)
