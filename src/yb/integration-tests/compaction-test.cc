@@ -200,6 +200,13 @@ class CompactionTest : public YBTest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 2;
 
+    // Pin the full compaction pool size so tests are independent of the CPU-count-derived
+    // default, unless a subclass already chose a value (ScheduledFullCompactionsTest sets 1
+    // before calling this SetUp).
+    if (ANNOTATE_UNPROTECTED_READ(FLAGS_full_compaction_pool_max_threads) < 0) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_full_compaction_pool_max_threads) = 2;
+    }
+
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
 
     // Disable scheduled compactions by default so we don't have surprise compactions.
