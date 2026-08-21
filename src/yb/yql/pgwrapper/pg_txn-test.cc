@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <signal.h>
+
 #include <gtest/gtest.h>
 
 #include <boost/algorithm/string/join.hpp>
@@ -24,6 +26,8 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/errno.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
@@ -1009,6 +1013,82 @@ TEST_F(PgTxnTest, RepackDisabledPreservesPackedRow) {
   // 'extra' must survive: it only exists in the packed row, which must not be dropped.
   auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test"));
   ASSERT_EQ(res, "1, 3, 42");
+}
+
+// Kills a backend while its COMMIT is still in flight, so that the session shutdown runs against an
+// unfinished transaction. Expects the tserver to survive and keep serving.
+TEST_F(PgTxnTest, ExpiredSessionAbortRacesFinishTransaction) {
+  const auto kSyncTimeout = 10s * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  const auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+  // Signalled when the commit is parked; awaited by the commit until the test releases it.
+  CountDownLatch commit_parked(1);
+  CountDownLatch release_commit(1);
+
+  TestThreadHolder thread_holder;
+
+  // Parks this backend's commit until the test releases it. Other sessions on this tserver reach
+  // the same sync point, so match on the pid it reports and let them through.
+  SyncPoint::GetInstance()->SetCallBack(
+      "PgClientSession::DoFinishTransaction:BeforeSwap",
+      [&commit_parked, &release_commit, backend_pid, kSyncTimeout](void* arg) {
+        if (*static_cast<pid_t*>(arg) != backend_pid) {
+          return;
+        }
+        commit_parked.CountDown();
+        if (!release_commit.WaitFor(kSyncTimeout)) {
+          LOG(INFO) << "Timed out waiting for the test to release the commit";
+        }
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Declared after the thread holder so an early exit releases the commit before joining it.
+  auto sync_point_cleanup = ScopeExit([&release_commit] {
+    release_commit.CountDown();
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+    SyncPoint::GetInstance()->ClearTrace();
+  });
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+  thread_holder.AddThreadFunctor([&conn] {
+    // Expected to fail: the backend is killed while this commit is in flight.
+    LOG(INFO) << "COMMIT returned: " << conn.CommitTransaction();
+  });
+
+  ASSERT_TRUE(commit_parked.WaitFor(kSyncTimeout));
+
+  // Kill the backend and wait for it to be gone, so the commit is released only after the kill has
+  // taken effect.
+  LOG(INFO) << "Killing backend pid " << backend_pid;
+  ASSERT_EQ(kill(backend_pid, SIGKILL), 0) << "kill failed: " << ErrnoToString(errno);
+  ASSERT_OK(WaitFor([backend_pid] {
+    return kill(backend_pid, 0) != 0 && errno == ESRCH;
+  }, kSyncTimeout, "Killed backend to exit"));
+
+  release_commit.CountDown();
+  thread_holder.JoinAll();
+
+  // Killing a backend makes the postmaster reset the other backends, so retry until a fresh
+  // connection is accepted. Whether the row is visible depends on which side of the race won, so
+  // only the read itself is asserted.
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto check_conn = Connect();
+    if (!check_conn.ok()) {
+      return false;
+    }
+    const auto count = check_conn->FetchRow<int64_t>("SELECT COUNT(*) FROM t");
+    if (!count.ok()) {
+      return false;
+    }
+    LOG(INFO) << "Rows visible after the race: " << *count;
+    return true;
+  }, kSyncTimeout, "Read the table after the race"));
 }
 
 } // namespace yb::pgwrapper
