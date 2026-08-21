@@ -156,6 +156,7 @@ extern void YBCExecuteInsertIndex(Relation rel,
 								  bool *isnull,
 								  Datum ybctid,
 								  const uint64_t *backfill_write_time,
+								  YbcPgUniqueIndexBackfillMode unique_backfill_mode,
 								  yb_bind_for_write_function callback,
 								  void *indexstate);
 extern void YBCExecuteInsertIndexForDb(Oid dboid,
@@ -164,6 +165,7 @@ extern void YBCExecuteInsertIndexForDb(Oid dboid,
 									   bool *isnull,
 									   Datum ybctid,
 									   const uint64_t *backfill_write_time,
+									   YbcPgUniqueIndexBackfillMode unique_backfill_mode,
 									   yb_bind_for_write_function callback,
 									   void *indexstate);
 

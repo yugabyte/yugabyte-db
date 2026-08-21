@@ -1371,6 +1371,14 @@ void PgsqlWriteOperation::ClearResponse() {
 
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
+  // The mode is selected once per job by the master and carried on every backfill write;
+  // missing or unknown values keep the fully checked path. Foreground writes never set it, so
+  // their uniqueness enforcement is unaffected.
+  if (request_.unique_index_backfill_mode() ==
+      UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL) {
+    VLOG(3) << "Skipping uniqueness checks for backfill write per job mode, doc_key: " << doc_key_;
+    return false;
+  }
   VLOG(3) << "Looking for collisions in\n" << DocDBDebugDumpToStr(data);
   // We need to check backwards only for backfilled entries.
   bool ret =

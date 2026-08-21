@@ -370,6 +370,7 @@ YbcPgTxnSnapshot
 YbcPgTypeAttrs
 YbcPgTypeEntities
 YbcPgTypeEntity
+YbcPgUniqueIndexBackfillMode
 YbcPgUuid
 YbcPgVectorDistType
 YbcPgVectorIdxOptions
