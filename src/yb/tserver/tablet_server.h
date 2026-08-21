@@ -61,6 +61,7 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/scheduler.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -751,6 +752,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::optional<ConnectivityPoller> connectivity_poller_;
 
   std::unique_ptr<docdb::ObjectLockSharedStateManager> object_lock_shared_state_manager_;
+
+  // Tracks the periodic CheckYsqlLaggingCatalogVersions task so that Shutdown() can stop the
+  // re-schedule loop and wait out an in-flight check before the messenger is shut down.
+  rpc::ScheduledTaskTracker check_lagging_catalog_versions_task_;
+
   OneTimeBool shutting_down_;
 
   // Per-database list of pending relcache-init callbacks. The first caller for a database creates
