@@ -1161,6 +1161,119 @@ spec:
                               description: How often the collector re-checks its memory usage.
                               type: integer
                               default: 10
+                  ysqlConnMgrLogs:
+                    description: >
+                      YSQL Connection Manager log export. Omit to disable. A plain file tail
+                      with no severity filter, and no DB process restart.
+                    type: object
+                    properties:
+                      exporters:
+                        description: >
+                          YSQL Connection Manager log export destinations. An empty list exports
+                          nothing.
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - telemetryProvider
+                          properties:
+                            telemetryProvider:
+                              description: >
+                                Name of the TelemetryProvider CR in this namespace to export to. The
+                                referenced CR must have reached status.state Ready and published its
+                                status.resourceUUID; until then this section is not reconciled.
+                              type: string
+                              minLength: 1
+                            additionalTags:
+                              description: >
+                                Extra key/value tags attached to every record exported through this
+                                exporter, in addition to the tags on the TelemetryProvider itself.
+                              type: object
+                              default: {}
+                              additionalProperties:
+                                type: string
+                            sendBatchSize:
+                              description: >
+                                Number of records the collector accumulates before sending a batch.
+                              type: integer
+                              default: 100
+                            sendBatchMaxSize:
+                              description: >
+                                Upper bound on the size of a single batch; larger batches are split.
+                                0 means no limit.
+                              type: integer
+                              default: 1000
+                            sendBatchTimeoutSeconds:
+                              description: >
+                                Longest the collector holds an incomplete batch before sending it.
+                              type: integer
+                              default: 10
+                            memoryLimitMib:
+                              description: >
+                                Soft memory limit in MiB for the collector process. Above it the memory
+                                limiter starts refusing data instead of growing without bound.
+                              type: integer
+                              default: 2048
+                            memoryLimitCheckIntervalSeconds:
+                              description: How often the collector re-checks its memory usage.
+                              type: integer
+                              default: 10
+                  controllerLogs:
+                    description: >
+                      YB-Controller (backup agent sidecar) log export. Omit to disable. A
+                      plain file tail with no severity filter, and no DB process restart.
+                    type: object
+                    properties:
+                      exporters:
+                        description: >
+                          YB-Controller log export destinations. An empty list exports nothing.
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - telemetryProvider
+                          properties:
+                            telemetryProvider:
+                              description: >
+                                Name of the TelemetryProvider CR in this namespace to export to. The
+                                referenced CR must have reached status.state Ready and published its
+                                status.resourceUUID; until then this section is not reconciled.
+                              type: string
+                              minLength: 1
+                            additionalTags:
+                              description: >
+                                Extra key/value tags attached to every record exported through this
+                                exporter, in addition to the tags on the TelemetryProvider itself.
+                              type: object
+                              default: {}
+                              additionalProperties:
+                                type: string
+                            sendBatchSize:
+                              description: >
+                                Number of records the collector accumulates before sending a batch.
+                              type: integer
+                              default: 100
+                            sendBatchMaxSize:
+                              description: >
+                                Upper bound on the size of a single batch; larger batches are split.
+                                0 means no limit.
+                              type: integer
+                              default: 1000
+                            sendBatchTimeoutSeconds:
+                              description: >
+                                Longest the collector holds an incomplete batch before sending it.
+                              type: integer
+                              default: 10
+                            memoryLimitMib:
+                              description: >
+                                Soft memory limit in MiB for the collector process. Above it the memory
+                                limiter starts refusing data instead of growing without bound.
+                              type: integer
+                              default: 2048
+                            memoryLimitCheckIntervalSeconds:
+                              description: How often the collector re-checks its memory usage.
+                              type: integer
+                              default: 10
               kubernetesOverrides:
                 description: >
                   Kubernetes overrides for the universe.

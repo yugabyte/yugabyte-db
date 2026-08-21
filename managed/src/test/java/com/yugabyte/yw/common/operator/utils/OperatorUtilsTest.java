@@ -57,10 +57,14 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterC
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ControllerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.NodeAgentLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.ServerLogLevel;
 import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.UniverseServerLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YnpLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YsqlConnMgrLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
@@ -1294,6 +1298,18 @@ public class OperatorUtilsTest extends FakeDBApplication {
     return config;
   }
 
+  private static YsqlConnMgrLogConfig storedYsqlConnMgrLogConfig(UUID exporterUuid) {
+    YsqlConnMgrLogConfig config = new YsqlConnMgrLogConfig();
+    config.setUniverseLogsExporterConfig(new ArrayList<>(List.of(serverExporter(exporterUuid))));
+    return config;
+  }
+
+  private static ControllerLogConfig storedControllerLogConfig(UUID exporterUuid) {
+    ControllerLogConfig config = new ControllerLogConfig();
+    config.setUniverseLogsExporterConfig(new ArrayList<>(List.of(serverExporter(exporterUuid))));
+    return config;
+  }
+
   /** One TelemetryConfig per export type, populating only that type's section. */
   private static Map<ExportType, TelemetryConfig> singleSectionConfigs(UUID exporterUuid) {
     Map<ExportType, TelemetryConfig> configs = new EnumMap<>(ExportType.class);
@@ -1314,6 +1330,16 @@ public class OperatorUtilsTest extends FakeDBApplication {
     configs.put(
         ExportType.TSERVER_LOGS,
         TelemetryConfig.builder().tserverLogConfig(storedTserverLogConfig(exporterUuid)).build());
+    configs.put(
+        ExportType.YSQL_CONN_MGR_LOGS,
+        TelemetryConfig.builder()
+            .ysqlConnMgrLogConfig(storedYsqlConnMgrLogConfig(exporterUuid))
+            .build());
+    configs.put(
+        ExportType.CONTROLLER_LOGS,
+        TelemetryConfig.builder()
+            .controllerLogConfig(storedControllerLogConfig(exporterUuid))
+            .build());
     return configs;
   }
 
@@ -1330,7 +1356,39 @@ public class OperatorUtilsTest extends FakeDBApplication {
     UUID exporterUuid = UUID.randomUUID();
     Map<ExportType, TelemetryConfig> singleSection = singleSectionConfigs(exporterUuid);
 
+    // The VM-only set is pinned rather than derived, so a new unsupported type also has to be
+    // acknowledged here (and omitted from the universe CRD).
+    Set<ExportType> vmOnly = EnumSet.noneOf(ExportType.class);
     for (ExportType type : ExportType.values()) {
+      if (!type.isSupportedOnKubernetes()) {
+        vmOnly.add(type);
+      }
+    }
+    assertEquals(
+        "The set of Kubernetes-unsupported export types changed. Decide whether the new type"
+            + " belongs in the universe CRD before updating this expectation.",
+        EnumSet.of(ExportType.NODE_AGENT_LOGS, ExportType.YNP_LOGS),
+        vmOnly);
+
+    NodeAgentLogConfig nodeAgentLogConfig = new NodeAgentLogConfig();
+    nodeAgentLogConfig.setUniverseLogsExporterConfig(
+        new ArrayList<>(List.of(serverExporter(exporterUuid))));
+    YnpLogConfig ynpLogConfig = new YnpLogConfig();
+    ynpLogConfig.setUniverseLogsExporterConfig(
+        new ArrayList<>(List.of(serverExporter(exporterUuid))));
+    TelemetryConfig vmOnlySections =
+        TelemetryConfig.builder()
+            .nodeAgentLogConfig(nodeAgentLogConfig)
+            .ynpLogConfig(ynpLogConfig)
+            .build();
+
+    for (ExportType type : ExportType.values()) {
+      if (vmOnly.contains(type)) {
+        assertFalse(
+            type + " is VM-only and must never trigger a telemetry reconcile on Kubernetes",
+            OperatorUtils.telemetrySectionDiffers(type, vmOnlySections, new TelemetryConfig()));
+        continue;
+      }
       TelemetryConfig desired = singleSection.get(type);
       assertNotNull(
           "Export type "
@@ -1366,18 +1424,18 @@ public class OperatorUtilsTest extends FakeDBApplication {
 
   @Test
   public void testTelemetrySectionDiffersTreatsNullAndEmptyExporterListsAsEqual() {
-    TServerLogConfig storedSection = new TServerLogConfig();
+    ControllerLogConfig storedSection = new ControllerLogConfig();
     // Older stored rows can hold null where the shared mapper now always writes an empty list.
     storedSection.setUniverseLogsExporterConfig(null);
-    TServerLogConfig desiredSection = new TServerLogConfig();
+    ControllerLogConfig desiredSection = new ControllerLogConfig();
     desiredSection.setUniverseLogsExporterConfig(new ArrayList<>());
 
     assertFalse(
         "null and empty exporter lists both mean 'no exporter'",
         OperatorUtils.telemetrySectionDiffers(
-            ExportType.TSERVER_LOGS,
-            TelemetryConfig.builder().tserverLogConfig(desiredSection).build(),
-            TelemetryConfig.builder().tserverLogConfig(storedSection).build()));
+            ExportType.CONTROLLER_LOGS,
+            TelemetryConfig.builder().controllerLogConfig(desiredSection).build(),
+            TelemetryConfig.builder().controllerLogConfig(storedSection).build()));
   }
 
   @Test
@@ -1636,5 +1694,18 @@ public class OperatorUtilsTest extends FakeDBApplication {
     TelemetryConfig desired = operatorUtils.getDesiredTelemetryConfig(ybUniverse);
 
     assertFalse("an empty telemetry block must mean no exports", desired.hasAnyConfig());
+  }
+
+  @Test
+  public void testGetDesiredTelemetryConfigNeverSetsVmOnlySections() throws Exception {
+    createTelemetryProviderCr(TELEMETRY_PROVIDER_CR, "Ready", UUID.randomUUID());
+    io.yugabyte.operator.v1alpha1.YBUniverse ybUniverse =
+        ybUniverseWithTelemetry(crTelemetryWithMetrics());
+
+    TelemetryConfig desired = operatorUtils.getDesiredTelemetryConfig(ybUniverse);
+
+    // node-agent and YNP logs are absent from the universe CRD, so they can never be authored.
+    assertNull(desired.getNodeAgentLogConfig());
+    assertNull(desired.getYnpLogConfig());
   }
 }

@@ -15,10 +15,12 @@ import com.yugabyte.yw.models.helpers.exporters.server.ServerLogLevel;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.AuditLogs;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.ControllerLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.MasterLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.Metrics;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.QueryLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.TserverLogs;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.YsqlConnMgrLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.YcqlAuditConfig;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.YsqlAuditConfig;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.querylogs.YsqlQueryLogConfig;
@@ -92,6 +94,22 @@ public class UniverseTelemetrySpecConverterTest {
     return e;
   }
 
+  private static io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.ysqlconnmgrlogs.Exporters
+      connMgrExporter() {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.ysqlconnmgrlogs.Exporters e =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.ysqlconnmgrlogs.Exporters();
+    e.setTelemetryProvider("datadog-prod");
+    return e;
+  }
+
+  private static io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.controllerlogs.Exporters
+      controllerExporter() {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.controllerlogs.Exporters e =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.controllerlogs.Exporters();
+    e.setTelemetryProvider("datadog-prod");
+    return e;
+  }
+
   private static Telemetry fullSpec() {
     Telemetry telemetry = new Telemetry();
 
@@ -130,6 +148,14 @@ public class UniverseTelemetrySpecConverterTest {
     TserverLogs tserverLogs = new TserverLogs();
     tserverLogs.setExporters(Collections.singletonList(tserverExporter()));
     telemetry.setTserverLogs(tserverLogs);
+
+    YsqlConnMgrLogs connMgrLogs = new YsqlConnMgrLogs();
+    connMgrLogs.setExporters(Collections.singletonList(connMgrExporter()));
+    telemetry.setYsqlConnMgrLogs(connMgrLogs);
+
+    ControllerLogs controllerLogs = new ControllerLogs();
+    controllerLogs.setExporters(Collections.singletonList(controllerExporter()));
+    telemetry.setControllerLogs(controllerLogs);
 
     return telemetry;
   }
@@ -190,6 +216,10 @@ public class UniverseTelemetrySpecConverterTest {
     assertEquals(ServerLogLevel.WARNING, desired.getMasterLogConfig().getMinLevel());
     assertEquals(Double.valueOf(0.99), desired.getMasterLogConfig().getNoiseSampleDropRatio());
     assertEquals(ServerLogLevel.WARNING, desired.getTserverLogConfig().getMinLevel());
+    assertEquals(1, desired.getYsqlConnMgrLogConfig().getUniverseLogsExporterConfig().size());
+    assertEquals(1, desired.getControllerLogConfig().getUniverseLogsExporterConfig().size());
+    assertEquals(null, desired.getNodeAgentLogConfig());
+    assertEquals(null, desired.getYnpLogConfig());
   }
 
   @Test

@@ -87,6 +87,7 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.SimpleServerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import io.fabric8.kubernetes.api.model.HasMetadata;
@@ -1126,6 +1127,19 @@ public class OperatorUtils {
         return !Objects.equals(
             authoredView(desired.getTserverLogConfig()),
             authoredView(current.getTserverLogConfig()));
+      case YSQL_CONN_MGR_LOGS:
+        return !Objects.equals(
+            authoredView(desired.getYsqlConnMgrLogConfig()),
+            authoredView(current.getYsqlConnMgrLogConfig()));
+      case CONTROLLER_LOGS:
+        return !Objects.equals(
+            authoredView(desired.getControllerLogConfig()),
+            authoredView(current.getControllerLogConfig()));
+      case NODE_AGENT_LOGS:
+      case YNP_LOGS:
+        // VM-only (ExportType.isSupportedOnKubernetes() is false), so they are absent from the
+        // universe CRD entirely and the operator never reconciles them.
+        return false;
       default:
         throw new IllegalArgumentException(
             "Unhandled export type in the operator telemetry comparison: " + type);
@@ -1201,6 +1215,16 @@ public class OperatorUtils {
       return null;
     }
     TServerLogConfig view = authoredCopy(config);
+    view.setUniverseLogsExporterConfig(authoredExporters(view.getUniverseLogsExporterConfig()));
+    return view;
+  }
+
+  /** SimpleServerLogConfig has no derived fields, just handle exporter configs. */
+  private static <T extends SimpleServerLogConfig> T authoredView(T config) {
+    if (config == null) {
+      return null;
+    }
+    T view = authoredCopy(config);
     view.setUniverseLogsExporterConfig(authoredExporters(view.getUniverseLogsExporterConfig()));
     return view;
   }

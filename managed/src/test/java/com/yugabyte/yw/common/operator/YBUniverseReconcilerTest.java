@@ -88,10 +88,12 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.Resource
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.Master;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.master.Limits;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.AuditLogs;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.ControllerLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.MasterLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.Metrics;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.QueryLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.TserverLogs;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.YsqlConnMgrLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.YcqlAuditConfig;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.YsqlAuditConfig;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.querylogs.YsqlQueryLogConfig;
@@ -1754,6 +1756,24 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     return exporter;
   }
 
+  private static io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.ysqlconnmgrlogs.Exporters
+      crYsqlConnMgrExporter(boolean changed) {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.ysqlconnmgrlogs.Exporters exporter =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.ysqlconnmgrlogs.Exporters();
+    exporter.setTelemetryProvider(TELEMETRY_PROVIDER_CR);
+    exporter.setAdditionalTags(new HashMap<>(Map.of("env", changed ? "staging" : "prod")));
+    return exporter;
+  }
+
+  private static io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.controllerlogs.Exporters
+      crControllerExporter(boolean changed) {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.controllerlogs.Exporters exporter =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.controllerlogs.Exporters();
+    exporter.setTelemetryProvider(TELEMETRY_PROVIDER_CR);
+    exporter.setAdditionalTags(new HashMap<>(Map.of("env", changed ? "staging" : "prod")));
+    return exporter;
+  }
+
   private static AuditLogs crAuditLogs(boolean changed) {
     AuditLogs auditLogs = new AuditLogs();
     YsqlAuditConfig ysql = new YsqlAuditConfig();
@@ -1797,6 +1817,18 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     return tserverLogs;
   }
 
+  private static YsqlConnMgrLogs crYsqlConnMgrLogs(boolean changed) {
+    YsqlConnMgrLogs logs = new YsqlConnMgrLogs();
+    logs.setExporters(List.of(crYsqlConnMgrExporter(changed)));
+    return logs;
+  }
+
+  private static ControllerLogs crControllerLogs(boolean changed) {
+    ControllerLogs logs = new ControllerLogs();
+    logs.setExporters(List.of(crControllerExporter(changed)));
+    return logs;
+  }
+
   /** One telemetry section, in the two shapes the per-section trigger tests need. */
   private static final class TelemetrySection {
     private final ExportType exportType;
@@ -1830,7 +1862,13 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         new TelemetrySection(
             ExportType.MASTER_LOGS, (t, changed) -> t.setMasterLogs(crMasterLogs(changed))),
         new TelemetrySection(
-            ExportType.TSERVER_LOGS, (t, changed) -> t.setTserverLogs(crTserverLogs(changed))));
+            ExportType.TSERVER_LOGS, (t, changed) -> t.setTserverLogs(crTserverLogs(changed))),
+        new TelemetrySection(
+            ExportType.YSQL_CONN_MGR_LOGS,
+            (t, changed) -> t.setYsqlConnMgrLogs(crYsqlConnMgrLogs(changed))),
+        new TelemetrySection(
+            ExportType.CONTROLLER_LOGS,
+            (t, changed) -> t.setControllerLogs(crControllerLogs(changed))));
   }
 
   /** A telemetry block with every Kubernetes-supported export type configured. */
@@ -1960,6 +1998,20 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Telemetry telemetry = new Telemetry();
     telemetry.setTserverLogs(crTserverLogs(false));
     assertTelemetryConverges("tserver", telemetry);
+  }
+
+  @Test
+  public void testTelemetryConvergesForYsqlConnMgrLogs() throws Exception {
+    Telemetry telemetry = new Telemetry();
+    telemetry.setYsqlConnMgrLogs(crYsqlConnMgrLogs(false));
+    assertTelemetryConverges("connmgr", telemetry);
+  }
+
+  @Test
+  public void testTelemetryConvergesForControllerLogs() throws Exception {
+    Telemetry telemetry = new Telemetry();
+    telemetry.setControllerLogs(crControllerLogs(false));
+    assertTelemetryConverges("controller", telemetry);
   }
 
   @Test

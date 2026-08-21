@@ -20,16 +20,20 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterC
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ControllerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.ServerLogLevel;
 import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.UniverseServerLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YsqlConnMgrLogConfig;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.AuditLogs;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.ControllerLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.MasterLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.Metrics;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.QueryLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.TserverLogs;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.YsqlConnMgrLogs;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -96,6 +100,8 @@ public class UniverseTelemetrySpecConverter {
             .metricsExportConfig(toMetricsExportConfig(telemetry.getMetrics(), resolver))
             .masterLogConfig(toMasterLogConfig(telemetry.getMasterLogs(), resolver))
             .tserverLogConfig(toTserverLogConfig(telemetry.getTserverLogs(), resolver))
+            .ysqlConnMgrLogConfig(toYsqlConnMgrLogConfig(telemetry.getYsqlConnMgrLogs(), resolver))
+            .controllerLogConfig(toControllerLogConfig(telemetry.getControllerLogs(), resolver))
             .build();
     return normalizeThroughSharedMapper(authored);
   }
@@ -239,6 +245,45 @@ public class UniverseTelemetrySpecConverter {
         toExporters(
             crTserverLogs.getExporters(),
             io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.tserverlogs.Exporters
+                ::getTelemetryProvider,
+            UniverseServerLogsExporterConfig.class,
+            resolver));
+    return config;
+  }
+
+  /**
+   * YSQL Connection Manager logs: an exporters-only section (no severity filter, the whole file is
+   * tailed), so there is nothing to convert beyond the exporter list.
+   */
+  @Nullable
+  private static YsqlConnMgrLogConfig toYsqlConnMgrLogConfig(
+      @Nullable YsqlConnMgrLogs crYsqlConnMgrLogs, ExporterUuidResolver resolver) throws Exception {
+    if (crYsqlConnMgrLogs == null) {
+      return null;
+    }
+    YsqlConnMgrLogConfig config = new YsqlConnMgrLogConfig();
+    config.setUniverseLogsExporterConfig(
+        toExporters(
+            crYsqlConnMgrLogs.getExporters(),
+            io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.ysqlconnmgrlogs.Exporters
+                ::getTelemetryProvider,
+            UniverseServerLogsExporterConfig.class,
+            resolver));
+    return config;
+  }
+
+  /** YB-Controller logs: exporters-only, like YSQL Connection Manager logs. */
+  @Nullable
+  private static ControllerLogConfig toControllerLogConfig(
+      @Nullable ControllerLogs crControllerLogs, ExporterUuidResolver resolver) throws Exception {
+    if (crControllerLogs == null) {
+      return null;
+    }
+    ControllerLogConfig config = new ControllerLogConfig();
+    config.setUniverseLogsExporterConfig(
+        toExporters(
+            crControllerLogs.getExporters(),
+            io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.controllerlogs.Exporters
                 ::getTelemetryProvider,
             UniverseServerLogsExporterConfig.class,
             resolver));
