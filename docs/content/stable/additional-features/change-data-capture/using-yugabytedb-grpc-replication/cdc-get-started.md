@@ -23,7 +23,7 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
     Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a CDC stream.
     
-    {{<tags/feature/ea idea="2762">}}Create and manage the stream using the PostgreSQL replication slot interface (v2026.1.1.0 and later).
+    {{<tags/feature/ea idea="2762">}}Create and manage the stream using PostgreSQL replication slot commands (v2026.1.1.0 and later).
 
     You can also create a stream using the [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) `create_change_data_stream` command.
 
@@ -50,7 +50,7 @@ Create streams using one of the following methods:
 
 ### Using PostgreSQL replication slot syntax
 
-{{<tags/feature/ea idea="2762">}}Create, list, and drop gRPC CDC streams using the standard PostgreSQL replication slot interface by specifying the special output plugin `yb_grpc` (available in v2026.1.1.0 and later). The stream is still consumed by the YugabyteDB gRPC connector, but the lifecycle (create, list, drop) uses familiar PostgreSQL tooling.
+{{<tags/feature/ea idea="2762">}}Create, list, and drop gRPC CDC streams using standard PostgreSQL replication slot commands and the special output plugin `yb_grpc` (available in v2026.1.1.0 and later). The stream is still consumed by the YugabyteDB gRPC connector, but the lifecycle (create, list, drop) uses familiar PostgreSQL tooling.
 
 This capability is enabled automatically after you finalize a cluster upgrade to a supported version (v2026.1.1.0 and later). Creating a gRPC stream via PostgreSQL syntax is rejected until upgrade finalization completes.
 
