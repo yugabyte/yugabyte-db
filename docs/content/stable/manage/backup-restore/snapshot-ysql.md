@@ -1,6 +1,6 @@
 ---
 title: Distributed snapshots for YSQL
-headerTitle: Distributed snapshots for YSQL
+headerTitle: Distributed snapshots
 linkTitle: Distributed snapshots
 description: Distributed snapshots for YSQL.
 menu:
@@ -13,7 +13,9 @@ type: docs
 
 {{<api-tabs>}}
 
-The most efficient way to back up the data stored in YugabyteDB is to create a distributed snapshot. A snapshot is a consistent cut of data taken across all the nodes in the cluster. For YSQL, snapshots are created on per-database level. Backing up individual tables is currently not supported.
+The most efficient way to back up the data stored in YugabyteDB is to create a distributed snapshot. A snapshot is a consistent cut of data taken across all the nodes in the cluster.
+
+For YSQL, snapshots are created per database. Backing up individual tables is currently not supported.
 
 When YugabyteDB creates a snapshot, it does not physically copy the data; instead, it creates hard links to all the relevant files. These links reside on the same storage volumes where the data itself is stored, which makes both backup and restore operations nearly instantaneous.
 
@@ -23,7 +25,7 @@ Note that even though there are no technical limitations on the number of snapsh
 
 Using distributed snapshots allows you to back up a database and then restore it in case of a software or operational error, with minimal recovery time objectives (RTO) and overhead.
 
-To back up a database, create a snapshot using the [`create_database_snapshot`](../../../admin/yb-admin/#create-database-snapshot) command, as follows:
+To back up a database, create a snapshot using the [create_database_snapshot](../../../admin/yb-admin/#create-database-snapshot) command, as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> create_database_snapshot ysql.<database_name>
@@ -37,7 +39,7 @@ Started snapshot creation: 0d4b4935-2c95-4523-95ab-9ead1e95e794
 
 You can then use this ID to check the status of the snapshot, [delete it](#delete-a-snapshot), or use it to [restore the database](#restore-a-snapshot).
 
-The `create_database_snapshot` command exits immediately, but the snapshot may take some time to complete. Before using the snapshot, verify its status by executing the [`list_snapshots`](../../../admin/yb-admin/#list-snapshots) command, as follows:
+The `create_database_snapshot` command exits immediately, but the snapshot may take some time to complete. Before using the snapshot, verify its status by executing the [list_snapshots](../../../admin/yb-admin/#list-snapshots) command, as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshots
@@ -60,7 +62,7 @@ Snapshots never expire and are retained as long as the cluster exists. If you no
 
 ## Restore a snapshot
 
-To restore the data backed up in one of the previously created snapshots, run the [`restore_snapshot`](../../../admin/yb-admin/#restore-snapshot) command, as follows:
+To restore the data backed up in one of the previously created snapshots, run the [restore_snapshot](../../../admin/yb-admin/#restore-snapshot) command, as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> restore_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794
@@ -68,7 +70,9 @@ To restore the data backed up in one of the previously created snapshots, run th
 
 This command rolls back the database to the state which it had when the snapshot was created. The restore happens in-place: it changes the state of the existing database in the same cluster.
 
-Note that the described in-cluster workflow only reverts data changes, but not schema changes. For example, if you create a snapshot, drop a table, and then restore the snapshot, the table is not restored. As a workaround, you can either [store snapshots outside of the cluster](#move-a-snapshot-to-external-storage) or use [point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/). This limitation will be removed in an upcoming release. For more information, see the tracking issue [12977](https://github.com/yugabyte/yugabyte-db/issues/12977).
+To restore to a chosen time *within* the snapshot's retained history (rather than only the snapshot creation time), pass a restore target. See [Restore to PIT](../point-in-time-recovery/restore/).
+
+Note that the described in-cluster workflow only reverts data changes, but not schema changes. For example, if you create a snapshot, drop a table, and then restore the snapshot, the table is not restored. As a workaround, you can either [store snapshots outside of the cluster](#move-a-snapshot-to-external-storage) or use [Rewind to PIT](../point-in-time-recovery/rewind/) or [Restore to PIT](../point-in-time-recovery/restore/). This limitation will be removed in an upcoming release. For more information, see the tracking issue [12977](https://github.com/yugabyte/yugabyte-db/issues/12977).
 
 ## Move a snapshot to external storage
 
@@ -94,7 +98,7 @@ To move a snapshot to external storage, gather all the relevant files from all t
 
 1. [Create an in-cluster snapshot](#create-a-snapshot).
 
-1. Back up the YSQL metadata using the [`ysql_dump`](../../../admin/ysql-dump) command, as follows:
+1. Back up the YSQL metadata using the [ysql_dump](../../../admin/ysql-dump) command, as follows:
 
     ```sh
     ./postgres/bin/ysql_dump -h <ip> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file <database_name>_schema.sql
@@ -108,7 +112,7 @@ To move a snapshot to external storage, gather all the relevant files from all t
 
     If the catalog version is not the same, you are not guaranteed to get a consistent restorable snapshot and you should restart the process.
 
-1. Create the snapshot metadata file by executing the [`export_snapshot`](../../../admin/yb-admin/#export-snapshot) command and providing the ID of the snapshot, as follows:
+1. Create the snapshot metadata file by executing the [export_snapshot](../../../admin/yb-admin/#export-snapshot) command and providing the ID of the snapshot, as follows:
 
     ```sh
     ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> export_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794 <database_name>.snapshot
@@ -157,7 +161,7 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
     ./bin/ysqlsh -h 127.0.0.1 --echo-all --file=<database_name>_schema.sql
     ```
 
-1. Fetch the snapshot metadata file from the external storage and apply it by running the [`import_snapshot`](../../../admin/yb-admin/#import-snapshot) command, as follows:
+1. Fetch the snapshot metadata file from the external storage and apply it by running the [import_snapshot](../../../admin/yb-admin/#import-snapshot) command, as follows:
 
     ```sh
     ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> import_snapshot <database_name>.snapshot <database_name>
@@ -183,7 +187,7 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
     Snapshot         0d4b4935-2c95-4523-95ab-9ead1e95e794   6beb9c0e-52ea-4f61-89bd-c160ec02c729
     ```
 
-1. Copy the tablet snapshots. Use the tablet mappings to copy the tablet snapshot files from the external storage to the appropriate location such as `yb-data/tserver/data/rocksdb/table-<tableid>/tablet-<tabletid>.snapshots`.<br>
+1. Copy the tablet snapshots. Use the tablet mappings to copy the tablet snapshot files from the external storage to the appropriate location such as `yb-data/tserver/data/rocksdb/table-<tableid>/tablet-<tabletid>.snapshots`.
 
     Based on the preceding examples, you would execute the following commands:
 

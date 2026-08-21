@@ -28,7 +28,7 @@ The clone is a zero-copy, independent writable clone of your database that you c
 
 You can change the retention window for the clone. The default is two days.
 
-For more information on database cloning, refer to [Instant database cloning](../../../manage/backup-restore/instant-db-cloning/).
+For more information on database cloning, refer to [Clone to PIT](../../../manage/backup-restore/point-in-time-recovery/clone/).
 
 For more information on PITR in YugabyteDB, refer to [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/).
 

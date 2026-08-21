@@ -54,20 +54,8 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
 
   {{<index/item
     title="Point-in-time recovery"
-    body="Restore data to a particular point in time."
+    body="Inspect, clone, rewind, or restore to a point in time after a logical error."
     href="point-in-time-recovery/"
     icon="fa-thin fa-timeline-arrow">}}
-
-  {{<index/item
-    title="Instant database cloning"
-    body="Clone a database for data recovery, development, and testing."
-    href="instant-db-cloning/"
-    icon="fa-thin fa-clone">}}
-
-  {{<index/item
-    title="Time travel query"
-    body="Query data as at a specific point in time."
-    href="time-travel-query/"
-    icon="fa-thin fa-police-box">}}
 
 {{</index/block>}}

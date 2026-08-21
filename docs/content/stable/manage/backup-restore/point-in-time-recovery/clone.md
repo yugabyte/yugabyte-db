@@ -1,42 +1,52 @@
 ---
-title: Instant database cloning
-headerTitle: Instant database cloning
-linkTitle: Instant database cloning
+title: Clone to a point in time
+headerTitle: Clone to PIT
+linkTitle: Clone to PIT
 description: Clone your database in YugabyteDB for data recovery, development, and testing.
-headcontent: Clone a database at a point in time for recovery, development, and testing
+headcontent: Branch your database at a point in time for recovery, development, and testing
+aliases:
+  - /stable/manage/backup-restore/instant-db-cloning/
 menu:
   stable:
-    identifier: instant-db-clone
-    parent: backup-restore
-    weight: 706
+    identifier: pitr-clone
+    parent: point-in-time-recovery
+    weight: 30
 type: docs
 rightNav:
   hideH4: true
 ---
 
-Instant database cloning in YugabyteDB allows you to quickly create a zero-copy, independent writable clone of your database that can be used for data recovery, development, and testing. Cloning is both fast and efficient because when initially created, it shares the same data files with the original database. Subsequently, as data is written to the clone, the clone stores its own changes as separate and independent delta files. Although they physically share some files, the two databases are logically isolated, which means you can freely play with the clone database, perform DDLs, read and write data, and delete it without affecting the original database.
+{{< tip title="Which PITR method should I use?" >}}
+To decide which point-in-time feature is right for your use case, refer to [The PIT recovery family](../#the-pit-recovery-family).
+{{< /tip >}}
 
-You can create clones as of now, or as of any time in the recent past, within a configurable history retention period. This is particularly useful for data recovery from user or application errors.
+Clone to PIT creates a zero-copy, independent writable clone of your database as of the current time or any time in the recent past (within the configured retention window). The clone always resides on the same physical cluster as the source. This capability is also known as branching.
+
+Cloning is fast and efficient because when initially created, the clone shares the same data files with the original database. Subsequently, as data is written to the clone, the clone stores its own changes as separate and independent delta files. Although they physically share some files, the two databases are logically isolated, which means you can freely use the clone database, perform DDLs, read and write data, and delete it without affecting the original database.
+
+Clone to PIT is particularly useful for data recovery from user or application errors when **intervening writes must be preserved**: create a clone as of the good state, perform forensic analysis, export lost or corrupted data from the clone, and import it back to the original database.
 
 ![Database clone](/images/manage/backup-restore/db-clone.png)
 
 Cloning has two main use cases:
 
-- Data recovery. To recover from data loss due to user error (for example, accidentally dropping a table) or application error (for example, updating rows with corrupted data), you can create a clone of your production database from a point in time when the database was in a good state. This allows you to perform forensic analysis, export the lost or corrupted data from the clone, and import it back to the original database. For instance, if you dropped a table by mistake at 9:01, then detected this error at 10.45, you want to recover the lost data as it was at 9:00 (just before the table drop). At the same time, you don't want to lose any new data added to other tables between 9:01 and 10:45. With database cloning, you can create a clone of the database as of 9:00 (before the table drop) and copy the data in the table from the cloned database to the production database.
+- **Data recovery**. To recover from data loss due to user error (for example, accidentally dropping a table) or application error (for example, updating rows with corrupted data), you can create a clone of your production database from a point in time when the database was in a good state. This allows you to perform forensic analysis, export the lost or corrupted data from the clone, and import it back to the original database. For instance, if you dropped a table by mistake at 9:01, then detected this error at 10:45, you want to recover the lost data as it was at 9:00 (just before the table drop). At the same time, you don't want to lose any new data added to other tables between 9:01 and 10:45. With Clone to PIT, you can create a clone of the database as of 9:00 (before the table drop) and copy the data in the table from the cloned database to the production database.
 
-- Development and testing. Because the two databases are completely isolated, you can experiment with the cloned database, perform DDL operations, read and write data, and delete the clone without impacting the original. Developers can test their changes on an identical copy of the production database without affecting its performance.
+- **Development and testing**. Because the two databases are completely isolated, you can experiment with the cloned database, perform DDL operations, read and write data, and delete the clone without impacting the original. Developers can test their changes on an identical copy of the production database without affecting its performance.
+
+Unlike [Rewind to PIT](../rewind/), Clone does not discard intervening writes on the original database. Unlike [Restore to PIT](../restore/), Clone keeps recovery on the original cluster in a logically isolated database.
+
+## Prerequisites
+
+[Create a snapshot schedule](../enable-pitr/#create-a-schedule) for the database you want to clone.
+
+For example, creating a snapshot schedule with a retention period of 7 days allows you to create a clone of the original database to any time in the past 7 days.
 
 ## Clone databases
 
-### Prerequisites
-
-- [Create a snapshot schedule](../../../manage/backup-restore/point-in-time-recovery/#create-a-schedule) for the database you want to clone.
-
-    For example, creating a snapshot schedule with retention period of 7 days allows you to create a clone of the original database to any time in the past 7 days.
-
 ### Clone a YSQL database
 
-Because YugabyteDB is PostgreSQL compatible, you can create a database as a clone of another using the `TEMPLATE` SQL option of `CREATE DATABASE` command as follows:
+Because YugabyteDB is PostgreSQL compatible, you can create a database as a clone of another using the `TEMPLATE` SQL option of the `CREATE DATABASE` command as follows:
 
 ```sql
 CREATE DATABASE clone_db TEMPLATE original_db;
@@ -54,7 +64,7 @@ CREATE DATABASE clone_db TEMPLATE original_db AS OF '2024-08-08 19:51:43.674480'
 
 ### Clone a YCQL keyspace
 
-You can create a clone in YCQL using the yb-admin `clone_namespace` command as follows:
+You can create a clone in YCQL using the yb-admin [`clone_namespace`](../../../../admin/yb-admin/#clone-namespace) command as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS clone_namespace ycql.originaldb1 clonedb2 1715275616599020
@@ -62,7 +72,27 @@ You can create a clone in YCQL using the yb-admin `clone_namespace` command as f
 
 In this example, `clonedb2` is created as a clone of `originaldb1` as of 1715275616599020 Unix timestamp.
 
-### Check the clone status
+## Clone database ownership
+
+The owner of the clone is determined as follows:
+
+- OWNER is explicitly specified in the CREATE DATABASE command: The specified role is the owner.
+
+    For example:
+
+    ```sql
+    CREATE DATABASE cloned_db TEMPLATE src_db OWNER some_role AS OF ...
+    ```
+
+    The role `some_role` is the owner.
+
+- OWNER is not specified: The current user executing the command becomes the owner of the clone.
+
+When using the yb-admin [`clone_namespace`](../../../../admin/yb-admin/#clone-namespace) command directly, the cloned database retains the original template database's owner.
+
+Note that to clone a database that's not marked `datistemplate`, you must be a superuser or the owner of the source database.
+
+## Check the clone status
 
 To check the status of clone operations performed on a YSQL database, you can use the YSQL function `yb_database_clones()`, which provides details about the clone operations performed on the cluster.
 
@@ -79,11 +109,11 @@ SELECT * FROM yb_database_clones();
 (1 row)
 ```
 
-This shows that a new database named `staging_db` with db_oid 16386 is created as a clone of the database `src_db`. The clone is `COMPLETE` and created as of time `2026-05-12 21:10:19.191239+00`.
+This shows that a new database named `staging_db` with `db_oid` 16386 is created as a clone of the database `src_db`. The clone is `COMPLETE` and created as of time `2026-05-12 21:10:19.191239+00`.
 
-#### Using yb-admin
+### Use yb-admin
 
-To check the status of clone operations performed on a database using [yb-admin](../../../admin/yb-admin/), use the `list_clones` command and provide the `source_database_id` (YSQL) or `source_namespace_id` (YCQL), as follows:
+To check the status of clone operations performed on a database using [yb-admin](../../../../admin/yb-admin/#list-clones), use the `list_clones` command and provide the `source_database_id` (YSQL) or `source_namespace_id` (YCQL), as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS list_clones 00004000000030008000000000000000
@@ -108,11 +138,11 @@ To check the status of clone operations performed on a database using [yb-admin]
 ]
 ```
 
-You can find the `source_database_id` or `source_namespace_id` from the [YB-Master leader UI](../../../reference/configuration/default-ports/#servers) under the `/namespaces` endpoint.
+You can find the `source_database_id` or `source_namespace_id` from the [YB-Master leader UI](../../../../reference/configuration/default-ports/#servers) under the `/namespaces` endpoint.
 
 In this example, two clones were made of the source database `00004000000030008000000000000000` that are COMPLETE. The two clones are `testing_clone_db` and `dev_clone_db` and they each have a unique `seq_no` used to identify each clone operation from the same source database.
 
-You can check the status of a specific clone operation if you have both the `source_database_id` (YSQL) or `source_namespace_id`(YCQL) and the `seq_no` as follows:
+You can check the status of a specific clone operation if you have both the `source_database_id` (YSQL) or `source_namespace_id` (YCQL) and the `seq_no` as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS list_clones 00004000000030008000000000000000 2
@@ -134,35 +164,17 @@ Use the `list_clones` command to check whether a clone operation completed succe
 
 Note that the cluster doesn't allow you to perform two clone operations concurrently on the same source database. You have to wait for the first clone to finish until you can perform another clone.
 
-### Clone database ownership
-
-The owner of the clone is determined as follows:
-
-- OWNER is explicitly specified in the CREATE DATABASE command: The specified role is the owner. For example:
-
-    ```sql
-    CREATE DATABASE cloned_db TEMPLATE src_db OWNER some_role AS OF ...
-    ```
-
-    The role `some_role` is the owner.
-
-- OWNER is not specified: The current user executing the command becomes the owner of the clone.
-
-When using the yb-admin command `clone_namespace` directly, the cloned database retains the original template database's owner.
-
-Note that to clone a database that's not marked `datistemplate`, you must be a superuser or the owner of the source database.
-
-### Example
+## Example: Recover from table deletion
 
 The following example demonstrates how to use a database clone to recover from an accidental table deletion.
 
-1. Create a local cluster using [yugabyted](../../../reference/configuration/yugabyted/):
+1. Create a local cluster using [yugabyted](../../../../reference/configuration/yugabyted/):
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
     ```
 
-1. Start [ysqlsh](../../../api/ysqlsh/) and create the database:
+1. Start [ysqlsh](../../../../api/ysqlsh/) and create the database:
 
     ```sh
     ./bin/ysqlsh
@@ -294,7 +306,7 @@ Although creating a clone database is quick and initially doesn't take up much a
 - Increased memory consumption from the extra tablets
 - Increased disk use after compaction of either the clone or the original database. This is because both original and post-compaction data files must be kept on disk for access by whichever database did not do the compaction. For example, if compaction is performed on the original database, new compacted files are generated which serve reads for the original database. The old data files are retained on disk to serve reads for the clone database. Whenever the clone or original database is deleted, the cluster only cleans the unused data files.
 
-If you have [tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits) set, and creating the clone would lead to exceeding the limit, the clone operation will fail to respect the tablet limits.
+If you have [tablet limits](../../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits) set, and creating the clone would lead to exceeding the limit, the clone operation will fail to respect the tablet limits.
 
 ## Limitations
 

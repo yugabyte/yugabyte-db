@@ -69,7 +69,7 @@ CREATE DATABASE clone_db TEMPLATE original_db AS OF '2024-08-08 19:51:43.674480'
 
 ### Clone a YCQL keyspace
 
-You can create a clone in YCQL using the yb-admin `clone_namespace` command as follows:
+You can create a clone in YCQL using the yb-admin [`clone_namespace`](../../../admin/yb-admin/#clone-namespace) command as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS clone_namespace ycql.originaldb1 clonedb2 1715275616599020
@@ -79,7 +79,7 @@ In this example, `clonedb2` is created as a clone of `originaldb1` as of 1715275
 
 ### Check the clone status
 
-To check the status of clone operations performed on a database, use the yb-admin `list_clones` command and provide the `source_database_id` (YSQL) or `source_namespace_id` (YCQL), as follows:
+To check the status of clone operations performed on a database, use the yb-admin [`list_clones`](../../../admin/yb-admin/#list-clones) command and provide the `source_database_id` (YSQL) or `source_namespace_id` (YCQL), as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS list_clones 00004000000030008000000000000000
@@ -144,7 +144,7 @@ The owner of the clone is determined as follows:
 
 - OWNER is not specified: The current user executing the command becomes the owner of the clone.
 
-When using the yb-admin command `clone_namespace` directly, the cloned database retains the original template database's owner.
+When using the yb-admin [`clone_namespace`](../../../admin/yb-admin/#clone-namespace) command directly, the cloned database retains the original template database's owner.
 
 Note that to clone a database that's not marked `datistemplate`, you must be a superuser or the owner of the source database.
 

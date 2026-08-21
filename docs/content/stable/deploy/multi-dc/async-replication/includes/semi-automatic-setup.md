@@ -64,7 +64,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
 1. If needed, perform a full copy of the database(s) on the Primary to the Standby using distributed [backup](../../../../reference/configuration/yugabyted/#backup) and [restore](../../../../reference/configuration/yugabyted/#restore).
 
-1. Enable [point in time restore (PITR)](../../../../manage/backup-restore/point-in-time-recovery/) on the database(s) on both the Primary and Standby universes:
+1. Enable [point-in-time recovery (PITR)](../../../../manage/backup-restore/point-in-time-recovery/enable-pitr/) on the database(s) on both the Primary and Standby universes:
 
     ```sh
     ./bin/yugabyted configure point_in_time_recovery \
@@ -137,7 +137,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
 1. If needed, perform a full copy of the database on the Primary to the Standby using distributed backup and restore. See [Distributed snapshots for YSQL](../../../../manage/backup-restore/snapshot-ysql/#move-a-snapshot-to-external-storage). Otherwise, create the necessary schema objects (tables and indexes) on the Standby.
 
-1. Enable [point in time restore (PITR)](../../../../manage/backup-restore/point-in-time-recovery/) on the database(s) on both the Primary and Standby universes:
+1. Enable [point-in-time recovery (PITR)](../../../../manage/backup-restore/point-in-time-recovery/enable-pitr/) on the database(s) on both the Primary and Standby universes:
 
     ```sh
     ./bin/yb-admin \
