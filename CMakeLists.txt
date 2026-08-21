@@ -173,6 +173,10 @@ if("${YB_THIRDPARTY_DIR}" STREQUAL "")
 endif()
 # Remove trailing slash from YB_THIRDPARTY_DIR if it exists.
 string(REGEX REPLACE "/+$" "" YB_THIRDPARTY_DIR "${YB_THIRDPARTY_DIR}")
+# Write the resolved path back to the cache: the fallback above only sets a normal variable,
+# and tools such as build_postgres.py read YB_THIRDPARTY_DIR from CMakeCache.txt.
+set(YB_THIRDPARTY_DIR "${YB_THIRDPARTY_DIR}" CACHE INTERNAL
+    "Top-level directory of yugabyte-db-thirdparty checkout or pre-built location" FORCE)
 message("YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR}")
 
 set(YB_BUILD_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
