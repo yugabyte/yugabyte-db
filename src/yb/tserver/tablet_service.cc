@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/algorithm/string/replace.hpp>
@@ -3552,6 +3553,29 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
   }
   vector<TserverMetricsInfoPB> metrics = result.get();
   *resp->mutable_metrics() = {metrics.begin(), metrics.end()};
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::SetActiveTableMetrics(
+    const SetActiveTableMetricsRequestPB* req, SetActiveTableMetricsResponsePB* resp,
+    rpc::RpcContext context) {
+  std::unordered_set<std::string> table_ids;
+  table_ids.reserve(req->table_ids_size());
+  for (const auto& table_id : req->table_ids()) {
+    if (table_id.empty()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(), STATUS(InvalidArgument, "table_ids must not contain empty IDs"),
+          &context);
+      return;
+    }
+    table_ids.insert(table_id);
+  }
+
+  const auto status = server_->SetActiveTableMetrics(std::move(table_ids));
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
   context.RespondSuccess();
 }
 

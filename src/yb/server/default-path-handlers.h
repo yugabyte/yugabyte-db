@@ -43,6 +43,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "yb/server/webserver.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/jsonwriter.h"
@@ -65,7 +67,9 @@ void AddDefaultPathHandlers(Webserver* webserver);
 void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
 // Adds an endpoint to get metrics in JSON format.
-void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics);
+void RegisterMetricsJsonHandler(
+    Webserver* webserver, const MetricRegistry* const metrics,
+    std::function<void(MetricPrometheusOptions*)> configure_prometheus_options = {});
 
 // Adds an endpoint to display path usage.
 void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager);

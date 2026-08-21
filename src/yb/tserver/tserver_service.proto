@@ -166,6 +166,9 @@ service TabletServerService {
 
   rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
 
+  rpc SetActiveTableMetrics(SetActiveTableMetricsRequestPB)
+      returns (SetActiveTableMetricsResponsePB);
+
   rpc AdminExecutePgsql(AdminExecutePgsqlRequestPB)
       returns (AdminExecutePgsqlResponsePB);
 
@@ -267,6 +270,16 @@ message GetMetricsRequestPB {
 message GetMetricsResponsePB {
   repeated TserverMetricsInfoPB metrics  = 1;
   optional TabletServerErrorPB error = 2;
+}
+
+message SetActiveTableMetricsRequestPB {
+  // The complete set of tables whose table-level metrics should be exported by
+  // /prometheus-metrics. Each request replaces the previous set.
+  repeated string table_ids = 1;
+}
+
+message SetActiveTableMetricsResponsePB {
+  optional TabletServerErrorPB error = 1;
 }
 
 message GetLogLocationRequestPB {
