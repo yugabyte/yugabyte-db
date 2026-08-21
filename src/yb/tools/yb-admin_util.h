@@ -13,7 +13,9 @@
 #pragma once
 
 #include <set>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids_types.h"
@@ -29,6 +31,15 @@ namespace tools {
 // either the method (ERROR_NO_SUCH_METHOD) or the whole service (ERROR_NO_SUCH_SERVICE) is
 // unknown to it, i.e. the cluster predates the operation.
 bool IsUnsupportedRpcError(const Status& s);
+
+// Suggestions for an abbreviated operation name (#32640): the names whose '_'-separated tokens
+// cover every token of op, ranked by fewest uncovered name tokens (the closest command first),
+// then alphabetically, capped at max_results. A token covers another when either is a prefix of
+// the other, so "server" finds "servers" and vice versa. Requiring every typed token to be
+// covered is the precision guard: the alternative — widening the edit-distance tolerance of the
+// fuzzy tier — makes arbitrary garbage match random commands.
+std::vector<std::string> SuggestByNameTokens(
+    const std::string& op, const std::vector<std::string>& names, size_t max_results);
 
 std::string SnapshotIdToString(const SnapshotId& snapshot_id);
 
