@@ -1121,19 +1121,57 @@ yb_get_actual_batched_clauses(PlannerInfo *root,
 }
 
 /*
+ * Strip all varnullingrels/phnullingrels markers from an expression copy.
+ * Used to compare clause clones that differ only in outer-join nulling
+ * marks (the executor evaluates them identically).
+ */
+static Node *
+yb_strip_nullingrels_mutator(Node *node, void *context)
+{
+	if (node == NULL)
+		return NULL;
+	if (IsA(node, Var))
+	{
+		Var		   *var = (Var *) copyObject(node);
+
+		var->varnullingrels = NULL;
+		return (Node *) var;
+	}
+	if (IsA(node, PlaceHolderVar))
+	{
+		PlaceHolderVar *phv = (PlaceHolderVar *)
+			expression_tree_mutator(node, yb_strip_nullingrels_mutator, context);
+
+		phv->phnullingrels = NULL;
+		return (Node *) phv;
+	}
+	return expression_tree_mutator(node, yb_strip_nullingrels_mutator, context);
+}
+
+/*
  * Check whether a clause is already represented in a qual list.  BNL planning
  * may see the original scalar clause with operands switched relative to the
  * join qual, while the executor will treat either orientation as the same
  * recheck condition.
+ *
+ * Vars are compared with nullingrels stripped: the candidate may be the
+ * join-level clone of the same RestrictInfo while the probed clause is the
+ * scan-parameterization variant (ppi_clauses), and the two differ only in
+ * nullingrels.  The executor evaluates both identically, so they are the
+ * same recheck condition.
  */
 static bool
 yb_clause_list_contains_equivalent(List *clauses, Node *clause)
 {
 	ListCell   *lc;
 
+	clause = yb_strip_nullingrels_mutator(clause, NULL);
+
 	foreach(lc, clauses)
 	{
 		Node	   *candidate = (Node *) lfirst(lc);
+
+		candidate = yb_strip_nullingrels_mutator(candidate, NULL);
 
 		if (equal(candidate, clause))
 			return true;
