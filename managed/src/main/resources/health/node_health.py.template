@@ -2974,6 +2974,7 @@ class NodeInfo:
         self.is_ybc_enabled = data["enableYbc"]
         self.ybc_port = data["ybcPort"]
         self.otel_enabled = data["otelCollectorEnabled"]
+        self.otel_collector_installed = data.get("otelCollectorInstalled", False)
         self.enable_earlyoom = data["earlyoomEnabled"]
         self.clockSyncServiceRequired = data.get("clockSyncServiceRequired", True)
         self.clockbound_enabled = data["clockboundEnabled"]
@@ -3142,12 +3143,11 @@ def main():
 
     if n.otel_enabled:
         coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)
-
-    if n.otel_enabled and n.tserver_index >= 0:
-        if n.is_k8s:
-            coordinator.add_check(checker, "check_otel_container_health_k8s")
-        else:
-            coordinator.add_check(checker, "check_uptime_for_process", OTEL_COLLECTOR)
+        if n.otel_collector_installed:
+            if n.is_k8s:
+                coordinator.add_check(checker, "check_otel_container_health_k8s")
+            else:
+                coordinator.add_check(checker, "check_uptime_for_process", OTEL_COLLECTOR)
 
     if args.ddl_atomicity_check:
         coordinator.add_check(checker, "check_ddl_atomicity")

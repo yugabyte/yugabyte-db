@@ -996,7 +996,8 @@
             "YBA_NODE_DISK_USAGE",
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
-            "YBA_K8S_DISK_USAGE"
+            "YBA_K8S_DISK_USAGE",
+            "OTEL_COLLECTOR_RESTART"
           ],
           "type" : "string"
         },
@@ -1195,7 +1196,8 @@
             "YBA_NODE_DISK_USAGE",
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
-            "YBA_K8S_DISK_USAGE"
+            "YBA_K8S_DISK_USAGE",
+            "OTEL_COLLECTOR_RESTART"
           ],
           "type" : "string"
         },
@@ -1490,7 +1492,8 @@
             "YBA_NODE_DISK_USAGE",
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
-            "YBA_K8S_DISK_USAGE"
+            "YBA_K8S_DISK_USAGE",
+            "OTEL_COLLECTOR_RESTART"
           ],
           "type" : "string"
         },
