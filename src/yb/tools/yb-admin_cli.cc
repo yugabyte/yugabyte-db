@@ -530,7 +530,21 @@ std::vector<std::string> ClusterAdminCli::GetSuggestedCommands(const std::string
       candidates.push_back(name);
     }
   }
-  return candidates;
+  if (!candidates.empty()) {
+    return candidates;
+  }
+
+  // Last resort: an abbreviation like "list_server" is neither a prefix of any command nor within
+  // the edit-distance tolerance of one (distance 7 to "list_tablet_servers"), so match the
+  // operation's '_'-separated tokens against each command's instead.
+  constexpr size_t kMaxTokenSuggestions = 5;
+  std::vector<std::string> visible_names;
+  for (const auto& [name, index] : command_indexes_) {
+    if (!commands_[index].hidden_) {
+      visible_names.push_back(name);
+    }
+  }
+  return SuggestByNameTokens(op, visible_names, kMaxTokenSuggestions);
 }
 
 Status ClusterAdminCli::RunCommand(
