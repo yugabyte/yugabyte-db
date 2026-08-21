@@ -346,7 +346,7 @@ if [[ "$1" =~ /[^/]*Yb[^/]+\.[ch]$ &&
   echo 'error:bad_Yb_filename:'\
 'Filenames with "Yb" should only be the case for nodeYb* files:1:'"$(head -1 "$1")"
 fi
-check_ctags
+check_ctags || exit 1
 yb_typedefs=$(cat "$yb_typedefs_list")
 echo "$1" \
   | ctags_types \
