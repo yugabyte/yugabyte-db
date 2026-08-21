@@ -701,6 +701,11 @@ public enum TaskType {
       CustomerTask.TaskType.EnableNodeAgent,
       CustomerTask.TargetType.Universe),
 
+  ManageCrossCloudFederationUniverse(
+      com.yugabyte.yw.commissioner.tasks.ManageCrossCloudFederationUniverse.class,
+      CustomerTask.TaskType.ManageCrossCloudFederation,
+      CustomerTask.TargetType.Universe),
+
   DecommissionNode(
       com.yugabyte.yw.commissioner.tasks.DecommissionNode.class,
       CustomerTask.TaskType.Decommission,
@@ -1227,6 +1232,8 @@ public enum TaskType {
   CreateTableSpaces(com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces.class),
 
   ManageOtelCollector(com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector.class),
+
+  ManageCloudFederation(com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation.class),
 
   UpdateAndPersistAuditLoggingConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),

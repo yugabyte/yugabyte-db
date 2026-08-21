@@ -27,6 +27,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.nodeagent.AbortTaskRequest;
+import com.yugabyte.yw.nodeagent.ConfigureCloudFederationInput;
+import com.yugabyte.yw.nodeagent.ConfigureCloudFederationOutput;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.ConfigureServerOutput;
 import com.yugabyte.yw.nodeagent.ConfigureServiceInput;
@@ -1221,6 +1223,18 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), InstallOtelCollectorOutput.class);
+  }
+
+  public ConfigureCloudFederationOutput runConfigureCloudFederation(
+      NodeAgent nodeAgent, ConfigureCloudFederationInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setConfigureCloudFederationInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), ConfigureCloudFederationOutput.class);
   }
 
   public SetupCGroupOutput runSetupCGroupInput(

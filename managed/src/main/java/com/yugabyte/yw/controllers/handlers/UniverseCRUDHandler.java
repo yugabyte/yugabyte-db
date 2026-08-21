@@ -856,6 +856,13 @@ public class UniverseCRUDHandler {
         c.userIntent.providerType =
             Common.CloudType.valueOf(Util.getSingleProvider(c.userIntent).getCode());
       }
+      // Record the intended cross-cloud federated IAM state on the cluster's UserIntent (like
+      // providerType/rootCA), so CreateUniverse and later edit/add-node/replace key off this one
+      // flag. TODO(multi-cloud): resolve per provider for clusters that span multiple clouds.
+      Provider federationProvider =
+          Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
+      c.userIntent.setFederationConfigured(
+          CloudInfoInterface.getCrossCloudFederationAudience(federationProvider) != null);
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
       c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
       // Enforce user tags.

@@ -431,6 +431,21 @@ func (server *RPCServer) SubmitTask(
 		res.TaskId = taskID
 		return res, nil
 	}
+	configureCloudFederationInput := req.GetConfigureCloudFederationInput()
+	if configureCloudFederationInput != nil {
+		configureCloudFederationHandler := task.NewConfigureCloudFederationHandler(
+			configureCloudFederationInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, configureCloudFederationHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running configure cloud federation - %s", err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	setupCGroupInput := req.GetSetupCGroupInput()
 	if setupCGroupInput != nil {
 		setupCgroupHandler := task.NewSetupCgroupHandler(

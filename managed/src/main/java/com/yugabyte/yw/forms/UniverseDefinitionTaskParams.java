@@ -1540,6 +1540,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Setter
     private boolean cpuCgroupConfigured;
 
+    // Source of truth for whether every node in this universe has cross-cloud federated IAM set up.
+    // Set only after the per-node fan-out succeeds on all nodes, so add-node/edit can key off it,
+    // never leaving the universe in a mixed (some-federated) state.
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. All nodes configured for cross-cloud federated IAM")
+    @Getter
+    @Setter
+    private boolean federationConfigured;
+
     @Getter
     @Setter
     @Nullable
@@ -1651,6 +1661,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         newUserIntent.multiTenancy = multiTenancy.clone();
       }
       newUserIntent.useYbdbInbuiltYbc = useYbdbInbuiltYbc;
+      newUserIntent.federationConfigured = federationConfigured;
       if (!CollectionUtils.isEmpty(providerSpecifications)) {
         newUserIntent.providerSpecifications = new ArrayList<>();
         for (ProviderSpecification providerSpecification : providerSpecifications) {

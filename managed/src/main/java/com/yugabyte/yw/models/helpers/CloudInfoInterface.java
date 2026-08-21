@@ -58,6 +58,28 @@ public interface CloudInfoInterface {
     return get(provider, false);
   }
 
+  /**
+   * Returns the GCP Workload Identity Federation audience configured on the provider for
+   * cross-cloud federated IAM, or null when federation is not enabled or no audience is set. Only
+   * AWS and on-prem (AWS-backed) providers carry this config.
+   */
+  public static String getCrossCloudFederationAudience(Provider provider) {
+    CloudType cloud = provider.getCloudCode();
+    String audience = null;
+    if (cloud == CloudType.aws) {
+      AWSCloudInfo info = get(provider);
+      if (info != null && info.enableFederatedIam) {
+        audience = info.federatedIamAudience;
+      }
+    } else if (cloud == CloudType.onprem) {
+      OnPremCloudInfo info = get(provider);
+      if (info != null && info.enableFederatedIam) {
+        audience = info.federatedIamAudience;
+      }
+    }
+    return (audience == null || audience.trim().isEmpty()) ? null : audience;
+  }
+
   public static <T extends CloudInfoInterface> T get(Region region) {
     return get(region, false);
   }

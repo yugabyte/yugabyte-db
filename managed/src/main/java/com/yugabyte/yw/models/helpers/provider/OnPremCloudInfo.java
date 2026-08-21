@@ -37,6 +37,22 @@ public class OnPremCloudInfo implements CloudInfoInterface {
   @EditableInUseProvider(name = "Enable multi-tenancy", allowed = true)
   public boolean enableMultiTenancy;
 
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Enable GCS-on-AWS cross-cloud"
+              + " federated IAM on this provider's DB nodes (nodes must be AWS VMs).")
+  @EditableInUseProvider(name = "Enable federated IAM", allowed = true)
+  public boolean enableFederatedIam;
+
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. GCP Workload Identity Federation"
+              + " audience used when federated IAM is enabled.")
+  @EditableInUseProvider(name = "Federated IAM audience", allowed = true)
+  public String federatedIamAudience;
+
   @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();

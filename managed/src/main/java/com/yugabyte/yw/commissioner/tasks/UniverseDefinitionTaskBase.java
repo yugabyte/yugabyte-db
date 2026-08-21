@@ -14,6 +14,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
 import com.yugabyte.yw.commissioner.ITask;
@@ -47,6 +48,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistEnableMultiTenancy;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
@@ -71,6 +73,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -120,6 +123,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
@@ -1525,6 +1529,84 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * Fans out per-node {@link ManageCloudFederation} tasks to configure ({@code enabled=true}) or
+   * tear down ({@code enabled=false}) GCS-on-AWS federated IAM on the given nodes. AWS and on-prem
+   * (AWS-backed) providers only; the audience comes from the provider's federated-IAM config. The
+   * caller decides when to invoke this: the provider flag at create, the universe's {@code
+   * federationConfigured} flag at edit/add-node, or the v2 enable/disable API.
+   */
+  protected void createConfigureCloudFederationTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      Collection<NodeDetails> nodes,
+      boolean enabled) {
+    if (nodes == null || nodes.isEmpty()) {
+      return;
+    }
+    Common.CloudType nodeCloud = userIntent.providerType;
+    if ((nodeCloud != Common.CloudType.aws && nodeCloud != Common.CloudType.onprem)
+        || !NodeAgentClient.isCloudTypeSupported(nodeCloud)) {
+      return;
+    }
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    String gcsAudience = CloudInfoInterface.getCrossCloudFederationAudience(provider);
+    if (enabled && StringUtils.isBlank(gcsAudience)) {
+      log.warn(
+          "Federated IAM requested but not enabled / no audience on provider {}; skipping",
+          provider.getUuid());
+      return;
+    }
+
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ConfigureCloudFederation");
+    for (NodeDetails node : nodes) {
+      ManageCloudFederation.Params params = new ManageCloudFederation.Params();
+      params.nodeName = node.nodeName;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.azUuid = node.azUuid;
+      params.gcsAudience = gcsAudience;
+      params.enabled = enabled;
+      ManageCloudFederation task = createTask(ManageCloudFederation.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.Configuring);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  /**
+   * Persists {@code userIntent.federationConfigured} per cluster. When {@code enabling}, a cluster
+   * is marked true iff its provider has federated IAM enabled with an audience (a non-eligible
+   * cluster like a GCP read replica stays false); when disabling, all clusters are set false.
+   * Enqueue this after the {@link #createConfigureCloudFederationTasks} subtask group so it runs
+   * only when every node subtask succeeded (a failed node subtask aborts the task first), so the
+   * flag is never left in a partial "true" state.
+   */
+  protected void createPersistFederationConfiguredTask(boolean enabling) {
+    createUpdateUniverseFieldsTask(
+            u ->
+                u.getUniverseDetails()
+                    .clusters
+                    .forEach(
+                        c -> {
+                          boolean configured = false;
+                          if (enabling) {
+                            Provider p =
+                                Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
+                            configured =
+                                CloudInfoInterface.getCrossCloudFederationAudience(p) != null;
+                          }
+                          c.userIntent.setFederationConfigured(configured);
+                        }))
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /** True if this universe's primary cluster is (persisted) configured for federated IAM. */
+  protected boolean isUniverseFederationConfigured() {
+    Cluster primary = getUniverse().getUniverseDetails().getPrimaryCluster();
+    return primary != null && primary.userIntent.isFederationConfigured();
   }
 
   /**

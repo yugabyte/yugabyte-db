@@ -430,6 +430,9 @@ public class CustomerTask extends Model {
     @EnumValue("EnableNodeAgent")
     EnableNodeAgent,
 
+    @EnumValue("ManageCrossCloudFederation")
+    ManageCrossCloudFederation,
+
     @EnumValue("Decommission")
     Decommission,
 
@@ -666,6 +669,10 @@ public class CustomerTask extends Model {
           return completed ? "Restored continuous YBA backup" : "Restoring continuous YBA backup";
         case EnableNodeAgent:
           return completed ? "Enabled node agent on" : "Enabling node agent on";
+        case ManageCrossCloudFederation:
+          return completed
+              ? "Updated cross-cloud federated IAM on"
+              : "Updating cross-cloud federated IAM on";
         case CloneNamespace:
           return completed ? "Cloned Namespace" : "Cloning Namespace";
         case UpdateOOMServiceState:

@@ -34,6 +34,7 @@ import api.v2.models.RunScriptRequest;
 import api.v2.models.RunScriptResponse;
 import api.v2.models.ScriptOptions;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseCrossCloudFederationSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseOperatorImportReq;
@@ -51,6 +52,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.ManageCrossCloudFederationUniverse;
 import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.AppConfigHelper;
@@ -1232,6 +1234,46 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         universe.getName());
     YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
     return ybaTask;
+  }
+
+  /**
+   * Enables (or disables) cross-cloud federated IAM on an existing universe, retroactively
+   * configuring all current nodes. On enable, prechecks that the universe's provider has federated
+   * IAM enabled with an audience set.
+   */
+  public YBATask manageCrossCloudFederation(
+      Request request, UUID cUUID, UUID uniUUID, UniverseCrossCloudFederationSpec spec) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    boolean enabled = spec != null && Boolean.TRUE.equals(spec.getEnabled());
+    if (enabled) {
+      UniverseDefinitionTaskParams.Cluster primary =
+          universe.getUniverseDetails().getPrimaryCluster();
+      Provider provider =
+          (primary != null && primary.userIntent != null)
+              ? Provider.getOrBadRequest(UUID.fromString(primary.userIntent.provider))
+              : null;
+      if (provider == null
+          || CloudInfoInterface.getCrossCloudFederationAudience(provider) == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Enable federated IAM and set the audience on this universe's provider before enabling"
+                + " it on the universe.");
+      }
+    }
+    ManageCrossCloudFederationUniverse.Params params =
+        new ManageCrossCloudFederationUniverse.Params();
+    params.setUniverseUUID(uniUUID);
+    params.enabled = enabled;
+    UUID taskUuid = commissioner.submit(TaskType.ManageCrossCloudFederationUniverse, params);
+    CustomerTask.create(
+        customer,
+        uniUUID,
+        taskUuid,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ManageCrossCloudFederation,
+        universe.getName());
+    return new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
   }
 
   /**

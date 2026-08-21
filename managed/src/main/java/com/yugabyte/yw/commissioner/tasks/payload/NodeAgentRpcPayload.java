@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -53,8 +54,10 @@ import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.S3Config;
+import com.yugabyte.yw.nodeagent.ConfigureCloudFederationInput;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
+import com.yugabyte.yw.nodeagent.GcsOnAwsConfig;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
@@ -604,6 +607,53 @@ public class NodeAgentRpcPayload {
     }
 
     return installOtelCollectorInputBuilder.build();
+  }
+
+  /**
+   * Builds the node-agent input for cross-cloud federated IAM on a node: sets the flow direction
+   * from the node's cloud and fills the audience. Only static config is passed; credentials are
+   * minted in-process on the node.
+   */
+  public ConfigureCloudFederationInput setupConfigureCloudFederationBits(
+      Universe universe, NodeDetails nodeDetails, NodeTaskParams taskParams, NodeAgent nodeAgent) {
+    ConfigureCloudFederationInput.Builder builder = ConfigureCloudFederationInput.newBuilder();
+    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+    Provider provider = Util.getProviderForNode(nodeDetails, cluster);
+    builder.setYbHomeDir(provider.getYbHome());
+    if (provider.getDetails() != null) {
+      builder.setIsAirgap(provider.getDetails().airGapInstall);
+    }
+    builder.setRemoteTmp(confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
+
+    String gcsAudience = null;
+    boolean enabled = true;
+    if (taskParams instanceof ManageCloudFederation.Params) {
+      ManageCloudFederation.Params params = (ManageCloudFederation.Params) taskParams;
+      gcsAudience = params.gcsAudience;
+      enabled = params.enabled;
+    }
+    builder.setEnabled(enabled);
+
+    CloudType nodeCloud = cluster.userIntent.providerType;
+    // Provider-audience mode: AWS-backed DB node -> GCS. Covers native AWS providers and on-prem
+    // providers whose VMs run on AWS. The node renders the external_account JSON from the audience;
+    // YBA passes only the audience, never a static credential.
+    if (nodeCloud == CloudType.aws || nodeCloud == CloudType.onprem) {
+      builder.setFlowDirection(ConfigureCloudFederationInput.FlowDirection.GCS_ON_AWS);
+      if (enabled) {
+        if (StringUtils.isBlank(gcsAudience)) {
+          throw new RuntimeException(
+              "GCP workload-identity audience is required for GCS-on-AWS federation");
+        }
+        builder.setGcsOnAws(GcsOnAwsConfig.newBuilder().setAudience(gcsAudience).build());
+      }
+    } else {
+      throw new RuntimeException(
+          String.format(
+              "Cross-cloud federation (provider-audience mode) not applicable for node cloud %s",
+              nodeCloud));
+    }
+    return builder.build();
   }
 
   public InstallOtelCollectorInput.Builder setupInstallOtelCollectorBitsEnv(

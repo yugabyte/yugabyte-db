@@ -654,6 +654,9 @@ public class Audit extends Model {
     @EnumValue("Import Universe to the Kubernetes Operator")
     OperatorImportUniverse,
 
+    @EnumValue("Manage Cross-Cloud Federated IAM")
+    ManageCrossCloudFederation,
+
     @EnumValue("Run Script on Database Nodes")
     RunScript,
 
