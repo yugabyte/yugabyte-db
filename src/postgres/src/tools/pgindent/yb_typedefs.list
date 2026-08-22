@@ -141,6 +141,8 @@ YbNotifsPollerInitStatus
 YbNotifsPollerShmemData
 YbObjectLockMode
 YbOidAssignmentMapEntry
+YbOpaque
+YbOpaqueData
 YbOptSplit
 YbOptionalReadPointHandle
 YbPFetchTable
@@ -196,8 +198,6 @@ YbRowBounds
 YbRunWithPrefetcherContext
 YbSample
 YbSampleData
-YbScanDesc
-YbScanDescData
 YbScanPlan
 YbScanPlanData
 YbSendDirectFn
@@ -230,6 +230,9 @@ YbTableCacheInfo
 YbTableCacheType
 YbTableDistribution
 YbTablePrefetcherState
+YbTableScanDesc
+YbTableScanDescData
+YbTableScanOptions
 YbTablegroupInfo
 YbTempNamespaceSuffixBuffer
 YbTerminatedQueriesBuffer

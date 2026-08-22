@@ -15,7 +15,7 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/backend/access/yb_access/yb_lsm.c
+ * src/backend/access/yb_lsm/yb_lsm.c
  *--------------------------------------------------------------------------------------------------
  */
 
@@ -25,7 +25,10 @@
 #include "access/reloptions.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
-#include "access/yb_scan.h"
+#include "access/yb_cost.h"
+#include "access/yb_parallel_scan.h"
+#include "access/yb_scan_core.h"
+#include "access/yb_target.h"
 #include "catalog/index.h"
 #include "catalog/pg_type.h"
 #include "commands/yb_cmds.h"
@@ -436,7 +439,7 @@ ybcgetbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm)
 {
 	size_t		new_tuples = 0;
 	YbcSliceVector ybctids;
-	YbScanDesc	ybscan = (YbScanDesc) scan->opaque;
+	YbOpaque	ybscan = (YbOpaque) scan->opaque;
 	bool		exceeded_work_mem = false;
 
 	ybscan->exec_params = scan->yb_exec_params;
@@ -573,19 +576,19 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys, ScanKey orderbys
 		scan->opaque = NULL;
 	}
 
-	YbScanDesc ybScan = YbBeginScan(scan->heapRelation,
-									scan->indexRelation,
-									scan->xs_want_itup,
-									nscankeys,
-									scankey,
-									scan->yb_scan_plan,
-									scan->yb_rel_pushdown,
-									scan->yb_idx_pushdown,
-									scan->yb_aggrefs,
-									scan->yb_distinct_prefixlen,
-									scan->yb_exec_params,
-									false,	/* is_internal_scan */
-									scan->fetch_ybctids_only);
+	YbOpaque	ybScan = YbBeginScan(scan->heapRelation,
+									 scan->indexRelation,
+									 scan->xs_want_itup,
+									 nscankeys,
+									 scankey,
+									 scan->yb_scan_plan,
+									 scan->yb_rel_pushdown,
+									 scan->yb_idx_pushdown,
+									 scan->yb_aggrefs,
+									 scan->yb_distinct_prefixlen,
+									 scan->yb_exec_params,
+									 false, /* is_internal_scan */
+									 scan->fetch_ybctids_only);
 
 	/* For LSM indexes, we either recheck all rows or no rows. */
 	scan->xs_recheck = YbNeedsPgRecheck(ybScan);
@@ -618,7 +621,7 @@ ybcinparallelrescan(IndexScanDesc scan)
 static bool
 ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 {
-	YbScanDesc	ybscan = (YbScanDesc) scan->opaque;
+	YbOpaque	ybscan = (YbOpaque) scan->opaque;
 
 	ybscan->exec_params = scan->yb_exec_params;
 	/* exec_params can be NULL in case of systable_getnext, for example. */
@@ -660,47 +663,15 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 					MemoryContextSwitchTo(GetMemoryChunkContext(ybscan));
 
 				/* Parallel mode: pick up parallel block first */
-				if (ybscan->pscan != NULL)
+				if (ybscan->pscan != NULL &&
+					!yb_scan_apply_next_parallel_range(ybscan->handle,
+													   ybscan->exec_params,
+													   ybscan->pscan))
 				{
-					YBParallelPartitionKeys parallel_scan = ybscan->pscan;
-					const char *low_bound;
-					size_t		low_bound_size;
-					const char *high_bound;
-					size_t		high_bound_size;
-
-					/*
-					 * If range is found, apply the boundaries, false means the
-					 * scan * is done for that worker.
-					 */
-					if (ybParallelNextRange(parallel_scan,
-											&low_bound, &low_bound_size,
-											&high_bound, &high_bound_size))
-					{
-						HandleYBStatus(YBCPgDmlApplyParallelRange(ybscan->handle,
-																  low_bound,
-																  low_bound_size,
-																  high_bound,
-																  high_bound_size));
-						if (low_bound)
-							pfree((void *) low_bound);
-						if (high_bound)
-							pfree((void *) high_bound);
-					}
-					else
-					{
-						MemoryContextSwitchTo(oldcxt);
-						return false;
-					}
-					/*
-					 * Use unlimited fetch.
-					 * Parallel scan range is already of limited size, it is
-					 * unlikely to exceed the
-					 * message size, but may save some RPCs.
-					 */
-					ybscan->exec_params->limit_use_default = true;
-					ybscan->exec_params->yb_fetch_row_limit = 0;
-					ybscan->exec_params->yb_fetch_size_limit = 0;
+					MemoryContextSwitchTo(oldcxt);
+					return false;
 				}
+
 				/* Request with aggregates does not care of scan direction */
 				HandleYBStatus(YBCPgExecSelect(ybscan->handle,
 											   ybscan->exec_params));
@@ -760,7 +731,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 static void
 ybcinendscan(IndexScanDesc scan)
 {
-	ybc_free_ybscan((YbScanDesc) scan->opaque);
+	ybc_free_ybscan((YbOpaque) scan->opaque);
 }
 
 static void

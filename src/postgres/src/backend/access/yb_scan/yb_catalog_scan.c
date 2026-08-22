@@ -1,45 +1,64 @@
 /*-------------------------------------------------------------------------
  *
- * yb_pg_inherits_scan.c
- *		This is an abstraction used for scanning the pg_inherits sys catalog
- *		table. We use a custom cache for pg_inherits, so that we can avoid trips
- *		to the YB-Master for every lookup. This cache lookup is abstracted under
- *		an interface similar to the system catalog scan interface.
+ * yb_catalog_scan.c
+ *	  YB catalog (system table) scan helpers.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.  You may obtain a copy
- * of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
- * License for the specific language governing permissions and limitations
- * under the License.
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied. See the License for the specific language governing
+ * permissions and limitations under the License.
  *
- * IDENTIFICATION
- *	  src/backend/access/yb_access/yb_pg_inherits_scan.c
+ * src/backend/access/yb_scan/yb_catalog_scan.c
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
-#include "access/relscan.h"
-#include "access/yb_pg_inherits_scan.h"
-#include "access/yb_scan.h"
-#include "catalog/indexing.h"
+#include "access/htup_details.h"
+#include "access/yb_scan_core.h"
+#include "access/yb_special_scans.h"
+#include "access/yb_sys_scan_base.h"
+#include "catalog/index.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_inherits_d.h"
-#include "utils/builtins.h"
-#include "utils/catcache.h"
+#include "miscadmin.h"
+#include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
-#include "utils/memutils.h"
-#include "utils/syscache.h"
+#include "utils/rel.h"
 #include "utils/yb_inheritscache.h"
+
+typedef struct YbDefaultSysScanData
+{
+	YbSysScanBaseData base;
+	YbOpaque	ybscan;
+} YbDefaultSysScanData;
+
+typedef struct YbDefaultSysScanData *YbDefaultSysScan;
+
+static SysScanDesc
+YbBuildSysScanDesc(Relation relation, Snapshot snapshot, YbSysScanBase ybscan)
+{
+	SysScanDesc scan_desc = palloc0(sizeof(SysScanDescData));
+
+	scan_desc->heap_rel = relation;
+	scan_desc->snapshot = snapshot;
+	scan_desc->ybscan = ybscan;
+	return scan_desc;
+}
+
+/*
+ * pg_inherits cache-based scan.  Avoids round-trips to the YB-Master by
+ * serving lookups from a local inherits cache.
+ */
 
 typedef struct YbChildScanData
 {
@@ -123,7 +142,6 @@ yb_lookup_cache_end_scan(YbSysScanBase child_scan)
 		ReleaseYbPgInheritsCacheEntry(scan->child_cache_entry);
 }
 
-
 static HeapTuple
 yb_parent_get_next(YbSysScanBase parent_scan)
 {
@@ -161,7 +179,7 @@ YbInitSysScanDesc(YbSysScanBase scan, YbSysScanVirtualTable *vtable)
 	return scan;
 }
 
-YbSysScanBase
+static YbSysScanBase
 yb_pg_inherits_beginscan(Relation inhrel, ScanKey key, int nkeys, Oid indexId)
 {
 	/*
@@ -232,4 +250,135 @@ yb_pg_inherits_beginscan(Relation inhrel, ScanKey key, int nkeys, Oid indexId)
 		scan->current_tuple = list_head(scan->child_cache_entry->tuples);
 	}
 	return YbInitSysScanDesc(&scan->base, &yb_child_scan);
+}
+
+static SysScanDesc
+YbBuildOptimizedSysTableScan(Relation relation,
+							 Oid indexId,
+							 bool indexOK,
+							 Snapshot snapshot,
+							 int nkeys,
+							 ScanKey key)
+{
+	if (relation->rd_id == InheritsRelationId)
+		return YbBuildSysScanDesc(relation,
+								  snapshot,
+								  yb_pg_inherits_beginscan(relation, key,
+														   nkeys, indexId));
+	return NULL;
+}
+
+static HeapTuple
+ybc_systable_getnext(YbSysScanBase default_scan)
+{
+	YbDefaultSysScan scan = (void *) default_scan;
+
+	Assert(PointerIsValid(scan->ybscan));
+
+	HeapTuple	tuple = ybc_getnext_heaptuple(scan->ybscan,
+											  ForwardScanDirection);
+
+	return tuple;
+}
+
+static void
+ybc_systable_endscan(YbSysScanBaseData *default_scan)
+{
+	YbDefaultSysScan scan = (void *) default_scan;
+
+	ybc_free_ybscan(scan->ybscan);
+	pfree(scan);
+}
+
+static YbSysScanVirtualTable yb_default_scan = {
+	.next = &ybc_systable_getnext,
+	.end = &ybc_systable_endscan
+};
+
+SysScanDesc
+ybc_systable_begin_default_scan(Relation relation,
+								Oid indexId,
+								bool indexOK,
+								Snapshot snapshot,
+								int nkeys,
+								ScanKey keys)
+{
+	Relation	index = NULL;
+
+	/*
+	 * Look up the index to scan with if we can. If the index is the primary key which is part
+	 * of the table in YugaByte, we should scan the table directly.
+	 */
+	if (indexOK && !IgnoreSystemIndexes && !ReindexIsProcessingIndex(indexId))
+	{
+		index = RelationIdGetRelation(indexId);
+		if (index->rd_index->indisprimary)
+		{
+			RelationClose(index);
+			index = NULL;
+		}
+
+		if (index)
+		{
+			/*
+			 * Change attribute numbers to be index column numbers.
+			 * - This conversion is the same as function systable_beginscan() in file "genam.c". If we
+			 *   ever reuse Postgres index code, this conversion is a must because the key entries must
+			 *   match what Postgres code expects.
+			 *
+			 * - When selecting using INDEX, the key values are bound to the IndexTable, so index attnum
+			 *   must be used for bindings.
+			 */
+			for (int i = 0; i < nkeys; ++i)
+				keys[i].sk_attno = YbGetIndexAttnum(index, keys[i].sk_attno);
+		}
+	}
+
+	YbDefaultSysScan scan = palloc0(sizeof(YbDefaultSysScanData));
+
+	/*
+	 * In case of an index scan here, it would do a full scan and use local
+	 * filtering.
+	 */
+	scan->ybscan = YbBeginScan(relation,
+							   index,
+							   false,	/* xs_want_itup */
+							   nkeys,
+							   keys,
+							   NULL,	/* pg_scan_plan */
+							   NULL,	/* rel_pushdown */
+							   NULL,	/* idx_pushdown */
+							   NULL,	/* aggrefs */
+							   0,	/* distinct_prefixlen */
+							   NULL,	/* exec_params */
+							   true,	/* is_internal_scan */
+							   false);	/* fetch_ybctids_only */
+	Assert(!YbNeedsPgRecheck(scan->ybscan));
+
+	scan->base.vtable = &yb_default_scan;
+
+	if (index)
+		RelationClose(index);
+
+	return YbBuildSysScanDesc(relation, snapshot, &scan->base);
+}
+
+SysScanDesc
+ybc_systable_beginscan(Relation relation,
+					   Oid indexId,
+					   bool indexOK,
+					   Snapshot snapshot,
+					   int nkeys,
+					   ScanKey key)
+{
+	SysScanDesc scan = (IsBootstrapProcessingMode() ?
+						NULL :
+						YbBuildOptimizedSysTableScan(relation, indexId,
+													 indexOK, snapshot, nkeys,
+													 key));
+
+	return (scan ?
+			scan :
+			ybc_systable_begin_default_scan(relation, indexId, indexOK,
+											snapshot, nkeys, key));
 }

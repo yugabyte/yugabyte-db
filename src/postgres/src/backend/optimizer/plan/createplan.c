@@ -45,7 +45,7 @@
 
 /* YB includes */
 #include "access/htup_details.h"
-#include "access/yb_scan.h"
+#include "access/yb_target.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_constraint.h"
@@ -53,6 +53,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "executor/ybExpr.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"

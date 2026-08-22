@@ -22,7 +22,6 @@
 #include "postgres.h"
 
 #include "access/relscan.h"
-#include "access/yb_scan.h"
 #include "executor/execdebug.h"
 #include "executor/nodeIndexscan.h"
 #include "executor/nodeYbBitmapIndexscan.h"

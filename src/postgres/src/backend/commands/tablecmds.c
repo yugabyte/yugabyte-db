@@ -22891,7 +22891,8 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 	 * checking all the constraints.
 	 */
 	snapshot = RegisterSnapshot(GetLatestSnapshot());
-	scan = heap_beginscan(old_rel, snapshot, 0, NULL, NULL, SO_TYPE_SEQSCAN);
+	scan = heap_beginscan(old_rel, snapshot, 0, NULL, NULL, SO_TYPE_SEQSCAN,
+						  NULL);	/* yb_options */
 
 	/*
 	 * Switch to per-tuple memory context and reset it for each tuple

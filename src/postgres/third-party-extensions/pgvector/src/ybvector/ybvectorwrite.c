@@ -26,7 +26,7 @@
 
 #include "access/genam.h"
 #include "access/sysattr.h"
-#include "access/yb_scan.h"
+#include "access/yb_target.h"
 #include "catalog/index.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_type.h"

@@ -67,7 +67,7 @@
 #include "utils/lsyscache.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_cost.h"
 #include "catalog/pg_database.h"
 #include "executor/ybExpr.h"
 #include "miscadmin.h"

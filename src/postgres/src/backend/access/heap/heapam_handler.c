@@ -46,7 +46,7 @@
 #include "utils/rel.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_table_scan_options.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 
@@ -1306,23 +1306,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 		else
 			snapshot = SnapshotAny;
 
-		if (IsYBRelation(heapRelation) && !is_system_catalog &&
-			yb_enable_index_backfill_scan_optimization)
-		{
-			scan = ybc_heap_beginscan_for_index_build(heapRelation,
-													  snapshot,
-													  indexInfo,
-													  yb_pushdown);
-		}
-		else
-		{
-			scan = table_beginscan_strat(heapRelation,	/* relation */
-										 snapshot,	/* snapshot */
-										 0, /* number of keys */
-										 NULL,	/* scan key */
-										 true,	/* buffer access strategy OK */
-										 allow_sync);	/* syncscan OK? */
-		}
+		YbTableScanOptions yb_options = {.rel_pushdown = yb_pushdown};
+		YbTableScanOptions *yb_opts_ptr = &yb_options;
 
 		if (IsYBRelation(heapRelation))
 		{
@@ -1339,8 +1324,20 @@ heapam_index_build_range_scan(Relation heapRelation,
 				exec_params->out_param = bfresult;
 				exec_params->is_index_backfill = true;
 			}
-			scan->ybscan->exec_params = exec_params;
+
+			yb_options.exec_params = exec_params;
+			yb_options.index_info = indexInfo;
+			yb_options.rowmark = YBC_NO_ROW_MARK;
+			yb_opts_ptr = &yb_options;
 		}
+
+		scan = table_beginscan_strat_yb(heapRelation,
+										snapshot,
+										0,	/* nkeys */
+										NULL,	/* keys */
+										true,	/* allow_strat */
+										allow_sync,
+										yb_opts_ptr);
 	}
 	else
 	{

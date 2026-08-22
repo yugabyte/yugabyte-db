@@ -69,7 +69,8 @@
 #include "utils/timestamp.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_cost.h"
+#include "access/yb_special_scans.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pggate.h"
