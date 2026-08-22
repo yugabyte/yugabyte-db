@@ -380,8 +380,8 @@ struct TabletServer::PgClientServiceHolder {
   template <class... Args>
   explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}
 
-  PgClientServiceImpl impl;
   std::optional<PgClientServiceMockImpl> mock;
+  PgClientServiceImpl impl;
 };
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
@@ -738,6 +738,7 @@ Status TabletServer::RegisterServices() {
   if (PREDICT_FALSE(FLAGS_TEST_enable_pg_client_mock)) {
     pg_client_service_holder->mock.emplace(metric_entity(), pg_client_service_if);
     pg_client_service_if = &pg_client_service_holder->mock.value();
+    pg_client_service_holder->impl.TEST_SetMockService(&pg_client_service_holder->mock.value());
     LOG(INFO) << "Mock created for yb::tserver::PgClientServiceImpl";
   }
 
