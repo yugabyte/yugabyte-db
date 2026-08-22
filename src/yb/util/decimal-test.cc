@@ -206,10 +206,63 @@ TEST_F(DecimalTest, TestDoubleConversions) {
 #endif
   EXPECT_EQ("4.9406564584124654418e-324", decimal.ToString());
 
-  EXPECT_TRUE(decimal.FromDouble(std::numeric_limits<double>::infinity()).IsCorruption());
-  EXPECT_TRUE(decimal.FromDouble(-std::numeric_limits<double>::infinity()).IsCorruption());
-  EXPECT_TRUE(decimal.FromDouble(std::numeric_limits<double>::signaling_NaN()).IsCorruption());
-  EXPECT_TRUE(decimal.FromDouble(std::numeric_limits<double>::quiet_NaN()).IsCorruption());
+  EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::infinity()));
+  EXPECT_TRUE(decimal.IsPosInfinity());
+  EXPECT_EQ("Infinity", decimal.ToString());
+  EXPECT_EQ(std::string(1, kDecimalPosInfinitySentinel), decimal.EncodeToComparable());
+
+  EXPECT_OK(decimal.FromDouble(-std::numeric_limits<double>::infinity()));
+  EXPECT_TRUE(decimal.IsNegInfinity());
+  EXPECT_EQ("-Infinity", decimal.ToString());
+  EXPECT_EQ(std::string(1, kDecimalNegInfinitySentinel), decimal.EncodeToComparable());
+
+  EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::signaling_NaN()));
+  EXPECT_TRUE(decimal.IsNaN());
+  EXPECT_EQ("NaN", decimal.ToString());
+  EXPECT_EQ(std::string(1, kDecimalNaNSentinel), decimal.EncodeToComparable());
+
+  EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::quiet_NaN()));
+  EXPECT_TRUE(decimal.IsNaN());
+}
+
+TEST_F(DecimalTest, TestSpecialValues) {
+  Decimal neg_inf = Decimal::NegInfinity();
+  Decimal neg_one("-1");
+  Decimal zero("0");
+  Decimal pos_one("1");
+  Decimal pos_inf = Decimal::PosInfinity();
+  Decimal nan = Decimal::NaN();
+
+  EXPECT_LT(neg_inf, neg_one);
+  EXPECT_LT(neg_one, zero);
+  EXPECT_LT(zero, pos_one);
+  EXPECT_LT(pos_one, pos_inf);
+  EXPECT_LT(pos_inf, nan);
+  EXPECT_EQ(nan, Decimal::NaN());
+  EXPECT_EQ(neg_inf, Decimal::NegInfinity());
+  EXPECT_EQ(pos_inf, Decimal::PosInfinity());
+
+  EXPECT_EQ(neg_inf.EncodeToComparable(), std::string(1, kDecimalNegInfinitySentinel));
+  EXPECT_EQ(pos_inf.EncodeToComparable(), std::string(1, kDecimalPosInfinitySentinel));
+  EXPECT_EQ(nan.EncodeToComparable(), std::string(1, kDecimalNaNSentinel));
+
+  Decimal decoded;
+  size_t nbytes = 0;
+  EXPECT_OK(decoded.DecodeFromComparable(nan.EncodeToComparable(), &nbytes));
+  EXPECT_EQ(1, nbytes);
+  EXPECT_TRUE(decoded.IsNaN());
+
+  EXPECT_OK(decoded.FromString("NaN"));
+  EXPECT_TRUE(decoded.IsNaN());
+  EXPECT_OK(decoded.FromString("-Infinity"));
+  EXPECT_TRUE(decoded.IsNegInfinity());
+  EXPECT_OK(decoded.FromString("+Infinity"));
+  EXPECT_TRUE(decoded.IsPosInfinity());
+
+  // Cassandra BigDecimal cannot represent specials.
+  bool is_out_of_range = false;
+  EXPECT_TRUE(nan.EncodeToSerializedBigDecimal(&is_out_of_range).empty());
+  EXPECT_TRUE(is_out_of_range);
 }
 
 TEST_F(DecimalTest, TestComparableEncoding) {
