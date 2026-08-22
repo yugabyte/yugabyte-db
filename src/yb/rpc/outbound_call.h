@@ -462,10 +462,6 @@ class OutboundCall : public RpcCall {
   virtual size_t GetSidecarsCount() const;
   virtual size_t TransferSidecars(Sidecars* dest);
 
-  // Distributed-trace span for this call; LocalOutboundCall reads its context to parent the local
-  // inbound span.
-  const dist_trace::SpanWithScopePtr& otel_span() const { return otel_span_; }
-
   // ----------------------------------------------------------------------------------------------
   // Protected fields set in constructor or during initialization
   // ----------------------------------------------------------------------------------------------
@@ -484,6 +480,10 @@ class OutboundCall : public RpcCall {
   // conn_id_ is not set in the constructor, but is set in SetConnectionId together with hostname_
   // before the call is queued, so no synchronization is needed.
   ConnectionId conn_id_;
+
+  // OpenTelemetry span for this call, created at start (if a trace context is active) and ended at
+  // completion.
+  dist_trace::SpanWithScopePtr otel_span_;
 
  private:
   friend class RpcController;
@@ -608,13 +608,9 @@ class OutboundCall : public RpcCall {
 
   std::unique_ptr<MetadataSerializer> metadata_serializer_;
 
-  // OpenTelemetry span for this call, created at start (if a trace context is active) and ended at
-  // completion.
-  dist_trace::SpanWithScopePtr otel_span_;
-
   // The trace context active when this call was constructed -- its PARENT, re-activated around the
   // completion callback so follow-on RPCs nest as SIBLINGS of this call.
-  dist_trace::trace::SpanContext trace_parent_ = dist_trace::trace::SpanContext::GetInvalid();
+  std::optional<dist_trace::trace::SpanContext> trace_parent_;
 
   // InvokeCallbackTask should be able to call InvokeCallbackSync and we don't want other that
   // method to be public.
