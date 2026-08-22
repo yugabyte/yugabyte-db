@@ -3676,6 +3676,16 @@ class PgClientSession::Impl {
     ADOPT_TRACE(trace.get());
 
     data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result, data->req);
+    // MakeUsedReadTimeApplier has set plain_session_used_read_time_.pending_update, so the next
+    // request expects a used read time stored by the applier, which
+    // CheckPlainSessionPendingUsedReadTime consumes while resetting the flag. Failing out below
+    // without running the applier would leave nothing stored, making that check reject every later
+    // request on this session. An empty read time is its "request has finished with error" case.
+    CancelableScopeExit applier_se{[data] {
+      if (data->used_read_time_applier) {
+        data->used_read_time_applier(TabletReadTime{});
+      }
+    }};
     data->used_in_txn_limit = in_txn_limit;
     data->transaction = std::move(transaction);
     data->pg_node_level_mutation_counter = pg_node_level_mutation_counter();
@@ -3720,6 +3730,7 @@ class PgClientSession::Impl {
       }
     }
 
+    applier_se.Cancel();
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
