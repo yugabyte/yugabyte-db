@@ -56,6 +56,8 @@
 
 #include "yb/server/logical_clock.h"
 
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
@@ -69,6 +71,10 @@ DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(raft_monotonic_last_received_current_leader);
+DECLARE_bool(enable_wal_sync_on_consensus_update);
+DECLARE_int32(interval_durable_wal_write_ms);
+DECLARE_int32(bytes_durable_wal_write_mb);
+DECLARE_bool(never_fsync);
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
@@ -943,6 +949,118 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   ASSERT_EQ(resp.status().error().code(), ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);
   ASSERT_STR_CONTAINS(resp.status().error().status().message().ToBuffer(),
                       "Log matching property violated");
+}
+
+// The wiring, as opposed to the primitive. The log-test cases drive
+// Log::MaybeSyncInBackground() directly; the guarantee an operator actually gets is that an
+// UpdateConsensus RPC carrying no operations gets an idle follower's WAL fsynced, and that lives
+// in RaftConsensus::Update() rather than in Log.
+//
+// Constructed so that only that path can explain the fsync: one op is replicated and then no more,
+// so the appender is parked in its drain wait and will not call Sync() again; the byte arm is far
+// out of reach; and the requests sent below carry no ops at all, so they append nothing that could
+// provoke a sync of their own.
+class RaftConsensusWalSyncTest : public RaftConsensusQuorumTest {
+ protected:
+  static constexpr int kFollowerIdx = 0;
+  static constexpr int kLeaderIdx = 2;
+  static constexpr int kIntervalMs = 100;
+
+  // These tests move process-global durability flags, one of them to a value that would silently
+  // disable the feature for anything running afterwards in the same binary. Restored here rather
+  // than at the end of each test body so that a failing test cannot leak them either.
+  google::FlagSaver flag_saver_;
+
+  void SetUpFlagsAndDrives() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_interval_durable_wal_write_ms) = kIntervalMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_bytes_durable_wal_write_mb) = 1024;
+    // Registered before BuildAndStartConfig, because Log resolves its drive once at construction
+    // and PosixWritableFile does the same per open. The roots are this test's own temp paths, so
+    // nothing else in the process shares the counters.
+    for (int i = 0; i < 3; ++i) {
+      DriveIoStatsRegistry::Instance().Register(
+          GetTestPath(Substitute("peer-$0-root", i)), nullptr);
+    }
+  }
+
+  // A heartbeat: right term, right preceding id, no ops. This is what a real leader sends an
+  // up-to-date follower when there is nothing to replicate.
+  std::shared_ptr<LWConsensusRequestPB> MakeHeartbeat(const OpIdPB& last_op_id) {
+    shared_ptr<RaftConsensus> leader;
+    CHECK_OK(peers_->GetPeerByIdx(kLeaderIdx, &leader));
+    auto req = rpc::MakeSharedMessage<LWConsensusRequestPB>();
+    req->ref_caller_uuid(leader->peer_uuid());
+    req->set_caller_term(last_op_id.term());
+    req->mutable_preceding_id()->CopyFrom(last_op_id);
+    req->mutable_committed_op_id()->CopyFrom(last_op_id);
+    return req;
+  }
+
+  DriveIoStats* FollowerDriveStats() {
+    return DriveIoStatsRegistry::Instance().Find(
+        GetTestPath(Substitute("peer-$0-root", kFollowerIdx)));
+  }
+};
+
+TEST_F(RaftConsensusWalSyncTest, TestHeartbeatSyncsAnIdleFollowersWal) {
+  ASSERT_NO_FATALS(SetUpFlagsAndDrives());
+  ASSERT_OK(BuildAndStartConfig(3));
+
+  OpIdPB last_op_id;
+  vector<scoped_refptr<ConsensusRound>> rounds;
+  REPLICATE_SEQUENCE_OF_MESSAGES(
+      1, kLeaderIdx, WAIT_FOR_ALL_REPLICAS, COMMIT_ONE_BY_ONE, &last_op_id, &rounds);
+
+  auto* drive_stats = FollowerDriveStats();
+  ASSERT_NE(drive_stats, nullptr);
+  const auto syncs_before = drive_stats->sync_count();
+
+  shared_ptr<RaftConsensus> follower;
+  ASSERT_OK(peers_->GetPeerByIdx(kFollowerIdx, &follower));
+
+  SleepFor(MonoDelta::FromMilliseconds(kIntervalMs + 10));
+
+  // Heartbeats until the WAL is on disk. Sent explicitly rather than waiting for the leader's own
+  // timer so the test does not depend on the harness's heartbeat plumbing, but they are the same
+  // requests through the same entry point.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        LWConsensusResponsePB resp(nullptr);
+        auto req = MakeHeartbeat(last_op_id);
+        RETURN_NOT_OK(follower->Update(req, &resp, CoarseBigDeadline()));
+        return drive_stats->sync_count() > syncs_before;
+      },
+      MonoDelta::FromSeconds(10), "the follower's WAL to be fsynced from the heartbeat path"));
+}
+
+// The kill switch, which matters because the consensus-path check is on by default. Same setup,
+// flag off: however many heartbeats arrive and however long the entry has been sitting there,
+// nothing fsyncs.
+TEST_F(RaftConsensusWalSyncTest, TestNoSyncWhenDisabled) {
+  ASSERT_NO_FATALS(SetUpFlagsAndDrives());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wal_sync_on_consensus_update) = false;
+  ASSERT_OK(BuildAndStartConfig(3));
+
+  OpIdPB last_op_id;
+  vector<scoped_refptr<ConsensusRound>> rounds;
+  REPLICATE_SEQUENCE_OF_MESSAGES(
+      1, kLeaderIdx, WAIT_FOR_ALL_REPLICAS, COMMIT_ONE_BY_ONE, &last_op_id, &rounds);
+
+  auto* drive_stats = FollowerDriveStats();
+  ASSERT_NE(drive_stats, nullptr);
+  const auto syncs_before = drive_stats->sync_count();
+
+  shared_ptr<RaftConsensus> follower;
+  ASSERT_OK(peers_->GetPeerByIdx(kFollowerIdx, &follower));
+
+  SleepFor(MonoDelta::FromMilliseconds(kIntervalMs + 10));
+  for (int i = 0; i < 20; ++i) {
+    LWConsensusResponsePB resp(nullptr);
+    auto req = MakeHeartbeat(last_op_id);
+    ASSERT_OK(follower->Update(req, &resp, CoarseBigDeadline()));
+  }
+  ASSERT_EQ(drive_stats->sync_count(), syncs_before);
 }
 
 // Test that RequestVote performs according to "spec".

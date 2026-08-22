@@ -200,6 +200,18 @@ class Log : public RefCountedThreadSafe<Log> {
   // fsync of log entries is enabled).
   Status WaitUntilAllFlushed();
 
+  // Re-evaluates the periodic-sync policy and, if it is overdue, kicks off an fsync on the
+  // log-sync pool. Returns true if a background sync was submitted.
+  //
+  // Used to honor interval_durable_wal_write_ms semantics on a somewhat quiet tablet that
+  // receives writes in intervals > interval_durable_wal_write_ms. Callers are expected to be
+  // something that keeps ticking on an idle tablet - today the follower's UpdateConsensus path,
+  // which a leader heartbeat reaches even with no ops attached.
+  //
+  // This never fsyncs on the calling thread, a kForceFsync is downgraded to a background sync
+  // and hence is safe to call on a consensus thread.
+  bool MaybeSyncInBackground() EXCLUDES(background_sync_token_mutex_);
+
   // The closure submitted to allocation_pool_ to allocate a new segment.
   void SegmentAllocationTask();
 
@@ -528,7 +540,12 @@ class Log : public RefCountedThreadSafe<Log> {
   // Calls ::DoSync and resets fsync_task_in_queue_.
   void DoSyncAndResetTaskInQueue() EXCLUDES(active_segment_mutex_);
 
-  Status Sync() EXCLUDES(active_segment_mutex_);
+  // Submits DoSyncAndResetTaskInQueue() on background_sync_threadpool_token_ unless one is
+  // already queued or running, and returns whether it submitted. Never blocks on the fsync
+  // itself. Shared by the append path (::Sync) and by ::MaybeSyncInBackground.
+  bool SubmitBackgroundSync() EXCLUDES(background_sync_token_mutex_);
+
+  Status Sync() EXCLUDES(active_segment_mutex_, background_sync_token_mutex_);
 
   // Updates the reader on how far it can read the active segment. Called from ::Sync()
   Status UpdateSegmentReadableOffset() EXCLUDES(active_segment_mutex_);
@@ -678,8 +695,13 @@ class Log : public RefCountedThreadSafe<Log> {
   // A thread pool for asynchronously pre-allocating new log segments.
   std::unique_ptr<ThreadPoolToken> allocation_token_;
 
+  // Protects the reset of background_sync_threadpool_token_ (::Close) from its access
+  // (::MaybeSyncInBackground), as they can happen on different threads.
+  mutable rw_spinlock background_sync_token_mutex_;
+
   // A thread pool for performing log fsync operations.
-  std::unique_ptr<ThreadPoolToken> background_sync_threadpool_token_;
+  std::unique_ptr<ThreadPoolToken> background_sync_threadpool_token_
+      GUARDED_BY(background_sync_token_mutex_);
 
   // If true, sync on all appends.
   bool durable_wal_write_;
@@ -691,7 +713,7 @@ class Log : public RefCountedThreadSafe<Log> {
   int32_t bytes_durable_wal_write_mb_;
 
   // Keeps track of oldest entry which needs to be synced.
-  MonoTime periodic_sync_earliest_unsync_entry_time_ = MonoTime::kMin;
+  std::atomic<MonoTime> periodic_sync_earliest_unsync_entry_time_{MonoTime::kMin};
 
   // For periodic sync, indicates if there are entries to be sync'ed.
   std::atomic<bool> periodic_sync_needed_ = {false};
@@ -706,7 +728,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // If true, ignore the 'durable_wal_write_' flags above.  This is used to disable fsync during
   // bootstrap.
-  bool sync_disabled_;
+  std::atomic<bool> sync_disabled_;
 
   // The status of the most recent log-allocation action.
   Promise<Status> allocation_status_;
