@@ -72,6 +72,8 @@ static constexpr auto kOtelBatchMaxExportBatchSize = 512;
 static constexpr auto kOtelBatchScheduleDelayMs = 100;
 static constexpr auto kSharedMemoryPerformSpanName =
     "shmem yb.tserver.PgClientService.Perform";
+static constexpr auto kSharedMemoryObjectLockSpanName =
+    "shmem yb.tserver.PgClientService.AcquireObjectLock";
 
 YB_DEFINE_ENUM(QueryExecMode, (kFetch)(kExecute));
 YB_STRONGLY_TYPED_BOOL(IsUtility);
@@ -393,6 +395,20 @@ class OtlpHttpCollector {
     return result;
   }
 
+  std::vector<Span> FindSpansByParent(
+      const std::string& trace_id, const std::string& parent_span_id) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    std::vector<Span> result;
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return result;
+    for (const auto& span : it->second.spans) {
+      if (span.parent_span_id == parent_span_id) {
+        result.push_back(span);
+      }
+    }
+    return result;
+  }
+
   std::optional<Span> FindRpcSpanWithTableName(
       const std::string& trace_id, std::string_view table_name) const EXCLUDES(mutex_) {
     return FindSpanWithNamePrefixAndTableName(trace_id, "rpc ", table_name);
@@ -635,6 +651,11 @@ class DistTraceTest : public LibPqTestBase {
         Format("--enable_object_lock_fastpath=$0", UsePgClientSharedMemory()));
     options->extra_tserver_flags.push_back(
         Format("--pg_client_use_shared_memory=$0", UsePgClientSharedMemory()));
+    if (UsePgClientSharedMemory()) {
+      // Object locking defaults off in debug builds; the AcquireObjectLock exchange needs it on.
+      options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+      options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    }
   }
 
   virtual void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) {
@@ -1867,6 +1888,60 @@ TEST_F(DistTraceRpcTest, TestRpcPerformSpanReportsAsyncError) {
       },
       kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
       "Perform server span reporting the injected error"));
+}
+
+// Cross-boundary over shared memory: both request types carried by the exchange must propagate the
+// trace to the tserver. Each inbound server span on TabletServer should be a child of the ysql
+// outbound client span.
+TEST_F(DistTraceTest, TestSharedMemorySpansReachTabletServer) {
+  static constexpr auto kTableName = "shmem_crossing_test";
+  ASSERT_OK(CreateTable(kTableName, 5));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->FetchFormat("SELECT * FROM $0", kTableName));
+
+  auto perform_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
+      tp.trace_id, kSharedMemoryPerformSpanName,
+      "ysql" /* client_service */, "TabletServer" /* server_service */));
+
+  ASSERT_EQ(perform_span.str_attrs["rpc.system"], "yb_shmem");
+
+  ASSERT_OK(collector_.WaitForRemoteChildSpan(
+      tp.trace_id, kSharedMemoryObjectLockSpanName,
+      "ysql" /* client_service */, "TabletServer" /* server_service */));
+}
+
+// Checks that a request too large for the exchange falls back to RPC, leaving a childless shared
+// memory span and an RPC span whose inbound counterpart on TabletServer is its remote child.
+TEST_F(DistTraceTest, TestSharedMemoryFallbackToRpc) {
+  static constexpr auto kTableName = "shmem_fallback_test";
+  ASSERT_OK(CreateTable(kTableName, 1));
+
+  // A value far larger than the exchange makes SharedExchange::Obtain fail.
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (100, repeat('x', 1048576)) /*traceparent='$1'*/",
+      kTableName, tp.full));
+
+  ASSERT_OK(collector_.WaitForRemoteChildSpan(
+      tp.trace_id, "rpc yb.tserver.PgClientService.Perform",
+      "ysql" /* client_service */, "TabletServer" /* server_service */));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& span : collector_.FindSpansByNamePrefix(
+                 tp.trace_id, kSharedMemoryPerformSpanName)) {
+          if (span.service_name == "ysql" &&
+              collector_.FindSpansByParent(tp.trace_id, span.span_id).empty()) {
+            return true;
+          }
+        }
+        return false;
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "Childless shared memory Perform span for the abandoned attempt"));
 }
 
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
