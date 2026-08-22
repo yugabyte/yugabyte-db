@@ -18,8 +18,14 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/master/master_cluster.pb.h"
 
+#include "yb/util/status_fwd.h"
+
 namespace yb {
 namespace tools {
+
+// Returns true when a command failed because the server does not implement the requested RPC
+// (ERROR_NO_SUCH_METHOD) — i.e. the cluster predates the operation.
+bool IsNoSuchMethodError(const Status& s);
 
 std::string SnapshotIdToString(const SnapshotId& snapshot_id);
 
