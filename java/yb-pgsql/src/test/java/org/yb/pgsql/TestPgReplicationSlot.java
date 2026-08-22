@@ -1975,6 +1975,55 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
+  private LogSequenceNumber getConfirmedFlushLSN(Connection connection, String slotName)
+      throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res = stmt.executeQuery(String.format(
+          "select confirmed_flush_lsn from pg_replication_slots where slot_name = '%s'", slotName));
+      assertTrue(res.next());
+      return LogSequenceNumber.valueOf(res.getString("confirmed_flush_lsn"));
+    }
+  }
+
+  @Test
+  public void testRestartLSNAdvancesForFilteredTransactions() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test");
+      stmt.execute("CREATE TABLE test (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    String slotName = "test_filtered_transactions_ack";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
+      stmt.execute("INSERT INTO test VALUES(2, 'defg')");
+      stmt.execute("INSERT INTO test VALUES(3, 'xyz')");
+    }
+
+    // Streaming starts at LSN 2 and we have 3 txns with one insert each. Start with
+    // a large start_lsn (100) that so that all three transactions are dropped by
+    // the decoder and nothing is streamed to the client.
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(100L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    // The stream is deliberately not read from: the client sends no feedback at all, so the
+    // restart LSN can only advance past the dropped transactions if the walsender acknowledges
+    // them itself. Without that it stays at the snapshot LSN (1).
+    waitForRestartLSN(connection, slotName, 10L);
+    assertEquals(LogSequenceNumber.valueOf(10L), getConfirmedFlushLSN(connection, slotName));
+
+    stream.close();
+  }
+
   @Test
   public void testReplicationConnectionUpdateRestartLSNWithRestarts() throws Exception {
     try (Statement stmt = connection.createStatement()) {
