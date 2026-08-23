@@ -112,6 +112,8 @@ struct PgClientSessionContext {
   const std::string& instance_uuid;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry;
   const TransactionManagerProvider transaction_manager_provider;
+  // Set only when FLAGS_TEST_enable_pg_client_mock is on.
+  PgClientServiceMockImpl* TEST_mock_service = nullptr;
 };
 
 using RequestProcessingPreconditionWaiter = LWFunction<Status(size_t, CoarseTimePoint)>;

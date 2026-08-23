@@ -817,6 +817,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
                                        ? &tablet_server_.ObjectLockSharedStateManager()->registry()
                                        : nullptr,
             .transaction_manager_provider = transaction_manager_provider_,
+            .TEST_mock_service = nullptr,
         },
         cdc_state_table_(client_future_),
         txn_snapshot_manager_(
@@ -2908,6 +2909,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return sessions_.size();
   }
 
+  void TEST_SetMockService(PgClientServiceMockImpl* mock) {
+    session_context_.TEST_mock_service = mock;
+  }
+
  private:
   client::YBClient& client() { return *client_future_.get(); }
 
@@ -3184,6 +3189,10 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
 
+void PgClientServiceImpl::TEST_SetMockService(PgClientServiceMockImpl* mock) {
+  impl_->TEST_SetMockService(mock);
+}
+
 void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 
 #define YB_PG_CLIENT_METHOD_DEFINE(r, data, method) \
@@ -3213,6 +3222,15 @@ BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DEFINE, ~, YB_PG_CLIENT_METHODS);
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, ~, YB_PG_CLIENT_ASYNC_METHODS);
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_TRIVIAL_METHOD_DEFINE, ~, YB_PG_CLIENT_TRIVIAL_METHODS);
 
+CoarseTimePoint PgClientMockCallContext::GetClientDeadline() const {
+  return rpc ? rpc->GetClientDeadline() : deadline;
+}
+
+void PgClientMockCallContext::CloseConnection() {
+  CHECK(rpc) << "CloseConnection is only supported for network RPCs";
+  rpc->CloseConnection();
+}
+
 PgClientServiceMockImpl::PgClientServiceMockImpl(
     const scoped_refptr<MetricEntity>& entity, PgClientServiceIf* impl)
     : PgClientServiceIf(entity), impl_(impl) {}
@@ -3240,7 +3258,7 @@ void PgClientServiceMockImpl::UnsetMock(const std::string& method) {
 }
 
 Result<bool> PgClientServiceMockImpl::DispatchMock(
-    const std::string& method, const void* req, void* resp, rpc::RpcContext* context) {
+    const std::string& method, const void* req, void* resp, PgClientMockCallContext* context) {
   SharedFunctor mock;
   {
     SharedLock lock(mutex_);
@@ -3250,18 +3268,29 @@ Result<bool> PgClientServiceMockImpl::DispatchMock(
     }
   }
 
-  if (!mock) {
+  if (PREDICT_TRUE((!mock))) {
     return false;
   }
+
   RETURN_NOT_OK((*mock)(req, resp, context));
   return true;
 }
 
 #define YB_PG_CLIENT_MOCK_METHOD_DEFINE(r, data, method) \
   void PgClientServiceMockImpl::method( \
-      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB) * req, \
-      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB) * resp, rpc::RpcContext context) { \
-    auto result = DispatchMock(BOOST_PP_STRINGIZE(method), req, resp, &context); \
+      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
+      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, rpc::RpcContext context) { \
+    PgClientMockCallContext mock_ctx{ \
+        .deadline = context.GetClientDeadline(), \
+        .rpc = &context, \
+    }; \
+    auto before_result = DispatchMock( \
+        BOOST_PP_STRINGIZE(BOOST_PP_CAT(method, Before)), req, resp, &mock_ctx); \
+    if (!before_result.ok()) { \
+      Respond(ResultToStatus(before_result), resp, &context); \
+      return; \
+    } \
+    auto result = DispatchMock(BOOST_PP_STRINGIZE(method), req, resp, &mock_ctx); \
     if (!result.ok() || *result) { \
       Respond(ResultToStatus(result), resp, &context); \
       return; \
@@ -3270,9 +3299,10 @@ Result<bool> PgClientServiceMockImpl::DispatchMock(
   }
 
 template <class Req, class Resp>
-auto MakeSharedFunctor(const std::function<Status(const Req*, Resp*, rpc::RpcContext*)>& func) {
+auto MakeSharedFunctor(
+    const std::function<Status(const Req*, Resp*, PgClientMockCallContext*)>& func) {
   return std::make_shared<PgClientServiceMockImpl::Functor>(
-      [func](const void* req, void* resp, rpc::RpcContext* context) {
+      [func](const void* req, void* resp, PgClientMockCallContext* context) {
         return func(pointer_cast<const Req*>(req), pointer_cast<Resp*>(resp), context);
       });
 }
@@ -3281,11 +3311,39 @@ auto MakeSharedFunctor(const std::function<Status(const Req*, Resp*, rpc::RpcCon
   PgClientServiceMockImpl::Handle BOOST_PP_CAT(PgClientServiceMockImpl::Mock, method)( \
       const std::function<Status( \
           const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)*, \
-          BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)*, rpc::RpcContext*)>& mock) { \
+          BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)*, PgClientMockCallContext*)>& mock) { \
     return SetMock(BOOST_PP_STRINGIZE(method), MakeSharedFunctor(mock)); \
   }
 
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_DEFINE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_SETTER_DEFINE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
+
+#define YB_PG_CLIENT_MOCK_BEFORE_SETTER_DEFINE(r, data, method) \
+  PgClientServiceMockImpl::Handle BOOST_PP_CAT(BOOST_PP_CAT( \
+      PgClientServiceMockImpl::Mock, method), Before)( \
+      const std::function<Status( \
+          const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)*, \
+          BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)*, \
+          PgClientMockCallContext*)>& before) { \
+    return SetMock( \
+        BOOST_PP_STRINGIZE(BOOST_PP_CAT(method, Before)), MakeSharedFunctor(before)); \
+  }
+
+BOOST_PP_SEQ_FOR_EACH(
+    YB_PG_CLIENT_MOCK_BEFORE_SETTER_DEFINE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
+
+#define YB_PG_CLIENT_MOCK_AFTER_SETTER_DEFINE(r, data, method) \
+  PgClientServiceMockImpl::Handle BOOST_PP_CAT(BOOST_PP_CAT( \
+      PgClientServiceMockImpl::Mock, method), After)( \
+      const std::function<Status( \
+          const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)*, \
+          BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)*, \
+          PgClientMockCallContext*)>& after) { \
+    return SetMock( \
+        BOOST_PP_STRINGIZE(BOOST_PP_CAT(method, After)), MakeSharedFunctor(after)); \
+  }
+
+BOOST_PP_SEQ_FOR_EACH(
+    YB_PG_CLIENT_MOCK_AFTER_SETTER_DEFINE, ~, YB_PG_CLIENT_AFTER_MOCKABLE_METHODS);
 
 }  // namespace yb::tserver
