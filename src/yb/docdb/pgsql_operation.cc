@@ -2872,6 +2872,15 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
         RETURN_NOT_OK(PopulateResultSet(row, result_buffer_));
         if (fetched_rows > 0 && result_buffer_->size() > response_size_limit) {
           RETURN_NOT_OK(result_buffer_->Truncate(row_start));
+          // The row was counted in scanned_table_rows_ (and in the colocated index
+          // state's scanned_rows) before the size check, but it is not included in
+          // the response and will be scanned again on the next request (the paging
+          // state is set to ReadKey::kCurrent). Undo the count so the metrics report
+          // each row exactly once - see also PgsqlReadOperation::ExecuteBatchKeys.
+          --scanned_table_rows_;
+          if (index_state) {
+            --index_state->scanned_rows;
+          }
           fetch_limit = FetchLimit::kExceeded;
           // skips the fetched_rows increment and the other limit's check, which may change
           // the fetch_limit value
@@ -3004,6 +3013,12 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
                     << "Response buffer size: " << result_buffer_->size()
                     << ", response size limit: " << response_size_limit;
             RETURN_NOT_OK(result_buffer_->Truncate(row_start));
+            // The row was counted in scanned_table_rows_ before the size check, but it is
+            // not included in the response and will be scanned again on the next request
+            // (batch_arg_count is set to processed_keys, so the client resends the key).
+            // Undo the count so the metrics report each row exactly once - see also
+            // PgsqlReadOperation::ExecuteScalar.
+            --scanned_table_rows_;
             // TODO GHI #25788, for now fail instead of returning incomplete results
             RSTATUS_DCHECK(!request_.batch_arguments().empty(),
                            IllegalState, "Pagination is required, but not supported");
