@@ -1,4 +1,7 @@
--- If size limit is exceeded, last row has to be rescanned.
+-- If size limit is exceeded, the last row is truncated from the response and
+-- rescanned on the next request. The rows scanned metric counts each row
+-- once (the rescanned row is not double-counted). The number of read
+-- requests still reflects the rescans, so paging behavior remains observable.
 -- with too large row and too low size limit it means rescan of the each row,
 -- except the last on the tablet.
 -- Use explicit number of tablets to achieve predictable number of rows scanned
