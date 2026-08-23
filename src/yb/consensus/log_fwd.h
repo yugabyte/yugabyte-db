@@ -39,6 +39,7 @@ struct LogIndexBlock;
 struct LogIndexEntry;
 struct LogMetrics;
 struct LogOptions;
+struct MinRetainLogIndexInfo;
 
 using LogAnchorRegistryPtr = scoped_refptr<LogAnchorRegistry>;
 using LogPtr = scoped_refptr<Log>;

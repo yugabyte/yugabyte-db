@@ -876,7 +876,7 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(4, segments.size()) << DumpSegmentsToString(segments);
   ASSERT_OK(log_anchor_registry_->GetEarliestRegisteredLogIndex(&anchored_index));
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(4, segments.size()) << DumpSegmentsToString(segments);
 
@@ -892,12 +892,12 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   {
     google::FlagSaver saver;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 10;
-    ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+    ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
     ASSERT_EQ(0, num_gced_segments);
   }
 
   // Try again without the modified flag.
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(2, num_gced_segments) << DumpSegmentsToString(segments);
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(2, segments.size()) << DumpSegmentsToString(segments);
@@ -906,7 +906,7 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   // last rolled segment.
   ASSERT_OK(log_anchor_registry_->Unregister(anchors[2]));
   ASSERT_OK(log_anchor_registry_->GetEarliestRegisteredLogIndex(&anchored_index));
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(0, num_gced_segments) << DumpSegmentsToString(segments);
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(2, segments.size()) << DumpSegmentsToString(segments);
@@ -953,7 +953,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   // Run a GC on an op in the second index chunk. We should remove only the
   // earliest segment, because we are set to retain 4.
   int num_gced_segments = 0;
-  ASSERT_OK(log_->GC(entries_per_chunk + 6, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(entries_per_chunk + 6, &num_gced_segments));
   ASSERT_EQ(1, num_gced_segments);
 
   // And we should still be able to read ops in the retained segment, even though
@@ -966,7 +966,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   // If we drop the retention count down to 1, we can now GC, and the log index
   // chunk should also be GCed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
-  ASSERT_OK(log_->GC(entries_per_chunk + 3, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(entries_per_chunk + 3, &num_gced_segments));
   ASSERT_EQ(1, num_gced_segments);
 
   auto result = log_reader->LookupOpId(entries_per_chunk - 5);
@@ -1019,7 +1019,7 @@ TEST_F(LogTest, TestLogReopenAndGC) {
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(3, segments.size());
   ASSERT_OK(log_anchor_registry_->GetEarliestRegisteredLogIndex(&anchored_index));
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(3, segments.size());
 
@@ -1048,14 +1048,14 @@ TEST_F(LogTest, TestLogReopenAndGC) {
   // If we set the min_seconds_to_retain high, then we'll retain the logs even
   // though we could GC them based on our anchoring.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 500;
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(0, num_gced_segments);
 
   // Turn off the time-based retention and try GCing again. This time
   // we should succeed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   log_->set_wal_retention_secs(0);
-  ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
+  ASSERT_OK(log_->TEST_GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(2, num_gced_segments);
 
   // After GC there should be only one left, besides the one currently being
@@ -1369,7 +1369,7 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
     }
 
     int num_gced = 0;
-    ASSERT_OK(log_->GC(gc_index, &num_gced));
+    ASSERT_OK(log_->TEST_GC(gc_index, &num_gced));
     gc_index += RandomUniformInt(0, 9);
   }
 }
@@ -1631,7 +1631,7 @@ TEST_F(LogTest, CopyToWithConcurrentGc) {
     while (!stop_gc.load()) {
       auto gc_index = log->GetLatestEntryOpId().index;
       int num_gced = 0;
-      ASSERT_OK(log->GC(gc_index, &num_gced));
+      ASSERT_OK(log->TEST_GC(gc_index, &num_gced));
     }
   });
 
