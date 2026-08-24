@@ -3764,11 +3764,11 @@ class ControlScript(object):
         self.set_signals(SIG_DFL)
 
         try:
-            for p in self.processes.values():
-                p.kill()
-
-            for p in self.processes.values():
-                p.wait_until_stop()
+            for name, p in self.processes.copy().items():
+                err, pid = p.kill()
+                if err:
+                    Output.log("There was an error trying to kill process of {} (PID: {}): {}".format(name, pid, err), logging.ERROR)
+                p.wait_until_stop(pid)
 
             self.script.delete_pidfile()
 
