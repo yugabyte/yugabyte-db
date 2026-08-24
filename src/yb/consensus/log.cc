@@ -1496,21 +1496,31 @@ int64_t Log::GetXReplMinReplicatedIndex() const {
   return xrepl_min_replicated_index;
 }
 
-void Log::ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const {
-  // Don't GC segments that are newer than the configured time-based retention.
-  int64_t now = GetCurrentTimeMicros() + FLAGS_time_based_wal_gc_clock_delta_usec;
+bool Log::SegmentAgedOutOfTimeRetention(const ReadableLogSegment& segment) const {
+  // For GC callers this check is redundant (GetSegmentsToGCUnlocked gates the whole
+  // ApplyTimeRetentionPolicy call on the same flag); it lives here so that callers applying
+  // the policy to a frozen snapshot (remote bootstrap) get the kill-switch as well.
+  if (PREDICT_FALSE(FLAGS_TEST_disable_wal_retention_time)) {
+    return true;
+  }
+  // Segments written by older YB builds may not have the timestamp info (TODO: make sure we
+  // indeed care about these old builds). In that case, we're allowed to GC them.
+  if (!segment.footer().has_close_timestamp_micros()) {
+    return true;
+  }
+  const int64_t now = GetCurrentTimeMicros() + FLAGS_time_based_wal_gc_clock_delta_usec;
+  const int64_t age_seconds = (now - segment.footer().close_timestamp_micros()) / 1000000;
+  return age_seconds >= wal_retention_secs();
+}
 
+void Log::ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const {
+  // Don't GC segments that are newer than the configured time-based retention. Segments here
+  // will always have a footer, since we don't return the in-progress segment up above.
   for (auto iter = segments_to_gc->begin(); iter != segments_to_gc->end(); ++iter) {
     const auto& segment = *iter;
-    // Segments here will always have a footer, since we don't return the in-progress segment up
-    // above. However, segments written by older YB builds may not have the timestamp info (TODO:
-    // make sure we indeed care about these old builds). In that case, we're allowed to GC them.
-    if (!segment->footer().has_close_timestamp_micros()) continue;
-
-    int64_t age_seconds = (now - segment->footer().close_timestamp_micros()) / 1000000;
-    if (age_seconds < wal_retention_secs()) {
+    if (!SegmentAgedOutOfTimeRetention(*segment)) {
       VLOG_WITH_PREFIX(2)
-          << "Segment " << segment->path() << " is only " << age_seconds << "s old: "
+          << "Segment " << segment->path() << " is too young: "
           << "cannot GC it yet due to configured time-based retention policy.";
       // Truncate the list of segments to GC here -- if this one is too new, then all later ones are
       // also too new.
