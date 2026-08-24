@@ -120,7 +120,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final Map<String, UUID> universeTaskMap;
   // Track auto-provider CRs that are currently being created to avoid duplicate creation calls
   private final Set<String> inProgressAutoProviderCRs;
-  private Customer customer;
 
   KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
 
@@ -1394,12 +1393,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
       if (ysqlPassword != null) {
         Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
-        resourceTracker.trackDependency(
-            currentReconcileResource, ysqlSecret, currentLocalInstanceUuid);
-        log.trace(
-            "Tracking secret {} as dependency of {}",
-            ysqlSecret.getMetadata().getName(),
-            currentReconcileResource);
+        trackDependency(ybUniverse, ysqlSecret);
         String password = parseSecretForKey(ysqlSecret, YSQL_PASSWORD_SECRET_KEY);
         if (password == null) {
           log.error("could not find ysqlPassword in secret {}", ysqlPassword.getSecretName());
@@ -1412,12 +1406,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
       if (ycqlPassword != null) {
         Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
-        resourceTracker.trackDependency(
-            currentReconcileResource, ycqlSecret, currentLocalInstanceUuid);
-        log.trace(
-            "Tracking secret {} as dependency of {}",
-            ycqlSecret.getMetadata().getName(),
-            currentReconcileResource);
+        trackDependency(ybUniverse, ycqlSecret);
         String password = parseSecretForKey(ycqlSecret, YCQL_PASSWORD_SECRET_KEY);
         if (password == null) {
           log.error("could not find ycqlPassword in secret {}", ycqlPassword.getSecretName());

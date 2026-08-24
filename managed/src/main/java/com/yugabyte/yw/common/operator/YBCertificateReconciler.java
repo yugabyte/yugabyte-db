@@ -47,10 +47,6 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
 
   private final ResourceTracker resourceTracker = new ResourceTracker();
 
-  // The current certificate resource being reconciled, for associating secret dependencies.
-  private KubernetesResourceDetails currentReconcileResource;
-  private UUID currentLocalInstanceUuid;
-
   public Set<KubernetesResourceDetails> getTrackedResources() {
     return resourceTracker.getTrackedResources();
   }
@@ -98,9 +94,8 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
   @Override
   public void onAdd(YBCertificate certificate) {
     KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(certificate);
-    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
-    resourceTracker.trackResource(certificate, currentLocalInstanceUuid);
-    currentReconcileResource = resourceDetails;
+    resourceTracker.trackResource(
+        certificate, operatorUtils.getLocalPlatformInstanceUuid().orElse(null));
     log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
 
     log.info("Adding YBCertificate: {}", certificate.getMetadata().getName());
@@ -275,9 +270,8 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
   @Override
   public void onUpdate(YBCertificate oldCertificate, YBCertificate newCertificate) {
     log.info("Updating YBCertificate: {}", newCertificate.getMetadata().getName());
-    // Persist the latest resource YAML so the OperatorResource table stays current.
-    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
-    resourceTracker.trackResource(newCertificate, currentLocalInstanceUuid);
+    resourceTracker.trackResource(
+        newCertificate, operatorUtils.getLocalPlatformInstanceUuid().orElse(null));
 
     try {
       processCertificateCreation(newCertificate);
@@ -411,8 +405,8 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
           secretNamespace,
           key,
           resourceTracker,
-          currentReconcileResource,
-          currentLocalInstanceUuid);
+          KubernetesResourceDetails.fromResource(certificate),
+          operatorUtils.getLocalPlatformInstanceUuid().orElse(null));
     }
     return null;
   }
