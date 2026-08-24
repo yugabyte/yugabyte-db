@@ -927,23 +927,14 @@ main(int argc, char **argv)
 		dopt.dump_inserts = DUMP_DEFAULT_ROWS_PER_INSERT;
 
 	/*
-	 * YB_TODO_PG19MERGE: PG19 commit 9c49f0e8cd7d59e240f5da88decf2d62d8a4ad0d
-	 * replaced `if (dopt.binary_upgrade) dopt.sequence_data = 1` with a
-	 * `--sequence-data` CLI option. Verify whether `include_yb_metadata`
-	 * callers should pass `--sequence-data` instead.
+	 * YB: sequence state (last_value, is_called) lives only in the DocDB
+	 * sequences_data table and is intentionally not part of DocDB snapshots;
+	 * the dump script is the only carrier of sequence state for
+	 * backup/restore and clone, so --include-yb-metadata implies dumping
+	 * sequence data even in schema-only mode.
 	 */
-#if 0
-	/*
-	 * Binary upgrade mode implies dumping sequence data even in schema-only
-	 * mode.  This is not exposed as a separate option, but kept separate
-	 * internally for clarity.
-	 * YB: Before, during, and after online upgrade, we use the same sequence
-	 * data table, so we don't want to write anything to sequence data during
-	 * the restore.
-	 */
-	if ((!IsYugabyteEnabled && dopt.binary_upgrade) || dopt.include_yb_metadata)
+	if (dopt.include_yb_metadata)
 		dopt.sequence_data = 1;
-#endif
 
 	if (dopt.binary_upgrade && dopt.include_yb_metadata)
 		pg_fatal("options --binary-upgrade and --include-yb-metadata cannot be used together");

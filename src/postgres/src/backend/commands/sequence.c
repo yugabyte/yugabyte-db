@@ -342,8 +342,8 @@ ResetSequence(Oid seq_relid)
 		 * Create a new storage file for the sequence.
 		 */
 		RelationSetNewRelfilenumber(seq_rel, seq_rel->rd_rel->relpersistence,
-									true /* yb_copy_split_options */,
-									NULL /* preserved_index_split_options */);
+									true /* yb_copy_split_options */ ,
+									NULL /* preserved_index_split_options */ );
 
 		/*
 		 * Ensure sequence's relfrozenxid is at 0, since it won't contain any
@@ -616,8 +616,8 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 		 * changes transactional.
 		 */
 		RelationSetNewRelfilenumber(seqrel, seqrel->rd_rel->relpersistence,
-							   true /* yb_copy_split_options */,
-							   NULL /* preserved_index_split_options */);
+							   true /* yb_copy_split_options */ ,
+							   NULL /* preserved_index_split_options */ );
 
 		/*
 		 * Ensure sequence's relfrozenxid is at 0, since it won't contain any
@@ -682,8 +682,8 @@ SequenceChangePersistence(Oid relid, char newrelpersistence)
 
 	(void) read_seq_tuple(seqrel, &buf, &seqdatatuple);
 	RelationSetNewRelfilenumber(seqrel, newrelpersistence,
-							   true /* yb_copy_split_options */,
-							   NULL /* preserved_index_split_options */);
+							   true /* yb_copy_split_options */ ,
+							   NULL /* preserved_index_split_options */ );
 	fill_seq_with_data(seqrel, &seqdatatuple);
 	UnlockReleaseBuffer(buf);
 

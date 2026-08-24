@@ -72,6 +72,7 @@
 #include "utils/wait_event.h"
 
 /* YB includes */
+#include "commands/sequence_xlog.h"
 #include "pg_yb_utils.h"
 
 
@@ -1399,7 +1400,17 @@ YbReadSequenceBuffer(ReadBuffersOperation *operation, BlockNumber blockNum,
 	/* Zero, exclusively lock and mark the buffer valid, then fill it. */
 	ZeroAndLockBuffer(buf, RBM_ZERO_AND_LOCK, found);
 	dp = BufferGetPage(buf);
-	PageInit(dp, BLCKSZ, sizeof(*seqtuple));
+	PageInit(dp, BLCKSZ, sizeof(sequence_magic));
+
+	/*
+	 * Set the magic number that a real sequence page would have, or
+	 * read_seq_tuple() rejects this page.
+	 *
+	 * YB_TODO_PG19MERGE: this page has no real LSN, so anything that asks for
+	 * a sequence's LSN (pg_get_sequence_data) just gets zero. Replicating
+	 * sequences needs a real value.
+	 */
+	((sequence_magic *) PageGetSpecialPointer(dp))->magic = SEQ_MAGIC;
 	PageSetAllVisible(dp);
 	off = PageAddItemExtended(dp, (const void *) seqtuple->t_data, seqtuple->t_len,
 							  InvalidOffsetNumber, PAI_IS_HEAP);

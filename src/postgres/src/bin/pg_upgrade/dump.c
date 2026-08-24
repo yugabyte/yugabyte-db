@@ -55,11 +55,18 @@ generate_old_dump(void)
 		snprintf(sql_file_name, sizeof(sql_file_name), DB_DUMP_FILE_MASK, old_db->db_oid);
 		snprintf(log_file_name, sizeof(log_file_name), DB_DUMP_LOG_FILE_MASK, old_db->db_oid);
 
+		/*
+		 * YB: never pass --sequence-data: before, during, and after online
+		 * upgrade both versions share the same DocDB sequences_data table,
+		 * so restoring sequence state would issue DMLs against live shared
+		 * state (see #24943).
+		 */
 		parallel_exec_prog(log_file_name, NULL,
 						   "\"%s/ysql_dump\" %s --no-data %s %s --quote-all-identifiers "
 						   "--binary-upgrade --format=custom %s --no-sync --file=\"%s/%s\" %s",
 						   new_cluster.bindir, cluster_conn_opts(&old_cluster),
-						   (user_opts.transfer_mode == TRANSFER_MODE_SWAP) ?
+						   (is_yugabyte_enabled() ||
+							user_opts.transfer_mode == TRANSFER_MODE_SWAP) ?
 						   "" : "--sequence-data",
 						   log_opts.verbose ? "--verbose" : "",
 						   user_opts.do_statistics ? "--statistics" : "--no-statistics",
