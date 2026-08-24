@@ -282,6 +282,11 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
   ASSERT_STR_NOT_CONTAINS(output, "Argument definitions:");
   ASSERT_STR_NOT_CONTAINS(output, "Flags from");
   ASSERT_STR_NOT_CONTAINS(output, "yb-admin_cli.cc:");
+  // google::ProgramUsage() emits this when SetUsageMessage() has not been called. Any path that
+  // prints usage before SetUsage() runs shows it as the entire message -- see the
+  // --init_master_addrs test below.
+  ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
+  ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
 
   // The Operations: list must number only the entries it actually prints. It used to number by
   // each command's index in the full (including hidden) command table, so a hidden command's slot
@@ -296,6 +301,34 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
   for (size_t idx = 0; idx < operation_numbers.size(); ++idx) {
     ASSERT_EQ(operation_numbers[idx], static_cast<int>(idx) + 1)
         << "gap or duplicate in operation numbering at position " << idx;
+  }
+}
+
+// A malformed --init_master_addrs must be reported on its own terms. The flag is read in Run()
+// before SetUsage() has been called, so returning InvalidArgument here makes main() print an unset
+// google::ProgramUsage() -- the user's entire error message becomes "Warning: SetUsageMessage()
+// never called". A value that splits to nothing ("," -- ParseStrings uses SkipEmpty) parses as OK
+// with zero addresses, and indexing the empty vector crashes with SIGSEGV (#33435).
+TEST_F(AdminCliTest, MalformedInitMasterAddrs) {
+  const auto exe_path = GetAdminToolPath();
+  std::string output;
+  std::string error;
+
+  for (const auto& bad_value : {"host:99999", "host:abc", ",", ",,"}) {
+    output.clear();
+    error.clear();
+    ASSERT_NOK(Subprocess::Call(
+        ToStringVector(exe_path, "--init_master_addrs", bad_value, "list_tables"), &output,
+        &error))
+        << "--init_master_addrs=" << bad_value << " unexpectedly succeeded";
+    // Naming the flag proves we took the targeted path: a crash prints no such line, and the
+    // pre-SetUsage InvalidArgument path printed only the gflags warning.
+    ASSERT_STR_CONTAINS(error, "Invalid --init_master_addrs");
+    ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
+    ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
+    // A bad flag value is not a usage error, so neither stream gets the operation catalog.
+    ASSERT_STR_NOT_CONTAINS(output, "Operations:");
+    ASSERT_STR_NOT_CONTAINS(error, "Operations:");
   }
 }
 
