@@ -2840,8 +2840,16 @@ TEST_P(PgIndexBackfillBackendsManager, YB_DISABLE_TEST_IN_TSAN(NoAbortTxn)) {
   ASSERT_OK(conn_->Execute("BEGIN"));
   ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = 5 WHERE i = 3", kTableName));
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
-  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
-  ASSERT_OK(conn_->Execute("COMMIT"));
+  if (EnableTableLocks()) {
+    // With object locking, CREATE INDEX waits for existing lockers (WaitForLockers) before
+    // choosing the backfill safe time, so the transaction must commit before the safe time
+    // can be established.
+    ASSERT_OK(conn_->Execute("COMMIT"));
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+  } else {
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+    ASSERT_OK(conn_->Execute("COMMIT"));
+  }
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   thread_holder_.Stop();
 
