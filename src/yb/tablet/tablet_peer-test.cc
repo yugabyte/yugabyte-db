@@ -77,6 +77,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/tsan_util.h"
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
@@ -262,6 +263,23 @@ class TabletPeerTest : public YBTabletTest {
                                          "leader, otherwise emulate.");
   }
 
+  // Starts the peer and waits for the leader-election no-op to commit, so tests that reason
+  // about committed/logged OpIds (or index arithmetic relative to them) do not race it.
+  // Returns the consensus for follow-up assertions.
+  Result<std::shared_ptr<consensus::Consensus>> StartPeerAndWaitForLeaderNoOpCommit(
+      const ConsensusBootstrapInfo& info) {
+    RETURN_NOT_OK(StartPeer(info));
+    auto consensus = VERIFY_RESULT(tablet_peer_->GetConsensus());
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&] {
+          const auto committed_op_id = consensus->GetLastCommittedOpId();
+          return committed_op_id.index > 0 &&
+                 committed_op_id == tablet_peer_->log()->GetLatestEntryOpId();
+        },
+        MonoDelta::FromSeconds(5) * kTimeMultiplier, "leader-election no-op to commit"));
+    return consensus;
+  }
+
   void TabletPeerStateChangedCallback(
       const string& tablet_id,
       std::shared_ptr<consensus::StateChangeContext> context) {
@@ -399,16 +417,8 @@ class TabletPeerTest : public YBTabletTest {
 // skipped: the log ends before it while the next replicate is assigned a later one.
 TEST_F(TabletPeerTest, PendingStateCleanedUpWhenAddedToLeaderFails) {
   ConsensusBootstrapInfo info;
-  ASSERT_OK(StartPeer(info));
-  auto consensus = ASSERT_RESULT(tablet_peer_->GetConsensus());
   // Let the leader-election no-op commit so the OpId comparisons below are stable.
-  ASSERT_OK(LoggedWaitFor(
-      [&] {
-        const auto committed_op_id = consensus->GetLastCommittedOpId();
-        return committed_op_id.index > 0 &&
-               committed_op_id == tablet_peer_->log()->GetLatestEntryOpId();
-      },
-      MonoDelta::FromSeconds(5), "leader-election no-op to commit"));
+  auto consensus = ASSERT_RESULT(StartPeerAndWaitForLeaderNoOpCommit(info));
   const auto initial_op_id = consensus->GetLastCommittedOpId();
 
   // The write is rejected after its Raft index was allocated but before any WAL append or
@@ -475,15 +485,7 @@ void SubmitAndCheckAbortedBeforePending(
 
 TEST_F(TabletPeerTest, SplitAbortBeforePendingDoesNotUnregisterFilter) {
   ConsensusBootstrapInfo info;
-  ASSERT_OK(StartPeer(info));
-  auto consensus = ASSERT_RESULT(tablet_peer_->GetConsensus());
-  ASSERT_OK(LoggedWaitFor(
-      [&] {
-        const auto committed_op_id = consensus->GetLastCommittedOpId();
-        return committed_op_id.index > 0 &&
-               committed_op_id == tablet_peer_->log()->GetLatestEntryOpId();
-      },
-      MonoDelta::FromSeconds(5), "leader-election no-op to commit"));
+  auto consensus = ASSERT_RESULT(StartPeerAndWaitForLeaderNoOpCommit(info));
 
   FakeTabletSplitter fake_splitter;
   auto operation = std::make_unique<SplitOperation>(
@@ -495,15 +497,7 @@ TEST_F(TabletPeerTest, SplitAbortBeforePendingDoesNotUnregisterFilter) {
 
 TEST_F(TabletPeerTest, SnapshotAbortBeforePendingDoesNotUnregisterFilter) {
   ConsensusBootstrapInfo info;
-  ASSERT_OK(StartPeer(info));
-  auto consensus = ASSERT_RESULT(tablet_peer_->GetConsensus());
-  ASSERT_OK(LoggedWaitFor(
-      [&] {
-        const auto committed_op_id = consensus->GetLastCommittedOpId();
-        return committed_op_id.index > 0 &&
-               committed_op_id == tablet_peer_->log()->GetLatestEntryOpId();
-      },
-      MonoDelta::FromSeconds(5), "leader-election no-op to commit"));
+  auto consensus = ASSERT_RESULT(StartPeerAndWaitForLeaderNoOpCommit(info));
 
   auto operation = std::make_unique<SnapshotOperation>(
       ASSERT_RESULT(tablet_peer_->shared_tablet()));
