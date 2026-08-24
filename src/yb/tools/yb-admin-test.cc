@@ -61,6 +61,7 @@
 #include "yb/master/master_defaults.h"
 
 #include "yb/tools/admin-test-base.h"
+#include "yb/tools/yb-admin_util.h"
 
 #include "yb/tools/tools_test_utils.h"
 #include "yb/util/backoff_waiter.h"
@@ -207,6 +208,18 @@ class AdminCliTest : public AdminTestBase {
 
   TmpDirProvider tmp_dir_;
 };
+
+// RunCommand() frames an error as "The cluster doesn't support <operation>" only for
+// ERROR_NO_SUCH_METHOD. Before #33434 the predicate used find() as a bool -- npos is truthy --
+// so every remote error (leaderless master, unreachable peer) got the version-mismatch framing.
+TEST_F(AdminCliTest, NoSuchMethodErrorDetection) {
+  ASSERT_TRUE(IsNoSuchMethodError(
+      STATUS(RemoteError, "Call rejected, no such method (rpc error 2)")));
+  // The regression: a generic remote error is not a version mismatch.
+  ASSERT_FALSE(IsNoSuchMethodError(STATUS(RemoteError, "Leader not ready to serve requests")));
+  // Same text under a different code is not a remote rejection at all.
+  ASSERT_FALSE(IsNoSuchMethodError(STATUS(TimedOut, "no response (rpc error 2)")));
+}
 
 // Verify the "did you mean" help for a misspelled operation, none of which needs a running
 // cluster (the operation is checked before yb-admin connects to the master): prefix matches,

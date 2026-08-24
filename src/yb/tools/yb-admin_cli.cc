@@ -499,7 +499,7 @@ Status ClusterAdminCli::RunCommand(
     const Command& command, const CLIArguments& command_args, const std::string& program_name) {
   auto s = command.action_(command_args, client_.get());
   if (!s.ok()) {
-    if (s.IsRemoteError() && s.ToString().find("rpc error 2")) {
+    if (IsNoSuchMethodError(s)) {
       cerr << "The cluster doesn't support " << command.name_ << ": " << s << std::endl;
     } else {
       cerr << "Error running " << command.name_ << ": " << s << endl;
