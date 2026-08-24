@@ -89,6 +89,27 @@ public class RoleBindingUtilTest extends FakeDBApplication {
     assertNotNull(roleBinding.getCreateTime());
   }
 
+  @Test
+  public void testNoSensitiveUserDataInRoleBindingToString() {
+    user.upsertApiToken();
+    ResourceDefinition rd1 =
+        ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
+    ResourceGroup rg1 = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    RoleBinding roleBinding =
+        roleBindingUtil.createRoleBinding(
+            user.getUuid(), role.getRoleUUID(), RoleBindingType.Custom, rg1);
+
+    Users boundUser = roleBinding.getUser();
+    assertNotNull(boundUser.getPasswordHash());
+    assertNotNull(boundUser.getApiToken());
+
+    String asString = roleBinding.toString();
+    assertFalse(asString.contains(user.getEmail()));
+    assertFalse(asString.contains(boundUser.getPasswordHash()));
+    assertFalse(asString.contains(boundUser.getApiToken()));
+    assertTrue(asString.contains(user.getUuid().toString()));
+  }
+
   @Test(expected = PlatformServiceException.class)
   public void testCreateRoleBindingWithInvalidRole() {
     ResourceDefinition rd1 =
