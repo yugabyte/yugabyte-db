@@ -2213,6 +2213,17 @@ TEST_F(AdminCliTest, PrintArgumentExpressions) {
   status = CallAdmin("list_change_data_streams", "extra_arg_1", "extra_arg_2");
   ASSERT_NOK(status);
   ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
+
+  // create_snapshot's usage_arguments_ repeats a placeholder ("<table> [<table>]..."); with
+  // bracketed tokens now matching, its definition must still be printed only once.
+  status = CallAdmin("create_snapshot");
+  ASSERT_NOK(status);
+  const auto create_snapshot_output = status.ToString();
+  const auto first_table_definition = create_snapshot_output.find(table_expression);
+  ASSERT_NE(first_table_definition, std::string::npos);
+  ASSERT_EQ(
+      create_snapshot_output.find(table_expression, first_table_definition + 1),
+      std::string::npos);
 }
 
 TEST_F(AdminCliTest, TestCompactionStatusBeforeCompaction) {

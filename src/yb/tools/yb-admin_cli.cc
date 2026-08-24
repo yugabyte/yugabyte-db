@@ -429,24 +429,31 @@ size_t EditDistance(const string& lhs, const string& rhs) {
 
 std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arguments) {
   std::string expressions;
+  bool has_namespace = false;
+  bool has_table = false;
+  bool has_index = false;
   std::stringstream ss(usage_arguments);
   std::string next_argument;
   while (ss >> next_argument) {
     // usage_arguments_ marks optional arguments with surrounding '[' ']' and repeated ones with
     // a trailing "...", e.g. "[<namespace> <table_name> [<table_name>]...]". Strip those
     // decorations before comparing, otherwise a placeholder inside brackets never matches and its
-    // definition is silently omitted.
+    // definition is silently omitted. Stripping also makes a repeated placeholder match more than
+    // once (create_snapshot's "<table> [<table>]..."), so emit each definition at most once.
     const auto begin = next_argument.find_first_not_of('[');
     const auto end = next_argument.find_last_not_of("].");
     const std::string token = (begin == std::string::npos || end == std::string::npos ||
                                 begin > end)
                                    ? std::string()
                                    : next_argument.substr(begin, end - begin + 1);
-    if (token == "<namespace>" || token == "<source_namespace>") {
+    if (!has_namespace && (token == "<namespace>" || token == "<source_namespace>")) {
+      has_namespace = true;
       expressions += namespace_expression + '\n';
-    } else if (token == "<table>") {
+    } else if (!has_table && token == "<table>") {
+      has_table = true;
       expressions += table_expression + '\n';
-    } else if (token == "<index>") {
+    } else if (!has_index && token == "<index>") {
+      has_index = true;
       expressions += index_expression + '\n';
     }
   }
