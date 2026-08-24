@@ -41,4 +41,6 @@ extern XLogRecPtr YBCGetFlushRecPtr(void);
 
 extern XLogRecPtr YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush);
 
+extern void YBCTrackFilteredTransaction(XLogRecPtr commit_lsn);
+
 #endif
