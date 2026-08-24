@@ -1282,6 +1282,40 @@ TEST_F(XClusterDDLReplicationTest, DDLsWithinTransaction) {
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table->name());
 }
 
+TEST_F(XClusterDDLReplicationTest, RenameConstraint) {
+  // Test renaming various types of constraints.
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE parent_table (id int PRIMARY KEY)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE child_table (id int PRIMARY KEY, parent_id int REFERENCES parent_table(id), "
+      "val int CONSTRAINT val_check CHECK (val > 0), uval int CONSTRAINT uval_uniq UNIQUE)"));
+
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT child_table_parent_id_fkey TO fkey_renamed"));
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT val_check TO val_check_renamed"));
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT uval_uniq TO uval_uniq_renamed"));
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT child_table_pkey TO pkey_renamed"));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto kConstraintNamesQuery =
+      "SELECT conname FROM pg_constraint WHERE conrelid = 'child_table'::regclass "
+      "ORDER BY conname";
+  auto producer_constraints =
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(kConstraintNamesQuery));
+  auto consumer_constraints =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(kConstraintNamesQuery));
+  ASSERT_EQ(producer_constraints, consumer_constraints);
+  ASSERT_STR_CONTAINS(consumer_constraints, "fkey_renamed");
+  ASSERT_STR_CONTAINS(consumer_constraints, "val_check_renamed");
+  ASSERT_STR_CONTAINS(consumer_constraints, "uval_uniq_renamed");
+  ASSERT_STR_CONTAINS(consumer_constraints, "pkey_renamed");
+}
+
 TEST_F(XClusterDDLReplicationTest, FailAsyncInsertPackedSchema) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ASSERT_OK(SetUpClustersAndReplication());
