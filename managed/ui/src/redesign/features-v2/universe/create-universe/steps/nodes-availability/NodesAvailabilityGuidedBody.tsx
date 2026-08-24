@@ -26,6 +26,8 @@ type Props = Pick<
   | 'resilienceAndRegionsSettings'
 > & {
   isGeoPartition?: boolean;
+  hideDedicatedNodes?: boolean;
+  baselineRegionCodes?: string[];
 };
 
 export function NodesAvailabilityGuidedBody({
@@ -36,7 +38,9 @@ export function NodesAvailabilityGuidedBody({
   errors,
   t,
   resilienceAndRegionsSettings,
-  isGeoPartition = false
+  isGeoPartition = false,
+  hideDedicatedNodes = false,
+  baselineRegionCodes
 }: Props) {
   const {
     formState: { errors: formErrors }
@@ -44,7 +48,8 @@ export function NodesAvailabilityGuidedBody({
   const { azCount, faultToleranceNeeded, regionCards } = useAvailabilityZonesRegionCards({
     mode: ResilienceFormMode.GUIDED,
     showErrorsAfterSubmit,
-    resilienceAndRegionsSettings
+    resilienceAndRegionsSettings,
+    baselineRegionCodes
   });
 
   const showRequirementCard =
@@ -97,7 +102,7 @@ export function NodesAvailabilityGuidedBody({
       />
     ) : null;
 
-  const dedicatedNode = <DedicatedNode />;
+  const dedicatedNode = hideDedicatedNodes ? null : <DedicatedNode />;
 
   const slots = {
     map,

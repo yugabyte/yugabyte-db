@@ -1,18 +1,44 @@
-import { UniverseRespResponse } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import {
+  ClusterSpec,
+  ClusterSpecClusterType,
+  UniverseRespResponse
+} from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { TFunction } from 'i18next';
-import _ from 'lodash';
+import _, { isEmpty } from 'lodash';
 import { AddRRContextProps } from './AddReadReplicaContext';
+import type { RRInstanceSettingsProps } from './steps/RRInstanceSettings/RRInstanceSettings';
+import {
+  getDefaultRRRegionsAndAZ,
+  RRPlacementRegionForm,
+  RRRegionsAndAZSettings
+} from './steps/RRRegionsAndAZ/dtos';
+import { getClusterByType } from '../../edit-universe/EditUniverseUtils';
+import {
+  getClusterPlacementRegions,
+  getReadOnlyCluster
+} from '@app/redesign/utils/universeUtils';
+import {
+  buildRRInstanceSettingsFromCluster,
+  readReplicaHardwareMatchesPrimary
+} from '../readReplicaUtils';
 
-export function getRRSteps(t: TFunction) {
+export function getRRSteps(t: TFunction, options?: { editPlacementOnly?: boolean }) {
+  const placementStep = {
+    groupTitle: t('placement'),
+    subSteps: [
+      {
+        title: t('regionsAndAZ')
+      }
+    ]
+  };
+
+  // Editing an existing read replica only changes placement; hide hardware/database/review.
+  if (options?.editPlacementOnly) {
+    return [placementStep];
+  }
+
   return [
-    {
-      groupTitle: t('placement'),
-      subSteps: [
-        {
-          title: t('regionsAndAZ')
-        }
-      ]
-    },
+    placementStep,
     {
       groupTitle: t('hardware'),
       subSteps: [
@@ -67,39 +93,98 @@ export const transformSpecificGFlagToFlagsArray = (specificGFlags: Record<string
   return transformGFlagToFlagsArray(masterFlags, tserverFlags);
 };
 
+const getPrimaryReplicationFactor = (data: UniverseRespResponse) => {
+  const primary = getClusterByType(data, ClusterSpecClusterType.PRIMARY) as
+    | { replication_factor?: number; replicationFactor?: number }
+    | undefined;
+  const rf = primary?.replication_factor ?? primary?.replicationFactor;
+  return typeof rf === 'number' && rf > 0 ? rf : 3;
+};
+
+/**
+ * Maps the existing read-replica (ASYNC) cluster placement into wizard form state.
+ */
+export function getRegionsAndAZFromReadReplicaCluster(
+  cluster: ClusterSpec,
+  primaryRf: number
+): RRRegionsAndAZSettings | null {
+  const placementRegions = getClusterPlacementRegions(cluster);
+  if (!placementRegions.length) {
+    return null;
+  }
+  const rf = Math.max(1, primaryRf || 1);
+  const regions: RRPlacementRegionForm[] = placementRegions.map((pr) => ({
+    regionUuid: pr.uuid ?? null,
+    isNew: false,
+    zones: (pr.az_list ?? []).map((az) => ({
+      zoneUuid: az.uuid ?? null,
+      nodeCount: Math.max(1, az.num_nodes_in_az ?? 1),
+      dataCopies: Math.max(1, az.replication_factor ?? rf)
+    }))
+  }));
+  if (
+    !regions.length ||
+    regions.some((r) => !r.regionUuid || !r.zones.length || r.zones.some((z) => !z.zoneUuid))
+  ) {
+    return null;
+  }
+  return { regions };
+}
+
 export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRContextProps> => {
-  const primaryClusterSpec = _.get(data, 'spec.clusters[0]');
-  const storageSpec = primaryClusterSpec?.node_spec.storage_spec;
-  const cloudVolumeEncryption = storageSpec?.cloud_volume_encryption;
-  const instanceSettings = {
-    inheritPrimaryInstance: true,
-    arch: data?.info?.arch,
-    instanceType: primaryClusterSpec?.node_spec.instance_type,
-    useSpotInstance: primaryClusterSpec?.use_spot_instance,
-    deviceInfo: {
-      volumeSize: storageSpec?.volume_size,
-      numVolumes: storageSpec?.num_volumes,
-      diskIops: storageSpec?.disk_iops,
-      throughput: storageSpec?.throughput,
-      storageClass: storageSpec?.storage_class,
-      storageType: storageSpec?.storage_type
-    },
-    enableEbsVolumeEncryption: cloudVolumeEncryption?.enable_volume_encryption ?? false,
-    ebsKmsConfigUUID: cloudVolumeEncryption?.kms_config_uuid ?? null
+  const primaryClusterSpec = getClusterByType(data, ClusterSpecClusterType.PRIMARY) as
+    | ClusterSpec
+    | undefined;
+  const primaryRf = getPrimaryReplicationFactor(data);
+  const asyncCluster = getReadOnlyCluster(data.spec?.clusters ?? []);
+  const inheritPrimaryInstance =
+    !asyncCluster || readReplicaHardwareMatchesPrimary(primaryClusterSpec, asyncCluster);
+
+  const hardwareCluster =
+    (inheritPrimaryInstance ? primaryClusterSpec : asyncCluster) ?? primaryClusterSpec;
+
+  const arch = data?.info?.arch;
+  const instanceSettings: RRInstanceSettingsProps =
+    hardwareCluster && arch
+      ? buildRRInstanceSettingsFromCluster(hardwareCluster, arch, inheritPrimaryInstance)
+      : {
+          inheritPrimaryInstance: true,
+          arch,
+          imageBundleUUID: primaryClusterSpec?.provider_spec?.image_bundle_uuid ?? null,
+          instanceType: primaryClusterSpec?.node_spec?.instance_type ?? null,
+          useSpotInstance: primaryClusterSpec?.use_spot_instance ?? false,
+          deviceInfo: null,
+          enableEbsVolumeEncryption: false,
+          ebsKmsConfigUUID: null
+        };
+
+  const fromReplica =
+    asyncCluster && getRegionsAndAZFromReadReplicaCluster(asyncCluster, primaryRf);
+  const regionsAndAZ = fromReplica ?? getDefaultRRRegionsAndAZ();
+
+  const primaryWithOptionalSpecificGFlags = primaryClusterSpec as ClusterSpec & {
+    specificGFlags?: Record<string, unknown>;
   };
+
+  const gFlags = primaryWithOptionalSpecificGFlags?.specificGFlags
+  ? transformSpecificGFlagToFlagsArray(primaryWithOptionalSpecificGFlags.specificGFlags)
+  : transformGFlagToFlagsArray(
+      primaryClusterSpec?.gflags?.master,
+      primaryClusterSpec?.gflags?.tserver
+    );
+
   return {
     databaseSettings: {
-      gFlags: primaryClusterSpec?.specificGFlags
-        ? transformSpecificGFlagToFlagsArray(primaryClusterSpec?.specificGFlags)
-        : transformGFlagToFlagsArray(
-            primaryClusterSpec?.gflags?.master,
-            primaryClusterSpec?.gflags?.tserver
-          ),
-      customizeRRFlags: false
+      gFlags,
+      customizeRRFlags: !isEmpty(gFlags)
     },
-    ...(data?.info?.arch && {
+    regionsAndAZ,
+    regionsAndAZBaseline: _.cloneDeep(regionsAndAZ),
+    readReplicaPlacementFromUniverse: Boolean(fromReplica),
+    isEditPlacementOnly: Boolean(asyncCluster),
+    ...(Boolean(arch) && {
       instanceSettings,
-      instanceSettingsInitial: instanceSettings
+      instanceSettingsInitial: _.cloneDeep(instanceSettings)
     })
   };
 };

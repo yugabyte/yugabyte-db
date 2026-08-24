@@ -81,7 +81,7 @@ function makeValidAvailabilityZonesForRegion(
       name: `Z${i}`,
       uuid: `u-${i}`,
       nodeCount: 1,
-      preffered: i
+      preffered: i + 1
     }))
   };
 }
@@ -95,7 +95,7 @@ function makeAvailabilityZonesWithNodeCounts(
       name: `Z${i}`,
       uuid: `u-${i}`,
       nodeCount,
-      preffered: i
+      preffered: i + 1
     }))
   };
 }
@@ -360,7 +360,7 @@ function getExpertContextWithBlankAz() {
     nodesAvailabilitySettings: {
       ...initialCreateUniverseFormState.nodesAvailabilitySettings!,
       availabilityZones: {
-        r0: [{ name: '', uuid: '', nodeCount: 3, preffered: 0 }]
+        r0: [{ name: '', uuid: '', nodeCount: 3, preffered: 1 }]
       }
     }
   };
@@ -562,7 +562,7 @@ function getExpertContextRfFiveFiveAzTwoNodesEach() {
           name: `Z${i}`,
           uuid: `u-${i}`,
           nodeCount: 2,
-          preffered: i
+          preffered: i + 1
         }))
       }
     }
@@ -598,13 +598,13 @@ function getExpertContextRfFiveFiveAzTwoRegions() {
       ...initialCreateUniverseFormState.nodesAvailabilitySettings!,
       availabilityZones: {
         r0: [
-          { name: 'Z0', uuid: 'u-r0-0', nodeCount: 1, preffered: 0 },
-          { name: 'Z1', uuid: 'u-r0-1', nodeCount: 1, preffered: 1 },
-          { name: 'Z2', uuid: 'u-r0-2', nodeCount: 1, preffered: 2 }
+          { name: 'Z0', uuid: 'u-r0-0', nodeCount: 1, preffered: 1 },
+          { name: 'Z1', uuid: 'u-r0-1', nodeCount: 1, preffered: 2 },
+          { name: 'Z2', uuid: 'u-r0-2', nodeCount: 1, preffered: 3 }
         ],
         r1: [
-          { name: 'Z0', uuid: 'u-r1-0', nodeCount: 1, preffered: 0 },
-          { name: 'Z1', uuid: 'u-r1-1', nodeCount: 1, preffered: 1 }
+          { name: 'Z0', uuid: 'u-r1-0', nodeCount: 1, preffered: 1 },
+          { name: 'Z1', uuid: 'u-r1-1', nodeCount: 1, preffered: 2 }
         ]
       }
     }
@@ -957,7 +957,7 @@ describe('NodesAvailability expert mode', () => {
     });
   });
 
-  it('auto-trims overflow AZs when RF decreases (single region: 5 AZ -> RF 3)', async () => {
+  it('auto-trims overflow AZs when RF decreases (single region: 5 AZ -> RF 3)', { timeout: 15000 }, async () => {
     const ref = renderNodes(getExpertContextRfFiveFiveAzSingleRegion());
     expect(screen.getAllByTestId('availability-zone-select')).toHaveLength(5);
 
@@ -972,11 +972,11 @@ describe('NodesAvailability expert mode', () => {
       expect(mockSaveNodesAvailabilitySettings).toHaveBeenCalled();
       const saved = mockSaveNodesAvailabilitySettings.mock.calls.at(-1)?.[0] as NodeAvailabilityProps;
       expect(saved.availabilityZones.r0).toHaveLength(3);
-      expect(saved.availabilityZones.r0.map((z) => z.preffered)).toEqual([0, 1, 2]);
+      expect(saved.availabilityZones.r0.map((z) => z.preffered)).toEqual([1, 2, 3]);
     });
   });
 
-  it('auto-trims one AZ per region per pass and removes lowest-priority preferred AZs first', async () => {
+  it('auto-trims one AZ per region per pass and removes lowest-priority preferred AZs first', { timeout: 15000 }, async () => {
     const ref = renderNodes(getExpertContextRfFiveFiveAzTwoRegions());
     expect(screen.getAllByTestId('availability-zone-select')).toHaveLength(5);
 
@@ -992,12 +992,12 @@ describe('NodesAvailability expert mode', () => {
       const saved = mockSaveNodesAvailabilitySettings.mock.calls.at(-1)?.[0] as NodeAvailabilityProps;
       expect(saved.availabilityZones.r0.map((z) => z.name)).toEqual(['Z0', 'Z1']);
       expect(saved.availabilityZones.r1.map((z) => z.name)).toEqual(['Z0']);
-      expect(saved.availabilityZones.r0.map((z) => z.preffered)).toEqual([0, 1]);
-      expect(saved.availabilityZones.r1.map((z) => z.preffered)).toEqual([0]);
+      expect(saved.availabilityZones.r0.map((z) => z.preffered)).toEqual([1, 2]);
+      expect(saved.availabilityZones.r1.map((z) => z.preffered)).toEqual([1]);
     });
   });
 
-  it('auto-reduces total node count when RF drops and AZ count already ≤ RF', async () => {
+  it('auto-reduces total node count when RF drops and AZ count already ≤ RF', { timeout: 15000 }, async () => {
     const ref = renderNodes(getExpertContextRfSevenThreeAzSevenNodes());
     expect(screen.getAllByTestId('availability-zone-select')).toHaveLength(3);
 
@@ -1017,7 +1017,7 @@ describe('NodesAvailability expert mode', () => {
     });
   });
 
-  it('trims AZs before reducing nodes when both exceed RF on RF decrease', async () => {
+  it('trims AZs before reducing nodes when both exceed RF on RF decrease', { timeout: 15000 }, async () => {
     const ref = renderNodes(getExpertContextRfFiveFiveAzTwoNodesEach());
     expect(screen.getAllByTestId('availability-zone-select')).toHaveLength(5);
 

@@ -1,6 +1,7 @@
 import { FC } from 'react';
 import { sortBy } from 'lodash';
 import { useQuery } from 'react-query';
+import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch, Controller } from 'react-hook-form';
 import { mui, YBToggleField, YBLabel, YBAutoComplete } from '@yugabyte-ui-library/core';
@@ -11,24 +12,25 @@ import { KmsConfig } from '../../../../../features/universe/universe-form/utils/
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box } = mui;
 
 //TODO : Disable option for customCertPathOption
 interface EARProps {
   disabled: boolean;
+  ebsKMSConfig?: string | null;
 }
 
 const getOptionLabel = (op: any): string => {
-  const option = (op as unknown) as KmsConfig;
+  const option = op as unknown as KmsConfig;
   return option?.metadata?.name ?? '';
 };
 
 const EAR_FIELD = 'enableEncryptionAtRest';
 const KMS_FIELD = 'kmsConfig';
 
-export const EARField: FC<EARProps> = ({ disabled }) => {
+export const EARField: FC<EARProps> = ({ disabled, ebsKMSConfig }) => {
   const { control, setValue } = useFormContext<SecuritySettingsProps>();
   const { t } = useTranslation();
 
@@ -39,8 +41,14 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
   const { data, isLoading } = useQuery(QUERY_KEY.getKMSConfigs, api.getKMSConfigs);
   const kmsConfigs: KmsConfig[] = data ? sortBy(data, 'metadata.provider', 'metadata.name') : [];
 
+  useUpdateEffect(() => {
+    if (!encryptionEnabled) {
+      setValue(KMS_FIELD, undefined, { shouldValidate: true });
+    }
+  }, [encryptionEnabled, setValue]);
+
   const handleChange = (e: any, option: any) => {
-    setValue(KMS_FIELD, option?.metadata?.configUUID ?? null, {
+    setValue(KMS_FIELD, option?.metadata?.configUUID ?? undefined, {
       shouldValidate: true
     });
   };
@@ -63,7 +71,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
             dataTestId="enable-encryption-at-rest-field"
           />
         </Box>
-        <InfoIcon />
+        {/* <InfoIcon /> */}
       </Box>
       {encryptionEnabled && (
         <Box
@@ -75,7 +83,12 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
               name={KMS_FIELD}
               control={control}
               rules={{
-                required: !disabled && encryptionEnabled ? 'This field is required' : ''
+                required: !disabled && encryptionEnabled ? 'This field is required' : '',
+                validate: (value) => {
+                  return ebsKMSConfig && ebsKMSConfig === value
+                    ? t('createUniverseV2.securitySettings.earField.kmsValidationMsg')
+                    : undefined;
+                }
               }}
               render={({ field, fieldState }) => {
                 const value = kmsConfigs.find((i) => i.metadata.configUUID === field.value) ?? '';
@@ -93,7 +106,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
                       <YBAutoComplete
                         disabled={disabled}
                         loading={isLoading}
-                        options={(kmsConfigs as unknown) as Record<string, string>[]}
+                        options={kmsConfigs as unknown as Record<string, string>[]}
                         groupBy={(option: Record<string, any>) => option?.metadata?.provider} //group by provider
                         ybInputProps={{
                           placeholder: t(
@@ -108,7 +121,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
                         ref={field.ref}
                         getOptionLabel={getOptionLabel}
                         onChange={handleChange}
-                        value={(value as unknown) as never}
+                        value={value as unknown as never}
                         size="large"
                       />
                     </Box>

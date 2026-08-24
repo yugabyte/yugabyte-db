@@ -13,10 +13,11 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
+import { useQuery } from 'react-query';
 import { MarkerType, useGetMapIcons } from '@yugabyte-ui-library/core';
 import {
   assignRegionsAZNodeByReplicationFactor,
-  getExpertNodesStepDefaultPlacement,
+  getExpertAvailabilityZonesOrEmpty,
   getFaultToleranceNeeded,
   getNodeCount,
   inferResilience,
@@ -29,10 +30,18 @@ import {
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { NodeAvailabilityProps } from './dtos';
 import { Region } from '../../../../../helpers/dtos';
 import { ResilienceFormMode, type ResilienceAndRegionsProps } from '../resilence-regions/dtos';
 import { REPLICATION_FACTOR, RESILIENCE_FACTOR } from '../../fields/FieldNames';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../helpers/constants';
+import { CloudType } from '../../../../../helpers/dtos';
+import { NodeAgentAPI, QUERY_KEY as NodeAgentQueryKey } from '../../../../../features/NodeAgent/api';
+import {
+  computeFreeNodesByAzUuid,
+  findFirstOnPremNodeViolation
+} from './validation/onPrem';
 
 /** Fields that drive guided-mode AZ/node layout from the Regions step. */
 function getGuidedPlacementSyncSignature(r: ResilienceAndRegionsProps): string {
@@ -84,8 +93,8 @@ export function applyNodesStepPlacementFromResilience(
 
   const zonesSnapshot = methods.getValues('availabilityZones');
   if (isEmpty(zonesSnapshot)) {
-    const expertPlacement = getExpertNodesStepDefaultPlacement(resilienceAndRegionsSettings);
-    if (expertPlacement) {
+    if (isExpert) {
+      const expertPlacement = getExpertAvailabilityZonesOrEmpty(resilienceAndRegionsSettings);
       methods.setValue(REPLICATION_FACTOR, expertPlacement.replicationFactor);
       methods.setValue('availabilityZones', expertPlacement.availabilityZones);
       if (
@@ -97,15 +106,6 @@ export function applyNodesStepPlacementFromResilience(
         });
       }
     } else {
-      if (isExpert) {
-        const currentRf = methods.getValues(REPLICATION_FACTOR);
-        if (currentRf === undefined || currentRf === null) {
-          methods.setValue(
-            REPLICATION_FACTOR,
-            resilienceAndRegionsSettings.resilienceFactor ?? 1
-          );
-        }
-      }
       const nextZones = assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
       methods.setValue('availabilityZones', nextZones);
     }
@@ -122,8 +122,14 @@ const getPreferredRemovalIndex = (zones: NodeAvailabilityProps['availabilityZone
   let removalIndex = -1;
   let highestPreferredRank = Number.NEGATIVE_INFINITY;
   zones.forEach((zone, index) => {
-    const preferredRank = typeof zone.preffered === 'number' ? zone.preffered : -1;
-    if (preferredRank > highestPreferredRank || (preferredRank === highestPreferredRank && index > removalIndex)) {
+    const preferredRank =
+      typeof zone.preffered === 'number' && zone.preffered > AZ_NOT_PREFERRED
+        ? zone.preffered
+        : Number.NEGATIVE_INFINITY;
+    if (
+      preferredRank > highestPreferredRank ||
+      (preferredRank === highestPreferredRank && index > removalIndex)
+    ) {
       highestPreferredRank = preferredRank;
       removalIndex = index;
     }
@@ -133,10 +139,17 @@ const getPreferredRemovalIndex = (zones: NodeAvailabilityProps['availabilityZone
 
 const normalizePreferredRanks = (zones: NodeAvailabilityProps['availabilityZones'][string]) => {
   const sortedByPreferred = zones
-    .map((zone, index) => ({ index, preferred: typeof zone.preffered === 'number' ? zone.preffered : index }))
+    .map((zone, index) => ({
+      index,
+      preferred:
+        typeof zone.preffered === 'number' && zone.preffered > AZ_NOT_PREFERRED
+          ? zone.preffered
+          : AZ_NOT_PREFERRED
+    }))
+    .filter(({ preferred }) => preferred > AZ_NOT_PREFERRED)
     .sort((a, b) => a.preferred - b.preferred || a.index - b.index);
   sortedByPreferred.forEach(({ index }, rank) => {
-    zones[index] = { ...zones[index], preffered: rank };
+    zones[index] = { ...zones[index], preffered: rank + AZ_PREFFERED_HIGHEST_RANK };
   });
 };
 
@@ -153,6 +166,9 @@ export type UseNodesAvailabilityStepResult = {
     availability_zone: number;
     selected_regions: number;
     rf: number;
+    az_name?: string;
+    requested_count?: number;
+    free_count?: number;
   };
   errors: UseFormReturn<NodeAvailabilityProps>['formState']['errors'];
   t: TFunction;
@@ -172,7 +188,7 @@ export function useNodesAvailabilityStep(
 ): UseNodesAvailabilityStepResult {
   const isGeoPartition = options?.isGeoPartition ?? false;
   const [
-    { resilienceAndRegionsSettings, nodesAvailabilitySettings },
+    { generalSettings, resilienceAndRegionsSettings, nodesAvailabilitySettings },
     {
       moveToPreviousPage,
       moveToNextPage,
@@ -185,18 +201,50 @@ export function useNodesAvailabilityStep(
     keyPrefix: 'createUniverseV2.nodesAndAvailability'
   });
 
+  const providerUuid = generalSettings?.providerConfiguration?.uuid;
+  const isOnPrem =
+    generalSettings?.cloud === CloudType.onprem ||
+    generalSettings?.providerConfiguration?.code === CloudType.onprem;
+
+  const {
+    data: onPremProviderNodes,
+    isLoading: isOnPremNodesLoading,
+    isFetched: isOnPremNodesFetched
+  } = useQuery(
+    [NodeAgentQueryKey.fetchOnPremProviderNodeList, providerUuid],
+    () => NodeAgentAPI.fetchOnPremProviderNodeList(providerUuid!),
+    { enabled: isOnPrem && !!providerUuid }
+  );
+
+  const freeNodesByAzUuid = useMemo(
+    () => computeFreeNodesByAzUuid(onPremProviderNodes ?? []),
+    [onPremProviderNodes]
+  );
+
+  const isOnPremNodesLoaded = isOnPrem ? isOnPremNodesFetched && !isOnPremNodesLoading : true;
+
+  const onPremContext = useMemo(
+    () => ({
+      isOnPrem,
+      freeNodesByAzUuid,
+      isOnPremNodesLoaded
+    }),
+    [isOnPrem, freeNodesByAzUuid, isOnPremNodesLoaded]
+  );
+
   const regions = resilienceAndRegionsSettings?.regions ?? [];
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
 
   const resolver = useMemo(
-    () => yupResolver(NodesAvailabilitySchema(resilienceAndRegionsSettings)),
-    [resilienceAndRegionsSettings]
+    () => yupResolver(NodesAvailabilitySchema(resilienceAndRegionsSettings, onPremContext)),
+    [resilienceAndRegionsSettings, onPremContext]
   );
 
   const methods = useForm<NodeAvailabilityProps>({
     defaultValues: nodesAvailabilitySettings,
     resolver
   });
+  usePersistStepFormValues(methods.watch, methods.getValues, saveNodesAvailabilitySettings);
   const { trigger } = methods;
   const availabilityZones = methods.watch('availabilityZones');
   const watchedReplicationFactor = methods.watch(REPLICATION_FACTOR);
@@ -210,6 +258,10 @@ export function useNodesAvailabilityStep(
     (acc, zones) => acc + zones.length,
     0
   );
+  const onPremNodeViolation =
+    isOnPrem && isOnPremNodesLoaded
+      ? findFirstOnPremNodeViolation(availabilityZones ?? {}, freeNodesByAzUuid)
+      : null;
   const lesserNodesTransValues = {
     faultToleranceNeeded,
     required_zones: faultToleranceNeeded,
@@ -217,7 +269,10 @@ export function useNodesAvailabilityStep(
     nodeCount: totalAzCount,
     availability_zone: totalAzCount,
     selected_regions: regions.length,
-    rf: effectiveRf
+    rf: effectiveRf,
+    az_name: onPremNodeViolation?.az_name,
+    requested_count: onPremNodeViolation?.requested_count,
+    free_count: onPremNodeViolation?.free_count
   };
   // Depend on totalAzCount (primitive): nested setValue (RegionCard add/remove AZ) keeps the same
   // availabilityZones object reference, so listing only that object made useMemo skip updates.
@@ -247,7 +302,14 @@ export function useNodesAvailabilityStep(
 
   useEffect(() => {
     if (showErrorsAfterSubmit) trigger();
-  }, [JSON.stringify(availabilityZones), showErrorsAfterSubmit, trigger, watchedReplicationFactor]);
+  }, [
+    JSON.stringify(availabilityZones),
+    showErrorsAfterSubmit,
+    trigger,
+    watchedReplicationFactor,
+    isOnPremNodesLoaded,
+    freeNodesByAzUuid
+  ]);
 
   useEffect(() => {
     if (!resilienceAndRegionsSettings) return;
@@ -258,6 +320,9 @@ export function useNodesAvailabilityStep(
       return;
     }
     if (watchedReplicationFactor === resilienceAndRegionsSettings.resilienceFactor) {
+      return;
+    }
+    if (typeof saveResilienceAndRegionsSettings !== 'function') {
       return;
     }
     saveResilienceAndRegionsSettings({
@@ -400,7 +465,7 @@ export function useNodesAvailabilityStep(
 
   // Geo-partition wizard only: Regions step drives layout. Stale nodesAndAvailability from context
   // (or prior visit) left availabilityZones non-empty, so applyNodesStepPlacementFromResilience
-  // skipped updating. Do not run for create-universe tests that seed custom availabilityZones.
+  // skipped updating. Only resync when zones are empty or region selection changed.
   useEffect(() => {
     if (guidedPlacementSyncSignature === null) {
       lastGuidedPlacementSignatureRef.current = null;
@@ -410,6 +475,18 @@ export function useNodesAvailabilityStep(
       return;
     }
     lastGuidedPlacementSignatureRef.current = guidedPlacementSyncSignature;
+
+    const currentAvailabilityZones = methods.getValues('availabilityZones');
+    const hasExistingZones = !isEmpty(currentAvailabilityZones);
+    const selectedRegions = resilienceAndRegionsSettings?.regions ?? [];
+    const selectedRegionsMatchAvailabilityZones = regionCodesMatchAvailabilityZones(
+      selectedRegions,
+      currentAvailabilityZones
+    );
+    if (hasExistingZones && selectedRegionsMatchAvailabilityZones) {
+      return;
+    }
+
     methods.setValue('availabilityZones', {});
     applyNodesStepPlacementFromResilience(
       methods,
@@ -425,15 +502,20 @@ export function useNodesAvailabilityStep(
 
   // Re-sync when resilience/region context changes — not on every availabilityZones edit (that
   // caused setValue ↔ watch feedback loops in expert mode).
+  // Covers expert mode and guided (non-geo) create-universe. Guided geo-partition is handled by
+  // the dedicated guidedPlacementSyncSignature effect above.
   useEffect(() => {
     if (!resilienceAndRegionsSettings) return;
-    if (resilienceAndRegionsSettings.resilienceFormMode !== ResilienceFormMode.EXPERT_MODE) {
+    const formMode = resilienceAndRegionsSettings.resilienceFormMode;
+    const isExpert = formMode === ResilienceFormMode.EXPERT_MODE;
+    const isGuidedNonGeo = formMode === ResilienceFormMode.GUIDED && !isGeoPartition;
+    if (!isExpert && !isGuidedNonGeo) {
       return;
     }
     const regionList = resilienceAndRegionsSettings.regions ?? [];
-    if (
-      regionCodesMatchAvailabilityZones(regionList, methods.getValues('availabilityZones'))
-    ) {
+    const currentZones = methods.getValues('availabilityZones');
+    const matches = regionCodesMatchAvailabilityZones(regionList, currentZones);
+    if (matches) {
       return;
     }
     methods.setValue('availabilityZones', {});
@@ -442,7 +524,7 @@ export function useNodesAvailabilityStep(
       resilienceAndRegionsSettings,
       saveResilienceAndRegionsSettings
     );
-  }, [resilienceAndRegionsSettings, methods, saveResilienceAndRegionsSettings]);
+  }, [resilienceAndRegionsSettings, methods, saveResilienceAndRegionsSettings, isGeoPartition]);
 
   useImperativeHandle(
     forwardedRef,
@@ -452,8 +534,7 @@ export function useNodesAvailabilityStep(
         return new Promise<boolean>((resolve) => {
           void methods
             .handleSubmit(
-              (data) => {
-                saveNodesAvailabilitySettings(data);
+              () => {
                 moveToNextPage();
                 resolve(true);
               },
@@ -467,7 +548,7 @@ export function useNodesAvailabilityStep(
       },
       setValue: methods.setValue as (name: string, value: unknown) => void
     }),
-    [methods, saveNodesAvailabilitySettings, moveToNextPage, moveToPreviousPage]
+    [methods, moveToNextPage, moveToPreviousPage]
   );
 
   return {

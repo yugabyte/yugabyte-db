@@ -13,14 +13,13 @@ import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 import { mui, YBInputField } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
+import { AWS_ARN_STRING_FIELD } from '../FieldNames';
 
 const { Box } = mui;
 
 interface InstanceARNProps {
   disabled: boolean;
 }
-
-const INSTANCE_ARN_FIELD = 'awsArnString';
 
 export const InstanceARNField: FC<InstanceARNProps> = ({ disabled }) => {
   const { control } = useFormContext<OtherAdvancedProps>();
@@ -31,11 +30,12 @@ export const InstanceARNField: FC<InstanceARNProps> = ({ disabled }) => {
       <YBInputField
         dataTestId="instance-arn-field"
         control={control}
-        name={INSTANCE_ARN_FIELD}
-        fullWidth
+        name={AWS_ARN_STRING_FIELD}
+        sx={{ width: '560px' }}
         disabled={disabled}
+        placeholder={t('createUniverseV2.otherAdvancedSettings.arnPlaceholder')}
         label={t('createUniverseV2.otherAdvancedSettings.arnField')}
-        sx={{ width: '734px' }}
+        helperText={t('createUniverseV2.otherAdvancedSettings.arnHelper')}
       />
     </Box>
   );

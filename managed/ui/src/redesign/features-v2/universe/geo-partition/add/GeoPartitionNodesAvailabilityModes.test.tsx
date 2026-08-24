@@ -85,7 +85,7 @@ function makeValidAvailabilityZonesForRegion(
       name: `Z${i}`,
       uuid: `u-${i}`,
       nodeCount: 1,
-      preffered: i
+      preffered: i + 1
     }))
   };
 }

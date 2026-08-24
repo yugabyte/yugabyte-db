@@ -2,6 +2,7 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import { RunTimeConfigEntry } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
 export const useRuntimeConfigValues = (providerUUID?: string) => {
   const currentCustomer = useSelector((state: any) => state.customer.currentCustomer);
@@ -28,9 +29,14 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
 
   const canUseSpotInstance = getConfigValue('yb.use_spot_instances') === 'true';
 
-  const maxVolumeCount = Number(getConfigValue('yb.max_volume_count') ?? 0);
+  const parsedMaxVolumeCount = Number(getConfigValue('yb.max_volume_count') ?? 0);
+
+  const maxVolumeCount =
+    Number.isFinite(parsedMaxVolumeCount) && parsedMaxVolumeCount > 0 ? parsedMaxVolumeCount : 32;
 
   const ebsVolumeEnabled = getConfigValue('yb.universe.allow_cloud_volume_encryption') === 'true';
+
+  const enableAzOverridesK8s = getConfigValue(RuntimeConfigKey.ENABLE_AZ_OVERRIDES_K8S) === 'true';
 
   return {
     runtimeConfigs,
@@ -41,6 +47,7 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
     useK8CustomResources,
     maxVolumeCount,
     canUseSpotInstance,
-    ebsVolumeEnabled
+    ebsVolumeEnabled,
+    enableAzOverridesK8s
   };
 };

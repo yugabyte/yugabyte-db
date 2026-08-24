@@ -60,7 +60,14 @@ import {
 import { Action, Resource } from '../../../redesign/features/rbac';
 import { getWrappedChildren } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 import { userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
-import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
+import {
+  isUniverseRevampExperienceEnabled,
+  useOnboardingNewExperienceEnabled
+} from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
+import {
+  UniverseCreationPopover,
+  useUniverseCreationPopover
+} from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/UniverseCreationPopover';
 import './UniverseView.scss';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
@@ -152,6 +159,14 @@ export const UniverseView = (props) => {
   const [curStatusFilter, setCurStatusFilter] = useState([]);
   const [focusedUniverse, setFocusedUniverse] = useState();
   const runtimeConfigs = useSelector((state) => state.customer.runtimeConfigs);
+  const currentUser = useSelector((state) => state.customer.currentUser.data);
+  const {
+    open: isUniverseCreationPopoverOpen,
+    anchorRef: createUniverseAnchorRef,
+    handleClose: handleUniverseCreationPopoverClose,
+    handleClickAway: handleUniverseCreationPopoverClickAway
+  } = useUniverseCreationPopover();
+  const isOnboardingExperienceEnabled = useOnboardingNewExperienceEnabled();
 
   const {
     universe: { universeList },
@@ -578,7 +593,11 @@ export const UniverseView = (props) => {
   ) {
     return getWrappedChildren({});
   }
-  const isNewV2CreateUniverseUIEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs?.data);
+  const isNewV2CreateUniverseUIEnabled = isUniverseRevampExperienceEnabled(
+    runtimeConfigs?.data,
+    currentUser?.role,
+    isOnboardingExperienceEnabled
+  );
   return (
     <React.Fragment>
       <DeleteUniverseContainer
@@ -613,18 +632,28 @@ export const UniverseView = (props) => {
             }}
             isControl
           >
-            <Link to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}>
-              <YBButton
-                btnClass="universe-button btn btn-lg btn-orange"
-                disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
-                btnText="Create Universe"
-                btnIcon="fa fa-plus"
-                data-testid="UniverseList-CreateUniverse"
-              />
-            </Link>
+            <span ref={createUniverseAnchorRef} style={{ display: 'inline-block' }}>
+              <Link to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}>
+                <YBButton
+                  btnClass="universe-button btn btn-lg btn-orange"
+                  disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                  btnText="Create Universe"
+                  btnIcon="fa fa-plus"
+                  data-testid="UniverseList-CreateUniverse"
+                />
+              </Link>
+            </span>
           </RbacValidator>
         )}
       </div>
+      {isNewV2CreateUniverseUIEnabled && (
+        <UniverseCreationPopover
+          open={isUniverseCreationPopoverOpen}
+          anchorRef={createUniverseAnchorRef}
+          onClose={handleUniverseCreationPopoverClose}
+          onClickAway={handleUniverseCreationPopoverClickAway}
+        />
+      )}
       <div className="universes-stats-container">
         <YBResourceCount
           kind="Universe"

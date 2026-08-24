@@ -8,17 +8,20 @@ import { YBEarlyAccessTag } from '../../../../../components';
 import { isVersionConnectionPoolSupported } from '../../../../../features/universe/universe-form/utils/helpers';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
+import { DEFAULT_CONNECTION_POOLING_PORTS } from '../../helpers/syncConnectionPoolingPorts';
 import { YSQL_FIELD, CONNECTION_POOLING_FIELD } from '../FieldNames';
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, Typography, styled, Link } = mui;
 
 interface ConnectionPoolFieldProps {
   disabled: boolean;
   dbVersion: string;
+  /** Hide Override ports UI (e.g. Kubernetes providers). */
+  hideOverridePorts?: boolean;
 }
 
 const MAX_PORT = 65535;
@@ -48,8 +51,16 @@ const StyledLinkText = styled(Link)({
   color: '#67666C'
 });
 
-export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled, dbVersion }) => {
-  const { control, setValue } = useFormContext<DatabaseSettingsProps>();
+export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({
+  disabled,
+  dbVersion,
+  hideOverridePorts = false
+}) => {
+  const {
+    control,
+    setValue,
+    formState: { errors, isSubmitted }
+  } = useFormContext<DatabaseSettingsProps>();
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.databaseSettings.conPool'
@@ -60,20 +71,34 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
       id: 'ysqlServerRpcPort',
       label: t('ysqlPortlabel'),
       helperText: (
-        <Trans
-          i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
-          values={{ port: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort }}
-        />
+        <>
+          <Trans
+            i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
+            values={{ port: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort }}
+          />
+          <br />
+          {t('ysqlServerRpcPortHelper', {
+            keyPrefix: 'createUniverseV2.otherAdvancedSettings.deployPortsFeild'
+          })}
+        </>
       )
     },
     {
       id: 'internalYsqlServerRpcPort',
       label: t('internalPortLabel'),
       helperText: (
-        <Trans
-          i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
-          values={{ port: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort }}
-        />
+        <>
+          <Trans
+            i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
+            values={{ port: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort }}
+          />
+          <br />
+          <Trans
+            i18nKey={
+              'createUniverseV2.otherAdvancedSettings.deployPortsFeild.internalYsqlServerRpcPortHelper'
+            }
+          />
+        </>
       )
     }
   ];
@@ -88,6 +113,28 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
   useUpdateEffect(() => {
     if (!isYSQLEnabled) setValue(CONNECTION_POOLING_FIELD, false);
   }, [isYSQLEnabled]);
+
+  // K8s never supports port overrides — keep defaults and clear the toggle.
+  // Turning CP off resets Internal YSQL only; YSQL stays in sync with Advanced.
+  // Turning override off does not reset ports — they remain shared with Advanced.
+  useUpdateEffect(() => {
+    if (hideOverridePorts) {
+      setValue('overrideCPPorts', false);
+      setValue('ysqlServerRpcPort', DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort);
+      setValue(
+        'internalYsqlServerRpcPort',
+        DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+      );
+      return;
+    }
+    if (!isConPoolEnabled) {
+      setValue('overrideCPPorts', false);
+      setValue(
+        'internalYsqlServerRpcPort',
+        DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+      );
+    }
+  }, [hideOverridePorts, isConPoolEnabled, setValue]);
 
   return (
     <FieldContainer>
@@ -126,7 +173,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
               />
             </div>
           </YBTooltip>
-          <InfoIcon />
+          {/* <InfoIcon /> */}
           <YBEarlyAccessTag />
         </Box>
         <Box sx={{ ml: 6 }}>
@@ -142,8 +189,8 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
           </StyledSubText>
         </Box>
       </Box>
-      {/* If CP Enabled */}
-      {isConPoolEnabled && (
+      {/* If CP Enabled — Override ports is hidden for K8s providers */}
+      {isConPoolEnabled && !hideOverridePorts && (
         <Box
           sx={{
             display: 'flex',
@@ -175,8 +222,11 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
             >
               {CON_POOL_PORTS.map((item) => (
                 <Controller
-                  name={item.id}
+                  name={item.id as 'ysqlServerRpcPort' | 'internalYsqlServerRpcPort'}
                   render={({ field: { value, onChange } }) => {
+                    const fieldError =
+                      errors[item.id as 'ysqlServerRpcPort' | 'internalYsqlServerRpcPort'];
+                    const showError = isSubmitted && !!fieldError;
                     return (
                       <YBInput
                         value={value}
@@ -184,10 +234,11 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
                         label={
                           <StyledLabelIcon>
                             <span>{item.label}</span>
-                            <InfoIcon />
+                            {/* <InfoIcon /> */}
                           </StyledLabelIcon>
                         }
-                        helperText={item.helperText}
+                        error={showError}
+                        helperText={showError ? fieldError?.message : item.helperText}
                         dataTestId={`override-CP-ports-field-${item.id}`}
                         onBlur={(event) => {
                           let port =
@@ -196,7 +247,6 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
                           port = port > MAX_PORT ? MAX_PORT : port;
                           onChange(port);
                         }}
-                        // trimWhitespace={false}
                       />
                     );
                   }}

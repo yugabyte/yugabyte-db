@@ -19,12 +19,12 @@ import { useTranslation } from 'react-i18next';
 import { FormHelperText, Tooltip, Typography, makeStyles } from '@material-ui/core';
 import { useQuery } from 'react-query';
 import {
-  CloudType,
   ImageBundle,
   ImageBundleType,
   Provider,
   RunTimeConfigEntry
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import { isCloudVendorCloudType } from '../../utils';
 import { ArchitectureType } from '../../constants';
 import { ClusterType, UniverseDetails } from '../../../../../redesign/helpers/dtos';
 import { runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
@@ -226,9 +226,11 @@ export const constructImageBundlePayload = (formValues: any, isPerRegionImage = 
  * @returns Whether VM OS patching is enabled.
  */
 export function IsOsPatchingEnabled() {
-  const { data: globalRuntimeConfigs, isLoading: isRuntimeConfigLoading } = useQuery(
-    runtimeConfigQueryKey.globalScope(),
-    () => fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  const {
+    data: globalRuntimeConfigs,
+    isLoading: isRuntimeConfigLoading
+  } = useQuery(runtimeConfigQueryKey.globalScope(), () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
 
   const osPatchingEnabled =
@@ -247,7 +249,7 @@ export function IsOsPatchingEnabled() {
  * @returns Whether the image bundle is supported by the provider.
  */
 export const isImgBundleSupportedByProvider = (provider: Provider) =>
-  [CloudType.aws, CloudType.azu, CloudType.gcp].includes(provider?.code);
+  isCloudVendorCloudType(provider?.code);
 
 /**
  * Displays a message for configuring SSH details.
@@ -266,9 +268,11 @@ export function ConfigureSSHDetailsMsg() {
  * @returns Whether the provider is in-use edit enabled.
  */
 export function IsImgBundleInUseEditEnabled() {
-  const { data: globalRuntimeConfigs, isLoading: isRuntimeConfigLoading } = useQuery(
-    runtimeConfigQueryKey.globalScope(),
-    () => fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  const {
+    data: globalRuntimeConfigs,
+    isLoading: isRuntimeConfigLoading
+  } = useQuery(runtimeConfigQueryKey.globalScope(), () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
 
   const isImgBundleInUseEditEnabled =

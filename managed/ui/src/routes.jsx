@@ -35,6 +35,7 @@ import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/Objec
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { testFeatureFlagsLocalStorageKey } from './reducers/feature';
+import { resetUniverseRevampOnboardingStorage } from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
 import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
@@ -71,6 +72,7 @@ export const clearCredentials = () => {
   localStorage.removeItem('customerId');
   localStorage.removeItem('userId');
   localStorage.removeItem(testFeatureFlagsLocalStorageKey);
+  // resetUniverseRevampOnboardingStorage();
   clearRbacCreds();
 
   /*
@@ -281,6 +283,7 @@ export default (store) => {
           <Route path="/universes/:uuid/replication/:replicationUUID" component={Replication} />
           <Route path="/universes/:uuid/recovery/:drConfigUuid" component={DrPanel} />
           <Route path="/universes/:uuid/perfAdvisor/**" component={UniverseDetail} />
+          <Route path="/universes/:uuid/settings/:settingsTab" component={UniverseDetail} />
           <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
           {/* </Route> */}
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />

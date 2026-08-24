@@ -98,6 +98,9 @@ export const RuntimeConfigKey = {
   SKIP_XCLUSTER_SNAPSHOT_SCHEDULES: 'yb.xcluster.db_scoped.skip_snapshot_schedules'
 } as const;
 
+/** Query param to open Edit Config after navigating to /admin/advanced/global-config. */
+export const EDIT_RUNTIME_CONFIG_QUERY_PARAM = 'editRuntimeConfigKey';
+
 /**
  * Toast notification duration in milliseconds.
  */

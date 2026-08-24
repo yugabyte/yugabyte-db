@@ -2,50 +2,81 @@ import { forwardRef, useContext, useImperativeHandle, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
 import { mui, YBAlert, AlertVariant } from '@yugabyte-ui-library/core';
-import { AssignPublicIPField, EARField, EITField, K8EITField, IPV6Field } from '../../fields';
+import {
+  AssignPublicIPField,
+  EARField,
+  EITField,
+  K8EITField,
+  IPV6Field,
+  NetworkAcessField
+} from '../../fields';
 import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { SecuritySettingsProps } from './dtos';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
+import { SecuritySettingsProps, CertType } from './dtos';
 import { useUpdateEffect } from 'react-use';
 import {
   NTON_CERT_FIELD,
   CTON_CERT_FIELD,
   COMMON_CERT_FIELD,
-  KMS_CONFIG_FIELD
+  KMS_CONFIG_FIELD,
+  ENABLE_EAR_FIELD,
+  ENABLE_BOTH_ENCRYPTION,
+  ENABLE_NTON_FIELD,
+  ENABLE_CTON_FIELD,
+  COMMON_CERT_TYPE_FIELD,
+  CTON_CERT_TYPE_FIELD,
+  NTON_CERT_TYPE_FIELD
 } from '../../fields/FieldNames';
 
 const { Box } = mui;
 
 export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { securitySettings, generalSettings },
+    { securitySettings, generalSettings, instanceSettings },
     { moveToNextPage, moveToPreviousPage, saveSecuritySettings }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
+  ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
   const provider = generalSettings?.providerConfiguration;
+  const ebsKMSConfig = instanceSettings?.ebsKmsConfigUUID;
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.securitySettings'
   });
 
   const methods = useForm<SecuritySettingsProps>({
-    defaultValues: { ...securitySettings },
+    defaultValues: {
+      useSameCertificate: true,
+      enableBothEncryption: true,
+      certType: CertType.SELF_SIGNED,
+      ...securitySettings
+    },
     mode: 'onChange'
   });
+
+  usePersistStepFormValues(methods.watch, methods.getValues, saveSecuritySettings);
 
   const { trigger, formState, watch } = methods;
   const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
   const { errors, isSubmitted } = formState;
 
+  const enableBothEncrytVal = watch(ENABLE_BOTH_ENCRYPTION);
+  const enableNToNVal = watch(ENABLE_NTON_FIELD);
+  const enableCToNVal = watch(ENABLE_CTON_FIELD);
   const nTonCertVal = watch(NTON_CERT_FIELD);
   const cTonCertVal = watch(CTON_CERT_FIELD);
   const commonCertVal = watch(COMMON_CERT_FIELD);
+  const EnableEARVal = watch(ENABLE_EAR_FIELD);
   const kmsConfigVal = watch(KMS_CONFIG_FIELD);
+  const nTonCerttypeVal = watch(NTON_CERT_TYPE_FIELD);
+  const cTonCertTypeVal = watch(CTON_CERT_TYPE_FIELD);
+  const commonCertTypeVal = watch(COMMON_CERT_TYPE_FIELD);
 
   useUpdateEffect(() => {
     if (isSubmitted) {
@@ -53,15 +84,26 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
         if (isValid) setShowErrorsAfterSubmit(false);
       });
     }
-  }, [nTonCertVal, cTonCertVal, commonCertVal, kmsConfigVal]);
+  }, [
+    nTonCertVal,
+    cTonCertVal,
+    commonCertVal,
+    kmsConfigVal,
+    enableBothEncrytVal,
+    enableNToNVal,
+    enableCToNVal,
+    EnableEARVal,
+    nTonCerttypeVal,
+    cTonCertTypeVal,
+    commonCertTypeVal
+  ]);
 
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
         setShowErrorsAfterSubmit(true);
-        return methods.handleSubmit((data) => {
-          saveSecuritySettings(data);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },
@@ -75,18 +117,21 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px' }}>
-        <StyledPanel>
-          <StyledHeader>{t('networkAcessTitle')}</StyledHeader>
-          <StyledContent>
-            {provider?.code !== CloudType.kubernetes && (
-              <AssignPublicIPField
-                disabled={false}
-                providerCode={generalSettings?.providerConfiguration?.code ?? ''}
-              />
-            )}
-            {provider?.code === CloudType.kubernetes && <IPV6Field disabled={false} />}
-          </StyledContent>
-        </StyledPanel>
+        {provider?.code !== CloudType.onprem && (
+          <StyledPanel>
+            <StyledHeader>{t('networkAcessTitle')}</StyledHeader>
+            <StyledContent sx={{ gap: '16px' }}>
+              {provider && isCloudVendorCloudType(provider?.code) && (
+                <AssignPublicIPField
+                  disabled={false}
+                  providerCode={generalSettings?.providerConfiguration?.code ?? ''}
+                />
+              )}
+              {provider?.code === CloudType.kubernetes && <IPV6Field disabled={false} />}
+              {provider?.code === CloudType.kubernetes && <NetworkAcessField disabled={false} />}
+            </StyledContent>
+          </StyledPanel>
+        )}
         <StyledPanel>
           <StyledHeader>{t('eitTitle')}</StyledHeader>
           <StyledContent>
@@ -100,7 +145,7 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
         <StyledPanel>
           <StyledHeader>{t('earTitle')}</StyledHeader>
           <StyledContent>
-            <EARField disabled={false} />
+            <EARField disabled={false} ebsKMSConfig={ebsKMSConfig} />
           </StyledContent>
         </StyledPanel>
       </Box>
