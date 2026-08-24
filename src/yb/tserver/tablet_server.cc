@@ -192,14 +192,16 @@ DEFINE_NON_RUNTIME_bool(tserver_enable_metrics_snapshotter, false,
     "Should metrics snapshotter be enabled");
 
 DEFINE_RUNTIME_bool(enable_active_table_metrics_filtering, false,
-    "Filter table-level Prometheus metrics using the latest active table list supplied through "
-    "SetActiveTableMetrics. When enabled, table metrics are not exported until the first list is "
-    "received. When disabled, all table metrics are exported.");
+    "Allow scrapes of /prometheus-metrics to filter table-level metrics using the latest active "
+    "table list supplied through SetActiveTableIdsForMetrics. A scrape is filtered only if it also "
+    "passes apply_table_IDs_filter=true; such a scrape exports no table metrics until the first "
+    "list is received. When this flag is disabled, all table metrics are exported regardless of "
+    "the URL parameter.");
 
 DEFINE_RUNTIME_uint32(max_active_table_metrics_table_count, 1000,
-    "Maximum number of table IDs accepted by SetActiveTableMetrics. Requests exceeding this limit "
-    "are rejected and the previously accepted list remains active. Zero allows only an empty "
-    "list.");
+    "Maximum number of table IDs accepted by SetActiveTableIdsForMetrics. Requests exceeding this "
+    "limit are rejected and the previously accepted list remains active. Zero allows only an "
+    "empty list.");
 
 DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero");
 
@@ -298,7 +300,7 @@ namespace yb::tserver {
 METRIC_DEFINE_gauge_uint64(
     server, active_table_metrics_last_update_time, "Active Table Metrics Last Update Time",
     MetricUnit::kMicroseconds,
-    "Physical time of the last SetActiveTableMetrics request received by this tablet server. "
+    "Physical time of the last SetActiveTableIdsForMetrics request received by this tablet server. "
     "Zero means no request has been received since process start.");
 
 constexpr auto kYsqlPgConfCsvFlag = "ysql_pg_conf_csv";
@@ -457,7 +459,10 @@ std::string TabletServer::ToString() const {
                              fs_manager_->uuid());
 }
 
-Status TabletServer::SetActiveTableMetrics(std::unordered_set<std::string> table_ids) {
+// The list is accepted and stored regardless of enable_active_table_metrics_filtering. The flag
+// only gates whether scrapes may use the list, so an operator turning it on takes effect
+// immediately instead of waiting for the caller's next push.
+Status TabletServer::SetActiveTableIdsForMetrics(std::unordered_set<std::string> table_ids) {
   if (table_ids.size() > FLAGS_max_active_table_metrics_table_count) {
     return STATUS_FORMAT(
         InvalidArgument, "Active table list contains $0 tables, exceeding the limit of $1",

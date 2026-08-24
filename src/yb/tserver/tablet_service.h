@@ -205,8 +205,8 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                   GetMetricsResponsePB* resp,
                   rpc::RpcContext context) override;
 
-  void SetActiveTableMetrics(
-      const SetActiveTableMetricsRequestPB* req, SetActiveTableMetricsResponsePB* resp,
+  void SetActiveTableIdsForMetrics(
+      const SetActiveTableIdsForMetricsRequestPB* req, SetActiveTableIdsForMetricsResponsePB* resp,
       rpc::RpcContext context) override;
 
   void PgRemoteExec(const PgRemoteExecRequestPB* req,

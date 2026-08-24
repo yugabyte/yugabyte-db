@@ -180,7 +180,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
-  Status SetActiveTableMetrics(std::unordered_set<std::string> table_ids) override;
+  Status SetActiveTableIdsForMetrics(std::unordered_set<std::string> table_ids) override;
 
   void ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const override;
 

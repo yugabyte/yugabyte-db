@@ -3556,8 +3556,8 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
   context.RespondSuccess();
 }
 
-void TabletServiceImpl::SetActiveTableMetrics(
-    const SetActiveTableMetricsRequestPB* req, SetActiveTableMetricsResponsePB* resp,
+void TabletServiceImpl::SetActiveTableIdsForMetrics(
+    const SetActiveTableIdsForMetricsRequestPB* req, SetActiveTableIdsForMetricsResponsePB* resp,
     rpc::RpcContext context) {
   std::unordered_set<std::string> table_ids;
   table_ids.reserve(req->table_ids_size());
@@ -3571,7 +3571,7 @@ void TabletServiceImpl::SetActiveTableMetrics(
     table_ids.insert(table_id);
   }
 
-  const auto status = server_->SetActiveTableMetrics(std::move(table_ids));
+  const auto status = server_->SetActiveTableIdsForMetrics(std::move(table_ids));
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
     return;

@@ -264,6 +264,9 @@ Status PrometheusWriter::FlushPreAggregatedValues(
   const auto& pre_aggregated_metric_info_by_metric_name =
       metrics_aggregator.pre_aggregated_metric_info_by_metric_name();
 
+  // Reused across metrics to avoid reallocating for every metric name.
+  std::vector<std::pair<const MetricEntity::AttributeMap*, int64_t>> entries_to_flush;
+
   for (const auto& [name, metric_info_ptr] : pre_aggregated_metric_info_by_metric_name) {
     const auto& metric_info = *metric_info_ptr;
 
@@ -288,26 +291,12 @@ Status PrometheusWriter::FlushPreAggregatedValues(
     }
     const auto& attributes_ptr_by_aggregation_id = attributes_ptr_by_aggregation_id_it->second;
 
-    // Begin flushing the metric.
-    const auto& metric_help = metric_info.help_and_type_.help;
-    const auto& metric_type = metric_info.help_and_type_.type;
+    // Collect the entries to flush, so that the entry budget below only accounts for entries
+    // that are actually exported.
     const auto pre_aggregated_values = metric_info.GetPreAggregatedValues(
         need_server_level_values, need_table_or_stream_level_values);
-    size_t num_output_entries = 0;
-    for (const auto& [aggregation_id, value] : pre_aggregated_values) {
-      auto attributes_ptr_it = attributes_ptr_by_aggregation_id.find(aggregation_id);
-      if (attributes_ptr_it != attributes_ptr_by_aggregation_id.end() &&
-          prometheus_metric_filter_->ShouldExportTableMetrics(
-              *attributes_ptr_it->second, metric_info.metric_entity_type_)) {
-        ++num_output_entries;
-      }
-    }
-    if (remaining_allowed_entries_ < num_output_entries) {
-      num_of_entries_cut_off_ += num_output_entries;
-      continue;
-    }
-    remaining_allowed_entries_ -= num_output_entries;
-
+    entries_to_flush.clear();
+    entries_to_flush.reserve(pre_aggregated_values.size());
     for (const auto& [aggregation_id, value] : pre_aggregated_values) {
       auto attributes_ptr_it = attributes_ptr_by_aggregation_id.find(aggregation_id);
       if (attributes_ptr_it == attributes_ptr_by_aggregation_id.end()) {
@@ -321,9 +310,21 @@ Status PrometheusWriter::FlushPreAggregatedValues(
               *attributes_ptr_it->second, metric_info.metric_entity_type_)) {
         continue;
       }
+      entries_to_flush.emplace_back(attributes_ptr_it->second.get(), value);
+    }
 
+    if (remaining_allowed_entries_ < entries_to_flush.size()) {
+      num_of_entries_cut_off_ += entries_to_flush.size();
+      continue;
+    }
+    remaining_allowed_entries_ -= entries_to_flush.size();
+
+    // Begin flushing the metric.
+    const auto& metric_help = metric_info.help_and_type_.help;
+    const auto& metric_type = metric_info.help_and_type_.type;
+    for (const auto& [attributes_ptr, value] : entries_to_flush) {
       FlushHelpAndTypeIfRequested(name, metric_help, metric_type);
-      RETURN_NOT_OK(FlushSingleEntry(*attributes_ptr_it->second, name, value));
+      RETURN_NOT_OK(FlushSingleEntry(*attributes_ptr, name, value));
     }
   }
 

@@ -189,11 +189,11 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   ASSERT_STR_CONTAINS(Scrape("&apply_table_IDs_filter=false"), table_label);
   ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
 
-  SetActiveTableMetricsRequestPB req;
-  SetActiveTableMetricsResponsePB resp;
+  SetActiveTableIdsForMetricsRequestPB req;
+  SetActiveTableIdsForMetricsResponsePB resp;
   req.add_table_ids("another-table");
   RpcController controller;
-  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
   const auto first_update_time =
       ASSERT_RESULT(LastUpdateTime(FilteredScrape()));
@@ -211,7 +211,7 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   req.add_table_ids(kTableName.table_name());
   resp.Clear();
   controller.Reset();
-  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
   const auto second_update_time =
       ASSERT_RESULT(LastUpdateTime(FilteredScrape()));
@@ -226,7 +226,7 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   req.add_table_ids("another-table");
   resp.Clear();
   controller.Reset();
-  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
   ASSERT_TRUE(resp.has_error());
   ASSERT_TRUE(StatusFromPB(resp.error().status()).IsInvalidArgument());
   ASSERT_EQ(
@@ -241,7 +241,7 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   req.add_table_ids(kTableName.table_name());
   resp.Clear();
   controller.Reset();
-  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
   ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
 
@@ -249,7 +249,7 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   req.clear_table_ids();
   resp.Clear();
   controller.Reset();
-  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
   ASSERT_GT(
       ASSERT_RESULT(LastUpdateTime(FilteredScrape())),
@@ -263,7 +263,7 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   req.add_table_ids("");
   resp.Clear();
   controller.Reset();
-  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
   ASSERT_TRUE(resp.has_error());
   ASSERT_TRUE(StatusFromPB(resp.error().status()).IsInvalidArgument());
   ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
