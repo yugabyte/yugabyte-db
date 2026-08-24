@@ -697,6 +697,15 @@ Status ObjectLockManagerImpl::AcquireExclusiveLockIntents(const LockData& data) 
     }
   }
   std::lock_guard lock(global_mutex_);
+  if (exclusive_locks.empty()) {
+    // If we are not acquiring a lock that needs exclusive lock intents, then we do not conflict
+    // with any fastpath locks and don't need to consume lock requests of other transactions to
+    // handle this acquire.
+    // We still consume requests for this transaction, since we may be in the case where the shared
+    // memory array is at capacity.
+    ConsumePendingSharedLockRequestsUnlocked(data.object_lock_owner.txn_id);
+    return Status::OK();
+  }
   return shared_manager_->ConsumeAndAcquireExclusiveLockIntents(
       make_lw_function([this](ObjectSharedLockRequest request) NO_THREAD_SAFETY_ANALYSIS {
         ConsumePendingSharedLockRequestUnlocked(request);
