@@ -2208,6 +2208,18 @@ class PgClientSession::Impl {
         PgsqlResponsePB::RequestStatus_Name(psql_write->response().status()));
   }
 
+  // Drop the server-side TServer cache entry for the given sequence so that a subsequent nextval
+  // does not hand out stale values after the sequence was modified out-of-band (setval(),
+  // ALTER SEQUENCE ... RESTART, or DROP). No-op unless the server cache method is enabled.
+  Status InvalidateSequenceCacheEntry(
+      PgOid db_oid, PgOid sequence_oid, CoarseTimePoint deadline) {
+    if (FLAGS_ysql_sequence_cache_method != "server") {
+      return Status::OK();
+    }
+    const PgObjectId sequence_id(db_oid, sequence_oid);
+    return sequence_cache().Invalidate(sequence_id, ToSteady(deadline));
+  }
+
   Status UpdateSequenceTuple(
       const PgUpdateSequenceTupleRequestMsg& req, PgUpdateSequenceTupleResponseMsg* resp,
       rpc::RpcContext* context) {
@@ -2265,9 +2277,15 @@ class PgClientSession::Impl {
     auto& session = EnsureSession(
         PgClientSessionKind::kSequence, context->GetClientDeadline(), arena);
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-    RETURN_NOT_OK(session->TEST_ApplyAndFlush(psql_write));
+    auto flush_status = session->TEST_ApplyAndFlush(psql_write);
+    // Invalidate even if flush failed: TimedOut/NetworkError may still mean the write applied,
+    // and clearing the cache when it did not is harmless.
+    auto invalidate_status = InvalidateSequenceCacheEntry(
+        narrow_cast<PgOid>(req.db_oid()), narrow_cast<PgOid>(req.seq_oid()),
+        context->GetClientDeadline());
+    RETURN_NOT_OK(flush_status);
     resp->set_skipped(psql_write->response().skipped());
-    return Status::OK();
+    return invalidate_status;
   }
 
   size_t SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars) {
@@ -2482,7 +2500,14 @@ class PgClientSession::Impl {
     auto& session = EnsureSession(
         PgClientSessionKind::kSequence, context->GetClientDeadline(), arena);
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-    return session->TEST_ApplyAndFlush(std::move(psql_delete));
+    auto flush_status = session->TEST_ApplyAndFlush(std::move(psql_delete));
+    // Invalidate even if flush failed: TimedOut/NetworkError may still mean the delete applied,
+    // and clearing the cache when it did not is harmless.
+    auto invalidate_status = InvalidateSequenceCacheEntry(
+        narrow_cast<PgOid>(req.db_oid()), narrow_cast<PgOid>(req.seq_oid()),
+        context->GetClientDeadline());
+    RETURN_NOT_OK(flush_status);
+    return invalidate_status;
   }
 
   Status DeleteDBSequences(
