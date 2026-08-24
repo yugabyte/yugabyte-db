@@ -2488,6 +2488,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -3866,6 +3871,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "parallelDBBackups" : {
           "description" : "Parallel DB backups",
           "format" : "int32",
@@ -4465,6 +4475,11 @@
           "description" : "User name of the current tables owner",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "parallelism" : {
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
@@ -4828,6 +4843,11 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "platformUrl" : {
@@ -5479,6 +5499,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -6116,6 +6141,11 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "pitrConfigUUID" : {
@@ -6894,6 +6924,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -7571,6 +7606,12 @@
         "id" : {
           "description" : "Customer task UUID",
           "format" : "uuid",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state), if any",
+          "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         },
         "percentComplete" : {
@@ -8689,6 +8730,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -9520,6 +9566,11 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
         },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
@@ -11069,6 +11120,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -11822,6 +11878,11 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
         },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
@@ -13193,6 +13254,11 @@
         },
         "oldOwner" : {
           "description" : "User name of the current tables owner",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "parallelism" : {
@@ -16672,6 +16738,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -17376,6 +17447,11 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
         },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
@@ -18461,6 +18537,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -19328,6 +19409,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -20070,6 +20156,11 @@
           "description" : "Node IP",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "parallelism" : {
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
@@ -20469,6 +20560,11 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "pitrConfigUUID" : {
@@ -20886,6 +20982,11 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
         },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
@@ -23405,6 +23506,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -24588,6 +24694,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -25190,6 +25301,11 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "platformUrl" : {
@@ -25942,6 +26058,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -26646,6 +26767,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -27327,6 +27453,11 @@
           "description" : "Error message",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -27487,6 +27618,11 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
         },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
@@ -28160,6 +28296,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -28827,6 +28968,11 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
         },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
@@ -29795,6 +29941,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -30013,6 +30164,11 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
         },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
@@ -31179,6 +31335,11 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
         },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
