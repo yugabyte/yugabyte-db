@@ -210,6 +210,7 @@ message ConfigureCloudFederationInput {
     enum FlowDirection {
         FLOW_DIRECTION_UNSPECIFIED = 0;
         GCS_ON_AWS = 1;  // AWS DB node -> GCS storage
+        S3_ON_GCP = 2;   // GCP DB node -> S3 storage
     }
     FlowDirection flowDirection = 1;
     string ybHomeDir = 2;
@@ -217,11 +218,11 @@ message ConfigureCloudFederationInput {
     bool enabled = 3;
     // Air-gapped node: skip package downloads, fail fast if a tool is missing.
     bool isAirgap = 4;
-    // Writable temp dir provided by YBA (some nodes have a non-writable /tmp). Field 6 is reserved
-    // for the S3-on-GCP config oneof arm.
+    // Writable temp dir provided by YBA (some nodes have a non-writable /tmp).
     string remoteTmp = 7;
     oneof config {
         GcsOnAwsConfig gcsOnAws = 5;
+        S3OnGcpConfig s3OnGcp = 6;
     }
 }
 
@@ -233,6 +234,16 @@ message GcsOnAwsConfig {
     string audience = 1;
 }
 
+// Params for a GCP node writing to S3 via AWS AssumeRoleWithWebIdentity. The node
+// renders aws_credential_process.sh (which exchanges the GCE identity token for the
+// audience against STS) and an ~/.aws/config credential_process profile. All three
+// values come from the provider's federated-IAM config; profileName is a fixed
+// internal name YBC references via AWS_PROFILE.
+message S3OnGcpConfig {
+    string roleArn = 1;
+    string audience = 2;
+    string profileName = 3;
+}
 message ConfigureCloudFederationOutput {
     // True if the handler (re)wrote artifacts and restarted YBC; false on a no-op reconcile.
     bool changed = 1;

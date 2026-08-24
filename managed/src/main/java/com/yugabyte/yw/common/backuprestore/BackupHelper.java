@@ -17,6 +17,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
+import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -69,6 +70,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
@@ -301,9 +303,7 @@ public class BackupHelper {
           BAD_REQUEST, "Point-In-Time-Restorable backup not allowed for non-YBC universes");
     }
 
-    // Snapshot the cross-cloud federation audience onto the backup so YBA can rebuild the federated
-    // credentials to delete it later, even after the universe (and its provider link) is gone.
-    taskParams.crossCloudFederationAudience = resolveCrossCloudFederationAudience(universe);
+    applyCrossCloudFederationSnapshot(taskParams, universe);
 
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     log.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
@@ -535,9 +535,11 @@ public class BackupHelper {
   }
 
   /**
-   * Stamps the resolved provider GCP audience on a useGcpIam GCS config so YBA authenticates to the
-   * bucket via in-process WIF (for preflight/delete) instead of ADC. No-op for
-   * non-GCS/non-useGcpIam configs or when no universe context / audience is available.
+   * Stamps the resolved provider federation values on an in-memory storage config so YBA
+   * authenticates to the bucket via in-process WIF (for preflight/delete) instead of default creds:
+   * the GCP audience on a useGcpIam GCS config (GCS-on-AWS), or the AWS role ARN + audience on a
+   * cross-cloud federation S3 config (S3-on-GCP). No-op otherwise, or when no universe context /
+   * value is available.
    */
   public void applyCrossCloudFederationAudience(
       CustomerConfigData configData, @Nullable Universe universe) {
@@ -546,7 +548,25 @@ public class BackupHelper {
       if (gcs.useGcpIam) {
         gcs.federationAudience = resolveCrossCloudFederationAudience(universe);
       }
+    } else if (configData instanceof CustomerConfigStorageS3Data) {
+      CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+      if (AWSUtil.isCrossCloudFederationConfig(s3)) {
+        s3.federationAudience = resolveCrossCloudFederationAudience(universe);
+        s3.federationRoleArn = resolveCrossCloudFederationRoleArn(universe);
+      }
     }
+  }
+
+  /**
+   * Snapshots the cross-cloud federation identity onto the backup request, so the backup can still
+   * be deleted once its universe - and with it the provider link - is gone. Every path that submits
+   * a {@code CreateBackup} task must call this; scheduled backups do not go through {@link
+   * #createBackupTask}. The role ARN is set only for the S3-on-GCP direction.
+   */
+  public void applyCrossCloudFederationSnapshot(
+      BackupRequestParams taskParams, @Nullable Universe universe) {
+    taskParams.crossCloudFederationAudience = resolveCrossCloudFederationAudience(universe);
+    taskParams.crossCloudFederationRoleArn = resolveCrossCloudFederationRoleArn(universe);
   }
 
   /**
@@ -568,11 +588,54 @@ public class BackupHelper {
           || !primaryCluster.userIntent.isFederationConfigured()) {
         return null;
       }
+      if (primaryCluster.userIntent.isMulticloudSupport()) {
+        // The snapshot carries one audience/role ARN per backup, so a cluster spanning providers
+        // cannot be resolved correctly here. Say so rather than silently using whichever provider
+        // userIntent.provider happens to hold. Per-node resolution is tracked in PLAT-22612.
+        log.warn(
+            "Cross-cloud federation resolves from the primary cluster's provider; universe {}"
+                + " spans multiple providers, which is not supported yet.",
+            universe.getUniverseUUID());
+      }
       Provider provider =
           Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
       return CloudInfoInterface.getCrossCloudFederationAudience(provider);
     } catch (Exception e) {
       log.warn("Could not resolve cross-cloud federation audience: {}", e.getMessage());
+      return null;
+    }
+  }
+
+  /**
+   * Resolves the provider-level AWS role ARN assumed via AssumeRoleWithWebIdentity for S3-on-GCP
+   * federation, or null when disabled, no universe context, or not configured. GCP providers only.
+   */
+  @Nullable
+  public String resolveCrossCloudFederationRoleArn(@Nullable Universe universe) {
+    if (universe == null) {
+      return null;
+    }
+    try {
+      Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      if (primaryCluster == null
+          || primaryCluster.userIntent == null
+          || !primaryCluster.userIntent.isFederationConfigured()) {
+        return null;
+      }
+      if (primaryCluster.userIntent.isMulticloudSupport()) {
+        // The snapshot carries one audience/role ARN per backup, so a cluster spanning providers
+        // cannot be resolved correctly here. Say so rather than silently using whichever provider
+        // userIntent.provider happens to hold. Per-node resolution is tracked in PLAT-22612.
+        log.warn(
+            "Cross-cloud federation resolves from the primary cluster's provider; universe {}"
+                + " spans multiple providers, which is not supported yet.",
+            universe.getUniverseUUID());
+      }
+      Provider provider =
+          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+      return CloudInfoInterface.getCrossCloudFederationRoleArn(provider);
+    } catch (Exception e) {
+      log.warn("Could not resolve cross-cloud federation role ARN: {}", e.getMessage());
       return null;
     }
   }

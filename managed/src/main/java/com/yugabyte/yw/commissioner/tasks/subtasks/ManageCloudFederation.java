@@ -37,9 +37,12 @@ public class ManageCloudFederation extends NodeTaskBase {
   }
 
   public static class Params extends NodeTaskParams {
-    // GCP Workload Identity Federation audience used to render the external_account credential on
-    // this node (GCS-on-AWS). Sourced from the provider's federation config.
-    public String gcsAudience;
+    // Federation audience from the provider's config. For GCS-on-AWS it is the GCP Workload
+    // Identity Federation audience; for S3-on-GCP the audience for the GCE web-identity token.
+    // The node renders its credential from it.
+    public String audience;
+    // AWS role ARN assumed via AssumeRoleWithWebIdentity for S3-on-GCP; null for GCS-on-AWS.
+    public String s3RoleArn;
     // When false, federation artifacts on this node are torn down.
     public boolean enabled = true;
   }

@@ -62,6 +62,7 @@ import com.yugabyte.yw.nodeagent.GcsOnAwsConfig;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
+import com.yugabyte.yw.nodeagent.S3OnGcpConfig;
 import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlType;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
@@ -90,6 +91,9 @@ import play.libs.Json;
 @Slf4j
 public class NodeAgentRpcPayload {
   public static final String DEFAULT_CONFIGURE_USER = "yugabyte";
+  // Fixed AWS profile name written to ~/.aws/config and exported as AWS_PROFILE for S3-on-GCP
+  // federation; internal to the node, so not user-configurable.
+  public static final String YB_CROSS_CLOUD_FEDERATION_AWS_PROFILE = "yb-cross-cloud-federation";
   private final ReleaseManager releaseManager;
   private final Config appConfig;
   private final OtelCollectorConfigGenerator otelCollectorConfigGenerator;
@@ -643,8 +647,8 @@ public class NodeAgentRpcPayload {
 
   /**
    * Builds the node-agent input for cross-cloud federated IAM on a node: sets the flow direction
-   * from the node's cloud and fills the audience. Only static config is passed; credentials are
-   * minted in-process on the node.
+   * from the node's cloud and fills the audience (and, for S3-on-GCP, the role ARN). Only static
+   * config is passed; credentials are minted in-process on the node.
    */
   public ConfigureCloudFederationInput setupConfigureCloudFederationBits(
       Universe universe, NodeDetails nodeDetails, NodeTaskParams taskParams, NodeAgent nodeAgent) {
@@ -657,27 +661,44 @@ public class NodeAgentRpcPayload {
     }
     builder.setRemoteTmp(confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
 
-    String gcsAudience = null;
+    String audience = null;
+    String s3RoleArn = null;
     boolean enabled = true;
     if (taskParams instanceof ManageCloudFederation.Params) {
       ManageCloudFederation.Params params = (ManageCloudFederation.Params) taskParams;
-      gcsAudience = params.gcsAudience;
+      audience = params.audience;
+      s3RoleArn = params.s3RoleArn;
       enabled = params.enabled;
     }
     builder.setEnabled(enabled);
 
     CloudType nodeCloud = cluster.userIntent.providerType;
-    // Provider-audience mode: AWS-backed DB node -> GCS. Covers native AWS providers and on-prem
-    // providers whose VMs run on AWS. The node renders the external_account JSON from the audience;
-    // YBA passes only the audience, never a static credential.
+    // Provider-audience mode. AWS-backed DB node -> GCS (native AWS or on-prem on AWS): renders
+    // the external_account JSON from the audience. GCP DB node -> S3: renders the
+    // AssumeRoleWithWebIdentity credential_process from role ARN + audience. YBA passes only
+    // static config, never a minted credential.
     if (nodeCloud == CloudType.aws || nodeCloud == CloudType.onprem) {
       builder.setFlowDirection(ConfigureCloudFederationInput.FlowDirection.GCS_ON_AWS);
       if (enabled) {
-        if (StringUtils.isBlank(gcsAudience)) {
+        if (StringUtils.isBlank(audience)) {
           throw new RuntimeException(
               "GCP workload-identity audience is required for GCS-on-AWS federation");
         }
-        builder.setGcsOnAws(GcsOnAwsConfig.newBuilder().setAudience(gcsAudience).build());
+        builder.setGcsOnAws(GcsOnAwsConfig.newBuilder().setAudience(audience).build());
+      }
+    } else if (nodeCloud == CloudType.gcp) {
+      builder.setFlowDirection(ConfigureCloudFederationInput.FlowDirection.S3_ON_GCP);
+      if (enabled) {
+        if (StringUtils.isBlank(s3RoleArn) || StringUtils.isBlank(audience)) {
+          throw new RuntimeException(
+              "AWS role ARN and audience are required for S3-on-GCP federation");
+        }
+        builder.setS3OnGcp(
+            S3OnGcpConfig.newBuilder()
+                .setRoleArn(s3RoleArn)
+                .setAudience(audience)
+                .setProfileName(YB_CROSS_CLOUD_FEDERATION_AWS_PROFILE)
+                .build());
       }
     } else {
       throw new RuntimeException(

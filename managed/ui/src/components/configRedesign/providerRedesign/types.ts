@@ -327,6 +327,9 @@ interface GCPCloudInfoBase {
   gceProject?: string;
   sharedVPCProject?: string;
   destVpcId?: string;
+  enableFederatedIam?: boolean;
+  federatedIamAudience?: string;
+  federatedIamRoleArn?: string;
 }
 interface GCPCloudInfoMutation extends GCPCloudInfoBase {
   gceApplicationCredentials?: {};

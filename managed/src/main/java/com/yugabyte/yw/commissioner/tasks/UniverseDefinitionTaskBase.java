@@ -1533,10 +1533,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   /**
    * Fans out per-node {@link ManageCloudFederation} tasks to configure ({@code enabled=true}) or
-   * tear down ({@code enabled=false}) GCS-on-AWS federated IAM on the given nodes. AWS and on-prem
-   * (AWS-backed) providers only; the audience comes from the provider's federated-IAM config. The
-   * caller decides when to invoke this: the provider flag at create, the universe's {@code
-   * federationConfigured} flag at edit/add-node, or the v2 enable/disable API.
+   * tear down ({@code enabled=false}) cross-cloud federated IAM on the given nodes: AWS/on-prem
+   * (AWS-backed) nodes write to GCS, GCP nodes write to S3. The audience (and, for GCP, the role
+   * ARN) comes from the provider's federated-IAM config. The caller decides when to invoke this:
+   * the provider flag at create, the universe's {@code federationConfigured} flag at edit/add-node,
+   * or the v2 enable/disable API.
    */
   protected void createConfigureCloudFederationTasks(
       UniverseDefinitionTaskParams.UserIntent userIntent,
@@ -1546,18 +1547,26 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       return;
     }
     Common.CloudType nodeCloud = userIntent.providerType;
-    if ((nodeCloud != Common.CloudType.aws && nodeCloud != Common.CloudType.onprem)
+    if ((nodeCloud != Common.CloudType.aws
+            && nodeCloud != Common.CloudType.onprem
+            && nodeCloud != Common.CloudType.gcp)
         || !NodeAgentClient.isCloudTypeSupported(nodeCloud)) {
       return;
     }
     Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-    String gcsAudience = CloudInfoInterface.getCrossCloudFederationAudience(provider);
-    if (enabled && StringUtils.isBlank(gcsAudience)) {
+    String audience = CloudInfoInterface.getCrossCloudFederationAudience(provider);
+    if (enabled && StringUtils.isBlank(audience)) {
       log.warn(
           "Federated IAM requested but not enabled / no audience on provider {}; skipping",
           provider.getUuid());
       return;
     }
+    // S3-on-GCP additionally needs the AWS role ARN to assume; getCrossCloudFederationAudience
+    // already returns null for a GCP provider missing it, so audience non-blank implies it is set.
+    String s3RoleArn =
+        (nodeCloud == Common.CloudType.gcp)
+            ? CloudInfoInterface.getCrossCloudFederationRoleArn(provider)
+            : null;
 
     SubTaskGroup subTaskGroup = createSubTaskGroup("ConfigureCloudFederation");
     for (NodeDetails node : nodes) {
@@ -1565,7 +1574,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.nodeName = node.nodeName;
       params.setUniverseUUID(taskParams().getUniverseUUID());
       params.azUuid = node.azUuid;
-      params.gcsAudience = gcsAudience;
+      params.audience = audience;
+      params.s3RoleArn = s3RoleArn;
       params.enabled = enabled;
       ManageCloudFederation task = createTask(ManageCloudFederation.class);
       task.initialize(params);

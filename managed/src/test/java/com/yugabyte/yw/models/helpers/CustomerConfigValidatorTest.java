@@ -675,6 +675,20 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     customerConfigValidator.validateConfig(config);
   }
 
+  @Test
+  public void testValidateDataContent_Storage_S3_FederationConfigSkipsCredentialValidation() {
+    // A cross-cloud federation S3 config (S3-on-GCP) must skip the credential/bucket check even
+    // when creds are refused; only the URL format is validated.
+    ((StubbedCustomerConfigValidator) customerConfigValidator).setRefuseKeys(true);
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
+    data.put("IAM_INSTANCE_PROFILE", true);
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_S3, data);
+    // Does not throw despite refuseKeys=true.
+    customerConfigValidator.validateConfig(config);
+  }
+
   private void setupGCPReadValidation(
       Storage storage,
       boolean validationShouldFail,

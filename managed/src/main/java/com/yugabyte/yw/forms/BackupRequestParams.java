@@ -48,9 +48,17 @@ public class BackupRequestParams extends UniverseTaskParams {
   // deleted via cross-cloud federation even after the universe/provider link is gone.
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
   @ApiModelProperty(
-      value = "YbaApi Internal. Cross-cloud federation GCP audience captured at backup time.",
+      value = "YbaApi Internal. Cross-cloud federation audience captured at backup time.",
       hidden = true)
   public String crossCloudFederationAudience;
+
+  // Set by YBA (not the caller) at backup time; the AWS role ARN for the S3-on-GCP direction, used
+  // to rebuild federated credentials for deletion after the universe/provider link is gone.
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  @ApiModelProperty(
+      value = "YbaApi Internal. Cross-cloud federation AWS role ARN captured at backup time.",
+      hidden = true)
+  public String crossCloudFederationRoleArn;
 
   @ApiModelProperty(value = "KMS configuration UUID")
   public UUID kmsConfigUUID = null;
@@ -204,6 +212,7 @@ public class BackupRequestParams extends UniverseTaskParams {
   public BackupRequestParams(BackupRequestParams backupRequestParams) {
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
     this.crossCloudFederationAudience = backupRequestParams.crossCloudFederationAudience;
+    this.crossCloudFederationRoleArn = backupRequestParams.crossCloudFederationRoleArn;
     this.kmsConfigUUID = backupRequestParams.kmsConfigUUID;
     this.setUniverseUUID(backupRequestParams.getUniverseUUID());
     this.backupType = backupRequestParams.backupType;

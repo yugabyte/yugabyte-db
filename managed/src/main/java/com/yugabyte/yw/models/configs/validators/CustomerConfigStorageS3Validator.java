@@ -59,6 +59,13 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
     CustomerConfigStorageS3Data s3data = (CustomerConfigStorageS3Data) data;
     validateUrl(CustomerConfigConsts.AWS_HOST_BASE_FIELDNAME, s3data.awsHostBase, true, true);
 
+    // Cross-cloud federation: the web-identity credential can only be exercised from a
+    // GCP DB node, and there is no universe/provider context here to resolve the role/audience.
+    // Skip the credential + bucket checks (URL already validated); the node/YBC do the real check.
+    if (AWSUtil.isCrossCloudFederationConfig(s3data)) {
+      return;
+    }
+
     if (StringUtils.isEmpty(s3data.awsAccessKeyId)
         || StringUtils.isEmpty(s3data.awsSecretAccessKey)) {
       if (!s3data.isIAMInstanceProfile) {

@@ -4399,7 +4399,11 @@
           "type" : "string"
         },
         "crossCloudFederationAudience" : {
-          "description" : "Cross-cloud federation GCP audience captured at backup time",
+          "description" : "Cross-cloud federation audience captured at backup time",
+          "type" : "string"
+        },
+        "crossCloudFederationRoleArn" : {
+          "description" : "Cross-cloud federation AWS role ARN captured at backup time",
           "type" : "string"
         },
         "customerUuid" : {
@@ -9382,6 +9386,18 @@
         "destVpcId" : {
           "type" : "string"
         },
+        "enableFederatedIam" : {
+          "description" : "Enable S3-on-GCP cross-cloud federated IAM on this provider's DB nodes (AWS AssumeRoleWithWebIdentity). Requires the federated IAM role ARN and audience below.",
+          "type" : "boolean"
+        },
+        "federatedIamAudience" : {
+          "description" : "Audience requested from GCP for the web-identity token, used when federated IAM is enabled.",
+          "type" : "string"
+        },
+        "federatedIamRoleArn" : {
+          "description" : "AWS role ARN assumed via AssumeRoleWithWebIdentity when federated IAM is enabled (GCP DB node -> S3).",
+          "type" : "string"
+        },
         "gceApplicationCredentials" : {
           "type" : "string"
         },
@@ -13279,7 +13295,11 @@
           "type" : "string"
         },
         "crossCloudFederationAudience" : {
-          "description" : "Cross-cloud federation GCP audience captured at backup time",
+          "description" : "Cross-cloud federation audience captured at backup time",
+          "type" : "string"
+        },
+        "crossCloudFederationRoleArn" : {
+          "description" : "Cross-cloud federation AWS role ARN captured at backup time",
           "type" : "string"
         },
         "customerUuid" : {
