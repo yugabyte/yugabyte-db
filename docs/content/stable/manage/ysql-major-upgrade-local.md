@@ -111,7 +111,7 @@ In addition, refer to the following:
 
 ### Enable mixed mode
 
-Because the upgrade is fully online, your cluster will temporarily consist of a mix of nodes running both PostgreSQL 11 and 15 (mixed mode). These processes need to be able to talk with each other and correctly process your SQL commands. Specifically, the PostgreSQL expressions that are used in the SQL statements get pushed down from the compute layer to the YugabyteDB storage layer. Because the expressions used by PostgreSQL have changed across the major version, you need to disable this optimization during the upgrade. (This will be addressed in v2025.1 (issue {{<issue 24730>}}).)
+Because the upgrade is fully online, your cluster will temporarily consist of a mix of nodes running both PostgreSQL 11 and 15 (mixed mode). These processes need to be able to talk with each other and correctly process your SQL commands.
 
 Set the `ysql_yb_major_version_upgrade_compatibility` flag to `11` on all YB-Master and YB-TServer processes. For example:
 
