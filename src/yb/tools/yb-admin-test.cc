@@ -60,6 +60,8 @@
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_defaults.h"
 
+#include "yb/rpc/outbound_call.h"
+
 #include "yb/tools/admin-test-base.h"
 #include "yb/tools/yb-admin_util.h"
 
@@ -209,16 +211,43 @@ class AdminCliTest : public AdminTestBase {
   TmpDirProvider tmp_dir_;
 };
 
-// RunCommand() frames an error as "The cluster doesn't support <operation>" only for
-// ERROR_NO_SUCH_METHOD. Before #33434 the predicate used find() as a bool -- npos is truthy --
-// so every remote error (leaderless master, unreachable peer) got the version-mismatch framing.
-TEST_F(AdminCliTest, NoSuchMethodErrorDetection) {
-  ASSERT_TRUE(IsNoSuchMethodError(
-      STATUS(RemoteError, "Call rejected, no such method (rpc error 2)")));
-  // The regression: a generic remote error is not a version mismatch.
-  ASSERT_FALSE(IsNoSuchMethodError(STATUS(RemoteError, "Leader not ready to serve requests")));
-  // Same text under a different code is not a remote rejection at all.
-  ASSERT_FALSE(IsNoSuchMethodError(STATUS(TimedOut, "no response (rpc error 2)")));
+namespace {
+
+// Build a status the way OutboundCall::SetFailed() does, so the predicate is exercised against a
+// real error code rather than a hand-written rendering of one.
+Status RemoteErrorWithCode(const std::string& message, rpc::ErrorStatusPB::RpcErrorCodePB code) {
+  return STATUS(RemoteError, message).CloneAndAddErrorCode(rpc::RpcError(code));
+}
+
+}  // namespace
+
+// RunCommand() frames an error as "The cluster doesn't support <operation>" only when the cluster
+// could not route the RPC. Before #33434 the predicate used find() as a bool -- npos is truthy --
+// so every remote error (a leader rejecting the call, a tablet not found) got the version-mismatch
+// framing.
+TEST_F(AdminCliTest, UnsupportedRpcErrorDetection) {
+  // Service known, method unknown: the RPC was added to an existing service.
+  ASSERT_TRUE(IsUnsupportedRpcError(RemoteErrorWithCode(
+      "Call on service X received from Y with an invalid method name: Z",
+      rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD)));
+  // Service itself unknown: the whole service postdates the cluster.
+  ASSERT_TRUE(IsUnsupportedRpcError(RemoteErrorWithCode(
+      "Service X not registered on Y", rpc::ErrorStatusPB::ERROR_NO_SUCH_SERVICE)));
+
+  // The regression: a remote error the cluster *did* route is not a version mismatch.
+  ASSERT_FALSE(IsUnsupportedRpcError(RemoteErrorWithCode(
+      "Leader not ready to serve requests", rpc::ErrorStatusPB::ERROR_APPLICATION)));
+  // A remote error carrying no rpc code at all decodes to 0, not to a missing method.
+  ASSERT_FALSE(IsUnsupportedRpcError(STATUS(RemoteError, "Leader not ready to serve requests")));
+  // Not a remote rejection at all.
+  ASSERT_FALSE(IsUnsupportedRpcError(STATUS(TimedOut, "no response")));
+
+  // Pin the rendering the previous implementation matched on: a status carrying the code really
+  // does print "(rpc error 2)". If this ever changes, a text-matching predicate would silently
+  // stop firing -- which is why the check above reads the code instead.
+  ASSERT_STR_CONTAINS(
+      RemoteErrorWithCode("m", rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD).ToString(),
+      "(rpc error 2)");
 }
 
 // Verify the "did you mean" help for a misspelled operation, none of which needs a running
