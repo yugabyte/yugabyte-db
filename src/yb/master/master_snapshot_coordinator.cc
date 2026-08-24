@@ -647,6 +647,14 @@ class MasterSnapshotCoordinator::Impl {
               restoration.get(), tablet.get(), leader_term >= 0, complete_status),
           "Restore sys catalog failed");
     }
+    // Fence transactions started at or before this restore so their remaining writes cannot
+    // recreate them with a reset write_id.
+    auto* participant = tablet->transaction_participant();
+    if (participant && restoration->write_time) {
+      tablet->metadata()->SetRestorationHybridTime(restoration->write_time);
+      participant->IgnoreAllTransactionsStartedBefore(restoration->write_time);
+      RETURN_NOT_OK(tablet->metadata()->Flush());
+    }
     return Status::OK();
   }
 
