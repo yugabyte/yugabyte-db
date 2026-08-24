@@ -2671,6 +2671,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -4647,6 +4648,39 @@
       ],
       "type" : "object"
     },
+    "BashComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as a label/sub-directory.",
+          "type" : "string"
+        },
+        "linuxUser" : {
+          "description" : "Linux user to run the script as on the node.",
+          "type" : "string"
+        },
+        "params" : {
+          "description" : "Arguments appended after the script (entrypoint + flags), e.g. [collect_top_stats, --remote_tar_path, /tmp/top.tar.gz, ...].",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "remoteTarPath" : {
+          "description" : "Path on the node where the script writes the tar. May contain ${nodeName} which is substituted per node.",
+          "type" : "string"
+        },
+        "scriptPath" : {
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "type" : "string"
+        },
+        "timeoutSecs" : {
+          "description" : "Script execution timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "type" : "object"
+    },
     "Basic Auth information" : {
       "allOf" : [
         {
@@ -4881,10 +4915,22 @@
     },
     "BundleDetails" : {
       "properties" : {
+        "bashComponentSpecs" : {
+          "description" : "Specs that drive the node-level BashComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/BashComponentSpec"
+          },
+          "type" : "array"
+        },
         "components" : {
           "items" : {
             "enum" : [
               "UniverseLogs",
+              "FilesComponent",
+              "BashComponent",
+              "YSQLComponent",
+              "YCQLComponent",
+              "YbAdminComponent",
               "OutputFiles",
               "ErrorFiles",
               "CoreFiles",
@@ -4900,9 +4946,17 @@
               "YbaMetadata",
               "PrometheusMetrics",
               "PerfAdvisor",
-              "ApplicationLogs"
+              "ApplicationLogs",
+              "YBAComponent"
             ],
             "type" : "string"
+          },
+          "type" : "array"
+        },
+        "filesComponentSpecs" : {
+          "description" : "Specs that drive the generic node-level FilesComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/FilesComponentSpec"
           },
           "type" : "array"
         },
@@ -4915,6 +4969,13 @@
           "description" : "Max number of most recent cores to collect (if any)",
           "format" : "int32",
           "type" : "integer"
+        },
+        "nodeNames" : {
+          "description" : "Names of the universe nodes node-level components were collected from. Empty or null means every node in the universe was considered.",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
         },
         "paDumpEndDate" : {
           "description" : "End date to filter Perf Advisor data",
@@ -4974,6 +5035,34 @@
               "YSQL_EXPORT"
             ],
             "type" : "string"
+          },
+          "type" : "array"
+        },
+        "ybAdminComponentSpecs" : {
+          "description" : "Specs that drive the node-level YbAdminComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/YbAdminComponentSpec"
+          },
+          "type" : "array"
+        },
+        "ybaComponentSpecs" : {
+          "description" : "Specs that drive the global-level YBAComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/YbaComponentSpec"
+          },
+          "type" : "array"
+        },
+        "ycqlComponentSpecs" : {
+          "description" : "Specs that drive the node-level YCQLComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/YCQLComponentSpec"
+          },
+          "type" : "array"
+        },
+        "ysqlComponentSpecs" : {
+          "description" : "Specs that drive the node-level YSQLComponent (if requested).",
+          "items" : {
+            "$ref" : "#/definitions/YSQLComponentSpec"
           },
           "type" : "array"
         }
@@ -5603,6 +5692,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -8446,6 +8536,39 @@
       },
       "type" : "object"
     },
+    "FilesComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as a label/sub-directory.",
+          "type" : "string"
+        },
+        "linuxUser" : {
+          "description" : "Linux user to run the script as on the node.",
+          "type" : "string"
+        },
+        "params" : {
+          "description" : "Arguments appended after the script (entrypoint + flags), e.g. [create_universe_logs_bundle, --mount_path, /mnt/d0, ...].",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "remoteTarPath" : {
+          "description" : "Path on the node where the script writes the tar. May contain ${nodeName} which is substituted per node.",
+          "type" : "string"
+        },
+        "scriptPath" : {
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "type" : "string"
+        },
+        "timeoutSecs" : {
+          "description" : "Script execution timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "type" : "object"
+    },
     "FinalizeUpgradeInfoResponse" : {
       "description" : "Finalize Upgrade Info Response",
       "properties" : {
@@ -8770,6 +8893,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -9612,6 +9736,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -11161,6 +11286,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -11924,6 +12050,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -16778,6 +16905,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -17483,6 +17611,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -18586,6 +18715,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -19447,6 +19577,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -21014,6 +21145,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -21707,6 +21839,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -22138,6 +22271,7 @@
               "DeleteXClusterConfig",
               "SyncXClusterConfig",
               "CreateSupportBundle",
+              "CreateSupportBundleV2",
               "CreateXClusterConfig",
               "EditXClusterConfig",
               "RestartXClusterConfig",
@@ -22723,6 +22857,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -23520,6 +23655,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -24218,6 +24354,11 @@
           "items" : {
             "enum" : [
               "UniverseLogs",
+              "FilesComponent",
+              "BashComponent",
+              "YSQLComponent",
+              "YCQLComponent",
+              "YbAdminComponent",
               "OutputFiles",
               "ErrorFiles",
               "CoreFiles",
@@ -24233,7 +24374,8 @@
               "YbaMetadata",
               "PrometheusMetrics",
               "PerfAdvisor",
-              "ApplicationLogs"
+              "ApplicationLogs",
+              "YBAComponent"
             ],
             "type" : "string"
           },
@@ -24697,6 +24839,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -25531,6 +25674,7 @@
               "PrecheckNode",
               "Abort",
               "CreateSupportBundle",
+              "CreateSupportBundleV2",
               "CreateTableSpaces",
               "ThirdpartySoftwareUpgrade",
               "ModifyAuditLoggingConfig",
@@ -26050,6 +26194,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -26754,6 +26899,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -27599,6 +27745,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -28268,6 +28415,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -28937,6 +29085,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -30122,6 +30271,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -31363,6 +31513,7 @@
             "DeleteXClusterConfig",
             "SyncXClusterConfig",
             "CreateSupportBundle",
+            "CreateSupportBundleV2",
             "CreateXClusterConfig",
             "EditXClusterConfig",
             "RestartXClusterConfig",
@@ -32723,6 +32874,35 @@
       ],
       "type" : "object"
     },
+    "YCQLComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as output file label.",
+          "type" : "string"
+        },
+        "keyspace" : {
+          "description" : "Optional keyspace for ycqlsh -k.",
+          "type" : "string"
+        },
+        "outputFileName" : {
+          "description" : "Output file name written under the per-node bundle directory.",
+          "type" : "string"
+        },
+        "queries" : {
+          "description" : "YCQL statements to execute (each runs as ycqlsh -e).",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "timeoutSecs" : {
+          "description" : "Command timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "type" : "object"
+    },
     "YSQLAuditConfig" : {
       "description" : "YSQL Audit Logging Configuration",
       "properties" : {
@@ -32814,6 +32994,35 @@
       ],
       "type" : "object"
     },
+    "YSQLComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as output file label.",
+          "type" : "string"
+        },
+        "dbName" : {
+          "description" : "Database name for ysqlsh -d.",
+          "type" : "string"
+        },
+        "outputFileName" : {
+          "description" : "Output file name written under the per-node bundle directory.",
+          "type" : "string"
+        },
+        "queries" : {
+          "description" : "YSQL statements to execute (each runs as ysqlsh -c).",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "timeoutSecs" : {
+          "description" : "Command timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "type" : "object"
+    },
     "YSQLQueryLogConfig" : {
       "description" : "YSQL Query Logging Configuration",
       "properties" : {
@@ -32881,6 +33090,68 @@
         "logMinErrorStatement",
         "logStatement"
       ],
+      "type" : "object"
+    },
+    "YbAdminComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as output file label.",
+          "type" : "string"
+        },
+        "outputFileName" : {
+          "description" : "Output file name written under the per-node bundle directory.",
+          "type" : "string"
+        },
+        "timeoutSecs" : {
+          "description" : "Command timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "ybAdminArgs" : {
+          "description" : "Additional arguments after the subcommand.",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "ybAdminCommand" : {
+          "description" : "yb-admin subcommand (e.g. list_tables).",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "YbaComponentSpec" : {
+      "properties" : {
+        "componentName" : {
+          "description" : "Logical component name; used as a label/sub-directory.",
+          "type" : "string"
+        },
+        "linuxUser" : {
+          "description" : "Ignored for local YBA execution; accepted for API parity with node-level specs.",
+          "type" : "string"
+        },
+        "params" : {
+          "description" : "Arguments appended after the script (entrypoint + flags), e.g. [create_application_logs_bundle, --log_dir, /var/log/yba, ...].",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "remoteTarPath" : {
+          "description" : "Path on the YBA host where the script writes the tar before it is untarred.",
+          "type" : "string"
+        },
+        "scriptPath" : {
+          "description" : "Path on the YBA host to the script file to execute locally (e.g. bin/yba_utils.sh). May be relative to yb.devops.home.",
+          "type" : "string"
+        },
+        "timeoutSecs" : {
+          "description" : "Script execution timeout in seconds.",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
       "type" : "object"
     },
     "YbcThrottleParameters" : {
@@ -43530,6 +43801,11 @@
               "items" : {
                 "enum" : [
                   "UniverseLogs",
+                  "FilesComponent",
+                  "BashComponent",
+                  "YSQLComponent",
+                  "YCQLComponent",
+                  "YbAdminComponent",
                   "OutputFiles",
                   "ErrorFiles",
                   "CoreFiles",
@@ -43545,7 +43821,8 @@
                   "YbaMetadata",
                   "PrometheusMetrics",
                   "PerfAdvisor",
-                  "ApplicationLogs"
+                  "ApplicationLogs",
+                  "YBAComponent"
                 ],
                 "type" : "string"
               },
@@ -43560,6 +43837,11 @@
               "items" : {
                 "enum" : [
                   "UniverseLogs",
+                  "FilesComponent",
+                  "BashComponent",
+                  "YSQLComponent",
+                  "YCQLComponent",
+                  "YbAdminComponent",
                   "OutputFiles",
                   "ErrorFiles",
                   "CoreFiles",
@@ -43575,7 +43857,8 @@
                   "YbaMetadata",
                   "PrometheusMetrics",
                   "PerfAdvisor",
-                  "ApplicationLogs"
+                  "ApplicationLogs",
+                  "YBAComponent"
                 ],
                 "type" : "string"
               },

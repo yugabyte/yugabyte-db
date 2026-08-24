@@ -1,0 +1,6 @@
+title: PromExportType
+description: 'How to export Prometheus metrics: PROMQL (query_range) or REMOTE_READ.'
+type: string
+enum:
+  - PROMQL
+  - REMOTE_READ

@@ -274,6 +274,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " it is passed as a component while creating.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<List> supportBundleExtraYbAdminCommands =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.extra_yb_admin_commands",
+          ScopeType.GLOBAL,
+          "Additional yb-admin commands allowed in Support Bundle",
+          "Support bundles only run yb-admin commands from a built-in read-only allow list. This"
+              + " config adds command names to that list. Only add commands that do not modify"
+              + " cluster state. Ex: [\"list_tables\",\"get_universe_config\"]",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> supportBundleNodeCheckTimeoutSec =
       new ConfKeyInfo<>(
           "yb.support_bundle.node_check_timeout_sec",

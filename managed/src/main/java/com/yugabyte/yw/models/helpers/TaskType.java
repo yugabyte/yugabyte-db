@@ -373,6 +373,11 @@ public enum TaskType {
       CustomerTask.TaskType.CreateSupportBundle,
       CustomerTask.TargetType.Universe),
 
+  CreateSupportBundleV2(
+      com.yugabyte.yw.commissioner.tasks.CreateSupportBundleV2.class,
+      CustomerTask.TaskType.CreateSupportBundleV2,
+      CustomerTask.TargetType.Universe),
+
   CreateXClusterConfig(
       com.yugabyte.yw.commissioner.tasks.CreateXClusterConfig.class,
       CustomerTask.TaskType.Create,

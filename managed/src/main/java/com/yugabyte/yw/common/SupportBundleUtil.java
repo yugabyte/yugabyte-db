@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.SupportBundle;
+import com.yugabyte.yw.models.SupportBundleV2;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -294,6 +295,14 @@ public class SupportBundleUtil {
     }
     // Deletes row from the support_bundle db table
     SupportBundle.delete(supportBundle.getBundleUUID());
+  }
+
+  public void deleteSupportBundleV2(SupportBundleV2 supportBundle) {
+    Path supportBundlePath = supportBundle.getPathObject();
+    if (supportBundlePath != null) {
+      deleteFile(supportBundlePath);
+    }
+    SupportBundleV2.delete(supportBundle.getBundleUUID());
   }
 
   /**
