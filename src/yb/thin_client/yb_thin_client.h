@@ -48,6 +48,7 @@ typedef enum {
   YBTHIN_READ_RESTART = 4, // restart_read_time: caller restarts the scan
   YBTHIN_SCHEMA = 5,       // schema-version mismatch -- reopen the table
   YBTHIN_OTHER = 6,        // anything else -- fatal
+  YBTHIN_FENCED = 7,       // ignore_after_hybrid_time had passed; the write did NOT take effect
 } ybthin_status_code;
 
 // `message` is owned (free with ybthin_string_free) and NULL when code == YBTHIN_OK.
@@ -225,6 +226,15 @@ typedef struct {
   const int32_t* value_ids;
   const ybthin_bind* values;
   size_t n_values;
+  // Fences this row against a lease the caller holds: the tablet leader rejects the write if this
+  // hybrid time has already passed by the time the op is assigned its own, reporting
+  // YBTHIN_FENCED. 0 means no fence.
+  //
+  // This exists because an RPC timeout cannot express it -- nothing cancels an operation once it
+  // reaches Raft, so a write that timed out from the caller's point of view can still commit. Each
+  // tablet leader judges the fence separately, so a batch spanning tablets can be partly applied
+  // when it straddles the boundary.
+  uint64_t ignore_after_hybrid_time;
 } ybthin_upsert_row;
 
 // Completion callbacks may run on a YB reactor thread, so they MUST be cheap and non-blocking

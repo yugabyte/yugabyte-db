@@ -110,6 +110,12 @@ message WritePB {
 
   // See SysCDCStreamEntryPB.xcluster_use_target_applied_filter.
   optional bool xcluster_target_applied = 23;
+
+  // Fence from PgsqlWriteRequestPB.ignore_after_hybrid_time: the earliest fence over the ops of
+  // this batch. Lifted here because the replicated message carries only the DocDB write batch --
+  // the pgsql ops are not copied (WriteQuery's SetupKeyValueBatch) -- and the leader enforces the
+  // fence in RaftConsensus::DoAppendNewRoundsToQueueUnlocked, which sees only this message.
+  optional fixed64 ignore_after_hybrid_time = 24;
 }
 
 message ChangeMetadataRequestPB {

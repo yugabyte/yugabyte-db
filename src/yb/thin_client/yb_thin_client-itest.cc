@@ -30,7 +30,10 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/util/format.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
@@ -211,7 +214,8 @@ TEST_F(PgThinClientTest, OpenUpsertReadPaged) {
     keys[row_idx] = {I32(kHashKey), I32(row_idx)};      // (k HASH, v RANGE) in schema order
     values[row_idx] = Bytea(payload);
     rows[row_idx] = ybthin_upsert_row{
-        table, keys[row_idx].data(), 2, &value_ids[row_idx], &values[row_idx], 1};
+        table, keys[row_idx].data(), 2, &value_ids[row_idx], &values[row_idx], 1,
+        /* ignore_after_hybrid_time= */ 0};
   }
   {
     std::promise<WriteOutcome> promise;
@@ -433,7 +437,8 @@ TEST_F(PgThinClientTest, RangeShardedTable) {
     keys[row_idx] = {I32(row_idx)};
     values[row_idx] = Bytea(payload);
     rows[row_idx] = ybthin_upsert_row{
-        table, keys[row_idx].data(), 1, &value_ids[row_idx], &values[row_idx], 1};
+        table, keys[row_idx].data(), 1, &value_ids[row_idx], &values[row_idx], 1,
+        /* ignore_after_hybrid_time= */ 0};
   }
   {
     std::promise<WriteOutcome> promise;
@@ -584,7 +589,7 @@ TEST_F(PgThinClientTest, RangeShardedTable) {
     ybthin_bind no_keys[] = {I32(0)};
     int32_t vid = payload_id;
     ybthin_bind val = Bytea(payload);
-    ybthin_upsert_row bad = {table, no_keys, 0, &vid, &val, 1};  // n_keys == 0
+    ybthin_upsert_row bad = {table, no_keys, 0, &vid, &val, 1, 0};  // n_keys == 0
     std::promise<WriteOutcome> promise;
     auto future = promise.get_future();
     ybthin_upsert_batch_async(client, &bad, 1, &OnWriteDone, &promise);
@@ -1247,7 +1252,7 @@ TEST_F(PgThinClientTest, AlreadyReplicatedWriteReportsSuccess) {
   ybthin_bind key[] = {I32(7)};
   ybthin_bind value[] = {Bytea(payload)};
   int32_t value_ids[] = {v_id};
-  ybthin_upsert_row row = {table, key, 1, value_ids, value, 1};
+  ybthin_upsert_row row = {table, key, 1, value_ids, value, 1, /* no fence */ 0};
 
   std::promise<WriteOutcome> promise;
   auto future = promise.get_future();
@@ -1268,6 +1273,74 @@ TEST_F(PgThinClientTest, AlreadyReplicatedWriteReportsSuccess) {
   ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM dup_w WHERE k = 7")));
   ASSERT_EQ(payload, ASSERT_RESULT(conn.FetchRow<std::string>(
                          "SELECT encode(v, 'escape') FROM dup_w WHERE k = 7")));
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
+}
+
+// A write whose fence has passed must be rejected, and must not take effect.
+//
+// The point of the fence is that an RPC deadline cannot express it: nothing cancels an operation
+// once it reaches Raft, so a write the caller saw fail can still commit. The assertions here are
+// therefore about the table contents as much as the status code.
+TEST_F(PgThinClientTest, WriteFencedByIgnoreAfterHybridTime) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE fenced (k int, v bytea, PRIMARY KEY(k ASC))"));
+
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT 'fenced'::regclass::oid"));
+
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  const int32_t v_id = info.columns[1].id;
+
+  const std::string payload = "fence";
+  int32_t value_ids[] = {v_id};
+
+  auto upsert = [&](int32_t k, uint64_t fence) -> ybthin_status_code {
+    ybthin_bind key[] = {I32(k)};
+    ybthin_bind value[] = {Bytea(payload)};
+    ybthin_upsert_row row = {table, key, 1, value_ids, value, 1, fence};
+    std::promise<WriteOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_upsert_batch_async(client, &row, 1, &OnWriteDone, &promise);
+    return future.get().code;
+  };
+
+  // A fence already in the past. HybridTime 1 is the smallest usable value and is unambiguously
+  // behind any clock reading the leader can take.
+  ASSERT_EQ(upsert(1, 1), YBTHIN_FENCED) << "a write past its fence must be rejected";
+  ASSERT_EQ(0, ASSERT_RESULT(conn.FetchRow<PGUint64>(
+                   "SELECT count(*) FROM fenced WHERE k = 1")))
+      << "a fenced write must not take effect";
+
+  // A fence far in the future leaves the write alone. Compared against the leader's clock, so it
+  // has to be a hybrid time, not a wall-clock micro count.
+  const auto far_future = HybridTime::FromMicros(
+      static_cast<uint64_t>(GetCurrentTimeMicros()) + 3600 * 1000000ULL).ToUint64();
+  ASSERT_EQ(upsert(2, far_future), YBTHIN_OK) << "a write inside its fence must be applied";
+  ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>(
+                   "SELECT count(*) FROM fenced WHERE k = 2")));
+
+  // No fence at all behaves as before.
+  ASSERT_EQ(upsert(3, 0), YBTHIN_OK);
+  ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>(
+                   "SELECT count(*) FROM fenced WHERE k = 3")));
 
   ybthin_columns_free(info.columns, info.n_columns);
   ybthin_table_close(table);
@@ -1391,7 +1464,7 @@ TEST_F(PgThinClientExternalTlsTest, UpsertAndReadOverTls) {
   std::vector<ybthin_upsert_row> rows(kNumRows);
   for (int row_idx = 0; row_idx < kNumRows; ++row_idx) {
     keys[row_idx] = {I32(kHashKey), I32(row_idx)};
-    rows[row_idx] = ybthin_upsert_row{table, keys[row_idx].data(), 2, nullptr, nullptr, 0};
+    rows[row_idx] = ybthin_upsert_row{table, keys[row_idx].data(), 2, nullptr, nullptr, 0, 0};
   }
   {
     std::promise<WriteOutcome> promise;

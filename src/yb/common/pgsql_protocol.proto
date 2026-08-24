@@ -324,6 +324,19 @@ message PgsqlWriteRequestPB {
 
   // Optimization to skip intents write and directly writes to regular db.
   optional bool skip_intents_write = 30;
+
+  // Fences the write against a caller-held lease: the tablet leader rejects the operation if this
+  // hybrid time has already passed when the op is about to be assigned its own hybrid time. An RPC
+  // deadline cannot express this -- nothing cancels an operation once it is handed to Raft, so a
+  // write the caller saw time out can still commit afterwards.
+  //
+  // Each tablet leader evaluates the fence independently, at its own append moment, so a batch
+  // spanning tablets can be partially applied when it straddles the boundary. There is no
+  // all-or-nothing to fall back on for non-transactional single-shard writes.
+  //
+  // Being a hybrid time comparison, this rests on max_clock_skew_usec like any other -- no new
+  // assumption, but the fence is only as tight as that bound.
+  optional fixed64 ignore_after_hybrid_time = 31;
 }
 
 //--------------------------------------------------------------------------------------------------

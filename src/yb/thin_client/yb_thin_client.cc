@@ -198,6 +198,12 @@ ybthin_status_code ClassifyStatus(const Status& status) {
   if (status.IsInvalidArgument() || status.IsNotSupported()) {
     return YBTHIN_INVALID;
   }
+  // The only Expired status this service produces is a fenced write (RaftConsensus rejects the op
+  // when ignore_after_hybrid_time has passed), so the caller can tell it apart from a failure that
+  // might still have taken effect. A fenced write definitively did not.
+  if (status.IsExpired()) {
+    return YBTHIN_FENCED;
+  }
   return YBTHIN_OTHER;
 }
 
@@ -1301,6 +1307,9 @@ void ybthin_upsert_batch_async(
     }
     if (build.ok()) {
       build = dockv::InitPartitionKey(table->schema, table->partition_schema, write);
+    }
+    if (row.ignore_after_hybrid_time) {
+      write->set_ignore_after_hybrid_time(row.ignore_after_hybrid_time);
     }
     for (size_t col_idx = 0; col_idx < row.n_values && build.ok(); ++col_idx) {
       auto* cv = write->add_column_values();
