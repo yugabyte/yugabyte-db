@@ -65,6 +65,8 @@ To list all operations, run `yb-admin help` from the YugabyteDB home directory.
 ./bin/yb-admin help
 ```
 
+The `help` operation is available in v2026.2 and later. In earlier versions, run `./bin/yb-admin --help`.
+
 To display the usage of a single operation, pass its name to `help`:
 
 ```sh
