@@ -82,6 +82,28 @@ namespace {
 
 using PerformCallback = std::function<void(const PerformResult&)>;
 
+class BigSharedMemoryDescriptor {
+ public:
+  uint64_t id() const { return id_; }
+  void* data() const { return region_.get_address(); }
+
+  static Result<BigSharedMemoryDescriptor> Make(const std::string& instance_id, uint64_t id) {
+    auto object = VERIFY_RESULT(InterprocessSharedMemoryObject::Open(
+        tserver::MakeSharedMemoryBigSegmentName(instance_id, id)));
+    return BigSharedMemoryDescriptor(id, std::move(object), VERIFY_RESULT(object.Map()));
+  }
+
+ private:
+  BigSharedMemoryDescriptor(
+      uint64_t id, InterprocessSharedMemoryObject&& object, InterprocessMappedRegion&& region)
+      : id_(id), object_(std::move(object)), region_(std::move(region)) {
+  }
+
+  uint64_t id_;
+  InterprocessSharedMemoryObject object_;
+  InterprocessMappedRegion region_;
+};
+
 class FetchBigDataCallback {
  public:
   virtual void BigDataFetched(Result<rpc::CallData>* call_data) = 0;
@@ -831,16 +853,12 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<Slice> FetchBigSharedMemory(uint64_t id, size_t size) override {
-    if (id != big_shared_memory_id_) {
-      big_mapped_region_ = {};
-      big_shared_memory_object_ = {};
-      big_shared_memory_object_ = VERIFY_RESULT(InterprocessSharedMemoryObject::Open(
-          tserver::MakeSharedMemoryBigSegmentName(exchange_->instance_id(), id)));
-      big_mapped_region_ = VERIFY_RESULT(big_shared_memory_object_.Map());
+    if (!big_shared_memory_ || big_shared_memory_->id() != id) {
+      big_shared_memory_.emplace(
+          VERIFY_RESULT(BigSharedMemoryDescriptor::Make(exchange_->instance_id(), id)));
     }
     return Slice(
-        static_cast<const char*>(big_mapped_region_.get_address()),
-        size + sizeof(std::atomic<bool>));
+        static_cast<const char*>(big_shared_memory_->data()), size + sizeof(std::atomic<bool>));
   }
 
   void PrepareOperations(tserver::LWPgPerformRequestPB* req, const PgsqlOps& operations) {
@@ -1481,9 +1499,7 @@ class PgClient::Impl : public BigDataFetcher {
   YBCPgAshConfig ash_config_;
   const WaitEventWatcher& wait_event_watcher_;
 
-  uint64_t big_shared_memory_id_;
-  InterprocessSharedMemoryObject big_shared_memory_object_;
-  InterprocessMappedRegion big_mapped_region_;
+  std::optional<BigSharedMemoryDescriptor> big_shared_memory_;
 };
 
 std::string DdlMode::ToString() const {
