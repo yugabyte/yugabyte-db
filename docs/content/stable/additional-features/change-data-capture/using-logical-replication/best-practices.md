@@ -19,6 +19,12 @@ This section describes best practices to achieve scalability and performance whi
 
 The recommended approach towards addressing the requirement of consuming changes in parallel from different tables is to use multiple replication slots. One replication slot per table could be used. Each replication slot is independent of the other and the changes from the tables can be consumed in parallel.
 
+## Recreating a Kafka Connect connector
+
+Kafka Connect stores the last consumed LSN separately from the replication slot. Deleting a connector does not remove that offset. If you drop the slot, recreate it, and start a connector with the same identity, Kafka Connect may resume from the old LSN. Because LSNs aren't comparable across slots, that can skip changes on the new slot.
+
+A new connector should use a new `topic.prefix`.
+
 ## Fan out
 
 Consider the requirement where there are multiple applications, all of them requiring to consume changes from the same table. The recommended approach to address this requirement is to use one replication slot to consume the changes from the table and write the changes to a system like Kafka. The fan out can then be implemented with the multiple applications consuming from Kafka.

@@ -90,6 +90,10 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
     In the case of YugabyteDB, the LSN  does not represent the byte offset of a WAL record. Hence, arithmetic on LSN and any other usages of the LSN making this assumption will not work. Also, currently, comparison of LSN values from messages coming from different replication slots is not supported.
 
+    {{< note title="Note" >}}
+Because LSNs aren't comparable across replication slots, avoid sharing a Kafka topic among multiple slots. For further information, see [Best practices](./best-practices/).
+    {{< /note >}}
+
 - The following functions are currently unsupported:
 
   - `pg_current_wal_lsn`
