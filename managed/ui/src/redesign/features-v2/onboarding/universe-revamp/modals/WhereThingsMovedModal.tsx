@@ -18,8 +18,6 @@ import {
 
 const { Box, Typography } = mui;
 
-export const WHERE_THINGS_MOVED_MODAL_DISMISS_KEY = 'yb_where_things_moved_modal_dismissed';
-
 interface WhereThingsMovedModalProps {
   open: boolean;
   onClose: () => void;

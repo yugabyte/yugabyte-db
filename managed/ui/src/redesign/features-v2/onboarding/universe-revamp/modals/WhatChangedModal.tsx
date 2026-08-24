@@ -44,8 +44,6 @@ const SECTION_CARD_GAP_PX = 24;
 const FIND_OUT_MORE_BG = '#7879F1';
 const GLOBAL_RUNTIME_CONFIG_PATH = '/admin/advanced/global-config';
 
-export const WHAT_CHANGED_MODAL_DISMISS_KEY = 'yb_what_changed_modal_dismissed';
-
 interface WhatChangedModalProps {
   open: boolean;
   onClose: () => void;

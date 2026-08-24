@@ -95,10 +95,13 @@ import {
   isUniverseRevampExperienceEnabled
 } from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
 import { SettingsTabTitleWithPopover } from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/DetailSettingsPopover';
+import { BeforeProceedWithNewModal } from '@app/redesign/features-v2/onboarding/universe-revamp/modals/BeforeProceedWithNewModal';
 import {
-  BeforeProceedWithNewModal,
-  BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY
-} from '@app/redesign/features-v2/onboarding/universe-revamp/modals/BeforeProceedWithNewModal';
+  TourStep,
+  dismissTourStep,
+  isTourProgressReady,
+  isTourStepDismissed
+} from '@app/redesign/features-v2/onboarding/universe-revamp/tour-progress';
 import {
   getCurrentVersion,
   isVersionPGSupported,
@@ -174,8 +177,7 @@ class UniverseDetail extends Component {
       showAlert: false,
       actionsDropdownOpen: false,
       refetchedUniverseDetails: false,
-      showBeforeProceedModal:
-        localStorage.getItem(BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY) !== 'true',
+      showBeforeProceedModal: true,
       isOnboardingExperienceEnabled: isOnboardingNewExperienceEnabled()
     };
   }
@@ -2279,9 +2281,13 @@ class UniverseDetail extends Component {
         </Measure>
         {isV2EditUniverseUIEnabled && (
           <BeforeProceedWithNewModal
-            open={this.state.showBeforeProceedModal}
+            open={
+              isTourProgressReady() &&
+              this.state.showBeforeProceedModal &&
+              !isTourStepDismissed(TourStep.BeforeProceed)
+            }
             onClose={() => {
-              localStorage.setItem(BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY, 'true');
+              dismissTourStep(TourStep.BeforeProceed);
               this.setState({ showBeforeProceedModal: false });
             }}
           />
