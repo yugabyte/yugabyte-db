@@ -1035,14 +1035,19 @@ TEST_P(PgVectorIndexTest, ConcurrentInsertAndSearch) {
   std::atomic<int64_t> next_id{1000};
   TestThreadHolder threads;
 
-  // Cap the number of inserted rows. For the pure hnswlib backend a chunk's in-memory graph is
-  // never released after it is flushed to disk (DoSaveToFile keeps the original index), so resident
-  // memory grows with every inserted vector. Left unbounded, the sustained inserts push the tserver
-  // past its soft memory limit and the resulting overload intermittently corrupts an in-flight read
-  // RPC ("Failed to parse 'pgsql_batch'"). This cap keeps the index comfortably within the limit
-  // while still driving far more concurrent insert-vs-search traffic than the race needs to
-  // surface.
-  constexpr int64_t kMaxId = 1000000;
+  // Cap the number of inserted rows. For the pure hnswlib backends a chunk's in-memory graph is
+  // never released after it is flushed to disk (DoSaveToFile keeps the original index) and each
+  // chunk additionally reserves its estimated size in the block cache, so tracked memory grows with
+  // every inserted vector, reaching the 6.8GB soft limit somewhere near 1M rows. Past that, writes
+  // are rejected and retried for the whole 10 minute YSQL client timeout, so an insert outlives
+  // kRunTime and wedges the thread holder's JoinAll until the test times out.
+  //
+  // The cap is also what ends the run: reaching it makes the writers exit, which sets the holder's
+  // stop flag, so it bounds how long the insert-vs-search window stays open. Keep it high enough
+  // that the usearch race still reproduces -- with the fix reverted it surfaces in every run at
+  // this cap, but only about a third of runs at 100K, where the fixed build finishes the workload
+  // in a few seconds. At 300K the hnswlib peak stays around 1.9GB, well clear of the soft limit.
+  constexpr int64_t kMaxId = 300000;
 
   // Writers: keep inserting multi-row batches until the row cap is reached. With task_size=1 every
   // batch fans out into many concurrent add() calls on the chunk's index. Ids come from a shared
