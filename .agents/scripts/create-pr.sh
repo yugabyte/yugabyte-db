@@ -145,11 +145,13 @@ command -v gh >/dev/null || { echo "error: 'gh' CLI not found in PATH" >&2; exit
 # get a "#" prefix; JIRA keys are left alone. Each token is validated and the
 # list is rebuilt joined with "," (no space) as "[#a,#b] ...".
 #
-# The shape here is dictated by .github/workflows/pr-title.yml, which gates every
-# PR and accepts either an all-GitHub list or an all-JIRA list -- never a space
-# after the comma, never the two trackers mixed, and no digits in a JIRA project
-# key. Keep this validation in step with that regex; a mismatch means the script
-# builds titles that fail CI the moment the PR is opened (#33472).
+# The shape here is dictated by .github/workflows/pr-title.yml, which accepts
+# either an all-GitHub list or an all-JIRA list -- never a space after the comma,
+# never the two trackers mixed, and no digits in a JIRA project key. (That check
+# carries paths-ignore for README.md and docs/**, so a docs-only PR is not gated
+# by it; every PR touching code is.) Keep this validation in step with that
+# regex; a mismatch means the script builds titles that fail CI the moment the
+# PR is opened (#33472).
 normalized_issue=""
 sep=""
 issue_kind=""
