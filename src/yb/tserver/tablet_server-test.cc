@@ -195,6 +195,7 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   RpcController controller;
   ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_TRUE(resp.filtering_enabled());
   const auto first_update_time =
       ASSERT_RESULT(LastUpdateTime(FilteredScrape()));
   ASSERT_GT(first_update_time, 0);
@@ -266,6 +267,30 @@ TEST_F(TabletServerTest, ActiveTableMetricsFiltering) {
   ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
   ASSERT_TRUE(resp.has_error());
   ASSERT_TRUE(StatusFromPB(resp.error().status()).IsInvalidArgument());
+  ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
+  ASSERT_TRUE(resp.filtering_enabled());
+
+  // A list sent while filtering is disabled is still accepted, and the response tells the caller
+  // that no scrape is using it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = false;
+  req.clear_table_ids();
+  req.add_table_ids(kTableName.table_name());
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_FALSE(resp.filtering_enabled());
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
+
+  // Once filtering is enabled again, the list stored while it was off takes effect immediately.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = true;
+  ASSERT_STR_CONTAINS(FilteredScrape(), table_label);
+  req.clear_table_ids();
+  req.add_table_ids("another-table");
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableIdsForMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
   ASSERT_STR_NOT_CONTAINS(FilteredScrape(), table_label);
 }
 

@@ -327,6 +327,7 @@ DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefau
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_object_locking_infra);
+DECLARE_bool(enable_active_table_metrics_filtering);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
@@ -3559,6 +3560,10 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
 void TabletServiceImpl::SetActiveTableIdsForMetrics(
     const SetActiveTableIdsForMetricsRequestPB* req, SetActiveTableIdsForMetricsResponsePB* resp,
     rpc::RpcContext context) {
+  // Reported on every response, including rejections, so the caller always learns whether any
+  // scrape can use the list it just sent.
+  resp->set_filtering_enabled(FLAGS_enable_active_table_metrics_filtering);
+
   std::unordered_set<std::string> table_ids;
   table_ids.reserve(req->table_ids_size());
   for (const auto& table_id : req->table_ids()) {

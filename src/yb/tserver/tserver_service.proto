@@ -280,6 +280,11 @@ message SetActiveTableIdsForMetricsRequestPB {
 
 message SetActiveTableIdsForMetricsResponsePB {
   optional TabletServerErrorPB error = 1;
+
+  // State of enable_active_table_metrics_filtering on this tablet server. The list is stored
+  // either way, but no scrape uses it while this is false, so the caller can surface that its
+  // list is not being applied.
+  optional bool filtering_enabled = 2;
 }
 
 message GetLogLocationRequestPB {
