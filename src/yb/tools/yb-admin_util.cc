@@ -18,6 +18,8 @@
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/rpc/outbound_call.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -74,13 +76,19 @@ bool CompareListTabletServersEntries(
 
 }  // namespace
 
-bool IsNoSuchMethodError(const Status& s) {
-  // ERROR_NO_SUCH_METHOD (rpc_header.proto) is rendered as "rpc error 2" by outbound_call's
-  // error category; the code is not carried structurally on Status, so the rendered text is
-  // the only thing to match. The npos comparison is the point: find() returns npos — truthy —
-  // on a miss, and treating it as a bool made every remote error look like a version mismatch
-  // (#33434).
-  return s.IsRemoteError() && s.ToString().find("rpc error 2") != std::string::npos;
+bool IsUnsupportedRpcError(const Status& s) {
+  // Messenger::QueueInboundCall() answers a call it cannot route with ERROR_NO_SUCH_METHOD when the
+  // service is registered but the method is not, and ERROR_NO_SUCH_SERVICE when the service itself
+  // is absent. A cluster that predates the operation produces one or the other depending on whether
+  // the RPC was added to an existing service, so both carry the framing RunCommand() applies.
+  //
+  // Read the code off the Status rather than matching Status::ToString(): OutboundCall::SetFailed()
+  // attaches it with CloneAndAddErrorCode(RpcError(...)), which is how client.cc and
+  // client_master_rpc.cc test the same condition. A status with no rpc code decodes to 0, so it
+  // never matches.
+  const auto rpc_error = rpc::RpcError(s);
+  return rpc_error == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD ||
+         rpc_error == rpc::ErrorStatusPB::ERROR_NO_SUCH_SERVICE;
 }
 
 string SnapshotIdToString(const SnapshotId& snapshot_id) {

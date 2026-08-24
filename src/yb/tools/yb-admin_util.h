@@ -25,9 +25,10 @@
 namespace yb {
 namespace tools {
 
-// Returns true when a command failed because the server does not implement the requested RPC
-// (ERROR_NO_SUCH_METHOD) — i.e. the cluster predates the operation.
-bool IsNoSuchMethodError(const Status& s);
+// Returns true when a command failed because the cluster does not implement the requested RPC —
+// either the method (ERROR_NO_SUCH_METHOD) or the whole service (ERROR_NO_SUCH_SERVICE) is
+// unknown to it, i.e. the cluster predates the operation.
+bool IsUnsupportedRpcError(const Status& s);
 
 std::string SnapshotIdToString(const SnapshotId& snapshot_id);
 
