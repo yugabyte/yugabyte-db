@@ -22,6 +22,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status.h"
 
 DEFINE_NON_RUNTIME_bool(yb_admin_force_use_private_ip, false,
     "Prefer the private RPC address over the broadcast address when a server has registered "
@@ -72,6 +73,15 @@ bool CompareListTabletServersEntries(
 }
 
 }  // namespace
+
+bool IsNoSuchMethodError(const Status& s) {
+  // ERROR_NO_SUCH_METHOD (rpc_header.proto) is rendered as "rpc error 2" by outbound_call's
+  // error category; the code is not carried structurally on Status, so the rendered text is
+  // the only thing to match. The npos comparison is the point: find() returns npos — truthy —
+  // on a miss, and treating it as a bool made every remote error look like a version mismatch
+  // (#33434).
+  return s.IsRemoteError() && s.ToString().find("rpc error 2") != std::string::npos;
+}
 
 string SnapshotIdToString(const SnapshotId& snapshot_id) {
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
