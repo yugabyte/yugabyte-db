@@ -23,7 +23,7 @@ import {
   getThroughputByStorageType,
   useVolumeControls
 } from './VolumeInfoFieldHelper';
-import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
+import { isEphemeralStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
 import {
   CloudType,
   MasterPlacementMode,
@@ -164,7 +164,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       if (
         fieldValue &&
         deviceInfo &&
-        !isEphemeralAwsStorageInstance(instance) &&
+        !isEphemeralStorageInstance(instance) &&
         isEditMode &&
         provider.code !== CloudType.onprem
       ) {
@@ -282,12 +282,11 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       ![CloudType.kubernetes, CloudType.gcp, CloudType.azu].includes(provider?.code);
 
     // Ephemeral instances volume information cannot be resized, refer to PLAT-16118
-    const isEphemeralStorage =
-      provider?.code === CloudType.aws && isEphemeralAwsStorageInstance(instance);
+    const isEphemeralStorage = isEphemeralStorageInstance(instance);
 
     const smartResizePossible =
       [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) &&
-      !isEphemeralAwsStorageInstance(instance) &&
+      !isEphemeralStorageInstance(instance) &&
       fieldValue?.storageType !== StorageType.Scratch;
 
     return (

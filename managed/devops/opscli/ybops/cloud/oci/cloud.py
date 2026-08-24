@@ -21,7 +21,7 @@ from ybops.cloud.oci.command import (
     OciDnsCommand
 )
 from ybops.cloud.oci.utils import (
-    OciCloudAdmin, OciMetadata, get_oci_config,
+    OciCloudAdmin, OciMetadata, get_oci_config, is_local_nvme_shape,
     OCI_INSTANCE_RUNNING, OCI_INSTANCE_STOPPED, OCI_INSTANCE_STOPPING,
     OCI_INSTANCE_STARTING, OCI_INSTANCE_PROVISIONING, OCI_INSTANCE_TERMINATED,
     OCI_INSTANCE_TERMINATING, OCI_VOLUME_TYPE_STANDARD,
@@ -133,6 +133,8 @@ class OciCloud(AbstractCloud):
                         "memSizeGb": info["memSizeGb"],
                         "description": info["description"],
                         "isShared": info["isShared"],
+                        "localDisks": info.get("localDisks", 0),
+                        "localDisksInGbs": info.get("localDisksInGbs", 0),
                         "prices": {}
                     }
                 # Prices come from bundled oci_pricing/pricelist.json via OCIInitializer.
@@ -220,8 +222,10 @@ class OciCloud(AbstractCloud):
         )
 
     def get_device_names(self, args):
-        return ["sd{}".format(chr(ord('b') + i))
-                for i in range(args.num_volumes)]
+        count = int(getattr(args, "num_volumes", 0) or 0)
+        if is_local_nvme_shape(getattr(args, "instance_type", None)):
+            return ["nvme{}n1".format(i) for i in range(count)]
+        return ["sd{}".format(chr(ord('b') + i)) for i in range(count)]
 
     def start_instance(self, host_info, server_ports, capacity_reservation=None):
         instance_id = host_info['id']
