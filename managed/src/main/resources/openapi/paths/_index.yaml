@@ -3367,7 +3367,9 @@
   post:
     operationId: configureQueryLogging
     summary: Configure Query Log for YugabyteDB Universe
-    description: Configure Query Log for a YugabyteDB Universe.
+    description: |
+      Use the POST /customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs API instead.
+      Configure Query Log for a YugabyteDB Universe.
     tags:
       - Universe
     requestBody:
@@ -3414,8 +3416,10 @@
       required: true
   post:
     operationId: configureMetricsExport
-    summary: Configure metrics export
-    description: Configure metrics export from a universe to a metrics export telemetry provider
+    summary: Configure metrics export - deprecated
+    description: |
+      Use the POST /customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs API instead.
+      Configure metrics export from a universe to a metrics export telemetry provider.
     tags:
       - Universe
     requestBody:
@@ -3442,8 +3446,8 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
-    x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: preview
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: deprecated
 '/customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs':
   parameters:
     - name: cUUID
@@ -3493,8 +3497,8 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
-    x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: internal
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: preview
   get:
     operationId: getExportTelemetryConfig
     summary: Get configured export telemetry configs for a universe
@@ -3523,7 +3527,7 @@
           sourceType: endpoint
         checkOnlyPermission: false
     x-yba-api-since: 2026.1.2.0
-    x-yba-api-visibility: internal
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/operator-import':
   parameters:
     - name: cUUID

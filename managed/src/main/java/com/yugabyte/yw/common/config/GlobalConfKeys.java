@@ -573,7 +573,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow Loki Exporter in Telemetry Provider",
           "Allow the usage of Loki Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> telemetryAllowS3 =
       new ConfKeyInfo<>(
           "yb.telemetry.allow_s3",
@@ -1581,7 +1581,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If this flag is enabled, user will be able to create telemetry providers and"
               + " enable/disable YSQL query logging on universes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> metricsExportEnabled =
       new ConfKeyInfo<>(
           "yb.universe.metrics_export_enabled",
