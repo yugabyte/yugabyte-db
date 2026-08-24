@@ -321,6 +321,12 @@ class Log : public RefCountedThreadSafe<Log> {
 
   uint32_t wal_retention_secs() const;
 
+  // The same per-segment time-retention predicate ApplyTimeRetentionPolicy applies during GC;
+  // it only reads the passed segment's footer and this Log's atomics, never the live segment
+  // state, so callers (e.g. remote bootstrap) can apply the policy to a frozen segment snapshot
+  // without racing against concurrent GC.
+  bool SegmentAgedOutOfTimeRetention(const ReadableLogSegment& segment) const;
+
   // Waits until specified op id is added to log.
   // Returns current op id after waiting, which could be greater than or equal to specified op id.
   //
