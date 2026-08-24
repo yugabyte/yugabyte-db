@@ -428,7 +428,6 @@ size_t EditDistance(const string& lhs, const string& rhs) {
 }  // namespace
 
 std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arguments) {
-  std::string expressions;
   bool has_namespace = false;
   bool has_table = false;
   bool has_index = false;
@@ -438,24 +437,33 @@ std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arg
     // usage_arguments_ marks optional arguments with surrounding '[' ']' and repeated ones with
     // a trailing "...", e.g. "[<namespace> <table_name> [<table_name>]...]". Strip those
     // decorations before comparing, otherwise a placeholder inside brackets never matches and its
-    // definition is silently omitted. Stripping also makes a repeated placeholder match more than
-    // once (create_snapshot's "<table> [<table>]..."), so emit each definition at most once.
+    // definition is silently omitted.
     const auto begin = next_argument.find_first_not_of('[');
     const auto end = next_argument.find_last_not_of("].");
     const std::string token = (begin == std::string::npos || end == std::string::npos ||
                                 begin > end)
                                    ? std::string()
                                    : next_argument.substr(begin, end - begin + 1);
-    if (!has_namespace && (token == "<namespace>" || token == "<source_namespace>")) {
+    if (token == "<namespace>" || token == "<source_namespace>") {
       has_namespace = true;
-      expressions += namespace_expression + '\n';
-    } else if (!has_table && token == "<table>") {
+    } else if (token == "<table>") {
       has_table = true;
-      expressions += table_expression + '\n';
-    } else if (!has_index && token == "<index>") {
+    } else if (token == "<index>") {
       has_index = true;
-      expressions += index_expression + '\n';
     }
+  }
+  // The <table> and <index> definitions themselves reference <namespace>, so it must be defined
+  // whenever they are. Each placeholder is emitted once, referencing definitions first.
+  has_namespace |= has_table || has_index;
+  std::string expressions;
+  if (has_table) {
+    expressions += table_expression + '\n';
+  }
+  if (has_index) {
+    expressions += index_expression + '\n';
+  }
+  if (has_namespace) {
+    expressions += namespace_expression + '\n';
   }
   return expressions.empty() ? "" : "Definitions: " + expressions;
 }
@@ -658,9 +666,10 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
   }
 
   // Argument placeholders like <namespace>/<table>/<index> are defined per-command instead of
-  // in a global footer here: only a minority of operations use them (see GetArgumentExpressions),
-  // and RunCommand() already prints the relevant definition alongside a specific command's usage
-  // when that command's arguments are invalid.
+  // in a global footer here: only a minority of operations use them, and RunCommand() prints the
+  // relevant definitions alongside a specific command's usage when that command's arguments are
+  // invalid. GetArgumentExpressions() keeps that output self-contained by also defining
+  // <namespace> whenever a <table>/<index> definition references it.
   google::SetUsageMessage(str.str());
 }
 

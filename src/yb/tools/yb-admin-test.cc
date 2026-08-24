@@ -277,9 +277,10 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
   ASSERT_STR_CONTAINS(output, kFullUsageMarker);
   // The <namespace>/<table>/<index> placeholder definitions are no longer dumped in a global
   // footer here -- only a minority of operations use them, and RunCommand() already surfaces the
-  // relevant definition alongside a specific command's usage on a bad-arguments error instead
-  // (see PrintArgumentExpressions below).
-  ASSERT_STR_NOT_CONTAINS(output, "Argument definitions:");
+  // relevant definitions alongside a specific command's usage on a bad-arguments error instead
+  // (see PrintArgumentExpressions below). The string is <namespace>'s expansion, which the footer
+  // printed and no operation line contains.
+  ASSERT_STR_NOT_CONTAINS(output, "[(ycql|ysql).]<namespace_name>");
   ASSERT_STR_NOT_CONTAINS(output, "Flags from");
   ASSERT_STR_NOT_CONTAINS(output, "yb-admin_cli.cc:");
   // google::ProgramUsage() emits this when SetUsageMessage() has not been called. Any path that
@@ -2216,9 +2217,12 @@ TEST_F(AdminCliTest, PrintArgumentExpressions) {
   const auto index_expression = "<index>\n  <namespace> <index_name> | tableid.<index_id>";
 
   BuildAndStart();
+  // The <table> and <index> definitions reference <namespace>, so <namespace>'s definition must
+  // accompany them even when the command's arguments never name <namespace> directly.
   auto status = CallAdmin("delete_table");
   ASSERT_NOK(status);
   ASSERT_NE(status.ToString().find(table_expression), std::string::npos);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
 
   status = CallAdmin("delete_namespace");
   ASSERT_NOK(status);
@@ -2227,6 +2231,7 @@ TEST_F(AdminCliTest, PrintArgumentExpressions) {
   status = CallAdmin("delete_index");
   ASSERT_NOK(status);
   ASSERT_NE(status.ToString().find(index_expression), std::string::npos);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
 
   status = CallAdmin("add_universe_key_to_all_masters");
   ASSERT_NOK(status);
