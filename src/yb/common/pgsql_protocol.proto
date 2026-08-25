@@ -340,10 +340,11 @@ message PgsqlWriteRequestPB {
   // Presence is the signal: 0 is not "no fence" here, it is HybridTime::kMin and therefore a fence
   // that has unconditionally already passed. Leave the field unset to write without a fence.
   //
-  // Enforcement is gated on the tablet server's --enable_write_fence_ignore_after_hybrid_time,
-  // which is off while the feature is in development. A server with the flag off -- or one too old
-  // to know the field -- applies the write unfenced and reports nothing, so a caller can only rely
-  // on the fence against a cluster it knows enforces it.
+  // Ungated, because setting the field is the opt-in: nothing that exists today sets it, so no
+  // workload changes behaviour by upgrading. A tserver too old to know the field ignores it and
+  // applies the write unfenced, reporting ordinary success -- there is no signal distinguishing
+  // that from a write inside its fence, so a caller can only rely on the fence against a cluster
+  // it knows understands the field.
   optional fixed64 ignore_after_hybrid_time = 31;
 }
 

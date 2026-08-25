@@ -45,7 +45,6 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/value.pb.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/write_fence.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_entry_value.h"
@@ -64,6 +63,7 @@
 
 #include "yb/tserver/thin_client.pb.h"
 #include "yb/tserver/thin_client.proxy.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/pg_wire.h"
@@ -201,9 +201,10 @@ ybthin_status_code ClassifyStatus(const Status& status) {
   }
   // Match the fence's own error code, not the Expired category. Expired is shared: a read can hit
   // DeadlineInfo's per-query deadline, and RetryableRequests::Register returns it for "less than
-  // min running" / "too old" on writes that may well have replicated. Only WriteFenceExpiredError
+  // min running" / "too old" on writes that may well have replicated. Only WRITE_FENCE_EXPIRED
   // means the write definitively did not take effect, which is the whole claim YBTHIN_FENCED makes.
-  if (yb::WriteFenceExpiredError::ValueFromStatus(status)) {
+  if (tserver::TabletServerError::ValueFromStatus(status) ==
+      tserver::TabletServerErrorPB::WRITE_FENCE_EXPIRED) {
     return YBTHIN_FENCED;
   }
   return YBTHIN_OTHER;

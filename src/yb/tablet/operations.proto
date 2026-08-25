@@ -119,10 +119,11 @@ message WritePB {
   // Presence is the signal, as in PgsqlWriteRequestPB: 0 is HybridTime::kMin, a fence already
   // passed, not the absence of one.
   //
-  // Only written when --enable_write_fence_ignore_after_hybrid_time is on, so that neither the new
-  // behaviour nor the new field reaches a mixed-version cluster while the feature is in
-  // development. A peer that does not know the field ignores it when replaying the log, which is
+  // Only written when a client sets the per-op fence, so an entry carries it only for a workload
+  // that opted in. A peer that does not know the field ignores it when replaying the log, which is
   // also what makes rollback safe: entries already accepted by a fencing leader replay unfenced.
+  // That is the correct outcome -- the fence is an admission decision taken at append time, not an
+  // apply-time one, so replay has nothing to re-decide.
   optional fixed64 ignore_after_hybrid_time = 24;
 }
 

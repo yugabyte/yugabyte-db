@@ -27,8 +27,6 @@
 
 #include "yb/thin_client/yb_thin_client.h"
 
-#include "yb/gutil/dynamic_annotations.h"
-
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
 
@@ -53,7 +51,6 @@
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
-DECLARE_bool(enable_write_fence_ignore_after_hybrid_time);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(allow_insecure_connections);
@@ -1298,8 +1295,6 @@ TEST_F(PgThinClientTest, AlreadyReplicatedWriteReportsSuccess) {
 // OperationDriver) for the life of the peer, block client cleanup, and park any later write that
 // reused the same request id -- so the fence is checked before the registration happens.
 TEST_F(PgThinClientTest, WriteFencedByIgnoreAfterHybridTime) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_write_fence_ignore_after_hybrid_time) = true;
-
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE fenced (k int, v bytea, PRIMARY KEY(k ASC))"));
 
@@ -1372,15 +1367,6 @@ TEST_F(PgThinClientTest, WriteFencedByIgnoreAfterHybridTime) {
         return true;
       },
       10s, "fenced write left a retryable-request registration behind"));
-
-  // With enforcement off -- the default while the feature is in development -- the same past fence
-  // is ignored and the write lands, reported as plain success. This is the caveat the ABI documents
-  // for an older or unpromoted tserver, and it is why a caller cannot infer the fence held from
-  // YBTHIN_OK alone.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_write_fence_ignore_after_hybrid_time) = false;
-  ASSERT_EQ(upsert(4, 1), YBTHIN_OK) << "with the flag off the fence must not be enforced";
-  ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>(
-                   "SELECT count(*) FROM fenced WHERE k = 4")));
 
   ybthin_columns_free(info.columns, info.n_columns);
   ybthin_table_close(table);
