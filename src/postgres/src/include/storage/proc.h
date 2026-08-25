@@ -344,14 +344,11 @@ struct PGPROC
 	bool		yb_is_ash_metadata_set;
 
 	/*
-	 * YB:  The sync RPCs in pg_client.cc have a common wait event -
-	 * WaitingOnTServer and have the wait event aux set as the RPC name.
-	 * Instead of storing the RPC name as a string, we store an int because
-	 * it's faster to set an int than a string, and we only have 16 bytes for
-	 * wait event aux and some RPC names cannot fully fit into it. The enum
-	 * list is in wait_state.h (PggateRPC)
+	 * YB: Auxiliary value of the wait event this backend is in, which tells apart
+	 * the waits sharing one wait event. The actual meaning of aux value depends on
+	 * the associated wait event.
 	 */
-	uint16		yb_rpc_code;
+	uint32		yb_wait_event_aux;
 
 	YbcPgSharedDataPlaceholder yb_shared_data;
 };

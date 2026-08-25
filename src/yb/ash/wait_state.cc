@@ -809,14 +809,22 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kWaitingOnTServer:
       return "Name of the PgClient - TServer RPC.";
 
-    case WaitStateCode::kYSQLReserved:
     case WaitStateCode::kCatalogRead:
-    case WaitStateCode::kIndexRead:
-    case WaitStateCode::kTableRead:
-    case WaitStateCode::kStorageFlush:
     case WaitStateCode::kCatalogWrite:
-    case WaitStateCode::kIndexWrite:
+      return "OID of the catalog relation which is read or written. It is empty when a single "
+             "request covers more than one catalog relation, which is the case for the catalog "
+             "prefetching done when a connection starts.";
+
+    case WaitStateCode::kTableRead:
     case WaitStateCode::kTableWrite:
+    case WaitStateCode::kIndexRead:
+    case WaitStateCode::kIndexWrite:
+    case WaitStateCode::kStorageFlush:
+      return "OID of the relation which the request is sent to. It is empty when a single "
+             "request covers more than one relation, which is the case for a flush of buffered "
+             "writes to several relations.";
+
+    case WaitStateCode::kYSQLReserved:
     case WaitStateCode::kTransactionCommit:
     case WaitStateCode::kTransactionTerminate:
     case WaitStateCode::kTransactionRollbackToSavepoint:

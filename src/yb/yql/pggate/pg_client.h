@@ -171,7 +171,8 @@ using TableKeyRanges = boost::container::small_vector<RefCntSlice, 2>;
 
 using PerformResultFuture = pg_client::internal::ResultFuture<pg_client::internal::PerformData>;
 
-using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC)>;
+using WaitEventWatcher =
+    std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC, uint32_t)>;
 
 class PgClient {
  public:

@@ -58,6 +58,24 @@ class PgTypeInfo;
 
 RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params);
 
+// Returns the OID which every element of the range projects to, or kPgInvalidOid when the range
+// is empty or its elements project to more than one OID.
+template<class Range, class Projection>
+[[nodiscard]] PgOid SingleRelationOid(const Range& range, const Projection& projection) {
+  auto i = std::begin(range);
+  const auto end = std::end(range);
+  if (i == end) {
+    return kPgInvalidOid;
+  }
+  const auto oid = projection(*i);
+  for (++i; i != end; ++i) {
+    if (projection(*i) != oid) {
+      return kPgInvalidOid;
+    }
+  }
+  return oid;
+}
+
 struct Bound {
   uint16_t value;
   bool is_inclusive;
@@ -71,7 +89,7 @@ class PgWaitEventWatcher {
   using Starter = YbcWaitEventInfo (*)(YbcWaitEventInfo info);
 
   PgWaitEventWatcher(
-      Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc);
+      Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc, uint32_t aux);
   ~PgWaitEventWatcher();
 
  private:

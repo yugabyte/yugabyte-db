@@ -198,7 +198,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   PgDocMetrics& metrics() { return metrics_; }
 
-  [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
+  [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event, uint32_t aux);
 
   Status AcquireAdvisoryLock(
       const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);

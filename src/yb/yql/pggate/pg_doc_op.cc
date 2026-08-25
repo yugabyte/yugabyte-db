@@ -165,7 +165,8 @@ Result<PgDocResponse::Data> GetResponse(
   RETURN_NOT_OK(UpdateMetricOnGettingResponse(make_lw_function(
       [&result, &future = future_info.future, &metric_info, &session] () -> Status {
         auto event_watcher = session.StartWaitEvent(
-            ResolveWaitEventCode(metric_info.table_type, metric_info.is_write));
+            ResolveWaitEventCode(metric_info.table_type, metric_info.is_write),
+            metric_info.relation_oid);
         result = VERIFY_RESULT(future.Get(session));
         return Status::OK();
       }),
@@ -567,7 +568,7 @@ Result<PgDocResponse> PgDocOp::DefaultSender(
     const PgSession::RunOptions& options, IsForWritePgDoc is_write) {
   PgDocResponse::MetricInfo metrics{
     ResolveRelationType(*ops.front(), table), is_write,
-    IsOpBuffered(!options.force_non_bufferable)};
+    IsOpBuffered(!options.force_non_bufferable), table.pg_table_id().object_oid};
   auto result = PgDocResponse{VERIFY_RESULT(session->RunAsync(ops, table, options)), metrics};
   if (!result.Valid()) {
     // session->RunAsync() calls PgSession::DoRunAsync() -> RunHelper::Flush().

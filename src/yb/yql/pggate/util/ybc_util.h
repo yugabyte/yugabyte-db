@@ -154,6 +154,7 @@ const char* YBCGetWaitEventType(uint32_t wait_event_info);
 const char* YBCGetWaitEventAuxDescription(uint32_t wait_event_info);
 uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type);
 uint32_t YBCWaitEventForWaitingOnTServer();
+YbcAshAuxKind YBCGetWaitEventAuxKind(uint32_t wait_event_info);
 int YBCGetRandomUniformInt(int a, int b);
 YbcWaitEventDescriptor YBCGetWaitEventDescription(size_t index);
 int YBCGetCircularBufferSizeInKiBs();

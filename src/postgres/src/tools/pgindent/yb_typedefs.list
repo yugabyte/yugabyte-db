@@ -254,6 +254,7 @@ YbVirtualWalRecord
 YbcAdvisoryLockId
 YbcAdvisoryLockMode
 YbcAshAcquireBufferLock
+YbcAshAuxKind
 YbcAshConstQueryIdType
 YbcAshGetNextCircularBufferSlot
 YbcAshMetadata

@@ -389,14 +389,25 @@ typedef struct {
   int collation_id;
 } YbcPgAttrValueDescriptor;
 
+// What the auxiliary value of a wait event holds, see YBCGetWaitEventAuxKind.
+typedef enum {
+  YB_ASH_AUX_NONE = 0,
+  // ash::PggateRPC value.
+  YB_ASH_AUX_PGGATE_RPC,
+  // OID of the relation which is read or written.
+  YB_ASH_AUX_RELATION_OID,
+} YbcAshAuxKind;
+
 typedef struct {
   uint32_t wait_event;
-  uint16_t rpc_code;
+  // Zero when the wait event has no auxiliary value. ash::PggateRPC::kNoRPC and kInvalidOid
+  // are both zero, so zero is also the unset value of either kind.
+  uint32_t aux;
 } YbcWaitEventInfo;
 
 typedef struct {
   uint32_t* wait_event;
-  uint16_t* rpc_code;
+  uint32_t* aux;
 } YbcWaitEventInfoPtr;
 
 typedef struct {
@@ -820,7 +831,9 @@ typedef struct {
   // those RPCs. This will always be 0 for PG samples
   int64_t rpc_request_id;
 
-  // Auxiliary information about the sample.
+  // Auxiliary information about the sample, truncated to 15 characters. A TServer sample
+  // stores a tablet or table id. A PG sample stores the associated info based on the
+  // wait event in string format.
   char aux_info[16];
 
   // 32-bit wait event code of the sample.

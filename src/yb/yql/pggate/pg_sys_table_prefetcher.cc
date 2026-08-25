@@ -45,6 +45,7 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
@@ -336,7 +337,9 @@ Result<rpc::CallResponsePtr> Run(
               ? std::optional(BuildCacheOptions(
                   arena, session->catalog_read_time(), ops, *options.caching_info))
               : std::nullopt)),
-      {TableType::SYSTEM, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse});
+      {TableType::SYSTEM, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse,
+       SingleRelationOid(ops, [](const OperationInfo& info) {
+         return info.table->pg_table_id().object_oid; })});
   return VERIFY_RESULT(response.Get(*session)).response;
 }
 

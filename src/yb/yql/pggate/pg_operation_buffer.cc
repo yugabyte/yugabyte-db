@@ -176,18 +176,24 @@ void EnsureCapacity(InFlightOps* in_flight_ops, BufferingSettings buffering_sett
 void BufferableOperations::Add(PgsqlOpPtr&& op, const PgTableDesc& table) {
   DCHECK(operations_.empty() || SkipIntents(*operations_.front()) == SkipIntents(*op))
       << "All operations within BufferableOperations must have the same skip_intents state.";
+  const auto relation = table.pg_table_id();
+  // single_relation_oid_ should only be set if all ops belong to the same oid
+  single_relation_oid_ = operations_.empty() || single_relation_oid_ == relation.object_oid
+      ? relation.object_oid : kPgInvalidOid;
   operations_.push_back(std::move(op));
-  relations_.push_back(table.pg_table_id());
+  relations_.push_back(relation);
 }
 
 void BufferableOperations::Swap(BufferableOperations* rhs) {
   operations_.swap(rhs->operations_);
   relations_.swap(rhs->relations_);
+  std::swap(single_relation_oid_, rhs->single_relation_oid_);
 }
 
 void BufferableOperations::Clear() {
   operations_.clear();
   relations_.clear();
+  single_relation_oid_ = kPgInvalidOid;
 }
 
 void BufferableOperations::Reserve(size_t capacity) {
@@ -206,6 +212,7 @@ size_t BufferableOperations::Size() const {
 void BufferableOperations::MoveTo(PgsqlOps& operations, PgObjectIds& relations) && {
   operations = std::move(operations_);
   relations = std::move(relations_);
+  single_relation_oid_ = kPgInvalidOid;
 }
 
 std::pair<BufferableOperations, BufferableOperations> Split(
@@ -227,6 +234,15 @@ std::pair<BufferableOperations, BufferableOperations> Split(
   }
   operations.resize(index);
   relations.resize(index);
+
+  if (ops.single_relation_oid_ != kPgInvalidOid) {
+    tail.single_relation_oid_ = ops.single_relation_oid_;
+  } else {
+    // Recompute single_relation_oid_ as split ops may now end up belonging to the same oid
+    const auto oid_of = [](const PgObjectId& relation) { return relation.object_oid; };
+    ops.single_relation_oid_ = SingleRelationOid(relations, oid_of);
+    tail.single_relation_oid_ = SingleRelationOid(tail.relations_, oid_of);
+  }
   return {std::move(ops), std::move(tail)};
 }
 

@@ -513,6 +513,24 @@ uint32_t YBCWaitEventForWaitingOnTServer() {
   return std::to_underlying(ash::WaitStateCode::kWaitingOnTServer);
 }
 
+YbcAshAuxKind YBCGetWaitEventAuxKind(uint32_t wait_event_info) {
+  static constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  switch (static_cast<ash::WaitStateCode>(wait_event_info & kWaitEventMask)) {
+    case ash::WaitStateCode::kWaitingOnTServer:
+      return YB_ASH_AUX_PGGATE_RPC;
+    case ash::WaitStateCode::kCatalogRead: [[fallthrough]];
+    case ash::WaitStateCode::kCatalogWrite: [[fallthrough]];
+    case ash::WaitStateCode::kStorageFlush: [[fallthrough]];
+    case ash::WaitStateCode::kTableRead: [[fallthrough]];
+    case ash::WaitStateCode::kTableWrite: [[fallthrough]];
+    case ash::WaitStateCode::kIndexRead: [[fallthrough]];
+    case ash::WaitStateCode::kIndexWrite:
+      return YB_ASH_AUX_RELATION_OID;
+    default:
+      return YB_ASH_AUX_NONE;
+  }
+}
+
 // Get a random integer between a and b
 int YBCGetRandomUniformInt(int a, int b) {
   return RandomUniformInt<int>(a, b);
@@ -537,7 +555,10 @@ int YBCGetCircularBufferSizeInKiBs() {
 }
 
 const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value) {
-  return NoPrefixName(static_cast<ash::PggateRPC>(pggate_rpc_enum_value));
+  // A sample may catch a backend between the aux and the wait event write, so
+  // check for safety
+  const auto rpc = static_cast<ash::PggateRPC>(pggate_rpc_enum_value);
+  return ash::ToCString(rpc) ? NoPrefixName(rpc) : "";
 }
 
 uint32_t YBCAshNormalizeComponentForTServerEvents(uint32_t code, bool component_bits_set) {

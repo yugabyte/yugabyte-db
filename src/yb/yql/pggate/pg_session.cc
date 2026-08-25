@@ -49,6 +49,7 @@
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_flush_debug_context.h"
 #include "yb/yql/pggate/pg_op.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -853,10 +854,11 @@ Result<FlushFuture> PgSession::FlushOperations(
   // ReadTimeAction helps to determine whether it can safely use the optimization of allowing
   // docdb (which serves the operation) to pick the read time.
 
+  const auto relation_oid = ops.single_relation_oid();
   return FlushFuture{
       VERIFY_RESULT(Perform(
           std::move(ops), { .read_time_action = MakeReadTimeActionForFlush(*pg_txn_manager_) })),
-      *this, metrics_};
+      *this, metrics_, relation_oid};
 }
 
 NonTransactionalWrites PgSession::OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const {
@@ -1306,9 +1308,9 @@ Result<PerformFuture> PgSession::RunAsync(
   return DoRunAsync(generator, {}, std::move(cache_options));
 }
 
-PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
+PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event, uint32_t aux) {
   DCHECK_NE(wait_event, ash::WaitStateCode::kWaitingOnTServer);
-  return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC);
+  return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC, aux);
 }
 
 std::string PgSession::LogPrefix() const {

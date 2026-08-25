@@ -2066,7 +2066,7 @@ class PgClient::Impl : public BigDataFetcher {
 
     LOG_IF_WITH_FUNC(INFO, log_detail) << GetTypeName<Req>() << ":\n " << req.ShortDebugString();
 
-    auto watcher = wait_event_watcher_(wait_event, rpc_enum);
+    auto watcher = wait_event_watcher_(wait_event, rpc_enum, 0 /* aux */);
     const auto s = (proxy.*func)(req, &resp, controller);
 
     LOG_IF_WITH_FUNC(INFO, log_detail)

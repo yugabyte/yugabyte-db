@@ -140,6 +140,22 @@ class PgAshVectorIndexTest : public PgAshSingleNode {
   }
 };
 
+class PgAshRelationOidTest : public PgAshSingleNode {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+    // A read is fast, so it is unlikely to be in-flight when the sampler runs. Force it to
+    // linger in the wait state long enough for the sampler to catch it reliably.
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_yb_ash_wait_code_to_sleep_at=$0,$1,$2",
+        std::to_underlying(ash::WaitStateCode::kCatalogRead),
+        std::to_underlying(ash::WaitStateCode::kTableRead),
+        std::to_underlying(ash::WaitStateCode::kStorageFlush)));
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_yb_ash_sleep_at_wait_state_ms=$0", 2 * kSamplingIntervalMs));
+  }
+};
+
 class PgAshMinRunningHybridTimeTest : public PgAshSingleNode {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -1690,6 +1706,53 @@ TEST_F_EX(PgAshTest, VectorIndexSearch, PgAshVectorIndexTest) {
   ASSERT_GT(count, 0)
       << "ASH recorded no VectorIndex_Search samples carrying the search query_id; the wait "
       << "event was either not entered or not attributed to the originating query.";
+}
+
+// The wait event aux of a read is the OID of the relation which is read, and the aux of a flush
+// of buffered writes is the OID of the relation they belong to when they all belong to one.
+TEST_F_EX(PgAshTest, ReadsReportRelationOid, PgAshRelationOidTest) {
+  static constexpr auto kCatalogRelName = "pg_statistic_ext_data";
+  static constexpr auto kTableName = "ash_relation_oid_test";
+  static constexpr auto kRowsPerInsert = 100;
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (0, 0)", kTableName));
+
+  // Read both relations continuously so the sampler observes the (deliberately slowed) reads.
+  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!stop) {
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kCatalogRelName)));
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTableName)));
+    }
+  });
+
+  // A multi row insert buffers its writes and flushes them in one request. The table has no
+  // secondary index, so the flushed operations all belong to it and the flush reports its OID.
+  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int i = 0; !stop; ++i) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 SELECT i, i FROM generate_series($1, $2) i",
+          kTableName, i * kRowsPerInsert + 1, (i + 1) * kRowsPerInsert));
+    }
+  });
+
+  const auto ash_query = Format(
+      "SELECT COUNT(*) FILTER (WHERE wait_event = 'CatalogRead' "
+      "  AND wait_event_aux = '$0'::regclass::oid::text) > 0 "
+      "AND COUNT(*) FILTER (WHERE wait_event = 'TableRead' "
+      "  AND wait_event_aux = '$1'::regclass::oid::text) > 0 "
+      "AND COUNT(*) FILTER (WHERE wait_event = 'StorageFlush' "
+      "  AND wait_event_aux = '$1'::regclass::oid::text) > 0 "
+      "FROM yb_active_session_history",
+      kCatalogRelName, kTableName);
+  const auto status = WaitFor([this, &ash_query]() -> Result<bool> {
+    return conn_->FetchRow<bool>(ash_query);
+  }, 60s * kTimeMultiplier,
+     "wait for CatalogRead, TableRead and StorageFlush samples with their relation OID");
+  thread_holder_.Stop();
+  ASSERT_OK(status);
 }
 
 // With write pipelining the write is acked before Raft replication. Check that the tracking
