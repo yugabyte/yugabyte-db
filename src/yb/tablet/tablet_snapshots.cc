@@ -69,6 +69,12 @@ DEFINE_NON_RUNTIME_int32(snapshot_cleanup_pool_size, 4,
     "Maximum number of concurrent tablet snapshot directory cleanup tasks per process.");
 TAG_FLAG(snapshot_cleanup_pool_size, advanced);
 
+DEFINE_RUNTIME_bool(snapshot_create_flush_on_prepare, true,
+    "Start a non-blocking flush of the tablet when a snapshot create operation is prepared, "
+    "so that most memtable data is already on disk by the time the operation is applied. "
+    "The synchronous flush during apply remains as the correctness backstop.");
+TAG_FLAG(snapshot_create_flush_on_prepare, advanced);
+
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
     "How much time in secs to delay restoring tablet split metadata after restoring "
     "checkpoint.");
@@ -368,6 +374,17 @@ bool TabletSnapshots::IsLastSnapshotTimeFilePath(const std::string& dir) {
 }
 
 Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
+  if (FLAGS_snapshot_create_flush_on_prepare &&
+      operation->operation() == tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET) {
+    // Kick off a flush of all DBs now, overlapping it with Raft replication of this operation.
+    // Create() runs on the Raft apply path, where its synchronous flush blocks every subsequent
+    // operation on this tablet; warming the flush here shrinks that window to the delta written
+    // between prepare and apply. Correctness does not depend on this flush happening or
+    // completing: Create() still flushes synchronously before creating the checkpoint.
+    WARN_NOT_OK(
+        Flush(FlushMode::kAsync, FlushFlags::kAllDbs, rocksdb::FlushReason::kSnapshotCreation),
+        LogPrefix() + "Failed to schedule flush while preparing snapshot creation");
+  }
   return Status::OK();
 }
 
@@ -395,7 +412,11 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   Status s;
   {
     SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
-    s = regular_db().Flush(rocksdb::FlushOptions(rocksdb::FlushReason::kSnapshotCreation));
+    // Flush all DBs, not just the regular DB, so the flushes triggered internally by checkpoint
+    // creation below become no-ops; the intents flush would otherwise run while additionally
+    // holding create_checkpoint_lock(). When the prepare-time flush (see Prepare()) already ran,
+    // this only waits for the delta written since then.
+    s = Flush(FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kSnapshotCreation);
   }
 
   if (PREDICT_FALSE(!s.ok())) {
