@@ -593,6 +593,10 @@ class PgReadAfterCommitVisibilityDdlTest
   }
 
  protected:
+  // Attempts allowed for a DDL that is expected to hit a read restart, see the retry loop in
+  // CheckDdlSeesCommittedData().
+  static constexpr int kMaxDdlAttempts = 10;
+
   // Creates the table read by the DDLs under test, plus a reference table for the foreign key
   // test. Every row inserted by InsertRowOnHost() satisfies both `v > 0` and the foreign key
   // kv(v) -> kv_ref(k), so a DDL that validates data only fails if it cannot read that data.
@@ -648,9 +652,9 @@ class PgReadAfterCommitVisibilityDdlTest
         "SET default_transaction_isolation = '$0'",
         GetParam().serializable ? "serializable" : "repeatable read"));
 
-    // Run the DDL once before skewing the clocks. A catalog cache miss during the DDL would talk
-    // to the master and propagate the data host's hybrid time to the proxy, closing the very
-    // uncertainty window the test relies on.
+    // Run the DDL once before skewing the clocks. A first-time catalog miss during the DDL reads
+    // from the master, which lifts the proxy's clock and can close the uncertainty window the test
+    // relies on.
     ASSERT_OK(RunDdlAndUndo(proxy_conn, check));
 
     auto changers = JumpClockDataNodes(200ms);
@@ -661,8 +665,24 @@ class PgReadAfterCommitVisibilityDdlTest
       ASSERT_OK(InsertRowOnHost(host_conn));
 
       if (ExpectsReadRestartWithoutDeferredMode()) {
-        const auto status = ExecuteDdl(proxy_conn, check.ddl, in_txn_block);
-        ASSERT_NOK(status) << "DDL unexpectedly succeeded without deferred mode";
+        // The DDL only hits a read restart while the commit is still inside the proxy's
+        // uncertainty window, that is, while the proxy's clock stays below the commit's hybrid
+        // time. Nothing keeps it there: every response the proxy processes lifts its clock to the
+        // hybrid time the responder stamped, so one response stamped by the data host after the
+        // commit -- which can land while the INSERT above is still in flight -- puts the proxy's
+        // clock at the commit and the DDL legitimately sees the row. Undo the DDL, commit a newer
+        // row and retry.
+        Status status;
+        for (int attempt = 1; (status = ExecuteDdl(proxy_conn, check.ddl, in_txn_block)).ok();
+             ++attempt) {
+          ASSERT_LT(attempt, kMaxDdlAttempts) << "DDL unexpectedly succeeded without deferred mode";
+          LOG(INFO) << "DDL saw the committed row without deferred mode, re-arming; attempt "
+                    << attempt;
+          if (!check.undo.empty()) {
+            ASSERT_OK(proxy_conn.Execute(check.undo));
+          }
+          ASSERT_OK(InsertRowOnHost(host_conn));
+        }
         LOG(INFO) << "Expected read restart error for DDL without deferred mode: " << status;
         ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
 
