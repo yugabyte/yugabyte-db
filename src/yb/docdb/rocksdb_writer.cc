@@ -478,6 +478,16 @@ Status TransactionalWriter::operator()(
 
   }
 
+  // The write path rejects oversized transactions before Raft submission
+  // (WriteQuery::CheckIntraTxnWriteIdCap), so this is a fail-stop backstop against
+  // incompatible or corrupt replicated data: fail closed rather than crossing into the
+  // reserved range above kIntraTxnWriteIdLimit (previously the counter wrapped silently
+  // at 2^32).
+  SCHECK_LT(
+      intra_txn_write_id_, kIntraTxnWriteIdLimit, IllegalState,
+      "Transaction wrote too many intents to a single tablet: the intra-transaction write ID "
+      "limit is reached");
+
   const auto transaction_value_type = ValueEntryTypeAsChar::kTransactionId;
   const auto write_id_value_type = ValueEntryTypeAsChar::kWriteId;
   IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(intra_txn_write_id_);
@@ -872,6 +882,20 @@ Result<bool> ApplyIntentsContext::Entry(
           Corruption,
           Format("Unexpected write id. Expected: $0, found: $1, raw value: $2",
                  write_id_,
+                 decoded_value.write_id,
+                 intent_iter_.value().ToDebugHexString()));
+    }
+
+    // The write path enforces kIntraTxnWriteIdLimit before intents are written, so a
+    // violation here means corrupt data or an incompatible writer, and the resulting
+    // regular record would carry a write ID from the reserved range.
+    if (decoded_value.write_id >= kIntraTxnWriteIdLimit) {
+      DumpIntentsRecordForTransaction(intents_db_, transaction_id(), &schema_packing_provider());
+      RSTATUS_DCHECK(
+          false,
+          Corruption,
+          Format("Intent write id $0 is at or above the intra-transaction write ID limit, "
+                 "raw value: $1",
                  decoded_value.write_id,
                  intent_iter_.value().ToDebugHexString()));
     }
