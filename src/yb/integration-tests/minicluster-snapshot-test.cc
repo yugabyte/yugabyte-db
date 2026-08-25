@@ -81,6 +81,7 @@
 
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -106,6 +107,7 @@ DECLARE_uint32(TEST_clone_pg_schema_delay_ms);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_bool(TEST_fail_clone_pg_schema);
 DECLARE_bool(TEST_fail_clone_tablets);
+DECLARE_bool(TEST_pause_before_enabling_db_connections);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(enable_object_locking_for_table_locks);
@@ -1484,6 +1486,90 @@ TEST_F(PgCloneTest, PreventConnectionsUntilCloneSuccessful) {
   ASSERT_STR_CONTAINS(
       result.status().message().ToBuffer(),
       Format("database \"$0\" is not currently accepting connections", kTargetNamespaceName1));
+}
+
+TEST_F(PgCloneTest, ConnectAfterCloneWithStaleDisallowConnCache) {
+  // Regression test where connecting to a target database while a clone is happening could lead to
+  // a stale tserver catalog cache entry with datallowconn=false and thus fails connecting to a
+  // successful clone. Test steps:
+  //   1. Pause the clone right before it re-enables connections (target still disabled, but all
+  //      schema DDLs and the restore are already done, so the catalog version is final).
+  //   2. Attempt a connection to the target through the test's tserver. This fails (as expected
+  //      while disabled) but poisons that tserver's catalog cache with datallowconn = false at the
+  //      final catalog version.
+  //   3. Let the clone finish (connections re-enabled). This should invalidate the cache by
+  //      increasing the catalog version.
+  //   4. Assert that connecting to the (now fully cloned) target succeeds. Before the fix, the
+  //      stale cache entry causes this connection to be rejected.
+
+  // Disable auto-analyze so the only reader that touches the target's datallowconn cache is our
+  // controlled connection attempt below. Otherwise the auto-analyze background worker could either
+  // seed the stale entry non-deterministically or bump the catalog version and mask the bug.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+
+  // Pause the clone right before it re-enables connections to the target.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_enabling_db_connections) = true;
+
+  // Run the clone in the background. CREATE DATABASE ... TEMPLATE blocks until the clone is
+  // COMPLETE, which will not happen until we clear the pause flag below.
+  TestThreadHolder threads;
+  Status clone_status;
+  threads.AddThreadFunctor([this, &clone_status]() {
+    auto conn_result = ConnectToDB(kSourceNamespaceName);
+    if (!conn_result.ok()) {
+      clone_status = conn_result.status();
+      return;
+    }
+    auto conn = std::move(*conn_result);
+    clone_status = conn.ExecuteFormat(
+        "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
+  });
+
+  // Wait until the clone reaches the RESTORED state. At this point the target's schema is fully
+  // created and the restore is done (so the catalog version is final), but connections have not yet
+  // been re-enabled (we are paused right before EnableDbConnections).
+  const auto kCloneRestoredTimeout = RegularBuildVsDebugVsSanitizers(150s, 300s, 450s);
+  auto wait_status = WaitFor(
+      [this]() -> Result<bool> {
+        auto state = VERIFY_RESULT(source_conn_->FetchRows<std::string>(Format(
+            "SELECT state FROM yb_database_clones() WHERE db_name = '$0'", kTargetNamespaceName1)));
+        return state.size() == 1 && state[0] == "RESTORED";
+      },
+      kCloneRestoredTimeout, "Wait for clone to reach RESTORED state");
+
+  // Poison the tserver's catalog cache: attempt to connect to the target while connections to it
+  // are still disabled. This must fail, and in doing so caches datallowconn = false at the final
+  // catalog version on the tserver we connect through. We capture (rather than immediately assert)
+  // the result so we can always release the pause below before joining the clone thread.
+  Status poison_status;
+  if (wait_status.ok()) {
+    poison_status = ResultToStatus(ConnectToDB(kTargetNamespaceName1, 3 /* connection timeout */));
+  }
+
+  // Release the pause; the clone re-enables connections and completes. This must
+  // happen unconditionally (even if the waits/asserts above failed) so the background clone thread
+  // is not left blocked forever in the paused EnableDbConnections, which would hang test teardown.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_enabling_db_connections) = false;
+  threads.JoinAll();
+
+  ASSERT_OK(wait_status);
+  ASSERT_OK(clone_status);
+
+  // The poison connection attempt must have failed while the target was disabled.
+  ASSERT_NOK(poison_status);
+  ASSERT_STR_CONTAINS(
+      poison_status.message().ToBuffer(),
+      Format("database \"$0\" is not currently accepting connections", kTargetNamespaceName1));
+
+  // Sanity check: pg_database.datallowconn is now persisted as true for the target.
+  auto datallowconn = ASSERT_RESULT(source_conn_->FetchRow<bool>(
+      Format("SELECT datallowconn FROM pg_database WHERE datname = '$0'", kTargetNamespaceName1)));
+  ASSERT_TRUE(datallowconn);
+
+  // Since the clone completed and datallowconn is true, connecting to the target must succeed.
+  // Before the fix, the stale datallowconn = false cached during the disabled window is never
+  // invalidated (the re-enable is a non-DDL update), so this connection is wrongly rejected.
+  ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
 }
 
 TEST_F(PgCloneTest, Tablespaces) {
