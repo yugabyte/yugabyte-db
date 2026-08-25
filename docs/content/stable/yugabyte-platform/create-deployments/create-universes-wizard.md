@@ -153,7 +153,7 @@ When no region is preferred, YugabyteDB distributes requests equally across regi
 
 Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
 
-You can enable [follower reads](../../../../explore/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
+You can enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
 
 In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
 
@@ -166,7 +166,7 @@ Select **Allocate dedicated nodes to master servers** to place master servers on
 
 Specify the instance to use for the universe nodes:
 
-- Choose the **CPU Architecture**, either x86 (Intel) or AArch6 (ARM).
+- Choose the **CPU Architecture**, either x86 (Intel) or AArch64 (ARM).
 - Choose the **Linux version** to be provisioned on the nodes of the universe.
 
   _This option only applies if you have selected an AWS, GCP, or Azure provider configuration. The available Linux versions are specified in the provider._
@@ -216,7 +216,7 @@ Enable the YSQL and YCQL endpoints and database authentication.
 
 Enter the password to use for the default database admin superuser (for YSQL the user is `yugabyte`, and for YCQL `cassandra`). Be sure to save your password; the password is not saved in YugabyteDB Anywhere. For more information, refer to [Database authorization](../../security/authorization-platform/).
 
-By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [customize these ports](#advanced-configuration).
+By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [customize these ports](#deployment-port-override).
 
 **Features**
 
