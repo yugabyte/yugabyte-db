@@ -316,7 +316,8 @@ ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum,
 										 attcollation, NULL);
 
 	int			total_num_values = nvalues + (bind_to_null ? 1 : 0);
-	YbcPgExpr	ybc_exprs[total_num_values];	/* VLA - scratch space */
+	Assert(total_num_values > 0);
+	YbcPgExpr  *ybc_exprs = palloc(sizeof(YbcPgExpr) * total_num_values);
 
 	/* First, create expr for non-null values. */
 	for (int i = 0; i < nvalues; i++)
@@ -331,6 +332,7 @@ ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum,
 
 	HandleYBStatus(YBCPgDmlBindColumnCondIn(ybScan->handle, colref,
 											total_num_values, ybc_exprs));
+	pfree(ybc_exprs);
 }
 
 /*
@@ -345,7 +347,7 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 					   Datum *values)
 {
 	Assert(nvalues > 0);
-	YbcPgExpr	ybc_rhs_exprs[nvalues];
+	YbcPgExpr  *ybc_rhs_exprs = palloc(sizeof(YbcPgExpr) * nvalues);
 	YbcPgExpr	ybc_elems_exprs[n_attnum_values];	/* VLA - scratch space */
 	Oid			tupType =
 		HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(values[0]));
@@ -400,6 +402,7 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 
 	HandleYBStatus(YBCPgDmlBindColumnCondIn(ybScan->handle, lhs, nvalues,
 											ybc_rhs_exprs));
+	pfree(ybc_rhs_exprs);
 
 	ReleaseTupleDesc(tupdesc);
 }
