@@ -129,6 +129,10 @@ DEFINE_test_flag(int32, stopactivetxns_sleep_in_abort_cb_ms, 0,
 DEFINE_test_flag(bool, no_schedule_remove_intents, false,
                  "Don't schedule remove intents when transaction is cleaned from memory.");
 
+DEFINE_test_flag(uint32, initial_intra_txn_write_id, 0,
+    "Initial intra-transaction write ID for newly added transactions. Lets tests exercise the "
+    "kIntraTxnWriteIdLimit cap without writing billions of intents.");
+
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
 DECLARE_uint64(transaction_heartbeat_usec);
@@ -215,6 +219,15 @@ DEFINE_test_flag(uint64, wait_inactive_transaction_cleanup_sleep_ms, 0,
 namespace yb::tablet {
 
 namespace {
+
+// Where a transaction's intra-transaction write IDs start: kMinWriteId, or the test seed that
+// lets tests reach kIntraTxnWriteIdLimit without writing billions of intents. Used both to seed
+// a newly added transaction's counter and as the admission base for a transaction the
+// participant has not seen yet, so the two sides agree.
+IntraTxnWriteId InitialIntraTxnWriteId() {
+  return FLAGS_TEST_initial_intra_txn_write_id != 0 ? FLAGS_TEST_initial_intra_txn_write_id
+                                                     : kMinWriteId;
+}
 
 YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 
@@ -446,8 +459,10 @@ class TransactionParticipant::Impl
                         << " with begin_time: " << metadata.start_time.ToUint64()
                         << " (" << metadata.start_time << ")";
 
+    TransactionalBatchData initial_batch_data;
+    initial_batch_data.next_write_id = InitialIntraTxnWriteId();
     auto txn = std::make_shared<RunningTransaction>(
-        metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, batch_write_ht,
+        metadata, initial_batch_data, OneWayBitmap(), metadata.start_time, batch_write_ht,
         this, metric_aborted_transactions_pending_cleanup_);
 
     {
@@ -464,6 +479,63 @@ class TransactionParticipant::Impl
     mem_tracker_->Consume(kRunningTransactionSize);
     TransactionsModifiedUnlocked(&min_running_notifier);
     return true;
+  }
+
+  Result<IntraTxnWriteIdReservation> ReserveIntraTxnWriteIds(
+      const TransactionId& id, uint64_t records) {
+    if (records == 0) {
+      // Nothing to admit, and no ledger entry: a batch that writes no strong intent (an UPDATE
+      // or DELETE that matched no row, an empty metadata batch) must not leave a zero-valued
+      // entry behind, since entries are only erased when a release brings them to zero.
+      return IntraTxnWriteIdReservation();
+    }
+    RETURN_NOT_OK(loader_.WaitLoaded(id));
+    // The applied counter and the ledger are read under both locks (mutex_, then the ledger's),
+    // the same order every path uses, so an apply (BatchReplicated) cannot move the counter
+    // between the two reads.
+    std::lock_guard lock(mutex_);
+    auto it = transactions_.find(id);
+    // An unknown transaction's first batch starts where Add will seed it.
+    const uint64_t applied = it != transactions_.end()
+        ? (**it).last_batch_data().next_write_id : InitialIntraTxnWriteId();
+    std::lock_guard ledger_lock(write_id_ledger_->mutex);
+    auto it_outstanding = write_id_ledger_->outstanding.find(id);
+    const uint64_t outstanding =
+        it_outstanding == write_id_ledger_->outstanding.end() ? 0 : it_outstanding->second;
+    if (applied + outstanding + records > kIntraTxnWriteIdLimit) {
+      // Not IllegalState: the client-side TabletInvoker retries IllegalState against other
+      // replicas as a leadership failure (tablet_rpc.cc); QLError propagates to the client as
+      // a hard error. SQLSTATE 54000 mirrors PG's per-transaction command-counter limit
+      // ("cannot have more than 2^32-2 commands in a transaction", xact.c) -- the same shape
+      // of per-transaction counter exhaustion.
+      return STATUS(
+          QLError,
+          Format("Transaction $0 exceeds the maximum number of writes to a single tablet "
+                 "(intra-transaction write ID $1 + $2 outstanding + $3 new records would cross "
+                 "the cap of $4)",
+                 id, applied, outstanding, records, kIntraTxnWriteIdLimit),
+          Slice(),
+          PgsqlError(YBPgErrorCode::YB_PG_PROGRAM_LIMIT_EXCEEDED));
+    }
+    write_id_ledger_->outstanding[id] = outstanding + records;
+    return IntraTxnWriteIdReservation(write_id_ledger_, id, records);
+  }
+
+  void AddPendingIntraTxnWriteIds(const TransactionId& id, uint64_t records) {
+    write_id_ledger_->Add(id, records);
+  }
+
+  void RemovePendingIntraTxnWriteIds(const TransactionId& id, uint64_t records) {
+    write_id_ledger_->Remove(id, records);
+  }
+
+  uint64_t TEST_OutstandingIntraTxnWriteIds() const {
+    std::lock_guard lock(write_id_ledger_->mutex);
+    uint64_t total = 0;
+    for (const auto& [_, records] : write_id_ledger_->outstanding) {
+      total += records;
+    }
+    return total;
   }
 
   HybridTime LocalCommitTime(const TransactionId& id) {
@@ -592,8 +664,13 @@ class TransactionParticipant::Impl
     return std::make_pair(transaction.metadata().isolation, transaction.last_batch_data());
   }
 
-  void BatchReplicated(const TransactionId& id, const TransactionalBatchData& data) {
+  void BatchReplicated(
+      const TransactionId& id, const TransactionalBatchData& data,
+      uint64_t applied_write_id_bound) {
     std::lock_guard lock(mutex_);
+    // Under mutex_ together with the counter update, so an admission check (which reads both
+    // under mutex_) never sees the batch counted twice or not at all.
+    write_id_ledger_->RemoveUpTo(id, applied_write_id_bound);
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
       LOG_IF_WITH_PREFIX(DFATAL, !WasTransactionRecentlyRemoved(id))
@@ -3002,6 +3079,9 @@ class TransactionParticipant::Impl
   scoped_refptr<AtomicGauge<uint64_t>> metric_current_fast_mode_rr_rc_transactions_;
 
   TransactionLoader loader_;
+  // See IntraTxnWriteIdLedger. Shared with reservation guards, never replaced.
+  const std::shared_ptr<IntraTxnWriteIdLedger> write_id_ledger_ =
+      std::make_shared<IntraTxnWriteIdLedger>();
   std::atomic<bool> closing_{false};
   CountDownLatch start_latch_{1};
   CountDownLatch shutdown_latch_{1};
@@ -3104,8 +3184,96 @@ TransactionParticipant::PrepareBatchData(
 }
 
 void TransactionParticipant::BatchReplicated(
-    const TransactionId& id, const TransactionalBatchData& data) {
-  return impl_->BatchReplicated(id, data);
+    const TransactionId& id, const TransactionalBatchData& data,
+    uint64_t applied_write_id_bound) {
+  return impl_->BatchReplicated(id, data, applied_write_id_bound);
+}
+
+Result<IntraTxnWriteIdReservation> TransactionParticipant::ReserveIntraTxnWriteIds(
+    const TransactionId& id, uint64_t records) {
+  return impl_->ReserveIntraTxnWriteIds(id, records);
+}
+
+void TransactionParticipant::AddPendingIntraTxnWriteIds(
+    const TransactionId& id, uint64_t records) {
+  impl_->AddPendingIntraTxnWriteIds(id, records);
+}
+
+void TransactionParticipant::RemovePendingIntraTxnWriteIds(
+    const TransactionId& id, uint64_t records) {
+  impl_->RemovePendingIntraTxnWriteIds(id, records);
+}
+
+uint64_t TransactionParticipant::TEST_OutstandingIntraTxnWriteIds() const {
+  return impl_->TEST_OutstandingIntraTxnWriteIds();
+}
+
+void IntraTxnWriteIdLedger::Add(const TransactionId& id, uint64_t records) {
+  if (records == 0) {
+    return;
+  }
+  std::lock_guard lock(mutex);
+  outstanding[id] += records;
+}
+
+void IntraTxnWriteIdLedger::Remove(const TransactionId& id, uint64_t records) {
+  if (records == 0) {
+    return;
+  }
+  std::lock_guard lock(mutex);
+  auto it = outstanding.find(id);
+  if (it == outstanding.end()) {
+    LOG(DFATAL) << "Releasing " << records << " intra-transaction write IDs for " << id
+                << " with nothing outstanding";
+    return;
+  }
+  LOG_IF(DFATAL, it->second < records)
+      << "Releasing " << records << " intra-transaction write IDs for " << id << " with only "
+      << it->second << " outstanding";
+  it->second -= std::min(it->second, records);
+  if (it->second == 0) {
+    outstanding.erase(it);
+  }
+}
+
+void IntraTxnWriteIdLedger::RemoveUpTo(const TransactionId& id, uint64_t records) {
+  if (records == 0) {
+    return;
+  }
+  std::lock_guard lock(mutex);
+  auto it = outstanding.find(id);
+  if (it == outstanding.end()) {
+    return;
+  }
+  it->second -= std::min(it->second, records);
+  if (it->second == 0) {
+    outstanding.erase(it);
+  }
+}
+
+IntraTxnWriteIdReservation& IntraTxnWriteIdReservation::operator=(
+    IntraTxnWriteIdReservation&& other) noexcept {
+  if (this != &other) {
+    Release();
+    ledger_ = std::move(other.ledger_);
+    id_ = other.id_;
+    records_ = other.records_;
+    other.records_ = 0;
+    other.ledger_.reset();
+  }
+  return *this;
+}
+
+void IntraTxnWriteIdReservation::Release() {
+  if (ledger_ && records_ != 0) {
+    ledger_->Remove(id_, records_);
+  }
+  Detach();
+}
+
+void IntraTxnWriteIdReservation::Detach() {
+  records_ = 0;
+  ledger_.reset();
 }
 
 HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {

@@ -68,6 +68,15 @@ class DocHybridTimeBuffer {
   std::array<char, 1 + kMaxBytesPerEncodedHybridTime> buffer_;
 };
 
+// Upper bound on the intra-transaction write IDs TransactionalWriter consumes applying
+// put_batch: one per strong intent. Every write and read pair takes a strong intent on its full
+// key; with skip_prefix_locks set its top-level ancestor key may take one too (serializable
+// isolation, TransactionalWriter::operator()); each advisory lock pair takes one; weak intents
+// take none. A pure function of fields present on every replicated batch, so the admission
+// reservation, the pending-apply accounting and the release at apply all compute the same
+// value for one batch.
+uint64_t MaxIntraTxnWriteIdsForBatch(const LWKeyValueWriteBatchPB& put_batch);
+
 class TransactionalWriter : public rocksdb::DirectWriter {
  public:
   TransactionalWriter(

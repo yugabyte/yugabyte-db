@@ -11,9 +11,14 @@
 // under the License.
 //
 
+#include <optional>
+#include <regex>
+
 #include <gtest/gtest.h>
 
 #include <boost/algorithm/string/join.hpp>
+
+#include "yb/common/doc_hybrid_time.h"
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/rocksdb/db.h"
@@ -58,6 +63,7 @@ DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(db_filter_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_string(time_source);
+DECLARE_uint32(TEST_initial_intra_txn_write_id);
 DECLARE_uint64(rocksdb_universal_compaction_always_include_size_threshold);
 
 METRIC_DECLARE_counter(docdb_column_tombstones_dropped_unmerged);
@@ -136,6 +142,137 @@ class PgTxnTest : public PgMiniTestBase {
     ASSERT_EQ(value_from_deprecated_guc, expected);
   }
 };
+
+namespace {
+
+// Parses the cap error's arithmetic: "intra-transaction write ID <applied> + <outstanding>
+// outstanding + <records> new records would cross the cap of <limit>".
+struct IntraTxnWriteIdCapRejection {
+  uint64_t applied = 0;
+  uint64_t outstanding = 0;
+  uint64_t records = 0;
+};
+
+Result<IntraTxnWriteIdCapRejection> ParseIntraTxnWriteIdCapRejection(const std::string& message) {
+  static const std::regex kPattern(
+      "intra-transaction write ID (\\d+) \\+ (\\d+) outstanding \\+ (\\d+) new records");
+  std::smatch match;
+  SCHECK(std::regex_search(message, match, kPattern), IllegalState,
+         Format("Unexpected cap error: $0", message));
+  return IntraTxnWriteIdCapRejection{
+      .applied = std::stoull(match[1]),
+      .outstanding = std::stoull(match[2]),
+      .records = std::stoull(match[3]),
+  };
+}
+
+// Inserts single rows (keys base+1, base+2, ...) in the open transaction until the cap
+// rejects one; returns how many fit and the rejection's arithmetic. The rows must all land on
+// the single tablet the test created.
+Result<std::pair<size_t, IntraTxnWriteIdCapRejection>> InsertUntilCapRejects(
+    PGConn* conn, int base) {
+  for (size_t fitted = 0; fitted <= 1000; ++fitted) {
+    auto status = conn->ExecuteFormat("INSERT INTO test VALUES ($0, $0)", base + fitted + 1);
+    if (status.ok()) {
+      continue;
+    }
+    SCHECK_STR_CONTAINS(status.message().ToBuffer(), "exceeds the maximum number of writes");
+    return std::make_pair(
+        fitted, VERIFY_RESULT(ParseIntraTxnWriteIdCapRejection(status.message().ToBuffer())));
+  }
+  return STATUS(IllegalState, "The cap never rejected an insert");
+}
+
+}  // namespace
+
+// The always-on intra-transaction write-ID cap (kIntraTxnWriteIdLimit): a transaction whose
+// per-tablet counter is near the limit gets a clean, non-retryable error from the pre-Raft
+// admission check (TransactionParticipant::ReserveIntraTxnWriteIds) -- no crash, and the
+// transaction rolls back normally. The check is exact, not a margin: the rejected batch is the
+// first one that could cross the limit (applied + outstanding + its bound > limit) and nothing
+// below the limit was left unused (applied + outstanding <= limit), whatever a row costs on this
+// build (one strong intent with packed rows, one per column without) and whether or not the
+// preceding pipelined batches have applied yet. Seeds the counter via
+// TEST_initial_intra_txn_write_id because writing ~2^31 real intents is infeasible in a test.
+TEST_F(PgTxnTest, IntraTxnWriteIdCapRejectsOversizedTransaction) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Single tablet: the counter (and the seeded TEST value) is per-transaction-per-tablet, so
+  // every insert must land on the same tablet's participant.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+
+  // Every transaction from here starts kRemaining write IDs below the limit, on both sides of
+  // the check (the admission base for a transaction the participant has not seen yet, and the
+  // counter it is seeded with when its first batch applies). Keep the flag window tight: it
+  // applies to every new transaction on the (shared-process) cluster.
+  constexpr uint32_t kRemaining = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_initial_intra_txn_write_id) =
+      kIntraTxnWriteIdLimit - kRemaining;
+  auto flag_resetter = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_initial_intra_txn_write_id) = 0;
+  });
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  const auto [fitted, rejection] = ASSERT_RESULT(InsertUntilCapRejects(&conn, 0));
+  ASSERT_GE(fitted, 1U);
+  ASSERT_LE(fitted, kRemaining);
+  ASSERT_GT(rejection.applied + rejection.outstanding + rejection.records, kIntraTxnWriteIdLimit);
+  ASSERT_LE(rejection.applied + rejection.outstanding, kIntraTxnWriteIdLimit);
+  ASSERT_OK(conn.RollbackTransaction());
+
+  // With the seed removed, new transactions are unaffected -- including by anything the
+  // rejected batch might have left outstanding.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_initial_intra_txn_write_id) = 0;
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT g, g FROM generate_series(100, 199) g"));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM test")), 100);
+}
+
+// A rejected batch and a rolled-back transaction leave nothing outstanding on the tablet. The
+// ledger is per transaction, so the budget check alone cannot see a leak left behind by an
+// earlier transaction; the ledger total on every replica is asserted to drain to zero.
+TEST_F(PgTxnTest, IntraTxnWriteIdCapReleasesOutstandingOnRollback) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  const auto assert_ledgers_drain = [this]() {
+    const auto peers = ASSERT_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kAll));
+    ASSERT_FALSE(peers.empty());
+    for (const auto& peer : peers) {
+      auto tablet = ASSERT_RESULT(peer->shared_tablet());
+      ASSERT_OK(WaitFor(
+          [&]() -> Result<bool> {
+            return tablet->transaction_participant()->TEST_OutstandingIntraTxnWriteIds() == 0;
+          },
+          10s * kTimeMultiplier,
+          Format("write-ID ledger on $0 to drain", peer->permanent_uuid())));
+    }
+  };
+
+  constexpr uint32_t kRemaining = 4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_initial_intra_txn_write_id) =
+      kIntraTxnWriteIdLimit - kRemaining;
+  auto flag_resetter = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_initial_intra_txn_write_id) = 0;
+  });
+
+  std::optional<size_t> budget;
+  for (int round = 0; round != 3; ++round) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    const auto [fitted, rejection] = ASSERT_RESULT(InsertUntilCapRejects(&conn, round * 100));
+    ASSERT_GE(fitted, 1U) << "round " << round;
+    ASSERT_LE(rejection.applied + rejection.outstanding, kIntraTxnWriteIdLimit)
+        << "round " << round;
+    if (budget) {
+      ASSERT_EQ(fitted, *budget) << "round " << round;
+    }
+    budget = fitted;
+    ASSERT_OK(conn.RollbackTransaction());
+    ASSERT_NO_FATALS(assert_ledgers_drain());
+  }
+}
 
 TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(EmptyUpdate)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_in_apply_if_no_metadata) = true;
