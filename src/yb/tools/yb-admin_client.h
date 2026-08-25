@@ -566,6 +566,9 @@ class ClusterAdminClient {
   // Look up the RPC address of the server with the specified UUID from the Master.
   Result<HostPort> GetFirstRpcAddressForTS(const std::string& uuid);
 
+  // Look up the registration of the server with the specified UUID from the Master.
+  Result<ServerRegistrationPB> GetTSRegistration(const std::string& uuid);
+
   // Step down the leader of this tablet.
   // If leader_uuid is empty, look it up with the master.
   // If leader_uuid is not empty, must provide a leader_proxy.

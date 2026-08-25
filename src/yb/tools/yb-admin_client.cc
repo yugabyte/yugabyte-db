@@ -774,11 +774,12 @@ Status ClusterAdminClient::SetTabletPeerInfo(
     HostPort* peer_addr) {
   TSInfoPB peer_ts_info;
   RETURN_NOT_OK(GetTabletPeer(tablet_id, mode, &peer_ts_info));
-  auto rpc_addresses = peer_ts_info.private_rpc_addresses();
-  CHECK_GT(rpc_addresses.size(), 0) << peer_ts_info
-        .ShortDebugString();
+  const auto rpc_address = SelectServerAddress(peer_ts_info);
+  SCHECK_FORMAT(
+      !rpc_address.host().empty(), NotFound, "Tablet peer has no RPC address registered: $0",
+      peer_ts_info.ShortDebugString());
 
-  *peer_addr = HostPortFromPB(rpc_addresses.Get(0));
+  *peer_addr = HostPortFromPB(rpc_address);
   *peer_uuid = peer_ts_info.permanent_uuid();
   return Status::OK();
 }
@@ -977,10 +978,17 @@ Status ClusterAdminClient::ChangeConfig(
     return STATUS(InvalidArgument, "Must specify member_type when adding a server.");
   }
 
-  // Look up RPC address of peer if adding as a new server.
+  // Record all the addresses of the peer if adding as a new server, so that every other peer can
+  // pick the one that is appropriate for it.
   if (cc_type == consensus::ADD_SERVER) {
-    HostPort host_port = VERIFY_RESULT(GetFirstRpcAddressForTS(peer_uuid));
-    HostPortToPB(host_port, peer_pb.mutable_last_known_private_addr()->Add());
+    auto registration = VERIFY_RESULT(GetTSRegistration(peer_uuid));
+    SCHECK_FORMAT(
+        !registration.private_rpc_addresses().empty(), NotFound,
+        "Server with UUID $0 has no RPC address registered with the Master", peer_uuid);
+
+    peer_pb.mutable_last_known_private_addr()->Swap(registration.mutable_private_rpc_addresses());
+    peer_pb.mutable_last_known_broadcast_addr()->Swap(registration.mutable_broadcast_addresses());
+    peer_pb.mutable_cloud_info()->Swap(registration.mutable_cloud_info());
   }
 
   // Look up the location of the tablet leader from the Master.
@@ -1333,21 +1341,29 @@ Status ClusterAdminClient::ListTabletServers(
   return Status::OK();
 }
 
-Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid) {
+Result<ServerRegistrationPB> ClusterAdminClient::GetTSRegistration(const PeerId& uuid) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     if (server.instance_id().permanent_uuid() == uuid) {
-      if (!server.has_registration() ||
-          server.registration().common().private_rpc_addresses().empty()) {
-        break;
+      if (server.has_registration()) {
+        return server.registration().common();
       }
-      return HostPortFromPB(server.registration().common().private_rpc_addresses(0));
+      break;
     }
   }
 
-  return STATUS_FORMAT(
-      NotFound, "Server with UUID $0 has no RPC address registered with the Master", uuid);
+  return STATUS_FORMAT(NotFound, "Server with UUID $0 is not registered with the Master", uuid);
+}
+
+Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid) {
+  const auto registration = VERIFY_RESULT(GetTSRegistration(uuid));
+  const auto rpc_address = SelectServerAddress(registration);
+  SCHECK_FORMAT(
+      !rpc_address.host().empty(), NotFound,
+      "Server with UUID $0 has no RPC address registered with the Master", uuid);
+
+  return HostPortFromPB(rpc_address);
 }
 
 Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
@@ -1498,14 +1514,14 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
       continue;
     }
 
-    if (!server.has_registration() ||
-        server.registration().common().private_rpc_addresses().empty()) {
+    const auto rpc_address = SelectServerAddress(server.registration().common());
+    if (rpc_address.host().empty()) {
       LOG(WARNING) << "Tablet server " << ts_uuid << " has no RPC address registered";
       cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
       continue;
     }
 
-    HostPort ts_addr = HostPortFromPB(server.registration().common().private_rpc_addresses(0));
+    HostPort ts_addr = HostPortFromPB(rpc_address);
     TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
 
     auto resp = InvokeRpc(
@@ -1934,7 +1950,10 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(bool is_enabled) {
           &master::MasterClusterProxy::ChangeLoadBalancerState, *master_cluster_proxy_,
           req));
     } else {
-      HostPortPB hp_pb = master.registration().private_rpc_addresses(0);
+      const auto hp_pb = SelectServerAddress(master.registration());
+      SCHECK_FORMAT(
+          !hp_pb.host().empty(), NotFound, "Master $0 has no RPC address registered",
+          master.instance_id().permanent_uuid());
 
       master::MasterClusterProxy proxy(proxy_cache_.get(), HostPortFromPB(hp_pb));
       RETURN_NOT_OK(InvokeRpc(
@@ -1966,25 +1985,31 @@ Status ClusterAdminClient::GetLoadBalancerState() {
   master::GetLoadBalancerStateRequestPB req;
   master::GetLoadBalancerStateResponsePB resp;
   string error;
-  master::MasterClusterProxy* proxy;
   for (const auto& master : list_resp.masters()) {
     error.clear();
+    master::MasterClusterProxy* proxy = nullptr;
     std::unique_ptr<master::MasterClusterProxy> follower_proxy;
     if (master.role() == PeerRole::LEADER) {
       proxy = master_cluster_proxy_.get();
     } else {
-      HostPortPB hp_pb = master.registration().private_rpc_addresses(0);
-      follower_proxy = std::make_unique<master::MasterClusterProxy>(
-          proxy_cache_.get(), HostPortFromPB(hp_pb));
-      proxy = follower_proxy.get();
+      const auto hp_pb = SelectServerAddress(master.registration());
+      if (hp_pb.host().empty()) {
+        error = "No RPC address registered with the Master";
+      } else {
+        follower_proxy = std::make_unique<master::MasterClusterProxy>(
+            proxy_cache_.get(), HostPortFromPB(hp_pb));
+        proxy = follower_proxy.get();
+      }
     }
-    auto result = InvokeRpc(&master::MasterClusterProxy::GetLoadBalancerState, *proxy, req);
-    if (!result) {
-      error = result.ToString();
-    } else {
-      resp = *result;
-      if (!resp.has_error()) {
-        error = resp.error().status().message();
+    if (proxy != nullptr) {
+      auto result = InvokeRpc(&master::MasterClusterProxy::GetLoadBalancerState, *proxy, req);
+      if (!result) {
+        error = result.ToString();
+      } else {
+        resp = *result;
+        if (!resp.has_error()) {
+          error = resp.error().status().message();
+        }
       }
     }
     const auto master_reg = master.has_registration() ? &master.registration() : nullptr;
@@ -4649,14 +4674,12 @@ Status ClusterAdminClient::PauseResumeXClusterProducerStreams(
 Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS() {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
-  for (const ListTabletServersResponsePB::Entry& server : servers) {
-    if (server.has_registration() &&
-        !server.registration().common().private_rpc_addresses().empty()) {
-      return HostPortFromPB(server.registration().common().private_rpc_addresses(0));
-    }
+  const auto rpc_address = SelectTabletServerAddress(servers);
+  if (rpc_address.host().empty()) {
+    return STATUS(NotFound, "Didn't find a server registered with the Master");
   }
 
-  return STATUS(NotFound, "Didn't find a server registered with the Master");
+  return HostPortFromPB(rpc_address);
 }
 
 Status ClusterAdminClient::BootstrapProducer(const TableIds& table_ids) {
@@ -5019,7 +5042,12 @@ Status ClusterAdminClient::GetTableXorHash(
         leader_replica != location.replicas().end(), NotFound,
         "Leader replica not found for tablet $0", location.tablet_id());
 
-    auto addr = HostPort::FromPB(leader_replica->ts_info().private_rpc_addresses(0));
+    const auto rpc_address = SelectServerAddress(leader_replica->ts_info());
+    SCHECK_FORMAT(
+        !rpc_address.host().empty(), NotFound,
+        "Leader replica for tablet $0 has no RPC address registered", location.tablet_id());
+
+    auto addr = HostPort::FromPB(rpc_address);
     auto tserver_proxy =
         std::make_unique<tserver::TabletServerServiceProxy>(proxy_cache_.get(), addr);
     tserver::DumpTabletDataRequestPB req;
