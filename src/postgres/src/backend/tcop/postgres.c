@@ -7816,10 +7816,12 @@ PostgresMain(const char *dbname, const char *username)
 						 */
 						if (!MyProcPort->yb_has_auth_passthrough_finished)
 						{
+							Oid			database_oid;
+
 							YbLogAuthPassthroughConnAuthenticated(MyProcPort);
 
-							if (YbCreateClientId() == 0)
-								YbAuthPassthroughSetupGUCAndReport();
+							if (YbCreateClientId(&database_oid) == 0)
+								YbAuthPassthroughSetupGUCAndReport(database_oid);
 						}
 
 						MyProcPort->yb_has_auth_passthrough_finished = true;

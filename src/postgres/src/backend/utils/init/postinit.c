@@ -1823,13 +1823,12 @@ YbGetAuthorizedConnections()
  * connection manager.
  */
 void
-YbAuthPassthroughSetupGUCAndReport(void)
+YbAuthPassthroughSetupGUCAndReport(Oid dboid)
 {
 	/* This function is only for auth passthrough via Connection Manager */
 	Assert(YbIsAuthPassthroughInProgress(MyProcPort));
 
-	const char *dbname = MyProcPort->database_name;
-	Oid			dboid = get_database_oid(dbname, false);
+	Assert(OidIsValid(dboid));
 
 	/*
 	 * Process any options passed in the startup packet. This is important

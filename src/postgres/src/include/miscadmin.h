@@ -521,7 +521,7 @@ extern void BaseInit(void);
 
 extern void YbCheckMyDatabase(const char *name, bool am_superuser,
 							  bool override_allow_connections, Oid db_oid);
-extern void YbAuthPassthroughSetupGUCAndReport(void);
+extern void YbAuthPassthroughSetupGUCAndReport(Oid dboid);
 
 /* in utils/init/miscinit.c */
 extern PGDLLIMPORT bool IgnoreSystemIndexes;
