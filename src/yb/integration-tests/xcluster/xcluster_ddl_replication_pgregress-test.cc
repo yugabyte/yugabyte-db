@@ -59,8 +59,10 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     // Filter out any line corresponding to the replicated_ddls commit_time row since this only
     // exists on the target.
     const boost::regex pattern("\n1\t1\t\\{\"commit_times\": .*$");
-    return boost::regex_replace(
+    auto replaced = boost::regex_replace(
         output, pattern, "", boost::format_first_only | boost::match_not_dot_newline);
+
+    return MaskRestrictKey(replaced);
   }
 
   Result<std::string> RunYSQLDump(Cluster& cluster) { return RunYSQLDump(cluster, namespace_name); }
@@ -74,7 +76,15 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     auto replaced = boost::regex_replace(
         output, pattern, "<binary_upgrade_set_next>", boost::match_not_dot_newline);
 
-    return replaced;
+    return MaskRestrictKey(replaced);
+  }
+
+  // ysql_dump picks a fresh random key for the \restrict and \unrestrict lines it wraps a
+  // plain text dump in, so two dumps of identical databases never compare equal. Replace the
+  // key with a constant.
+  static std::string MaskRestrictKey(const std::string& dump) {
+    const boost::regex pattern("(^\\\\(?:un)?restrict )\\S+$", boost::match_not_dot_newline);
+    return boost::regex_replace(dump, pattern, "$1<key>");
   }
 
   void ExpectEqModuloSequenceValues(
