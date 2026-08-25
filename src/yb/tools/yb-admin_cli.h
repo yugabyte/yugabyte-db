@@ -95,14 +95,22 @@ class ClusterAdminCli {
  private:
   // A help request found in raw argv before the flag parse (see ScanForHelpRequest).
   struct HelpRequest {
-    // First token that names a registered operation, or empty for the plain overview.
+    // Set when the request is the `help` operation rather than a --help* flag. Run() then
+    // dispatches it through RunCommand() so that answering it early changes nothing about its
+    // output or its error framing, and help_args holds the operation's own arguments.
+    bool help_operation = false;
+    std::vector<std::string> help_args;
+    // First token that names a registered operation, or empty for the plain overview. Unused for
+    // a help_operation request, which carries its target in help_args.
     std::string operation;
     // Whether --helpshort was requested, adding yb-admin's own flags to the overview.
     bool helpshort = false;
   };
 
-  // Scans raw argv for --help/-h/--helpshort before the flag parse, so help works with a
-  // malformed --flagfile or garbage flag values. Returns nullopt when help was not requested.
+  // Scans raw argv for --help/-h/--helpshort and for a leading `help` operation before the flag
+  // parse, so every help surface answers even when the parse would fail on a malformed
+  // --flagfile, an unparsable flag value, or an unknown flag. Returns nullopt when help was not
+  // requested.
   std::optional<HelpRequest> ScanForHelpRequest(int argc, char** argv) const;
   void PrintHelpRequest(const HelpRequest& request, const std::string& prog_name,
                         std::ostream& out);
