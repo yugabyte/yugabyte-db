@@ -5260,6 +5260,19 @@ show_indexsearches_info(PlanState *planstate, ExplainState *es)
 	if (!es->analyze)
 		return;
 
+	/*
+	 * TODO (#33459): YB AMs (lsm, ybgin, ybhnsw)
+	 * should update nsearches appropriately.
+	 * Once 33459 is fixed, reenable reporting
+	 * Index Searches line for these YB AMs.
+	 */
+	{
+		Relation	yb_rel = ((ScanState *) planstate)->ss_currentRelation;
+
+		if (yb_rel && IsYBRelation(yb_rel))
+			return;
+	}
+
 	/* Initialize counters with stats from the local process first */
 	switch (nodeTag(plan))
 	{
