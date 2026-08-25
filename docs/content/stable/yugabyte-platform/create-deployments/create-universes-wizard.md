@@ -32,6 +32,8 @@ type: docs
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes.
 
+For planning considerations, including placement (Guided and Expert mode), hardware, and security, refer to [Plan your universe](../create-universes-overview/).
+
 For information on modifying or scaling an existing universe, refer to [Modify universe](../../scale-deployments/edit-universe/).
 
 ## Prerequisites
@@ -97,8 +99,6 @@ In Expert mode, you set the following:
 1. Regions. Select the regions where you want to locate the primary cluster.
 1. Replication factor. This determines how many replicas of your data to create in the cluster. This in turn determines how many regions and zones the cluster will require, and, by extension, how many failures it can tolerate without interruption or downtime.
 1. Availability Zones and Nodes. Select the zones in the regions where you want to place the nodes, specify the number of nodes per region, and specify the preferred region(s) in ranked order.
-
-  All zones have the same number of nodes.
 
 {{% /tab %}}
 

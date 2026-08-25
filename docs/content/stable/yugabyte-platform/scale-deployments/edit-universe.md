@@ -39,6 +39,8 @@ You can also change [user tags](../instance-tags/), [configuration flags](../edi
 
 Horizontal scaling adds or removes nodes (or pods, for Kubernetes) and can include changing availability zones or regions.
 
+In on-premises universes, ensure your provider has enough free nodes to accommodate any increase in size of your cluster.
+
 To change the number of nodes of universes created with an on-premises provider and secured with third-party certificates obtained from external certification authorities, you must first add the certificates to the nodes you will add to the universe. Refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-ca/). Ensure that the certificates are signed by the same external CA and have the same root certificate. In addition, ensure that you copy the certificates to the same locations that you originally used when creating the universe.
 
 {{< tabpane text=true >}}
@@ -47,19 +49,52 @@ To change the number of nodes of universes created with an on-premises provider 
 
 {{<tags/ui/new>}} To scale a universe horizontally:
 
-1. Navigate to the universe, then open **Settings > Placement**.
+Navigate to the universe, select **Settings > Placement**, and on the **Primary Cluster** card, click **Edit** and choose one of the following:
 
-1. On the **Primary Cluster** card, click **Edit** and choose one of the following:
+- **Edit Regions** to add or remove regions, or to change resilience or replication factor. After you update regions, continue to the nodes and availability zones step.
+- **Edit AZ and Node Placement** (or **Edit AZ and Pod Placement** for Kubernetes) to add or remove nodes and availability zones.
 
-    - **Edit AZ and Node Placement** (or **Edit AZ and Pod Placement** for Kubernetes) to add or remove nodes and availability zones.
-    - **Edit Regions** to add or remove regions, or to change resilience or replication factor. After you update regions, continue to the nodes and availability zones step.
+Either option displays the **Edit Placement** wizard.
 
-1. Update the placement.
+Using the wizard, you can specify placement using **Guided** (suitable for most topologies) or **Expert** (more flexible) mode.
 
-    - Change the number of nodes (or pods) per availability zone. As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
-    - {{<tags/feature/ea idea="56">}}**Replication Factor** - Currently, you can only _increase_ the replication factor. Note that this change may also require you to increase the number of nodes or availability zones. Contact {{% support-platform %}} before modifying this field, for assistance on capacity planning and sizing appropriately.
+{{< tabpane text=true >}}
 
-1. Click **Review Changes**, confirm the summary, then click **Confirm and Apply**.
+{{% tab header="Guided" lang="guide" %}}
+
+In Guided mode, you set the following:
+
+1. **Resilience**. This determines how many failures your primary cluster can tolerate without interruption or downtime. Currently, you can only _increase_ the resilience. Increasing resilience requires more nodes or availability zones.
+1. **Regions**. Select the regions where you want to locate the primary cluster.
+1. **Availability Zones and Nodes**.
+
+    - Select the zones in the regions where you want to place the nodes.
+    - Specify the number of nodes per region. As you add nodes, they are automatically distributed among the availability zones.
+    - Specify the preferred region(s) in ranked order.
+
+    All zones have the same number of nodes.
+
+{{% /tab %}}
+
+{{% tab header="Expert" lang="expert" %}}
+
+In Expert mode, you set the following:
+
+1. **Regions**. Select the regions where you want to locate the primary cluster.
+1. {{<tags/feature/ea idea="56">}}**Replication Factor** - Currently, you can only _increase_ the replication factor. Note that this change may also require you to increase the number of nodes or availability zones. Contact {{% support-platform %}} for help with capacity planning and appropriate sizing.
+1. **Availability Zones and Nodes**.
+
+    - Select the zones in the regions where you want to place the nodes.
+    - Specify the number of nodes for each zone.
+    - Specify the preferred region(s) in ranked order.
+
+    Depending on the 
+
+{{% /tab %}}
+
+{{< /tabpane >}}
+
+When you are done, click **Review Changes**, confirm the summary, then click **Confirm and Apply**.
 
 {{% /tab %}}
 

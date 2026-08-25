@@ -27,6 +27,12 @@ For information on modifying or scaling an existing universe, refer to [Scale an
 {{<index/block>}}
 
   {{<index/item
+    title="Plan your universe"
+    body="Review topology, placement, hardware, and security before you deploy."
+    href="create-universes-overview/"
+    icon="fa-thin fa-map">}}
+
+  {{<index/item
     title="Create a universe"
     body="Deploy a universe across multiple zones or regions."
     href="create-universes-wizard/"
