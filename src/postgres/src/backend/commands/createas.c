@@ -301,15 +301,23 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 		 * security-restricted operations and restricts the search_path.  This
 		 * reduces the chance that a subsequent refresh will fail.
 		 */
-		if (do_refresh)
+		if (do_refresh && !(IsYugaByteEnabled() && yb_binary_restore))
 			RefreshMatViewByOid(address.objectId, true, false, false,
 								pstate->p_sourcetext, qc);
 
-		if (is_matview && yb_xcluster_automatic_mode_target_ddl)
+		if (is_matview &&
+			(yb_xcluster_automatic_mode_target_ddl ||
+			 (IsYugaByteEnabled() && yb_binary_restore && do_refresh)))
 		{
 			/*
-			 * For automatic mode xCluster the data is replicated to the
+			 * YB: for automatic mode xCluster the data is replicated to the
 			 * target, so we need to mark the relation as populated.
+			 *
+			 * Similarly, during a binary restore (backup restore or clone)
+			 * the materialized view's rows are restored on the DocDB side,
+			 * so skip the refresh (whose transient heap would require
+			 * another preset pg_class OID and swap away the preserved
+			 * relfilenode) and only mark the relation as populated.
 			 */
 			Relation intoRelationDesc =
 				table_open(address.objectId, AccessExclusiveLock);
