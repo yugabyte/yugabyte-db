@@ -1964,6 +1964,176 @@ SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (
 (1 row)
 
 DROP TABLE pk_range_int_asc;
+-- Test composite keys and integer overflow (issue #32153 / DB-21846).
+CREATE TABLE pk_comp (a INT, b TEXT, PRIMARY KEY (a ASC, b ASC));
+INSERT INTO pk_comp VALUES (-5, 'q'), (-1, 'p'), (0, 'a'), (3, 'z');
+-- Lower bound below int4 range: every row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) >= (-4294967296, ''p'') ORDER BY a, b;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) >= (-4294967296, 'p') ORDER BY a, b;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Index Scan using pk_comp_pkey on pk_comp (actual rows=4 loops=1)
+   Index Cond: (ROW(a, b) >= ROW('-4294967296'::bigint, 'p'::text))
+(2 rows)
+
+SELECT * FROM pk_comp WHERE (a, b) >= (-4294967296, 'p') ORDER BY a, b;
+ a  | b 
+----+---
+ -5 | q
+ -1 | p
+  0 | a
+  3 | z
+(4 rows)
+
+-- Upper bound above int4 range: every row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) < (4294967297, ''p'') ORDER BY a, b;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) < (4294967297, 'p') ORDER BY a, b;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Index Scan using pk_comp_pkey on pk_comp (actual rows=4 loops=1)
+   Index Cond: (ROW(a, b) < ROW('4294967297'::bigint, 'p'::text))
+(2 rows)
+
+SELECT * FROM pk_comp WHERE (a, b) < (4294967297, 'p') ORDER BY a, b;
+ a  | b 
+----+---
+ -5 | q
+ -1 | p
+  0 | a
+  3 | z
+(4 rows)
+
+-- Upper bound below int4 range: no row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) < (-4294967296, ''p'') ORDER BY a, b;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) < (-4294967296, 'p') ORDER BY a, b;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Index Scan using pk_comp_pkey on pk_comp (actual rows=0 loops=1)
+   Index Cond: (ROW(a, b) < ROW('-4294967296'::bigint, 'p'::text))
+   Rows Removed by Index Recheck: 4
+(3 rows)
+
+SELECT * FROM pk_comp WHERE (a, b) < (-4294967296, 'p') ORDER BY a, b;
+ a | b 
+---+---
+(0 rows)
+
+-- Lower bound above int4 range: no row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) >= (4294967297, ''p'') ORDER BY a, b;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b) >= (4294967297, 'p') ORDER BY a, b;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Index Scan using pk_comp_pkey on pk_comp (actual rows=0 loops=1)
+   Index Cond: (ROW(a, b) >= ROW('4294967297'::bigint, 'p'::text))
+   Rows Removed by Index Recheck: 4
+(3 rows)
+
+SELECT * FROM pk_comp WHERE (a, b) >= (4294967297, 'p') ORDER BY a, b;
+ a | b 
+---+---
+(0 rows)
+
+DROP TABLE pk_comp;
+-- Same tests as above but the overflowing subkey is in the middle of PK
+CREATE TABLE pk_comp (a TEXT, b INT, c TEXT, PRIMARY KEY (a ASC, b ASC, c ASC));
+INSERT INTO pk_comp VALUES ('q', -5, 'a'), ('p', -1, 'b'), ('p', 5, 'b'), ('a', 1, 'c'), ('z', 3, 'd');
+-- Lower bound below int4 range: 4 rows qualify.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) >= (''p'', -4294967296, 'a') ORDER BY a, b, c;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b, c) >= ('p', -4294967296, a) ORDER BY a, b, c;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Index Scan using pk_comp_pkey on pk_comp (actual rows=4 loops=1)
+   Index Cond: (ROW(a, b) >= ROW('p'::text, '-4294967296'::bigint))
+   Filter: (ROW(a, b, c) >= ROW('p'::text, '-4294967296'::bigint, a))
+(3 rows)
+
+SELECT * FROM pk_comp WHERE (a, b, c) >= ('p', -4294967296, a) ORDER BY a, b, c;
+ a | b  | c 
+---+----+---
+ p | -1 | b
+ p |  5 | b
+ q | -5 | a
+ z |  3 | d
+(4 rows)
+
+-- Upper bound above int4 range: 3 rows qualify.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) < (''p'', 4294967297, 'a') ORDER BY a, b, c;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b, c) < ('p', 4294967297, a) ORDER BY a, b, c;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Index Scan using pk_comp_pkey on pk_comp (actual rows=3 loops=1)
+   Index Cond: (ROW(a, b) <= ROW('p'::text, '4294967297'::bigint))
+   Filter: (ROW(a, b, c) < ROW('p'::text, '4294967297'::bigint, a))
+(3 rows)
+
+SELECT * FROM pk_comp WHERE (a, b, c) < ('p', 4294967297, a) ORDER BY a, b, c;
+ a | b  | c 
+---+----+---
+ a |  1 | c
+ p | -1 | b
+ p |  5 | b
+(3 rows)
+
+-- Upper bound below int4 range: 1 row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) < (''p'', -4294967296, 'a') ORDER BY a, b, c;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b, c) < ('p', -4294967296, a) ORDER BY a, b, c;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Index Scan using pk_comp_pkey on pk_comp (actual rows=1 loops=1)
+   Index Cond: (ROW(a, b) <= ROW('p'::text, '-4294967296'::bigint))
+   Rows Removed by Index Recheck: 2
+   Filter: (ROW(a, b, c) < ROW('p'::text, '-4294967296'::bigint, a))
+(4 rows)
+
+SELECT * FROM pk_comp WHERE (a, b, c) < ('p', -4294967296, a) ORDER BY a, b, c;
+ a | b | c 
+---+---+---
+ a | 1 | c
+(1 row)
+
+-- Lower bound above int4 range: 2 rows qualify.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) >= (''p'', 4294967297, 'c') ORDER BY a, b, c;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_comp WHERE (a, b, c) >= ('p', 4294967297, c) ORDER BY a, b, c;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Index Scan using pk_comp_pkey on pk_comp (actual rows=2 loops=1)
+   Index Cond: (ROW(a, b) >= ROW('p'::text, '4294967297'::bigint))
+   Rows Removed by Index Recheck: 2
+   Filter: (ROW(a, b, c) >= ROW('p'::text, '4294967297'::bigint, c))
+(4 rows)
+
+SELECT * FROM pk_comp WHERE (a, b, c) >= ('p', 4294967297, c) ORDER BY a, b, c;
+ a | b  | c 
+---+----+---
+ q | -5 | a
+ z |  3 | d
+(2 rows)
+
+DROP TABLE pk_comp;
 -- test row comparison expressions where we have differing column orderings
 CREATE TABLE pk_range_asc_desc_asc (r1 BIGINT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 desc, r3 asc));
 INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;

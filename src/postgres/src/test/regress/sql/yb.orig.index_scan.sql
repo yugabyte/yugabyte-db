@@ -327,6 +327,40 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
 \i :run_query
 DROP TABLE pk_range_int_asc;
 
+-- Test composite keys and integer overflow (issue #32153 / DB-21846).
+CREATE TABLE pk_comp (a INT, b TEXT, PRIMARY KEY (a ASC, b ASC));
+INSERT INTO pk_comp VALUES (-5, 'q'), (-1, 'p'), (0, 'a'), (3, 'z');
+-- Lower bound below int4 range: every row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) >= (-4294967296, ''p'') ORDER BY a, b;'
+\i :run_query
+-- Upper bound above int4 range: every row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) < (4294967297, ''p'') ORDER BY a, b;'
+\i :run_query
+-- Upper bound below int4 range: no row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) < (-4294967296, ''p'') ORDER BY a, b;'
+\i :run_query
+-- Lower bound above int4 range: no row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b) >= (4294967297, ''p'') ORDER BY a, b;'
+\i :run_query
+DROP TABLE pk_comp;
+
+-- Same tests as above but the overflowing subkey is in the middle of PK
+CREATE TABLE pk_comp (a TEXT, b INT, c TEXT, PRIMARY KEY (a ASC, b ASC, c ASC));
+INSERT INTO pk_comp VALUES ('q', -5, 'a'), ('p', -1, 'b'), ('p', 5, 'b'), ('a', 1, 'c'), ('z', 3, 'd');
+-- Lower bound below int4 range: 4 rows qualify.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) >= (''p'', -4294967296, 'a') ORDER BY a, b, c;'
+\i :run_query
+-- Upper bound above int4 range: 3 rows qualify.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) < (''p'', 4294967297, 'a') ORDER BY a, b, c;'
+\i :run_query
+-- Upper bound below int4 range: 1 row qualifies.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) < (''p'', -4294967296, 'a') ORDER BY a, b, c;'
+\i :run_query
+-- Lower bound above int4 range: 2 rows qualify.
+\set query ':P SELECT * FROM pk_comp WHERE (a, b, c) >= (''p'', 4294967297, 'c') ORDER BY a, b, c;'
+\i :run_query
+DROP TABLE pk_comp;
+
 -- test row comparison expressions where we have differing column orderings
 CREATE TABLE pk_range_asc_desc_asc (r1 BIGINT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 desc, r3 asc));
 INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
