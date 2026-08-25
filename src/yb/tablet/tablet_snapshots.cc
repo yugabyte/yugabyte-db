@@ -229,7 +229,8 @@ TabletSnapshots::~TabletSnapshots() {
   CompleteShutdown();
 }
 
-void TabletSnapshots::SetCleanupPool(ThreadPool* thread_pool, rpc::Scheduler* scheduler) {
+void TabletSnapshots::SetCleanupPool(
+    ThreadPool* thread_pool, rpc::Scheduler* scheduler, ThreadPool* preflush_pool) {
   {
     std::lock_guard lock(cleanup_mutex_);
     if (shutting_down_) {
@@ -237,7 +238,9 @@ void TabletSnapshots::SetCleanupPool(ThreadPool* thread_pool, rpc::Scheduler* sc
     }
     DCHECK(!cleanup_token_);
     cleanup_token_ = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
-    preflush_token_ = thread_pool->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
+    if (preflush_pool) {
+      preflush_token_ = preflush_pool->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
+    }
     retry_task_tracker_.Bind(scheduler);
   }
 
@@ -397,7 +400,7 @@ void TabletSnapshots::SubmitPreflush() {
   // On the leader, Prepare runs on the preparer thread, but on followers it runs inline in
   // UpdateConsensus while the ReplicaState lock is held (see PreparerImpl::Submit). Even a
   // non-waiting Tablet::Flush call synchronously enters the RocksDB write queue to switch the
-  // memtable, so dispatch it to the cleanup pool instead of running it here. The token is
+  // memtable, so dispatch it to the preflush pool instead of running it here. The token is
   // shut down in CompleteShutdown, so the task cannot outlive this object.
   {
     std::lock_guard lock(cleanup_mutex_);
@@ -405,19 +408,22 @@ void TabletSnapshots::SubmitPreflush() {
       return;
     }
     if (preflush_token_) {
-      const Status submit_status = preflush_token_->SubmitFunc([this] {
-        WARN_NOT_OK(
-            Flush(FlushMode::kAsync, FlushFlags::kAllDbs, rocksdb::FlushReason::kSnapshotCreation),
-            LogPrefix() + "Failed to schedule flush while preparing snapshot creation");
-      });
-      if (PREDICT_TRUE(submit_status.ok())) {
-        return;
-      }
-      LOG_WITH_PREFIX(WARNING) << "Cannot submit snapshot preflush task: " << submit_status;
+      // A submission failure means the token or pool is shutting down; drop the best-effort
+      // preflush rather than flushing inline, which would reintroduce the consensus-path work.
+      WARN_NOT_OK(
+          preflush_token_->SubmitFunc([this] {
+            WARN_NOT_OK(
+                Flush(
+                    FlushMode::kAsync, FlushFlags::kAllDbs,
+                    rocksdb::FlushReason::kSnapshotCreation),
+                LogPrefix() + "Failed to schedule flush while preparing snapshot creation");
+          }),
+          LogPrefix() + "Cannot submit snapshot preflush task");
+      return;
     }
   }
-  // No pool installed (or submission failed): flush inline. This only happens before
-  // SetCleanupPool is called, i.e. before the tablet serves consensus traffic, and in tests.
+  // No preflush pool installed: flush inline. This only happens before SetCleanupPool is called,
+  // i.e. before the tablet serves consensus traffic, and in tests.
   WARN_NOT_OK(
       Flush(FlushMode::kAsync, FlushFlags::kAllDbs, rocksdb::FlushReason::kSnapshotCreation),
       LogPrefix() + "Failed to schedule flush while preparing snapshot creation");
