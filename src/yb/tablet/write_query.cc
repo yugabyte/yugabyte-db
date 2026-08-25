@@ -125,15 +125,15 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
   }
   out_request->set_batch_idx(client_request.batch_idx());
   // Lift the ops' write fence into the replicated message, which is all RaftConsensus sees. The
-  // earliest fence wins; 0 means no fence. The ops share a hybrid time, so they cannot be fenced
-  // apart.
+  // earliest fence wins; the ops share a hybrid time, so they cannot be fenced apart.
   uint64_t ignore_after_hybrid_time = 0;
   for (const auto& op : client_request.pgsql_write_batch()) {
-    if (op.ignore_after_hybrid_time()) {
-      ignore_after_hybrid_time = ignore_after_hybrid_time
-          ? std::min(ignore_after_hybrid_time, op.ignore_after_hybrid_time())
-          : op.ignore_after_hybrid_time();
+    const auto fence = op.ignore_after_hybrid_time();
+    if (!fence) {  // Not set for this op.
+      continue;
     }
+    ignore_after_hybrid_time =
+        ignore_after_hybrid_time ? std::min(ignore_after_hybrid_time, fence) : fence;
   }
   if (ignore_after_hybrid_time) {
     out_request->set_ignore_after_hybrid_time(ignore_after_hybrid_time);

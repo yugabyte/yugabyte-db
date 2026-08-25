@@ -1382,7 +1382,7 @@ Status RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
     return Status::OK();
   }
   const auto fence = msg.write().ignore_after_hybrid_time();
-  if (!fence) {  // 0 means no fence.
+  if (!fence) {
     return Status::OK();
   }
   // clock_, not the op's own hybrid time, which AddLeaderPending has not assigned yet. Nor
@@ -1391,8 +1391,6 @@ Status RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
   if (fence > now.ToUint64()) {
     return Status::OK();
   }
-  // WRITE_FENCE_EXPIRED rather than a bare Expired: Expired also covers causes that may have
-  // replicated, and a fenced write definitively did not.
   return STATUS_EC_FORMAT(
       Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
       "Write is fenced: ignore_after_hybrid_time $0 is not after $1", HybridTime(fence), now);
