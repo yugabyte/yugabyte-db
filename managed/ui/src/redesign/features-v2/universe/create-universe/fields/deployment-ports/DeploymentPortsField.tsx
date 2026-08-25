@@ -34,7 +34,7 @@ interface DeploymentPortsProps {
 const PortContainer = styled(Box)(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
-  width: '800px',
+  width: '734px',
   padding: theme.spacing(3),
   gap: theme.spacing(4),
   borderRadius: '8px',
@@ -108,6 +108,7 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                       const showError = isSubmitted && !!fieldError;
                       return (
                         <YBInput
+                          sx={{ width: 180 }}
                           value={value}
                           onChange={onChange}
                           label={
@@ -144,7 +145,6 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                           }}
                           defaultValue={DEFAULT_COMMUNICATION_PORTS[item.id]}
                           disabled={item.disabled}
-                          // trimWhitespace={false}
                         />
                       );
                     }}

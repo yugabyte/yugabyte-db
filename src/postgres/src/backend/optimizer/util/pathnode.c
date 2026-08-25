@@ -38,7 +38,7 @@
 
 /* YB includes */
 #include "access/xact.h"
-#include "access/yb_scan.h"
+#include "access/yb_cost.h"
 #include "catalog/pg_am.h"
 #include "optimizer/planner.h"
 #include "pg_yb_utils.h"

@@ -47,7 +47,6 @@
 /* YB includes */
 #include "access/sysattr.h"
 #include "access/xact.h"
-#include "access/yb_scan.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"

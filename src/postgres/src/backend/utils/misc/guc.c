@@ -117,7 +117,8 @@
 
 /* YB includes */
 #include "access/heaptoast.h"
-#include "access/yb_scan.h"
+#include "access/yb_cost.h"
+#include "access/yb_scan_core.h"
 #include "catalog/index.h"
 #include "commands/copy.h"
 #include "common/ip.h"

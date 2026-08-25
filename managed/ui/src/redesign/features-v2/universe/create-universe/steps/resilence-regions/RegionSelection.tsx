@@ -39,6 +39,13 @@ import pluralize from 'pluralize';
 
 const { Box, MenuItem, styled, Typography } = mui;
 
+const getRegionOptionLabel = (region: string | Record<string, string>): string => {
+  if (typeof region === 'string') return region;
+  const flag = getFlagFromRegion(region.code);
+  const name = region.name ?? '';
+  return flag ? `${flag} ${name}` : name;
+};
+
 const StyledMenu = styled(MenuItem)({
   display: 'flex',
   flexDirection: 'row',
@@ -144,8 +151,8 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
             }}
             dataTestId="region-selection-autocomplete-parent"
             options={(regionsList as unknown as Record<string, string>[]) ?? []}
-            getOptionLabel={(r) => (typeof r === 'string' ? r : (r.name ?? ''))}
-            filterSelectedOptions={true}
+            getOptionLabel={getRegionOptionLabel}
+            filterSelectedOptions
             isOptionEqualToValue={(option, value) => option.code === value.code}
             renderOption={(props, row) => {
               return (

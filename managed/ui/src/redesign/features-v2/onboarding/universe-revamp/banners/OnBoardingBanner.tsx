@@ -374,12 +374,11 @@ export const OnBoardingBanner: FC = () => {
             dismissable={false}
             onClose={handleBannerClose}
             minHeight={48}
-            zIndex={2100}
             dataTestId="onboarding-banner"
             sx={{
               px: 2,
               py: 1.5,
-              boxShadow: '0px 2px 2px 0px rgba(11, 17, 23, 0.1)'
+              boxShadow: '0px 2px 4px 0px rgba(11, 17, 23, 0.1)'
             }}
           >
             <BannerRow sx={{ justifyContent: 'space-between', gap: 2 }}>
@@ -413,7 +412,6 @@ export const OnBoardingBanner: FC = () => {
             open
             minHeight={48}
             dismissable={false}
-            zIndex={2100}
             dataTestId="onboarding-banner"
             sx={{
               px: 2,

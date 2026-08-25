@@ -230,9 +230,24 @@ Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(
     // the provisional intents. If the backend then tries to read pg_attribute for a relation it
     // just created, it will see 0 rows and fail with this error.
     "pg_attribute catalog is missing"sv,
+    // Same missing pg_attribute rows, but raised by a direct syscache lookup (ATTNUM) instead of
+    // by the relcache tuple-descriptor build. Reachable when a concurrent DDL bumps the catalog
+    // version and invalidates the backend's cached entry for a relation it just created, forcing
+    // a re-read that finds the rows already rolled back.
+    "cache lookup failed for attribute"sv,
     // Similar to the above, if the backend tries to read pg_class for a relation it just created,
     // it will see 0 rows and fail with this error.
-    "cache lookup failed for relation"sv
+    "cache lookup failed for relation"sv,
+    // Similar to the above, if the backend tries to read pg_index for an index it just created,
+    // it will see 0 rows and fail with this error.
+    "cache lookup failed for index"sv,
+    // Same race, but seen as a torn read across two catalogs: building the relcache entry of a
+    // just-created index reads relnatts from pg_class and indnatts from pg_index. If the rollback
+    // of the aborted transaction lands between the two reads, they disagree and PG fails this
+    // sanity check in RelationInitIndexAccessInfo. Upstream relies on holding a lock on the
+    // relation to prevent this, which does not help when the master removes the rows underneath a
+    // statement that is still executing.
+    "relnatts disagrees with indnatts for index"sv,
   };
   if (HasSubstring(msg, allowed_msgs)) {
     LOG(INFO) << "Execution of stmt " << stmt << " failed: " << s;

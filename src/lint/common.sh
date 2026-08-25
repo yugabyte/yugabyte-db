@@ -88,10 +88,11 @@ all_ctags_types() {
     | sort -u
 }
 
+yb_typedefs_list=src/postgres/src/tools/pgindent/yb_typedefs.list
+
 # Print the macros that mint Ybc handle type names, joined with | so that the
-# result works as a grep -E pattern, such as
-# YB_DEFINE_HANDLE_TYPE|YB_DEFINE_YB_HANDLE_TYPE.  Read them from the header
-# rather than naming them here since the set can grow.
+# result works as a grep -E pattern, such as YB_DEFINE_HANDLE_TYPE.  Read them
+# from the header rather than naming them here since the set can grow.
 handle_type_macros() {
   local macros pattern
   pattern='#define +YB[A-Z_]*\(name\) typedef struct name \*Ybc##name'

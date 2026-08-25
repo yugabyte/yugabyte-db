@@ -34,17 +34,10 @@
     } \
     typedef class yb::pggate::name *Ybc##name;
 
-#define YB_DEFINE_YB_HANDLE_TYPE(name) \
-    namespace yb { \
-    class name; \
-    } \
-    typedef class yb::name *Ybc##name;
-
 #define YB_PGGATE_IDENTIFIER(name) yb::pggate::name
 
 #else
 #define YB_DEFINE_HANDLE_TYPE(name) typedef struct name *Ybc##name;
-#define YB_DEFINE_YB_HANDLE_TYPE(name) typedef struct name *Ybc##name;
 #define YB_PGGATE_IDENTIFIER(name) name
 #endif  // __cplusplus
 
@@ -72,9 +65,6 @@ YB_DEFINE_HANDLE_TYPE(PgMemctx);
 
 // Handle to a global view read scan.
 YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
-
-// Handle to a PgResultPB protobuf message.
-YB_DEFINE_YB_HANDLE_TYPE(PgResultPB);
 
 // Handle to a distributed trace span context.
 YB_DEFINE_HANDLE_TYPE(OtelSpanContext);
@@ -1129,6 +1119,12 @@ typedef struct YbcIsExplicitlyLockedRowSkippedCheckHandleOptional {
   bool has_value;
   YbcIsExplicitlyLockedRowSkippedCheckHandle value;
 } YbcIsExplicitlyLockedRowSkippedCheckHandleOptional;
+
+typedef struct {
+  int num_rows;
+  int num_cols;
+  bool reached_size_limit;
+} YbcPgGvScanResult;
 
 #ifdef __cplusplus
 }  // extern "C"

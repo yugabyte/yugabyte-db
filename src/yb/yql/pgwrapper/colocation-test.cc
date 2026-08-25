@@ -54,6 +54,11 @@ class ColocatedTablesWithTablespacesTest : public ColocatedDBTest {
     ColocatedDBTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.emplace_back(
         "--ysql_enable_colocated_tables_with_tablespaces=true");
+    // AssertLocation checks the exact replica set of a tablet right after DDL. The load balancer
+    // relocates tablets within the placement allowed by the tablespace to even out per-tserver
+    // tablet counts, and such a move adds the new replica before dropping the old one, so the
+    // tablet is transiently over-replicated. Quiesce it to make the placement observable.
+    options->extra_master_flags.emplace_back("--enable_load_balancing=false");
 
     options->extra_tserver_flags.emplace_back(
         "--ysql_enable_colocated_tables_with_tablespaces=true");

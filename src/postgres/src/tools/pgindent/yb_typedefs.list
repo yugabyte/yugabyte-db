@@ -141,6 +141,8 @@ YbNotifsPollerInitStatus
 YbNotifsPollerShmemData
 YbObjectLockMode
 YbOidAssignmentMapEntry
+YbOpaque
+YbOpaqueData
 YbOptSplit
 YbOptionalReadPointHandle
 YbPFetchTable
@@ -149,6 +151,7 @@ YbPFetchTableState
 YbParentScan
 YbParentScanData
 YbParitionedTableOptions
+YbParseType
 YbPartitionPruneStepFuncOp
 YbPathInfo
 YbPgAttributeRow
@@ -195,8 +198,6 @@ YbRowBounds
 YbRunWithPrefetcherContext
 YbSample
 YbSampleData
-YbScanDesc
-YbScanDescData
 YbScanPlan
 YbScanPlanData
 YbSendDirectFn
@@ -229,6 +230,9 @@ YbTableCacheInfo
 YbTableCacheType
 YbTableDistribution
 YbTablePrefetcherState
+YbTableScanDesc
+YbTableScanDescData
+YbTableScanOptions
 YbTablegroupInfo
 YbTempNamespaceSuffixBuffer
 YbTerminatedQueriesBuffer
@@ -311,6 +315,7 @@ YbcPgFunction
 YbcPgGFlagsAccessor
 YbcPgGlobalTabletsDescriptor
 YbcPgGlobalViewRead
+YbcPgGvScanResult
 YbcPgInitPostgresInfo
 YbcPgInitTransactionData
 YbcPgInsertOnConflictKeyInfo
@@ -325,7 +330,6 @@ YbcPgOid
 YbcPgPrepareParameters
 YbcPgReplicaIdentityDescriptor
 YbcPgReplicationSlotSnapshotAction
-YbcPgResultPB
 YbcPgRowMessage
 YbcPgRowMessageAction
 YbcPgServerMetricsInfo

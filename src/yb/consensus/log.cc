@@ -559,9 +559,8 @@ void Log::Appender::ProcessBatch(LogEntryBatch* entry_batch) {
   }
   if (!log_->sync_disabled_) {
     bool expected = false;
-    if (log_->periodic_sync_needed_.compare_exchange_strong(expected, true,
-                                                            std::memory_order_acq_rel)) {
-      log_->periodic_sync_earliest_unsync_entry_time_ = MonoTime::Now();
+    if (log_->periodic_sync_needed_.compare_exchange_strong(expected, true)) {
+      log_->periodic_sync_earliest_unsync_entry_time_.store(MonoTime::Now());
     }
     log_->periodic_sync_unsynced_bytes_ += entry_batch->total_size_bytes();
   }
@@ -1313,9 +1312,11 @@ void Log::DoSyncAndResetTaskInQueue() {
   fsync_task_in_queue_.store(false, std::memory_order_release);
 }
 
-// retuns
-// - kForceFsync when
-//   1. periodic_sync_needed_ is false, i.e no new appends happened since the last fsync.
+// returns
+// - kNoSync when
+//   1. periodic_sync_needed_ is false, i.e no new appends happened since the last fsync, or
+//   2. neither threshold below has been reached, or
+//   3. only the lower thresholds have been reached but FLAGS_log_enable_background_sync is not set.
 // - kAsyncFsync when
 //   1. time interval/unsynced data exceeds lower limits and FLAGS_log_enable_background_sync is set
 //      time lower limit: (interval_durable_wal_write_ * FLAGS_log_background_sync_interval_fraction
@@ -1325,6 +1326,13 @@ void Log::DoSyncAndResetTaskInQueue() {
 //   2. time interval/unsynced data exceeds upper limits
 //      time upper limit: interval_durable_wal_write_
 //      data upper limit: bytes_durable_wal_write_mb_ (MB)
+//
+// May be called from a thread other than the appender (see ::MaybeSyncInBackground), so it reads
+// the periodic_sync_* state rather than assuming exclusive access to it. periodic_sync_needed_ is
+// published by the appender before periodic_sync_earliest_unsync_entry_time_ is, so a racing
+// reader can pair a fresh "needed" with the previous cycle's timestamp and conclude the log is
+// more overdue than it is. That errs toward one extra fsync, never toward a missed one, which is
+// the direction this whole mechanism is supposed to err in.
 SyncType Log::FindSyncType() {
   if (durable_wal_write_) {
     return SyncType::kForceFsync;
@@ -1334,17 +1342,18 @@ SyncType Log::FindSyncType() {
     return SyncType::kNoSync;
   }
 
+  const auto earliest_unsync_entry_time =
+      periodic_sync_earliest_unsync_entry_time_.load();
+
   SyncType sync_type = SyncType::kNoSync;
   if (interval_durable_wal_write_) {
     MonoDelta interval_async_wal_write_ =
         MonoDelta::FromMilliseconds(interval_durable_wal_write_.ToMilliseconds() *
                                     FLAGS_log_background_sync_interval_fraction);
     auto time_now = MonoTime::Now();
-    auto time_async_threshold =
-        periodic_sync_earliest_unsync_entry_time_ + interval_async_wal_write_;
+    auto time_async_threshold = earliest_unsync_entry_time + interval_async_wal_write_;
     if (time_now > time_async_threshold) {
-      auto time_immediate_threshold =
-          periodic_sync_earliest_unsync_entry_time_ + interval_durable_wal_write_;
+      auto time_immediate_threshold = earliest_unsync_entry_time + interval_durable_wal_write_;
       sync_type = time_now > time_immediate_threshold ? SyncType::kForceFsync :
                                                         SyncType::kAsyncFsync;
     }
@@ -1366,6 +1375,53 @@ SyncType Log::FindSyncType() {
   }
 
   return sync_type;
+}
+
+bool Log::SubmitBackgroundSync() {
+  // Return if a sync task already exists in the queue.
+  bool expected = false;
+  if (!fsync_task_in_queue_.compare_exchange_strong(expected, true)) {
+    return false;
+  }
+  auto reset_task_in_queue = CancelableScopeExit([this] { fsync_task_in_queue_.store(false); });
+
+  Status status;
+  {
+    SharedLock lock(background_sync_token_mutex_);
+    if (!background_sync_threadpool_token_) {
+      // Close() has already retired the token, and performs a final DoSync() of its own.
+      return false;
+    }
+    status = background_sync_threadpool_token_->SubmitFunc([this] { DoSyncAndResetTaskInQueue(); });
+  }
+
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Pushing sync operation to log-sync queue failed with "
+                             << "status " << status;
+    return false;
+  }
+
+  reset_task_in_queue.Cancel();
+  return true;
+}
+
+bool Log::MaybeSyncInBackground() {
+  // With durable_wal_write_ the appender's own Sync() already fsyncs in line.
+  if (durable_wal_write_ || sync_disabled_) {
+    return false;
+  }
+
+  if (!periodic_sync_needed_.load()) {
+    return false;
+  }
+
+  if (FindSyncType() == SyncType::kNoSync) {
+    return false;
+  }
+
+  // No UpdateSegmentReadableOffset() here: nothing has been appended on this path, so the
+  // appender has already published the current offset and watermark.
+  return SubmitBackgroundSync();
 }
 
 // Finds type of sync that needs to be done and either spawns a task to execute
@@ -1408,18 +1464,7 @@ Status Log::Sync() {
       break;
     }
     case SyncType::kAsyncFsync: {
-      // return if a sync task already exists in the queue.
-      if (fsync_task_in_queue_.load(std::memory_order_acquire)) {
-        break;
-      }
-      fsync_task_in_queue_.store(true, std::memory_order_release);
-      auto status =
-          background_sync_threadpool_token_->SubmitFunc([this] { DoSyncAndResetTaskInQueue(); });
-      if (!status.ok()) {
-        LOG_WITH_PREFIX(WARNING) << "Pushing sync operation to log-sync queue failed with "
-                                 << "status " << status;
-        fsync_task_in_queue_.store(false, std::memory_order_release);
-      }
+      SubmitBackgroundSync();
       break;
     }
     case SyncType::kForceFsync: {
@@ -1872,8 +1917,11 @@ void Log::SetPerDbCgroup(Cgroup* cgroup) {
   if (allocation_token_) {
     allocation_token_->SetTaskCgroup(cgroup);
   }
-  if (background_sync_threadpool_token_) {
-    background_sync_threadpool_token_->SetTaskCgroup(cgroup);
+  {
+    SharedLock lock(background_sync_token_mutex_);
+    if (background_sync_threadpool_token_) {
+      background_sync_threadpool_token_->SetTaskCgroup(cgroup);
+    }
   }
 }
 
@@ -1892,8 +1940,18 @@ Status Log::Close() {
   switch (log_state_) {
     case kLogWriting:
       // Appender uses background_sync_threadpool_token_, so we should reset it
-      // post shutting down appender_.
-      background_sync_threadpool_token_.reset();
+      // post shutting down appender_. ::MaybeSyncInBackground can also be submitting through it
+      // from a consensus service thread right now, hence the lock.
+      {
+        std::unique_ptr<ThreadPoolToken> retired_token;
+        {
+          std::lock_guard token_lock(background_sync_token_mutex_);
+          retired_token = std::move(background_sync_threadpool_token_);
+        }
+        // Destroyed outside the lock: ~ThreadPoolToken waits for the running fsync, and holding
+        // the exclusive lock across that would park a submitter on a disk. A submission already
+        // in flight holds the shared lock, so it completes before the swap.
+      }
       // Now that we have shut background_sync_threadpool_token_, don't call ::Sync.
       // call ::DoSync instead.
       RETURN_NOT_OK(DoSync());

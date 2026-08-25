@@ -36,6 +36,7 @@
 
 #include "yb/server/monitored_task.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -61,9 +62,10 @@ DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit, 0,
     "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
     "value is set to 0.");
 
-DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit_per_tserver, 3,
+DEFINE_RUNTIME_int64(outstanding_tablet_split_limit_per_tserver, -1,
     "Limit of the number of outstanding tablet splits per node. Limitation is disabled "
-    "if this value is set to 0.");
+    "if this value is set to 0. If the value is negative (-1 by default), the limit is "
+    "derived from the CPU count: 1 for nodes with up to 4 cores, 2 otherwise.");
 
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 
@@ -148,6 +150,23 @@ using strings::Substitute;
 using namespace std::literals;
 
 namespace {
+
+// Resolves FLAGS_outstanding_tablet_split_limit_per_tserver: a non-negative value is used
+// as-is (0 disables the limit), a negative value means the limit is derived from the CPU
+// count.
+int64_t GetOutstandingTabletSplitLimitPerTserver() {
+  const auto flag_value = FLAGS_outstanding_tablet_split_limit_per_tserver;
+  if (flag_value >= 0) {
+    return flag_value;
+  }
+  static const int64_t cpu_based_value = []() -> int64_t {
+    const int64_t value = NumEffectiveCPUs() <= 4 ? 1 : 2;
+    LOG(INFO) << "FLAGS_outstanding_tablet_split_limit_per_tserver was not set, automatically "
+              << "configuring to " << value << " based on the CPU count.";
+    return value;
+  }();
+  return cpu_based_value;
+}
 
 template <typename IdType>
 Status ValidateAgainstDisabledList(const IdType& id,
@@ -635,17 +654,16 @@ class OutstandingSplitState {
   }
 
   Status CanSplitMoreOnReplicas(const TabletReplicaMap& replicas) const {
-    if (FLAGS_outstanding_tablet_split_limit_per_tserver == 0) {
+    const auto limit = GetOutstandingTabletSplitLimitPerTserver();
+    if (limit == 0) {
       return Status::OK();
     }
     for (const auto& location : replicas) {
       auto it = ts_to_ongoing_splits_.find(location.first);
-      if (it != ts_to_ongoing_splits_.end() &&
-          it->second.size() >= FLAGS_outstanding_tablet_split_limit_per_tserver) {
+      if (it != ts_to_ongoing_splits_.end() && std::ssize(it->second) >= limit) {
         return STATUS_FORMAT(IllegalState,
                              "TServer $0 already has $1 >= $2 ongoing splits, can't do more splits "
-                             "there", location.first, it->second.size(),
-                             FLAGS_outstanding_tablet_split_limit_per_tserver);
+                             "there", location.first, it->second.size(), limit);
       }
     }
     return Status::OK();

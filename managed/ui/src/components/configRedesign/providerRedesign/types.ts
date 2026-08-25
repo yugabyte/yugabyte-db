@@ -551,6 +551,7 @@ type GCPRegionCloudInfo = GCPRegionCloudInfoBase;
 
 interface OCIRegionCloudInfoBase {
   vnet?: string;
+  instanceTemplate?: string;
 }
 type OCIRegionCloudInfoMutation = OCIRegionCloudInfoBase;
 interface OCIRegionCloudInfo extends OCIRegionCloudInfoBase {

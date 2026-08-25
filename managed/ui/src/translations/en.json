@@ -3982,6 +3982,7 @@
           "title": "Availability Zones and Nodes",
           "titlePods": "Availability Zones and Pods",
           "region": "Region {{region_count}}",
+          "newRegionBadge": "NEW",
           "availabilityZone": "Availability Zone",
           "removeAvailabilityZone": "Remove availability zone",
           "add_button": "Add Availability Zone",
@@ -5004,6 +5005,7 @@
         "nodes": "Nodes",
         "pods": "Pods",
         "replicationFactor": "Replication Factor",
+        "firstSelectARegion": "First select a region.",
         "replicationFactorTooltip": "Number of copies of primary cluster data maintained in this availability zone. Determines fault tolerance within the read replica.<br/>",
         "totalNodesPlacement": "Total Nodes",
         "totalPodsPlacement": "Total Pods",
@@ -5034,11 +5036,13 @@
           "daily": "Daily",
           "monthly": "Monthly",
           "universeTotal": "Universe total",
+          "nodes": "Nodes",
+          "pods": "Pods",
           "totalNodes": "Total nodes",
           "totalPods": "Total pods",
-          "totalCores": "Total cores",
-          "totalMemory": "Total memory",
-          "totalStorage": "Total storage"
+          "totalCores": "Total Cores",
+          "totalMemory": "Total Memory",
+          "totalStorage": "Total Storage"
         },
         "toast": {
           "addRRFailed": "Failed to add read replica",

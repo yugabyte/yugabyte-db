@@ -1134,10 +1134,11 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
 
 Result<BloomFilterOptions> BloomFilterOptions::Make(
     const DocReadContext& doc_read_context, Slice lower, Slice upper, bool allow_variable) {
-  const bool is_fixed_point_get =
-      !lower.empty() && VERIFY_RESULT(doc_read_context.HaveEqualBloomFilterKey(lower, upper));
-  if (is_fixed_point_get) {
-    return BloomFilterOptions::Fixed(lower);
+  // Fixed bloom filter mode requires that all keys the scan can return have the bloom filter key.
+  const auto user_key_for_fixed_filter =
+      VERIFY_RESULT(doc_read_context.UserKeyForFixedBloomFilter(lower, upper));
+  if (user_key_for_fixed_filter) {
+    return BloomFilterOptions::Fixed(*user_key_for_fixed_filter);
   }
   if (allow_variable) {
     return BloomFilterOptions::Variable();

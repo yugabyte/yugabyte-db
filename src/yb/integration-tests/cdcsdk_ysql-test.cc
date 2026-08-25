@@ -5708,6 +5708,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaLessChangeMetadataOpsWi
       MonoDelta::FromSeconds(60) * kTimeMultiplier,
       "Waiting for the added colocated table to appear in tablet metadata"));
 
+  // Write a schema-carrying alter op for test3 to the shared tablet's WAL before the drop.
+  // Without this, the only source of such an op is the wal_retention_secs AlterTable sent by
+  // the CDCSDK dynamic table addition background task, which races with test3's sub-second
+  // lifetime, so the dropped-table alter op path below would usually go unexercised.
+  ASSERT_OK(conn.Execute("ALTER TABLE test3 ADD COLUMN extra INT"));
+
   ASSERT_OK(conn.Execute("DROP TABLE test3"));
 
   // Wait for the REMOVE_TABLE change metadata op to apply so that it is in the WAL before the
@@ -11087,9 +11093,14 @@ TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedMultiShardTxn) {
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES (10)"));
   ASSERT_OK(conn.Execute("COMMIT"));
 
-  auto change_resp3 = ASSERT_RESULT(GetChangesFromCDC(
-      stream_id, tablets, &change_resp2.cdc_sdk_checkpoint(), 0, change_resp2.safe_hybrid_time(),
-      change_resp2.wal_segment_index()));
+  // COMMIT returns before the txn's APPLY op is appended and before the consensus queue's
+  // committed_op_id catches up with it, so GetChanges can legitimately respond "wait for WAL
+  // update" with no records. Poll until both txns are shipped.
+  GetChangesResponsePB change_resp3;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp3, stream_id, tablets, num_inserts + 1, /* is_explicit_checkpoint */ true,
+      &change_resp2.cdc_sdk_checkpoint(), /* tablet_idx */ 0, change_resp2.safe_hybrid_time(),
+      change_resp2.wal_segment_index(), /* timeout_secs */ 60));
   // 1 DDL + Txn1 (B + 10 inserts + C) + Txn2 (B + 1 insert + C)
   ASSERT_EQ(change_resp3.cdc_sdk_proto_records_size(), 16);
 }

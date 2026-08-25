@@ -13,6 +13,7 @@
 
 #include "yb/docdb/object_lock_manager.h"
 
+#include <algorithm>
 #include <atomic>
 #include <iostream>
 #include <memory>
@@ -69,6 +70,11 @@ METRIC_DEFINE_counter(server, object_locking_lock_acquires,
     "Number of object locking slow path lock acquires",
     yb::MetricUnit::kRequests,
     "Number of object locking slow path lock acquires");
+
+METRIC_DEFINE_counter(server, object_locking_lock_releases,
+    "Number of transactions that used object locking slow path lock release",
+    yb::MetricUnit::kTransactions,
+    "Number of transactions that used object locking slow path lock release");
 
 using namespace std::placeholders;
 using namespace std::literals;
@@ -201,7 +207,8 @@ struct WaiterEntry {
       lock_data(std::move(other.lock_data)),
       resume_it_offset(other.resume_it_offset),
       waiter_registration(std::move(other.waiter_registration)),
-      blockers(std::move(other.blockers)) {}
+      blockers(std::move(other.blockers)),
+      blocking_txn_ids(std::move(other.blocking_txn_ids)) {}
 
   const TransactionId& txn_id() const {
     return lock_data.object_lock_owner.txn_id;
@@ -235,6 +242,10 @@ struct WaiterEntry {
   // Below fields are operated under corresponding ObjectLockedBatchEntry::mutex.
   std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration;
   std::shared_ptr<ConflictDataManager> blockers;
+  // Snapshot of the transactions blocking this waiter, captured when blockers are computed for
+  // deadlock detection and retained for the pg_locks view (blockers itself is moved out during
+  // registration). Reported via pg_locks.ybdetails.blocked_by.
+  std::vector<TransactionId> blocking_txn_ids;
   TxnBlockedTableLockRequests was_a_blocker = TxnBlockedTableLockRequests::kFalse;
 };
 
@@ -374,6 +385,7 @@ class ObjectLockManagerImpl {
       waiters_amidst_resumption_on_messenger_("ObjectLockManagerImpl: " /* log_prefix */),
       shared_manager_(shared_manager) {
     metric_num_acquires_ = METRIC_object_locking_lock_acquires.Instantiate(metric_entity);
+    metric_num_releases_ = METRIC_object_locking_lock_releases.Instantiate(metric_entity);
   }
 
   void Lock(LockData&& data);
@@ -408,6 +420,10 @@ class ObjectLockManagerImpl {
 
   void ConsumePendingSharedLockRequests() EXCLUDES(global_mutex_);
 
+  void PopulateObjectLockWaiterBlockers(
+      std::unordered_map<ObjectLockOwner, std::vector<TransactionId>>& blockers_by_owner)
+      EXCLUDES(global_mutex_);
+
   size_t TEST_LocksSize(LocksMapType locks_map);
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();
@@ -416,7 +432,9 @@ class ObjectLockManagerImpl {
  private:
   friend struct WaiterEntry;
 
-  void ConsumePendingSharedLockRequestsUnlocked() REQUIRES(global_mutex_);
+  void DropPendingSharedLockRequestsForTransaction(TransactionId txn) REQUIRES(global_mutex_);
+  void ConsumePendingSharedLockRequestsUnlocked(TransactionId txn = TransactionId::Nil())
+      REQUIRES(global_mutex_);
   void ConsumePendingSharedLockRequestUnlocked(
       ObjectSharedLockRequest& request) REQUIRES(global_mutex_);
   void AcquireExclusiveLockIntents(const LockData& data) EXCLUDES(global_mutex_);
@@ -523,6 +541,7 @@ class ObjectLockManagerImpl {
   ObjectLockSharedStateManager* const shared_manager_;
 
   scoped_refptr<Counter> metric_num_acquires_;
+  scoped_refptr<Counter> metric_num_releases_;
   std::vector<std::shared_ptr<WaitForLockersContext>>
       wait_for_lockers_trackers_ GUARDED_BY(global_mutex_);
 };
@@ -638,12 +657,19 @@ LockState TrackedTransactionLockEntry::GetLockStateForKeyUnlocked(
   return existing_states[object_id];
 }
 
-void ObjectLockManagerImpl::ConsumePendingSharedLockRequestsUnlocked() {
+void ObjectLockManagerImpl::DropPendingSharedLockRequestsForTransaction(TransactionId txn_id) {
+  if (shared_manager_) {
+    shared_manager_->DropPendingSharedLockRequests(txn_id);
+  }
+}
+
+void ObjectLockManagerImpl::ConsumePendingSharedLockRequestsUnlocked(TransactionId txn_id) {
   if (shared_manager_) {
     shared_manager_->ConsumePendingSharedLockRequests(
         make_lw_function([this](ObjectSharedLockRequest request) NO_THREAD_SAFETY_ANALYSIS {
           ConsumePendingSharedLockRequestUnlocked(request);
-        }));
+        }),
+        txn_id);
   }
 }
 
@@ -759,6 +785,7 @@ void ObjectLockManagerImpl::Lock(LockData&& data) {
   }
   if (shared_manager_) {
     AcquireExclusiveLockIntents(data);
+    shared_manager_->MarkTServerLoaded(data.object_lock_owner.txn_id);
   }
   DoLock(transaction_entry, std::move(data), IsLockRetry::kFalse);
 }
@@ -974,6 +1001,7 @@ void ObjectLockManagerImpl::UnlockObjectsForSession(
     }
   }
   ReleaseExclusiveLockIntents(lockstates_map);
+  IncrementCounter(metric_num_releases_);
 }
 
 void ObjectLockManagerImpl::WaitForConflictingLockers(
@@ -1037,7 +1065,11 @@ TxnBlockedTableLockRequests ObjectLockManagerImpl::Unlock(
   TrackedTxnLockEntryPtr txn_entry;
   {
     std::lock_guard lock(global_mutex_);
-    ConsumePendingSharedLockRequestsUnlocked();
+    if (object_lock_owner.subtxn_id) {
+      ConsumePendingSharedLockRequestsUnlocked(object_lock_owner.txn_id);
+    } else {
+      DropPendingSharedLockRequestsForTransaction(object_lock_owner.txn_id);
+    }
     auto txn_itr = txn_locks_.find(object_lock_owner.txn_id);
     if (txn_itr == txn_locks_.end()) {
       return TxnBlockedTableLockRequests::kFalse;
@@ -1083,6 +1115,7 @@ TxnBlockedTableLockRequests ObjectLockManagerImpl::Unlock(
     cb();
   }
 
+  IncrementCounter(metric_num_releases_);
   return was_a_blocker;
 }
 
@@ -1440,6 +1473,12 @@ void ObjectLockManagerImpl::RegisterWaiters(ObjectLockedBatchEntry* locked_batch
           item->blockers->AddTransaction(blocker.id, blocker.conflict_info, blocker.status_tablet);
         }
       }
+      // Retain a snapshot of the blocking transactions for the pg_locks view before the blockers
+      // ConflictDataManager is moved into the waiting txn registry below.
+      item->blocking_txn_ids.clear();
+      for (const auto& blocker : item->blockers->RemainingTransactions()) {
+        item->blocking_txn_ids.push_back(blocker.id);
+      }
       if (item->blockers->NumActiveTransactions()) {
         VLOG_WITH_FUNC(2)
               << AsString(item->object_lock_owner())
@@ -1479,6 +1518,25 @@ void ObjectLockManagerImpl::DumpStatusHtml(std::ostream& out) {
 void ObjectLockManagerImpl::ConsumePendingSharedLockRequests() {
   std::lock_guard l(global_mutex_);
   ConsumePendingSharedLockRequestsUnlocked();
+}
+
+void ObjectLockManagerImpl::PopulateObjectLockWaiterBlockers(
+    std::unordered_map<ObjectLockOwner, std::vector<TransactionId>>& blockers_by_owner) {
+  std::lock_guard l(global_mutex_);
+  ConsumePendingSharedLockRequestsUnlocked();
+  for (const auto& [prefix, entry] : locks_) {
+    std::lock_guard entry_lock(entry->mutex);
+    for (const auto& waiter : entry->wait_queue.get<StartUsTag>()) {
+      if (waiter->blocking_txn_ids.empty()) {
+        continue;
+      }
+
+      auto& blockers = (blockers_by_owner)[waiter->object_lock_owner()];
+      for (const auto& blocker_id : waiter->blocking_txn_ids) {
+        blockers.push_back(blocker_id);
+      }
+    }
+  }
 }
 
 void ObjectLockManagerImpl::DumpStoredObjectLocksMap(
@@ -1600,6 +1658,11 @@ void ObjectLockManager::DumpStatusHtml(std::ostream& out) {
 
 void ObjectLockManager::ConsumePendingSharedLockRequests() {
   impl_->ConsumePendingSharedLockRequests();
+}
+
+void ObjectLockManager::PopulateObjectLockWaiterBlockers(
+    std::unordered_map<ObjectLockOwner, std::vector<TransactionId>>& blockers_by_owner) {
+  impl_->PopulateObjectLockWaiterBlockers(blockers_by_owner);
 }
 
 size_t ObjectLockManager::TEST_GrantedLocksSize() {

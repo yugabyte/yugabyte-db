@@ -841,7 +841,7 @@ Tablet::Tablet(const TabletInitData& data)
     SplitDone();
   }
   auto restoration_hybrid_time = metadata_->restoration_hybrid_time();
-  if (restoration_hybrid_time && transaction_participant_ && FLAGS_consistent_restore) {
+  if (restoration_hybrid_time && transaction_participant_) {
     transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
   SyncRestoringOperationFilter(ResetSplit::kFalse);
@@ -5477,7 +5477,7 @@ Status Tablet::RestoreFinished(
   metadata_->UnregisterRestoration(restoration_id);
   if (restoration_hybrid_time) {
     metadata_->SetRestorationHybridTime(restoration_hybrid_time);
-    if (transaction_participant_ && FLAGS_consistent_restore) {
+    if (transaction_participant_) {
       transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
     }
   }
@@ -5490,9 +5490,7 @@ Status Tablet::RestoreFinished(
 
 Status Tablet::CheckRestorations(const RestorationCompleteTimeMap& restoration_complete_time) {
   auto restoration_hybrid_time = metadata_->CheckCompleteRestorations(restoration_complete_time);
-  if (restoration_hybrid_time != HybridTime::kMin
-      && transaction_participant_
-      && FLAGS_consistent_restore) {
+  if (restoration_hybrid_time != HybridTime::kMin && transaction_participant_) {
     transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
 

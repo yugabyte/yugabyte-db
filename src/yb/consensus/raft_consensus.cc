@@ -125,6 +125,12 @@ DEFINE_UNKNOWN_bool(evict_failed_followers, true,
             "follower_unavailable_considered_failed_sec");
 TAG_FLAG(evict_failed_followers, advanced);
 
+DEFINE_RUNTIME_bool(raft_monotonic_last_received_current_leader, true,
+    "Whether a replica advances the last received op id from the current leader monotonically on "
+    "fully-deduplicated requests, rather than only setting it once per term. Kill switch; a "
+    "watermark frozen at its first value can leave a lagging follower permanently uncatchable.");
+TAG_FLAG(raft_monotonic_last_received_current_leader, advanced);
+
 DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
                  "Whether a follower will return an error for all UpdateConsensus() requests.");
 
@@ -280,6 +286,19 @@ DEFINE_test_flag(bool, skip_election_when_fail_detected, false,
 
 DEFINE_test_flag(bool, pause_replica_start_before_triggering_pending_operations, false,
                  "Whether to pause before triggering pending operations in RaftConsensus::Start");
+
+DEFINE_RUNTIME_bool(enable_wal_sync_on_consensus_update, true,
+    "Whether every UpdateConsensus RPC a replica receives, including a heartbeat carrying no "
+    "operations, re-checks this tablet's WAL against --interval_durable_wal_write_ms and starts "
+    "a background fsync if the oldest unsynced entry is older than that. Without it the interval "
+    "is only ever evaluated when the next append arrives, so a tablet that takes one write and "
+    "then goes quiet can leave that write in the page cache indefinitely. The fsync always runs "
+    "in the background, never on the RPC thread. Scope: UpdateConsensus is received by "
+    "followers, not sent by the leader, so this bounds follower WALs only, and it stops firing "
+    "exactly when heartbeats stop arriving. It does not by itself make an acknowledged write "
+    "majority-durable: at RF=3 a commit needs 2 of 3 acks and the leader is normally one of "
+    "them, so a committed entry can have exactly one bounded copy while the leader's stays "
+    "unsynced. The leader's own WAL, RF=1, and a partitioned node get no bound from this flag.");
 
 namespace yb::consensus {
 
@@ -1644,6 +1663,18 @@ Status RaftConsensus::Update(
 
   VLOG_WITH_PREFIX(2) << "Replica received request: " << request.ShortDebugString();
 
+  // Bound how long an already-appended entry can sit unsynced on a tablet that has gone quiet:
+  // Log only re-evaluates --interval_durable_wal_write_ms when something is appended.
+  //
+  // Placed ahead of both the write-stop rejection and the update_mutex_ block below to ensure
+  // durability even in the following scenarios:
+  //   - write stalls
+  //   - unable to acquire update_mutex_
+  //   - UpdateReplica() fails and returns early
+  if (FLAGS_enable_wal_sync_on_consensus_update) {
+    log_->MaybeSyncInBackground();
+  }
+
   // Reject RPCs carrying operations when the tablet's RocksDB is in a hard write stop.
   // This check runs BEFORE acquiring update_mutex_ to prevent RPC thread pile-up: if a
   // thread is already blocked in DelayWrite() while holding update_mutex_, all subsequent
@@ -2366,7 +2397,12 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const LWConsensusRequest
                           deduped_req.preceding_op_id,
                           state_->GetLastReceivedOpIdUnlocked());
     }
-    state_->UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(deduped_req.preceding_op_id);
+    if (PREDICT_TRUE(FLAGS_raft_monotonic_last_received_current_leader)) {
+      state_->UpdateLastReceivedOpIdFromCurrentLeaderMonotonicUnlocked(
+          deduped_req.preceding_op_id);
+    } else {
+      state_->UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(deduped_req.preceding_op_id);
+    }
   }
 
   VLOG_WITH_PREFIX(1) << "Marking committed up to " << apply_up_to;

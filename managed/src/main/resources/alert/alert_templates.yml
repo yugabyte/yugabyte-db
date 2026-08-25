@@ -319,7 +319,9 @@ templates:
     name: DB Instance restart
     description: Unexpected Master or TServer process restart(s) occurred during
       last 30 minutes
-    queryTemplate: max by (universe_uuid) ((sum_over_time((increase(yb_node_boot_time{universe_uuid="__universeUuid__"}[1m]) > bool 10)[30m:1m]))
+    queryTemplate: max by (universe_uuid)
+      ((sum_over_time((increase(yb_node_boot_time{universe_uuid="__universeUuid__",
+      process=~"master|tserver"}[1m]) > bool 10)[30m:1m]))
       and on (universe_uuid) (max_over_time(ybp_universe_update_in_progress{universe_uuid="__universeUuid__"}[35m])
       == 0)) {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: true
@@ -335,7 +337,8 @@ templates:
     labels:
       affected_node_names: >-
         {{ range $index, $element := query "max by (universe_uuid, node_name)
-        ((sum_over_time((increase(yb_node_boot_time{universe_uuid='{{ $labels.universe_uuid }}'}[1m]) > bool 10)[30m:1m]))
+        ((sum_over_time((increase(yb_node_boot_time{universe_uuid='{{ $labels.universe_uuid }}',
+        process=~'master|tserver'}[1m]) > bool 10)[30m:1m]))
         and on (universe_uuid) (max_over_time(ybp_universe_update_in_progress{universe_uuid='{{ $labels.universe_uuid }}'}[35m])
         == 0)) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
@@ -2288,8 +2291,11 @@ templates:
   OTEL_METRIC_EXPORT_FAILURE:
     name: OTel Metric Export Failure
     description: DB metrics are not being exported for universe
-    queryTemplate: count by (universe_uuid) (increase(otelcol_exporter_send_failed_metric_points{universe_uuid="__universeUuid__"}[3m]))
-      {{ query_condition }} {{ query_threshold }}
+    # The comparison must stay inside count(): increase() emits 0 for every reporting series,
+    # so counting unfiltered series fires on every healthy universe.
+    queryTemplate: count by (universe_uuid) (sum by (universe_uuid, node_name)
+      (increase(otelcol_exporter_send_failed_metric_points{universe_uuid="__universeUuid__"}[3m]))
+      {{ query_condition }} {{ query_threshold }})
     defaultDurationSec: 300
     createForNewCustomer: true
     defaultThresholdMap:
@@ -2303,11 +2309,51 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "sum by (universe_uuid, node_name)
         (increase(otelcol_exporter_send_failed_metric_points{universe_uuid='{{ $labels.universe_uuid }}'}[3m]))
-        > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        {{ query_condition }} {{ query_threshold }}"
+        }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         DB metrics export is failing for universe '{{ $labels.source_name }}'
         on {{ $value | printf "%.0f" }} node(s).
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  OTEL_COLLECTOR_RESTART:
+    name: OTel Collector restart
+    description: Unexpected OpenTelemetry collector restart(s) occurred during
+      last 30 minutes
+    # Label is "otelcol-contri" on VMs (get_process_name's strip("yb-") eats the trailing "b")
+    # and "otelcol-contrib" on K8s. Do not narrow this regex to one spelling.
+    queryTemplate: max by (universe_uuid)
+      ((sum_over_time((increase(yb_node_boot_time{universe_uuid="__universeUuid__",
+      process=~"otelcol-contrib?"}[1m]) > bool 10)[30m:1m]))
+      and on (universe_uuid)
+      (max_over_time(ybp_universe_update_in_progress{universe_uuid="__universeUuid__"}[35m])
+      == 0)) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+      SEVERE:
+        threshold: 2.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: restart(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        ((sum_over_time((increase(yb_node_boot_time{universe_uuid='{{ $labels.universe_uuid }}',
+        process=~'otelcol-contrib?'}[1m]) > bool 10)[30m:1m]))
+        and on (universe_uuid)
+        (max_over_time(ybp_universe_update_in_progress{universe_uuid='{{
+        $labels.universe_uuid }}'}[35m])
+        == 0)) {{ query_condition }} {{ query_threshold }}"
+        }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        OpenTelemetry collector for universe '{{ $labels.source_name }}' is restarted
+        {{ $value | printf "%.0f" }} times during last 30 minutes.
+
         Affected nodes: {{ $labels.affected_node_names }}
 
   PA_COLLECTOR_DOWN:

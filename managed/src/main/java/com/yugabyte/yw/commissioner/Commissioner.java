@@ -34,6 +34,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.annotation.Transactional;
 import java.time.Duration;
@@ -42,6 +43,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -419,7 +421,17 @@ public class Commissioner {
               return taskUuidsToAllowRetry.contains(taskInfo.getUuid().toString());
             });
     responseJson.put("retryable", retryable);
-    responseJson.put("canRollback", canTaskRollback(taskInfo));
+    // Listing hint: @CanRollback + error state + optional moreCondition (ownership), same pattern
+    // as retryable. Submit uses canTaskRollbackDetailed (universe checkpoint when present).
+    boolean canRollback =
+        canTaskRollback(
+            taskInfo,
+            tf -> {
+              Set<String> taskUuidsToAllowRollback =
+                  updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
+              return taskUuidsToAllowRollback.contains(tf.getUuid().toString());
+            });
+    responseJson.put("canRollback", canRollback);
     if (isTaskPaused(taskInfo.getUuid())) {
       // Set this only if it is true. The thread is just parking. From the task state
       // perspective, it is still running.
@@ -472,9 +484,79 @@ public class Commissioner {
     return false;
   }
 
+  /**
+   * Whether the failed task may be rolled back, with an optional extra predicate (same pattern as
+   * {@link #isTaskRetryable(TaskInfo, Predicate)}).
+   *
+   * <p>Checks {@code @CanRollback} + error state, then {@code moreCondition}. Listing passes
+   * placement/updating ownership without loading the universe. Submit uses {@link
+   * #canTaskRollbackDetailed(TaskInfo)}.
+   */
+  public boolean canTaskRollback(TaskInfo taskInfo, Predicate<TaskInfo> moreCondition) {
+    if (canTaskTypeRollback(taskInfo.getTaskType())
+        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
+      return moreCondition.test(taskInfo);
+    }
+    return false;
+  }
+
+  /**
+   * Listing-path overload with no extra condition (annotation + error state only). Prefer {@link
+   * #canTaskRollback(TaskInfo, Predicate)} when ownership or universe checks apply.
+   */
   public boolean canTaskRollback(TaskInfo taskInfo) {
-    return canTaskTypeRollback(taskInfo.getTaskType())
-        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState());
+    return canTaskRollback(taskInfo, t -> true);
+  }
+
+  /**
+   * Submit-path eligibility: {@link #canTaskRollback(TaskInfo, Predicate)} with {@link
+   * #canRollbackTaskOnUniverse(TaskInfo)}. The rollback task's precheck remains the authoritative
+   * safety gate.
+   *
+   * <p>When {@code state_transition_details} is present (edit-universe style checkpoint), the
+   * failed task must still own {@code placementModificationTaskUuid} and the delta must be {@code
+   * rollbackSafe}. Ownership intentionally transfers to {@link TaskType#RollbackEditUniverse} on
+   * freeze so that task can be retried; the original edit is then no longer start-rollback
+   * eligible.
+   */
+  public boolean canTaskRollbackDetailed(TaskInfo taskInfo) {
+    return canTaskRollback(taskInfo, this::canRollbackTaskOnUniverse);
+  }
+
+  /**
+   * Universe-aware rollback gate. If there is no {@code state_transition_details}, returns true
+   * (software-upgrade style). When details are present, requires placement ownership and a safe
+   * delta (including refusing dedicatedNodes flips).
+   */
+  private boolean canRollbackTaskOnUniverse(TaskInfo taskInfo) {
+    try {
+      JsonNode params = taskInfo.getTaskParams();
+      if (params == null || params.path("universeUUID").isMissingNode()) {
+        return true;
+      }
+      UUID universeUUID = UUID.fromString(params.get("universeUUID").asText());
+      Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
+      if (!universeOpt.isPresent()) {
+        return false;
+      }
+      Universe universe = universeOpt.get();
+      StateTransitionDetails details = universe.getStateTransitionDetails();
+      if (details == null) {
+        return true;
+      }
+      // Must match the failed task - not an in-progress/failed RollbackEditUniverse.
+      if (!Objects.equals(
+          universe.getUniverseDetails().placementModificationTaskUuid, taskInfo.getUuid())) {
+        return false;
+      }
+      return details.isRollbackSafe() && !details.isDedicatedNodesChanged();
+    } catch (Exception e) {
+      log.warn(
+          "canRollbackTaskOnUniverse check failed for task {}: {}",
+          taskInfo.getUuid(),
+          e.getMessage());
+      return false;
+    }
   }
 
   public ObjectNode getVersionInfo(CustomerTask task, TaskInfo taskInfo) {

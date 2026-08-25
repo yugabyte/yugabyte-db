@@ -36,7 +36,8 @@ import {
   applyConnectionPoolingPortsToDatabase,
   clearConnectionPoolingPortOverrides,
   DEFAULT_CONNECTION_POOLING_PORTS,
-  shouldApplyConnectionPoolingPortOverrides
+  resolveConnectionPoolingPorts,
+  shouldSyncConnectionPoolingPorts
 } from './helpers/syncConnectionPoolingPorts';
 
 export enum CreateUniverseSteps {
@@ -129,7 +130,7 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     byPassProxyListValues: []
   },
   otherAdvancedSettings: {
-    ...DEFAULT_COMMUNICATION_PORTS as any,
+    ...(DEFAULT_COMMUNICATION_PORTS as any),
     instanceTags: [],
     awsArnString: '',
     useSystemd: true,
@@ -177,30 +178,19 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
       context.generalSettings?.providerConfiguration?.code ?? context.generalSettings?.cloud;
     // K8s cannot override ports — clear any stale override state.
     const databaseSettings =
-      providerCode === CloudType.kubernetes
-        ? clearConnectionPoolingPortOverrides(data)
-        : data;
-    const shouldApplyCpPorts = shouldApplyConnectionPoolingPortOverrides(
-      databaseSettings,
-      providerCode
-    );
+      providerCode === CloudType.kubernetes ? clearConnectionPoolingPortOverrides(data) : data;
     let otherAdvancedSettings = context.otherAdvancedSettings;
 
-    if (shouldApplyCpPorts) {
-      // Sync CP ports into Advanced deployment ports only when CP + override are enabled.
-      otherAdvancedSettings = applyConnectionPoolingPortsToAdvanced(otherAdvancedSettings, {
-        ysqlServerRpcPort:
-          databaseSettings.ysqlServerRpcPort ??
-          DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort,
-        internalYsqlServerRpcPort:
-          databaseSettings.internalYsqlServerRpcPort ??
-          DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
-      });
+    if (shouldSyncConnectionPoolingPorts(providerCode)) {
+      // YSQL always syncs. Internal YSQL syncs while CP is on; otherwise it is the default.
+      otherAdvancedSettings = applyConnectionPoolingPortsToAdvanced(
+        otherAdvancedSettings,
+        resolveConnectionPoolingPorts(databaseSettings, databaseSettings.enableConnectionPooling)
+      );
     } else if (otherAdvancedSettings) {
-      // When CP or override is off (or K8s), Internal YSQL Port must stay at the default.
       otherAdvancedSettings = {
         ...otherAdvancedSettings,
-        internalYsqlServerRpcPort: DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+        ...DEFAULT_CONNECTION_POOLING_PORTS
       };
     }
 
@@ -221,9 +211,9 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
   saveOtherAdvancedSettings: (data: OtherAdvancedProps) => {
     const providerCode =
       context.generalSettings?.providerConfiguration?.code ?? context.generalSettings?.cloud;
-    const shouldApplyCpPorts = shouldApplyConnectionPoolingPortOverrides(
-      context.databaseSettings,
-      providerCode
+    const syncedPorts = resolveConnectionPoolingPorts(
+      data,
+      context.databaseSettings?.enableConnectionPooling
     );
     // K8s hides DeploymentPortsField — keep default communication ports.
     const otherAdvancedSettings =
@@ -232,22 +222,16 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
             ...data,
             ...DEFAULT_COMMUNICATION_PORTS
           }
-        : shouldApplyCpPorts
-          ? data
-          : {
-              ...data,
-              internalYsqlServerRpcPort: DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
-            };
+        : {
+            ...data,
+            ...syncedPorts
+          };
 
     return {
       ...context,
       otherAdvancedSettings,
-      // Sync Advanced deployment ports back to Database CP fields only when CP + override are enabled.
-      databaseSettings: shouldApplyCpPorts
-        ? applyConnectionPoolingPortsToDatabase(context.databaseSettings, {
-            ysqlServerRpcPort: data.ysqlServerRpcPort,
-            internalYsqlServerRpcPort: data.internalYsqlServerRpcPort
-          })
+      databaseSettings: shouldSyncConnectionPoolingPorts(providerCode)
+        ? applyConnectionPoolingPortsToDatabase(context.databaseSettings, syncedPorts)
         : context.databaseSettings
     };
   },

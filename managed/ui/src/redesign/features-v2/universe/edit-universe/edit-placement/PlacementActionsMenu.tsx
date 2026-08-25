@@ -54,14 +54,20 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
   const isUniverseReady = useIsUniverseReady();
   const showAddReadReplica = !readReplicaAlreadyPresent;
+  const hasMenuItems =
+    !!onEditMasterAllocationClick || showAddReadReplica || showAddGeoPartition;
   // Only show tip for the default "Advanced Placement options" trigger (Placement tab).
-  const showAdvancedPlacementTip = !triggerLabelKey;
+  const showAdvancedPlacementTip = !triggerLabelKey && hasMenuItems;
   const {
     open: isAdvancedPlacementPopoverOpen,
     anchorRef: advancedPlacementAnchorRef,
     handleClose: handleAdvancedPlacementPopoverClose,
     handleClickAway: handleAdvancedPlacementPopoverClickAway
   } = useAdvancedPlacementPopover(showAdvancedPlacementTip);
+
+  if (!hasMenuItems) {
+    return null;
+  }
 
   const triggerButton = (
     <YBButton

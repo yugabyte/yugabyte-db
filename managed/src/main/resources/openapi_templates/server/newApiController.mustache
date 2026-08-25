@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import java.io.File;
@@ -79,7 +80,9 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
     {{^controllerOnly}}
     this.imp = imp;
     {{/controllerOnly}}
-    mapper = new ObjectMapper();
+    {{! Yugabyte modification: register JavaTimeModule so request bodies carrying date-time
+        properties deserialize. Unknown-property strictness is left at the Jackson default. }}
+    mapper = new ObjectMapper().registerModule(new JavaTimeModule());
     {{#useBeanValidation}}
     this.configuration = configuration;
     {{/useBeanValidation}}

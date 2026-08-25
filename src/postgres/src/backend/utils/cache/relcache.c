@@ -91,7 +91,6 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
 #include "catalog/index.h"
 #include "catalog/pg_aggregate_d.h"
 #include "catalog/pg_amop.h"

@@ -42,8 +42,12 @@ tags:
     description: Job Scheduler
   - name: Metrics
     description: CRUD operations for YBA metrics
+  - name: Node Agent
+    description: Node agent operations
   - name: PITR
     description: Point-in-time recovery configuration management
+  - name: Support Bundle
+    description: Support bundle management for universes
   - name: Task
     description: Customer task management
   - name: Telemetry Provider

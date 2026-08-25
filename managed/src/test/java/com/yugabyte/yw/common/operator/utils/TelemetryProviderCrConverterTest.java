@@ -632,7 +632,6 @@ public class TelemetryProviderCrConverterTest {
     metadata.setGeneration(1L);
     cr.setMetadata(metadata);
     TelemetryProviderSpec spec = new TelemetryProviderSpec();
-    spec.setName(name + "-yba");
     spec.setProvider(provider);
     cr.setSpec(spec);
     return cr;

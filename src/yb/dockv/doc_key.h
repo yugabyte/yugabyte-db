@@ -460,9 +460,12 @@ class DocKeyDecoder {
 // Clears range components from provided key. Returns true if they were exists.
 Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special = AllowSpecial::kFalse);
 
-// Returns true if both keys have hashed components and them are equal or both keys don't have
-// hashed components and first range components are equal and false otherwise.
-Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rhs);
+// Returns true iff lhs and rhs have the same hash code and all hashed components, or, when no hash
+// code is present, an equal first range component. Two keys with the same hash code and an empty
+// hashed group satisfy the first case, as the hash code is present but there are no hashed
+// components to compare.
+// NOTE: If provided keys have no hash code and no range components, returns false.
+Result<bool> HashedOrFirstRangeComponentsExistAndEqual(const Slice& lhs, const Slice& rhs);
 
 bool DocKeyBelongsTo(Slice doc_key, const Schema& schema);
 

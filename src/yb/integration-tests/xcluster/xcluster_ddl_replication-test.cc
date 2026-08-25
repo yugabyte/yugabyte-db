@@ -302,9 +302,7 @@ TEST_F(XClusterDDLReplicationTest, BasicTestWithMultipleDatabases) {
   }
 }
 
-// We have a temporary fix for this test that we are applying only in non-debug builds.  We do this
-// so we will catch other tests that need the same permanent fix.  See #27622.
-TEST_F(XClusterDDLReplicationTest, YB_NEVER_DEBUG_TEST(CheckpointMultipleDatabases)) {
+TEST_F(XClusterDDLReplicationTest, CheckpointMultipleDatabases) {
   ASSERT_OK(SetUpClusters());
 
   std::vector<NamespaceName> namespaces{namespace_name};
@@ -1282,6 +1280,40 @@ TEST_F(XClusterDDLReplicationTest, DDLsWithinTransaction) {
       GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", "test_table_2"))));
 
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table->name());
+}
+
+TEST_F(XClusterDDLReplicationTest, RenameConstraint) {
+  // Test renaming various types of constraints.
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE parent_table (id int PRIMARY KEY)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE child_table (id int PRIMARY KEY, parent_id int REFERENCES parent_table(id), "
+      "val int CONSTRAINT val_check CHECK (val > 0), uval int CONSTRAINT uval_uniq UNIQUE)"));
+
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT child_table_parent_id_fkey TO fkey_renamed"));
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT val_check TO val_check_renamed"));
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT uval_uniq TO uval_uniq_renamed"));
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child_table RENAME CONSTRAINT child_table_pkey TO pkey_renamed"));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto kConstraintNamesQuery =
+      "SELECT conname FROM pg_constraint WHERE conrelid = 'child_table'::regclass "
+      "ORDER BY conname";
+  auto producer_constraints =
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(kConstraintNamesQuery));
+  auto consumer_constraints =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(kConstraintNamesQuery));
+  ASSERT_EQ(producer_constraints, consumer_constraints);
+  ASSERT_STR_CONTAINS(consumer_constraints, "fkey_renamed");
+  ASSERT_STR_CONTAINS(consumer_constraints, "val_check_renamed");
+  ASSERT_STR_CONTAINS(consumer_constraints, "uval_uniq_renamed");
+  ASSERT_STR_CONTAINS(consumer_constraints, "pkey_renamed");
 }
 
 TEST_F(XClusterDDLReplicationTest, FailAsyncInsertPackedSchema) {
@@ -4837,6 +4869,61 @@ TEST_F(XClusterDDLReplicationTest, ReplicationSlotCommandsNotReplicated) {
       consumer_repl_conn.Fetch("CREATE_REPLICATION_SLOT consumer_slot LOGICAL pgoutput"));
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_cdc_active_replication_slot_window_ms * 2));
   ASSERT_OK(consumer_repl_conn.Execute("DROP_REPLICATION_SLOT consumer_slot"));
+}
+
+TEST_F(XClusterDDLReplicationTest, DDLQueuePendingBatchErrorSurfacedAfterRestart) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Leave a complete pending DDL batch, then fail while processing it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE test_table_pending_batch (key int PRIMARY KEY);"));
+  ASSERT_OK(StringWaiterLogSink("Failing due to xcluster_ddl_queue_handler_fail_at_start")
+                .WaitFor(kTimeout));
+
+  auto consumer_ddl_queue_table = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, xcluster::kDDLQueuePgSchemaName,
+      xcluster::kDDLQueueTableName));
+
+  auto wait_for_poller_error = [&]() -> Status {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto* tserver = consumer_cluster()->mini_tablet_server(0)->server();
+          auto* xcluster_consumer = tserver->GetXClusterConsumer();
+          if (!xcluster_consumer) {
+            return false;
+          }
+          for (const auto& stat : xcluster_consumer->GetPollerStats()) {
+            if (stat.consumer_table_id == consumer_ddl_queue_table.table_id() &&
+                !stat.status.ok()) {
+              return true;
+            }
+          }
+          return false;
+        },
+        kTimeout, "Wait for ddl_queue poller to report error in stats");
+  };
+  ASSERT_OK(wait_for_poller_error());
+
+  // Restart recreates a ddl_queue poller at op_id 0.0, which drains the pending batch via
+  // ProcessPendingBatchIfExists before the first GetChanges.
+  auto pending_batch_error_waiter = StringWaiterLogSink("Failed to process existing DDL queue");
+  ASSERT_OK(consumer_cluster_.mini_cluster_->RestartSync());
+  ASSERT_OK(pending_batch_error_waiter.WaitFor(kTimeout));
+
+  ASSERT_OK(wait_for_poller_error());
+  // Consumer masters restarted with the tserver, so replication errors start UNINITIALIZED until
+  // the poller reports. Without StoreNOKReplicationError this stays UNINITIALIZED.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto admin_out =
+            CallAdmin(consumer_cluster(), "get_replication_status", kReplicationGroupId);
+        if (!admin_out.ok()) {
+          return false;
+        }
+        return admin_out->find("error: REPLICATION_SYSTEM_ERROR") != std::string::npos;
+      },
+      kTimeout, "Wait for master to report REPLICATION_SYSTEM_ERROR"));
 }
 
 TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {

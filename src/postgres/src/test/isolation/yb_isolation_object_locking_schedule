@@ -16,3 +16,4 @@ test: yb.orig.non_concurrent_index_with_parallel_dml
 test: yb.orig.detach-partition-concurrently-1
 test: yb.orig.matview_refresh_locking
 test: yb.orig.ddl_lock_conflicts
+test: yb.orig.lock-status-ddl-waiters

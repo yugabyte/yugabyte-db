@@ -151,7 +151,7 @@
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_pg_errcodes.h"
 
-#include "yb/yql/pggate/util/ybc_pgresult_util.h"
+#include "yb/yql/pggate/pg_global_view_read.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/ysql_binary_runner.h"
@@ -3588,24 +3588,50 @@ void TabletServiceImpl::PgRemoteExec(
   // Postgres_fdw expects results in TEXT format
   auto result = conn->Fetch(req->query(), pgwrapper::PGResultFormat::kText, params);
 
-  auto* result_pb = resp->mutable_pg_result();
   if (!result.ok()) {
     // TODO(#30482): Fetch the error status from PGresult
-    result_pb->set_exec_status(PGRES_FATAL_ERROR);
-    result_pb->set_error_message(result.status().message().ToBuffer());
+    auto msg = result.status().message().ToBuffer();
+    if (msg.empty()) {
+      LOG(DFATAL) << "PgRemoteExec failed with an empty error message. Status: " << result.status();
+      msg = result.status().CodeAsString();
+    }
+    resp->set_error_message(std::move(msg));
     context.RespondSuccess();
     return;
   }
 
   auto* pg_result = result->get();
+  const auto total_rows = PQntuples(pg_result);
+  const auto num_cols = PQnfields(pg_result);
+  resp->set_num_cols(num_cols);
   // 1 KB is kept aside for RPC headers
   const auto max_resp_size = FLAGS_rpc_max_message_size - 1_KB;
-  if (!pggate::PgResultToPB(pg_result, result_pb, max_resp_size)) {
+  auto& buffer = context.sidecars().Start();
+  std::vector<std::optional<Slice>> cells(num_cols);
+  int num_rows = 0;
+  for (; num_rows < total_rows; ++num_rows) {
+    size_t row_size = 0;
+    for (int col = 0; col < num_cols; ++col) {
+      // The sidecar keeps the NUL terminator libpq stores after each text
+      // value, so the coordinator reads values as C strings in place.
+      cells[col] = PQgetisnull(pg_result, num_rows, col)
+          ? std::optional<Slice>()
+          : std::optional<Slice>(Slice(
+                PQgetvalue(pg_result, num_rows, col),
+                PQgetlength(pg_result, num_rows, col) + 1));
+      row_size += pggate::GvCellSize(cells[col]);
+    }
+    if (!pggate::EncodeGvRow(cells, row_size, &buffer, max_resp_size)) {
+      break;
+    }
+  }
+  if (num_rows < total_rows) {
     resp->set_reached_size_limit(true);
     VLOG(1) << "Reached RPC size limit (" << FLAGS_rpc_max_message_size
-            << " bytes). Encoded " << result_pb->rows_size()
-            << " out of " << PQntuples(pg_result) << " rows";
+            << " bytes). Encoded " << num_rows << " out of " << total_rows << " rows";
   }
+  resp->set_num_rows(num_rows);
+  resp->set_rows_sidecar(narrow_cast<uint32_t>(context.sidecars().Complete()));
   context.RespondSuccess();
 }
 

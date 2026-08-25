@@ -159,17 +159,17 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.7.11",
+  "org.postgresql" % "postgresql" % "42.7.13",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
-  "ch.qos.logback" % "logback-classic" % "1.5.32",
+  "ch.qos.logback" % "logback-classic" % "1.5.38",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.20.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
   "org.apache.commons" % "commons-compress" % "1.27.1",
   "org.apache.commons" % "commons-csv" % "1.13.0",
-  "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
-  "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
-  "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
+  "org.apache.httpcomponents.core5" % "httpcore5" % "5.4.3",
+  "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.4.3",
+  "org.apache.httpcomponents.client5" % "httpclient5" % "5.6.4",
   "org.apache.mina" % "mina-core" % "2.2.9",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
@@ -231,12 +231,13 @@ libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.80.0",
   "com.google.cloud" % "google-cloud-logging" % "3.23.7",
   "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
-  "com.oracle.oci.sdk" % "oci-java-sdk-common" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.57.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-common" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-objectstorage" % "3.77.2",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "3.1.0",
@@ -1042,29 +1043,32 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.121-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.122-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b10"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "io.netty" % "netty-codec-haproxy" % "4.1.135.Final",
+  "io.netty" % "netty-codec-haproxy" % "4.1.136.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
 )
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.136.Final"
 // netty-all does not force these core modules, so they stay at the next-highest
-// requested version (4.1.130) and must be pinned explicitly to reach 4.1.135.
-dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-codec" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-common" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-handler" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-transport" % "4.1.135.Final"
+// requested version (4.1.130) and must be pinned explicitly to reach 4.1.136.
+dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-codec" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-common" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-handler" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-transport" % "4.1.136.Final"
+
+// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949.
+dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.1"
 
 dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
@@ -1108,11 +1112,13 @@ val pekkoOverrides = pekkoLibs.map(_ % pekkoVersion)
 
 dependencyOverrides ++= pekkoOverrides
 
-val jacksonVersion         = "2.18.6"
+val jacksonVersion         = "2.22.2"
+// jackson-annotations dropped the patch component from 2.20 onward: it publishes 2.20, 2.21,
+// 2.22, so it cannot follow jacksonVersion.
+val jacksonAnnotationsVersion = "2.22"
 
 val jacksonLibs = Seq(
   "com.fasterxml.jackson.core"       % "jackson-core",
-  "com.fasterxml.jackson.core"       % "jackson-annotations",
   "com.fasterxml.jackson.core"       % "jackson-databind",
   "com.fasterxml.jackson.datatype"   % "jackson-datatype-jdk8",
   "com.fasterxml.jackson.datatype"   % "jackson-datatype-jsr310",
@@ -1124,7 +1130,8 @@ val jacksonLibs = Seq(
   "com.fasterxml.jackson.module"     %% "jackson-module-scala",
 )
 
-val jacksonOverrides = jacksonLibs.map(_ % jacksonVersion)
+val jacksonOverrides = jacksonLibs.map(_ % jacksonVersion) :+
+  ("com.fasterxml.jackson.core" % "jackson-annotations" % jacksonAnnotationsVersion)
 
 dependencyOverrides ++= jacksonOverrides
 

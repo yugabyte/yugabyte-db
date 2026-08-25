@@ -20,7 +20,6 @@ import {
 import { TotalNodesBadge } from '@app/redesign/features-v2/universe/create-universe/components/TotalNodesBadge';
 import { InstanceBox } from '@app/redesign/features-v2/universe/create-universe/steps';
 import {
-  CPUArchField,
   InstanceTypeField,
   VolumeInfoField,
   K8NodeSpecField,
@@ -41,7 +40,6 @@ import { buildRRInstanceSettingsFromCluster } from '../../../readReplicaUtils';
 import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import { isImgBundleSupportedByProvider } from '@app/components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
-import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
 
 const { Box, styled, CircularProgress } = mui;
 
@@ -97,20 +95,6 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
       code: matched.code as CloudType
     } as ProviderType;
   }, [providers, providerUuid, providerCode]);
-
-  const supportedArchs = useMemo((): ArchitectureType[] => {
-    if (!provider) return [];
-    if (provider.code === CloudType.onprem) {
-      return [ArchitectureType.X86_64, ArchitectureType.ARM64];
-    }
-    const fromBundles = provider.imageBundles?.map((img) => img.details.arch).filter(Boolean) ?? [];
-    if (fromBundles.length) {
-      return [...new Set(fromBundles)] as ArchitectureType[];
-    }
-    // fallback while bundles load
-    const universeArch = universeData?.info?.arch;
-    return universeArch ? [universeArch as ArchitectureType] : [];
-  }, [provider, universeData?.info?.arch]);
 
   const {
     maxVolumeCount,
@@ -232,13 +216,8 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                   </Box>
                 ) : (
                   <InstanceBox>
-                    {showOsPatchingFields && (
-                      <>
-                        <CPUArchField supportedArchs={supportedArchs} disabled />
-                        {provider.code !== CloudType.onprem && (
-                          <LinuxVersionField disabled={!!sameAsPrimary} provider={provider} />
-                        )}
-                      </>
+                    {showOsPatchingFields && provider.code !== CloudType.onprem && (
+                      <LinuxVersionField disabled={!!sameAsPrimary} provider={provider} />
                     )}
                     {provider &&
                       (isK8s && useK8CustomResources ? (

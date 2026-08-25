@@ -261,7 +261,7 @@ export const Zone: FC<ZoneProps> = ({
                 field.onChange({
                   ...selectedZone,
                   nodeCount: zone.nodeCount ?? field.value?.nodeCount,
-                  preffered: zone.preffered ?? field.value?.preffered
+                  preffered: zone.preffered ?? field.value?.preffered ?? AZ_NOT_PREFERRED
                 });
               }
             }}

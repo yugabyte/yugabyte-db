@@ -19,7 +19,7 @@ import { getNodeCount, getPlacementRegions } from './placementAndAvailability';
 import { effectiveUseDedicatedNodes, getNodeSpec } from './createUniverseNodeSpec';
 import {
   DEFAULT_CONNECTION_POOLING_PORTS,
-  shouldApplyConnectionPoolingPortOverrides
+  shouldKeepCustomInternalYsqlPort
 } from '../helpers/syncConnectionPoolingPorts';
 import { DEFAULT_COMMUNICATION_PORTS } from '../helpers/constants';
 
@@ -228,8 +228,8 @@ export const mapCreateUniversePayload = (
             ? DEFAULT_COMMUNICATION_PORTS
             : {
                 ...otherAdvancedSettings,
-                // Custom Internal YSQL Port only applies when CP + override ports are enabled.
-                ...(!shouldApplyConnectionPoolingPortOverrides(databaseSettings, providerType) && {
+                // Custom Internal YSQL applies while CP is on. Turning CP off resets it to default.
+                ...(!shouldKeepCustomInternalYsqlPort(databaseSettings, providerType) && {
                   internalYsqlServerRpcPort:
                     DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
                 })

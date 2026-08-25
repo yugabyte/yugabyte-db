@@ -70,12 +70,14 @@ DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
+DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
 DECLARE_bool(TEST_load_transactions_sync);
 DECLARE_bool(TEST_master_fail_transactional_tablet_lookups);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_skip_remove_intent);
 DECLARE_bool(TEST_transaction_allow_rerequest_status);
+
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
@@ -84,13 +86,14 @@ DECLARE_int32(TEST_inject_load_transaction_delay_ms);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int64(transaction_rpc_timeout_ms);
+
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
-DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 
 namespace yb {
 namespace client {
@@ -2058,6 +2061,130 @@ TEST_F(QLTransactionTest, DeleteTableDuringWrite) {
   ASSERT_OK(WaitFor([this] {
     return !HasTransactions();
   }, 10s * kTimeMultiplier, "Cleanup transactions from coordinator"));
+}
+
+// Regression test for #30145: use-after-free of TransactionCoordinator::Impl.
+//
+// ApplyingReplicated calls rpcs_.Unregister before it uses any coordinator state, so
+// Rpcs::CompleteShutdown considers the callback finished and allows status tablet deletion to
+// destroy the coordinator while the callback is still running. TabletPeer::CompleteShutdown drops
+// the last TabletPtr, ~Tablet runs ~TransactionCoordinator, and the next statement -
+// LOG_WITH_PREFIX(WARNING) - makes a virtual call to Impl::LogPrefix on freed memory.
+//
+// The sync point this test needs is compiled out under NDEBUG, hence YB_DEBUG_ONLY_TEST (otherwise
+// test will get stuck waiting on sync point).
+TEST_F(QLTransactionTest, YB_DEBUG_ONLY_TEST(StatusTabletDeletedDuringApplyingReplicated)) {
+  const auto kTimeout = 60s * kTimeMultiplier;
+  constexpr auto kSyncPoint = "TransactionCoordinator::Impl::ApplyingReplicated:BeforeUse";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  // Resend APPLYING more often, so the callback arrives soon after involved tablets are deleted.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) = 100000;
+
+  // Pause the first failing ApplyingReplicated callback - it has already unregistered its rpc and
+  // is about to use `this` for the first time.
+  CountDownLatch paused(1);
+  CountDownLatch resume(1);
+  std::atomic<bool> pause_next{true};
+  // Status tablet of the paused coordinator. The cluster has several status tablets, so we should
+  // delete this one to reproduce the GHI #30145.
+  TabletId paused_coordinator_tablet;
+  auto& sync_point = *yb::SyncPoint::GetInstance();
+  sync_point.SetCallBack(kSyncPoint, [&](void* tablet_id) {
+    if (!pause_next.exchange(false)) {
+      return;
+    }
+    paused_coordinator_tablet = *static_cast<const TabletId*>(tablet_id);
+    LOG(INFO) << "ApplyingReplicated paused for coordinator " << paused_coordinator_tablet
+              << ": rpc unregistered, `this` not used yet";
+    paused.CountDown();
+    CHECK(resume.WaitFor(kTimeout)) << "Timed out waiting for the test to release the callback";
+    LOG(INFO) << "ApplyingReplicated continues into LOG_WITH_PREFIX";
+  });
+  sync_point.EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([&resume, &sync_point] {
+    resume.CountDown();  // Don't leave a paused callback behind.
+    sync_point.DisableProcessing();
+    sync_point.ClearAllCallBacks();
+  });
+
+  // Commit a transaction whose intents are never applied, so the coordinator keeps resending
+  // APPLYING.
+  DisableApplyingIntents();
+  ASSERT_NO_FATALS(WriteData());
+
+  // Delete involved tablets, so every subsequent APPLYING rpc completes with non-OK status and
+  // ApplyingReplicated gets into the sync point.
+  ASSERT_OK(client_->DeleteTable(table_.table()->id()));
+
+  ASSERT_TRUE(paused.WaitFor(kTimeout)) << "ApplyingReplicated callback was never reached";
+
+  // Find the leader peer of the status tablet of the paused coordinator. Deleting any other status
+  // tablet frees a different Impl and the callback continues on a live object, so nothing is
+  // caught.
+  //
+  // Only keep a weak reference to the tablet - TabletPeer::CompleteShutdown drops the last
+  // TabletPtr, so a strong reference held by the test would keep ~Impl from running and ASAN
+  // would see nothing.
+  tserver::TSTabletManager* status_tablet_manager = nullptr;
+  std::weak_ptr<tablet::Tablet> weak_status_tablet;
+  for (size_t i = 0; i != cluster_->num_tablet_servers() && !status_tablet_manager; ++i) {
+    auto* ts_manager = cluster_->GetTabletManager(i);
+    for (const auto& peer : ts_manager->GetTabletPeers()) {
+      if (peer->tablet_id() != paused_coordinator_tablet ||
+          peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
+        continue;
+      }
+      weak_status_tablet = ASSERT_RESULT(peer->shared_tablet());
+      status_tablet_manager = ts_manager;
+      break;
+    }
+  }
+  ASSERT_TRUE(status_tablet_manager != nullptr)
+      << "Leader peer of the paused coordinator's status tablet " << paused_coordinator_tablet
+      << " not found";
+  LOG(INFO) << "Deleting the paused coordinator's status tablet: " << paused_coordinator_tablet;
+
+  // Delete the status tablet from a separate thread. With the bug present Rpcs::CompleteShutdown
+  // returns immediately, because the paused callback has already unregistered its rpc. A fix that
+  // keeps the rpc registered for the whole callback would block this call until `resume` is
+  // released, so we should not call it inline.
+  Status delete_status;
+  std::atomic<bool> delete_returned{false};
+  std::thread deleter([&] {
+    std::optional<tserver::TabletServerErrorPB::Code> error_code;
+    delete_status = status_tablet_manager->DeleteTablet(
+        paused_coordinator_tablet, tablet::TABLET_DATA_TOMBSTONED,
+        tablet::ShouldAbortActiveTransactions::kFalse,
+        /* cas_config_opid_index_less_or_equal= */ std::nullopt, /* hide_only= */ false,
+        /* keep_data= */ true, &error_code);
+    delete_returned.store(true);
+  });
+
+  // Wait for DeleteTablet to return, not for the Tablet strong count to reach zero.
+  // weak_status_tablet.expired() only means that ~Tablet has started, the coordinator is deleted
+  // later, while ~Tablet destroys its members. Waiting for expiration leaves the callback racing
+  // with the free and reproduced the failure only 3 times out of 10. DeleteTablet returns after
+  // TabletPeer::CompleteShutdown has completed tablet_.reset(), so ~Impl has run by then.
+  //
+  // The wait is short, because a fix that keeps the rpc registered makes DeleteTablet wait for
+  // `resume`. We should release the callback well before FLAGS_rpcs_shutdown_timeout_ms, otherwise
+  // Rpcs::CompleteShutdown gives up waiting and fails the Check failed: calls_.empty() of GHI
+  // #20347 instead of completing the shutdown.
+  const auto coordinator_freed =
+      WaitFor([&delete_returned] { return delete_returned.load(); },
+              5s * kTimeMultiplier, "DeleteTablet to complete").ok();
+  LOG(INFO) << "Coordinator freed while the callback was paused: " << coordinator_freed
+            << ", tablet strong refs dropped: " << weak_status_tablet.expired();
+
+  // Let the callback continue into LOG_WITH_PREFIX(WARNING) on the freed Impl.
+  resume.CountDown();
+  deleter.join();
+  ASSERT_OK(delete_status);
+
+  // Wait for the callback to finish using the coordinator, so the ASAN report belongs to this
+  // test and not to the cluster teardown.
+  SleepFor(1s * kTimeMultiplier);
 }
 
 class QLTransactionTestSmallWriteBuffer :

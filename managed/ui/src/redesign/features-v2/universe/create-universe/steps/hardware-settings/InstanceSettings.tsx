@@ -174,8 +174,10 @@ export const InstanceSettings = forwardRef<
   const { zones, isLoadingZones } = useGetZones(provider, resilienceAndRegionsSettings?.regions);
   const zoneNames = zones.map((zone: Placement) => zone.name);
   const hasRegionsForZones = (resilienceAndRegionsSettings?.regions?.length ?? 0) > 0;
+  const instanceTypesQueryEnabled =
+    needsInstanceTypes && !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones;
 
-  const { isLoading: isLoadingInstanceTypes } = useQuery(
+  const { isFetched: isInstanceTypesFetched, isError: isInstanceTypesError } = useQuery(
     [
       QUERY_KEY.getInstanceTypes,
       provider?.uuid,
@@ -184,15 +186,21 @@ export const InstanceSettings = forwardRef<
     ],
     () => api.getInstanceTypes(provider?.uuid, zoneNames, osPatchingEnabled ? cpuArch : null),
     {
-      enabled: needsInstanceTypes && !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones
+      enabled: instanceTypesQueryEnabled,
+      refetchOnWindowFocus: false
     }
   );
 
+  // Don't paint the form until zones + the full instance-type list are ready.
+  // A disabled query is not "loading" in react-query v3, so isLoading alone
+  // lets the dropdown render empty and then jump when the list arrives.
   const showInstanceTypesLoader =
     needsInstanceTypes &&
     !!provider?.uuid &&
     hasRegionsForZones &&
-    (isLoadingZones || isLoadingInstanceTypes);
+    (isLoadingZones ||
+      zoneNames.length === 0 ||
+      (instanceTypesQueryEnabled && !isInstanceTypesFetched && !isInstanceTypesError));
 
   useEffect(() => {
     if (osPatchingEnabled && provider && !isImgBundleSupportedByProvider(provider)) {
