@@ -597,4 +597,97 @@ TEST_F(PgDdlTransactionBlockCrashTest, ParallelDdlTransactionBlockCrash) {
     FAIL() << "Bug 30908 was reproduced successfully! Status message: " << reproduced_msg;
   }
 }
+
+// Test that concurrent "CREATE OR REPLACE FUNCTION" and "DROP FUNCTION"
+// on the same function does not crash the backend process.
+// See issue: https://github.com/yugabyte/yugabyte-db/issues/31247
+
+class PgConcurrentCreateOrReplaceCrashTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    LibPqTestBase::UpdateMiniClusterOptions(opts);
+    // Object locking would serialize DDLs on the same object and close the
+    // stale-syscache race window, so it must be disabled to reproduce.
+    opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+  }
+
+  static bool IsBackendCrash(const Status& status) {
+    if (status.ok()) {
+      return false;
+    }
+    const auto msg = status.ToString();
+    return msg.find("server closed the connection unexpectedly") != std::string::npos ||
+           msg.find("terminating connection due to") != std::string::npos;
+  }
+};
+
+TEST_F(PgConcurrentCreateOrReplaceCrashTest, ConcurrentCreateOrReplaceWithDropCrash) {
+  constexpr int kNumReplacers = 4;
+  const int kNumIterations = NonTsanVsTsan(200, 80);
+  const std::string kCreateOrReplace =
+      "CREATE OR REPLACE FUNCTION add_fn(INTEGER, INTEGER) RETURNS INTEGER "
+      "LANGUAGE SQL AS 'SELECT $1 + $2;'";
+  const std::string kCreate =
+      "CREATE FUNCTION add_fn(INTEGER, INTEGER) RETURNS INTEGER "
+      "LANGUAGE SQL AS 'SELECT $1 + $2;'";
+  const std::string kDrop =
+      "DROP FUNCTION IF EXISTS add_fn(INTEGER, INTEGER)";
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute(kCreate));
+
+  std::atomic<bool> crashed{false};
+  std::string crash_msg;
+  std::mutex crash_mutex;
+  auto record_crash = [&](const Status& status) {
+    if (IsBackendCrash(status)) {
+      std::lock_guard<std::mutex> lock(crash_mutex);
+      crash_msg = status.ToString();
+      crashed.store(true, std::memory_order_release);
+      return true;
+    }
+    return false;
+  };
+
+  TestThreadHolder thread_holder;
+
+  // Replacer threads: hammer CREATE OR REPLACE on the same function so that they
+  // contend on the same pg_proc row and frequently run with a stale syscache.
+  for (int i = 0; i < kNumReplacers; ++i) {
+    thread_holder.AddThreadFunctor([&] {
+      auto conn = ASSERT_RESULT(Connect());
+      for (int j = 0; j < kNumIterations && !crashed.load(std::memory_order_acquire); ++j) {
+        // A stale-syscache replace can either crash (the bug) or fail benignly
+        // because the function was concurrently dropped. Only a crash fails the
+        // test; benign DDL errors are expected under this raciness.
+        record_crash(conn.Execute(kCreateOrReplace));
+      }
+    });
+  }
+
+  // Churn thread: keep dropping and recreating the function so its OID (and thus
+  // the pg_proc row's ybctid) changes underneath the replacers' stale caches.
+  thread_holder.AddThreadFunctor([&] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int j = 0; j < kNumIterations && !crashed.load(std::memory_order_acquire); ++j) {
+      if (record_crash(conn.Execute(kDrop))) {
+        return;
+      }
+      record_crash(conn.Execute(kCreate));
+    }
+  });
+
+  thread_holder.JoinAll();
+
+  ASSERT_FALSE(crashed.load(std::memory_order_acquire))
+      << "backend crashed during concurrent CREATE OR REPLACE. "
+      << "Status: " << crash_msg;
+
+  // Even when no backend crashes, we would like to further assert that
+  // pg_proc's secondary index (pg_proc_proname_args_nsp_index)
+  // is consistent with the base pg_proc table in the face of
+  // concurrent updates to pg_proc and its secondary index.
+  ASSERT_OK(
+      setup_conn.Fetch("SELECT yb_index_check('pg_proc_proname_args_nsp_index'::regclass)"));
+}
 }  // namespace yb::pgwrapper
