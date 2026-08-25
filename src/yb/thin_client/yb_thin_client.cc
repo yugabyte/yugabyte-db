@@ -45,6 +45,7 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/value.pb.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/write_fence.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_entry_value.h"
@@ -198,10 +199,11 @@ ybthin_status_code ClassifyStatus(const Status& status) {
   if (status.IsInvalidArgument() || status.IsNotSupported()) {
     return YBTHIN_INVALID;
   }
-  // The only Expired status this service produces is a fenced write (RaftConsensus rejects the op
-  // when ignore_after_hybrid_time has passed), so the caller can tell it apart from a failure that
-  // might still have taken effect. A fenced write definitively did not.
-  if (status.IsExpired()) {
+  // Match the fence's own error code, not the Expired category. Expired is shared: a read can hit
+  // DeadlineInfo's per-query deadline, and RetryableRequests::Register returns it for "less than
+  // min running" / "too old" on writes that may well have replicated. Only WriteFenceExpiredError
+  // means the write definitively did not take effect, which is the whole claim YBTHIN_FENCED makes.
+  if (yb::WriteFenceExpiredError::ValueFromStatus(status)) {
     return YBTHIN_FENCED;
   }
   return YBTHIN_OTHER;

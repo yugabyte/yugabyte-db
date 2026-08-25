@@ -228,12 +228,22 @@ typedef struct {
   size_t n_values;
   // Fences this row against a lease the caller holds: the tablet leader rejects the write if this
   // hybrid time has already passed by the time the op is assigned its own, reporting
-  // YBTHIN_FENCED. 0 means no fence.
+  // YBTHIN_FENCED. 0 means no fence -- the field is simply not sent.
   //
   // This exists because an RPC timeout cannot express it -- nothing cancels an operation once it
   // reaches Raft, so a write that timed out from the caller's point of view can still commit. Each
   // tablet leader judges the fence separately, so a batch spanning tablets can be partly applied
   // when it straddles the boundary.
+  //
+  // NOT COVERED BY THE VERSIONING RULE ABOVE, and the exception is load-bearing rather than
+  // cosmetic. A tserver that does not enforce the fence -- one older than the field, or one whose
+  // --enable_write_fence_ignore_after_hybrid_time is off, which is the default while the feature is
+  // in development -- applies the write as an ordinary unfenced write and reports YBTHIN_OK. There
+  // is no signal in the response distinguishing "inside the fence" from "fence ignored", so a
+  // caller must establish out of band that every tserver it writes to enforces the fence before
+  // treating YBTHIN_OK as proof the write happened within its lease. Until the flag is promoted to
+  // an AutoFlag, that means checking the flag on each tserver; leave this 0 against any cluster
+  // where that does not hold.
   uint64_t ignore_after_hybrid_time;
 } ybthin_upsert_row;
 

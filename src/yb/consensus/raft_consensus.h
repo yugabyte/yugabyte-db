@@ -408,7 +408,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Rejects a write whose caller-supplied fence (WritePB::ignore_after_hybrid_time) has already
   // passed, so that a client holding a time-bounded lease can stop its writes taking effect once
-  // the lease is gone. Must be called before the round is added as pending -- see the call site.
+  // the lease is gone. Gated on --enable_write_fence_ignore_after_hybrid_time. Must be called
+  // before the round is registered with retryable requests and before it is added as pending --
+  // see the call site for both.
   Status CheckWriteFenceUnlocked(const ConsensusRoundPtr& round);
 
   // Control whether printing of log messages should be done for a particular

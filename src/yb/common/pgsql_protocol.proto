@@ -336,6 +336,14 @@ message PgsqlWriteRequestPB {
   //
   // Being a hybrid time comparison, this rests on max_clock_skew_usec like any other -- no new
   // assumption, but the fence is only as tight as that bound.
+  //
+  // Presence is the signal: 0 is not "no fence" here, it is HybridTime::kMin and therefore a fence
+  // that has unconditionally already passed. Leave the field unset to write without a fence.
+  //
+  // Enforcement is gated on the tablet server's --enable_write_fence_ignore_after_hybrid_time,
+  // which is off while the feature is in development. A server with the flag off -- or one too old
+  // to know the field -- applies the write unfenced and reports nothing, so a caller can only rely
+  // on the fence against a cluster it knows enforces it.
   optional fixed64 ignore_after_hybrid_time = 31;
 }
 

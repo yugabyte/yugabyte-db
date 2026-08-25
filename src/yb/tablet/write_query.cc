@@ -14,6 +14,7 @@
 #include "yb/tablet/write_query.h"
 
 #include <algorithm>
+#include <optional>
 
 #include "yb/ash/wait_state.h"
 
@@ -93,6 +94,7 @@ DEFINE_test_flag(bool, writequery_stuck_from_callback_leak, false,
     "Simulate WriteQuery stuck because of the update index flushed rpc call back leak");
 
 DECLARE_bool(batch_tablet_metrics_update);
+DECLARE_bool(enable_write_fence_ignore_after_hybrid_time);
 DECLARE_bool(ysql_analyze_dump_metrics);
 DECLARE_bool(ysql_enable_packed_row);
 
@@ -127,16 +129,27 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
   // Lift the ops' write fence up to the replicated message: the leader enforces it in
   // RaftConsensus, which never sees the pgsql ops. The earliest fence wins, so one fenced op
   // fences the batch -- these ops share a hybrid time, so they cannot be fenced apart.
-  uint64_t ignore_after_hybrid_time = 0;
-  for (const auto& op : client_request.pgsql_write_batch()) {
-    if (op.has_ignore_after_hybrid_time()) {
-      ignore_after_hybrid_time = ignore_after_hybrid_time
-          ? std::min(ignore_after_hybrid_time, op.ignore_after_hybrid_time())
-          : op.ignore_after_hybrid_time();
+  //
+  // Presence carries through rather than a 0 sentinel. PgsqlWriteRequestPB is a public wire format
+  // and does not reserve 0 as "no fence" -- 0 is HybridTime::kMin, which is unconditionally in the
+  // past -- so a present-and-zero fence must reject the batch, not silently disable it. Testing
+  // the value instead would also let one op's explicit 0 collapse the minimum and drop a real
+  // fence carried by its neighbours.
+  //
+  // Gated because the fence is a wire and Raft-log format addition: with the flag off the field
+  // never reaches the replicated message, so nothing new is persisted or enforced.
+  if (FLAGS_enable_write_fence_ignore_after_hybrid_time) {
+    std::optional<uint64_t> ignore_after_hybrid_time;
+    for (const auto& op : client_request.pgsql_write_batch()) {
+      if (op.has_ignore_after_hybrid_time()) {
+        ignore_after_hybrid_time = ignore_after_hybrid_time
+            ? std::min(*ignore_after_hybrid_time, op.ignore_after_hybrid_time())
+            : op.ignore_after_hybrid_time();
+      }
     }
-  }
-  if (ignore_after_hybrid_time) {
-    out_request->set_ignore_after_hybrid_time(ignore_after_hybrid_time);
+    if (ignore_after_hybrid_time) {
+      out_request->set_ignore_after_hybrid_time(*ignore_after_hybrid_time);
+    }
   }
   // Actually, in production code, we could check for external hybrid time only when there are
   // no ql, pgsql, redis operations.

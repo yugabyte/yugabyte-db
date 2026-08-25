@@ -115,6 +115,14 @@ message WritePB {
   // this batch. Lifted here because the replicated message carries only the DocDB write batch --
   // the pgsql ops are not copied (WriteQuery's SetupKeyValueBatch) -- and the leader enforces the
   // fence in RaftConsensus::DoAppendNewRoundsToQueueUnlocked, which sees only this message.
+  //
+  // Presence is the signal, as in PgsqlWriteRequestPB: 0 is HybridTime::kMin, a fence already
+  // passed, not the absence of one.
+  //
+  // Only written when --enable_write_fence_ignore_after_hybrid_time is on, so that neither the new
+  // behaviour nor the new field reaches a mixed-version cluster while the feature is in
+  // development. A peer that does not know the field ignores it when replaying the log, which is
+  // also what makes rollback safe: entries already accepted by a fencing leader replay unfenced.
   optional fixed64 ignore_after_hybrid_time = 24;
 }
 

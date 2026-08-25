@@ -37,6 +37,7 @@
 #include <mutex>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/common/write_fence.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"
@@ -299,6 +300,15 @@ DEFINE_RUNTIME_bool(enable_wal_sync_on_consensus_update, true,
     "majority-durable: at RF=3 a commit needs 2 of 3 acks and the leader is normally one of "
     "them, so a committed entry can have exactly one bounded copy while the leader's stays "
     "unsynced. The leader's own WAL, RF=1, and a partitioned node get no bound from this flag.");
+
+DEFINE_RUNTIME_bool(enable_write_fence_ignore_after_hybrid_time, false,
+    "Whether a tablet leader honours WritePB::ignore_after_hybrid_time, rejecting a write whose "
+    "caller-supplied fence has already passed. Off by default while the feature is in "
+    "development: the fence is a wire and Raft-log format addition, so leaving it off keeps the "
+    "new behaviour -- and the new field -- out of a mixed-version cluster. With it off the fence "
+    "is not lifted into the replicated message (see WriteQuery's SetupKeyValueBatch) and not "
+    "enforced, so a fenced write is applied as an ordinary one. Shipping this means promoting it "
+    "to an AutoFlag, so that a client can only rely on the fence once every peer enforces it.");
 
 namespace yb::consensus {
 
@@ -1377,10 +1387,17 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 }
 
 Status RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
+  if (!FLAGS_enable_write_fence_ignore_after_hybrid_time) {
+    return Status::OK();
+  }
   const auto& msg = *round->replicate_msg();
   if (msg.op_type() != OperationType::WRITE_OP || !msg.write().has_ignore_after_hybrid_time()) {
     return Status::OK();
   }
+  // Presence, not a sentinel value: WritePB is a wire and log format that does not reserve 0 as
+  // "no fence" (0 is HybridTime::kMin, unconditionally in the past). The thin client's ABI is the
+  // only layer that spells "no fence" as 0, and it drops the field rather than sending a zero.
+  //
   // Deliberately the hybrid clock rather than the op's own hybrid time, which is not assigned
   // until AddLeaderPending; see the call site for why the check cannot wait until after that.
   // Note this is clock_, the hybrid clock -- state_->Clock() is the restart-safe coarse clock and
@@ -1390,9 +1407,13 @@ Status RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
   if (fence > now.ToUint64()) {
     return Status::OK();
   }
-  return STATUS_FORMAT(
-      Expired, "Write is fenced: ignore_after_hybrid_time $0 is not after $1",
-      HybridTime(fence), now);
+  // WriteFenceExpiredError, not a bare Expired: the write path produces Expired for causes that
+  // may well have been replicated (RetryableRequests::Register's "less than min running" and
+  // "too old"), and a lease holder must not confuse those with a write that definitively did not
+  // take effect.
+  return STATUS_EC_FORMAT(
+      Expired, WriteFenceExpiredError(fence),
+      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", HybridTime(fence), now);
 }
 
 Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
@@ -1402,6 +1423,29 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
 
   for (const auto& round : rounds) {
     ++*processed_rounds;
+
+    // A write fenced by a caller-held lease is rejected here: before the retryable-request
+    // registration below, and before NotifyAddedToLeader further down, for two separate reasons.
+    //
+    // Before NotifyAddedToLeader for the same reason the operation filter is consulted early --
+    // once an op is added as pending its side effects have happened and rolling back the op id
+    // does not undo them. The comparison is therefore against the clock rather than the op's own
+    // hybrid time, which AddLeaderPending has not assigned yet. The assigned time is >= this
+    // reading, so the check is permissive only by the interval between the two under the same
+    // lock. An op that passes and then stalls keeps its earlier position, so it cannot clobber a
+    // newer writer, and safe time will not advance past it.
+    //
+    // Before RegisterRetryableRequest because rejecting afterwards would leak the registration.
+    // A registered round is only removed from RetryableRequests by ReplicationFinished, which is
+    // reached solely through ReplicaState::NotifyReplicationFinishedUnlocked -- neither the direct
+    // round->NotifyReplicationFinished below nor the unwind loop in AppendNewRoundsToQueueUnlocked
+    // (which skips rounds already bound to kUnknownTerm) gets there. Rejecting first makes this
+    // kind (1) in that function's taxonomy -- nothing was registered, so nothing needs undoing.
+    if (auto s = CheckWriteFenceUnlocked(round); !s.ok()) {
+      round->NotifyReplicationFinished(s, round->bound_term(), /* applied_op_ids = */ nullptr);
+      round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
+      continue;
+    }
 
     if (round->replicate_msg()->op_type() == OperationType::WRITE_OP) {
       DCHECK_EQ(state_->GetActiveRoleUnlocked(), PeerRole::LEADER);
@@ -1414,21 +1458,6 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
         round->BindToTerm(OpId::kUnknownTerm); // Mark round as non replicating
         continue;
       }
-    }
-
-    // A write fenced by a caller-held lease is rejected here, for the same reason the operation
-    // filter is consulted below rather than after NotifyAddedToLeader: once an op is added as
-    // pending its side effects have happened and rolling back the op id does not undo them.
-    //
-    // The comparison is therefore against the clock rather than the op's own hybrid time, which
-    // AddLeaderPending has not assigned yet. The assigned time is >= this reading, so the check is
-    // permissive only by the interval between the two under the same lock. An op that passes and
-    // then stalls keeps its earlier position, so it cannot clobber a newer writer, and safe time
-    // will not advance past it.
-    if (auto s = CheckWriteFenceUnlocked(round); !s.ok()) {
-      round->NotifyReplicationFinished(s, round->bound_term(), /* applied_op_ids = */ nullptr);
-      round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
-      continue;
     }
 
     // Reject ops the operation filter won't allow BEFORE NotifyAddedToLeader runs, so that side
