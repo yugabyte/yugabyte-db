@@ -3478,10 +3478,14 @@ void YBCPgGlobalViewReadSetParams(
   DCHECK_NOTNULL(handle)->SetParams(std::span{param_values, param_values + num_params});
 }
 
-YbcPgResultPB YBCPgGlobalViewReadExecScan(
+YbcPgGvScanResult YBCPgGlobalViewReadExecScan(
     YbcPgGlobalViewRead handle, const char *database_name, const char *query,
     const char *tserver_uuid) {
   return pgapi->ExecGlobalViewScan(handle, database_name, query, tserver_uuid);
+}
+
+bool YBCPgGlobalViewReadNextRow(YbcPgGlobalViewRead handle, const char **values) {
+  return DCHECK_NOTNULL(handle)->NextRow(values);
 }
 
 const char* YBCPgGlobalViewReadGetError(YbcPgGlobalViewRead handle) {

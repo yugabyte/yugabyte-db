@@ -1957,11 +1957,11 @@ class PgClient::Impl : public BigDataFetcher {
     return Status::OK();
   }
 
-  Result<tserver::PgRemoteExecResponsePB> RemoteExec(
+  Result<RemoteExecData> RemoteExec(
       std::string_view query, std::string_view database_name, std::string_view tserver_uuid,
       const std::vector<std::optional<std::string>>& params) {
     tserver::PgRemoteExecRequestPB req;
-    tserver::PgRemoteExecResponsePB resp;
+    RemoteExecData data;
 
     req.set_query(query.data(), query.size());
     req.set_tserver_uuid(tserver_uuid.data(), tserver_uuid.size());
@@ -1978,16 +1978,21 @@ class PgClient::Impl : public BigDataFetcher {
         CoarseMonoClock::now() +
         MonoDelta::FromMilliseconds(FLAGS_remote_pg_query_execution_rpc_timeout_ms));
 
+    auto* controller = PrepareController<tserver::PgRemoteExecRequestPB>(deadline);
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::RemoteExec,
-        req, resp, PggateRPC::kRemotePgExec, deadline));
+        req, data.resp, PggateRPC::kRemotePgExec, controller));
 
-    RETURN_NOT_OK(ResponseStatus(resp));
+    RETURN_NOT_OK(ResponseStatus(data.resp));
 
-    if (resp.reached_size_limit()) {
+    if (data.resp.reached_size_limit()) {
       LOG(WARNING) << "Reached max RPC size limit for remote pg exec query. "
                       "Received truncated response.";
     }
-    return resp;
+
+    if (data.resp.has_rows_sidecar()) {
+      data.rows_data = VERIFY_RESULT(controller->ExtractSidecar(data.resp.rows_sidecar()));
+    }
+    return data;
   }
 
  private:
@@ -2496,7 +2501,7 @@ Status PgClient::GetYbSystemTableInfo(
   return impl_->GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode);
 }
 
-Result<tserver::PgRemoteExecResponsePB> PgClient::RemoteExec(
+Result<RemoteExecData> PgClient::RemoteExec(
     std::string_view query, std::string_view database_name, std::string_view tserver_uuid,
     const std::vector<std::optional<std::string>>& params) {
   return impl_->RemoteExec(query, database_name, tserver_uuid, params);

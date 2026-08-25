@@ -3001,6 +3001,11 @@ class PgClientServiceImpl::Impl : public SessionProvider {
           req.query(), target_uuid));
     }
 
+    if (resp->has_rows_sidecar()) {
+      auto offset = controller.TransferSidecars(&context->sidecars());
+      resp->set_rows_sidecar(narrow_cast<uint32_t>(resp->rows_sidecar() + offset));
+    }
+
     return Status::OK();
   }
 

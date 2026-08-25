@@ -30,6 +30,7 @@ Status WriteColumn(const LWQLValuePB& col_value, WriteBuffer* buffer);
 Status WriteColumn(const LWQLValuePB& col_value, ValueBuffer* buffer);
 
 void WriteBinaryColumn(const Slice& col_value, WriteBuffer* buffer);
+void WriteNullColumn(WriteBuffer* buffer);
 
 class PgDocData : public PgWire {
  public:
