@@ -891,6 +891,10 @@ public class HealthChecker {
               || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
               || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
             nodeInfo.setOtelCollectorEnabled(true);
+            nodeInfo.setOtelCollectorInstalled(
+                nodeInfo.isK8s()
+                    ? nodeDetails.isTserver
+                    : nodeDetails.isMaster || nodeDetails.isTserver);
           }
         }
         nodeInfo.setClockboundEnabled(
@@ -1385,6 +1389,7 @@ public class HealthChecker {
     private int ybcPort = 18018;
     private UUID universeUuid;
     private boolean otelCollectorEnabled = false;
+    private boolean otelCollectorInstalled = false;
     private boolean clockSyncServiceRequired = true;
     private boolean clockboundEnabled = false;
 
