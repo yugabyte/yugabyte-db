@@ -35,6 +35,8 @@ type: docs
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes.
 
+For planning considerations, including topology, hardware, and security, refer to [Plan your universe](../create-universes-overview/).
+
 For information on modifying or scaling an existing universe, refer to [Modify universe](../../scale-deployments/edit-universe/).
 
 ## Prerequisites
