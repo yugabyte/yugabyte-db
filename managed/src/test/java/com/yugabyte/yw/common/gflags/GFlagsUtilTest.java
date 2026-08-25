@@ -25,6 +25,9 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -50,6 +53,38 @@ public class GFlagsUtilTest extends FakeDBApplication {
     mutableConfigFactory
         .globalRuntimeConf()
         .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "true");
+  }
+
+  @Test
+  public void testGetChangedGFlags() {
+    UUID clusterUuid = UUID.randomUUID();
+    Cluster currentCluster =
+        createCluster(
+            clusterUuid,
+            ImmutableMap.of("removed", "1", "changed", "1", "unchanged", "1"),
+            ImmutableMap.of());
+    Cluster updatedCluster =
+        createCluster(
+            clusterUuid,
+            ImmutableMap.of("added", "1", "changed", "2", "unchanged", "1"),
+            ImmutableMap.of("non-candidate", "new"));
+
+    assertEquals(
+        Set.of("added", "changed", "removed"),
+        GFlagsUtil.getChangedGFlags(
+            List.of(currentCluster),
+            List.of(updatedCluster),
+            Set.of("added", "changed", "removed", "unchanged")));
+  }
+
+  private static Cluster createCluster(
+      UUID clusterUuid, Map<String, String> masterGFlags, Map<String, String> tserverGFlags) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.masterGFlags = new HashMap<>(masterGFlags);
+    userIntent.tserverGFlags = new HashMap<>(tserverGFlags);
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    cluster.uuid = clusterUuid;
+    return cluster;
   }
 
   @Test

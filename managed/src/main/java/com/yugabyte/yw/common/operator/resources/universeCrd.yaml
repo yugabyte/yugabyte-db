@@ -250,6 +250,24 @@ spec:
                   the same container image as the database instead of being installed at runtime.
                 type: boolean
                 default: false
+              proxyConfig:
+                description: >
+                  Proxy configuration used by universe nodes for backup and restore traffic.
+                  Credentials can be included in the proxy URL, for example
+                  http://username:password@proxy.example.com:3128.
+                type: object
+                properties:
+                  httpProxy:
+                    description: HTTP proxy URL.
+                    type: string
+                  httpsProxy:
+                    description: HTTPS proxy URL.
+                    type: string
+                  noProxyList:
+                    description: Hosts and domains that should bypass the proxy.
+                    type: array
+                    items:
+                      type: string
               providerName:
                 description: Preexisting Provider name to use in the universe.
                 type: string

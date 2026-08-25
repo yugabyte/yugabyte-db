@@ -154,7 +154,7 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_uint64(outstanding_tablet_split_limit);
-DECLARE_uint64(outstanding_tablet_split_limit_per_tserver);
+DECLARE_int64(outstanding_tablet_split_limit_per_tserver);
 DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_double(TEST_fail_tablet_split_probability);
 DECLARE_bool(TEST_skip_post_split_compaction);
@@ -923,7 +923,10 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
   bool reached_split_limit = false;
 
   for (int i = 0; i < kSplitDepth; ++i) {
-    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+    // A load balancer leader move can transiently leave a tablet without a leader, so wait until
+    // every active tablet has one, otherwise fewer tablets than expected would be split.
+    auto peers = ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(
+        cluster_.get(), table_->id(), 1 << i));
     bool expect_split = false;
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet_maybe_null();

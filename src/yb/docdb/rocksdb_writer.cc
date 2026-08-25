@@ -1090,7 +1090,7 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
     SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers& frontiers,
     const DocVectorIndexesPtr& vector_indexes, const StorageSet& apply_to_storages,
-    TableType table_type)
+    TableType table_type, std::atomic<bool>* can_advance_intents_flush_op_id)
     : FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       put_batch_(put_batch),
       write_hybrid_time_(write_hybrid_time),
@@ -1098,7 +1098,8 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
       intents_write_batch_(intents_write_batch),
       vector_indexes_(vector_indexes),
       apply_to_storages_(apply_to_storages),
-      table_type_(table_type) {
+      table_type_(table_type),
+      can_advance_intents_flush_op_id_(can_advance_intents_flush_op_id) {
   if (put_batch_.apply_external_transactions().size() > 0) {
     intents_db_iter_ = CreateRocksDBIterator(
         intents_db, &docdb::KeyBounds::kNoBounds, BloomFilterOptions::Inactive(),
@@ -1358,6 +1359,14 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
         handler, Slice(put_batch_.delete_vector_ids()),
         DocHybridTime(write_hybrid_time_, write_id)));
     frontiers_.Largest().SetHasVectorDeletion();
+  }
+
+  // Keep this condition in sync with the one guarding the intents db write in
+  // Tablet::ApplyKeyValueRowOperations. Clearing the flag while that write does not happen would
+  // leave the flag false forever; that write happening while the flag is not cleared would
+  // introduce the issue again.
+  if (can_advance_intents_flush_op_id_ && intents_write_batch_->Count() != 0) {
+    can_advance_intents_flush_op_id_->store(false, std::memory_order_release);
   }
 
   return Status::OK();

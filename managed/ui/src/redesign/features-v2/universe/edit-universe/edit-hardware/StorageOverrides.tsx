@@ -8,9 +8,7 @@ import StarIcon from '@app/redesign/assets/in-use-star.svg';
 import { ClusterSpec, ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
-import {
-  useIsUniverseReady
-} from '../EditUniverseUtils';
+import { useEditUniverseContext, useIsUniverseReady, withUniverseResource } from '../EditUniverseUtils';
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import {
   buildStorageOverrideModalProps,
@@ -88,6 +86,8 @@ export const StorageOverrides: FC<StorageOverridesProps> = ({ cluster, hasReadRe
     keyPrefix: 'editUniverse.hardware.storageOverrides'
   });
   const isUniverseReady = useIsUniverseReady();
+  const { universeData } = useEditUniverseContext();
+  const universeUUID = universeData?.info?.universe_uuid;
   const [isModalOpen, setModalOpen] = useToggle(false);
 
   const hasOverrides = hasStorageOverrides(cluster);
@@ -113,7 +113,10 @@ export const StorageOverrides: FC<StorageOverridesProps> = ({ cluster, hasReadRe
         <Typography variant="h5">{title}</Typography>
         {
           hasOverrides && (<RbacValidator
-            accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT}
+            accessRequiredOn={withUniverseResource(
+              ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT,
+              universeUUID
+            )}
             isControl
           >
             <YBButton
@@ -150,7 +153,13 @@ export const StorageOverrides: FC<StorageOverridesProps> = ({ cluster, hasReadRe
             <Typography variant="body2" color="#4E5F6D">
               {t('emptyStateText')}
             </Typography>
-            <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT} isControl>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT,
+                universeUUID
+              )}
+              isControl
+            >
               <YBButton
                 startIcon={<AddIcon />}
                 dataTestId="add-storage-override"

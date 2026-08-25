@@ -65,6 +65,7 @@
 #include "utils/lsyscache.h"
 #include "utils/palloc.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
 
 #define DDL_END_CLASSID_COLUMN_ID	  1
 #define DDL_END_OBJID_COLUMN_ID		  2
@@ -257,6 +258,20 @@ IsPassThroughDdlSupported(const char *command_tag_name)
 	CommandTag	command_tag = GetCommandTagEnum(command_tag_name);
 
 	return IsPassThroughDdlCommandSupported(command_tag);
+}
+
+static Oid
+GetConstraintRelation(Oid constraint_oid)
+{
+	Oid			rel_oid = GetSysCacheOid1(CONSTROID,
+										  Anum_pg_constraint_conrelid,
+										  ObjectIdGetDatum(constraint_oid));
+
+	if (!OidIsValid(rel_oid))
+		elog(ERROR, "Could not find table for constraint with OID %u",
+			 constraint_oid);
+
+	return rel_oid;
 }
 
 static bool
@@ -924,6 +939,16 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			AddSequenceInfo(obj_id, schema, &sequence_info_list);
 			should_replicate_ddl |= !is_temporary_object;
+		}
+		else if (command_tag == CMDTAG_ALTER_TABLE &&
+				 info->class_id == ConstraintRelationId)
+		{
+			/*
+			 * ALTER TABLE ... RENAME CONSTRAINT reports the pg_constraint OID, so we
+			 * need to fetch the table's OID from the constraint's OID.
+			 */
+			should_replicate_ddl |=
+				ShouldReplicateAlterReplication(GetConstraintRelation(obj_id));
 		}
 		else if (command_tag == CMDTAG_ALTER_TABLE &&
 				 IsSequence(obj_id))

@@ -23,7 +23,8 @@ import {
   getDedicatedTserverMasterDisplayCounts,
   getResilientType,
   useEditUniverseContext,
-  useIsUniverseReady
+  useIsUniverseReady,
+  withUniverseResource
 } from '../EditUniverseUtils';
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
@@ -184,6 +185,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
   const isUniverseReady = useIsUniverseReady();
   const [showPreferredInfoModal, setShowPreferredInfoModal] = useState(false);
   if (!universeData) return null;
+  const universeUUID = universeData.info?.universe_uuid;
   const isK8s = placement.cloud_list?.[0]?.code === CloudType.kubernetes;
   const regionStats = countRegionsAzsAndNodes(placement);
   const resilientType = getResilientType(
@@ -387,7 +389,10 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
               ))
             : [
                 <RbacValidator
-                  accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT}
+                  accessRequiredOn={withUniverseResource(
+                    ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT,
+                    universeUUID
+                  )}
                   isControl
                 >
                   <MenuItem
@@ -403,7 +408,10 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
                   </MenuItem>
                 </RbacValidator>,
                 <RbacValidator
-                  accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT}
+                  accessRequiredOn={withUniverseResource(
+                    ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT,
+                    universeUUID
+                  )}
                   isControl
                 >
                   <MenuItem
@@ -421,7 +429,10 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
                 ...(editMasterServerNodeAllocationClicked && dedicatedFromSpec
                   ? [
                       <RbacValidator
-                        accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
+                        accessRequiredOn={withUniverseResource(
+                          ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                          universeUUID
+                        )}
                         isControl
                       >
                         <MenuItem

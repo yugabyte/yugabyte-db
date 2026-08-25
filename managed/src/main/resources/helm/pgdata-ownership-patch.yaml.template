@@ -24,13 +24,31 @@ spec:
             - |
               set -euo pipefail
               shopt -s nullglob
-              targets=(/mnt/disk0/pg_data*)
+              # pg_data is a symlink to a version specific directory (pg_data_15, pg_data_11, ...),
+              # and a rollback that is also a YSQL major downgrade re-links it, so cover every one.
+              pgdata=(/mnt/disk0/pg_data*)
+              targets=("${pgdata[@]}")
+              # PostgreSQL also refuses to start unless its TLS private key is owned by the DB user
+              # or by root
+              if [ -d /mnt/disk0/certs ]; then
+                targets+=(/mnt/disk0/certs)
+              fi
               if [ ${#targets[@]} -eq 0 ]; then
-                echo "No pg_data under /mnt/disk0; nothing to reconcile"
+                echo "Nothing to reconcile under /mnt/disk0"
                 exit 0
               fi
               echo "Reclaiming for root: ${targets[*]}"
               chown -R 0:0 "${targets[@]}"
+              if [ ${#pgdata[@]} -gt 0 ]; then
+                chmod 0750 "${pgdata[@]}"
+              fi
+              # For the TLS private key the equivalent check IS a hard failure: a root owned key
+              # must have no group-write or other access, and a non-root universe can leave it at
+              # 0660.
+              keys=(/mnt/disk0/certs/*.key)
+              if [ ${#keys[@]} -gt 0 ]; then
+                chmod 600 "${keys[@]}"
+              fi
           volumeMounts:
             - name: "{{DATA_VOLUME_NAME}}"
               mountPath: /mnt/disk0

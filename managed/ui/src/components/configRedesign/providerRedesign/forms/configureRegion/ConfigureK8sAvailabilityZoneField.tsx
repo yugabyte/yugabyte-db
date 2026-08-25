@@ -93,7 +93,10 @@ export const ConfigureK8sAvailabilityZoneField = ({
             !zones[index].isNewZone &&
             !!zones[index].kubeConfigFilepath;
           const isZoneInUse = zone?.code !== undefined && inUseZones.has(zone.code);
+          // Non-kubeconfig zone fields stay locked when the AZ is in use. Kubeconfig rotation
+          // is allowed for in-use Kubernetes zones (PLAT-21218).
           const isFieldDisabled = isZoneInUse || isFormDisabled;
+          const isKubeConfigFieldDisabled = isFormDisabled;
           return (
             <div key={zone.id}>
               {index !== 0 && <Divider />}
@@ -118,7 +121,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                     <YBToggleField
                       name={`zones.${index}.editKubeConfigContent`}
                       control={control}
-                      disabled={isFieldDisabled}
+                      disabled={isKubeConfigFieldDisabled}
                     />
                   </div>
                 </>
@@ -132,7 +135,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                     actionButtonText="Upload Kube Config File"
                     multipleFiles={false}
                     showHelpText={false}
-                    disabled={isFieldDisabled}
+                    disabled={isKubeConfigFieldDisabled}
                   />
                 </div>
               )}

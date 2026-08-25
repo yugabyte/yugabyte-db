@@ -41,6 +41,7 @@ import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
@@ -70,6 +71,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.ProxyConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
@@ -96,6 +98,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -132,7 +135,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final Map<String, UUID> universeTaskMap;
   // Track auto-provider CRs that are currently being created to avoid duplicate creation calls
   private final Set<String> inProgressAutoProviderCRs;
-  private Customer customer;
 
   KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
 
@@ -817,6 +819,18 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                     incomingIntent.specificGFlags,
                     true /* isRerun */);
             break;
+          case UpdateProxyConfig:
+            if (checkAndHandleUniverseLock(
+                ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+              return;
+            }
+            log.info("Re-running proxy configuration update");
+            kubernetesStatusUpdater.createYBUniverseEventStatus(
+                universe, k8ResourceDetails, TaskType.UpdateProxyConfig.name());
+            taskUUID =
+                updateProxyConfigYbUniverse(
+                    universeDetails, cust, ybUniverse, incomingIntent.getProxyConfig());
+            break;
           case CertsRotateKubernetesUpgrade:
             if (checkAndHandleUniverseLock(
                 ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
@@ -922,6 +936,19 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           taskUUID =
               toggleYbcYbUniverse(
                   universeDetails, cust, ybUniverse, ybUniverse.getSpec().getUseYbdbInbuiltYbc());
+        } else if (!Objects.equals(
+            currentUserIntent.getProxyConfig(), incomingIntent.getProxyConfig())) {
+          log.info("Updating proxy configuration");
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.UpdateProxyConfig.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID =
+              updateProxyConfigYbUniverse(
+                  universeDetails, cust, ybUniverse, incomingIntent.getProxyConfig());
           // Case with new edits
         } else if (!HelmUtils.equal(
             incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
@@ -1261,6 +1288,30 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     log.info("Upgrade universe overrides with new overrides");
     return upgradeUniverseHandler.upgradeKubernetesOverrides(requestParams, cust, oldUniverse);
+  }
+
+  private UUID updateProxyConfigYbUniverse(
+      UniverseDefinitionTaskParams taskParams,
+      Customer cust,
+      YBUniverse ybUniverse,
+      ProxyConfig proxyConfig) {
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    ProxyConfigUpdateParams requestParams =
+        mapper.convertValue(taskParams, ProxyConfigUpdateParams.class);
+    requestParams.getPrimaryCluster().userIntent.setProxyConfig(proxyConfig);
+    applyUpgradeOptions(requestParams, ybUniverse);
+
+    Universe oldUniverse = resolveExistingUniverseQuietly(cust, ybUniverse).orElse(null);
+    if (oldUniverse == null) {
+      throw new RuntimeException("Universe not found: " + getUniverseName(ybUniverse));
+    }
+
+    requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
+    return upgradeUniverseHandler.updateProxyConfig(requestParams, cust, oldUniverse);
   }
 
   private UUID updateGflagsYbUniverse(
@@ -1692,6 +1743,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
               ? ((int) ybUniverse.getSpec().getNumNodes().longValue())
               : 0;
       userIntent.ybSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
+      userIntent.setProxyConfig(toProxyConfig(ybUniverse.getSpec().getProxyConfig()));
       userIntent.accessKeyCode = "";
 
       // Use new volume fields if any are present, otherwise fall back to old deviceInfo fields
@@ -1734,12 +1786,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
       if (ysqlPassword != null) {
         Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
-        resourceTracker.trackDependency(
-            currentReconcileResource, ysqlSecret, currentLocalInstanceUuid);
-        log.trace(
-            "Tracking secret {} as dependency of {}",
-            ysqlSecret.getMetadata().getName(),
-            currentReconcileResource);
+        trackDependency(ybUniverse, ysqlSecret);
         String password = parseSecretForKey(ysqlSecret, YSQL_PASSWORD_SECRET_KEY);
         if (password == null) {
           log.error("could not find ysqlPassword in secret {}", ysqlPassword.getSecretName());
@@ -1752,12 +1799,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
       if (ycqlPassword != null) {
         Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
-        resourceTracker.trackDependency(
-            currentReconcileResource, ycqlSecret, currentLocalInstanceUuid);
-        log.trace(
-            "Tracking secret {} as dependency of {}",
-            ycqlSecret.getMetadata().getName(),
-            currentReconcileResource);
+        trackDependency(ybUniverse, ycqlSecret);
         String password = parseSecretForKey(ycqlSecret, YCQL_PASSWORD_SECRET_KEY);
         if (password == null) {
           log.error("could not find ycqlPassword in secret {}", ycqlPassword.getSecretName());
@@ -1789,6 +1831,18 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           isCreate ? UniverseState.ERROR_CREATING : UniverseState.ERROR_UPDATING);
       throw e;
     }
+  }
+
+  private static ProxyConfig toProxyConfig(
+      io.yugabyte.operator.v1alpha1.ybuniversespec.ProxyConfig specProxyConfig) {
+    if (specProxyConfig == null) {
+      return null;
+    }
+    ProxyConfig proxyConfig = new ProxyConfig();
+    proxyConfig.setHttpProxy(specProxyConfig.getHttpProxy());
+    proxyConfig.setHttpsProxy(specProxyConfig.getHttpsProxy());
+    proxyConfig.setNoProxyList(specProxyConfig.getNoProxyList());
+    return proxyConfig;
   }
 
   private PlacementInfo createPlacementInfo(

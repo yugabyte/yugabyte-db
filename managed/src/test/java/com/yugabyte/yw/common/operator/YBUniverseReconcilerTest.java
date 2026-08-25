@@ -49,6 +49,7 @@ import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
+import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -436,6 +437,94 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testFailedProxyUpdateRetriesWhenSpecIsUnchanged() throws Exception {
+    String universeName = "test-retry-proxy-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+
+    io.yugabyte.operator.v1alpha1.ybuniversespec.ProxyConfig specProxyConfig =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.ProxyConfig();
+    specProxyConfig.setHttpsProxy("http://proxy.example.com:3128");
+    ybUniverse.getSpec().setProxyConfig(specProxyConfig);
+
+    ProxyConfigUpdateParams failedTaskParams =
+        Json.fromJson(Json.toJson(taskParams), ProxyConfigUpdateParams.class);
+    failedTaskParams.setUniverseUUID(universe.getUniverseUUID());
+    failedTaskParams
+        .getPrimaryCluster()
+        .userIntent
+        .setProxyConfig(
+            ybUniverseReconciler
+                .createTaskParams(ybUniverse, defaultCustomer.getUuid())
+                .getPrimaryCluster()
+                .userIntent
+                .getProxyConfig());
+    TaskInfo taskInfo = new TaskInfo(TaskType.UpdateProxyConfig, null);
+    taskInfo.setTaskParams(Json.toJson(failedTaskParams));
+    taskInfo.setOwner("localhost");
+    taskInfo.save();
+
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    universeDetails.placementModificationTaskUuid = taskInfo.getUuid();
+    universe.setUniverseDetails(universeDetails);
+    universe.save();
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.UPDATE);
+
+    Mockito.verify(customerTaskManager)
+        .retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    Mockito.verifyNoInteractions(upgradeUniverseHandler);
+  }
+
+  @Test
+  public void testFailedProxyUpdateRerunsWithChangedSpec() throws Exception {
+    String universeName = "test-rerun-proxy-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+
+    com.yugabyte.yw.models.helpers.ProxyConfig failedProxyConfig =
+        new com.yugabyte.yw.models.helpers.ProxyConfig();
+    failedProxyConfig.setHttpsProxy("http://old-proxy.example.com:3128");
+    ProxyConfigUpdateParams failedTaskParams =
+        Json.fromJson(Json.toJson(taskParams), ProxyConfigUpdateParams.class);
+    failedTaskParams.setUniverseUUID(universe.getUniverseUUID());
+    failedTaskParams.getPrimaryCluster().userIntent.setProxyConfig(failedProxyConfig);
+    TaskInfo taskInfo = new TaskInfo(TaskType.UpdateProxyConfig, null);
+    taskInfo.setTaskParams(Json.toJson(failedTaskParams));
+    taskInfo.setOwner("localhost");
+    taskInfo.save();
+
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    universeDetails.placementModificationTaskUuid = taskInfo.getUuid();
+    universe.setUniverseDetails(universeDetails);
+    universe.save();
+
+    io.yugabyte.operator.v1alpha1.ybuniversespec.ProxyConfig updatedSpecProxyConfig =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.ProxyConfig();
+    updatedSpecProxyConfig.setHttpsProxy("http://new-proxy.example.com:3128");
+    ybUniverse.getSpec().setProxyConfig(updatedSpecProxyConfig);
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.UPDATE);
+
+    ArgumentCaptor<ProxyConfigUpdateParams> paramsCaptor =
+        ArgumentCaptor.forClass(ProxyConfigUpdateParams.class);
+    Mockito.verify(upgradeUniverseHandler)
+        .updateProxyConfig(paramsCaptor.capture(), eq(defaultCustomer), eq(universe));
+    assertEquals(
+        updatedSpecProxyConfig.getHttpsProxy(),
+        paramsCaptor.getValue().getPrimaryCluster().userIntent.getProxyConfig().getHttpsProxy());
+    Mockito.verifyNoInteractions(customerTaskManager);
+  }
+
+  @Test
   public void testRequeueOnUniverseLocked() throws Exception {
     String universeName = "test-locked-universe";
     YBUniverse ybUniverseOriginal = ModelFactory.createYbUniverse(universeName, defaultProvider);
@@ -460,6 +549,44 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             });
     task.start();
     task.join();
+  }
+
+  @Test
+  public void testNoOpSkipsThrottleLookupWhenUniversePaused() throws Exception {
+    String universeName = "test-paused-noop-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    ybUniverse.getSpec().setPaused(true);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+
+    UniverseDefinitionTaskParams uTaskParams = universe.getUniverseDetails();
+    uTaskParams.universePaused = true;
+    universe.setUniverseDetails(uTaskParams);
+    universe.save();
+
+    Mockito.clearInvocations(ybcManager);
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.NO_OP);
+
+    Mockito.verify(ybcManager, Mockito.never()).getThrottleParams(any());
+    assertTrue(ybUniverseReconciler.getOperatorWorkQueue().isEmpty());
+  }
+
+  @Test
+  public void testNoOpPerformsThrottleLookupWhenUniverseNotPaused() throws Exception {
+    String universeName = "test-unpaused-noop-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    ybUniverse.getSpec().setPaused(false);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+
+    Mockito.clearInvocations(ybcManager);
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.NO_OP);
+
+    Mockito.verify(ybcManager, Mockito.times(1)).getThrottleParams(eq(universe.getUniverseUUID()));
   }
 
   @Test
@@ -568,6 +695,87 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         .upgradeKubernetesOverrides(uDTCaptor.capture(), any(Customer.class), any(Universe.class));
     assertTrue(uDTCaptor.getValue().universeOverrides.contains("bar"));
     // Verify upgrade handler is not called
+    Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
+  public void testCreateTaskParamsMapsProxyConfig() throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-create-proxy", defaultProvider);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.ProxyConfig specProxyConfig =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.ProxyConfig();
+    specProxyConfig.setHttpProxy("http://proxy.example.com:3128");
+    specProxyConfig.setHttpsProxy("http://user:password@proxy.example.com:3128");
+    specProxyConfig.setNoProxyList(List.of("localhost", ".example.com"));
+    ybUniverse.getSpec().setProxyConfig(specProxyConfig);
+
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+
+    com.yugabyte.yw.models.helpers.ProxyConfig proxyConfig =
+        taskParams.getPrimaryCluster().userIntent.getProxyConfig();
+    assertNotNull(proxyConfig);
+    assertEquals(specProxyConfig.getHttpProxy(), proxyConfig.getHttpProxy());
+    assertEquals(specProxyConfig.getHttpsProxy(), proxyConfig.getHttpsProxy());
+    assertEquals(specProxyConfig.getNoProxyList(), proxyConfig.getNoProxyList());
+  }
+
+  @Test
+  public void testEditUniverseUpdatesProxyConfigFromCr() throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-update-proxy", defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    assertNull(oldUniverse.getUniverseDetails().getPrimaryCluster().userIntent.getProxyConfig());
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.ProxyConfig specProxyConfig =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.ProxyConfig();
+    specProxyConfig.setHttpsProxy("http://user:password@proxy.example.com:3128");
+    specProxyConfig.setNoProxyList(List.of(".amazonaws.com"));
+    ybUniverse.getSpec().setProxyConfig(specProxyConfig);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+
+    ArgumentCaptor<ProxyConfigUpdateParams> paramsCaptor =
+        ArgumentCaptor.forClass(ProxyConfigUpdateParams.class);
+    Mockito.verify(upgradeUniverseHandler)
+        .updateProxyConfig(paramsCaptor.capture(), eq(defaultCustomer), eq(oldUniverse));
+    com.yugabyte.yw.models.helpers.ProxyConfig proxyConfig =
+        paramsCaptor.getValue().getPrimaryCluster().userIntent.getProxyConfig();
+    assertEquals(specProxyConfig.getHttpsProxy(), proxyConfig.getHttpsProxy());
+    assertEquals(specProxyConfig.getNoProxyList(), proxyConfig.getNoProxyList());
+    assertEquals(oldUniverse.getUniverseUUID(), paramsCaptor.getValue().getUniverseUUID());
+    Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
+  public void testEditUniverseRemovesProxyConfigWhenRemovedFromCr() throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-remove-proxy", defaultProvider);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.ProxyConfig specProxyConfig =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.ProxyConfig();
+    specProxyConfig.setHttpsProxy("http://proxy.example.com:3128");
+    ybUniverse.getSpec().setProxyConfig(specProxyConfig);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    assertNotNull(oldUniverse.getUniverseDetails().getPrimaryCluster().userIntent.getProxyConfig());
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+    ybUniverse.getSpec().setProxyConfig(null);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+
+    ArgumentCaptor<ProxyConfigUpdateParams> paramsCaptor =
+        ArgumentCaptor.forClass(ProxyConfigUpdateParams.class);
+    Mockito.verify(upgradeUniverseHandler)
+        .updateProxyConfig(paramsCaptor.capture(), eq(defaultCustomer), eq(oldUniverse));
+    assertNull(paramsCaptor.getValue().getPrimaryCluster().userIntent.getProxyConfig());
     Mockito.verifyNoInteractions(universeCRUDHandler);
   }
 

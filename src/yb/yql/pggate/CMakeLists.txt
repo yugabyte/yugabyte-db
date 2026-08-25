@@ -98,6 +98,7 @@ yb_use_pch(yb_pggate pggate)
 # Unit tests (no postgres dependency).
 set(YB_TEST_LINK_LIBS yb_pggate ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(pg_read_range-test)
+ADD_YB_TEST(pg_global_view_read-test)
 
 # Integration tests (depend on postgres).
 add_subdirectory(test)

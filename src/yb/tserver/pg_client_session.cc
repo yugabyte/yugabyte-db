@@ -12,6 +12,7 @@
 //
 
 #include "yb/tserver/pg_client_session.h"
+#include "yb/tserver/pg_client_session_util.h"
 
 #include <sys/types.h>
 
@@ -19,6 +20,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <concepts>
 #include <mutex>
 #include <optional>
 #include <ostream>
@@ -26,6 +28,7 @@
 #include <span>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -160,6 +163,7 @@ DEFINE_test_flag(uint64, shared_exchange_big_response_delay_ms, 0,
 DECLARE_bool(enable_qos);
 #endif
 
+DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
@@ -212,15 +216,6 @@ constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 const std::string kTxnLogPrefixTagSource("Session ");
 client::LogPrefixName kTxnLogPrefixTag = client::LogPrefixName::Build<&kTxnLogPrefixTagSource>();
 
-struct TabletReadTime {
-  TabletId tablet_id;
-  ReadHybridTime value;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(tablet_id, value);
-  }
-};
-
 using UsedReadTimeApplier = std::function<void(TabletReadTime&&)>;
 
 struct UsedReadTime {
@@ -243,70 +238,6 @@ struct SetupSessionResult {
   SessionData session_data;
   PgClientSessionKind kind = PgClientSessionKind::kPlain;
 };
-
-class PrefixLogger {
- public:
-  explicit PrefixLogger(uint64_t id, pid_t pid = 0) : id_(id), pid_(pid) {}
-
-  friend std::ostream& operator<<(std::ostream&, const PrefixLogger&);
-
- private:
-  const uint64_t id_;
-  const pid_t pid_;
-};
-
-std::ostream& operator<<(std::ostream& str, const PrefixLogger& logger) {
-  if (logger.pid_ != 0) {
-    return str << "Session id " << logger.id_ << " (pid " << logger.pid_ << "): ";
-  }
-  return str << "Session id " << logger.id_ << ": ";
-}
-
-std::string GetStatusStringSet(const client::CollectedErrors& errors) {
-  std::set<std::string> status_strings;
-  for (const auto& error : errors) {
-    status_strings.insert(error->status().ToString());
-  }
-  return RangeToString(status_strings.begin(), status_strings.end());
-}
-
-bool IsHomogeneousErrors(const client::CollectedErrors& errors) {
-  if (errors.size() < 2) {
-    return true;
-  }
-  auto i = errors.begin();
-  const auto& status = (**i).status();
-  const auto codes = status.ErrorCodesSlice();
-  for (++i; i != errors.end(); ++i) {
-    const auto& s = (**i).status();
-    if (s.code() != status.code() || codes != s.ErrorCodesSlice()) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Get a common Postgres error code from the status and all errors, and append it to a previous
-// Status.
-// If any of those have different conflicting error codes, previous result is returned as-is.
-Status AppendPsqlErrorCode(
-    const Status& status, const client::CollectedErrors& errors) {
-  std::optional<YBPgErrorCode> common_psql_error;
-  for(const auto& error : errors) {
-    const auto psql_error = PgsqlError::ValueFromStatus(error->status());
-    if (!common_psql_error) {
-      common_psql_error = psql_error;
-    } else if (psql_error && common_psql_error != psql_error) {
-      common_psql_error.reset();
-      break;
-    }
-  }
-  return common_psql_error ? status.CloneAndAddErrorCode(PgsqlError(*common_psql_error)) : status;
-}
-
-TransactionErrorCode GetTransactionErrorCode(const Status& status) {
-  return status.ok() ? TransactionErrorCode::kNone : TransactionError(status).value();
-}
 
 struct PgClientSessionOperation {
   std::shared_ptr<client::YBPgsqlOp> op;
@@ -346,120 +277,15 @@ Status TryAppendTxnConflictOpIndex(
   return status;
 }
 
-// Get a common transaction error code for all the errors and append it to the previous Status.
-Status AppendTxnErrorCode(const Status& status, const client::CollectedErrors& errors) {
-  // The list of all known TransactionErrorCode (except kNone), ordered in decreasing of priority.
-  static constexpr std::array precedence_list = {
-      TransactionErrorCode::kDeadlock,
-      TransactionErrorCode::kAborted,
-      TransactionErrorCode::kConflict,
-      TransactionErrorCode::kReadRestartRequired,
-      TransactionErrorCode::kSnapshotTooOld,
-      TransactionErrorCode::kSkipLocking,
-      TransactionErrorCode::kLockNotFound};
-  static_assert(precedence_list.size() + 1 == MapSize(static_cast<TransactionErrorCode*>(nullptr)));
+// Bring the shared two-argument overload into this scope alongside the ops-aware one below.
+using tserver::CombineErrorsToStatus;
 
-  static const auto precedence_begin = precedence_list.begin();
-  static const auto precedence_end = precedence_list.end();
-  auto common_txn_error_it = precedence_end;
-  for (const auto& error : errors) {
-    const auto txn_error = GetTransactionErrorCode(error->status());
-    if (txn_error == TransactionErrorCode::kNone ||
-        (common_txn_error_it != precedence_end && *common_txn_error_it == txn_error)) {
-      continue;
-    }
-
-    const auto txn_error_it = std::find(precedence_begin, precedence_end, txn_error);
-    if (PREDICT_FALSE(txn_error_it == precedence_end)) {
-      LOG(DFATAL) << "Unknown transaction error code: " << txn_error;
-      return status;
-    }
-
-    if (txn_error_it < common_txn_error_it) {
-      common_txn_error_it = txn_error_it;
-      VLOG(4) << "updating common_txn_error_idx to: " << *common_txn_error_it;
-    }
-  }
-
-  return common_txn_error_it == precedence_end
-      ? status : status.CloneAndAddErrorCode(TransactionError(*common_txn_error_it));
-}
-
-Status CombineErrorsToStatusImpl(const client::CollectedErrors& errors, const Status& status) {
-  DCHECK(!errors.empty());
-
-  if (status.IsIOError() &&
-      // TODO: move away from string comparison here and use a more specific status than IOError.
-      // See https://github.com/YugaByte/yugabyte-db/issues/702
-      status.message() == client::internal::Batcher::kErrorReachingOutToTServersMsg &&
-      IsHomogeneousErrors(errors)) {
-    const auto& result = errors.front()->status();
-    if (errors.size() == 1) {
-      return result;
-    }
-    return Status(result.code(),
-                  __FILE__,
-                  __LINE__,
-                  GetStatusStringSet(errors),
-                  result.ErrorCodesSlice(),
-                  /* file_name_len= */ size_t(0));
-  }
-
-  const auto result = status.ok()
-      ? STATUS(InternalError, GetStatusStringSet(errors))
-      : status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
-
-  return AppendTxnErrorCode(AppendPsqlErrorCode(result, errors), errors);
-}
-
-// Given a set of errors from operations, this function attempts to combine them into one status
-// that is later passed to PostgreSQL and further converted into a more specific error code.
 Status CombineErrorsToStatus(
     const client::CollectedErrors& errors, const Status& status,
-    const PgClientSessionOperations& ops = {}) {
+    const PgClientSessionOperations& ops) {
   return errors.empty()
       ? status
-      : TryAppendTxnConflictOpIndex(CombineErrorsToStatusImpl(errors, status), errors, ops);
-}
-
-Status ProcessUsedReadTime(uint64_t session_id,
-                           const client::YBPgsqlOp& op,
-                           PgPerformResponseMsg* resp,
-                           TabletReadTime* used_read_time) {
-  if (op.type() != client::YBOperation::PGSQL_READ) {
-    return Status::OK();
-  }
-  const auto& read_op = down_cast<const client::YBPgsqlReadOp&>(op);
-  const auto& op_used_read_time = read_op.used_read_time();
-  if (!op_used_read_time) {
-    return Status::OK();
-  }
-
-  if (op.table()->schema().table_properties().is_ysql_catalog_table()) {
-    // Non empty used_read_time field in catalog read operation means this is the very first
-    // catalog read operation after catalog read time resetting. read_time for the operation
-    // has been chosen by master. All further reads from catalog must use same read point.
-    auto catalog_read_time = op_used_read_time;
-
-    // We set global limit to read time to avoid read restart errors because they are
-    // disruptive to system catalog reads and it is not always possible to handle them there.
-    // This might lead to reading slightly outdated state of the system catalog if a recently
-    // committed DDL transaction used a transaction status tablet whose leader's clock is skewed
-    // and is in the future compared to the master leader's clock.
-    // TODO(dmitry) This situation will be handled in context of #7964.
-    catalog_read_time.global_limit = catalog_read_time.read;
-    catalog_read_time.ToPB(resp->mutable_catalog_read_time());
-    VLOG(2) << "Got catalog_read_time: " << catalog_read_time.ToString();
-  }
-
-  if (used_read_time) {
-    RSTATUS_DCHECK(
-        !used_read_time->value, IllegalState,
-        "Multiple used_read_time are not expected: $0, $1",
-        used_read_time->value, op_used_read_time);
-    *used_read_time = {.tablet_id = read_op.used_tablet(), .value = op_used_read_time};
-  }
-  return Status::OK();
+      : TryAppendTxnConflictOpIndex(tserver::CombineErrorsToStatus(errors, status), errors, ops);
 }
 
 // Pauses a request which fetches a continuation page of a previous request. Allows tests to
@@ -483,50 +309,6 @@ void MaybePauseReadWithPagingStateForTesting(const PgPerformRequestMsg& req) {
       return;
     }
   }
-}
-
-Status HandleOperationResponse(uint64_t session_id,
-                               const client::YBPgsqlOp& op,
-                               PgPerformResponseMsg* resp,
-                               TabletReadTime* used_read_time) {
-  const auto& response = op.response();
-  if (response.status() == PgsqlResponsePB::PGSQL_STATUS_OK) {
-    return ProcessUsedReadTime(session_id, op, resp, used_read_time);
-  }
-
-  if (response.error_status().size() > 0) {
-    // TODO(14814, 18387):  We do not currently expect more than one status, when we do, we need
-    // to decide how to handle them. Possible options: aggregate multiple statuses into one, discard
-    // all but one, etc. Historically, for the one set of status fields (like error_message), new
-    // error message was overwriting the previous one, that's why let's return the last entry from
-    // error_status to mimic that past behavior, refer AsyncRpc::Finished for details.
-    return StatusFromPB(*response.error_status().rbegin());
-  }
-
-  // Older nodes may still use deprecated fields for status, so keep legacy handling
-  auto status = STATUS(
-      QLError, response.error_message(), Slice(), PgsqlRequestStatus(response.status()));
-
-  if (response.has_pg_error_code()) {
-    status = status.CloneAndAddErrorCode(
-        PgsqlError(static_cast<YBPgErrorCode>(response.pg_error_code())));
-  }
-
-  if (response.has_txn_error_code()) {
-    status = status.CloneAndAddErrorCode(
-        TransactionError(static_cast<TransactionErrorCode>(response.txn_error_code())));
-  }
-
-  return status;
-}
-
-template <class TableProvider>
-Status GetTable(TableIdView table_id, TableProvider& provider, client::YBTablePtr* table) {
-  if (*table && (**table).id() == table_id) {
-    return Status::OK();
-  }
-  *table = VERIFY_RESULT(provider.Get(table_id));
-  return Status::OK();
 }
 
 struct FetchedVector {
@@ -852,18 +634,24 @@ std::byte* SerializeWithCachedSizesToArray(
   return pointer_cast<std::byte*>(msg.SerializeWithCachedSizesToArray(pointer_cast<uint8_t*>(out)));
 }
 
-template <typename Req, typename Resp>
-struct QueryTraits {
-  using ReqPB = Req;
-  using RespPB = Resp;
+template <class T>
+concept QueryTraitsType = requires {
+  typename T::ReqPB;
+  typename T::RespPB;
+  { T::kMethodName } -> std::convertible_to<const char*>;
 };
 
-template <class T>
-concept QueryTraitsType = std::is_same_v<QueryTraits<typename T::ReqPB, typename T::RespPB>, T>;
+struct PerformQueryTraits {
+  using ReqPB = PgPerformRequestMsg;
+  using RespPB = PgPerformResponseMsg;
+  static constexpr const char* kMethodName = "Perform";
+};
 
-using PerformQueryTraits = QueryTraits<PgPerformRequestMsg, PgPerformResponseMsg>;
-using ObjectLockQueryTraits =
-    QueryTraits<const PgAcquireObjectLockRequestMsg, PgAcquireObjectLockResponseMsg>;
+struct ObjectLockQueryTraits {
+  using ReqPB = const PgAcquireObjectLockRequestMsg;
+  using RespPB = PgAcquireObjectLockResponseMsg;
+  static constexpr const char* kMethodName = "AcquireObjectLock";
+};
 
 using ResponseSender = std::function<void()>;
 
@@ -876,6 +664,17 @@ struct QueryDataBase {
   ReqPB& req;
   RespPB& resp;
   rpc::Sidecars& sidecars;
+
+  // Populated when FLAGS_TEST_enable_pg_client_mock is on.
+  PgClientServiceMockImpl* TEST_mock_service = nullptr;
+
+  void SendResponse() {
+    if (PREDICT_FALSE(TEST_mock_service != nullptr)) {
+      MaybeRunAfterMock();
+    }
+
+    response_sender_();
+  }
 
  protected:
   const uint64_t session_id_;
@@ -899,9 +698,18 @@ struct QueryDataBase {
         : Status::OK();
   }
 
-  void SendResponse() { response_sender_(); }
-
  private:
+  void MaybeRunAfterMock() {
+    // Note that client deadline is not plumbed through for "After" mocks.
+    PgClientMockCallContext mock_ctx{.rpc = nullptr};
+    auto result = TEST_mock_service->DispatchMock(
+        Format("$0After", T::kMethodName), &req, &resp, &mock_ctx);
+    if (!result.ok()) {
+      StatusToPB(result.status(), resp.mutable_status());
+      sidecars.Reset();
+    }
+  }
+
   ResponseSender response_sender_;
 };
 
@@ -1164,7 +972,11 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   void SendErrorResponse(const Status& s) {
     DCHECK(!s.ok());
     StatusToPB(s, resp_.mutable_status());
-    SendResponse();
+    if (data_) {
+      data_->SendResponse();
+    } else {
+      SendResponse();
+    }
   }
 
   template <class... Args>
@@ -1224,12 +1036,12 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
       DCHECK_EQ(out - start, full_size);
       if (shared_memory_segment.second) {
         response_size =
-            kTooBigResponseMask | kBigSharedMemoryMask | full_size |
+            kTooBigResponseMark | kBigSharedMemoryMark | full_size |
             (shared_memory_segment.first << kBigSharedMemoryIdShift);
       }
     } else {
       auto id = locked_session->SaveData(buffer, std::move(sidecars_.buffer()));
-      response_size = kTooBigResponseMask | id;
+      response_size = kTooBigResponseMark | id;
     }
     exchange_.Respond(response_size);
     responded_ = true;
@@ -1246,6 +1058,27 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   std::atomic<bool> responded_{false};
   std::optional<QueryData<T>> data_;
 };
+
+// Returns true if a mock fully handled the shared-memory query.
+template <QueryTraitsType T>
+Result<bool> TEST_HandleSharedQueryMocks(PgClientServiceMockImpl* mock_service,
+    QueryData<T>& data, CoarseTimePoint deadline) {
+  RSTATUS_DCHECK(mock_service, IllegalState, "mock_service is not initialized");
+  PgClientMockCallContext mock_ctx{
+      .deadline = deadline,
+      .rpc = nullptr,
+  };
+  const auto* method = T::kMethodName;
+  RETURN_NOT_OK(mock_service->DispatchMock(
+      Format("$0Before", method), &data.req, &data.resp, &mock_ctx));
+  auto result = mock_service->DispatchMock(method, &data.req, &data.resp, &mock_ctx);
+  RETURN_NOT_OK(result);
+  if (*result) {
+    data.SendResponse();
+    return true;
+  }
+  return false;
+}
 
 client::YBSessionPtr CreateSession(
     client::YBClient* client, CoarseTimePoint deadline, const scoped_refptr<ClockBase>& clock,
@@ -1320,77 +1153,9 @@ std::atomic<bool>& InUseAtomic(const SharedMemorySegmentHandle& handle) {
   return *pointer_cast<std::atomic<bool>*>(handle.address() - sizeof(std::atomic<bool>));
 }
 
-constexpr uint64_t kInvalidReadTimeSerialNo = 0;
-
-class ReadPointHistory {
- public:
-  explicit ReadPointHistory(const PrefixLogger& prefix_logger) : prefix_logger_(prefix_logger) {}
-
-  [[nodiscard]] bool Restore(ConsistentReadPoint* read_point, uint64_t read_time_serial_no) {
-    if (read_time_serial_no == kInvalidReadTimeSerialNo) {
-      return false;
-    }
-    auto result = false;
-    if (const auto i = read_points_.find(read_time_serial_no);
-        i != read_points_.end() && read_time_serial_no >= min_) {
-      read_point->SetMomento(i->second);
-      result = true;
-    }
-    VLOG_WITH_PREFIX(4) << "ReadPointHistory::Restore read_time_serial_no=" << read_time_serial_no
-                        << " return " << result
-                        << " read time is " << read_point->GetReadTime();
-    return result;
-  }
-
-  void Save(const ConsistentReadPoint& read_point, uint64_t read_time_serial_no) {
-    if (read_time_serial_no == kInvalidReadTimeSerialNo) {
-      return;
-    }
-    auto momento = read_point.GetMomento();
-    const auto& read_time = momento.read_time();
-    DCHECK(read_time);
-    VLOG_WITH_PREFIX(4) << "ReadPointHistory::Save read_time_serial_no=" << read_time_serial_no
-                        << " read time is " << AsString(read_time);
-    if (read_points_.empty()) {
-      max_ = read_time_serial_no;
-      min_ = read_time_serial_no;
-    } else {
-      min_ = std::min(min_, read_time_serial_no);
-      max_ = std::max(max_, read_time_serial_no);
-    }
-    auto ipair = read_points_.try_emplace(read_time_serial_no, std::move(momento));
-    if (!ipair.second) {
-      // Potentially read time could be set to same read_time_serial_no multiple times.
-      // It is expected that read time is the same or fresher (due to possible restart)
-      // but not older.
-      DCHECK(read_time.read >= ipair.first->second.read_time().read)
-          << "Overwriting read_time_serial_no=" << read_time_serial_no
-          << " with an older read time, given: " << AsString(read_time)
-          << ", existing: " << AsString(ipair.first->second.read_time());
-      ipair.first->second = std::move(momento);
-    }
-  }
-
-  void Cleanup(uint64_t min) {
-    VLOG_WITH_PREFIX(4) << "ReadTimeHistory::Cleanup " << min;
-    if (read_points_.empty()) {
-      return;
-    }
-    if (max_ < min) {
-      VLOG_WITH_PREFIX(4) << "Clearing history [" << min_ << ", " << max_ << "]";
-      read_points_.clear();
-      return;
-    }
-    min_ = std::max(min_, min);
-  }
-
- private:
-  const PrefixLogger& LogPrefix() const { return prefix_logger_; }
-
-  const PrefixLogger prefix_logger_;
-  uint64_t min_ = 0;
-  uint64_t max_ = 0;
-  std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
+struct ObjectLockRegistration {
+  std::mutex mutex;
+  std::optional<docdb::ObjectLockOwnerRegistry::RegistrationGuard> guard GUARDED_BY(mutex);
 };
 
 class TransactionProvider {
@@ -1402,7 +1167,8 @@ class TransactionProvider {
       docdb::ObjectLockOwnerRegistry* lock_owner_registry,
       docdb::ObjectLockSharedState* object_lock_shared_state)
       : builder_(std::move(builder)), lock_owner_registry_(lock_owner_registry),
-        object_lock_shared_state_(object_lock_shared_state) {}
+        object_lock_shared_state_(object_lock_shared_state),
+        object_lock_registration_(std::make_shared<ObjectLockRegistration>()) {}
 
   template<PgClientSessionKind kind, class... Args>
   requires(
@@ -1449,7 +1215,8 @@ class TransactionProvider {
   }
 
   void ResetObjectLockRegistration() {
-    object_lock_registration_.reset();
+    std::lock_guard lock(object_lock_registration_->mutex);
+    object_lock_registration_->guard.reset();
   }
 
   Result<TransactionMetadata> NextTxnMetaForPlain(
@@ -1474,13 +1241,30 @@ class TransactionProvider {
     // next_plain_ would be ready at this point i.e status tablet picked.
     auto metadata = VERIFY_RESULT(next_plain_->metadata());
     next_plain_->SetStartTimeIfNecessary();
+
+    std::lock_guard lock(object_lock_registration_->mutex);
     if (object_lock_shared_state_ &&
-        (!object_lock_registration_ ||
-         object_lock_registration_->txn_id() != metadata.transaction_id)) {
-      object_lock_registration_.reset();
-      object_lock_registration_.emplace(DCHECK_NOTNULL(lock_owner_registry_)->Register(
+        (!object_lock_registration_->guard ||
+         object_lock_registration_->guard->txn_id() != metadata.transaction_id)) {
+      object_lock_registration_->guard.reset();
+      object_lock_registration_->guard.emplace(DCHECK_NOTNULL(lock_owner_registry_)->Register(
           *object_lock_shared_state_, metadata.transaction_id, metadata.status_tablet));
+
+      next_plain_->RemoteAbortCallback([
+          registration_ptr = std::weak_ptr{object_lock_registration_},
+          transaction_id = metadata.transaction_id] {
+        if (auto registration = registration_ptr.lock()) {
+          std::lock_guard lock(registration->mutex);
+          if (registration->guard && registration->guard->txn_id() == transaction_id) {
+            VLOG_WITH_FUNC(1) << "Clearing lock owner registration for remote aborted txn "
+                              << transaction_id;
+            registration->guard.reset();
+          }
+        }
+      });
     }
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+        "TransactionProvider::NextTxnMetaForPlain", &metadata.transaction_id);
     return metadata;
   }
 
@@ -1524,7 +1308,7 @@ class TransactionProvider {
   const PgClientSession::TransactionBuilder builder_;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry_ = nullptr;
   docdb::ObjectLockSharedState* object_lock_shared_state_;
-  std::optional<docdb::ObjectLockOwnerRegistry::RegistrationGuard> object_lock_registration_;
+  std::shared_ptr<ObjectLockRegistration> object_lock_registration_;
   client::YBTransactionPtr next_plain_;
 };
 
@@ -1642,7 +1426,7 @@ class RpcQuery : public std::enable_shared_from_this<RpcQuery<T>> {
   void SendErrorResponse(const Status& s) {
     DCHECK(!s.ok());
     StatusToPB(s, data_.resp.mutable_status());
-    SendResponse();
+    data_.SendResponse();
   }
 
   template <class... Args>
@@ -1767,18 +1551,8 @@ bool IsReadPointResetRequested(const ReadTimeOptionsPB& read_time_options) {
 
 template <QueryTraitsType T>
 [[nodiscard]] auto TrackSharedMemoryPgMethodExecution(
-    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata);
-
-template <>
-[[nodiscard]] auto TrackSharedMemoryPgMethodExecution<PerformQueryTraits>(
     const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata) {
-  return DoTrackSharedMemoryPgMethodExecution(wait_state, metadata, "Perform");
-}
-
-template <>
-[[nodiscard]] auto TrackSharedMemoryPgMethodExecution<ObjectLockQueryTraits>(
-    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata) {
-  return DoTrackSharedMemoryPgMethodExecution(wait_state, metadata, "AcquireObjectLock");
+  return DoTrackSharedMemoryPgMethodExecution(wait_state, metadata, T::kMethodName);
 }
 
 struct GetOpTablespaceOid {
@@ -2434,6 +2208,18 @@ class PgClientSession::Impl {
         PgsqlResponsePB::RequestStatus_Name(psql_write->response().status()));
   }
 
+  // Drop the server-side TServer cache entry for the given sequence so that a subsequent nextval
+  // does not hand out stale values after the sequence was modified out-of-band (setval(),
+  // ALTER SEQUENCE ... RESTART, or DROP). No-op unless the server cache method is enabled.
+  Status InvalidateSequenceCacheEntry(
+      PgOid db_oid, PgOid sequence_oid, CoarseTimePoint deadline) {
+    if (FLAGS_ysql_sequence_cache_method != "server") {
+      return Status::OK();
+    }
+    const PgObjectId sequence_id(db_oid, sequence_oid);
+    return sequence_cache().Invalidate(sequence_id, ToSteady(deadline));
+  }
+
   Status UpdateSequenceTuple(
       const PgUpdateSequenceTupleRequestMsg& req, PgUpdateSequenceTupleResponseMsg* resp,
       rpc::RpcContext* context) {
@@ -2491,9 +2277,15 @@ class PgClientSession::Impl {
     auto& session = EnsureSession(
         PgClientSessionKind::kSequence, context->GetClientDeadline(), arena);
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-    RETURN_NOT_OK(session->TEST_ApplyAndFlush(psql_write));
+    auto flush_status = session->TEST_ApplyAndFlush(psql_write);
+    // Invalidate even if flush failed: TimedOut/NetworkError may still mean the write applied,
+    // and clearing the cache when it did not is harmless.
+    auto invalidate_status = InvalidateSequenceCacheEntry(
+        narrow_cast<PgOid>(req.db_oid()), narrow_cast<PgOid>(req.seq_oid()),
+        context->GetClientDeadline());
+    RETURN_NOT_OK(flush_status);
     resp->set_skipped(psql_write->response().skipped());
-    return Status::OK();
+    return invalidate_status;
   }
 
   size_t SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars) {
@@ -2708,7 +2500,14 @@ class PgClientSession::Impl {
     auto& session = EnsureSession(
         PgClientSessionKind::kSequence, context->GetClientDeadline(), arena);
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-    return session->TEST_ApplyAndFlush(std::move(psql_delete));
+    auto flush_status = session->TEST_ApplyAndFlush(std::move(psql_delete));
+    // Invalidate even if flush failed: TimedOut/NetworkError may still mean the delete applied,
+    // and clearing the cache when it did not is harmless.
+    auto invalidate_status = InvalidateSequenceCacheEntry(
+        narrow_cast<PgOid>(req.db_oid()), narrow_cast<PgOid>(req.seq_oid()),
+        context->GetClientDeadline());
+    RETURN_NOT_OK(flush_status);
+    return invalidate_status;
   }
 
   Status DeleteDBSequences(
@@ -2799,10 +2598,6 @@ class PgClientSession::Impl {
       CoarseTimePoint deadline) {
     boost::container::small_vector<TableId, 4> table_ids;
     PreparePgTablesQuery(data->req, table_ids);
-    if (PREDICT_FALSE(FLAGS_TEST_request_unknown_tables_during_perform)) {
-      table_ids.insert(
-          table_ids.end(), { GetPgsqlTableId(0, 0), GetPgsqlTableId(0, 1), GetPgsqlTableId(0, 2) });
-    }
     auto tables_future = GetTablesAsync(table_cache(), table_ids);
     RETURN_NOT_OK(Wait(tables_future, ToSteady(deadline)));
     RETURN_NOT_OK(precondition_waiter(data->req.serial_no(), deadline));
@@ -2827,6 +2622,11 @@ class PgClientSession::Impl {
     auto track_guard = wait_state
         ? TrackSharedMemoryPgMethodExecution<T>(wait_state, query.ash_metadata())
         : std::nullopt;
+    if (PREDICT_FALSE(context_.TEST_mock_service != nullptr) &&
+        VERIFY_RESULT(TEST_HandleSharedQueryMocks(
+            context_.TEST_mock_service, *data, deadline))) {
+      return Status::OK();
+    }
     return DoHandleSharedExchangeQuery(precondition_waiter, std::move(data), deadline);
   }
 
@@ -3003,6 +2803,7 @@ class PgClientSession::Impl {
   }
 
   Status DoAcquireObjectLock(const ObjectLockQueryDataPtr& data, CoarseTimePoint deadline) {
+    data->TEST_mock_service = context_.TEST_mock_service;
     const auto& options = data->req.options();
     VLOG_WITH_PREFIX(3) << "Object lock for relation " << AsString(data->req.lock_oid())
               << " with lock type " << AsString(static_cast<TableLockType>(data->req.lock_type()));
@@ -3062,6 +2863,16 @@ class PgClientSession::Impl {
     DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
         "PgClientSession::Impl::DoAcquireObjectLock", &txn_meta_res->transaction_id);
 
+    // It's possible that locking in shared memory is now possible (because transaction has now been
+    // created, or because a conflicting exclusive lock was released, etc.). Prefer doing that over
+    // locking with ObjectLockManager, since lock release fastpath depends on all lock acquires
+    // being done via shared memory.
+    if (TryAcquireObjectLockInSharedMemory(active_subtxn_id, data->req)) {
+      client::FlushStatus flush_status;
+      data->FlushDone(&flush_status);
+      return Status::OK();
+    }
+
     auto callback = [data](const Status& s) {
       client::FlushStatus flush_status;
       flush_status.status = s;
@@ -3101,6 +2912,24 @@ class PgClientSession::Impl {
           return Status::OK();
         });
     return Status::OK();
+  }
+
+  bool TryAcquireObjectLockInSharedMemory(
+      SubTransactionId subtxn_id, const PgAcquireObjectLockRequestMsg& req) {
+    if (FLAGS_enable_object_lock_fastpath && object_lock_shared_state_ && !req.is_session_lock()) {
+      if (auto fastpath_lock_type =
+          docdb::MakeObjectLockFastpathLockType(TableLockType(req.lock_type()))) {
+        ParentProcessGuard g;
+        return (*object_lock_shared_state_)->TServerLock({
+            .subtxn_id = subtxn_id,
+            .database_oid = req.lock_oid().database_oid(),
+            .relation_oid = req.lock_oid().relation_oid(),
+            .object_oid = req.lock_oid().object_oid(),
+            .object_sub_oid = req.lock_oid().object_sub_oid(),
+            .lock_type = *fastpath_lock_type});
+      }
+    }
+    return false;
   }
 
   void AcquireObjectLock(
@@ -3496,6 +3325,7 @@ class PgClientSession::Impl {
   Status DoPerform(
       const PgTablesQueryResult& tables, const PerformQueryDataPtr& data, CoarseTimePoint deadline,
       rpc::RpcContext* context = nullptr) {
+    data->TEST_mock_service = context_.TEST_mock_service;
     auto& options = *data->req.mutable_options();
     if (VLOG_IS_ON(3)) {
       std::stringstream ss;
@@ -3553,6 +3383,16 @@ class PgClientSession::Impl {
       transaction->SetOriginId(options.xrepl_origin_id());
     }
 
+    // A catalog read time picked here rather than by the storage layer is not echoed back via
+    // used_read_time, so report it explicitly to keep all further catalog reads of the session on
+    // the same snapshot. See ProcessUsedReadTime for the other case.
+    if (options.use_legacy_catalog_session() && !options.read_time_options().has_read_time()) {
+      const auto read_time = session->read_point()->GetReadTime();
+      if (read_time) {
+        read_time.ToPB(data->resp.mutable_catalog_read_time());
+      }
+    }
+
     TracePtr trace = Trace::CurrentTrace();
     bool trace_created_locally = false;
     MonoTime start_time = MonoTime::kUninitialized;
@@ -3590,6 +3430,16 @@ class PgClientSession::Impl {
     ADOPT_TRACE(trace.get());
 
     data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result, data->req);
+    // MakeUsedReadTimeApplier has set plain_session_used_read_time_.pending_update, so the next
+    // request expects a used read time stored by the applier, which
+    // CheckPlainSessionPendingUsedReadTime consumes while resetting the flag. Failing out below
+    // without running the applier would leave nothing stored, making that check reject every later
+    // request on this session. An empty read time is its "request has finished with error" case.
+    CancelableScopeExit applier_se{[data] {
+      if (data->used_read_time_applier) {
+        data->used_read_time_applier(TabletReadTime{});
+      }
+    }};
     data->used_in_txn_limit = in_txn_limit;
     data->transaction = std::move(transaction);
     data->pg_node_level_mutation_counter = pg_node_level_mutation_counter();
@@ -3634,6 +3484,7 @@ class PgClientSession::Impl {
       }
     }
 
+    applier_se.Cancel();
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
@@ -3937,7 +3788,6 @@ class PgClientSession::Impl {
             << session.read_point()->GetReadTime();
       }
 
-      // Do not clamp uncertainty window for legacy catalog reads.
       // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
       if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
         RSTATUS_DCHECK(
@@ -4549,6 +4399,12 @@ class PgClientSession::Impl {
         << " locks for txn " << txn_id << " subtxn_id " << AsString(subtxn_id)
         << " ash_meta: " << (wait_state ? wait_state->metadata().ToString() : "n/a");
     if (!use_global_release_path) {
+      if (FLAGS_enable_object_lock_fastpath && object_lock_shared_state_) {
+        ParentProcessGuard g;
+        if ((*object_lock_shared_state_)->TServerUnlockAll()) {
+          return docdb::TxnBlockedTableLockRequests::kFalse;
+        }
+      }
       return ts_lock_manager()->ReleaseObjectLocks(
           ReleaseRequestFor<tserver::ReleaseObjectLockRequestPB>(
               instance_uuid(), txn_id, subtxn_id),
@@ -4858,6 +4714,12 @@ void PreparePgTablesQuery(
     const LWPgPerformRequestPB& req, boost::container::small_vector_base<TableId>& table_ids) {
   for (const auto& op : req.ops()) {
     AddIfMissing(table_ids, op.has_read() ? op.read().table_id() : op.write().table_id());
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_request_unknown_tables_during_perform)) {
+    table_ids.insert(
+        table_ids.end(),
+        { GetPgsqlTableId(kPgInvalidOid, 0), GetPgsqlTableId(kPgInvalidOid, 1),
+          GetPgsqlTableId(kPgInvalidOid, 2) });
   }
 }
 

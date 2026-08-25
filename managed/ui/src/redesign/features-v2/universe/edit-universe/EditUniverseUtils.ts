@@ -93,6 +93,11 @@ export function useEditUniverseContext() {
   return context;
 }
 
+/** Bind a universe UUID so RBAC checks match universe-scoped UPDATE permissions. */
+export function withUniverseResource<T extends object>(permission: T, universeUUID?: string) {
+  return { ...permission, onResource: universeUUID };
+}
+
 export const countRegionsAzsAndNodes = (placementSpec: ClusterPlacementSpec | undefined) => {
   let totalRegions = 0;
   let totalAzs = 0;

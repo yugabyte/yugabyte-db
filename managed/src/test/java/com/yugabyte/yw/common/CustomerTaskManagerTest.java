@@ -546,6 +546,12 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     return Json.toJson(params);
   }
 
+  private JsonNode editUniverseTaskParams(Universe universe) {
+    UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    return Json.toJson(params);
+  }
+
   private Universe createKubernetesUniverse(String name) {
     Universe k8sUniverse =
         ModelFactory.createUniverse(name, customer.getId(), CloudType.kubernetes);
@@ -598,7 +604,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     UUID failedTaskUUID = failedTask.getTaskUUID();
     UUID rollbackTaskUUID = UUID.randomUUID();
     persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.SwitchoverDrConfigRollback);
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
     when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
     when(mockCommissioner.submit(eq(TaskType.SwitchoverDrConfigRollback), any()))
         .thenReturn(rollbackTaskUUID);
@@ -622,7 +628,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
         createFailedUniverseTask(
             universe, TaskType.SwitchoverDrConfig, CustomerTask.TaskType.Switchover, taskParams);
     UUID failedTaskUUID = failedTask.getTaskUUID();
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
     when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
 
     PlatformServiceException ex =
@@ -649,7 +655,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     // commissioner.submit is mocked, so it does not persist the TaskInfo the real submit would.
     // Create it here to satisfy the customer_task.task_uuid -> task_info.uuid foreign key.
     persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.RollbackUpgrade);
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
     when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
     when(mockCommissioner.submit(eq(TaskType.RollbackUpgrade), any())).thenReturn(rollbackTaskUUID);
 
@@ -680,7 +686,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     UUID failedTaskUUID = failedTask.getTaskUUID();
     UUID rollbackTaskUUID = UUID.randomUUID();
     persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.RollbackKubernetesUpgrade);
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
     when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
     when(mockCommissioner.submit(eq(TaskType.RollbackKubernetesUpgrade), any()))
         .thenReturn(rollbackTaskUUID);
@@ -708,7 +714,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
             CustomerTask.TaskType.SoftwareUpgrade,
             taskParams);
     UUID failedTaskUUID = failedTask.getTaskUUID();
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
     when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
 
     // Rollback eligibility here is gated by the upgrade path (isSoftwareRollbackAllowed), so an
@@ -725,12 +731,13 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   public void testRollbackEditUniverseDisabledByRuntimeFlag() {
     // With yb.task.allow_edit_universe_rollback off (default), edit-universe rollback is rejected.
     universe = ModelFactory.createUniverse(customer.getId());
+    JsonNode taskParams = editUniverseTaskParams(universe);
     CustomerTask failedTask =
         createFailedUniverseTask(
-            universe, TaskType.EditUniverse, CustomerTask.TaskType.Update, Json.newObject());
+            universe, TaskType.EditUniverse, CustomerTask.TaskType.Update, taskParams);
     UUID failedTaskUUID = failedTask.getTaskUUID();
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
-    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(Json.newObject());
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
 
     PlatformServiceException ex =
         assertThrows(
@@ -741,30 +748,36 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testRollbackEditUniverseNotYetSupportedWhenEnabled() {
-    // With the flag on, edit-universe rollback passes the gate but is still a placeholder
-    // (PLAT-21484/21485), so the dispatch fails explicitly rather than attempt a rollback.
+  public void testRollbackEditUniverseSubmitsRollbackEditUniverseWhenEnabled() {
     mutableConfigFactory
         .globalRuntimeConf()
         .setValue("yb.task.allow_edit_universe_rollback", "true");
     universe = ModelFactory.createUniverse(customer.getId());
+    JsonNode taskParams = editUniverseTaskParams(universe);
     CustomerTask failedTask =
         createFailedUniverseTask(
-            universe, TaskType.EditUniverse, CustomerTask.TaskType.Update, Json.newObject());
+            universe, TaskType.EditUniverse, CustomerTask.TaskType.Update, taskParams);
     UUID failedTaskUUID = failedTask.getTaskUUID();
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
-    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(Json.newObject());
+    UUID rollbackTaskUUID = UUID.randomUUID();
+    persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.RollbackEditUniverse);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.RollbackEditUniverse), any()))
+        .thenReturn(rollbackTaskUUID);
 
-    PlatformServiceException ex =
-        assertThrows(
-            PlatformServiceException.class,
-            () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
-    assertTrue(ex.getMessage().contains("not yet supported"));
-    verify(mockCommissioner, times(0)).submit(any(), any());
+    CustomerTask rollbackTask =
+        taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.RollbackEditUniverse), paramsCaptor.capture());
+    assertNull(paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(CustomerTask.TaskType.RollbackEditUniverse, rollbackTask.getType());
+    assertEquals(rollbackTaskUUID, rollbackTask.getTaskUUID());
   }
 
   @Test
   public void testRollbackEditKubernetesUniverseNotYetSupported() {
+    // K8s edit is not bound in TaskRollbackModule until RollbackEditKubernetesUniverse lands.
     mutableConfigFactory
         .globalRuntimeConf()
         .setValue("yb.task.allow_edit_universe_rollback", "true");
@@ -776,14 +789,14 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
             CustomerTask.TaskType.Update,
             Json.newObject());
     UUID failedTaskUUID = failedTask.getTaskUUID();
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
     when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(Json.newObject());
 
     PlatformServiceException ex =
         assertThrows(
             PlatformServiceException.class,
             () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
-    assertTrue(ex.getMessage().contains("not yet supported"));
+    assertTrue(ex.getMessage().contains("not implemented"));
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
@@ -797,7 +810,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     assertNotNull(computers.get(TaskType.SoftwareUpgradeYB));
     assertNotNull(computers.get(TaskType.SoftwareKubernetesUpgradeYB));
     assertNotNull(computers.get(TaskType.EditUniverse));
-    assertNotNull(computers.get(TaskType.EditKubernetesUniverse));
+    assertNull(computers.get(TaskType.EditKubernetesUniverse));
     assertNull(computers.get(TaskType.CreateUniverse));
   }
 
@@ -809,7 +822,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
         createFailedUniverseTask(
             universe, TaskType.CreateUniverse, CustomerTask.TaskType.Create, Json.newObject());
     UUID failedTaskUUID = failedTask.getTaskUUID();
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
     when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(Json.newObject());
 
     PlatformServiceException ex =

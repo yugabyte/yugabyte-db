@@ -2816,7 +2816,7 @@ Status PgApiImpl::NewGlobalViewRead(PgGlobalViewRead** handle) {
   return AddToCurrentPgMemctx(std::make_unique<PgGlobalViewRead>(), handle);
 }
 
-YbcPgResultPB PgApiImpl::ExecGlobalViewScan(
+YbcPgGvScanResult PgApiImpl::ExecGlobalViewScan(
     PgGlobalViewRead* handle, std::string_view database_name, std::string_view query,
     std::string_view tserver_uuid) {
   return handle->ExecScan(pg_client_, database_name, query, tserver_uuid);

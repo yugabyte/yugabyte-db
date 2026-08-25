@@ -1,0 +1,11 @@
+title: PrometheusMetricsType
+description: Prometheus export to include in a support bundle metrics dump.
+type: string
+enum:
+  - MASTER_EXPORT
+  - NODE_EXPORT
+  - PLATFORM
+  - PROMETHEUS
+  - TSERVER_EXPORT
+  - CQL_EXPORT
+  - YSQL_EXPORT

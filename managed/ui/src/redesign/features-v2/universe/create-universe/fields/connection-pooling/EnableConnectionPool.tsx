@@ -114,10 +114,11 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({
     if (!isYSQLEnabled) setValue(CONNECTION_POOLING_FIELD, false);
   }, [isYSQLEnabled]);
 
-  // Disabling the override (or CP itself) must restore default CP ports.
   // K8s never supports port overrides — keep defaults and clear the toggle.
+  // Turning CP off resets Internal YSQL only; YSQL stays in sync with Advanced.
+  // Turning override off does not reset ports — they remain shared with Advanced.
   useUpdateEffect(() => {
-    if (hideOverridePorts || !isConPoolEnabled) {
+    if (hideOverridePorts) {
       setValue('overrideCPPorts', false);
       setValue('ysqlServerRpcPort', DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort);
       setValue(
@@ -126,14 +127,14 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({
       );
       return;
     }
-    if (!isOverrideCPEnabled) {
-      setValue('ysqlServerRpcPort', DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort);
+    if (!isConPoolEnabled) {
+      setValue('overrideCPPorts', false);
       setValue(
         'internalYsqlServerRpcPort',
         DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
       );
     }
-  }, [hideOverridePorts, isOverrideCPEnabled, isConPoolEnabled, setValue]);
+  }, [hideOverridePorts, isConPoolEnabled, setValue]);
 
   return (
     <FieldContainer>

@@ -37,6 +37,7 @@
 
 #define YB_SUPERUSER "yb_superuser"
 
+extern char *sanitize_line(const char *str, bool want_hyphen);
 extern bool buildACLCommands(PGconn *yb_conn,
 							 const char *name, const char *subname, const char *nspname,
 							 const char *type, const char *acls, const char *baseacls,

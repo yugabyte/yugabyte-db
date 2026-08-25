@@ -68,6 +68,13 @@ DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_bool(TEST_pause_session_lock_before_release);
 DECLARE_bool(TEST_pause_session_lock_after_release);
 
+METRIC_DECLARE_counter(object_locking_lock_acquires);
+METRIC_DECLARE_counter(object_locking_lock_releases);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_pg_acquires);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_pg_releases);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_tserver_acquires);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_tserver_releases);
+
 using namespace std::literals;
 
 namespace yb::pgwrapper {
@@ -326,6 +333,81 @@ TEST_F(PgObjectLocksTestRF1, VerifyTableLockBlockingBehavior) {
 
 TEST_F(PgObjectLocksTestRF1, TestPgLocks) {
   TestAllBlockingPairs(/*test_pg_locks=*/true);
+}
+
+// Verifies that when an object lock request waits on a
+// conflicting granted object lock, pg_locks surfaces the blocking
+// transaction id via ybdetails->'blocked_by' for the waiting object lock.
+// See issue: https://github.com/yugabyte/yugabyte-db/issues/27398
+
+// Two compatible holders (ROW EXCLUSIVE) block one ACCESS EXCLUSIVE waiter, so blocked_by must
+// list more than one transaction id.
+TEST_F(PgObjectLocksTestRF1, TestPgLocksBlockedByMultipleTransactions) {
+  CreateTestTable();
+
+  auto blocker1_conn = ASSERT_RESULT(Connect());
+  auto blocker2_conn = ASSERT_RESULT(Connect());
+  auto observer_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(observer_conn.Execute("SET yb_locks_min_txn_age='0s'"));
+  // Ensure both blockers and the waiter can appear together in pg_locks.
+  ASSERT_OK(observer_conn.Execute("SET yb_locks_max_transactions=16"));
+
+  // ROW EXCLUSIVE locks do not conflict with each other, so both holders are granted.
+  ASSERT_OK(blocker1_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(blocker1_conn.Execute("INSERT INTO test VALUES (100, 100)"));
+  ASSERT_OK(blocker2_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(blocker2_conn.Execute("INSERT INTO test VALUES (101, 101)"));
+
+  // ACCESS EXCLUSIVE conflicts with both ROW EXCLUSIVE holders and must wait on both.
+  auto waiter_future = std::async(std::launch::async, [&]() -> Status {
+    auto waiter_conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(waiter_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(waiter_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+    return waiter_conn.CommitTransaction();
+  });
+  ASSERT_OK(WaitFor([&]() {
+    return NumWaitingLocks() >= 1;
+  }, 15s * kTimeMultiplier, "Timed out waiting for the ALTER to enqueue a waiting object lock"));
+
+  std::string blocked_by;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto dump = VERIFY_RESULT(observer_conn.FetchAllAsString(
+        "SELECT granted, mode, ybdetails->>'transactionid' AS txn,"
+        " (ybdetails->'blocked_by')::text AS blocked_by FROM pg_locks"
+        " WHERE relation = 'test'::regclass AND locktype = 'relation' ORDER BY granted, mode"));
+    LOG(INFO) << "object locks on test:\n" << dump;
+    blocked_by = VERIFY_RESULT(observer_conn.FetchRow<std::string>(
+        "SELECT COALESCE("
+        "  (SELECT ybdetails->'blocked_by' FROM pg_locks"
+        "     WHERE NOT granted AND relation = 'test'::regclass AND locktype = 'relation'"
+        "       AND mode = 'AccessExclusiveLock'"
+        "       AND ybdetails->'blocked_by' IS NOT NULL"
+        "     LIMIT 1), '[]'::jsonb)::text"));
+    // Require at least two blocker txn ids, both matching the granted RowExclusiveLock holders.
+    return VERIFY_RESULT(observer_conn.FetchRow<bool>(
+        "SELECT EXISTS ("
+        "  SELECT 1 FROM pg_locks w"
+        "  WHERE NOT w.granted AND w.relation = 'test'::regclass AND w.locktype = 'relation'"
+        "    AND w.mode = 'AccessExclusiveLock'"
+        "    AND w.ybdetails->'blocked_by' IS NOT NULL"
+        "    AND jsonb_array_length(w.ybdetails->'blocked_by') >= 2"
+        "    AND (SELECT count(DISTINCT g.ybdetails->>'transactionid')"
+        "         FROM pg_locks g"
+        "         WHERE g.granted AND g.relation = 'test'::regclass AND g.locktype = 'relation'"
+        "           AND g.mode = 'RowExclusiveLock'"
+        "           AND g.ybdetails->>'transactionid' IS NOT NULL"
+        "           AND w.ybdetails->'blocked_by' @> to_jsonb(g.ybdetails->>'transactionid')"
+        "        ) >= 2)"));
+  }, 30s * kTimeMultiplier,
+     "Timed out waiting for blocked_by to list multiple blocking transactions"));
+
+  EXPECT_NE(blocked_by, "[]") << "blocked_by was empty";
+  LOG(INFO) << "blocked_by with multiple transactions: " << blocked_by;
+
+  // Both blockers must be released before the ACCESS EXCLUSIVE waiter can proceed.
+  ASSERT_OK(blocker1_conn.CommitTransaction());
+  ASSERT_OK(blocker2_conn.CommitTransaction());
+  ASSERT_OK(waiter_future.get());
 }
 
 class PgObjectLocksTestRF1Deadlock : public PgObjectLocksTestRF1 {
@@ -1337,6 +1419,70 @@ TEST_F(PgObjectLocksTest, TestSyncReleaseForGlobalLocksAndDdls) {
   testSyncReleaseForGlobalLocksAndDdls();
 }
 
+// Multi-node variant: verifies that pg_locks.ybdetails.blocked_by is populated for a waiting object
+// lock even when the blocker, the waiter, and the observer are all on different nodes. This
+// exercises the cross-node blocker aggregation in PgClientService::GetObjectLockStatus (the blocker
+// holds its lock on ts0, the DDL waits there via the global lock, and the observer reads from ts2).
+TEST_F(PgObjectLocksTest, TestPgLocksBlockedByForObjectLocksMultiNode) {
+  auto* ts_blocker = cluster_->tablet_server(0);
+  auto* ts_waiter = cluster_->tablet_server(1);
+  auto* ts_observer = cluster_->tablet_server(2);
+
+  auto setup_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts_blocker));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+
+  auto observer_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts_observer));
+  ASSERT_OK(observer_conn.Execute("SET yb_locks_min_txn_age='0s'"));
+
+  // Blocker on ts0 holds a ROW EXCLUSIVE lock via a write in an explicit transaction. Using a write
+  // (rather than a read-only ACCESS SHARE) ensures the blocker's transaction is registered at a
+  // status tablet and therefore visible in pg_locks with its transaction id.
+  auto blocker_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts_blocker));
+  ASSERT_OK(blocker_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(blocker_conn.Execute("INSERT INTO test VALUES (100, 100)"));
+
+  // Waiter on ts1 issues a DDL needing ACCESS EXCLUSIVE (a global lock), which conflicts with the
+  // blocker's ROW EXCLUSIVE lock held on ts0 and must wait.
+  auto waiter_future = std::async(std::launch::async, [&]() -> Status {
+    auto waiter_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts_waiter));
+    return waiter_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
+  });
+
+  // Poll pg_locks from the observer (ts2) until the waiting object lock reports a blocker.
+  std::string blocked_by;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto dump = VERIFY_RESULT(observer_conn.FetchAllAsString(
+        "SELECT granted, mode, ybdetails->>'transactionid' AS txn,"
+        " (ybdetails->'blocked_by')::text AS blocked_by FROM pg_locks"
+        " WHERE relation = 'test'::regclass AND locktype = 'relation' ORDER BY granted"));
+    LOG(INFO) << "object locks on test:\n" << dump;
+    blocked_by = VERIFY_RESULT(observer_conn.FetchRow<std::string>(
+        "SELECT COALESCE("
+        "  (SELECT ybdetails->'blocked_by' FROM pg_locks"
+        "     WHERE NOT granted AND relation = 'test'::regclass AND locktype = 'relation'"
+        "       AND ybdetails->'blocked_by' IS NOT NULL"
+        "     LIMIT 1), '[]'::jsonb)::text"));
+    return blocked_by != "[]" && !blocked_by.empty();
+  }, 60s * kTimeMultiplier, "Timed out waiting for blocked_by to be populated across nodes"));
+
+  // The blocked_by list should reference the blocker's transaction, which also shows up as a
+  // granted object lock holder on the same table.
+  const auto references_blocker = ASSERT_RESULT(observer_conn.FetchRow<bool>(
+      "SELECT EXISTS ("
+      "  SELECT 1 FROM pg_locks w JOIN pg_locks g"
+      "    ON g.granted AND g.relation = 'test'::regclass AND g.locktype = 'relation'"
+      "       AND g.ybdetails->>'transactionid' IS NOT NULL"
+      "  WHERE NOT w.granted AND w.relation = 'test'::regclass AND w.locktype = 'relation'"
+      "    AND w.ybdetails->'blocked_by' @> to_jsonb(g.ybdetails->>'transactionid'))"));
+  EXPECT_TRUE(references_blocker)
+      << "blocked_by did not reference the granted holder; blocked_by=" << blocked_by;
+
+  // Releasing the blocker should let the waiter's DDL complete.
+  ASSERT_OK(blocker_conn.Execute("COMMIT"));
+  ASSERT_OK(waiter_future.get());
+}
+
 YB_STRONGLY_TYPED_BOOL(DoMasterFailover);
 YB_STRONGLY_TYPED_BOOL(UseExplicitLocksInsteadOfDdl);
 class PgObjecLocksTestOutOfOrderMessageHandling
@@ -1692,13 +1838,57 @@ TEST_F(PgObjectLocksTestRF1, TestDisableReuseOfFailedTxn) {
 
   auto conn2 = ASSERT_RESULT(Connect());
   auto log_waiter1 = RegexWaiterLogSink(Format(".*$0.*Heartbeat failed.*", txn_id));
+  auto log_waiter2 = StringWaiterLogSink("Clearing lock owner registration for remote aborted txn");
   ASSERT_TRUE(ASSERT_RESULT(
       conn2.FetchRow<bool>(Format("SELECT yb_cancel_transaction('$0')", txn_id))));
   ASSERT_OK(log_waiter1.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
-  auto log_waiter2 = StringWaiterLogSink("Consuming re-usable kPlain txn");
   ASSERT_OK(conn1.Execute("COMMIT"));
+
   ASSERT_OK(log_waiter2.WaitFor(MonoDelta::FromSeconds(2 * kTimeMultiplier)));
   ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(AssertNumLocks(0, 0));
+}
+
+TEST_F(PgObjectLocksTestRF1, TestDisableReuseOfFailedTxnImplicit) {
+  google::SetVLOGLevel("pg_client_session*", 1);
+  google::SetVLOGLevel("transaction*", 1);
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  TransactionId txn_id = TransactionId::Nil();
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "TransactionProvider::NextTxnMetaForPlain",
+      [&](void* arg) { txn_id = *(static_cast<TransactionId*>(arg)); });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Fetch("SELECT * FROM test"));
+  ASSERT_TRUE(!txn_id.Nil());
+  SyncPoint::GetInstance()->DisableProcessing();
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto log_waiter1 = RegexWaiterLogSink(Format(".*$0.*Heartbeat failed.*", txn_id));
+  auto log_waiter2 = StringWaiterLogSink("Clearing lock owner registration for remote aborted txn");
+  ASSERT_TRUE(ASSERT_RESULT(
+      conn2.FetchRow<bool>(Format("SELECT yb_cancel_transaction('$0')", txn_id))));
+  ASSERT_OK(log_waiter1.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+  ASSERT_OK(log_waiter2.WaitFor(MonoDelta::FromSeconds(2 * kTimeMultiplier)));
+
+  TransactionId old_txn_id = txn_id;
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto log_waiter3 = StringWaiterLogSink("Consuming re-usable kPlain txn");
+  // TODO(#33274): This query will fail, because we try to use the aborted transaction, and do not
+  // transparently retry.
+  (void) conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test");
+  ASSERT_OK(log_waiter3.WaitFor(-10s));
+  ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_NE(old_txn_id, txn_id);
   ASSERT_OK(AssertNumLocks(0, 0));
 }
 #endif
@@ -1781,39 +1971,147 @@ class PgObjectLocksFastpathTest : public PgObjectLocksTestRF1 {
     PgObjectLocksTestRF1::SetUp();
     auto& shared_object = *TServerSharedObject().get();
     ASSERT_OK(shared_object.WaitAllocatorsInitialized());
+
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT)"));
   }
 
-  TransactionId LastOwner() {
-    return ObjectLockSharedStateManager().TEST_last_owner();
+  template<typename Metric>
+  auto ExpectMetricIncrease(const auto& prototype, auto delta) {
+    auto& metric_entity = cluster_->mini_tablet_server(0)->metric_entity();
+    auto metric = metric_entity.FindOrNull<Metric>(prototype);
+    auto initial = metric->value();
+    return ScopeExit([initial, delta, metric = std::move(metric)] {
+      auto value = metric->value();
+      EXPECT_EQ(value - initial, delta)
+          << "Expected delta of " << delta << ", actual: " << (value - initial)
+          << ", change from " << initial << " to " << value;
+    });
   }
 };
 
-TEST_F(PgObjectLocksFastpathTest, TestSimple) {
-  CreateTestTable();
-
+TEST_F(PgObjectLocksFastpathTest, TestReadOnlyTransaction) {
   auto conn = ASSERT_RESULT(Connect());
+
+  // Get catalog reads out of the way since they acquire a bunch of unrelated locks.
   ASSERT_OK(conn.Fetch("SELECT * FROM test"));
 
-  auto txn_id = LastOwner();
+  // Test postgres "read-only" transactions (including single-shard writes) acquire and release
+  // entirely on postgres side.
 
-  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
-  ASSERT_EQ(LastOwner(), txn_id);
+  // Read statement.
+  {
+    auto g1 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/1);
+    auto g2 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_releases, /*delta=*/1);
+    ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  }
 
-  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (101, 1)"));
-  ASSERT_EQ(LastOwner(), txn_id);
+  // Single-shard write.
+  {
+    auto g1 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/2);
+    auto g2 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_releases, /*delta=*/1);
+    ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1)"));
+  }
 
+  // Transaction that only reads.
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
-  ASSERT_EQ(LastOwner(), txn_id);
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/1);
+    ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  }
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_releases, /*delta=*/1);
+    ASSERT_OK(conn.CommitTransaction());
+  }
+}
+
+TEST_F(PgObjectLocksFastpathTest, TestTServerSharedMemAcquire) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Consume the plain transaction.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1)"));
   ASSERT_OK(conn.CommitTransaction());
 
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (102, 2)"));
-  ASSERT_EQ(LastOwner(), txn_id);
-  ASSERT_OK(conn.CommitTransaction());
+  // This needs to go to TServer for a new transaction, but otherwise can use shared memory. It
+  // should not prevent postgres-side release.
+  {
+    auto g1 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_tserver_acquires, /*delta=*/2);
+    auto g2 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_releases, /*delta=*/1);
+    ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1)"));
+  }
+}
 
+TEST_F(PgObjectLocksFastpathTest, TestTServerSharedMemRelease) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Get catalog reads out of the way since they acquire a bunch of unrelated locks.
   ASSERT_OK(conn.Fetch("SELECT * FROM test"));
-  ASSERT_NE(LastOwner(), txn_id);
+
+  // Test case where we release as part of FinishTransaction, but do not need to involve
+  // ObjectLockManager since all locks are in shared memory.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/2);
+    ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1)"));
+  }
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_tserver_releases, /*delta=*/1);
+    ASSERT_OK(conn.CommitTransaction());
+  }
+}
+
+TEST_F(PgObjectLocksFastpathTest, TestTServerLockManagerRelease) {
+  auto conn1 = ASSERT_RESULT(Connect());
+
+  // Get catalog reads out of the way since they acquire a bunch of unrelated locks.
+  ASSERT_OK(conn1.Fetch("SELECT * FROM test"));
+
+  // Block conn1 from taking anything greater than ACCESS SHARE.
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test IN EXCLUSIVE MODE"));
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // ACCESS SHARE can use fastpath.
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/1);
+    ASSERT_OK(conn1.Execute("LOCK TABLE test IN ACCESS SHARE MODE"));
+  }
+
+  // ROW SHARE should go to ObjectLockManager (and block until conn2 commits).
+  {
+    std::jthread t([&] {
+      std::this_thread::sleep_for(2s);
+      ASSERT_OK(conn2.CommitTransaction());
+    });
+    auto g = ExpectMetricIncrease<Counter>(METRIC_object_locking_lock_acquires, /*delta=*/1);
+    ASSERT_OK(conn1.Execute("LOCK TABLE test IN ROW SHARE MODE"));
+  }
+
+  // ROW EXCLUSIVE can use fastpath since conn2 has committed.
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/2);
+    ASSERT_OK(conn1.Execute("LOCK TABLE test IN ROW EXCLUSIVE MODE"));
+  }
+
+  // We must release via ObjectLockManager so that the transaction entry is cleaned up properly.
+  {
+    auto g = ExpectMetricIncrease<Counter>(METRIC_object_locking_lock_releases, /*delta=*/1);
+    ASSERT_OK(conn1.CommitTransaction());
+  }
 }
 
 class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {

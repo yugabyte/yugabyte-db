@@ -79,7 +79,23 @@ class ObjectLockSharedState {
       const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents);
   ~ObjectLockSharedState();
 
+  // Try to add a lock request from postgres side.
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
+
+  // Try to perform an unlock all from postgres side.
+  [[nodiscard]] bool UnlockAll();
+
+  // Try to add a lock request from tserver side. Similar to Lock() except for accounting.
+  [[nodiscard]] bool TServerLock(const ObjectLockFastpathRequest& request) PARENT_PROCESS_ONLY;
+
+  // Try to perform an unlock all from tserver side. Similar to UnlockAll() except for accounting.
+  [[nodiscard]] bool TServerUnlockAll() PARENT_PROCESS_ONLY;
+
+  void ForceDropAll() PARENT_PROCESS_ONLY;
+
+  // Indicate that TServer has loaded the transaction corresponding to this state into the lock
+  // manager.
+  void MarkTServerLoaded() PARENT_PROCESS_ONLY;
 
   void Enable() PARENT_PROCESS_ONLY;
 
@@ -87,14 +103,19 @@ class ObjectLockSharedState {
 
   void Shutdown() PARENT_PROCESS_ONLY;
 
-  size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+  void ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
 
-  size_t ConsumeAndAcquireExclusiveLockIntents(
+  void ConsumeAndAcquireExclusiveLockIntents(
       const FastLockRequestConsumer& consume,
       std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) PARENT_PROCESS_ONLY;
 
   void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
       PARENT_PROCESS_ONLY;
+
+  uint64_t PgLockRequestCount() const;
+  uint64_t PgLockReleaseCount() const;
+  uint64_t TServerLockRequestCount() const;
+  uint64_t TServerLockReleaseCount() const;
 
   [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY;
 

@@ -73,7 +73,7 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 	util.FileLogger().Info(ctx, "Saving the node agent certs.")
 	certsUUID := util.NewUUID().String()
 	config.Update(util.PlatformCertsKey, certsUUID)
-	err = util.SaveCerts(ctx, config, data.Config.ServerCert, data.Config.ServerKey, certsUUID)
+	err = util.SaveCerts(ctx, config, &data.Config, certsUUID)
 	if err != nil {
 		util.FileLogger().Info(
 			ctx,

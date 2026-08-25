@@ -24,7 +24,7 @@ In most implementations, that pipeline lives entirely outside the database. A Py
 
 Typically this infrastructure is built from scratch. At production scale, across diverse source types and formats, this can become a significant ongoing operational burden requiring hundreds to thousands of lines of code to write, test, deploy, and keep current.
 
-Distributed RAG manages this pipeline via an extension, pg_dist_rag, using SQL, inside the YugabyteDB database. The compute-heavy preprocessing runs in decoupled RAG workers, isolated from the database process.
+Distributed RAG manages this pipeline via an extension, pg_dist_rag (YugabyteDB {{<release "2026.1.1.0">}} or later), using SQL, inside the YugabyteDB database. The compute-heavy preprocessing runs in decoupled RAG workers, isolated from the database process.
 
 The extension manages a work queue internally. Documents are processed asynchronously (parsed, chunked, and embedded using the configured provider) and results land directly in the pgvector-backed index table, queryable with standard SQL the moment each document completes.
 

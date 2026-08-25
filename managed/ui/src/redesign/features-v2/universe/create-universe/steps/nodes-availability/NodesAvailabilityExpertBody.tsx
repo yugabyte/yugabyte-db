@@ -31,6 +31,7 @@ type Props = Pick<
 > & {
   isGeoPartition?: boolean;
   hideDedicatedNodes?: boolean;
+  baselineRegionCodes?: string[];
 };
 
 export function NodesAvailabilityExpertBody({
@@ -44,14 +45,16 @@ export function NodesAvailabilityExpertBody({
   effectiveReplicationFactor,
   resilienceAndRegionsSettings,
   isGeoPartition = false,
-  hideDedicatedNodes = false
+  hideDedicatedNodes = false,
+  baselineRegionCodes
 }: Props) {
   const { watch } = useFormContext<NodeAvailabilityProps>();
   const availabilityZonesForm = watch('availabilityZones');
   const { azCount, faultToleranceNeeded, regionCards } = useAvailabilityZonesRegionCards({
     mode: ResilienceFormMode.EXPERT_MODE,
     showErrorsAfterSubmit,
-    resilienceAndRegionsSettings
+    resilienceAndRegionsSettings,
+    baselineRegionCodes
   });
   const hasLesserNodesError = showErrorsAfterSubmit && Boolean((errors as any)?.lesserNodes?.message);
 

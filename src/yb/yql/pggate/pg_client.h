@@ -89,6 +89,11 @@ struct PerformResult {
   }
 };
 
+struct RemoteExecData {
+  tserver::PgRemoteExecResponsePB resp;
+  RefCntSlice rows_data;
+};
+
 namespace pg_client::internal {
 
 template <class Data>
@@ -305,6 +310,8 @@ class PgClient {
       SubTransactionId subtxn_id, const YbcObjectLockId& lock_id,
       docdb::ObjectLockFastpathLockType lock_type);
 
+  bool TryReleaseAllObjectLocksInSharedMemory();
+
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
       bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);
@@ -398,7 +405,7 @@ class PgClient {
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
 
-  Result<tserver::PgRemoteExecResponsePB> RemoteExec(
+  Result<RemoteExecData> RemoteExec(
       std::string_view query, std::string_view database_name, std::string_view tserver_uuid,
       const std::vector<std::optional<std::string>>& params);
 

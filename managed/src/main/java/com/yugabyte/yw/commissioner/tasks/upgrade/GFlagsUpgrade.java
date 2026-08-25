@@ -253,6 +253,22 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  protected boolean isSkipPrechecks() {
+    return super.isSkipPrechecks() || skipPrechecksForNonRollingGFlagsUpgrade();
+  }
+
+  @Override
+  protected boolean isSkipUpdateConsistencyCheck() {
+    return skipPrechecksForNonRollingGFlagsUpgrade();
+  }
+
+  private boolean skipPrechecksForNonRollingGFlagsUpgrade() {
+    return taskParams().upgradeOption == UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE
+        && confGetter.getConfForScope(
+            getUniverse(), UniverseConfKeys.skipPrechecksForNonRollingGFlagsUpgrade);
+  }
+
+  @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
     String softwareVersion =
@@ -303,7 +319,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     // Validate GFlags through RPC
     boolean skipRuntimeGflagValidation =
         confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
-    if (!skipRuntimeGflagValidation) {
+    if (!skipRuntimeGflagValidation && !skipPrechecksForNonRollingGFlagsUpgrade()) {
       if (Util.compareYBVersions(
               softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
           >= 0) {

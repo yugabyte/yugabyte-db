@@ -13,7 +13,12 @@ import { EncryptionAtRest } from '@app/redesign/features/universe/universe-actio
 import { api, QUERY_KEY } from '@app/redesign/utils/api';
 import { FormProvider, useForm } from 'react-hook-form';
 import { SecuritySettingsProps } from '../../create-universe/steps/security-settings/dtos';
-import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
+import {
+  getClusterByType,
+  useEditUniverseContext,
+  useIsUniverseReady,
+  withUniverseResource
+} from '../EditUniverseUtils';
 import { getGetUniverseQueryKey } from '@app/v2/api/universe/universe';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
@@ -107,7 +112,7 @@ export const SecurityTab = () => {
           <StyledPanel>
             <StyledCardHeader>
               {t('networkAccess')}
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUUID)} isControl>
                 <YBButton
                   dataTestId="edit-network-access-button"
                   variant="ghost"
@@ -159,7 +164,7 @@ export const SecurityTab = () => {
         <StyledPanel>
           <StyledCardHeader>
             {t('encryptionInTransit')}
-            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_UNIVERSE_TLS} isControl>
+            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.MODIFY_UNIVERSE_TLS, universeUUID)} isControl>
               <YBButton
                 dataTestId="edit-security-transit-button"
                 variant="ghost"
@@ -207,7 +212,7 @@ export const SecurityTab = () => {
         <StyledPanel>
           <StyledCardHeader>
             {t('encryptionAtRest')}
-            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_UNIVERSE_TLS} isControl>
+            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.MODIFY_UNIVERSE_TLS, universeUUID)} isControl>
               <YBButton
                 dataTestId="edit-security-at-rest-button"
                 variant="ghost"

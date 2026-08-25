@@ -1,4 +1,4 @@
-import { ChangeEvent, ReactElement, useLayoutEffect } from 'react';
+import { ChangeEvent, ReactElement, useLayoutEffect, useMemo } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -90,7 +90,8 @@ export const InstanceTypeField = ({
     ],
     () => api.getInstanceTypes(provider?.uuid, zoneNames, osPatchingEnabled ? cpuArch : null),
     {
-      enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones
+      enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones,
+      refetchOnWindowFocus: false
     }
   );
 
@@ -139,7 +140,7 @@ export const InstanceTypeField = ({
     isEditMode
   ]);
 
-  const instanceTypes = sortAndGroup(data, provider?.code);
+  const instanceTypes = useMemo(() => sortAndGroup(data, provider?.code), [data, provider?.code]);
 
   const handleChange = (_e: ChangeEvent<{}>, option: InstanceType | null) => {
     if (!option) {

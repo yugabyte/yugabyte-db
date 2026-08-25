@@ -56,8 +56,10 @@ const (
 	RequestLogLevelHeader    = "x-request-log-level"
 
 	// Cert names.
-	NodeAgentCertFile = "node_agent.crt"
-	NodeAgentKeyFile  = "node_agent.key"
+	NodeAgentCertFile    = "node_agent.crt"
+	NodeAgentKeyFile     = "node_agent.key"
+	SignerPublicKeyFile  = "signer.pub"
+	SignerPrivateKeyFile = "signer.key"
 
 	NodePort = "9070"
 

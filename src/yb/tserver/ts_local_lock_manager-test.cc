@@ -48,6 +48,13 @@ DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_ysql);
 
+METRIC_DECLARE_counter(object_locking_lock_acquires);
+METRIC_DECLARE_counter(object_locking_lock_releases);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_pg_acquires);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_pg_releases);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_tserver_acquires);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_tserver_releases);
+
 using namespace std::literals;
 
 using yb::docdb::DocDBTableLocksConflictMatrixTest;
@@ -149,6 +156,9 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       const ObjectLockOwner& owner, uint32_t database_id, uint32_t relation_id,
       TableLockType lock_type, CoarseTimePoint deadline = CoarseTimePoint::max(),
       LockStateMap* state_map = nullptr, TransactionId bg_txn = TransactionId::Nil()) {
+    if (deadline == CoarseTimePoint{}) {
+      deadline = CoarseMonoClock::Now() + 1s * kTimeMultiplier;
+    }
     return LockRelations(
         owner, database_id, {relation_id}, {lock_type}, deadline, state_map, bg_txn);
   }
@@ -171,12 +181,12 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
   RegisterTransaction(TransactionId txn_id) {
     ParentProcessGuard g;
     auto shared_state = VERIFY_RESULT(shared_manager_->AllocateShared());
-    auto& state = *shared_state;
+    auto& state = *shared_state.get();
     shared_mem_states_.try_emplace(txn_id, std::move(shared_state));
     return lock_owner_registry_->Register(state, txn_id, TabletId());
   }
 
-  Result<bool> LockRelationPgFastpath(
+  bool LockRelationPgFastpath(
       TransactionId txn_id, SubTransactionId subtxn_id, uint32_t database_id, uint32_t relation_id,
       ObjectLockFastpathLockType lock_type) {
     auto iter = shared_mem_states_.find(txn_id);
@@ -188,6 +198,34 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
         .object_oid = kDefaultObjectId,
         .object_sub_oid = kDefaultObjectSubId,
         .lock_type = lock_type});
+  }
+
+  bool LockRelationTServerFastpath(
+      TransactionId txn_id, SubTransactionId subtxn_id, uint32_t database_id, uint32_t relation_id,
+      ObjectLockFastpathLockType lock_type) {
+    ParentProcessGuard g;
+    auto iter = shared_mem_states_.find(txn_id);
+    CHECK(iter != shared_mem_states_.end());
+    return iter->second->TServerLock({
+        .subtxn_id = subtxn_id,
+        .database_oid = database_id,
+        .relation_oid = relation_id,
+        .object_oid = kDefaultObjectId,
+        .object_sub_oid = kDefaultObjectSubId,
+        .lock_type = lock_type});
+  }
+
+  bool ReleaseLocksPgFastpath(TransactionId txn_id) {
+    auto iter = shared_mem_states_.find(txn_id);
+    CHECK(iter != shared_mem_states_.end());
+    return iter->second->UnlockAll();
+  }
+
+  bool ReleaseLocksTServerFastpath(TransactionId txn_id) {
+    ParentProcessGuard g;
+    auto iter = shared_mem_states_.find(txn_id);
+    CHECK(iter != shared_mem_states_.end());
+    return iter->second->TServerUnlockAll();
   }
 
   size_t GrantedLocksSize() {
@@ -212,6 +250,19 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       }
     }
     return true;
+  }
+
+  template<typename Metric>
+  auto ReadMetric(const auto& prototype) {
+    return mini_server_->metric_entity().FindOrNull<Metric>(prototype)->value();
+  }
+
+  uint64_t ReadCounter(const auto& prototype) {
+    return ReadMetric<Counter>(prototype);
+  }
+
+  uint64_t ReadFunctionGauge(const auto& prototype) {
+    return ReadMetric<FunctionGauge<uint64_t>>(prototype);
   }
 
   tserver::TSLocalLockManager* lm_;
@@ -241,8 +292,8 @@ TEST_F(TSLocalLockManagerTest, TestFastpathLockAndRelease) {
       continue;
     }
 
-    ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
-        kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1, *lock_type)));
+    ASSERT_TRUE(LockRelationPgFastpath(
+        kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1, *lock_type));
     ASSERT_GE(GrantedLocksSize(), 1);
     ASSERT_EQ(WaitingLocksSize(), 0);
 
@@ -267,8 +318,8 @@ TEST_F(TSLocalLockManagerTest, TestFastpathConflictMatrix) {
                 << " with existing lock " << TableLockType_Name(outer_lock);
       auto is_conflicting = ASSERT_RESULT(
           DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(outer_entries, inner_entries));
-      auto lock_acquired = ASSERT_RESULT(LockRelationPgFastpath(
-          kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1, fastpath_lock));
+      auto lock_acquired = LockRelationPgFastpath(
+          kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1, fastpath_lock);
       ASSERT_TRUE(is_conflicting ^ lock_acquired)
           << "lock type " << TableLockType_Name(outer_lock)
           << ", " << TableLockType_Name(inner_lock)
@@ -284,12 +335,12 @@ TEST_F(TSLocalLockManagerTest, TestFastpathMultipleSessions) {
   auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
   auto txn2 = ASSERT_RESULT(RegisterTransaction(kTxn2.txn_id));
 
-  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+  ASSERT_TRUE(LockRelationPgFastpath(
       kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowExclusive)));
-  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+      ObjectLockFastpathLockType::kRowExclusive));
+  ASSERT_TRUE(LockRelationPgFastpath(
       kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowExclusive)));
+      ObjectLockFastpathLockType::kRowExclusive));
 
   ASSERT_EQ(GrantedLocksSize(), 4);
   ASSERT_EQ(WaitingLocksSize(), 0);
@@ -305,9 +356,9 @@ TEST_F(TSLocalLockManagerTest, TestFastpathConflictWithExisting) {
 
   ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::EXCLUSIVE));
 
-  ASSERT_FALSE(ASSERT_RESULT(LockRelationPgFastpath(
+  ASSERT_FALSE(LockRelationPgFastpath(
       kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowExclusive)));
+      ObjectLockFastpathLockType::kRowExclusive));
 
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 
@@ -319,9 +370,9 @@ TEST_F(TSLocalLockManagerTest, TestFastpathConflictWithExisting) {
 TEST_F(TSLocalLockManagerTest, TestFastpathBlockLaterConflicting) {
   auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
 
-  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+  ASSERT_TRUE(LockRelationPgFastpath(
       kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowExclusive)));
+      ObjectLockFastpathLockType::kRowExclusive));
 
   auto status_future = std::async(std::launch::async, [&]() {
     return LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::EXCLUSIVE);
@@ -342,17 +393,17 @@ TEST_F(TSLocalLockManagerTest, TestFastpathBlockLaterConflicting) {
 TEST_F(TSLocalLockManagerTest, TestFastpathBlockLaterConflictingTimeout) {
   auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
 
-  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+  ASSERT_TRUE(LockRelationPgFastpath(
       kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowExclusive)));
+      ObjectLockFastpathLockType::kRowExclusive));
 
   ASSERT_NOK(LockRelation(
       kTxn2, kDatabase1, kObject1, TableLockType::EXCLUSIVE,
       CoarseMonoClock::Now() + 1s * kTimeMultiplier));
 
-  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+  ASSERT_TRUE(LockRelationPgFastpath(
       kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowExclusive)));
+      ObjectLockFastpathLockType::kRowExclusive));
 
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 
@@ -367,18 +418,18 @@ TEST_F(TSLocalLockManagerTest, TestFastpathReleaseDuplicateExclusiveIntents) {
   ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::EXCLUSIVE));
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 
-  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+  ASSERT_TRUE(LockRelationPgFastpath(
       kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowExclusive)));
+      ObjectLockFastpathLockType::kRowExclusive));
   ASSERT_OK(ReleaseLocksForOwner(kTxn2));
 }
 
 TEST_F(TSLocalLockManagerTest, TestFastpathWeakStrongNoConflict) {
   auto txn2 = ASSERT_RESULT(RegisterTransaction(kTxn2.txn_id));
   ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::SHARE));
-  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+  ASSERT_TRUE(LockRelationPgFastpath(
       kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowShare)));
+      ObjectLockFastpathLockType::kRowShare));
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
   ASSERT_OK(ReleaseLocksForOwner(kTxn2));
 }
@@ -902,9 +953,9 @@ TEST_F(TSLocalLockManagerBootstrappedLocksTest, TestSimple) {
   ASSERT_EQ(WaitingLocksSize(), 0);
 
   auto txn2 = ASSERT_RESULT(RegisterTransaction(kTxn2.txn_id));
-  ASSERT_FALSE(ASSERT_RESULT(LockRelationPgFastpath(
+  ASSERT_FALSE(LockRelationPgFastpath(
       kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowExclusive)));
+      ObjectLockFastpathLockType::kRowExclusive));
 }
 
 class TSLocalLockManagerLockBeforeSharedMemorySetupTest : public TSLocalLockManagerTest {
@@ -921,17 +972,146 @@ class TSLocalLockManagerLockBeforeSharedMemorySetupTest : public TSLocalLockMana
 TEST_F_EX(TSLocalLockManager, TestLockBeforeSharedMemorySetup,
           TSLocalLockManagerLockBeforeSharedMemorySetupTest) {
   auto txn3 = ASSERT_RESULT(RegisterTransaction(kTxn3.txn_id));
-  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+  ASSERT_TRUE(LockRelationPgFastpath(
       kTxn3.txn_id, kTxn3.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowExclusive)));
-  ASSERT_FALSE(ASSERT_RESULT(LockRelationPgFastpath(
+      ObjectLockFastpathLockType::kRowExclusive));
+  ASSERT_FALSE(LockRelationPgFastpath(
       kTxn3.txn_id, kTxn3.subtxn_id, kDatabase1, kObject2,
-      ObjectLockFastpathLockType::kRowExclusive)));
+      ObjectLockFastpathLockType::kRowExclusive));
   ASSERT_OK(ReleaseLocksForOwner(kTxn2));
-  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+  ASSERT_TRUE(LockRelationPgFastpath(
       kTxn3.txn_id, kTxn3.subtxn_id, kDatabase1, kObject2,
-      ObjectLockFastpathLockType::kRowExclusive)));
+      ObjectLockFastpathLockType::kRowExclusive));
   ASSERT_OK(ReleaseLocksForOwner(kTxn3));
+}
+
+TEST_F(TSLocalLockManagerTest, TestAcquireMetrics) {
+  {
+    auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
+    auto txn2 = ASSERT_RESULT(RegisterTransaction(kTxn2.txn_id));
+
+    ASSERT_TRUE(LockRelationPgFastpath(
+        kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+        ObjectLockFastpathLockType::kRowExclusive));
+    ASSERT_TRUE(LockRelationTServerFastpath(
+        kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
+        ObjectLockFastpathLockType::kAccessShare));
+    ASSERT_TRUE(LockRelationPgFastpath(
+        kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
+        ObjectLockFastpathLockType::kRowShare));
+    ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::ROW_EXCLUSIVE));
+    ASSERT_OK(LockRelation(kTxn3, kDatabase1, kObject1, TableLockType::ROW_EXCLUSIVE));
+
+    ASSERT_EQ(4, ReadCounter(METRIC_object_locking_lock_acquires));
+    ASSERT_EQ(3, ReadFunctionGauge(METRIC_object_locking_fastpath_pg_acquires));
+    ASSERT_EQ(1, ReadFunctionGauge(METRIC_object_locking_fastpath_tserver_acquires));
+
+    ASSERT_OK(ReleaseLocksForOwner(kTxn3));
+    ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+    ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  }
+
+  // Shared states released; this should result in per-session counters being added to the
+  // ObjectLockSharedStateManager counter before destruction.
+  shared_mem_states_.clear();
+
+  ASSERT_EQ(4, ReadCounter(METRIC_object_locking_lock_acquires));
+  ASSERT_EQ(3, ReadFunctionGauge(METRIC_object_locking_fastpath_pg_acquires));
+  ASSERT_EQ(1, ReadFunctionGauge(METRIC_object_locking_fastpath_tserver_acquires));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathRelease) {
+  auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
+
+  // No locks released.
+  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+  ASSERT_EQ(0, ReadFunctionGauge(METRIC_object_locking_fastpath_pg_releases));
+  ASSERT_EQ(0, ReadFunctionGauge(METRIC_object_locking_fastpath_tserver_releases));
+  ASSERT_EQ(0, ReadCounter(METRIC_object_locking_lock_releases));
+
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowExclusive));
+  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+  ASSERT_EQ(1, ReadFunctionGauge(METRIC_object_locking_fastpath_pg_releases));
+
+  ASSERT_TRUE(LockRelationPgFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject2,
+      ObjectLockFastpathLockType::kRowExclusive));
+  ASSERT_TRUE(ReleaseLocksTServerFastpath(kTxn1.txn_id));
+  ASSERT_EQ(1, ReadFunctionGauge(METRIC_object_locking_fastpath_tserver_releases));
+
+  // Fastpath lock was released so this should not block.
+  ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::EXCLUSIVE, /*deadline=*/{}));
+  ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject2, TableLockType::EXCLUSIVE, /*deadline=*/{}));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_EQ(1, ReadCounter(METRIC_object_locking_lock_releases));
+
+  ASSERT_TRUE(LockRelationPgFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowExclusive));
+
+  // Should block, and also consume the lock.
+  ASSERT_NOK(LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::EXCLUSIVE, /*deadline=*/{}));
+
+  // Fastpath should not be blocked on the object.
+  auto txn3 = ASSERT_RESULT(RegisterTransaction(kTxn3.txn_id));
+  ASSERT_TRUE(LockRelationPgFastpath(
+      kTxn3.txn_id, kTxn3.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowExclusive));
+  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn3.txn_id));
+
+  // Fastpath should not be blocked for transaction with consumed lock requests.
+  ASSERT_TRUE(LockRelationPgFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject2,
+      ObjectLockFastpathLockType::kRowExclusive));
+
+  // Not allowed since we have been registered into ObjectLockManager.
+  ASSERT_FALSE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+  ASSERT_FALSE(ReleaseLocksTServerFastpath(kTxn1.txn_id));
+  ASSERT_EQ(2, ReadFunctionGauge(METRIC_object_locking_fastpath_pg_releases));
+  ASSERT_EQ(1, ReadFunctionGauge(METRIC_object_locking_fastpath_tserver_releases));
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  ASSERT_EQ(2, ReadCounter(METRIC_object_locking_lock_releases));
+
+  // Nothing left over, this should not block.
+  ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::EXCLUSIVE, /*deadline=*/{}));
+  ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject2, TableLockType::EXCLUSIVE, /*deadline=*/{}));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_EQ(3, ReadCounter(METRIC_object_locking_lock_releases));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathReleaseNotBlockedByUnrelatedRelease) {
+  auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
+  auto txn2 = ASSERT_RESULT(RegisterTransaction(kTxn2.txn_id));
+
+  // This consumes all lock requests, but txn1 doesn't have any, so it should not be blocked.
+  ASSERT_OK(LockRelation(
+      {kTxn2.txn_id, 1}, kDatabase1, kObject1, TableLockType::SHARE, /*deadline=*/{}));
+  ASSERT_OK(LockRelation(
+      {kTxn2.txn_id, 2}, kDatabase1, kObject2, TableLockType::EXCLUSIVE, /*deadline=*/{}));
+
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowShare));
+  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowShare));
+  // Subtransaction release case. This should not consume txn1's locks and force txn1 to use lock
+  // manager release.
+  ASSERT_OK(ReleaseLocksForSubtxn({kTxn2.txn_id, 1}));
+  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowShare));
+  // Release all case. This should not consume txn1's locks and force txn1 to use lock manager
+  // release.
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn1.txn_id));
 }
 
 } // namespace yb::tserver

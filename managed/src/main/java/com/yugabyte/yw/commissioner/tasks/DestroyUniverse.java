@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.SupportBundle;
+import com.yugabyte.yw.models.SupportBundleV2;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -383,6 +384,12 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
     if (!supportBundles.isEmpty()) {
       for (SupportBundle supportBundle : supportBundles) {
         supportBundleUtil.deleteSupportBundle(supportBundle);
+      }
+    }
+    List<SupportBundleV2> supportBundlesV2 = SupportBundleV2.getAll(universeUUID);
+    if (!supportBundlesV2.isEmpty()) {
+      for (SupportBundleV2 supportBundle : supportBundlesV2) {
+        supportBundleUtil.deleteSupportBundleV2(supportBundle);
       }
     }
   }

@@ -3,6 +3,7 @@
 package com.yugabyte.yw.cloud.oci;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -15,6 +16,23 @@ import org.junit.runner.RunWith;
 
 @RunWith(JUnitParamsRunner.class)
 public class OCICloudUtilTest {
+
+  @Test
+  public void testValidInstanceConfigurationOcid() {
+    assertTrue(
+        OCICloudUtil.isValidInstanceConfigurationOcid(
+            "ocid1.instanceconfiguration.oc1.us-ashburn-1.example"));
+  }
+
+  @Test
+  public void testInvalidInstanceConfigurationOcids() {
+    assertFalse(OCICloudUtil.isValidInstanceConfigurationOcid(null));
+    assertFalse(OCICloudUtil.isValidInstanceConfigurationOcid(""));
+    assertFalse(OCICloudUtil.isValidInstanceConfigurationOcid("template-display-name"));
+    assertFalse(
+        OCICloudUtil.isValidInstanceConfigurationOcid("ocid1.instance.oc1.us-ashburn-1.example"));
+    assertFalse(OCICloudUtil.isValidInstanceConfigurationOcid("ocid1.instanceconfiguration.oc1"));
+  }
 
   @Test
   public void testComputeEffectiveTagCountWithOnlyMandatoryTags() {

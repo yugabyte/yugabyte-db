@@ -102,7 +102,7 @@ bool IsEmpty(const YbcPgTableLocalityInfo& info) {
 } // namespace
 
 RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params) {
-  return exec_params && exec_params->rowmark > -1
+  return exec_params && exec_params->rowmark != YBC_NO_ROW_MARK
       ? static_cast<RowMarkType>(exec_params->rowmark)
       : RowMarkType::ROW_MARK_ABSENT;
 }

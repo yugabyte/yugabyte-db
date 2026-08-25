@@ -339,23 +339,63 @@ class UsearchIndex :
   IndexMemoryConsumption consumption_;
 };
 
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class UsearchIndexTraits :
+    public vector_index::VectorIndexTraitsIf<Vector, DistanceResult> {
+ public:
+  using IndexImpl = index_dense_gt<VectorId>;
+
+  UsearchIndexTraits(
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend,
+      const MemTrackerPtr& mem_tracker)
+      : block_cache_(block_cache), options_(options), backend_(backend),
+        mem_tracker_(mem_tracker),
+        metric_(options.CreateMetric<Vector>()) {
+    LOG_IF(DFATAL, backend != HnswBackend::USEARCH && backend != HnswBackend::YB_HNSW_USEARCH) <<
+        "Invalid backend for usearch index: " << HnswBackend_Name(backend);
+  }
+
+  vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
+      vector_index::FactoryMode mode) const override {
+    if (backend_ == HnswBackend::YB_HNSW_USEARCH && mode == vector_index::FactoryMode::kLoad) {
+      return CreateYbHnsw<Vector, DistanceResult>(block_cache_, options_);
+    }
+    return std::make_shared<UsearchIndex<Vector, DistanceResult>>(
+        block_cache_, options_, backend_, mem_tracker_);
+  }
+
+  DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
+    return metric_(
+        pointer_cast<const byte_t*>(lhs.data()), pointer_cast<const byte_t*>(rhs.data()));
+  }
+
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return IndexImpl::estimate_num_vectors_for_bytes(
+        bytes_limit, metric_, CreateIndexDenseConfig(options_));
+  }
+
+ private:
+  const hnsw::BlockCachePtr block_cache_;
+  const HNSWOptions options_;
+  const HnswBackend backend_;
+  const MemTrackerPtr mem_tracker_;
+  const metric_punned_t metric_;
+};
+
 }  // namespace
 
 template <vector_index::IndexableVectorType Vector,
           vector_index::ValidDistanceResultType DistanceResult>
-vector_index::VectorIndexIfPtr<Vector, DistanceResult>
-    UsearchIndexFactory<Vector, DistanceResult>::Create(
-    vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
-    const HNSWOptions& options, HnswBackend backend, const MemTrackerPtr& mem_tracker) {
-  LOG_IF(DFATAL, backend != HnswBackend::USEARCH && backend != HnswBackend::YB_HNSW_USEARCH) <<
-      "Invalid backed for usearch index: " << HnswBackend_Name(backend);
-  if (backend == HnswBackend::YB_HNSW_USEARCH && mode == vector_index::FactoryMode::kLoad) {
-    return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
-  }
-  return std::make_shared<UsearchIndex<Vector, DistanceResult>>(
+Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateUsearchIndexTraits(
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+    HnswBackend backend, const MemTrackerPtr& mem_tracker) {
+  return std::make_shared<UsearchIndexTraits<Vector, DistanceResult>>(
       block_cache, options, backend, mem_tracker);
 }
 
-template class UsearchIndexFactory<FloatVector, float>;
+template Result<vector_index::VectorIndexTraitsPtr<FloatVector, float>>
+    CreateUsearchIndexTraits<FloatVector, float>(
+        const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+        HnswBackend backend, const MemTrackerPtr& mem_tracker);
 
 }  // namespace yb::ann_methods

@@ -267,6 +267,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ResizeNode,
           TaskType.KubernetesOverridesUpgrade,
           TaskType.GFlagsKubernetesUpgrade,
+          TaskType.UpdateProxyConfig,
           TaskType.SoftwareKubernetesUpgrade,
           TaskType.SoftwareKubernetesUpgradeYB,
           TaskType.EditKubernetesUniverse,
@@ -279,6 +280,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.FinalizeKubernetesUpgrade,
           TaskType.RollbackUpgrade,
           TaskType.RollbackKubernetesUpgrade,
+          TaskType.RollbackEditUniverse,
           TaskType.RestartUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
@@ -323,6 +325,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ReinstallNodeAgent,
           TaskType.ProvisionUniverseNodes,
           TaskType.CreateSupportBundle,
+          TaskType.CreateSupportBundleV2,
           TaskType.CreateBackupSchedule,
           TaskType.CreateBackupScheduleKubernetes,
           TaskType.EditBackupSchedule,
@@ -340,6 +343,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.CreateBackupScheduleKubernetes,
           TaskType.CreateKubernetesUniverse,
           TaskType.CreateSupportBundle,
+          TaskType.CreateSupportBundleV2,
           TaskType.CreateUniverse,
           TaskType.BackupUniverse,
           TaskType.DeleteBackupSchedule,
@@ -367,6 +371,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.VMImageUpgrade,
           TaskType.GFlagsKubernetesUpgrade,
           TaskType.KubernetesOverridesUpgrade,
+          TaskType.UpdateProxyConfig,
           TaskType.EditKubernetesUniverse /* Partially allowing this for resource spec changes */,
           TaskType.PauseUniverse /* TODO Validate this, added for YBM only */,
           TaskType.ResumeUniverse /* TODO Validate this, added for YBM only */,
@@ -629,6 +634,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       builder.taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
       if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
         builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
+      }
+      // 1:1 with EditUniverseRollbackComputer / TaskType.EditUniverse.
+      if (lockedTaskType == TaskType.EditUniverse) {
+        builder.taskTypes(ImmutableSet.of(TaskType.RollbackEditUniverse));
       }
       if (RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
         builder.rerun(true);
@@ -1264,6 +1273,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     universe.setStateTransitionDetails(new StateTransitionDetails(true, delta));
   }
 
+  /**
+   * Whether freeze should write {@code state_transition_details}. Rollback tasks must return {@code
+   * false} so they do not overwrite the failed task's delta (needed to restore {@code before} and
+   * enumerate nodes to destroy).
+   */
+  protected boolean shouldCaptureStateTransitionDelta() {
+    return true;
+  }
+
   private void initAndAddPrecheckTasks(Universe universe) {
     createPrecheckTasks(universe);
     ExecutionContext context = getOrCreateExecutionContext();
@@ -1272,6 +1290,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       getRunnableTask().addSubTaskGroup(precheckTaskGroup);
       context.precheckTaskGroup = null;
     }
+  }
+
+  protected boolean isSkipUpdateConsistencyCheck() {
+    return false;
   }
 
   /**
@@ -1328,7 +1350,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Universe universeBeforePrechecks = Universe.getOrBadRequest(universeUuid);
       initAndAddPrecheckTasks(universe);
       TaskType taskType = getTaskExecutor().getTaskType(getClass());
-      if (!SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
+      if (!isSkipUpdateConsistencyCheck()
+          && !SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
           && confGetter.getConfForScope(universe, UniverseConfKeys.enableConsistencyCheck)) {
         log.info("Creating consistency check task for task {}", taskType);
         checkAndCreateConsistencyCheckTableTask(universe.getUniverseDetails().getPrimaryCluster());
@@ -1373,8 +1396,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.setExecutionContext(getOrCreateExecutionContext());
     // Compute target after the freeze callback so taskParams() are finalized. EditUniverse
     // already finalizes params in precheck; this keeps the generic path correct for other tasks.
-    if (isFirstTry()) {
-      UniverseDefinitionTaskParams beforeDetails = universe.getUniverseDetails();
+    // Deep-copy before so a freeze callback that mutates universe details cannot alias the
+    // snapshot used for the delta (otherwise new nodes look like REPLACE, not ADD).
+    if (isFirstTry() && shouldCaptureStateTransitionDelta()) {
+      UniverseDefinitionTaskParams beforeDetails =
+          Json.fromJson(
+              Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
       Consumer<Universe> originalCallback = callback;
       callback =
           univ -> {

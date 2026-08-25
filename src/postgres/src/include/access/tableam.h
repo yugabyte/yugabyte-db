@@ -38,6 +38,7 @@ struct SampleScanState;
 struct TBMIterateResult;
 struct VacuumParams;
 struct ValidateIndexState;
+struct YbTableScanOptions;
 
 /*
  * Bitmask values for the flags argument to the scan_begin callback.
@@ -309,12 +310,17 @@ typedef struct TableAmRoutine
 	 * the scan's behaviour (ScanOptions's SO_ALLOW_*, several may be
 	 * specified, an AM may ignore unsupported ones) and whether the snapshot
 	 * needs to be deallocated at scan_end (ScanOptions's SO_TEMP_SNAPSHOT).
+	 *
+	 * yb_options, if not NULL, carries YB-specific scan parameters such as
+	 * pushdown expressions, aggregate refs, and exec parameters.  Set by the
+	 * _yb variants of the table_beginscan family.
 	 */
 	TableScanDesc (*scan_begin) (Relation rel,
 								 Snapshot snapshot,
 								 int nkeys, struct ScanKeyData *key,
 								 ParallelTableScanDesc pscan,
-								 uint32 flags);
+								 uint32 flags,
+								 struct YbTableScanOptions *yb_options);
 
 	/*
 	 * Release resources and deallocate scan. If TableScanDesc.temp_snap,
@@ -892,15 +898,28 @@ extern TupleTableSlot *table_slot_create(Relation rel, List **reglist);
 /*
  * Start a scan of `rel`. Returned tuples pass a visibility test of
  * `snapshot`, and if nkeys != 0, the results are filtered by those scan keys.
+ *
+ * The _yb variant accepts YB-specific scan options (pushdown expressions,
+ * aggregate refs, exec parameters, etc.).  The base function passes NULL.
  */
 static inline TableScanDesc
-table_beginscan(Relation rel, Snapshot snapshot,
-				int nkeys, struct ScanKeyData *key)
+table_beginscan_yb(Relation rel, Snapshot snapshot,
+				   int nkeys, struct ScanKeyData *key,
+				   struct YbTableScanOptions *yb_options)
 {
 	uint32		flags = SO_TYPE_SEQSCAN |
 		SO_ALLOW_STRAT | SO_ALLOW_SYNC | SO_ALLOW_PAGEMODE;
 
-	return rel->rd_tableam->scan_begin(rel, snapshot, nkeys, key, NULL, flags);
+	return rel->rd_tableam->scan_begin(rel, snapshot, nkeys, key, NULL, flags,
+									   yb_options);
+}
+
+static inline TableScanDesc
+table_beginscan(Relation rel, Snapshot snapshot,
+				int nkeys, struct ScanKeyData *key)
+{
+	return table_beginscan_yb(rel, snapshot, nkeys, key,
+							  NULL);	/* yb_options */
 }
 
 /*
@@ -918,9 +937,10 @@ extern TableScanDesc table_beginscan_catalog(Relation rel, int nkeys,
  * plain table_beginscan.
  */
 static inline TableScanDesc
-table_beginscan_strat(Relation rel, Snapshot snapshot,
-					  int nkeys, struct ScanKeyData *key,
-					  bool allow_strat, bool allow_sync)
+table_beginscan_strat_yb(Relation rel, Snapshot snapshot,
+						 int nkeys, struct ScanKeyData *key,
+						 bool allow_strat, bool allow_sync,
+						 struct YbTableScanOptions *yb_options)
 {
 	uint32		flags = SO_TYPE_SEQSCAN | SO_ALLOW_PAGEMODE;
 
@@ -929,7 +949,18 @@ table_beginscan_strat(Relation rel, Snapshot snapshot,
 	if (allow_sync)
 		flags |= SO_ALLOW_SYNC;
 
-	return rel->rd_tableam->scan_begin(rel, snapshot, nkeys, key, NULL, flags);
+	return rel->rd_tableam->scan_begin(rel, snapshot, nkeys, key, NULL, flags,
+									   yb_options);
+}
+
+static inline TableScanDesc
+table_beginscan_strat(Relation rel, Snapshot snapshot,
+					  int nkeys, struct ScanKeyData *key,
+					  bool allow_strat, bool allow_sync)
+{
+	return table_beginscan_strat_yb(rel, snapshot, nkeys, key,
+									allow_strat, allow_sync,
+									NULL);	/* yb_options */
 }
 
 /*
@@ -939,12 +970,22 @@ table_beginscan_strat(Relation rel, Snapshot snapshot,
  * make it worth using the same data structure.
  */
 static inline TableScanDesc
-table_beginscan_bm(Relation rel, Snapshot snapshot,
-				   int nkeys, struct ScanKeyData *key)
+table_beginscan_bm_yb(Relation rel, Snapshot snapshot,
+					  int nkeys, struct ScanKeyData *key,
+					  struct YbTableScanOptions *yb_options)
 {
 	uint32		flags = SO_TYPE_BITMAPSCAN | SO_ALLOW_PAGEMODE;
 
-	return rel->rd_tableam->scan_begin(rel, snapshot, nkeys, key, NULL, flags);
+	return rel->rd_tableam->scan_begin(rel, snapshot, nkeys, key, NULL, flags,
+									   yb_options);
+}
+
+static inline TableScanDesc
+table_beginscan_bm(Relation rel, Snapshot snapshot,
+				   int nkeys, struct ScanKeyData *key)
+{
+	return table_beginscan_bm_yb(rel, snapshot, nkeys, key,
+								 NULL); /* yb_options */
 }
 
 /*
@@ -969,7 +1010,8 @@ table_beginscan_sampling(Relation rel, Snapshot snapshot,
 	if (allow_pagemode)
 		flags |= SO_ALLOW_PAGEMODE;
 
-	return rel->rd_tableam->scan_begin(rel, snapshot, nkeys, key, NULL, flags);
+	return rel->rd_tableam->scan_begin(rel, snapshot, nkeys, key, NULL, flags,
+									   NULL);	/* yb_options */
 }
 
 /*
@@ -978,11 +1020,20 @@ table_beginscan_sampling(Relation rel, Snapshot snapshot,
  * the same data structure although the behavior is rather different.
  */
 static inline TableScanDesc
-table_beginscan_tid(Relation rel, Snapshot snapshot)
+table_beginscan_tid_yb(Relation rel, Snapshot snapshot,
+					   struct YbTableScanOptions *yb_options)
 {
 	uint32		flags = SO_TYPE_TIDSCAN;
 
-	return rel->rd_tableam->scan_begin(rel, snapshot, 0, NULL, NULL, flags);
+	return rel->rd_tableam->scan_begin(rel, snapshot, 0, NULL, NULL, flags,
+									   yb_options);
+}
+
+static inline TableScanDesc
+table_beginscan_tid(Relation rel, Snapshot snapshot)
+{
+	return table_beginscan_tid_yb(rel, snapshot,
+								  NULL);	/* yb_options */
 }
 
 /*
@@ -995,7 +1046,8 @@ table_beginscan_analyze(Relation rel)
 {
 	uint32		flags = SO_TYPE_ANALYZE;
 
-	return rel->rd_tableam->scan_begin(rel, NULL, 0, NULL, NULL, flags);
+	return rel->rd_tableam->scan_begin(rel, NULL, 0, NULL, NULL, flags,
+									   NULL);	/* yb_options */
 }
 
 /*
@@ -1075,7 +1127,8 @@ table_beginscan_tidrange(Relation rel, Snapshot snapshot,
 	TableScanDesc sscan;
 	uint32		flags = SO_TYPE_TIDRANGESCAN | SO_ALLOW_PAGEMODE;
 
-	sscan = rel->rd_tableam->scan_begin(rel, snapshot, 0, NULL, NULL, flags);
+	sscan = rel->rd_tableam->scan_begin(rel, snapshot, 0, NULL, NULL, flags,
+										NULL);	/* yb_options */
 
 	/* Set the range of TIDs to scan */
 	sscan->rs_rd->rd_tableam->scan_set_tidrange(sscan, mintid, maxtid);

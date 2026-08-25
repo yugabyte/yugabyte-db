@@ -37,6 +37,7 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 #include "yb/tools/tools_test_utils.h"
 
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_enable_write_pipelining);
@@ -95,6 +96,9 @@ class PgReadTimeTest : public PgMiniTestBase {
     // Disable auto analyze because it introduces flakiness to
     // metric: METRIC_picked_read_time_on_docdb.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    // A load balancer leader stepdown mid-statement makes the client retry the operation against
+    // the new leader, and each retry might pick a read time on docdb again.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
     // TODO: Remove yb_lock_pk_single_rpc once it becomes the default.
     // yb_max_query_layer_retries is required for TestConflictRetriesOnDocdb

@@ -9,7 +9,8 @@ $onboarding-banner-height: 48px;
   left: 0;
   right: 0;
   width: 100%;
-  z-index: 2100;
+  overflow: visible;
+  z-index: 1031;
 }
 
 body.onboarding-banner-visible {
@@ -49,7 +50,8 @@ body.onboarding-banner-visible {
   .standby-instance-text {
     top: calc(#{variables.$YB_HEADER_HEIGHT} + #{$onboarding-banner-height});
     height: calc(
-      100% - #{variables.$YB_HEADER_HEIGHT} - #{$onboarding-banner-height} - #{variables.$YB_FOOTER_HEIGHT}
+      100% - #{variables.$YB_HEADER_HEIGHT} - #{$onboarding-banner-height} -
+        #{variables.$YB_FOOTER_HEIGHT}
     );
   }
 }

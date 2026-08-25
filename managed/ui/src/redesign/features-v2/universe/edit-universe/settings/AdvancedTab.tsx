@@ -10,7 +10,12 @@ import {
   StyledInfoRow,
   StyledPanel
 } from '../../create-universe/components/DefaultComponents';
-import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
+import {
+  getClusterByType,
+  useEditUniverseContext,
+  useIsUniverseReady,
+  withUniverseResource
+} from '../EditUniverseUtils';
 import {
   getAccessiblePorts,
   mapAPIPortsKeys
@@ -185,7 +190,7 @@ const EditK8sHelmOverrides = () => {
       <StyledHeader sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {t('k8sOverrides')}
         {overrideExists && (
-          <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+          <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)} isControl>
             <YBButton
               dataTestId="edit-kubernetes-overrides-button"
               variant="ghost"
@@ -204,7 +209,7 @@ const EditK8sHelmOverrides = () => {
             <Typography variant="body2" sx={{ color: '#4E5F6D' }}>
               {t('overrideInfo')}
             </Typography>
-            <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)} isControl>
               <YBButton
                 variant="secondary"
                 dataTestId="add-gflags-button"
@@ -315,7 +320,7 @@ export const AdvancedTab = () => {
           >
             {t('proxyConfiguration')}
             {isProxyEnabled && (
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)} isControl>
                 <YBButton
                   dataTestId="edit-security-transit-button"
                   variant="ghost"
@@ -370,7 +375,7 @@ export const AdvancedTab = () => {
                     <Trans t={t} i18nKey={'proxyHelper'} components={{ a: <StyledLink /> }} />
                   </Typography>
                   <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
+                    accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)}
                     isControl
                   >
                     <YBButton
@@ -405,7 +410,7 @@ export const AdvancedTab = () => {
                 {t('nodeAccess')}
                 {providerCode === CloudType.aws && (
                   <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
+                    accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)}
                     isControl
                   >
                     <YBButton
@@ -439,7 +444,7 @@ export const AdvancedTab = () => {
               >
                 {t('networkPorts')}
                 <RbacValidator
-                  accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
+                  accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)}
                   isControl
                 >
                   <YBButton
@@ -467,7 +472,7 @@ export const AdvancedTab = () => {
                 {t('userTagsTitle')}
                 {userTags.length > 0 && (
                   <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
+                    accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)}
                     isControl
                   >
                     <YBButton
@@ -491,7 +496,7 @@ export const AdvancedTab = () => {
                       <Trans t={t} i18nKey={'userTagTooltip'} components={{ a: <StyledLink /> }} />
                     </Typography>
                     <RbacValidator
-                      accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
+                      accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)}
                       isControl
                     >
                       <YBButton
