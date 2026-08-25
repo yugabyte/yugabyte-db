@@ -159,15 +159,15 @@ public abstract class TestToastBase extends BasePgSQLTest {
     }
   }
 
-  /** Same as correctnessTest, but with force_parallel_mode enabled. */
+  /** Same as correctnessTest, but with debug_parallel_query enabled. */
   @Test
   public void parallelCorrectnessTest() throws SQLException {
     try (Statement statement = connection.createStatement()) {
-      statement.execute("SET force_parallel_mode = TRUE");
+      statement.execute("SET debug_parallel_query = TRUE");
     }
     correctnessTest();
     try (Statement statement = connection.createStatement()) {
-      statement.execute("RESET force_parallel_mode");
+      statement.execute("RESET debug_parallel_query");
     }
   }
 

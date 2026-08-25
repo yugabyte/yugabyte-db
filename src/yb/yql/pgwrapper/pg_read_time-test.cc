@@ -1335,7 +1335,7 @@ TEST_P(PgYbReadTimeTest, PrecedesClampDeferEnsureOptions) {
   // Parallel mode sets ENSURE_READ_TIME_IS_SET
   for (const auto* mode : {"SET yb_read_after_commit_visibility = 'relaxed'",
                            "SET yb_read_after_commit_visibility = 'deferred'",
-                           "SET force_parallel_mode = on"}) {
+                           "SET debug_parallel_query = on"}) {
     auto reader = ASSERT_RESULT(Connect());
     ASSERT_NO_FATALS(SetSessionIsolation(&reader));
     ASSERT_OK(reader.Execute(mode));
@@ -1479,7 +1479,7 @@ TEST_P(PgFollowerReadTest, PrecedesClampDeferEnsureOptions) {
   // Parallel mode sets ENSURE_READ_TIME_IS_SET
   for (const auto* mode : {"SET yb_read_after_commit_visibility = 'relaxed'",
                            "SET yb_read_after_commit_visibility = 'deferred'",
-                           "SET force_parallel_mode = on"}) {
+                           "SET debug_parallel_query = on"}) {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_NO_FATALS(SetSessionIsolation(&conn));
     ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS t"));
@@ -1568,7 +1568,7 @@ TEST_P(PgClampDeferReadTest, NoReadRestart) {
       auto reader = ASSERT_RESULT(Connect());
       ASSERT_OK(reader.Execute("SET yb_max_query_layer_retries = 0"));
       ASSERT_OK(reader.ExecuteFormat("SET yb_read_after_commit_visibility = '$0'", mode));
-      ASSERT_OK(reader.ExecuteFormat("SET force_parallel_mode = $0", parallel));
+      ASSERT_OK(reader.ExecuteFormat("SET debug_parallel_query = $0", parallel));
 
       TestThreadHolder threads;
       StartConcurrentInserts(&threads, "t", kWriterStartKey);

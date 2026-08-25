@@ -1080,7 +1080,7 @@ TEST_F_EX(PgMiniTest, SmallParallelScan, PgMiniTestSingleNode) {
 
   ASSERT_OK(conn.Execute("SET yb_parallel_range_rows to 10"));
   ASSERT_OK(conn.Execute("SET yb_enable_base_scans_cost_model to true"));
-  ASSERT_OK(conn.Execute("SET force_parallel_mode = TRUE"));
+  ASSERT_OK(conn.Execute("SET debug_parallel_query = TRUE"));
 
   LOG(INFO) << "Starting scan";
   auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
