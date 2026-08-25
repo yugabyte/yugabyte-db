@@ -30,7 +30,7 @@ When working on DB code (`src/`), refer to `src/AGENTS.md` for build and test gu
 
 ### Environment
 
-The VM image is `yugabyteci/yb_build_infra_almalinux9_x86_64` which ships with: Clang, JDK 17, Go, Python 3.11, CMake, Ninja, SBT, Node.js 22, Rust, and all C++ build dependencies. The `/opt/yb-build` directory is pre-created for thirdparty downloads and toolchain caching.
+The VM image is `yugabyteci/yb_build_infra_almalinux9_x86_64` which ships with: Clang, JDK 17, Go, Python 3.11, CMake, Ninja, SBT, Node.js 22, Rust, and all C++ build dependencies.
 
 ### Building from source
 
