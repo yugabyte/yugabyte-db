@@ -741,6 +741,14 @@ void ClusterAdminCli::PrintHelpRequest(
     if (!boost::starts_with(basename, "yb-admin") && basename != "tools_utils.cc") {
       continue;
     }
+    // The defining file is not a sufficient filter: DEFINE_test_flag tags its flag hidden and
+    // unsafe but still defines it here (--TEST_metadata_file_format_version, in
+    // yb-admin_client.cc), and a help surface that advertises a TEST-only knob invites its use.
+    std::unordered_set<FlagTag> tags;
+    GetFlagTags(info.name, &tags);
+    if (tags.contains(FlagTag::kHidden)) {
+      continue;
+    }
     auto left = Format("--$0 <$1>", info.name, info.type);
     auto default_value =
         info.type == "string" ? Format("\"$0\"", info.default_value) : info.default_value;

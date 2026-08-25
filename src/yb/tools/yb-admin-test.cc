@@ -434,6 +434,9 @@ TEST_F(AdminCliTest, HelpFlagsPrintOverview) {
   ASSERT_STR_CONTAINS(output, "--certs_dir_name");
   ASSERT_STR_NOT_CONTAINS(output, "No modules matched");
   ASSERT_STR_NOT_CONTAINS(output, "Flags from");
+  // Hidden flags are excluded by tag, not by defining file: --TEST_metadata_file_format_version
+  // lives in yb-admin_client.cc, which this surface otherwise lists.
+  ASSERT_STR_NOT_CONTAINS(output, "--TEST_");
 
   // --helpfull legitimately remains the all-flags dump -- the guard proving the repair of the
   // other surfaces did not break the one that is supposed to dump flags. It now carries the real
