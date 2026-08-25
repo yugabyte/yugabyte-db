@@ -88,7 +88,7 @@ In Expert mode, you set the following:
     - Specify the number of nodes for each zone.
     - Specify the preferred region(s) in ranked order.
 
-    Depending on the 
+    Depending on the number of regions you selected and the replication factor, you can add additional availability zones to regions.
 
 {{% /tab %}}
 
