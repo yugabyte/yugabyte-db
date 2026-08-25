@@ -325,26 +325,18 @@ message PgsqlWriteRequestPB {
   // Optimization to skip intents write and directly writes to regular db.
   optional bool skip_intents_write = 30;
 
-  // Fences the write against a caller-held lease: the tablet leader rejects the operation if this
-  // hybrid time has already passed when the op is about to be assigned its own hybrid time. An RPC
-  // deadline cannot express this -- nothing cancels an operation once it is handed to Raft, so a
-  // write the caller saw time out can still commit afterwards.
+  // Fences the write against a caller-held lease: the leader rejects the op if this hybrid time has
+  // already passed when the op is about to be assigned its own. An RPC deadline cannot express
+  // this -- nothing cancels an operation once it is handed to Raft, so a write the caller saw time
+  // out can still commit. 0 means no fence.
   //
-  // Each tablet leader evaluates the fence independently, at its own append moment, so a batch
-  // spanning tablets can be partially applied when it straddles the boundary. There is no
-  // all-or-nothing to fall back on for non-transactional single-shard writes.
+  // Each leader evaluates the fence independently, so a batch spanning tablets can be partially
+  // applied when it straddles the boundary; non-transactional single-shard writes have no
+  // all-or-nothing to fall back on. Like any hybrid time comparison it is only as tight as
+  // max_clock_skew_usec.
   //
-  // Being a hybrid time comparison, this rests on max_clock_skew_usec like any other -- no new
-  // assumption, but the fence is only as tight as that bound.
-  //
-  // Presence is the signal: 0 is not "no fence" here, it is HybridTime::kMin and therefore a fence
-  // that has unconditionally already passed. Leave the field unset to write without a fence.
-  //
-  // Ungated, because setting the field is the opt-in: nothing that exists today sets it, so no
-  // workload changes behaviour by upgrading. A tserver too old to know the field ignores it and
-  // applies the write unfenced, reporting ordinary success -- there is no signal distinguishing
-  // that from a write inside its fence, so a caller can only rely on the fence against a cluster
-  // it knows understands the field.
+  // A tserver too old to know the field ignores it and applies the write unfenced, reporting
+  // ordinary success, so rely on the fence only against a cluster known to understand it.
   optional fixed64 ignore_after_hybrid_time = 31;
 }
 

@@ -14,7 +14,6 @@
 #include "yb/tablet/write_query.h"
 
 #include <algorithm>
-#include <optional>
 
 #include "yb/ash/wait_state.h"
 
@@ -125,25 +124,19 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
     out_request->set_xrepl_origin_id(client_request.xrepl_origin_id());
   }
   out_request->set_batch_idx(client_request.batch_idx());
-  // Lift the ops' write fence up to the replicated message: the leader enforces it in
-  // RaftConsensus, which never sees the pgsql ops. The earliest fence wins, so one fenced op
-  // fences the batch -- these ops share a hybrid time, so they cannot be fenced apart.
-  //
-  // Presence carries through rather than a 0 sentinel. PgsqlWriteRequestPB is a public wire format
-  // and does not reserve 0 as "no fence" -- 0 is HybridTime::kMin, which is unconditionally in the
-  // past -- so a present-and-zero fence must reject the batch, not silently disable it. Testing
-  // the value instead would also let one op's explicit 0 collapse the minimum and drop a real
-  // fence carried by its neighbours.
-  std::optional<uint64_t> ignore_after_hybrid_time;
+  // Lift the ops' write fence into the replicated message, which is all RaftConsensus sees. The
+  // earliest fence wins; 0 means no fence. The ops share a hybrid time, so they cannot be fenced
+  // apart.
+  uint64_t ignore_after_hybrid_time = 0;
   for (const auto& op : client_request.pgsql_write_batch()) {
-    if (op.has_ignore_after_hybrid_time()) {
+    if (op.ignore_after_hybrid_time()) {
       ignore_after_hybrid_time = ignore_after_hybrid_time
-          ? std::min(*ignore_after_hybrid_time, op.ignore_after_hybrid_time())
+          ? std::min(ignore_after_hybrid_time, op.ignore_after_hybrid_time())
           : op.ignore_after_hybrid_time();
     }
   }
   if (ignore_after_hybrid_time) {
-    out_request->set_ignore_after_hybrid_time(*ignore_after_hybrid_time);
+    out_request->set_ignore_after_hybrid_time(ignore_after_hybrid_time);
   }
   // Actually, in production code, we could check for external hybrid time only when there are
   // no ql, pgsql, redis operations.

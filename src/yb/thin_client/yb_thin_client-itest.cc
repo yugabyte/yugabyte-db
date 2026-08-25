@@ -1284,16 +1284,9 @@ TEST_F(PgThinClientTest, AlreadyReplicatedWriteReportsSuccess) {
   ybthin_client_destroy(client);
 }
 
-// A write whose fence has passed must be rejected, and must not take effect.
-//
-// The point of the fence is that an RPC deadline cannot express it: nothing cancels an operation
-// once it reaches Raft, so a write the caller saw fail can still commit. The assertions here are
-// therefore about the table contents as much as the status code.
-//
-// Also asserts the rejection leaves no retryable-request registration behind. That is not a detail:
-// a fenced round that stayed in RetryableRequests::running would pin the round (and its
-// OperationDriver) for the life of the peer, block client cleanup, and park any later write that
-// reused the same request id -- so the fence is checked before the registration happens.
+// A write whose fence has passed must be rejected AND must not take effect -- hence the assertions
+// on table contents, not just the status code. Also checks the rejection leaves no
+// retryable-request registration behind, which is why the fence is checked before registration.
 TEST_F(PgThinClientTest, WriteFencedByIgnoreAfterHybridTime) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE fenced (k int, v bytea, PRIMARY KEY(k ASC))"));
@@ -1332,15 +1325,13 @@ TEST_F(PgThinClientTest, WriteFencedByIgnoreAfterHybridTime) {
     return future.get().code;
   };
 
-  // A fence already in the past. HybridTime 1 is the smallest usable value and is unambiguously
-  // behind any clock reading the leader can take.
+  // HybridTime 1 is behind any clock reading the leader can take.
   ASSERT_EQ(upsert(1, 1), YBTHIN_FENCED) << "a write past its fence must be rejected";
   ASSERT_EQ(0, ASSERT_RESULT(conn.FetchRow<PGUint64>(
                    "SELECT count(*) FROM fenced WHERE k = 1")))
       << "a fenced write must not take effect";
 
-  // A fence far in the future leaves the write alone. Compared against the leader's clock, so it
-  // has to be a hybrid time, not a wall-clock micro count.
+  // Compared against the leader's clock, so it has to be a hybrid time, not a micro count.
   const auto far_future = HybridTime::FromMicros(
       static_cast<uint64_t>(GetCurrentTimeMicros()) + 3600 * 1000000ULL).ToUint64();
   ASSERT_EQ(upsert(2, far_future), YBTHIN_OK) << "a write inside its fence must be applied";
@@ -1352,10 +1343,8 @@ TEST_F(PgThinClientTest, WriteFencedByIgnoreAfterHybridTime) {
   ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>(
                    "SELECT count(*) FROM fenced WHERE k = 3")));
 
-  // The rejected write must not have left a retryable-request registration behind. A leaked entry
-  // from the fenced round at k = 1 never drains -- only ReplicationFinished removes one -- so it
-  // would keep this from ever holding. Waiting rather than sampling once absorbs the unrelated
-  // catalog writes the cluster does in the background.
+  // A leaked entry from the fenced round at k = 1 never drains, so this would never hold. Waiting
+  // rather than sampling absorbs the cluster's unrelated background writes.
   ASSERT_OK(WaitFor(
       [this]() -> Result<bool> {
         for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {

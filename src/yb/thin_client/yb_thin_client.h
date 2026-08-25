@@ -226,10 +226,9 @@ typedef struct {
   const int32_t* value_ids;
   const ybthin_bind* values;
   size_t n_values;
-  // Fences this row against a lease the caller holds: the tablet leader rejects the write if this
-  // hybrid time has already passed by the time the op is assigned its own, reporting YBTHIN_FENCED.
-  // 0 means no fence. Each tablet leader judges the fence separately, so a batch spanning tablets
-  // can be partly applied when it straddles the boundary.
+  // Fences this row against a lease the caller holds: the leader rejects the write with
+  // YBTHIN_FENCED if this hybrid time has already passed by the time the op is assigned its own.
+  // 0 means no fence. Judged per tablet, so a batch straddling the boundary can be partly applied.
   uint64_t ignore_after_hybrid_time;
 } ybthin_upsert_row;
 

@@ -136,10 +136,9 @@ message TabletServerErrorPB {
     // message reports the gap.
     READ_TIME_NOT_REACHED = 33;
 
-    // The write carried an ignore_after_hybrid_time that had already passed when the leader was
-    // about to append it, so it was rejected. Definitively did not take effect -- which is the
-    // point of the distinct code, since the Expired status it accompanies is also produced for
-    // causes that may have replicated.
+    // The write's ignore_after_hybrid_time had already passed when the leader was about to append
+    // it. Distinct from a bare Expired, which also covers causes that may have replicated: a
+    // fenced write definitively did not take effect.
     WRITE_FENCE_EXPIRED = 34;
   }
 

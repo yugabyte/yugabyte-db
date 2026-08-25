@@ -1378,26 +1378,21 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 
 Status RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
   const auto& msg = *round->replicate_msg();
-  if (msg.op_type() != OperationType::WRITE_OP || !msg.write().has_ignore_after_hybrid_time()) {
+  if (msg.op_type() != OperationType::WRITE_OP) {
     return Status::OK();
   }
-  // Presence, not a sentinel value: WritePB is a wire and log format that does not reserve 0 as
-  // "no fence" (0 is HybridTime::kMin, unconditionally in the past). The thin client's ABI is the
-  // only layer that spells "no fence" as 0, and it drops the field rather than sending a zero.
-  //
-  // Deliberately the hybrid clock rather than the op's own hybrid time, which is not assigned
-  // until AddLeaderPending; see the call site for why the check cannot wait until after that.
-  // Note this is clock_, the hybrid clock -- state_->Clock() is the restart-safe coarse clock and
-  // is not in the same time domain as the fence.
-  const auto now = clock_->Now();
   const auto fence = msg.write().ignore_after_hybrid_time();
+  if (!fence) {  // 0 means no fence.
+    return Status::OK();
+  }
+  // clock_, not the op's own hybrid time, which AddLeaderPending has not assigned yet. Nor
+  // state_->Clock(), which is the coarse clock and not in the fence's time domain.
+  const auto now = clock_->Now();
   if (fence > now.ToUint64()) {
     return Status::OK();
   }
-  // Carries WRITE_FENCE_EXPIRED, not a bare Expired: the write path also produces Expired for
-  // causes that may well have replicated (RetryableRequests::Register's "less than min running"
-  // and "too old"), and a lease holder must not confuse those with a write that definitively did
-  // not take effect.
+  // WRITE_FENCE_EXPIRED rather than a bare Expired: Expired also covers causes that may have
+  // replicated, and a fenced write definitively did not.
   return STATUS_EC_FORMAT(
       Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
       "Write is fenced: ignore_after_hybrid_time $0 is not after $1", HybridTime(fence), now);
@@ -1411,12 +1406,9 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
   for (const auto& round : rounds) {
     ++*processed_rounds;
 
-    // Reject a fenced write before anything else touches the round. Before
-    // RegisterRetryableRequest, because a registered round is only ever deregistered by
-    // ReplicationFinished and neither the direct notify below nor the unwind loop in
-    // AppendNewRoundsToQueueUnlocked reaches it -- rejecting first leaves nothing to undo. Before
-    // NotifyAddedToLeader, because being added as pending has side effects that rolling back the
-    // op id does not undo, as the operation filter below also has to allow for.
+    // Must precede RegisterRetryableRequest, whose entry is only ever removed by
+    // ReplicationFinished -- which this rejection does not reach -- and NotifyAddedToLeader, whose
+    // side effects rolling back the op id does not undo.
     if (auto s = CheckWriteFenceUnlocked(round); !s.ok()) {
       round->NotifyReplicationFinished(s, round->bound_term(), /* applied_op_ids = */ nullptr);
       round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
