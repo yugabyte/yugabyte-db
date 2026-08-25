@@ -2064,6 +2064,62 @@ TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
   ASSERT_EQ(ns_by_name->id(), success_nsid);
 }
 
+TEST_F(MasterTest, TestCreateNamespaceRetryAfterPgVerificationFailure) {
+  NamespaceName test_name = "test_pgsql";
+  CreateNamespaceResponsePB resp;
+  ASSERT_OK(CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  NamespaceId failed_nsid = resp.id();
+
+  // Park async cleanup so the retry cannot wait on it. DeleteYsqlDatabaseAsync pauses on this
+  // flag; ProcessPendingNamespace for the retry also defers until we clear it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
+  ASSERT_OK(mini_master_->catalog_manager_impl().TEST_FailNamespacePgVerification(failed_nsid));
+
+  auto failed_ns = ASSERT_RESULT(mini_master_->catalog_manager().FindNamespaceById(failed_nsid));
+  ASSERT_EQ(failed_ns->state(), SysNamespaceEntryPB::DELETING);
+  ASSERT_NOK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+
+  // Same-id retry is still rejected; the by-id tombstone stays until restart so copied catalog
+  // tables are not recreated under the same OID. PG already retries with the next OID.
+  CreateNamespaceRequestPB same_id_req;
+  same_id_req.set_name(test_name);
+  same_id_req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+  same_id_req.set_namespace_id(failed_nsid);
+  auto same_id_result = CreateNamespaceAsync(same_id_req);
+  ASSERT_NOK(same_id_result);
+  ASSERT_TRUE(same_id_result.status().IsAlreadyPresent()) << same_id_result.status();
+
+  // Same-name retry with a new id must succeed immediately, while cleanup is still hung.
+  CreateNamespaceResponsePB retry_resp;
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &retry_resp));
+  ASSERT_NE(retry_resp.id(), failed_nsid);
+  auto ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+  ASSERT_EQ(ns_by_name->id(), retry_resp.id());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
+  ASSERT_OK(CreateNamespaceWait(retry_resp.id(), YQLDatabase::YQL_DATABASE_PGSQL));
+
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
+        mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
+        bool failure_deleted = false;
+        bool success_running = false;
+        for (const auto& ns : namespace_internal) {
+          if (ns->id() == failed_nsid) {
+            failure_deleted = ns->state() == SysNamespaceEntryPB::DELETED;
+          } else if (ns->id() == retry_resp.id()) {
+            success_running = ns->state() == SysNamespaceEntryPB::RUNNING;
+          }
+        }
+        return failure_deleted && success_running;
+      },
+      MonoDelta::FromSeconds(15), "Timed out waiting for namespaces to enter expected states."));
+
+  ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+  ASSERT_EQ(ns_by_name->id(), retry_resp.id());
+}
+
 class LoopedMasterTest : public MasterTest, public testing::WithParamInterface<int> {};
 INSTANTIATE_TEST_CASE_P(Loops, LoopedMasterTest, ::testing::Values(10));
 

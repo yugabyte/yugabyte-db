@@ -740,6 +740,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestPB* req,
                                IsCreateNamespaceDoneResponsePB* resp);
 
+  // Simulates a PG verification failure (creating transaction aborted).
+  Status TEST_FailNamespacePgVerification(const NamespaceId& ns_id);
+
   // Delete the specified Namespace.
   //
   // The RPC context is provided for logging/tracing purposes,
@@ -3384,6 +3387,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void RemoveNamespaceFromMaps(
       YQLDatabase db_type, const NamespaceId& ns_id, const NamespaceName& ns_name) EXCLUDES(mutex_);
+
+  // Drops ns from the by-name map if it still owns that name. The name may already be absent or
+  // owned by a different namespace: mutex_ is not held for the whole span since reservation.
+  void ReleaseNamespaceNameIfOwned(const scoped_refptr<NamespaceInfo>& ns) EXCLUDES(mutex_);
 
   void DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id);
 
