@@ -31,6 +31,9 @@
 #include "optimizer/restrictinfo.h"
 #include "utils/lsyscache.h"
 
+/* YB includes */
+#include "catalog/pg_opfamily.h"
+
 
 static EquivalenceMember *add_eq_member(EquivalenceClass *ec,
 										Expr *expr, Relids relids, Relids nullable_relids,
@@ -767,6 +770,45 @@ get_eclass_for_sort_expr(PlannerInfo *root,
 	MemoryContextSwitchTo(oldcontext);
 
 	return newec;
+}
+
+/*
+ * yb_get_eclass_for_hash_code
+ *		Find an EquivalenceClass with the expressionthat matches the hash code.
+ *		Returns NULL if no match.
+ *
+ * The expression matching the hash code is the yb_hash_code() function with
+ * the arguments matching the index's hash key columns.
+ */
+EquivalenceClass *
+yb_get_eclass_for_hash_code(PlannerInfo *root, IndexOptInfo *index)
+{
+	/* yb_hash_code's opfamily membership is known, no need to lookup. */
+	List	   *opfamilies = list_make2_oid(INTEGER_BTREE_FAM_OID,
+											INTEGER_LSM_FAM_OID);
+	ListCell   *lc1;
+	foreach(lc1, root->eq_classes)
+	{
+		EquivalenceClass *cur_ec = (EquivalenceClass *) lfirst(lc1);
+		ListCell   *lc2;
+
+		if (cur_ec->ec_has_volatile ||
+			!equal(opfamilies, cur_ec->ec_opfamilies))
+			continue;
+
+		foreach(lc2, cur_ec->ec_members)
+		{
+			EquivalenceMember *cur_em = (EquivalenceMember *) lfirst(lc2);
+
+			if (cur_em->em_is_child || cur_em->em_is_const ||
+				cur_em->em_datatype != INT4OID)
+				continue;
+
+			if (yb_hash_code_match_index((Node *) cur_em->em_expr, index))
+				return cur_ec;	/* Match! */
+		}
+	}
+	return NULL;
 }
 
 /*
