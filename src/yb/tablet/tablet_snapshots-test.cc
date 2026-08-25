@@ -19,10 +19,12 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/rpc/messenger.h"
 
+#include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet-test-harness.h"
 #include "yb/tablet/tablet-test-util.h"
@@ -42,6 +44,7 @@
 #include "yb/util/threadpool.h"
 
 DECLARE_bool(enable_async_snapshot_directory_cleanup);
+DECLARE_bool(snapshot_create_flush_on_prepare);
 DECLARE_int32(TEST_snapshot_cleanup_retry_delay_ms);
 
 METRIC_DECLARE_counter(snapshot_cleanup_failures);
@@ -189,6 +192,8 @@ class TabletSnapshotsTest : public YBTest {
     YBTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_snapshot_cleanup_retry_delay_ms) = 10;
+    // Tests below toggle this flag; restore the default for each test in this process.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_on_prepare) = true;
 
     schema_ = GetSimpleTestSchema();
     schema_.InitColumnIdsByDefault();
@@ -249,6 +254,27 @@ class TabletSnapshotsTest : public YBTest {
     return harness_->tablet()->snapshots().Delete(operation);
   }
 
+  Status WriteRow(int32_t key) {
+    LocalTabletWriter writer(harness_->tablet());
+    QLWriteRequestPB req;
+    QLAddInt32HashValue(&req, key);
+    QLAddInt32ColumnValue(&req, kFirstColumnId + 1, key);
+    QLAddStringColumnValue(&req, kFirstColumnId + 2, "value");
+    return writer.Write(&req);
+  }
+
+  Status PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::Operation op_type) {
+    tserver::TabletSnapshotOpRequestPB request;
+    request.set_operation(op_type);
+    SnapshotOperation operation(harness_->tablet());
+    operation.AllocateRequest()->CopyFrom(request);
+    return harness_->tablet()->snapshots().Prepare(&operation);
+  }
+
+  uint64_t NumRegularDbSSTFiles() {
+    return harness_->tablet()->GetCurrentVersionNumSSTFiles();
+  }
+
   template <class Metric, class Prototype>
   uint64_t MetricValue(const Prototype& prototype) {
     return harness_->tablet()->GetTabletMetricsEntity()->FindOrNull<Metric>(prototype)->value();
@@ -271,6 +297,10 @@ class TabletSnapshotsTest : public YBTest {
 
 TEST(TabletSnapshotPathTest, AsyncCleanupDisabledByDefault) {
   ASSERT_FALSE(FLAGS_enable_async_snapshot_directory_cleanup);
+}
+
+TEST(TabletSnapshotPathTest, FlushOnPrepareEnabledByDefault) {
+  ASSERT_TRUE(FLAGS_snapshot_create_flush_on_prepare);
 }
 
 TEST(TabletSnapshotPathTest, DeletedSnapshotDirectoryName) {
@@ -566,6 +596,38 @@ TEST_F(TabletSnapshotsTest, ShutdownWaitsForRunningCleanup) {
   shutdown_thread.JoinAll();
   ASSERT_TRUE(shutdown_complete.load(std::memory_order_acquire));
   ASSERT_FALSE(test_env_->FileExists(paths.tombstone));
+}
+
+TEST_F(TabletSnapshotsTest, PrepareFlushesTabletForSnapshotCreation) {
+  ASSERT_OK(WriteRow(1));
+  ASSERT_EQ(NumRegularDbSSTFiles(), 0);
+
+  ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET));
+
+  // The prepare-time flush is asynchronous; it must eventually push the memtable into an SST
+  // without any further nudge.
+  ASSERT_OK(WaitFor(
+      [this] { return NumRegularDbSSTFiles() > 0; }, 10s, "Wait for prepare-triggered flush"));
+}
+
+TEST_F(TabletSnapshotsTest, PrepareDoesNotFlushWhenDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_on_prepare) = false;
+
+  ASSERT_OK(WriteRow(1));
+  ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET));
+
+  // A wrongly scheduled async flush of a single row would complete well within this window.
+  SleepFor(200ms);
+  ASSERT_EQ(NumRegularDbSSTFiles(), 0);
+}
+
+TEST_F(TabletSnapshotsTest, PrepareDoesNotFlushForNonCreateOperations) {
+  ASSERT_OK(WriteRow(1));
+  ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET));
+
+  // A wrongly scheduled async flush of a single row would complete well within this window.
+  SleepFor(200ms);
+  ASSERT_EQ(NumRegularDbSSTFiles(), 0);
 }
 
 }  // namespace
