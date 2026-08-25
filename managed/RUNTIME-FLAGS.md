@@ -62,6 +62,8 @@
 | "Configure Clockbound when using cloud providers" | "yb.provider.configure_clockbound_cloud_provisioning" | "PROVIDER" | "Configure clockbound when creating cloud provider based Universes" | "Boolean" |
 | "GCP Connection Draining Timeout" | "yb.gcp.operations.connection_draining_timeout" | "PROVIDER" | "Set the connection draining timeout for the GCP load balancer." | "Duration" |
 | "Enable cgroup configuration" | "yb.node_agent.enable_cgroup_configuration" | "PROVIDER" | "When true, TServer CPU cgroup isolation is configured during provisioning and configure-server. Only effective when user-level systemd is in use." | "Boolean" |
+| "YNP provisioning timeout" | "yb.node_agent.ynp_provision_timeout" | "PROVIDER" | "Maximum time the YNP provisioning command may run on a node before it is aborted. Without a bound, a provisioning step that hangs on the node (a package manager waiting on a lock, an unanswered metadata request) holds the whole universe task open indefinitely. Raise it for slow images or air-gapped repositories." | "Duration" |
+| "YNP setup timeout" | "yb.node_agent.ynp_setup_timeout" | "PROVIDER" | "Maximum time the YNP setup step (uploading and extracting the node-agent package) may run on a node before it is aborted." | "Duration" |
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |
