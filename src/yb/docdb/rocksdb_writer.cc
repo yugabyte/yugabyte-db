@@ -458,6 +458,21 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
   return Finish();
 }
 
+uint64_t MaxIntraTxnWriteIdsForBatch(const LWKeyValueWriteBatchPB& put_batch) {
+  // Keyed on skip_prefix_locks alone: the tserver stamps it on every batch (WriteQuery), while
+  // the isolation level travels only with a transaction's first batch to a tablet. Two per pair
+  // is the ceiling for every isolation level (only skip-prefix-locks serializable takes the
+  // second, top-level strong intent; other levels never reach that path), so this stays an upper
+  // bound rather than an estimate.
+  const uint64_t strong_intents_per_pair = put_batch.transaction().skip_prefix_locks() ? 2 : 1;
+  uint64_t locks = 0;
+  for (const auto& lock_pair : put_batch.lock_pairs()) {
+    locks += lock_pair.is_lock() ? 1 : 0;
+  }
+  const uint64_t pairs = put_batch.write_pairs().size() + put_batch.read_pairs().size();
+  return strong_intents_per_pair * pairs + locks;
+}
+
 // Using operator() to pass this object conveniently to EnumerateIntents.
 Status TransactionalWriter::operator()(
     dockv::IntentTypeSet intent_types, dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey,
@@ -495,6 +510,16 @@ Status TransactionalWriter::operator()(
     }
 
   }
+
+  // The write path admits a batch only after reserving every write ID it can consume
+  // (TransactionParticipant::ReserveIntraTxnWriteIds, bounded by MaxIntraTxnWriteIdsForBatch),
+  // so this is a fail-stop backstop against incompatible or corrupt replicated data: fail
+  // closed rather than crossing into the reserved range above kIntraTxnWriteIdLimit
+  // (previously the counter wrapped silently at 2^32).
+  SCHECK_LT(
+      intra_txn_write_id_, kIntraTxnWriteIdLimit, IllegalState,
+      "Transaction wrote too many intents to a single tablet: the intra-transaction write ID "
+      "limit is reached");
 
   const auto transaction_value_type = ValueEntryTypeAsChar::kTransactionId;
   const auto write_id_value_type = ValueEntryTypeAsChar::kWriteId;
@@ -905,6 +930,20 @@ Result<bool> ApplyIntentsContext::Entry(
           Corruption,
           Format("Unexpected write id. Expected: $0, found: $1, raw value: $2",
                  write_id_,
+                 decoded_value.write_id,
+                 intent_iter_.value().ToDebugHexString()));
+    }
+
+    // The write path enforces kIntraTxnWriteIdLimit before intents are written, so a
+    // violation here means corrupt data or an incompatible writer, and the resulting
+    // regular record would carry a write ID from the reserved range.
+    if (decoded_value.write_id >= kIntraTxnWriteIdLimit) {
+      DumpIntentsRecordForTransaction(intents_db_, transaction_id(), &schema_packing_provider());
+      RSTATUS_DCHECK(
+          false,
+          Corruption,
+          Format("Intent write id $0 is at or above the intra-transaction write ID limit, "
+                 "raw value: $1",
                  decoded_value.write_id,
                  intent_iter_.value().ToDebugHexString()));
     }

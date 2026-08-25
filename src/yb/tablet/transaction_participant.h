@@ -21,7 +21,9 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <type_traits>
+#include <unordered_map>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/opid.h"
@@ -113,6 +115,56 @@ class FastModeTransactionScope;
 
 YB_STRONGLY_TYPED_BOOL(OnlyAbortTxnsNotUsingTableLocks);
 
+// Per-tablet ledger of intra-transaction write IDs that are spoken for but not yet applied,
+// keyed by transaction (#33499). A batch's bound (docdb::MaxIntraTxnWriteIdsForBatch) enters
+// when the leader admits it (reservation) or when a replica accepts it into its log
+// (AddedAsPending), is carried by the write operation from there, and leaves when the batch
+// applies (atomically with the applied counter advancing, in BatchReplicated) or aborts. The
+// cap check sums it with the applied counter, which is what makes the check exact rather than
+// a margin. Shared with the reservation guards so a guard outliving the participant releases
+// into an orphan.
+struct IntraTxnWriteIdLedger {
+  std::mutex mutex;
+  std::unordered_map<TransactionId, uint64_t, TransactionIdHash> outstanding GUARDED_BY(mutex);
+
+  void Add(const TransactionId& id, uint64_t records);
+  // Releases records; a shortfall is a DFATAL (an accounting bug would let the cap be crossed).
+  void Remove(const TransactionId& id, uint64_t records);
+  // Releases up to records, silently: used by apply, which also runs for bootstrap-replayed
+  // batches nothing ever accounted for.
+  void RemoveUpTo(const TransactionId& id, uint64_t records);
+};
+
+// Holds an admission reservation of intra-transaction write IDs until destroyed or handed to
+// the write operation that carries the batch (see WriteOperation::AddedAsPending). Move-only.
+class IntraTxnWriteIdReservation {
+ public:
+  IntraTxnWriteIdReservation() = default;
+  IntraTxnWriteIdReservation(
+      std::shared_ptr<IntraTxnWriteIdLedger> ledger, const TransactionId& id, uint64_t records)
+      : ledger_(std::move(ledger)), id_(id), records_(records) {}
+  IntraTxnWriteIdReservation(IntraTxnWriteIdReservation&& other) noexcept {
+    *this = std::move(other);
+  }
+  IntraTxnWriteIdReservation& operator=(IntraTxnWriteIdReservation&& other) noexcept;
+  IntraTxnWriteIdReservation(const IntraTxnWriteIdReservation&) = delete;
+  IntraTxnWriteIdReservation& operator=(const IntraTxnWriteIdReservation&) = delete;
+  ~IntraTxnWriteIdReservation() { Release(); }
+
+  const TransactionId& id() const { return id_; }
+  uint64_t records() const { return records_; }
+
+  void Release();
+  // Forgets the reservation without releasing it: the records stay outstanding in the ledger
+  // under a new owner.
+  void Detach();
+
+ private:
+  std::shared_ptr<IntraTxnWriteIdLedger> ledger_;
+  TransactionId id_ = TransactionId::Nil();
+  uint64_t records_ = 0;
+};
+
 // TransactionParticipant manages running transactions, i.e. transactions that have intents in
 // appropriate tablet. Since this class manages transactions of tablet there is separate class
 // instance per tablet.
@@ -148,7 +200,29 @@ class TransactionParticipant : public TransactionStatusManager {
       boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
       bool has_write_pairs);
 
-  void BatchReplicated(const TransactionId& id, const TransactionalBatchData& data);
+  // Records the batch's applied state and, atomically with it, releases the batch's
+  // outstanding write-ID bound (applied_write_id_bound, see IntraTxnWriteIdLedger).
+  void BatchReplicated(
+      const TransactionId& id, const TransactionalBatchData& data,
+      uint64_t applied_write_id_bound);
+
+  // Admission for the intra-transaction write-ID cap (#33499). Reserves `records` write IDs
+  // (the batch's MaxIntraTxnWriteIdsForBatch bound) against the transaction's applied counter
+  // plus everything already outstanding on this tablet, failing with a hard QLError if the
+  // batch could cross kIntraTxnWriteIdLimit. Only the leader reserves; every replica accounts
+  // for the batches in its log through the pending-apply methods below, which is what keeps
+  // the check exact across a leader change.
+  Result<IntraTxnWriteIdReservation> ReserveIntraTxnWriteIds(
+      const TransactionId& id, uint64_t records);
+
+  // Pending-apply accounting for the same cap (see IntraTxnWriteIdLedger): a write operation
+  // adds its bound when it is accepted into the log without a reservation to inherit, and
+  // removes it if it aborts before applying. Apply releases through BatchReplicated.
+  void AddPendingIntraTxnWriteIds(const TransactionId& id, uint64_t records);
+  void RemovePendingIntraTxnWriteIds(const TransactionId& id, uint64_t records);
+  // Sum of all outstanding write-ID bounds in the ledger; zero once every batch this tablet
+  // accepted has applied or aborted.
+  uint64_t TEST_OutstandingIntraTxnWriteIds() const;
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
