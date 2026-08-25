@@ -599,6 +599,9 @@ TEST_F(TabletSnapshotsTest, ShutdownWaitsForRunningCleanup) {
 }
 
 TEST_F(TabletSnapshotsTest, PrepareFlushesTabletForSnapshotCreation) {
+  // Exercise the production path: the flush scheduling call is dispatched to the cleanup pool.
+  InstallCleanupPool();
+
   ASSERT_OK(WriteRow(1));
   ASSERT_EQ(NumRegularDbSSTFiles(), 0);
 
@@ -606,6 +609,18 @@ TEST_F(TabletSnapshotsTest, PrepareFlushesTabletForSnapshotCreation) {
 
   // The prepare-time flush is asynchronous; it must eventually push the memtable into an SST
   // without any further nudge.
+  ASSERT_OK(WaitFor(
+      [this] { return NumRegularDbSSTFiles() > 0; }, 10s, "Wait for prepare-triggered flush"));
+}
+
+TEST_F(TabletSnapshotsTest, PrepareFlushesTabletWithoutCleanupPool) {
+  // Without an installed pool (before InitTabletPeer, or in tests) the preflush falls back to
+  // scheduling the flush inline.
+  ASSERT_OK(WriteRow(1));
+  ASSERT_EQ(NumRegularDbSSTFiles(), 0);
+
+  ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET));
+
   ASSERT_OK(WaitFor(
       [this] { return NumRegularDbSSTFiles() > 0; }, 10s, "Wait for prepare-triggered flush"));
 }
