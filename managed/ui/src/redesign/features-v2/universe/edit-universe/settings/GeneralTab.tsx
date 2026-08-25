@@ -49,13 +49,6 @@ const StyledArea = styled('div')(({ theme }) => ({
   background: theme.palette.common.white
 }));
 
-const StyledGeneralInfo = styled('div')(() => ({
-  display: 'flex',
-  flexDirection: 'row',
-  height: '200px',
-  justifyContent: 'space-between'
-}));
-
 const StyledGeneralInfoNew = styled(Box)(() => ({
   display: 'flex',
   flexDirection: 'column',
@@ -139,7 +132,7 @@ export const GeneralTab = () => {
   });
 
   const currentProvider = providers?.find(
-    (provider) => provider.uuid === primaryCluster?.provider_spec.provider
+    (provider) => provider.uuid === primaryCluster?.provider_spec?.provider
   );
 
   return (
