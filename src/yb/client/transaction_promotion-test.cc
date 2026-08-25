@@ -282,8 +282,8 @@ TEST_F(TransactionPromotionTest, PromotedTransactionIntentsReadableForCDC) {
 // so a savepoint rollback sends a heartbeat to each and returns on the old one's failure.
 TEST_F(TransactionPromotionTest, RollbackWithHeartbeatInFlight) {
   DisableTransactionTimeout();
-  // PENDING heartbeats no longer register rpcs, so rpcs() occupancy reflects only the calls this
-  // test cares about. The CREATED and PROMOTED heartbeats that promotion needs still go out.
+  // Disable periodic heartbeats so rpcs() occupancy reflects only the rollback heartbeat RPCs this
+  // test cares about. (CREATED and PROMOTED heartbeats used during promotion are still sent.)
   SetDisableHeartbeatInTests(true);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_failing_heartbeats_to_old_status_tablet) = true;
 
