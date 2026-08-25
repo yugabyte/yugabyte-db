@@ -33,6 +33,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.Statement;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -7130,5 +7131,85 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     assertEquals("txn2 must be re-streamed after the disconnect, losing it means the keep alive"
         + " auto flush acked an undelivered transaction", kLargeRows + kSmallRows, received);
+  }
+
+  private void addConcurrentDdlFlags(Map<String, String> flags) {
+    flags.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
+    flags.put("ysql_enable_concurrent_ddl", "true");
+    flags.put("enable_object_locking_for_table_locks", "true");
+    flags.put("ysql_enable_object_locking_infra", "true");
+    flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
+  }
+
+  @Test
+  public void testOrdinarySqlOnReplicationConnectionSeesConcurrentDdl() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    addConcurrentDdlFlags(tserverFlags);
+    Map<String, String> masterFlags = getMasterFlags();
+    addConcurrentDdlFlags(masterFlags);
+
+    restartClusterWithFlags(masterFlags, tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE live_ctx_control (a int primary key, b text)");
+      stmt.execute("CREATE TABLE live_ctx_repl (a int primary key, b text)");
+    }
+
+    // Control: a regular backend must see the concurrently added column.
+    try (Connection regularConn = getConnectionBuilder().withTServer(0).connect()) {
+      assertSeesConcurrentlyAddedColumn(regularConn, "live_ctx_control", "regular connection");
+    }
+
+    // The same sequence on a replication connection must behave identically.
+    // With the am_walsender-only guard the refresh is skipped here, so the
+    // session either does not see newcol or fails with a catalog version
+    // mismatch.
+    try (Connection replConn = getConnectionBuilder().withTServer(0).replicationConnect()) {
+      assertSeesConcurrentlyAddedColumn(replConn, "live_ctx_repl", "replication connection");
+    }
+  }
+
+  private void assertSeesConcurrentlyAddedColumn(Connection conn, String table, String what)
+      throws Exception {
+    try (Statement stmt = conn.createStatement()) {
+      // Warm this session's relcache/catcache entry for `table` at the current
+      // catalog version, outside any transaction.
+      stmt.execute("SELECT * FROM " + table);
+
+      // Open a transaction WITHOUT touching `table`, so the DDL below is not
+      // blocked waiting on an AccessShareLock held by this session.
+      stmt.execute("BEGIN");
+      stmt.execute("SELECT 1");
+
+      // Concurrent DDL from a separate session; commits while the transaction
+      // above is still open.
+      try (Statement ddl = connection.createStatement()) {
+        ddl.execute("ALTER TABLE " + table + " ADD COLUMN newcol int");
+      }
+
+      // First touch of `table` inside the open transaction.
+      boolean found = false;
+      try {
+        ResultSetMetaData md = stmt.executeQuery("SELECT * FROM " + table).getMetaData();
+        for (int i = 1; i <= md.getColumnCount(); i++) {
+          if ("newcol".equalsIgnoreCase(md.getColumnName(i))) {
+            found = true;
+            break;
+          }
+        }
+      } catch (PSQLException e) {
+        fail(String.format(
+            "%s: reading %s after a concurrent ALTER TABLE failed instead of picking up the "
+            + "new schema. This is the catalog cache refresh being skipped. Error: %s",
+            what, table, e.getMessage()));
+      }
+
+      assertTrue(String.format(
+          "%s: column newcol added by a concurrent ALTER TABLE was not visible on the first "
+          + "access to %s inside an open transaction; the session is running on a stale "
+          + "catalog cache.", what, table), found);
+
+      stmt.execute("COMMIT");
+    }
   }
 }
