@@ -750,6 +750,53 @@ def parse_master_addrs_csv(master_addrs_csv):
         return []
     return [ addr.strip() for addr in master_addrs_csv.split(",") if addr.strip() ]
 
+# Split "host:port", "[::1]:port" or a bare host into (host, port). port is None when absent.
+def split_master_addr(addr):
+    if addr.startswith("["):
+        host, sep, rest = addr[1:].partition("]")
+        if not sep:
+            return addr, None
+        return host, rest[1:] if rest.startswith(":") else None
+    host, sep, port = addr.rpartition(":")
+    if not sep:
+        return addr, None
+    return host, port
+
+def is_resolvable_master_addr(addr):
+    host, _ = split_master_addr(addr)
+    if not host:
+        return False
+    try:
+        socket.getaddrinfo(host, None)
+        return True
+    except socket.gaierror:
+        return False
+    except Exception as err:
+        # Keep the address on anything other than a definite lookup failure: a resolver that
+        # errors out for its own reasons is not evidence that this master is gone.
+        Output.log("Could not check whether master address {} resolves: {}".format(addr, err))
+        return True
+
+# yb-tserver's ResolveMasterAddresses() retries each entry for master_discovery_timeout_ms
+# (1h by default) before failing startup, so a single address that no longer resolves costs an
+# hour of silent hang. yugabyted only ever adds to current_masters, so an address can go stale
+# under it -- a container hostname from a previous run is the common case.
+# Returns (kept, dropped). keep_addr is never dropped, and if nothing resolves the list is left
+# alone: that is a DNS outage rather than a stale entry, and having no address at all is worse.
+def prune_unresolvable_master_addrs(master_addrs, keep_addr=None):
+    kept = []
+    dropped = []
+    for addr in master_addrs:
+        if addr in kept or addr in dropped:
+            continue
+        if addr == keep_addr or is_resolvable_master_addr(addr):
+            kept.append(addr)
+        else:
+            dropped.append(addr)
+    if not kept:
+        return list(master_addrs), []
+    return kept, dropped
+
 class ControlScript(object):
     def __init__(self):
         self.configs = None
@@ -6753,10 +6800,17 @@ class ControlScript(object):
                 master_flag))
             return
 
-        if len(full_master_list) < 3:
-            my_master_ip = "{}:{}".format(get_url_from_ip(self.advertise_ip()),
-                                          self.configs.saved_data.get("master_rpc_port"))
-            full_master_list = list(set(full_master_list + [ my_master_ip ]))
+        my_master_ip = "{}:{}".format(get_url_from_ip(self.advertise_ip()),
+                                      self.configs.saved_data.get("master_rpc_port"))
+
+        full_master_list, stale_masters = prune_unresolvable_master_addrs(
+            full_master_list, my_master_ip)
+        if stale_masters:
+            Output.log("Dropped master addresses that no longer resolve: {}".format(
+                stale_masters))
+
+        if len(full_master_list) < 3 and my_master_ip not in full_master_list:
+            full_master_list.append(my_master_ip)
             Output.log("Got full master addrs list: {}".format(full_master_list))
 
         new_master_flag = "--{}={}".format(TS_MASTER_ADDRS_FLAG, ",".join(full_master_list))
