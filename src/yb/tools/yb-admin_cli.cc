@@ -118,6 +118,10 @@ std::string FlagDefault(const char* flag_name) {
   return google::GetCommandLineFlagInfo(flag_name, &info) ? info.default_value : "";
 }
 
+// The operation that prints the catalog. Named here because ScanForHelpRequest() must
+// recognize it in raw argv, before the flag parse, and Run() dispatches it by name.
+constexpr auto kHelpOperation = "help";
+
 constexpr auto kBlacklistAdd = "ADD";
 constexpr auto kBlacklistRemove = "REMOVE";
 constexpr int32 kDefaultRpcPort = 9100;
@@ -652,22 +656,18 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
     int argc, char** argv) const {
   bool help_requested = false;
   bool helpshort = false;
-  std::string operation;
+  std::vector<std::string> positionals;
+  bool positional_only = false;
   for (int i = 1; i < argc; ++i) {
     const std::string token = argv[i];
-    if (token == "--") {
-      // gflags treats everything after a bare "--" as positional; so does this scan.
-      break;
+    if (!positional_only && token == "--") {
+      // gflags stops parsing at a bare "--" and drops it, leaving everything after it in the
+      // positional argv; so does this scan.
+      positional_only = true;
+      continue;
     }
-    if (token.empty() || token[0] != '-') {
-      // The first positional token naming a registered operation selects which help page to
-      // show. Every token is scanned, not just argv[1]: real commands lead with flags, e.g.
-      // "yb-admin --flagfile server.conf delete_table --help". The scan only ever selects a help
-      // page and never which operation to run, so a free-text argument that happens to equal an
-      // operation name can at worst pick the wrong page.
-      if (operation.empty() && command_indexes_.count(token) > 0) {
-        operation = token;
-      }
+    if (positional_only || token.empty() || token[0] != '-') {
+      positionals.push_back(token);
       continue;
     }
     const auto name_begin = token.find_first_not_of('-');
@@ -706,13 +706,32 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
       }
     }
   }
-  if (!help_requested) {
-    return std::nullopt;
+  if (help_requested) {
+    HelpRequest request;
+    request.helpshort = helpshort;
+    // The first positional naming a registered operation selects which help page to show. Every
+    // token is scanned, not just argv[1]: real commands lead with flags, e.g. "yb-admin
+    // --flagfile server.conf delete_table --help". The scan only ever selects a help page and
+    // never which operation to run, so a free-text argument that happens to equal an operation
+    // name can at worst pick the wrong page.
+    for (const auto& positional : positionals) {
+      if (command_indexes_.count(positional) > 0) {
+        request.operation = positional;
+        break;
+      }
+    }
+    return request;
   }
-  HelpRequest request;
-  request.operation = operation;
-  request.helpshort = helpshort;
-  return request;
+  // A --help* flag anywhere wins over the operation, so this runs only when none was given.
+  // Only a *leading* positional counts: "yb-admin --flagfile server.conf help delete_table" asks
+  // for help, but "yb-admin list_tables help" passes "help" to list_tables as an argument.
+  if (!positionals.empty() && positionals.front() == kHelpOperation) {
+    HelpRequest request;
+    request.help_operation = true;
+    request.help_args.assign(positionals.begin() + 1, positionals.end());
+    return request;
+  }
+  return std::nullopt;
 }
 
 void ClusterAdminCli::PrintHelpRequest(
@@ -777,8 +796,16 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   SetUsage(prog_name_);
 
   // Help must work on a broken cluster: the scan reads raw argv, so it answers before the flag
-  // parse can fail on a malformed --flagfile or a garbage flag value.
+  // parse can fail on a malformed --flagfile, an unparsable flag value, or an unknown flag.
   if (const auto request = ScanForHelpRequest(argc, argv)) {
+    if (request->help_operation) {
+      // Dispatched through RunCommand() rather than answered inline so that intercepting `help`
+      // early leaves its output and its error framing -- suggestions for an unknown operation,
+      // help's own usage line for extra arguments -- identical to ordinary dispatch. The action
+      // ignores the client, which is still null here.
+      return RunCommand(
+          commands_[command_indexes_[kHelpOperation]], request->help_args, prog_name_);
+    }
     PrintHelpRequest(*request, prog_name_, std::cout);
     return Status::OK();
   }
@@ -3370,8 +3397,10 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   // help is registered like any other operation so that it appears in the operation list, gets
   // suggested for typos ("yb-admin hepl"), and inherits RunCommand()'s standard error formatting.
   // needs_client is false: help must answer on a broken cluster, without waiting out --timeout_ms.
+  // Run() reaches this action from ScanForHelpRequest() before the flag parse, so the action must
+  // not depend on any flag having been applied.
   Register(
-      "help", "[<operation>]",
+      kHelpOperation, "[<operation>]",
       [this](const CLIArguments& args, ClusterAdminClient*) -> Status {
         if (args.size() > 1) {
           return kInvalidArguments;

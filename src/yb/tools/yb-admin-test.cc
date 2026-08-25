@@ -559,8 +559,9 @@ TEST_F(AdminCliTest, HelpOperationDispatch) {
   ASSERT_STR_NOT_CONTAINS(output, "Get help:");
 }
 
-// help never constructs a client and is intercepted before the flag parse, so it answers with
-// unreachable masters, unparsable connection flags, and flags ahead of the operation.
+// Both help spellings -- the `help` operation and the --help* flags -- are answered from raw argv
+// before the flag parse and without a client, so they survive unreachable masters, a flag parse
+// that would fail outright, and flags placed ahead of the operation.
 TEST_F(AdminCliTest, HelpNeedsNoCluster) {
   const auto exe_path = GetAdminToolPath();
   std::string output;
@@ -589,6 +590,59 @@ TEST_F(AdminCliTest, HelpNeedsNoCluster) {
       ToStringVector(exe_path, "--flagfile", flagfile_path, "delete_table", "--help"), &output,
       &error));
   ASSERT_STR_CONTAINS(output, "Usage: yb-admin delete_table <table>");
+
+  // The `help` operation reaches the same pre-parse path, so it survives inputs that abort the
+  // flag parse. Each is checked against both spellings: a regression that pushes `help` back
+  // behind the parse would leave the flag column passing and only this one failing.
+  const std::vector<std::string> parse_breakers = {
+      "--flagfile=/nonexistent/server.conf",  // gflags: "No such file or directory"
+      "--timeout_ms=not_a_number",            // gflags: "illegal value ... for int64 flag"
+      "--no_such_flag_exists",                // gflags: "unknown command line flag"
+  };
+  for (const auto& breaker : parse_breakers) {
+    SCOPED_TRACE(breaker);
+
+    output.clear();
+    error.clear();
+    ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, breaker, "help"), &output, &error));
+    ASSERT_STR_CONTAINS(output, "Operations (");
+
+    output.clear();
+    error.clear();
+    ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, breaker, "--help"), &output, &error));
+    ASSERT_STR_CONTAINS(output, "Get help:");
+
+    // A per-operation page takes the same path, and the target is read past the broken flag.
+    output.clear();
+    error.clear();
+    ASSERT_OK(Subprocess::Call(
+        ToStringVector(exe_path, breaker, "help", "delete_table"), &output, &error));
+    ASSERT_STR_CONTAINS(output, "Usage: yb-admin delete_table <table>");
+  }
+
+  // "help" is intercepted only as the leading positional. In the two cases below it is an
+  // argument or a flag value, so the operation must run normally -- reaching the client and
+  // failing on the closed port -- rather than printing the catalog. --timeout_ms keeps that
+  // failure quick instead of waiting out the 60s default.
+  //
+  // An argument to another operation.
+  output.clear();
+  error.clear();
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", "127.0.0.1:1", "--timeout_ms", "1000",
+                     "flush_table", "help"),
+      &output, &error));
+  ASSERT_STR_NOT_CONTAINS(output, "Operations (");
+
+  // The two-token value slot of a non-boolean flag: "--certs_dir_name help" sets that flag to
+  // "help", so the scan must skip the token rather than read it as a request.
+  output.clear();
+  error.clear();
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--certs_dir_name", "help", "--master_addresses", "127.0.0.1:1",
+                     "--timeout_ms", "1000", "list_tables"),
+      &output, &error));
+  ASSERT_STR_NOT_CONTAINS(output, "Operations (");
 }
 
 // The token tier of suggestion matching (#32640 phase 1c). Semantics pinned here: every typed
