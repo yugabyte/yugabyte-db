@@ -348,7 +348,7 @@ set(TSERVER_DEPS
   yb_client
   pq_utils
   yb_pggate_flags
-  yb_pgresult_util
+  yb_pggate_util
   yb_ysql_binary_runner
   yrpc
   ysql_upgrade

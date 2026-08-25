@@ -1086,12 +1086,6 @@ pqSaveMessageField(PGresult *res, char code, const char *value)
 	res->errFields = pfield;
 }
 
-void
-YbPQsaveMessageField(PGresult *res, char code, const char *value, bool translate)
-{
-	pqSaveMessageField(res, code, translate ? libpq_gettext(value) : value);
-}
-
 /*
  * pqSaveParameterStatus - remember parameter status sent by backend
  */
