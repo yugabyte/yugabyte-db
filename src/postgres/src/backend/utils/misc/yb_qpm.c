@@ -841,7 +841,7 @@ qpmProcess(QueryDesc *queryDesc)
 		 queryDesc->plannedstmt->commandType == CMD_UPDATE ||
 		 queryDesc->plannedstmt->commandType == CMD_MERGE ||
 		 queryDesc->plannedstmt->commandType == CMD_INSERT) &&
-		queryDesc->plannedstmt->queryId > 0 &&
+		queryDesc->plannedstmt->queryId != 0 &&
 		queryDesc->sourceText != NULL &&
 		strstr(queryDesc->sourceText, QPM_SKIP_TEXT) == NULL &&
 		(yb_qpm_configuration.track_catalog_queries ||
