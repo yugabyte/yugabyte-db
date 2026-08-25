@@ -2949,6 +2949,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_walsender_keepalive_after_each_record", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, the walsender sends a keepalive after every "
+						 "decoded record."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_walsender_keepalive_after_each_record,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_fail_drop_after_heap_drop", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Test fault injection: fail drop after heap_drop_with_catalog."),
 			NULL,

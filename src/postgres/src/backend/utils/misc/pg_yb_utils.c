@@ -2310,6 +2310,7 @@ int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
 double		yb_test_delay_next_ddl = 0;
 int			yb_test_reset_retry_counts = -1;
 int			yb_test_force_parallel = YB_FORCE_PARALLEL_OFF;
+bool		yb_test_walsender_keepalive_after_each_record = false;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity

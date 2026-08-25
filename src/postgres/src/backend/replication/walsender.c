@@ -3381,6 +3381,14 @@ XLogSendLogical(void)
 		LogicalDecodingProcessRecord(logical_decoding_ctx, logical_decoding_ctx->reader);
 
 		sentPtr = logical_decoding_ctx->reader->EndRecPtr;
+
+		/* YB: test hook to send a keepalive after every record. */
+		if (IsYugaByteEnabled() && yb_test_walsender_keepalive_after_each_record)
+		{
+			WalSndKeepalive(false, InvalidXLogRecPtr);
+			if (pq_flush_if_writable() != 0)
+				WalSndShutdown();
+		}
 	}
 
 	/*
@@ -4003,10 +4011,18 @@ WalSndKeepalive(bool requestReply, XLogRecPtr writePtr)
 {
 	elog(DEBUG2, "sending replication keepalive");
 
+	XLogRecPtr	yb_keepalive_ptr = XLogRecPtrIsInvalid(writePtr) ? sentPtr : writePtr;
+
+	if (IsYugaByteEnabled() &&
+		MyReplicationSlot != NULL &&
+		MyReplicationSlot->yb_lsn_type == CRS_HYBRID_TIME &&
+		yb_keepalive_ptr > 0)
+		yb_keepalive_ptr -= 1;
+
 	/* construct the message... */
 	resetStringInfo(&output_message);
 	pq_sendbyte(&output_message, 'k');
-	pq_sendint64(&output_message, XLogRecPtrIsInvalid(writePtr) ? sentPtr : writePtr);
+	pq_sendint64(&output_message, yb_keepalive_ptr);
 	pq_sendint64(&output_message, GetCurrentTimestamp());
 	pq_sendbyte(&output_message, requestReply ? 1 : 0);
 

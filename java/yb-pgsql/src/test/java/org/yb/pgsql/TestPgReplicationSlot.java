@@ -45,6 +45,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Ignore;
@@ -290,6 +291,39 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   private void validateChange(JsonObject jsonObject, int origin_id, int count) {
     assertEquals(jsonObject.get("origin").getAsInt(), origin_id);
     assertEquals(jsonObject.getAsJsonArray("change").size(), count);
+  }
+
+  private PGReplicationStream openStream(
+      Connection conn, String slotName, String pubName, int walSenderTimeoutMs) throws Exception {
+    if (walSenderTimeoutMs > 0) {
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("SET wal_sender_timeout = " + walSenderTimeoutMs);
+        stmt.execute("SET yb_test_walsender_keepalive_after_each_record = true");
+      }
+    }
+    return conn.unwrap(PGConnection.class).getReplicationAPI().replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", pubName)
+        .withStatusInterval(60, TimeUnit.SECONDS)
+        .start();
+  }
+
+  private int drainInserts(PGReplicationStream stream, long deadlineMs) throws Exception {
+    int inserts = 0;
+    while (System.currentTimeMillis() < deadlineMs) {
+      ByteBuffer buf = stream.readPending();
+      if (buf == null) {
+        Thread.sleep(50);
+        continue;
+      }
+      if (buf.array()[buf.arrayOffset()] == 'I') {
+        inserts++;
+      }
+    }
+    return inserts;
   }
 
   // TODO(#20726): Add more test cases covering:
@@ -6963,5 +6997,67 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     assertReplicationSlotExists(slotName, false);
     replConn1.close();
     replConn0.close();
+  }
+
+  @Test
+  public void testHybridTimeKeepAliveAutoFlushCausesDataLoss() throws Exception {
+    final int kSmallRows = 10;
+    final int kLargeRows = 1200;
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t");
+      stmt.execute("CREATE TABLE t (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS");
+      stmt.execute("ALTER TABLE t REPLICA IDENTITY DEFAULT");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t");
+      stmt.execute("SELECT pg_create_logical_replication_slot("
+          + "'slot', 'pgoutput', false, false, 'HYBRID_TIME')");
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(1, 10) i");
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(100, 1299) i");
+    }
+
+    Connection c1 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream s1 = openStream(c1, "slot", "pub", 3000);
+    List<PgOutputMessage> txn1 = receiveMessage(s1, kSmallRows + 3);
+    assertEquals(kSmallRows,
+        (int) txn1.stream().filter(m -> m instanceof PgOutputInsertMessage).count());
+    LogSequenceNumber afterTxn1 = s1.getLastReceiveLSN();
+    s1.setFlushedLSN(afterTxn1);
+    s1.forceUpdateStatus();
+    s1.close();
+    c1.close();
+
+    // txn2: Wait for the driver's auto flush, transmit it, then disconnect mid delivery.
+    Connection c2 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream s2 = openStream(c2, "slot", "pub", 3000);
+    long deadline = System.currentTimeMillis() + 60_000L * kMultiplier;
+    // A keep alive echoing the slot's confirmed_flush is harmless, only an
+    // auto flush past txn1 proves an undelivered transaction was acked.
+    while (s2.getLastFlushedLSN().asLong() <= afterTxn1.asLong()) {
+      assertTrue("timed out waiting for the keep alive auto flush past txn1",
+          System.currentTimeMillis() < deadline);
+      if (s2.readPending() == null) {
+        Thread.sleep(50);
+      }
+    }
+    for (int i = 0; i < 15; i++) {
+      s2.forceUpdateStatus();
+      Thread.sleep(200);
+    }
+    s2.close();
+    c2.close();
+
+    // txn3: committed after the disconnect.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(5000, 5009) i");
+    }
+
+    Connection c3 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream s3 = openStream(c3, "slot", "pub", 3000);
+    int received = drainInserts(s3, System.currentTimeMillis() + 60_000L * kMultiplier);
+    s3.close();
+    c3.close();
+
+    assertEquals("txn2 must be re-streamed after the disconnect, losing it means the keep alive"
+        + " auto flush acked an undelivered transaction", kLargeRows + kSmallRows, received);
   }
 }
