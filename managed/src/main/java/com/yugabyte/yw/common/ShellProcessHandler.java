@@ -205,7 +205,8 @@ public class ShellProcessHandler {
       if (context.getUuid() != null) {
         Util.setPID(context.getUuid(), process);
       }
-      waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeMs);
+      boolean timedOut =
+          waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeMs);
       // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
       boolean logCmdOutput = context.isLogCmdOutput();
@@ -236,6 +237,16 @@ public class ShellProcessHandler {
           }
           response.message = specificErrMsg;
         }
+        if (timedOut) {
+          // The process was SIGKILLed, so its exit code carries no information about why it was
+          // stuck. Say so explicitly, otherwise the task fails with an opaque signal code.
+          response.code = ERROR_CODE_GENERIC_ERROR;
+          response.message =
+              String.format(
+                  "Command timed out after %d seconds and was aborted. Output: %s",
+                  context.getTimeoutSecs(),
+                  StringUtils.isBlank(processError) ? processOutput : processError);
+        }
       }
     } catch (IOException | InterruptedException e) {
       response.code = ERROR_CODE_GENERIC_ERROR;
@@ -246,8 +257,8 @@ public class ShellProcessHandler {
       response.message = e.getMessage();
       // Send a kill signal to ensure process is cleaned up in case of any failure.
       if (process != null && process.isAlive()) {
-        // Only destroy sends SIGTERM to the process.
-        process.destroy();
+        // Gracefully terminate (SIGTERM) the process and its descendants.
+        destroy(process);
         try {
           process.waitFor(DESTROY_GRACE_TIMEOUT.getSeconds(), TimeUnit.SECONDS);
         } catch (InterruptedException e1) {
@@ -382,9 +393,12 @@ public class ShellProcessHandler {
     return false;
   }
 
-  private static void waitForProcessExit(
+  // Returns true if the process was aborted because it exceeded endTimeMs, false if it exited on
+  // its own.
+  private static boolean waitForProcessExit(
       Process process, String description, File outFile, File errFile, long endTimeMs)
       throws IOException, InterruptedException {
+    boolean timedOut = false;
     try (FileInputStream outputInputStream = new FileInputStream(outFile);
         InputStreamReader outputReader = new InputStreamReader(outputInputStream);
         FileInputStream errInputStream = new FileInputStream(errFile);
@@ -398,6 +412,7 @@ public class ShellProcessHandler {
         tailStream(errorStream, 10000 /*maxLines*/);
         if (endTimeMs > 0 && (System.currentTimeMillis() >= endTimeMs)) {
           log.warn("Aborting command {} forcibly because it took too long", description);
+          timedOut = true;
           destroyForcibly(process, description);
           break;
         }
@@ -406,6 +421,7 @@ public class ShellProcessHandler {
       tailStream(outputStream);
       tailStream(errorStream);
     }
+    return timedOut;
   }
 
   private static void tailStream(BufferedReader br) throws IOException {
@@ -431,7 +447,18 @@ public class ShellProcessHandler {
     }
   }
 
+  // Gracefully terminate (SIGTERM) the process and its descendants (e.g. the grep/awk/zcat
+  // stages of a shell pipeline). Descendants are signalled before the parent so they are not
+  // reparented to init before they receive the signal.
+  private static void destroy(Process process) {
+    process.descendants().forEach(ProcessHandle::destroy);
+    process.destroy();
+  }
+
   private static void destroyForcibly(Process process, String description) {
+    // Kill the descendants (e.g. the grep/awk/zcat stages of a shell pipeline) before the
+    // parent.
+    process.descendants().forEach(ProcessHandle::destroyForcibly);
     process.destroyForcibly();
     try {
       process.waitFor(DESTROY_GRACE_TIMEOUT.getSeconds(), TimeUnit.SECONDS);

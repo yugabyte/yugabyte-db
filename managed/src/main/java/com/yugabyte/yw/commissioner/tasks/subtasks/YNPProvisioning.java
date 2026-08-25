@@ -90,6 +90,16 @@ public class YNPProvisioning extends NodeTaskBase {
 
     Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
     Provider provider = Util.getProviderForNode(node, universe);
+    // Bound the remote provisioning command. The node-side script buffers its output until it
+    // exits, so a step that blocks on the node (PLAT-22154) produces neither output nor an exit
+    // status, and this subtask would otherwise hold the universe task open indefinitely.
+    shellContext =
+        shellContext.toBuilder()
+            .timeoutSecs(
+                confGetter
+                    .getConfForScope(provider, ProviderConfKeys.ynpProvisionTimeout)
+                    .toSeconds())
+            .build();
 
     /*
      *  But First, setup the dual NIC on YBM if needed. Let's do that even before we run
