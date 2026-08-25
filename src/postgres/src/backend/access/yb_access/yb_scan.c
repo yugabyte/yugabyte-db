@@ -1645,6 +1645,37 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 			can_pushdown = false;
 			break;
 		}
+
+		/*
+		 * The pushed-down subkey bound constant is re-encoded using the index
+		 * column's type (see YBCNewConstant below).  A cross-type comparison
+		 * whose argument does not fit that column type (e.g. an out-of-int4
+		 * range int8 constant against an int4 column) would be silently
+		 * truncated, producing a wrong bound for the DocDB scan.
+		 * This mirrors the YbCheckScanTypes guard applied to scalar keys.
+		 *
+		 * Stop at the first incompatible subkey.  Trailing unspecified
+		 * columns are bound as +/-Inf, which is a correct conservative
+		 * prefix.  If even the first subkey is incompatible, skip pushdown.
+		 */
+		{
+			AttrNumber	attnum =
+				scan_plan->bind_key_attnums[skey_index + 1 + j];
+			Oid			col_typid =
+				ybc_get_atttypid(scan_plan->bind_desc, attnum);
+
+			if (OidIsValid(key->sk_subtype) &&
+				!YbIsScanCompatible(col_typid, key->sk_subtype,
+									true /* is_value_scalar */ ,
+									key->sk_argument))
+			{
+				if (j == 0)
+					can_pushdown = false;
+				else
+					subkey_count = j;
+				break;
+			}
+		}
 	}
 
 	/*
