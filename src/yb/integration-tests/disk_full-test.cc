@@ -18,6 +18,8 @@
 
 #include "yb/server/clock.h"
 
+#include "yb/util/size_literals.h"
+
 DECLARE_uint64(reject_writes_min_disk_space_mb);
 DECLARE_uint32(reject_writes_min_disk_space_pct);
 DECLARE_uint32(reject_writes_min_disk_space_check_interval_sec);
@@ -51,8 +53,10 @@ TEST_F(YCqlDiskFullTest, YB_DISABLE_TEST_IN_ASAN(TestDiskFull)) {
   }
   ++i;
 
-  // Set a large limit to simulate disk full.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_mb) = 10 * 1024 * 1024;  // 10TB
+  // Set a limit above the actual free space to simulate disk full.
+  const auto free_space_mb =
+      ASSERT_RESULT(Env::Default()->GetFreeSpaceBytes(GetTestDataDirectory())) / 1_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_mb) = free_space_mb * 2;
   SleepFor(2s);
 
   ASSERT_NOK_STR_CONTAINS(WriteRow(session, i, i), "has insufficient disk space");
@@ -122,8 +126,10 @@ TEST_F(YSqlDiskFullTest, YB_DISABLE_TEST_IN_ASAN(TestDiskFull)) {
   }
   ++i;
 
-  // Set a large limit to simulate disk full.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_mb) = 10 * 1024 * 1024;  // 10TB
+  // Set a limit above the actual free space to simulate disk full.
+  const auto free_space_mb =
+      ASSERT_RESULT(Env::Default()->GetFreeSpaceBytes(GetTestDataDirectory())) / 1_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_mb) = free_space_mb * 2;
   SleepFor(2s);
 
   ASSERT_NOK_STR_CONTAINS(
