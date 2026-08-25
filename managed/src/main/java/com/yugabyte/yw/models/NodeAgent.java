@@ -85,6 +85,7 @@ public class NodeAgent extends Model {
 
   private static final Set<State> INACTIVE_STATES =
       ImmutableSet.of(State.REGISTERING, State.REGISTERED);
+  private static final Set<State> UPGRADE_STATES = ImmutableSet.of(State.UPGRADE, State.UPGRADED);
 
   public static final Duration INITIAL_SERVER_CERT_EXPIRY = Duration.ofDays(356);
 
@@ -512,13 +513,12 @@ public class NodeAgent extends Model {
         });
   }
 
-  public void finalizeUpgrade(String nodeAgentHome, String version, UUID certificateUuid) {
+  public void finalizeUpgrade(String nodeAgentHome, String version) {
     updateInTxn(
         n -> {
           n.setHome(nodeAgentHome);
           n.setVersion(version);
           n.setState(State.READY);
-          n.setCertificateUuid(certificateUuid);
           n.update();
         });
   }
@@ -635,20 +635,28 @@ public class NodeAgent extends Model {
   }
 
   @JsonIgnore
+  public boolean isUpgrading() {
+    return UPGRADE_STATES.contains(getState());
+  }
+
+  @JsonIgnore
   public boolean isCustomCert() {
     return getCertificateUuid() != null;
   }
 
   public void updateCertDirPath(Path certDirPath) {
-    updateCertDirPath(certDirPath, null);
-  }
-
-  public void updateCertDirPath(Path certDirPath, State state) {
     updateInTxn(
         n -> {
-          if (state != null) {
-            n.setState(state);
-          }
+          n.getConfig().setCertPath(certDirPath.toString());
+          n.update();
+        });
+  }
+
+  public void rolloverCertInfo(Path certDirPath, State state, @Nullable UUID certificateUuid) {
+    updateInTxn(
+        n -> {
+          n.setState(state);
+          n.setCertificateUuid(certificateUuid);
           n.getConfig().setCertPath(certDirPath.toString());
           n.update();
         });

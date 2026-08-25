@@ -78,6 +78,7 @@ import {
 } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { DrConfigList } from '../../xcluster/disasterRecovery/DrConfigList';
 import { InstallNodeAgentModal } from '../../../redesign/features/universe/universe-actions/install-node-agent/InstallNodeAgentModal';
+import { UpdateNodeAgentModal } from '../../../redesign/features/universe/universe-actions/update-node-agent/UpdateNodeAgentModal';
 import { ReprovisionNodesWithYnpModal } from '../../../redesign/features/universe/universe-actions/reprovision-nodes-with-ynp/ReprovisionNodesWithYnpModal';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 import {
@@ -442,6 +443,7 @@ class UniverseDetail extends Component {
       showTLSConfigurationModal,
       showRollingRestartModal,
       showInstallNodeAgentModal,
+      showUpdateNodeAgentModal,
       showReprovisionNodesWithYnpModal,
       showUpgradeSystemdModal,
       showThirdpartyUpgradeModal,
@@ -1829,6 +1831,27 @@ class UniverseDetail extends Component {
                     {!isReadOnlyUniverse &&
                       !universePaused &&
                       !isKubernetesUniverse &&
+                      !isNodeAgentMissing && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.UPGRADE_NODE_AGENT
+                          }}
+                        >
+                          <YBMenuItem
+                            disabled={isInstallNodeAgentDisabled}
+                            onClick={showUpdateNodeAgentModal}
+                          >
+                            <YBLabelWithIcon icon="fa fa-refresh">
+                              Update Node Agent Certificate
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
+                    {!isReadOnlyUniverse &&
+                      !universePaused &&
+                      !isKubernetesUniverse &&
                       !onPremWithoutSudoAccess && (
                         <RbacValidator
                           isControl
@@ -2257,6 +2280,19 @@ class UniverseDetail extends Component {
           universeUuid={currentUniverse.data.universeUUID}
           isUniverseAction={true}
           isReinstall={!isNodeAgentMissing}
+        />
+
+        <UpdateNodeAgentModal
+          modalProps={{
+            open: showModal && visibleModal === 'updateNodeAgentModal',
+            onClose: () => {
+              closeModal();
+              this.props.fetchCustomerTasks();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }
+          }}
+          universeUuid={currentUniverse.data.universeUUID}
+          isUniverseAction={true}
         />
 
         <ReprovisionNodesWithYnpModal

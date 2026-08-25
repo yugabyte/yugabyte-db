@@ -2302,6 +2302,7 @@
       "deleteNodeAgent": "Unregister Node Agent",
       "confirmDeletionMessage": "Are you sure you want to unregister the node agent associated with the node {{nodeName}}?",
       "errorStatusFilterCheckbox": "Show only agents with error status",
+      "certificateColumn": "Certificate",
       "runtimeConfig": {
         "nodeAgentClientEnabledWarning": "Disabling this runtime configuration will prevent you from upgrading YugabyteDB Anywhere to future major versions."
       },
@@ -2309,6 +2310,10 @@
         "install": {
           "label": "Reinstall node agent",
           "onPremManuallyProvisionedTooltip": "Reinstalling via YugabyteDB Anywhere is not available for manually provisioned on-prem nodes. Please reinstall the node agent manually."
+        },
+        "update": {
+          "label": "Update node agent certificate",
+          "onPremManuallyProvisionedTooltip": "Updating via YugabyteDB Anywhere is not available for manually provisioned on-prem nodes. Please update the node agent manually."
         },
         "delete": {
           "label": "Unregister node agent"
@@ -2365,6 +2370,30 @@
         "success": {
           "requestSuccess": "Node agent installation started.",
           "taskSuccess": "Installed node agent."
+        }
+      },
+      "updateNodeAgentModal": {
+        "title": "Update Node Agent Certificate",
+        "prerequisitesInfo": "Ensure that the selected nodes in {{universeName}} satisfy the <nodeAgentPrereqDocsLink>prerequisites</nodeAgentPrereqDocsLink>.",
+        "beforeYouStart": "Before you start",
+        "updateNodeAgentFor": "Update node agent certificate for:",
+        "allNodeInUniverse": "All nodes in this Universe",
+        "selectedNode": "Selected node",
+        "specificSelectedNode": "Selected node ({{nodeName}})",
+        "certificateLabel": "Certificate",
+        "certificatePlaceholder": "Select a certificate",
+        "certificateOption": {
+          "existing": "Use generated certificates",
+          "custom": "Use custom certificate"
+        },
+        "confirmButton": "Update Node Agent Certificate",
+        "error": {
+          "requestFailureLabel": "Update node agent certificate request failed",
+          "taskFailure": "Failed to update node agent certificate."
+        },
+        "success": {
+          "requestSuccess": "Node agent certificate update started.",
+          "taskSuccess": "Updated node agent certificate."
         }
       }
     },

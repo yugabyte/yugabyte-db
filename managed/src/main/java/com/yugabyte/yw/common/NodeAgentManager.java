@@ -737,12 +737,14 @@ public class NodeAgentManager {
    *
    * @param nodeAgent the node agent.
    * @param newCertDirPath the new cert directory path.
+   * @param certificateUuid the certificate UUID if custom certs are used, null otherwise.
    */
-  public void replaceCerts(NodeAgent nodeAgent, @Nullable Path newCertDirPath) {
+  public void replaceCerts(
+      NodeAgent nodeAgent, @Nullable Path newCertDirPath, @Nullable UUID certificateUuid) {
     Path currentCertDirPath = nodeAgent.getCertDirPath();
     if (newCertDirPath == null) {
       log.info("Updating the cert dir to {} for node agent {}", currentCertDirPath, nodeAgent);
-      nodeAgent.updateCertDirPath(currentCertDirPath, State.UPGRADED);
+      nodeAgent.rolloverCertInfo(currentCertDirPath, State.UPGRADED, certificateUuid);
     } else if (!Files.exists(newCertDirPath)) {
       throw new IllegalStateException(
           String.format(
@@ -750,7 +752,7 @@ public class NodeAgentManager {
     } else {
       // Point to the new directory and persist in the DB before deleting.
       log.info("Updating the cert dir to {} for node agent {}", newCertDirPath, nodeAgent);
-      nodeAgent.updateCertDirPath(newCertDirPath, State.UPGRADED);
+      nodeAgent.rolloverCertInfo(newCertDirPath, State.UPGRADED, certificateUuid);
       try {
         // Delete the old cert directory.
         log.info("Deleting current cert dir {} for node agent {}", currentCertDirPath, nodeAgent);
