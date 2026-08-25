@@ -2417,9 +2417,8 @@ void TabletServiceAdminImpl::EnableDbConns(
 Status TabletServiceAdminImpl::DoEnableDbConns(
     const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp) {
   const std::string script = Format(
-      "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
-      "UPDATE pg_database SET datallowconn = true WHERE datname = $0",
-      pgwrapper::PqEscapeLiteral(req->target_db_name()));
+      "ALTER DATABASE $0 ALLOW_CONNECTIONS true",
+      pgwrapper::PqEscapeIdentifier(req->target_db_name()));
 
   auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
   YsqlshRunner ysqlsh_runner =

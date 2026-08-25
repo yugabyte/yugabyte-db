@@ -52,6 +52,7 @@
 
 #include "yb/tablet/tablet.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
@@ -66,6 +67,9 @@ DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 DEFINE_test_flag(bool, fail_clone_pg_schema, false, "Fail clone pg schema operation for testing");
 DEFINE_test_flag(bool, fail_clone_tablets, false, "Fail ImportSnapshotAndStartTabletsCloning for "
     "testing");
+DEFINE_test_flag(bool, pause_before_enabling_db_connections, false,
+    "If set, pause the clone workflow right before re-enabling connections to the target "
+    "database (i.e. while the target's pg_database.datallowconn is still false).");
 
 namespace yb {
 namespace master {
@@ -891,6 +895,7 @@ Status CloneStateManager::ClearMetaCaches(const CloneStateInfoPtr& clone_state) 
 }
 
 Status CloneStateManager::EnableDbConnections(const CloneStateInfoPtr& clone_state) {
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_enabling_db_connections);
   auto callback = [this, clone_state](const Status& enable_db_conns_status) -> Status {
 
     auto status = enable_db_conns_status;
