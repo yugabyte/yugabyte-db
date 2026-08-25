@@ -317,16 +317,17 @@ export const ResilienceAndRegions = forwardRef<
     }
   }, [formMode, methods, saveNodesAvailabilitySettings, saveResilienceAndRegionsSettings]);
 
-  // RF / region selection drive node placement. Clear stale nodesAndAvailability so the Nodes
+  // RF / FT / region selection drive node placement. Clear stale nodesAndAvailability so the Nodes
   // step rebuilds from the new resilience settings (same as resilience-type / form-mode resets).
   const prevPlacementDriversRef = useRef<{
     resilienceFactor: number;
     regionSignature: string;
+    faultToleranceType: string;
   } | null>(null);
 
   useEffect(() => {
     const regionSignature = JSON.stringify((regions ?? []).map((r) => r.uuid ?? r.code).sort());
-    const next = { resilienceFactor, regionSignature };
+    const next = { resilienceFactor, regionSignature, faultToleranceType };
     if (prevPlacementDriversRef.current === null) {
       prevPlacementDriversRef.current = next;
       return;
@@ -334,13 +335,14 @@ export const ResilienceAndRegions = forwardRef<
     const prev = prevPlacementDriversRef.current;
     if (
       prev.resilienceFactor === next.resilienceFactor &&
-      prev.regionSignature === next.regionSignature
+      prev.regionSignature === next.regionSignature &&
+      prev.faultToleranceType === next.faultToleranceType
     ) {
       return;
     }
     prevPlacementDriversRef.current = next;
     saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
-  }, [resilienceFactor, regions, saveNodesAvailabilitySettings]);
+  }, [resilienceFactor, regions, faultToleranceType, saveNodesAvailabilitySettings]);
 
   // When guided/expert mode, fault tolerance type, RF, or resilience type changes, hide submit
   // errors until the user clicks Next again (do not carry forward stale validation UI).
@@ -433,6 +435,16 @@ export const ResilienceAndRegions = forwardRef<
   useEffect(() => {
     if (faultToleranceType === FaultToleranceType.NONE && resilienceFactor > 1) {
       methods.setValue(RESILIENCE_FACTOR, 1, { shouldValidate: true });
+    }
+    // NONE / NODE_LEVEL UI is single-region; keep stored regions in sync with the autocomplete.
+    if (
+      faultToleranceType === FaultToleranceType.NONE ||
+      faultToleranceType === FaultToleranceType.NODE_LEVEL
+    ) {
+      const current = methods.getValues(REGIONS_FIELD) ?? [];
+      if (current.length > 1) {
+        methods.setValue(REGIONS_FIELD, [current[0]], { shouldValidate: true });
+      }
     }
   }, [faultToleranceType, resilienceFactor]);
 
