@@ -101,6 +101,13 @@ public class SetupYNP extends AbstractTaskBase {
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+    // Bound the remote setup commands so a hung upload or extraction fails the subtask instead of
+    // blocking the universe task forever (PLAT-22154).
+    shellContext =
+        shellContext.toBuilder()
+            .timeoutSecs(
+                confGetter.getConfForScope(provider, ProviderConfKeys.ynpSetupTimeout).toSeconds())
+            .build();
 
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);

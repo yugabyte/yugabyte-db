@@ -85,6 +85,16 @@ public class YNPProvisioning extends NodeTaskBase {
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+    // Bound the remote provisioning command. The node-side script buffers its output until it
+    // exits, so a step that blocks on the node (PLAT-22154) produces neither output nor an exit
+    // status, and this subtask would otherwise hold the universe task open indefinitely.
+    shellContext =
+        shellContext.toBuilder()
+            .timeoutSecs(
+                confGetter
+                    .getConfForScope(provider, ProviderConfKeys.ynpProvisionTimeout)
+                    .toSeconds())
+            .build();
     boolean disableGolangYnpDriver =
         confGetter.getGlobalConf(GlobalConfKeys.disableGolangYnpDriver);
     String customTmpDirectory =
