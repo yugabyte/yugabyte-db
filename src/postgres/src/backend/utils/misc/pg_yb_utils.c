@@ -181,7 +181,7 @@ static int YbGetNumRollbackToSavepointStmts();
 static bool YBIsCurrentStmtCreateFunction();
 
 static void yb_maybe_test_fail_ddl(void);
-static bool YbCanSkipIntentsRead(Relation rel);
+static YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoRead(Relation rel);
 
 uint64_t
 YBGetActiveCatalogCacheVersion()
@@ -9184,7 +9184,7 @@ YbNewSample(Relation rel,
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewSample(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
-								  YbBuildTableLocalityInfo(rel), YbCanSkipIntentsRead(rel),
+								  YbBuildTableLocalityInfo(rel), YbGetSkipIntentsOptimizationInfoRead(rel),
 								  targrows, rstate_w, rand_state_s0,
 								  rand_state_s1, &result));
 	return result;
@@ -9196,7 +9196,7 @@ YbNewSelect(Relation rel, const YbcPgPrepareParameters *prepare_params)
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel), prepare_params,
 								  YbBuildTableLocalityInfo(rel),
-								  YbCanSkipIntentsRead(rel), &result));
+								  YbGetSkipIntentsOptimizationInfoRead(rel), &result));
 	return result;
 }
 
@@ -9206,7 +9206,7 @@ YbNewUpdateForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_s
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewUpdate(db_oid, YbGetRelfileNodeId(rel),
 								  YbBuildTableLocalityInfo(rel), transaction_setting,
-								  YbCanSkipIntentsWrite(rel), &result));
+								  YbGetSkipIntentsOptimizationInfoWrite(rel), &result));
 	return result;
 }
 
@@ -9222,7 +9222,7 @@ YbNewDelete(Relation rel, YbcPgTransactionSetting transaction_setting)
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewDelete(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
 								  YbBuildTableLocalityInfo(rel), transaction_setting,
-								  YbCanSkipIntentsWrite(rel), &result));
+								  YbGetSkipIntentsOptimizationInfoWrite(rel), &result));
 	return result;
 }
 
@@ -9232,7 +9232,7 @@ YbNewInsertForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_s
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewInsert(db_oid, YbGetRelfileNodeId(rel),
 								  YbBuildTableLocalityInfo(rel), transaction_setting,
-								  YbCanSkipIntentsWrite(rel), &result));
+								  YbGetSkipIntentsOptimizationInfoWrite(rel), &result));
 	return result;
 }
 
@@ -9248,7 +9248,7 @@ YbNewInsertBlock(Relation rel, YbcPgTransactionSetting transaction_setting)
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewInsertBlock(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
 									   YbBuildTableLocalityInfo(rel), transaction_setting,
-									   YbCanSkipIntentsWrite(rel), &result));
+									   YbGetSkipIntentsOptimizationInfoWrite(rel), &result));
 	return result;
 }
 
@@ -9573,11 +9573,20 @@ YBHasSkippedIntentsWrite()
 	return skip_intents_txn_state.has_skipped_write;
 }
 
-static bool
-YbCanSkipIntents(Relation rel, bool is_write)
+/*
+ * Decides both halves of the skip intents optimization for one operation on rel. See
+ * YbcPgSkipIntentsOptimizationInfo: the relation-static checks below decide
+ * read_at_in_txn_limit and hold for the whole transaction, while the transaction-state checks
+ * after them gate skip_intents alone and may disable the optimization for the rest of the
+ * transaction.
+ */
+static YbcPgSkipIntentsOptimizationInfo
+YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 {
+	YbcPgSkipIntentsOptimizationInfo info = {0};
+
 	if (!yb_enable_new_relation_fastpath_write)
-		return false;
+		return info;
 
 	/*
 	 * 1. rd_createSubid: The logical table was created in this txn.
@@ -9588,29 +9597,36 @@ YbCanSkipIntents(Relation rel, bool is_write)
 		rel->rd_newRelfilenodeSubid == InvalidSubTransactionId)
 	{
 		elog(DEBUG3, "Skip intents not applicable: relation %u was neither created nor swapped in this txn", rel->rd_id);
-		return false;
+		return info;
 	}
-
-	if (skip_intents_txn_state.disabled)
-		return false;
 
 	if (rel->rd_id < FirstNormalObjectId)
 	{
 		elog(DEBUG3, "Skip intents not applicable: relation %u is a system catalog", rel->rd_id);
-		return false;
+		return info;
 	}
 
 	if (YbIsTempRelation(rel))
 	{
 		elog(DEBUG2, "Skip intents not applicable: relation %u is a temporary relation", rel->rd_id);
-		return false;
+		return info;
 	}
 
 	if (YbGetTableDistribution(rel) == YB_COLOCATED)
 	{
 		elog(DEBUG2, "Skip intents not applicable: relation %u is colocated", rel->rd_id);
-		return false;
+		return info;
 	}
+
+	/*
+	 * Only this transaction can write to the relation, and it may already have put rows in the
+	 * regular db, so the read time has to account for them regardless of what the checks below
+	 * decide about this particular operation.
+	 */
+	info.read_at_in_txn_limit = true;
+
+	if (skip_intents_txn_state.disabled)
+		return info;
 
 	bool is_rc = IsYBReadCommitted();
 	/*
@@ -9628,7 +9644,7 @@ YbCanSkipIntents(Relation rel, bool is_write)
 			elog(DEBUG1, "Disable skip intents due to non-toplevel ddl, "
 						 "relation %u", rel->rd_id);
 			skip_intents_txn_state.disabled = true;
-			return false;
+			return info;
 		}
 		/*
 		 * Here we assume that a top-level DDL (e.g. CREATE TABLE AS SELECT) never
@@ -9646,7 +9662,7 @@ YbCanSkipIntents(Relation rel, bool is_write)
 	if (requires_transactional_ddl && !fastpath_in_txn_blocks_supported)
 	{
 		elog(DEBUG2, "Skip intents not applicable: relation %u requires transactional DDL support", rel->rd_id);
-		return false;
+		return info;
 	}
 
 	/*
@@ -9666,26 +9682,27 @@ YbCanSkipIntents(Relation rel, bool is_write)
 	{
 		elog(DEBUG1, "Disable skip intents due to savepoint on relation %u write", rel->rd_id);
 		skip_intents_txn_state.disabled = true;
-		return false;
+		return info;
 	}
 
 	if (is_write)
 		skip_intents_txn_state.has_skipped_write = true;
 	elog(DEBUG2, "Skipping intents db %s for relation %u",
 		 is_write ? "write" : "read", rel->rd_id);
-	return true;
+	info.skip_intents = true;
+	return info;
 }
 
-bool
-YbCanSkipIntentsWrite(Relation rel)
+YbcPgSkipIntentsOptimizationInfo
+YbGetSkipIntentsOptimizationInfoWrite(Relation rel)
 {
-	return YbCanSkipIntents(rel, true /* is_write */ );
+	return YbGetSkipIntentsOptimizationInfo(rel, true /* is_write */ );
 }
 
-static bool
-YbCanSkipIntentsRead(Relation rel)
+static YbcPgSkipIntentsOptimizationInfo
+YbGetSkipIntentsOptimizationInfoRead(Relation rel)
 {
-	return YbCanSkipIntents(rel, false /* is_write */ );
+	return YbGetSkipIntentsOptimizationInfo(rel, false /* is_write */ );
 }
 
 /* Session-level cache for YbDatabaseHasPublications(). */

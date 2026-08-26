@@ -213,4 +213,20 @@ class TableLocalityMap {
 
 bool SkipIntents(const PgsqlOp& op);
 
+// Records both skip intents optimization decisions on a read or write request.
+template <class ReqPB>
+void ApplySkipIntentsOptimizationInfo(const YbcPgSkipIntentsOptimizationInfo& info, ReqPB& req) {
+  if (info.skip_intents) {
+    if constexpr (requires { req.set_skip_intents_write(true); }) {
+      req.set_skip_intents_write(true);
+    } else {
+      static_assert(requires { req.set_skip_intents_read(true); });
+      req.set_skip_intents_read(true);
+    }
+  }
+  if (info.read_at_in_txn_limit) {
+    req.set_read_at_in_txn_limit(true);
+  }
+}
+
 } // namespace yb::pggate
