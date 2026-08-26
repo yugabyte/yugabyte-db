@@ -2836,20 +2836,21 @@ TEST_P(PgIndexBackfillBackendsManager, YB_DISABLE_TEST_IN_TSAN(NoAbortTxn)) {
   // Reset connection to eliminate cache/heartbeat-delay issues of indislive=t, indisready=t.
   conn_->Reset();
 
+  // With object locking, CREATE INDEX waits for existing lockers before requesting the backfill,
+  // so open the transaction only after that wait, paused just before the read time is picked.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_compute_safe_time_for_backfill_read", "true"));
+  LogWaiter pause_log_waiter(
+      cluster_->GetLeaderMaster(),
+      "Pausing due to flag TEST_pause_compute_safe_time_for_backfill_read");
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_OK(pause_log_waiter.WaitFor(30s * kTimeMultiplier));
+
   LOG(INFO) << "Begin txn";
   ASSERT_OK(conn_->Execute("BEGIN"));
   ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = 5 WHERE i = 3", kTableName));
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
-  if (EnableTableLocks()) {
-    // With object locking, CREATE INDEX waits for existing lockers (WaitForLockers) before
-    // choosing the backfill safe time, so the transaction must commit before the safe time
-    // can be established.
-    ASSERT_OK(conn_->Execute("COMMIT"));
-    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
-  } else {
-    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
-    ASSERT_OK(conn_->Execute("COMMIT"));
-  }
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_compute_safe_time_for_backfill_read", "false"));
+  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+  ASSERT_OK(conn_->Execute("COMMIT"));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   thread_holder_.Stop();
 
