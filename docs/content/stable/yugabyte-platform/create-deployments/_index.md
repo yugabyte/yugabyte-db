@@ -22,6 +22,8 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
 
 A universe includes one primary cluster and, optionally, one read replica cluster. All instances belonging to a cluster run on the same type of cloud provider instance.
 
+Before you deploy, review [Plan your universe](create-universes-overview/).
+
 For information on modifying or scaling an existing universe, refer to [Scale and edit universes](../scale-deployments/).
 
 {{<index/block>}}

@@ -36,6 +36,8 @@ type: docs
 
 {{% includeMarkdown "includes/read-replicas-intro.md" %}}
 
+For how read replicas fit with other multi-region topologies, refer to [Topology](../create-universes-overview/#topology).
+
 ## Create a universe with a read replica cluster
 
 To create a universe with a read replica cluster:

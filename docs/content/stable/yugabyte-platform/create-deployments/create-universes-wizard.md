@@ -30,7 +30,7 @@ type: docs
 
 {{<tags/ui/new>}} YugabyteDB Anywhere allows you to create a universe across multiple availability zones in a single geographic region, or spanning multiple regions (for example, Oregon, South Carolina, and Tokyo), using a provider configuration. This includes universes deployed on VMs (AWS, GCP, Azure, or on-premises) and on Kubernetes.
 
-For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes.
+For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with [dedicated nodes for YB-Master processes](../dedicated-master/).
 
 For planning considerations, including placement (Guided and Expert mode), hardware, and security, refer to [Plan your universe](../create-universes-overview/).
 
@@ -66,17 +66,17 @@ Set the following options:
 - **Universe Name**: Enter a name for the universe.
 - **Provider**: Choose a cloud provider.
 - **Provider Configuration**: Choose the [provider configuration](../../configure-yugabyte-platform/) to use to create the universe.
-- **Database Version**: Choose the version of YugabyteDB to install on the nodes. If the version you want to add is not listed, you can add it to YugabyteDB Anywhere. Refer to [Manage YugabyteDB releases](../../manage-deployments/ybdb-releases/).
+- **Database Version**: Choose the version of YugabyteDB to install on the nodes. If the version you want is not listed, import it into YugabyteDB Anywhere. Refer to [YugabyteDB version](../create-universes-overview/#yugabytedb-version) and [Manage YugabyteDB releases](../../manage-deployments/ybdb-releases/).
 
 ### Placement
 
 Specify the placement of nodes for your universe.
 
-- For quick setup for development or testing, select **Single-Node Cluster**, choose a region, and choose an availability zone.
+- For development or testing, select **Single-Node Cluster**, choose a region, and choose an availability zone.
 
-- For production universes, select **Regular Cluster**.
+- For production universes, select **Regular Cluster**, then **Guided** or **Expert** mode.
 
-You can specify placement using **Guided** (suitable for most topologies) or **Expert** (more flexible) mode.
+For which mode to use, resilience options, and topology limits, refer to [Placement](../create-universes-overview/#placement).
 
 {{< tabpane text=true >}}
 
@@ -84,11 +84,9 @@ You can specify placement using **Guided** (suitable for most topologies) or **E
 
 In Guided mode, you set the following:
 
-1. Resilience. This determines how many failures your primary cluster can tolerate without interruption or downtime.
-1. Regions. Select the regions where you want to locate the primary cluster.
-1. Availability Zones and Nodes. Select the zones in the regions where you want to place the nodes, specify the number of nodes per region, and specify the preferred region(s) in ranked order.
-
-  All zones have the same number of nodes.
+1. **Resilience**. Choose the outage domain (region, availability zone, node, or none) and how many of those outages to tolerate. Refer to [Guided mode](../create-universes-overview/#guided-mode).
+1. **Regions**. Select the regions where you want to locate the primary cluster. You can only select regions that have been added to the [provider configuration](../../configure-yugabyte-platform/).
+1. **Availability Zones and Nodes**. Select the zones, specify the number of nodes (the same in every zone), and optionally rank [preferred](../create-universes-overview/#preferred-region) regions.
 
 {{% /tab %}}
 
@@ -96,73 +94,22 @@ In Guided mode, you set the following:
 
 In Expert mode, you set the following:
 
-1. Regions. Select the regions where you want to locate the primary cluster.
-1. Replication factor. This determines how many replicas of your data to create in the cluster. This in turn determines how many regions and zones the cluster will require, and, by extension, how many failures it can tolerate without interruption or downtime.
-1. Availability Zones and Nodes. Select the zones in the regions where you want to place the nodes, specify the number of nodes per region, and specify the preferred region(s) in ranked order.
+1. **Regions**. Select the regions where you want to locate the primary cluster. You can only select regions that have been added to the [provider configuration](../../configure-yugabyte-platform/).
+1. **Replication factor**. Select the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor). Refer to [Expert mode](../create-universes-overview/#expert-mode).
+1. **Availability Zones and Nodes**. Select the zones (you can add extra zones depending on the number of regions and RF), specify the number of nodes **per zone**, and optionally rank [preferred](../create-universes-overview/#preferred-region) regions.
 
 {{% /tab %}}
 
 {{< /tabpane >}}
 
-#### Resilience
-
-_Guided mode only_
-
-Resilience determines how many failures (node, zone, and region) the cluster can tolerate.
-
-| Resilience | Description |
-| :--- | :--- |
-| **Region** | Resilient to 1, 2, or 3 region outages. Minimum of 3 nodes spread across 3 regions. Provides the maximum protection for a region outage. Recommended for production deployments. |
-| **Zone** | Resilient to 1, 2, or 3 zone outages. Minimum of 3 nodes spread across 3 availability zones. Provides the maximum protection for a data center outage. Not resilient to region outages. Recommended for production deployments. |
-| **Node** | Resilient to 1, 2, or 3 node outages, with a minimum of 3, 5, or 7 nodes respectively, deployed in a single availability zone. Not resilient to zone or region outages. |
-| **None** | Minimum of 1 node, with no replication or resiliency. Operations requiring a restart result in downtime (no rolling restart is possible). For development and testing only. |
-
-#### Regions
-
-Select the regions where you want your cluster located.
-
-You can only select regions that have been added to the [provider configuration](../../configure-yugabyte-platform/).
-
-#### Replication Factor
-
-_Expert mode only_
-
-Select the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) for the universe.
-
-#### Availability Zones and Nodes
-
-- Select the availability zones for each region.
-
-  In Expert mode, depending on the number of regions you selected and the replication factor, you can add additional availability zones to regions.
-
-- Enter the number of nodes per zone.
-
-  In Guided mode, all zones have the same number of nodes.
-
-  In Expert mode, you can vary the number of nodes per zone.
-
-- For multi region clusters, set one or more regions as [preferred](#preferred-region), in ranked order.
-
-#### Preferred region
-
-You can optionally designate regions (ranked in order of preference) in the cluster as preferred. The preferred region handles all read and write requests from clients.
-
-Designating a region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](/stable/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred region.
-
-When no region is preferred, YugabyteDB distributes requests equally across regions. You can set or change the preferred regions after universe creation.
-
-Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
-
-You can enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
-
-In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
-
 #### Advanced Configurations
 
-Select **Allocate dedicated nodes to master servers** to place master servers on dedicated nodes. Refer to [Dedicated masters](../dedicated-master/) for more details.
+Select **Allocate dedicated nodes to master servers** to place master servers on dedicated nodes. Refer to [Dedicated YB-Masters](../dedicated-master/).
 
 
 ### Hardware
+
+For sizing guidance, refer to [Hardware](../create-universes-overview/#hardware).
 
 Specify the instance to use for the universe nodes:
 
@@ -239,6 +186,8 @@ Enhanced Postgres Compatibility
 Optionally, add configuration flags for your YB-Master and YB-TServer nodes. You can also set flags after universe creation. Refer to [Edit configuration flags](../../scale-deployments/edit-config-flags/).
 
 ### Security
+
+For security planning, refer to [Security](../create-universes-overview/#security).
 
 **Network Access**
 
