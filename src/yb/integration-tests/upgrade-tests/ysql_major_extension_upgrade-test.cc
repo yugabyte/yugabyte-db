@@ -23,14 +23,18 @@ class YsqlMajorExtensionUpgradeTest : public YsqlMajorUpgradeTestBase {
   YsqlMajorExtensionUpgradeTest() = default;
 
   void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    // YB_TODO_PG19MERGE: pg_cron, pg_stat_monitor and postgresql_anonymizer are not built on
+    // pg19, see external_extension_subdirs in build_postgres.py. Preloading a library that does
+    // not exist stops the upgraded cluster's postmaster from starting, which failed every test in
+    // this file. Restore these once the extensions are ported.
     opts.extra_tserver_flags.push_back(Format(
-        "--ysql_pg_conf_csv=\"shared_preload_libraries=passwordcheck,pg_stat_monitor,anon\""));
-    opts.extra_tserver_flags.push_back("--enable_pg_cron=true");
-    opts.extra_master_flags.push_back("--enable_pg_cron=true");
+        "--ysql_pg_conf_csv=\"shared_preload_libraries=passwordcheck\""));
+    // opts.extra_tserver_flags.push_back("--enable_pg_cron=true");
+    // opts.extra_master_flags.push_back("--enable_pg_cron=true");
     // TODO: Exclude passwordcheck for now, as upgrade fails with it enabled. Add separate test for
     // passwordcheck (see GH#26618).
-    opts.extra_master_flags.push_back(Format(
-        "--ysql_pg_conf_csv=\"shared_preload_libraries=pg_stat_monitor,anon\""));
+    // opts.extra_master_flags.push_back(Format(
+    //     "--ysql_pg_conf_csv=\"shared_preload_libraries=pg_stat_monitor,anon\""));
     YsqlMajorUpgradeTestBase::SetUpOptions(opts);
   }
 };
