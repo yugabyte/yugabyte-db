@@ -1014,10 +1014,7 @@ IpAddressToBytes(YbcPgAshConfig *ash_config)
 static uint16_t
 YbGetSessionReplicationOriginId(void)
 {
-	/*
-	 * YB_TODO_PG19MERGE: PG made replorigin_session_origin static-internal.
-	 * Need to expose it. Stub to InvalidReplOriginId (0) for now. */
-	return InvalidReplOriginId;
+	return replorigin_xact_state.origin;
 }
 
 void
