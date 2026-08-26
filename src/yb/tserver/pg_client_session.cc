@@ -3990,7 +3990,8 @@ class PgClientSession::Impl {
           ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
       txn = transaction_provider_.Take<PgClientSessionKind::kAutonomousDdl>(deadline);
       RETURN_NOT_OK(txn->SetPgTxnStart(
-          pg_txn_start_us ? pg_txn_start_us : MonoTime::Now().ToUint64(),
+          pg_txn_start_us ? pg_txn_start_us
+                          : static_cast<int64_t>(clock()->Now().GetPhysicalValueMicros()),
           is_txn_using_table_locks));
       RETURN_NOT_OK(txn->Init(isolation));
       txn->SetPriority(priority);
