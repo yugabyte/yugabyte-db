@@ -15,6 +15,10 @@ type: docs
 
 Use Resource Governance to safely consolidate many independent YSQL databases on a single YugabyteDB cluster. Instead of deploying a dedicated cluster for every application, multiple databases share the same infrastructure while remaining logically isolated. Resource Governance provides multitenancy for YSQL databases, with predictable CPU allocation during periods of contention, allowing you to increase infrastructure density without introducing noisy-neighbor problems.
 
+{{<tip title="Early Access">}}
+This feature is Early Access; to try it, contact {{% support-cloud %}}.
+{{</tip>}}
+
 ## Why multitenancy?
 
 If you operate many relatively small databases, running every database on a dedicated cluster leads to poor hardware utilization, higher cloud costs, and operational complexity. Consolidating these databases onto shared infrastructure reduces total cost of ownership, but risks having one workload consume disproportionate resources, negatively affecting every other application.
@@ -37,7 +41,7 @@ Each database is assigned to its own Linux cgroup. The operating system (OS) sch
 | CPU contention | Active databases receive equal CPU weighting so no single database can monopolize the cluster. |
 | Optional CPU cap | A configurable maximum CPU percentage limits every database to the same ceiling, even when idle CPU exists. |
 
-For example, consider four applications sharing a 64 vCPU cluster. During normal operation, a single application may temporarily use most of the cluster if the others are idle. When all four become active simultaneously, Resource Governance redistributes CPU fairly across the active databases. If you configure a 25% CPU cap, no database can consume more than approximately 16 vCPUs regardless of available spare capacity.
+For example, consider four applications sharing a 64 vCPU cluster. During normal operation, a single application may temporarily use most of the cluster if the others are idle. When all four become active simultaneously, Resource Governance redistributes CPU fairly across the active databases. If you [configure a 25% CPU cap](#resource-governance-policy), no database can consume more than approximately 16 vCPUs regardless of available spare capacity.
 
 ### Best practices
 
@@ -49,7 +53,7 @@ You configure Resource Governance on the cluster **Settings > Resource Governanc
 
 ![Cluster Resource Governance](/images/yb-cloud/cloud-clusters-governance.png)
 
-To enable Resource Governance, choose **Enable Resource Governance**.
+To enable Resource Governance, choose **Enable Resource Governance**. To disable it, click **Disable Resource Governance**.
 
 ### Monitoring
 
