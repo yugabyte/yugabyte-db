@@ -1,5 +1,4 @@
 {
-    "name": "coredb",
     "build": {
         "dockerfile": "Dockerfile"
     },
