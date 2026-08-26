@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -43,10 +44,12 @@ public class YNPProvisioning extends NodeTaskBase {
     public UUID customerUuid;
     public String nodeAgentInstallDir;
     public boolean isYbPrebuiltImage;
-    // True when re-provisioning a node of an existing universe (vs. provisioning a brand-new
-    // node). Propagated to the YNP config so configure_cgroup honors the persisted flag rather
-    // than the provider default for existing universes.
-    public boolean isReprovision;
+    // True when the node has YB software present on it.
+    public boolean isSoftwarePresent;
+    // True when the node has DB data present on it.
+    public boolean isDataPresent;
+
+    public Map<String, String> pathToUUIDMapping;
   }
 
   @Override
@@ -74,7 +77,9 @@ public class YNPProvisioning extends NodeTaskBase {
             .universe(universe)
             .userIntent(userIntent)
             .isYbPrebuiltImage(taskParams().isYbPrebuiltImage)
-            .isReprovision(taskParams().isReprovision)
+            .isSoftwarePresent(taskParams().isSoftwarePresent)
+            .isDataPresent(taskParams().isDataPresent)
+            .pathToUUIDMapping(taskParams().pathToUUIDMapping)
             .build();
     return ynpConfigGenerator.generateConfigFile(configParams);
   }
@@ -106,7 +111,8 @@ public class YNPProvisioning extends NodeTaskBase {
      *  YNP based provisioning because dual NIC setup will require a reboot which might
      *  clean up the tmp directory where the YNP config is created.
      */
-    AnsibleSetupServer.Params ansibleParams = buildDualNicSetupParams(universe, node, provider);
+    AnsibleSetupServer.Params ansibleParams =
+        buildDualNicSetupParams(universe, node, provider, taskParams().userIntent);
     nodeManager
         .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
         .processErrors("Dual NIC setup failed");
@@ -146,8 +152,7 @@ public class YNPProvisioning extends NodeTaskBase {
   }
 
   private AnsibleSetupServer.Params buildDualNicSetupParams(
-      Universe universe, NodeDetails node, Provider provider) {
-    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+      Universe universe, NodeDetails node, Provider provider, UserIntent taskUserIntent) {
     AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
     fillSetupParamsForNode(ansibleParams, universe.getCluster(node.placementUuid), node);
     ansibleParams.sshUserOverride = node.sshUserOverride;

@@ -260,9 +260,13 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
                 .setSubTaskGroupType(getTaskSubGroupType());
             createSetupYNPTask(universe, singleNode)
                 .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-            boolean isYbPrebuiltImage = false;
-            boolean isReprovision = true;
-            createYNPProvisioningTask(universe, singleNode, isYbPrebuiltImage, isReprovision)
+            createYNPProvisioningTask(
+                    universe,
+                    singleNode,
+                    (n, p) -> {
+                      p.isSoftwarePresent = true;
+                      p.isDataPresent = true;
+                    })
                 .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             // Always reinstall, never reuse. Re-provisioning wipes and rebuilds the node, so the
             // node agent must be reinstalled regardless of the state YBA last recorded for it -
