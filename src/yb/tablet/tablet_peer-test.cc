@@ -33,9 +33,13 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/primitive_value.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_fwd.h"
@@ -62,6 +66,7 @@
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_splitter.h"
@@ -93,6 +98,7 @@ DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_bool(quick_leader_election_on_create);
 DECLARE_bool(TEST_fail_operation_added_to_leader);
+DECLARE_uint32(TEST_fixed_hybrid_time_write_id_max);
 DECLARE_bool(TEST_pause_before_copying_bootstrap_state);
 DECLARE_bool(TEST_pause_before_flushing_bootstrap_state);
 DECLARE_bool(TEST_pause_before_submitting_flush_bootstrap_state);
@@ -506,6 +512,200 @@ TEST_F(TabletPeerTest, SnapshotAbortBeforePendingDoesNotUnregisterFilter) {
       tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
   ASSERT_NO_FATALS(SubmitAndCheckAbortedBeforePending(
       std::move(operation), consensus.get(), tablet_peer_.get()));
+}
+
+TEST_F(TabletPeerTest, FixedHybridTimeWritesUseRaftIndexWriteId) {
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+  auto consensus = ASSERT_RESULT(tablet_peer_->GetConsensus());
+
+  const dockv::DocKey doc_key(0, dockv::MakeKeyEntryValues("row"));
+  const auto encoded_key = doc_key.Encode();
+  const auto kWriteHT = 6000_usec_ht;
+
+  auto write = [&](const std::string& value) {
+    WriteRequestPB request;
+    request.set_tablet_id(tablet()->tablet_id());
+    request.set_external_hybrid_time(kWriteHT.ToUint64());
+
+    auto* write_batch = request.mutable_write_batch();
+    write_batch->set_use_raft_index_for_write_id(true);
+    auto* write_pair = write_batch->add_write_pairs();
+    write_pair->set_key(encoded_key.AsSlice().ToBuffer());
+    std::string encoded_value;
+    dockv::AppendEncodedValue(QLValue::Primitive(value), &encoded_value);
+    write_pair->set_value(encoded_value);
+
+    ExecuteWrite(tablet_peer_.get(), request);
+    return consensus->GetLastCommittedOpId();
+  };
+
+  const auto first_op_id = write("first");
+  const auto second_op_id = write("second");
+  ASSERT_GT(first_op_id.index, 0);
+  ASSERT_GT(second_op_id.index, first_op_id.index);
+
+  // The stored write ID is the Raft index lifted into the reserved marked domain.
+  const std::vector<std::string> expected_entries = {
+      Format(
+          "SubDocKey(DocKey(0x0000, [\"row\"], []), "
+          "[HT{ physical: 6000 w: $0 }]) -> \"second\"",
+          kBackfillWriteIdFloor | static_cast<IntraTxnWriteId>(second_op_id.index)),
+      Format(
+          "SubDocKey(DocKey(0x0000, [\"row\"], []), "
+          "[HT{ physical: 6000 w: $0 }]) -> \"first\"",
+          kBackfillWriteIdFloor | static_cast<IntraTxnWriteId>(first_op_id.index))};
+  auto get_entries = [](const TabletPtr& source_tablet) {
+    std::vector<std::string> entries;
+    source_tablet->TEST_DocDBDumpToContainer(entries, docdb::IncludeIntents::kFalse);
+    return entries;
+  };
+  ASSERT_EQ(expected_entries, get_entries(tablet()));
+
+  const auto tablet_id = tablet()->tablet_id();
+  ASSERT_FALSE(ASSERT_RESULT(tablet()->HasSSTables()));
+  ASSERT_OK(tablet_peer_->TEST_Shutdown(
+      ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kTrue));
+
+  // Replay the unflushed marked writes from the WAL twice: the derivation is
+  // (kBackfillWriteIdFloor | raft_index) at apply, so replay is deterministic and every
+  // bootstrap converges on the same physical keys.
+  auto bootstrap_from_wal = [&](TabletPtr* rebuilt_tablet, log::LogPtr* rebuilt_log,
+                                ConsensusBootstrapInfo* boot_info) -> Status {
+    auto metadata = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager(), tablet_id));
+    TabletStatusListener listener(metadata);
+    BootstrapTabletData data = {
+        .tablet_init_data = harness()->MakeTabletInitData(metadata),
+        .listener = &listener,
+        .append_pool = log_thread_pool_.get(),
+        .allocation_pool = log_thread_pool_.get(),
+        .log_sync_pool = log_thread_pool_.get(),
+    };
+    return BootstrapTablet(data, rebuilt_tablet, rebuilt_log, boot_info);
+  };
+
+  TabletPtr rebuilt_tablet;
+  log::LogPtr rebuilt_log;
+  ConsensusBootstrapInfo rebuilt_info;
+  ASSERT_OK(bootstrap_from_wal(&rebuilt_tablet, &rebuilt_log, &rebuilt_info));
+  ASSERT_EQ(second_op_id, rebuilt_info.last_id);
+  ASSERT_EQ(second_op_id, rebuilt_info.last_committed_id);
+  ASSERT_TRUE(rebuilt_info.orphaned_replicates.empty());
+  ASSERT_EQ(expected_entries, get_entries(rebuilt_tablet));
+
+  ASSERT_FALSE(ASSERT_RESULT(rebuilt_tablet->HasSSTables()));
+  ASSERT_TRUE(rebuilt_tablet->StartShutdown(DisableFlushOnShutdown::kTrue, AbortOps::kFalse));
+  ASSERT_OK(rebuilt_log->Close());
+  rebuilt_tablet->CompleteShutdown();
+  rebuilt_log.reset();
+  rebuilt_tablet.reset();
+
+  ConsensusBootstrapInfo second_rebuilt_info;
+  ASSERT_OK(bootstrap_from_wal(&rebuilt_tablet, &rebuilt_log, &second_rebuilt_info));
+  ASSERT_EQ(second_op_id, second_rebuilt_info.last_id);
+  ASSERT_EQ(second_op_id, second_rebuilt_info.last_committed_id);
+  ASSERT_TRUE(second_rebuilt_info.orphaned_replicates.empty());
+  ASSERT_EQ(expected_entries, get_entries(rebuilt_tablet));
+
+  ASSERT_TRUE(rebuilt_tablet->StartShutdown(DisableFlushOnShutdown::kTrue, AbortOps::kFalse));
+  ASSERT_OK(rebuilt_log->Close());
+  rebuilt_tablet->CompleteShutdown();
+}
+
+TEST_F(TabletPeerTest, FixedHybridTimeWriteIdRequiresUniqueUnversionedKeys) {
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+  auto consensus = ASSERT_RESULT(tablet_peer_->GetConsensus());
+  const auto kWriteHT = 6000_usec_ht;
+
+  auto initialize_request = [&](WriteRequestPB* request) {
+    request->set_tablet_id(tablet()->tablet_id());
+    request->set_external_hybrid_time(kWriteHT.ToUint64());
+    request->mutable_write_batch()->set_use_raft_index_for_write_id(true);
+  };
+  auto add_write_pair = [](WriteRequestPB* request, const std::string& key,
+                           const std::string& value) {
+    const dockv::DocKey doc_key(0, dockv::MakeKeyEntryValues(key));
+    auto* write_pair = request->mutable_write_batch()->add_write_pairs();
+    write_pair->set_key(doc_key.Encode().AsSlice().ToBuffer());
+    std::string encoded_value;
+    dockv::AppendEncodedValue(QLValue::Primitive(value), &encoded_value);
+    write_pair->set_value(encoded_value);
+  };
+
+  WriteRequestPB valid_request;
+  initialize_request(&valid_request);
+  add_write_pair(&valid_request, "row1", "first");
+  add_write_pair(&valid_request, "row2", "second");
+  ASSERT_OK(ExecuteWriteAndReturnStatus(tablet_peer_.get(), valid_request));
+
+  const auto last_committed_op_id = consensus->GetLastCommittedOpId();
+  WriteRequestPB invalid_request;
+  initialize_request(&invalid_request);
+  add_write_pair(&invalid_request, "duplicate", "first");
+  add_write_pair(&invalid_request, "duplicate", "second");
+  const auto status = ExecuteWriteAndReturnStatus(tablet_peer_.get(), invalid_request);
+  ASSERT_TRUE(status.IsInvalidArgument()) << status;
+  ASSERT_EQ(last_committed_op_id, consensus->GetLastCommittedOpId());
+
+  WriteRequestPB transactional_request;
+  initialize_request(&transactional_request);
+  add_write_pair(&transactional_request, "transactional", "value");
+  transactional_request.mutable_write_batch()->mutable_transaction();
+  const auto transactional_status =
+      ExecuteWriteAndReturnStatus(tablet_peer_.get(), transactional_request);
+  ASSERT_TRUE(transactional_status.IsInvalidArgument()) << transactional_status;
+  ASSERT_STR_CONTAINS(transactional_status.message().ToBuffer(), "cannot be transactional");
+  ASSERT_EQ(last_committed_op_id, consensus->GetLastCommittedOpId());
+}
+
+TEST_F(TabletPeerTest, FixedHybridTimeWriteIdOverflowRejectedBeforeRaftAppend) {
+  ConsensusBootstrapInfo info;
+  auto consensus = ASSERT_RESULT(StartPeerAndWaitForLeaderNoOpCommit(info));
+  const auto initial_op_id = consensus->GetLastCommittedOpId();
+  ASSERT_EQ(initial_op_id, tablet_peer_->log()->GetLatestEntryOpId());
+  const auto kWriteHT = 6000_usec_ht;
+
+  auto write = [&](const std::string& value) {
+    WriteRequestPB request;
+    request.set_tablet_id(tablet()->tablet_id());
+    request.set_external_hybrid_time(kWriteHT.ToUint64());
+    auto* write_batch = request.mutable_write_batch();
+    write_batch->set_use_raft_index_for_write_id(true);
+    auto* write_pair = write_batch->add_write_pairs();
+    const dockv::DocKey doc_key(0, dockv::MakeKeyEntryValues("row"));
+    write_pair->set_key(doc_key.Encode().AsSlice().ToBuffer());
+    std::string encoded_value;
+    dockv::AppendEncodedValue(QLValue::Primitive(value), &encoded_value);
+    write_pair->set_value(encoded_value);
+    return ExecuteWriteAndReturnStatus(tablet_peer_.get(), request);
+  };
+
+  ASSERT_LT(initial_op_id.index + 2, static_cast<int64_t>(kBackfillWriteIdIndexMax));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fixed_hybrid_time_write_id_max) =
+      static_cast<uint32_t>(initial_op_id.index + 1);
+  ASSERT_OK(write("first"));
+
+  const auto last_committed_op_id = consensus->GetLastCommittedOpId();
+  const auto last_log_op_id = tablet_peer_->log()->GetLatestEntryOpId();
+  ASSERT_EQ(initial_op_id.index + 1, last_committed_op_id.index);
+  ASSERT_EQ(last_committed_op_id, last_log_op_id);
+
+  const auto status = write("rejected");
+  ASSERT_TRUE(status.IsIllegalState()) << status;
+  // The injected ceiling has its own message: a log line must distinguish a test rejection
+  // from real write-ID-space exhaustion.
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "injected fixed-hybrid-time write ID");
+  ASSERT_EQ(last_committed_op_id, consensus->GetLastCommittedOpId());
+  ASSERT_EQ(last_log_op_id, tablet_peer_->log()->GetLatestEntryOpId());
+
+  // The rejected Raft index was rolled back before WAL append (not skipped), so the next
+  // accepted write reuses it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fixed_hybrid_time_write_id_max) =
+      static_cast<uint32_t>(last_committed_op_id.index + 1);
+  ASSERT_OK(write("reused"));
+  ASSERT_EQ(last_committed_op_id.index + 1, consensus->GetLastCommittedOpId().index);
+  ASSERT_EQ(consensus->GetLastCommittedOpId(), tablet_peer_->log()->GetLatestEntryOpId());
 }
 
 // Ensure that Log::GC() doesn't delete logs with anchors.
