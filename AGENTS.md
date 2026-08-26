@@ -38,13 +38,13 @@ The VM image is `yugabyteci/yb_build_infra_almalinux9_x86_64` which ships with: 
 ./yb_build.sh release daemons initdb --sj --skip-pg-parquet --no-odyssey --no-ybc
 ```
 
-This builds yb-master, yb-tserver, postgres, and the initial system catalog snapshot. Third-party C++ dependencies and the LLVM toolchain are auto-downloaded on first build. Expect ~10 minutes on 8 vCPUs.
+This is the Cloud environment `install` command. Builds snapshot `build/latest` (yb-master, yb-tserver, postgres, initdb). Agents booting from a successful Build already have those binaries; rerun only if the branch changes build inputs. Do not start yugabyted in `install`; Builds keep files, not processes.
 
-Flags: `--sj` skips Java, `--skip-pg-parquet` skips the parquet extension, `--no-odyssey` skips the connection pooler, `--no-ybc` skips the backup controller. Add targets back as needed.
+Flags: `--sj` skips Java, `--skip-pg-parquet` skips the parquet extension, `--no-odyssey` skips the connection pooler, `--no-ybc` skips the backup controller. Add targets back as needed. First compile is ~15-20 minutes on 8 vCPUs; later Builds reuse `/opt/yb-build` and incremental objects.
 
 ### Running the database
 
-After building:
+If `build/latest` is present, start the cluster. Otherwise compile first.
 
 ```bash
 python3 bin/yugabyted start --advertise_address 127.0.0.1 --base_dir /tmp/yb-data

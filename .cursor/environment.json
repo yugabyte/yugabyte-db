@@ -1,5 +1,7 @@
 {
+    "name": "coredb",
     "build": {
         "dockerfile": "Dockerfile"
-    }
+    },
+    "install": "./yb_build.sh release daemons initdb --sj --skip-pg-parquet --no-odyssey --no-ybc"
 }
