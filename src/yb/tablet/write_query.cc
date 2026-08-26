@@ -153,6 +153,31 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
   }
 }
 
+// A marked fixed-hybrid-time batch stores every regular record at the same
+// (hybrid time, write id), so it must be non-transactional and free of duplicate unversioned
+// keys -- a duplicate would silently collapse two logical candidates into one physical
+// version, which is exactly what the marker exists to prevent. Validated before Raft
+// submission so the write fails cleanly.
+Status ValidateRaftIndexWriteIdBatch(const docdb::LWKeyValueWriteBatchPB& write_batch) {
+  if (!write_batch.use_raft_index_for_write_id()) {
+    return Status::OK();
+  }
+
+  SCHECK(
+      !write_batch.has_transaction() && !write_batch.has_subtransaction(), InvalidArgument,
+      "A fixed-hybrid-time write batch cannot be transactional");
+  // External-transaction applies bypass the write-ID override in the batch writer, so they
+  // would get positional write IDs below the floor inside a marked batch. Unreachable from
+  // the pgsql backfill path; rejected to keep the marked domain closed to direct clients.
+  SCHECK(
+      write_batch.apply_external_transactions().empty(), InvalidArgument,
+      "A fixed-hybrid-time write batch cannot apply external transactions");
+  SCHECK(
+      !docdb::HasDuplicateWriteKeys(write_batch), InvalidArgument,
+      "A fixed-hybrid-time write batch cannot contain duplicate unversioned keys");
+  return Status::OK();
+}
+
 template <class Code, class Resp>
 bool CheckSchemaVersion(
     TableInfo* table_info, int schema_version,
@@ -353,6 +378,12 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
 
   if (!status.ok()) {
     Cancel(status);
+    return;
+  }
+
+  auto validation_status = ValidateRaftIndexWriteIdBatch(request().write_batch());
+  if (!validation_status.ok()) {
+    Cancel(validation_status);
     return;
   }
 
@@ -1649,6 +1680,12 @@ void WriteQuery::PgsqlExecuteDone(const Status& status) {
     return;
   }
 
+  auto mark_status = MaybeMarkRaftIndexWriteIdBatch();
+  if (!mark_status.ok()) {
+    StartSynchronization(std::move(self_), mark_status);
+    return;
+  }
+
   for (auto& doc_op : doc_ops_) {
     // We'll need to return the number of rows inserted, updated, or deleted by each operation.
     std::unique_ptr<docdb::PgsqlWriteOperation> pgsql_write_op(
@@ -1657,6 +1694,40 @@ void WriteQuery::PgsqlExecuteDone(const Status& status) {
   }
 
   StartSynchronization(std::move(self_), Status::OK());
+}
+
+// SKIP_ALL backfill writes run no uniqueness checks, so distinct candidates that share one
+// unique-index key at the fixed backfill hybrid time must remain distinct physical versions:
+// mark the batch so every replica derives the storage write ID from the Raft operation index
+// (see KeyValueWriteBatchPB.use_raft_index_for_write_id). Fail closed on any SKIP_ALL write
+// that cannot be marked -- writing it unmarked would let colliding candidates silently
+// overwrite each other, which is the exact evidence loss deferred verification depends on
+// preventing.
+Status WriteQuery::MaybeMarkRaftIndexWriteIdBatch() {
+  const auto& pgsql_batch = client_request_->pgsql_write_batch();
+  const auto skip_all = [](const auto& pgsql_request) {
+    return pgsql_request.unique_index_backfill_mode() ==
+           UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL;
+  };
+  if (std::none_of(pgsql_batch.begin(), pgsql_batch.end(), skip_all)) {
+    return Status::OK();
+  }
+
+  const auto eligible =
+      request().has_external_hybrid_time() &&
+      !request().write_batch().has_transaction() &&
+      client_request_->write_batch().write_pairs().empty() &&
+      std::all_of(pgsql_batch.begin(), pgsql_batch.end(), [&](const auto& pgsql_request) {
+        return skip_all(pgsql_request) && pgsql_request.is_backfill() &&
+               pgsql_request.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT;
+      });
+  SCHECK(
+      eligible, IllegalState,
+      "A SKIP_ALL unique-index backfill write must be a non-transactional, all-backfill "
+      "insert batch at a fixed hybrid time");
+
+  request().mutable_write_batch()->set_use_raft_index_for_write_id(true);
+  return Status::OK();
 }
 
 void WriteQuery::SimpleExecuteDone(const Status& status) {

@@ -40,6 +40,7 @@
 
 #include "yb/client/client.h"
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus.h"
@@ -107,6 +108,12 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
+DEFINE_test_flag(uint32, backfill_write_id_index_max, yb::kBackfillWriteIdIndexMax,
+    "Maximum Raft index accepted for a marked unique-index backfill write, whose write ID is "
+    "kBackfillWriteIdFloor | index. The default is the production ceiling, below the reserved "
+    "kMaxWriteId; tests lower it to exercise the rejection.");
+DEFINE_test_flag(bool, log_backfill_write_id_validation, false,
+    "Log when a marked unique-index backfill write reaches the Raft-append validation.");
 DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
                  "Wait before executing init tablet peer for specified amount of milliseconds.");
 
@@ -510,10 +517,37 @@ Status CheckWriteFence(const consensus::LWReplicateMsg& msg) {
       "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, hybrid_time);
 }
 
+// Rejects a marked unique-index backfill write (KeyValueWriteBatchPB::use_raft_index_for_write_id)
+// whose assigned Raft index cannot be turned into a write ID: the stored ID is
+// kBackfillWriteIdFloor | index, and indexes above kBackfillWriteIdIndexMax would collide with
+// the reserved kMaxWriteId sentinel. Judged here, per round, so the rejection fails only this
+// write and never the foreground writes the Preparer batched with it; Raft rolls the index back
+// for reuse. InvalidArgument: all replicas share the index space, so there is nothing to retry
+// against.
+Status CheckBackfillWriteIdAllowed(const consensus::LWReplicateMsg& msg) {
+  if (msg.op_type() != consensus::OperationType::WRITE_OP ||
+      !msg.write().write_batch().use_raft_index_for_write_id()) {
+    return Status::OK();
+  }
+  const auto op_id = OpId::FromPB(msg.id());
+  if (FLAGS_TEST_log_backfill_write_id_validation) {
+    LOG(INFO) << "TEST: validating marked backfill write with Raft OpId " << op_id;
+  }
+  SCHECK_GT(op_id.index, 0, InvalidArgument, "Marked backfill write has an invalid Raft index");
+  SCHECK_LE(
+      op_id.index, static_cast<int64_t>(kBackfillWriteIdIndexMax), InvalidArgument,
+      "Raft operation index exhausted the backfill write ID space");
+  SCHECK_LE(
+      op_id.index, static_cast<int64_t>(FLAGS_TEST_backfill_write_id_index_max), InvalidArgument,
+      "TEST: Raft operation index exceeded the injected backfill write ID ceiling");
+  return Status::OK();
+}
+
 }  // namespace
 
 Status TabletPeer::CheckReplicateAllowed(consensus::LWReplicateMsg& replicate_msg) {
   RETURN_NOT_OK(CheckWriteFence(replicate_msg));
+  RETURN_NOT_OK(CheckBackfillWriteIdAllowed(replicate_msg));
   if (persistence_gate_) {
     RETURN_NOT_OK(persistence_gate_->CheckPersistAllowed(replicate_msg));
   }

@@ -114,6 +114,14 @@ message KeyValueWriteBatchPB {
 
   // Used to keep track of packing schema versions used in a xCluster write batch.
   repeated XClusterUsedSchemaVersionPB xcluster_used_schema_versions = 19;
+
+  // When true, every replica derives this batch's storage write ID from the Raft operation
+  // index as (kBackfillWriteIdFloor | index) instead of the positional per-batch counter, so
+  // distinct fixed-hybrid-time index-backfill candidates for one key remain distinct physical
+  // versions across leader apply, follower apply, and WAL replay (#33444). The marker is
+  // replicated with the batch: replay never depends on runtime flag values. Only set for
+  // non-transactional, all-backfill YSQL insert batches written at a fixed hybrid time.
+  optional bool use_raft_index_for_write_id = 20;
 }
 
 message PerDbFilterPB {

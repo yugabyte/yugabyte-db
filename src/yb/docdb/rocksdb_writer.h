@@ -14,6 +14,7 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
 #include <span>
 
 #include <boost/logic/tribool.hpp>
@@ -67,6 +68,13 @@ class DocHybridTimeBuffer {
  private:
   std::array<char, 1 + kMaxBytesPerEncodedHybridTime> buffer_;
 };
+
+// Whether put_batch names the same unversioned key in more than one write pair. In a marked
+// (fixed-hybrid-time) backfill batch every regular record is written at one (hybrid time, write
+// id), so a repeated key would collapse two distinct candidates into one physical version -- the
+// evidence loss deferred verification exists to prevent. Checked pre-Raft (WriteQuery) and again
+// at apply (NonTransactionalBatchWriter) through this one definition.
+bool HasDuplicateWriteKeys(const LWKeyValueWriteBatchPB& put_batch);
 
 // Upper bound on the intra-transaction write IDs TransactionalWriter consumes applying
 // put_batch: one per strong intent. Every write and read pair takes a strong intent on its full
@@ -453,7 +461,8 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       ConsensusFrontiers& frontiers, const DocVectorIndexesPtr& vector_indexes,
       const StorageSet& apply_to_storages, TableType table_type,
       std::atomic<bool>* can_advance_intents_flush_op_id,
-      XClusterTargetApplied xcluster_target_applied);
+      XClusterTargetApplied xcluster_target_applied,
+      std::optional<IntraTxnWriteId> write_id_override = std::nullopt);
 
   ~NonTransactionalBatchWriter() override;
 
@@ -518,6 +527,11 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
 
   // Released by WriteApplied, at the latest on destruction.
   vector_index::VectorLSMChunkHolds chunk_holds_;
+
+  // When set (replicated fixed-hybrid-time batches), every regular record in the batch is
+  // written with this exact write ID instead of the positional per-batch counter. See
+  // KeyValueWriteBatchPB.use_raft_index_for_write_id.
+  std::optional<IntraTxnWriteId> write_id_override_;
 };
 
 // Context class for dumping intents records for a transaction.
