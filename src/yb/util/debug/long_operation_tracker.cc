@@ -63,7 +63,7 @@ struct TrackedOperationComparer {
 // registered operation is noticed within this interval, so a warning could be logged at most
 // this much later than the operation deadline. Since tracked durations are typically much
 // larger than this bound, the delay is not observable in practice.
-constexpr std::chrono::milliseconds kMaxWaitTime(100);
+constexpr auto kMaxWaitTime = std::chrono::milliseconds(100);
 
 // Deadlines below this threshold cannot rely on the periodic scan alone: the operation could
 // expire and complete entirely within one kMaxWaitTime sleep, losing the stack trace warning.
