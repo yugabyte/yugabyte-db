@@ -423,7 +423,7 @@ class SamplePickerBase : public PgSelect {
     auto read_op = ArenaMakeShared<PgsqlReadOp>(
         arena_ptr(), &arena(), *target_, locality_info, pg_session_->metrics().metrics_capture());
     read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
-    ApplySkipIntentsOptimizationInfo(skip_intents_info, *read_req_);
+    RETURN_NOT_OK(ApplySkipIntentsOptimizationInfo(skip_intents_info, *read_req_));
     doc_op_ = std::make_shared<PgDocSampleOp>(pg_session_, &target_, std::move(read_op), clock_);
     return Status::OK();
   }
@@ -852,7 +852,7 @@ Status PgSample::Prepare(
       arena_ptr(), &arena(), *target_, locality_info,
       pg_session_->metrics().metrics_capture());
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
-  ApplySkipIntentsOptimizationInfo(skip_intents_info, *read_req_);
+  RETURN_NOT_OK(ApplySkipIntentsOptimizationInfo(skip_intents_info, *read_req_));
   doc_op_ = make_shared<PgDocSampleFetchOp>(pg_session_, &target_, std::move(read_op));
 
   VLOG_WITH_FUNC(3)
