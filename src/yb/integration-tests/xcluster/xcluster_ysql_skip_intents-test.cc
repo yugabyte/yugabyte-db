@@ -198,7 +198,8 @@ TEST_F(XClusterYsqlSkipIntentsReplicationTest, ChainedCtasReplicatesOrderedRows)
 }
 
 // DDL inside an explicit READ COMMITTED transaction block: skip-intents-in-txn-blocks only applies
-// under RC (see YbCanSkipIntents).  Verifies xCluster still replicates final state in key order.
+// under RC (see YbGetSkipIntentsOptimizationInfo).  Verifies xCluster still replicates final
+// state in key order.
 TEST_F(XClusterYsqlSkipIntentsReplicationTest, TxnBlockCtasReplicatesOrderedRows) {
   ASSERT_OK(SetUpClustersAndReplication());
   DoCtasReplicatesOrderedRows(true);

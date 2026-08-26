@@ -337,6 +337,7 @@ YbcPgSession
 YbcPgSessionState
 YbcPgSessionTxnInfo
 YbcPgSharedDataPlaceholder
+YbcPgSkipIntentsOptimizationInfo
 YbcPgSplitDatum
 YbcPgStatement
 YbcPgSysColumns

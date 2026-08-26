@@ -253,7 +253,7 @@ lnext:
 		Assert(IsYBBackedRelation(erm->relation) == yb_mode);
 		if (yb_mode)
 		{
-			if (!YbCanSkipIntentsWrite(erm->relation))
+			if (!YbGetSkipIntentsOptimizationInfoWrite(erm->relation).skip_intents)
 				test = YBCLockTuple(erm->relation, datum, erm->markType, erm->waitPolicy, estate,
 									handle);
 			else
