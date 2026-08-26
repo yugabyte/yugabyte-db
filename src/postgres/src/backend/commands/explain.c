@@ -1555,13 +1555,6 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		 * YB: Fetch stats collected at the query level (ie. not corresponding
 		 * to any execution node)
 		 */
-		/*
-		 * YB_TODO_PG19MERGE: PG commit 5a79e78501f46bd3ac7fbd0ff84cf1e20dbafd19
-		 * split the old Instrumentation struct into a slim Instrumentation and
-		 * a per-node NodeInstrumentation which carries YB's yb_instr.
-		 * The code below needs to be reworked.
-		 */
-#if 0
 		if (es->rpc)
 		{
 			YbInstrumentation *yb_instr = &queryDesc->yb_query_stats->yb_instr;
@@ -1569,7 +1562,6 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			YbUpdateSessionStats(yb_instr);
 			YbAggregateExplainableRPCRequestStat(es, yb_instr);
 		}
-#endif
 
 		/* We can't run ExecutorEnd 'till we're done printing the stats... */
 		totaltime += elapsed_time(&starttime);
