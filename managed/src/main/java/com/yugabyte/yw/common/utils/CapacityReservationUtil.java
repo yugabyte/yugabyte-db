@@ -182,7 +182,8 @@ public class CapacityReservationUtil {
     CREATE,
     EDIT,
     RESIZE,
-    RESUME
+    RESUME,
+    OS_UPGRADE
   }
 
   public static <T extends UniverseDefinitionTaskParams.ReservationInfo>

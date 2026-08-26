@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -172,11 +173,24 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         () -> {
           MastersAndTservers nodes = getNodesToBeRestarted();
           Set<NodeDetails> nodeSet = toOrderedSet(nodes.asPair());
+          Map<NodeDetails, ImageSettings> imageSettingsMap = getImageSettingsForNodes(nodeSet);
+
+          boolean deleteCapacityReservation =
+              createCapacityReservationsIfNeeded(
+                  nodeSet,
+                  CapacityReservationUtil.OperationType.OS_UPGRADE,
+                  node ->
+                      imageSettingsMap.containsKey(node)
+                          && !runtimeInfo.replacementCompletedNodes.contains(node.getNodeUuid()));
 
           String newVersion = taskParams().ybSoftwareVersion;
 
           // Create task sequence for VM Image upgrade
-          createVMImageUpgradeTasks(nodeSet);
+          createVMImageUpgradeTasks(imageSettingsMap, nodeSet);
+
+          if (deleteCapacityReservation) {
+            createDeleteCapacityReservationTask();
+          }
 
           if (taskParams().isSoftwareUpdateViaVm) {
             // Promote Auto flags on compatible versions.
@@ -291,8 +305,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     return result;
   }
 
-  private void createVMImageUpgradeTasks(Set<NodeDetails> nodes) {
-    Map<NodeDetails, ImageSettings> imageSettingsMap = getImageSettingsForNodes(nodes);
+  private void createVMImageUpgradeTasks(
+      Map<NodeDetails, ImageSettings> imageSettingsMap, Set<NodeDetails> nodes) {
     if (runtimeInfo.volumesCreated) {
       replacementRootDevices.putAll(runtimeInfo.replacementRootDevices);
       replacementRootVolumes.putAll(runtimeInfo.replacementRootVolumes);
