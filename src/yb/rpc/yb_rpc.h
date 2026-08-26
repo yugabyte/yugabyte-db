@@ -201,9 +201,10 @@ class YBInboundCall : public InboundCall {
   virtual Status ParseParam(RpcCallParams* params);
 
   // Creates a server-side trace span, from the inbound RequestHeader's trace_context (remote)
-  // or the outbound call's context via `parent` (local). No-op when no parent or tracing is off.
+  // or the outbound call's context via `traceparent` (local). No-op when no parent or tracing is
+  // off.
   void CreateServerSpan(
-      std::optional<opentelemetry::trace::SpanContext> parent = std::nullopt);
+      std::optional<opentelemetry::trace::SpanContext> traceparent = std::nullopt);
 
   // Releases the server span's thread-local scope on the handler thread once synchronous handling
   // is done. The span itself ends later (RespondSuccess/Failure), possibly on another thread.
