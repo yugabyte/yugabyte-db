@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <optional>
 #include <span>
 
 #include <boost/intrusive/list.hpp>
@@ -515,7 +516,8 @@ class Tablet : public AbstractTablet,
       const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers& frontiers,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time,
       const docdb::StorageSet& apply_to_storages,
-      docdb::XClusterTargetApplied xcluster_target_applied);
+      docdb::XClusterTargetApplied xcluster_target_applied,
+      std::optional<IntraTxnWriteId> write_id_override = std::nullopt);
 
   void WriteToRocksDB(
       const storage::UserFrontiers& frontiers,
