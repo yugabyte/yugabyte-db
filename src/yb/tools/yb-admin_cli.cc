@@ -2172,25 +2172,6 @@ Status get_change_data_stream_info_action(
   return Status::OK();
 }
 
-const auto ysql_backfill_change_data_stream_with_replication_slot_args =
-    "<stream_id> <replication_slot_name>";
-Status ysql_backfill_change_data_stream_with_replication_slot_action(
-    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() != 2) {
-    return ClusterAdminCli::kInvalidArguments;
-  }
-
-  const string stream_id = args[0];
-  const string replication_slot_name = args[1];
-
-  RETURN_NOT_OK_PREPEND(
-      client->YsqlBackfillReplicationSlotNameToCDCSDKStream(stream_id, replication_slot_name),
-      Format(
-          "Unable to backfill CDC stream $0 with replication slot $1", stream_id,
-          replication_slot_name));
-  return Status::OK();
-}
-
 const auto disable_dynamic_table_addition_on_change_data_stream_args = "<stream_id>";
 Status disable_dynamic_table_addition_on_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -3175,7 +3156,6 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(delete_change_data_stream);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
-  REGISTER_COMMAND(ysql_backfill_change_data_stream_with_replication_slot);
   REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
   REGISTER_COMMAND(remove_user_table_from_change_data_stream);
   REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
