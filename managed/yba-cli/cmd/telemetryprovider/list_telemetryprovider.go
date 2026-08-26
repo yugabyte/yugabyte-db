@@ -32,6 +32,6 @@ func init() {
 	listTelemetryProviderCmd.Flags().
 		StringP("name", "n", "", "[Optional] Name of the telemetry provider.")
 	listTelemetryProviderCmd.Flags().StringP("type", "t", "",
-		"[Optional] Type of the telemetry provider. "+
-			"Allowed values: datadog, loki, splunk, awscloudwatch, gcpcloudmonitoring.")
+		"[Optional] Type of the telemetry provider. Allowed values (case insensitive): "+
+			"datadog, loki, splunk, awscloudwatch, gcpcloudmonitoring, dynatrace, s3, otlp.")
 }
