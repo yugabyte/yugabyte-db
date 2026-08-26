@@ -566,6 +566,11 @@ TEST_F(TabletPeerTest, FixedHybridTimeWritesUseRaftIndexWriteId) {
   ASSERT_FALSE(ASSERT_RESULT(tablet()->HasSSTables()));
   ASSERT_OK(tablet_peer_->TEST_Shutdown(
       ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kTrue));
+  // The peer dropped its tablet reference in CompleteShutdown, but the harness still holds one:
+  // release it so the old Tablet's MemTracker subtree expires before bootstrap constructs a new
+  // Tablet with the same tablet id (a live duplicate child is a DFATAL in
+  // MemTracker::InsertChildUnlocked, which the sanitizer builds turn fatal).
+  harness()->ReleaseTablet();
 
   // Replay the unflushed marked writes from the WAL twice: the derivation is
   // (kBackfillWriteIdFloor | raft_index) at apply, so replay is deterministic and every
