@@ -2898,6 +2898,20 @@ PQfn(PGconn *conn,
 	 const PQArgBlock *args,
 	 int nargs)
 {
+	return PQnfn(conn, fnid, result_buf, -1, result_len,
+				 result_is_int, args, nargs);
+}
+
+/*
+ * PQnfn
+ *		Private version of PQfn() with verification that returned data fits in
+ *		result_buf when result_is_int == 0.  Setting buf_size to -1 disables
+ *		this verification.
+ */
+PGresult *
+PQnfn(PGconn *conn, int fnid, int *result_buf, int buf_size, int *result_len,
+	  int result_is_int, const PQArgBlock *args, int nargs)
+{
 	*result_len = 0;
 
 	if (!conn)
@@ -2928,7 +2942,7 @@ PQfn(PGconn *conn,
 	}
 
 	return pqFunctionCall3(conn, fnid,
-						   result_buf, result_len,
+						   result_buf, buf_size, result_len,
 						   result_is_int,
 						   args, nargs);
 }
@@ -4012,7 +4026,8 @@ PQescapeStringInternal(PGconn *conn,
 		}
 
 		/* Slow path for possible multibyte characters */
-		charlen = pg_encoding_mblen(encoding, source);
+		charlen = pg_encoding_mblen_or_incomplete(encoding,
+												  source, remaining);
 
 		if (remaining < charlen ||
 			pg_encoding_verifymbchar(encoding, source, charlen) == -1)
@@ -4158,7 +4173,8 @@ PQescapeInternal(PGconn *conn, const char *str, size_t len, bool as_ident)
 			int			charlen;
 
 			/* Slow path for possible multibyte characters */
-			charlen = pg_encoding_mblen(conn->client_encoding, s);
+			charlen = pg_encoding_mblen_or_incomplete(conn->client_encoding,
+													  s, remaining);
 
 			if (charlen > remaining)
 			{
