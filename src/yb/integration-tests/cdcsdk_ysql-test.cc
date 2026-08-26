@@ -14910,6 +14910,58 @@ TEST_F(CDCSDKYsqlTest, TestRecordTypeOptionPresenceForStreams) {
       << "yb-admin gRPC stream should have a record_type option";
 }
 
+TEST_F(CDCSDKYsqlTest, TestGrpcStreamGetsReplicaIdentityForDynamicTable) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto table1 = ASSERT_RESULT(
+      CreateTable(&test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "pg_grpc_slot", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
+      /* verify_snapshot_name */ false, test_namespace_name, kYbGrpcStreamIndicator));
+
+  // The table existing at stream creation gets a replica identity entry.
+  auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
+  ASSERT_TRUE(resp.stream().replica_identity_map().contains(table1.table_id()))
+      << "table present at stream creation is missing from replica_identity_map";
+
+  // Dynamically create a second table and wait for the master to add it to the stream.
+  const std::string kDynamicTableName = "test_table_1";
+  auto table2 = ASSERT_RESULT(
+      CreateTable(&test_cluster_, test_namespace_name, kDynamicTableName, 1 /* num_tablets */));
+  VerifyTablesInStreamMetadata(
+      stream_id, {table1.table_id(), table2.table_id()},
+      "Waiting for the dynamically created table to get added to the stream.");
+
+  // The dynamically added table must also get a replica identity entry.
+  resp = ASSERT_RESULT(GetCDCStream(stream_id));
+  ASSERT_TRUE(resp.stream().replica_identity_map().contains(table2.table_id()))
+      << "dynamically added table has no replica identity entry in the stream metadata";
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets2;
+  ASSERT_OK(test_client()->GetTablets(table2, 0, &tablets2, /* partition_list_version =*/nullptr));
+
+  // The dynamically added tablet's cdc_state entry starts dormant (checkpoint Invalid,
+  // active_time 0), so GetChanges is rejected by CheckStreamActive until the consumer activates
+  // the tablet with an explicit checkpoint, as the connector does when it bootstraps a newly
+  // discovered tablet.
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets2));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(0 /* start */, 10 /* end */, &test_cluster_, 2, kDynamicTableName));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto change_resp = VERIFY_RESULT(GetChangesFromCDC(stream_id, tablets2));
+        LOG(INFO) << "GetChanges returned " << change_resp.cdc_sdk_proto_records_size()
+                  << " records";
+
+        // 1 DDL + 10 x (BEGIN + INSERT + COMMIT) = 31 records
+        return change_resp.cdc_sdk_proto_records_size() == 31;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Waiting to stream all records of the dynamically added table"));
+}
+
 TEST_F(CDCSDKYsqlTest, TestBackfillOfNotificationsStreamPluginName) {
   // Enabling LISTEN/NOTIFY makes the master's background task create the yb_system database and the
   // pg_yb_notifications table (the eligible table for notifications streams).
