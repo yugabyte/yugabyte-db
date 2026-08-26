@@ -39,6 +39,33 @@ constexpr IntraTxnWriteId kMaxWriteId = std::numeric_limits<IntraTxnWriteId>::ma
 // while reserving [2^31, 2^32) for future write-ID domains.
 constexpr IntraTxnWriteId kIntraTxnWriteIdLimit = 0x80000000;
 
+// The write-ID domain reserved above kIntraTxnWriteIdLimit holds fixed-hybrid-time
+// index-backfill writes, whose write ID is derived from the target tablet's Raft operation
+// index as (kBackfillWriteIdFloor | index) (#33444). A foreground write that lands at exactly
+// the backfill hybrid time must never produce the same (key, hybrid time, write id) tuple as a
+// backfill write -- the two would collapse to one physical record. That holds because every
+// unmarked writer stays below the floor:
+//
+//  1. Transactional writes: the intra-transaction write ID is capped below
+//     kIntraTxnWriteIdLimit when the intent is written (TransactionalWriter), and apply reuses
+//     the intent's ID verbatim and re-checks it (ApplyIntentsContext). Large-transaction apply
+//     resumes from the persisted apply state, which carries an already-checked ID.
+//  2. Non-transactional batches (YSQL and YCQL): NonTransactionalBatchWriter assigns positional
+//     IDs from zero per KeyValueWriteBatchPB, so the largest ID is bounded by the number of
+//     pairs in one RPC-sized batch -- orders of magnitude below 2^31.
+//  3. xCluster external intents: applied through the same positional counter per apply
+//     (AddEntryToWriteBatch / PrepareApplyExternalIntentsBatch), same bound.
+//  4. Vector-index entries: stamped with the enclosing batch's positional write ID.
+//  5. Marked batches: the only producer of IDs at or above the floor, by construction
+//     (op_id.index <= kBackfillWriteIdIndexMax is enforced before Raft append).
+//
+// kMaxWriteId remains reserved as a sentinel (compaction cutoffs and iterator bounds encode
+// it to make hybrid-time bounds inclusive of every write ID), so the largest Raft operation
+// index that may be marked is kBackfillWriteIdIndexMax.
+constexpr IntraTxnWriteId kBackfillWriteIdFloor = kIntraTxnWriteIdLimit;
+constexpr IntraTxnWriteId kBackfillWriteIdIndexMax = kMaxWriteId - kBackfillWriteIdFloor - 1;
+static_assert((kBackfillWriteIdFloor | kBackfillWriteIdIndexMax) == kMaxWriteId - 1);
+
 // An aggressive upper bound on the length of a DocDB-encoded hybrid time with a write id.
 // This could happen in the degenerate case when all three VarInts in encoded representation of a
 // DocHybridTime take 10 bytes (the maximum length for a VarInt-encoded int64_t).
