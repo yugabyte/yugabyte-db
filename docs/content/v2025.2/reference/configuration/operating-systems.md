@@ -27,7 +27,7 @@ Unless otherwise noted, operating systems are supported by all supported version
 | Red Hat Enterprise Linux 8 CIS Hardened | {{<icon/yes>}} |      | |
 | Red Hat Enterprise Linux&nbsp;9.3 and later | {{<icon/yes>}} |  | |
 | Red Hat Enterprise Linux&nbsp;9 CIS Hardened | {{<icon/yes>}} |  |  |
-| Rocky Linux 8    | {{<icon/yes>}} |                | Supported in v2024.2 and later   |
+| Rocky Linux 8    | {{<icon/yes>}} |                | |
 | Rocky Linux 9    | {{<icon/yes>}} |                | Supported in v2025.2 and later  {{<tags/feature/ea idea="1956">}} |
 | SUSE&nbsp;Linux&nbsp;Enterprise&nbsp;Server&nbsp;15&nbsp;SP5 | {{<icon/yes>}} |     | {{<tags/feature/ea>}} |
 | Ubuntu 20        | {{<icon/yes>}} | {{<icon/yes>}} |       |
