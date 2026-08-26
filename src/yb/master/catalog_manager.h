@@ -1375,6 +1375,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) override;
 
+  Result<SplitPhase> GetTableSplitPhase(
+      const scoped_refptr<const TableInfo>& table) const override;
   Result<SplitPhase> ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
@@ -2870,6 +2872,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // if the tablet is not found.
   template <class Req, class Resp, class F>
   Status PerformOnSysCatalogTablet(const Req& req, Resp* resp, const F& f);
+
+  // GetTableSplitPhase for a caller that already holds the table's replication info.
+  Result<SplitPhase> GetTableSplitPhase(
+      const TableInfo& table, const ReplicationInfoPB& table_replication_info) const;
 
   Status CollectTable(
       const TableDescription& table_description,

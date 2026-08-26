@@ -3187,6 +3187,50 @@ PitrCount CatalogManager::pitr_count() const {
   return sys_catalog_->pitr_count();
 }
 
+Result<SplitPhase> CatalogManager::GetTableSplitPhase(
+    const scoped_refptr<const TableInfo>& table) const {
+  const auto table_replication_info = VERIFY_RESULT(CatalogManagerUtil::GetTableReplicationInfo(
+      table, GetTablespaceManager(), ClusterConfig()->LockForRead()->pb.replication_info()));
+  return GetTableSplitPhase(*table, table_replication_info);
+}
+
+Result<SplitPhase> CatalogManager::GetTableSplitPhase(
+    const TableInfo& table, const ReplicationInfoPB& table_replication_info) const {
+  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
+
+  size_t num_servers = 0;
+  // If there is custom placement information present then
+  // only count the tservers which the table has access to
+  // according to the placement policy
+  if (table_replication_info.has_live_replicas()) {
+    auto valid_tservers_res =
+        FindTServersForPlacementInfo(table_replication_info.live_replicas(), ts_descs);
+    if (!valid_tservers_res.ok()) {
+      num_servers = ts_descs.size();
+    } else {
+      num_servers = valid_tservers_res.get().size();
+    }
+  } else {
+    num_servers = ts_descs.size();
+  }
+
+  if (num_servers == 0) {
+    return STATUS_FORMAT(IllegalState,
+                         "No live, non-blacklisted tservers for table $0. "
+                         "Cannot calculate average number of tablets per tserver.",
+                         table.id());
+  }
+  int64 num_tablets_per_server = table.NumPartitions() / num_servers;
+
+  if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
+    return SplitPhase::kLow;
+  }
+  if (num_tablets_per_server < FLAGS_tablet_split_high_phase_shard_count_per_node) {
+    return SplitPhase::kHigh;
+  }
+  return SplitPhase::kFinal;
+}
+
 Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (drive_info.may_have_orphaned_post_split_data) {
@@ -3203,9 +3247,7 @@ Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
     return STATUS_FORMAT(IllegalState, "Tablet $0 SST size ($1) < low phase size threshold ($2).",
         tablet_info.id(), size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
   }
-  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
 
-  size_t num_servers = 0;
   auto table_replication_info = VERIFY_RESULT(CatalogManagerUtil::GetTableReplicationInfo(
       tablet_info.table(), GetTablespaceManager(),
       ClusterConfig()->LockForRead()->pb.replication_info()));
@@ -3218,60 +3260,36 @@ Result<SplitPhase> CatalogManager::ShouldSplitValidCandidate(
       tablet_info.id(), *tablet_info.GetReplicaLocations(),
       CatalogManagerUtil::GetReplicationFactor(table_replication_info)));
 
-  // If there is custom placement information present then
-  // only count the tservers which the table has access to
-  // according to the placement policy
-  if (table_replication_info.has_live_replicas()) {
-    auto pb = table_replication_info.live_replicas();
-    auto valid_tservers_res =
-        FindTServersForPlacementInfo(table_replication_info.live_replicas(), ts_descs);
-    if (!valid_tservers_res.ok()) {
-      num_servers = ts_descs.size();
-    } else {
-      num_servers = valid_tservers_res.get().size();
-    }
-  } else {
-    num_servers = ts_descs.size();
+  const auto phase = VERIFY_RESULT(
+      GetTableSplitPhase(*tablet_info.table(), table_replication_info));
+  switch (phase) {
+    case SplitPhase::kLow:
+      if (size <= FLAGS_tablet_split_low_phase_size_threshold_bytes) {
+        return STATUS_FORMAT(IllegalState,
+            "Table $0 is in the low split phase. Tablet $1 size ($2) <= "
+            "tablet_split_low_phase_size_threshold_bytes ($3).",
+            tablet_info.table()->id(), tablet_info.tablet_id(), size,
+            FLAGS_tablet_split_low_phase_size_threshold_bytes);
+      }
+      return phase;
+    case SplitPhase::kHigh:
+      if (size <= FLAGS_tablet_split_high_phase_size_threshold_bytes) {
+        return STATUS_FORMAT(IllegalState,
+            "Table $0 is in the high split phase. Tablet $1 size ($2) <= "
+            "tablet_split_high_phase_size_threshold_bytes ($3).",
+            tablet_info.table()->id(), tablet_info.tablet_id(), size,
+            FLAGS_tablet_split_high_phase_size_threshold_bytes);
+      }
+      return phase;
+    case SplitPhase::kFinal:
+      if (size <= FLAGS_tablet_force_split_threshold_bytes) {
+        return STATUS_FORMAT(IllegalState,
+            "Tablet $0 size ($1) <= tablet_force_split_threshold_bytes ($2)",
+            tablet_info.tablet_id(), size, FLAGS_tablet_force_split_threshold_bytes);
+      }
+      return phase;
   }
-
-  if (num_servers == 0) {
-    return STATUS_FORMAT(IllegalState,
-                         "No live, non-blacklisted tservers for tablet $0. "
-                         "Cannot calculate average number of tablets per tserver.",
-                         tablet_info.id());
-  }
-  int64 num_tablets_per_server = tablet_info.table()->NumPartitions() / num_servers;
-
-  if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
-    if (size <= FLAGS_tablet_split_low_phase_size_threshold_bytes) {
-      return STATUS_FORMAT(IllegalState,
-          "Table $0 num_tablets_per_server ($1) is less than "
-          "tablet_split_low_phase_shard_count_per_node "
-          "($2). Tablet $3 size ($4) <= tablet_split_low_phase_size_threshold_bytes ($5).",
-          tablet_info.table()->id(), num_tablets_per_server,
-          FLAGS_tablet_split_low_phase_shard_count_per_node, tablet_info.tablet_id(), size,
-          FLAGS_tablet_split_low_phase_size_threshold_bytes);
-    }
-    return SplitPhase::kLow;
-  }
-  if (num_tablets_per_server < FLAGS_tablet_split_high_phase_shard_count_per_node) {
-    if (size <= FLAGS_tablet_split_high_phase_size_threshold_bytes) {
-      return STATUS_FORMAT(IllegalState,
-          "Table $0 num_tablets_per_server ($1) is less than "
-          "tablet_split_high_phase_shard_count_per_node "
-          "($2). Tablet $3 size ($4) <= tablet_split_high_phase_size_threshold_bytes ($5).",
-          tablet_info.table()->id(), num_tablets_per_server,
-          FLAGS_tablet_split_high_phase_shard_count_per_node, tablet_info.tablet_id(), size,
-          FLAGS_tablet_split_high_phase_size_threshold_bytes);
-    }
-    return SplitPhase::kHigh;
-  }
-  if (size <= FLAGS_tablet_force_split_threshold_bytes) {
-    return STATUS_FORMAT(IllegalState,
-        "Tablet $0 size ($1) <= tablet_force_split_threshold_bytes ($2)",
-        tablet_info.tablet_id(), size, FLAGS_tablet_force_split_threshold_bytes);
-  }
-  return SplitPhase::kFinal;
+  FATAL_INVALID_ENUM_VALUE(SplitPhase, phase);
 }
 
 namespace {
