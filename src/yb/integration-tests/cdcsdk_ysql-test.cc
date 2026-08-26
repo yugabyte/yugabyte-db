@@ -14014,5 +14014,210 @@ TEST_F(CDCSDKYsqlTest, TestCleanUpCDCSDKMetadataDeadlockWithConcurrentSlotBackfi
   sync_point->DisableProcessing();
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTimeBasedIntentRetentionForCDC)) {
+  const uint64_t kMinTimeToRetainIntentSecs = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_time_based_intent_retention) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_sec_to_retain_intent) = kMinTimeToRetainIntentSecs;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+
+  // Create two single tablet tables.
+  auto polled_table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */,
+      true /* add_primary_key */, false /* colocated */, 0 /* table_oid */, false /* enum_value */,
+      "_0" /* enum_suffix */));
+  auto un_polled_table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */,
+      true /* add_primary_key */, false /* colocated */, 0 /* table_oid */, false /* enum_value */,
+      "_1" /* enum_suffix */));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> polled_tablets;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> un_polled_tablets;
+  ASSERT_OK(
+      test_client()->GetTablets(
+          polled_table, 0, &polled_tablets, /* partition_list_version */
+          nullptr));
+  ASSERT_OK(test_client()->GetTablets(un_polled_table, 0, &un_polled_tablets, nullptr));
+  ASSERT_EQ(polled_tablets.size(), 1);
+  ASSERT_EQ(un_polled_tablets.size(), 1);
+  const auto polled_tablet_id = polled_tablets.Get(0).tablet_id();
+  const auto un_polled_tablet_id = un_polled_tablets.Get(0).tablet_id();
+
+  // Create a CDC stream bound only to polled_table.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE,
+      test_namespace_name, {polled_table.table_id()}));
+
+  // Only the polled_table's tablet should be under CDCSDK replication.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto cdc_peer = VERIFY_RESULT(GetLeaderPeerForTablet(test_cluster(), polled_tablet_id));
+        auto non_cdc_peer =
+            VERIFY_RESULT(GetLeaderPeerForTablet(test_cluster(), un_polled_tablet_id));
+        return cdc_peer->is_under_cdc_sdk_replication() &&
+               !non_cdc_peer->is_under_cdc_sdk_replication();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for retention barriers to be set up"));
+
+  auto get_intent_sst_file_count = [&](const TabletId& tablet_id) -> Result<int64_t> {
+    std::unordered_map<std::string, std::pair<int64_t, int64_t>> counts;
+    RETURN_NOT_OK(GetIntentEntriesAndSSTFileCountForTablet(tablet_id, &counts));
+    int64_t total_sst_files = 0;
+    for (const auto& [_, intents] : counts) {
+      total_sst_files += intents.second;
+    }
+    return total_sst_files;
+  };
+
+  auto trigger_intent_files_cleanup = [&](const TabletId& tablet_id) -> Status {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        if (peer->tablet_id() != tablet_id) {
+          continue;
+        }
+        auto tablet = VERIFY_RESULT(peer->shared_tablet());
+        tablet->CleanupIntentFiles();
+      }
+    }
+    return Status::OK();
+  };
+
+  // Perform a transaction on both tables and flush them to create intent SST files.
+  ASSERT_OK(WriteRowsHelper(
+      0 /* start */, 100 /* end */, &test_cluster_, true /* commit */, 2 /* num_cols */,
+      (kTableName + std::string("_0")).c_str()));
+  ASSERT_OK(WriteRowsHelper(
+      0 /* start */, 100 /* end */, &test_cluster_, true /* commit */, 2 /* num_cols */,
+      (kTableName + std::string("_1")).c_str()));
+  ASSERT_OK(WaitForFlushTables(
+      {polled_table.table_id(), un_polled_table.table_id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ 100, /* is_compaction = */ false));
+
+  // The CDC tablet should have intent SST files.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(get_intent_sst_file_count(polled_tablet_id)) > 0;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for intent SST files on the CDC tablet"));
+
+  // Consume the records on the CDC table and acknowledge them via an explicit checkpoint in the
+  // followup GetChanges call. After this, CDC no longer needs these intents.
+  auto pending_changes = GetAllPendingChangesFromCdc(stream_id, polled_tablets);
+  ASSERT_EQ(pending_changes.records.size(), 103);
+  ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, polled_tablets, &pending_changes.checkpoint, &pending_changes.checkpoint));
+
+  // Trigger intent SST file cleanup on both tablets.
+  ASSERT_OK(trigger_intent_files_cleanup(polled_tablet_id));
+  ASSERT_OK(trigger_intent_files_cleanup(un_polled_tablet_id));
+
+  // The non-CDC tablet's intents should be deleted: time-based retention does not apply to it.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(get_intent_sst_file_count(un_polled_tablet_id)) == 0;
+      },
+      MonoDelta::FromSeconds(60),
+      "Timed out waiting for intent SST file cleanup on the non-CDC tablet"));
+
+  // The CDC tablet's intents must NOT be deleted yet since they are not old enough, even though CDC
+  // has already consumed them. Sleep for five seconds to ensure that the async cleanup has a chance
+  // to run.
+  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_OK(trigger_intent_files_cleanup(polled_tablet_id));
+  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_GT(ASSERT_RESULT(get_intent_sst_file_count(polled_tablet_id)), 0);
+
+  // Once the retention interval elapses, the CDC tablet's intents should be deleted.
+  SleepFor(MonoDelta::FromSeconds(kMinTimeToRetainIntentSecs));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(trigger_intent_files_cleanup(polled_tablet_id));
+        return VERIFY_RESULT(get_intent_sst_file_count(polled_tablet_id)) == 0;
+      },
+      MonoDelta::FromSeconds(60),
+      "Timed out waiting for intent SST file cleanup on the CDC tablet after retention interval"));
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsNotRetainedAfterDropingCDCStream)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_time_based_intent_retention) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */,
+      true /* add_primary_key */));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version */ nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto tablet_id = tablets.Get(0).tablet_id();
+
+  // Create a CDC stream on the table.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE,
+      test_namespace_name, {table.table_id()}));
+
+  auto get_intent_sst_file_count = [&](const TabletId& tablet_id) -> Result<int64_t> {
+    std::unordered_map<std::string, std::pair<int64_t, int64_t>> counts;
+    RETURN_NOT_OK(GetIntentEntriesAndSSTFileCountForTablet(tablet_id, &counts));
+    int64_t total_sst_files = 0;
+    for (const auto& [_, intents] : counts) {
+      total_sst_files += intents.second;
+    }
+    return total_sst_files;
+  };
+
+  auto trigger_intent_files_cleanup = [&](const TabletId& tablet_id) -> Status {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        if (peer->tablet_id() != tablet_id) {
+          continue;
+        }
+        auto tablet = VERIFY_RESULT(peer->shared_tablet());
+        tablet->CleanupIntentFiles();
+      }
+    }
+    return Status::OK();
+  };
+
+  // Perform a transaction on the table and flush it to create intent SST files.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true /* commit */));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 100,
+      /* is_compaction = */ false));
+
+  // The CDC tablet should have intent SST files.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(get_intent_sst_file_count(tablet_id)) > 0;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for intent SST files on the CDC tablet"));
+
+  // The intents must NOT be deleted while the stream exists, even after triggering cleanup, since
+  // the tablet is still under CDCSDK replication. Sleep to give the async cleanup a chance to run.
+  ASSERT_OK(trigger_intent_files_cleanup(tablet_id));
+  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_GT(ASSERT_RESULT(get_intent_sst_file_count(tablet_id)), 0);
+
+  // Delete the CDC stream. This releases the retention barriers on the tablet.
+  ASSERT_EQ(DeleteCDCStream(stream_id), true);
+
+  // Once the stream is dropped, the tablet is no longer under CDCSDK replication and its intents
+  // should be deleted.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(trigger_intent_files_cleanup(tablet_id));
+        return VERIFY_RESULT(get_intent_sst_file_count(tablet_id)) == 0;
+      },
+      MonoDelta::FromSeconds(60),
+      "Timed out waiting for intent SST file cleanup after dropping the CDC stream"));
+}
+
 }  // namespace cdc
 }  // namespace yb

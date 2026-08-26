@@ -340,7 +340,14 @@ DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
 DEFINE_RUNTIME_AUTO_bool(enable_transaction_metadata_update, kLocalPersisted, false, true,
     "Allow transaction metadata update records to be written to intentsdb.");
 
+DEFINE_RUNTIME_uint64(cdc_min_sec_to_retain_intent, 8 * 3600,
+    "Minimum number of seconds for which intent SST files of tablets under CDCSDK replication are "
+    "retained when cdc_enable_time_based_intent_retention is true. Intent SST files are not "
+    "deleted until their maximum hybrid time is at least this many seconds old. This flag is not "
+    "applicable when cdc_enable_time_based_intent_retention is false.");
+
 DECLARE_bool(cdc_immediate_transaction_cleanup);
+DECLARE_bool(cdc_enable_time_based_intent_retention);
 DECLARE_bool(consistent_restore);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
@@ -1470,14 +1477,23 @@ void Tablet::DoCleanupIntentFiles() {
 
     auto min_start_ht_cdc_unstreamed_txns =
         transaction_participant_->GetMinStartHTCDCUnstreamedTxns();
-    if (FLAGS_cdc_immediate_transaction_cleanup &&
-        metadata_->is_under_cdc_sdk_replication()) {
-      if (!min_start_ht_cdc_unstreamed_txns.is_valid() ||
-          min_start_ht_cdc_unstreamed_txns <= best_file_max_ht) {
-        VLOG_WITH_PREFIX_AND_FUNC(4)
-            << "Cannot delete because of CDC, min_start_ht_cdc_unstreamed_txns: "
-            << min_start_ht_cdc_unstreamed_txns << ", best file max ht: " << best_file_max_ht;
-        break;
+    if (metadata_->is_under_cdc_sdk_replication()) {
+      if (FLAGS_cdc_enable_time_based_intent_retention) {
+        auto file_age = clock_->Now().PhysicalDiff(best_file_max_ht);
+        if (file_age.ToSeconds() < static_cast<int64_t>(FLAGS_cdc_min_sec_to_retain_intent)) {
+          VLOG_WITH_PREFIX_AND_FUNC(4)
+              << "Cannot delete because of time-based intent retention, file age (seconds): "
+              << file_age.ToSeconds() << ", best file max ht: " << best_file_max_ht;
+          break;
+        }
+      } else if (FLAGS_cdc_immediate_transaction_cleanup) {
+        if (!min_start_ht_cdc_unstreamed_txns.is_valid() ||
+            min_start_ht_cdc_unstreamed_txns <= best_file_max_ht) {
+          VLOG_WITH_PREFIX_AND_FUNC(4)
+              << "Cannot delete because of CDC, min_start_ht_cdc_unstreamed_txns: "
+              << min_start_ht_cdc_unstreamed_txns << ", best file max ht: " << best_file_max_ht;
+          break;
+        }
       }
     }
     if (best_file->name_id == previous_name_id) {

@@ -118,6 +118,12 @@ DEFINE_RUNTIME_AUTO_bool(cdc_write_post_apply_metadata, kLocalPersisted, false, 
 DEFINE_RUNTIME_bool(cdc_immediate_transaction_cleanup, true,
     "Clean up transactions from memory after apply, even if its changes have not yet been "
     "streamed by CDC.");
+
+DEFINE_RUNTIME_bool(cdc_enable_time_based_intent_retention, false,
+    "When true, the cleanup of intent sst files for tablets under CDCSDK replication is done based "
+    "on the age of these files. These files will be retained for at least "
+    "cdc_min_sec_to_retain_intent seconds and then will be asynchronously deleted.");
+
 DEFINE_test_flag(int32, stopactivetxns_sleep_in_abort_cb_ms, 0,
     "Delays the abort callback in StopActiveTxns to repro GitHub #23399.");
 
@@ -903,7 +909,14 @@ class TransactionParticipant::Impl
       std::lock_guard lock(mutex_);
       const OpId& cdcsdk_checkpoint_op_id = GetLatestCheckPointUnlocked();
 
-      if (cdcsdk_checkpoint_op_id != OpId::Max()) {
+      if (cdcsdk_checkpoint_op_id != OpId::Max() &&
+          FLAGS_cdc_enable_time_based_intent_retention) {
+        // Time-based intent retention is enabled on this CDC tablet. Defer the intent cleanup to
+        // the intent SST file cleanup pathway, which enforces the retention interval. Leaving the
+        // set empty means no intents are removed here.
+        VLOG_WITH_PREFIX(2)
+            << "Skipping aborted transaction intent cleanup due to time-based intent retention";
+      } else if (cdcsdk_checkpoint_op_id != OpId::Max()) {
         for (const auto& [transaction_id, apply_op_id] : txns) {
           const OpId* apply_record_op_id = &apply_op_id;
           if (!apply_op_id.valid()) {
@@ -2020,7 +2033,13 @@ class TransactionParticipant::Impl
     const TransactionId& txn_id = (**it).id();
     const OpId& op_id = (**it).GetApplyOpId();
     if (op_id <= checkpoint_op_id) {
-      if (PREDICT_TRUE(!FLAGS_TEST_no_schedule_remove_intents)) {
+      // When time-based intent retention is enabled on a CDCSDK tablet, we skip the per-transaction
+      // intent deletion entirely and rely on the intent SST file cleanup pathway to remove intents
+      // only after they are old enough.
+      const bool cdc_active = checkpoint_op_id != OpId::Max();
+      const bool skip_intent_removal =
+          FLAGS_cdc_enable_time_based_intent_retention && cdc_active;
+      if (PREDICT_TRUE(!FLAGS_TEST_no_schedule_remove_intents) && !skip_intent_removal) {
         (**it).ScheduleRemoveIntents(*it, reason);
       }
     } else {
