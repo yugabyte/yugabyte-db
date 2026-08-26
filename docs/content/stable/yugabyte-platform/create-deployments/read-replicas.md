@@ -36,6 +36,8 @@ type: docs
 
 {{% includeMarkdown "includes/read-replicas-intro.md" %}}
 
+For how read replicas fit with other multi-region topologies, refer to [Topology](../create-universes-overview/#topology).
+
 ## Add a read replica
 
 In the New UI, you add a read replica after the primary universe exists. Create the primary universe first (see [Create universes](../create-universes-wizard/)), then use the **Add Read Replica** wizard.

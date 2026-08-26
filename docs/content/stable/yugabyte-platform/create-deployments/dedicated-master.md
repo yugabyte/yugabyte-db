@@ -19,6 +19,8 @@ You can specify that YB-Masters be placed on dedicated nodes when creating or ed
 
 Dedicated master placement can be used for universes using AWS, GCP, Azure, and On-Premises [provider configurations](../../configure-yugabyte-platform/); Kubernetes is not supported.
 
+When planning a universe, see also [Dedicated masters](../create-universes-overview/#dedicated-masters).
+
 Dedicated master placement does not apply to read replicas, which have only YB-TServers.
 
 ## Use cases

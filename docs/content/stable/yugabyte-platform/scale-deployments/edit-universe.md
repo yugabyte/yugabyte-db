@@ -31,7 +31,7 @@ YugabyteDB automatically ensures that new nodes start hosting the tablet leaders
 -> For information on managing Kubernetes universes using the YugabyteDB Kubernetes Operator, refer to [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/).
 -->
 
-To scale a universe, change its [placement](#horizontal-scaling) (nodes, availability zones, and regions) or its [hardware](#vertical-scaling) (instance type and storage).
+To scale a universe, change its [placement](#horizontal-scaling) (nodes, availability zones, and regions) or its [hardware](#vertical-scaling) (instance type and storage). For sizing and topology guidance, refer to [Plan your universe](../../create-deployments/create-universes-overview/).
 
 You can also change [user tags](../instance-tags/), [configuration flags](../edit-config-flags/), and [Kubernetes overrides](../edit-helm-overrides/). To place YB-Master processes on dedicated nodes, refer to [Dedicated YB-Masters](../../create-deployments/dedicated-master/).
 
@@ -56,7 +56,7 @@ Navigate to the universe, select **Settings > Placement**, and on the **Primary 
 
 Either option displays the **Edit Placement** wizard.
 
-Using the wizard, you can specify placement using **Guided** (suitable for most topologies) or **Expert** (more flexible) mode.
+Using the wizard, you can specify placement using **Guided** or **Expert** mode. For the differences between modes and topology limits, refer to [Placement](../../create-deployments/create-universes-overview/#placement). When editing an existing universe, you can increase replication factor (Expert) or resilience (Guided) but you cannot decrease it. Refer to [Changing placement](../../create-deployments/create-universes-overview/#changing-placement).
 
 {{< tabpane text=true >}}
 
@@ -64,15 +64,9 @@ Using the wizard, you can specify placement using **Guided** (suitable for most 
 
 In Guided mode, you set the following:
 
-1. **Resilience**. This determines how many failures your primary cluster can tolerate without interruption or downtime. Currently, you can only _increase_ the resilience. Increasing resilience requires more nodes or availability zones.
+1. **Resilience**. You can only _increase_ the resilience. Increasing resilience requires more nodes or availability zones.
 1. **Regions**. Select the regions where you want to locate the primary cluster.
-1. **Availability Zones and Nodes**.
-
-    - Select the zones in the regions where you want to place the nodes.
-    - Specify the number of nodes per region. As you add nodes, they are automatically distributed among the availability zones.
-    - Specify the preferred region(s) in ranked order.
-
-    All zones have the same number of nodes.
+1. **Availability Zones and Nodes**. Select the zones, specify the number of nodes (the same in every zone), and optionally rank [preferred](../../create-deployments/create-universes-overview/#preferred-region) regions.
 
 {{% /tab %}}
 
@@ -81,14 +75,8 @@ In Guided mode, you set the following:
 In Expert mode, you set the following:
 
 1. **Regions**. Select the regions where you want to locate the primary cluster.
-1. {{<tags/feature/ea idea="56">}}**Replication Factor** - Currently, you can only _increase_ the replication factor. Note that this change may also require you to increase the number of nodes or availability zones. Contact {{% support-platform %}} for help with capacity planning and appropriate sizing.
-1. **Availability Zones and Nodes**.
-
-    - Select the zones in the regions where you want to place the nodes.
-    - Specify the number of nodes for each zone.
-    - Specify the preferred region(s) in ranked order.
-
-    Depending on the number of regions you selected and the replication factor, you can add additional availability zones to regions.
+1. {{<tags/feature/ea idea="56">}}**Replication Factor**. You can only _increase_ the replication factor. This change may also require more nodes or availability zones. Contact {{% support-platform %}} for help with capacity planning.
+1. **Availability Zones and Nodes**. Select the zones (you can add extra zones depending on the number of regions and RF), specify the number of nodes **per zone**, and optionally rank [preferred](../../create-deployments/create-universes-overview/#preferred-region) regions.
 
 {{% /tab %}}
 
@@ -103,8 +91,6 @@ When you are done, click **Review Changes**, confirm the summary, then click **C
 {{<tags/ui/classic>}} To scale a universe horizontally:
 
 1. Navigate to your universe and choose **Actions > Edit Universe**.
-
-    ![Edit universe](/images/ee/edit-univ-220.png)
 
 1. Under **Cloud Configuration**, update the following as needed:
 

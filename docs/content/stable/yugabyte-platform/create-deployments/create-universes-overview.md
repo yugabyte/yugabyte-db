@@ -203,7 +203,7 @@ Regardless of the preferred region setting, data is replicated across all the re
 
 You can enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
 
-In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
+In cases where the cluster has [read replicas](#multiple-region) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
 
 #### Dedicated masters
 

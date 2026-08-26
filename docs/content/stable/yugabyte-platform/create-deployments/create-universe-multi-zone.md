@@ -73,11 +73,11 @@ Specify the provider and geolocations for the nodes (or pods, for Kubernetes) in
 
 - Enter the number of nodes to deploy in the universe. When you provide the value in the **Nodes** field (or **TServer** for Kubernetes), the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
 
-- Select the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) for the universe.
+- Select the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) for the universe. For help choosing RF and topology, refer to [Placement](../create-universes-overview/#placement).
 
 - Configure the availability zones where the nodes will be deployed by clicking **Add Zone**.
 
-- Use the **Preferred** setting to set the [preferred zone or region](../../../explore/multi-region-deployments/synchronous-replication-yba/#preferred-region).
+- Use the **Preferred** setting to set the [preferred zone or region](../create-universes-overview/#preferred-region).
 
 ### Instance Configuration
 
@@ -162,7 +162,7 @@ To encrypt the universe data, select the **Enable encryption at rest** option an
 ### Advanced Configuration
 
 DB Version
-: Choose the version of YugabyteDB to install on the nodes. If the version you want to add is not listed, you can add it to YugabyteDB Anywhere. Refer to [Manage YugabyteDB releases](../../manage-deployments/ybdb-releases/).
+: Choose the version of YugabyteDB to install on the nodes. If the version you want is not listed, import it into YugabyteDB Anywhere. Refer to [YugabyteDB version](../create-universes-overview/#yugabytedb-version) and [Manage YugabyteDB releases](../../manage-deployments/ybdb-releases/).
 
 Access key
 : The access key is the SSH key that is created in the provider. Usually, each provider has its own access key, but if you are reusing keys across providers, they are listed here. (Not applicable to Kubernetes.)
