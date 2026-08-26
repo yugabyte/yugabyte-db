@@ -75,5 +75,12 @@ SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone IN ('
 /*+ Parallel(pcustomer 2 hard) */
 SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone IN ('(125)139-5346', '(128)142-5349', '(142)156-5363', '(129)143-5350');
 
+-- GHI #33501: maximize number of parallel ranges
+set yb_parallel_range_size to 1024;
+/*+ Parallel(pcustomer 2 hard) */
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM pcustomer;
+reset yb_parallel_range_size;
+
 DROP TABLE pcustomer;
 
