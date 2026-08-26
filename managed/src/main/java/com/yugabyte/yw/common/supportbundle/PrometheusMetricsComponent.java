@@ -270,7 +270,9 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
     writeChunkedReadResponseMessage(output, responseBuilder.build());
   }
 
-  private void writeMetricsJson(
+  // Package-private so the JSON shape - in particular the "metric" label field that Perf
+  // Advisor's restore keys on - can be asserted without a live Prometheus.
+  void writeMetricsJson(
       String baseUrl,
       Instant batchStart,
       Instant batchEnd,
@@ -291,7 +293,10 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
             try {
               List<Pair<Long, Double>> stepped = downsampleByStep(points, effectiveStep);
               jGenerator.writeStartObject();
-              jGenerator.writeObjectField("metrics", metricsLabels);
+              // "metric", matching Prometheus's own query_range response and the PromQL
+              // export below, which writes that response verbatim. This path wrote
+              // "metrics" and Perf Advisor could not restore the result - PLAT-22150.
+              jGenerator.writeObjectField("metric", metricsLabels);
               jGenerator.writeFieldName("values");
               jGenerator.writeStartArray();
               for (Pair<Long, Double> point : stepped) {
