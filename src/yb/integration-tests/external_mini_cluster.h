@@ -845,6 +845,11 @@ class ExternalTabletServer : public ExternalDaemon {
 
   Status SetNumDrives(uint16_t num_drives);
 
+  // In addition to stopping the tablet server, waits for its postgres child to exit.
+  void Shutdown(
+      SafeShutdown safe_shutdown = SafeShutdown::kFalse,
+      RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse) override;
+
   // IP addresses to bind to.
   const std::string& bind_host() const {
     return bind_host_;
@@ -975,5 +980,12 @@ void StartSecure(
 Status WaitForTableIntentsApplied(
     ExternalMiniCluster* cluster, const TableId& table_id,
     MonoDelta timeout = MonoDelta::FromSeconds(30));
+
+// Logs, for every live tserver, the number of tablet replicas it hosts broken down by table.
+// Intended for diagnosing load-balancing test failures.
+// When running_only is true (the default), replicas that are not in the RUNNING state (e.g.
+// tombstoned replicas left behind after the load balancer moved a peer elsewhere) are excluded, so
+// the counts reflect the committed placement rather than transient over-replication.
+void DumpTabletDistribution(ExternalMiniCluster* cluster, bool running_only = true);
 
 }  // namespace yb

@@ -15,7 +15,9 @@
 
 #include <deque>
 
+#include "yb/util/format.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
 
 namespace yb {

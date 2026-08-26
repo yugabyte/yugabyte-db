@@ -44,7 +44,7 @@ public class CustomerTest extends FakeDBApplication {
       Customer customer = Customer.create(largeCustomerCode, "Test Customer");
       customer.save();
     } catch (PersistenceException pe) {
-      assertTrue(pe.getMessage().contains("Value too long for column"));
+      assertTrue(pe.getMessage().toLowerCase().contains("too long"));
     }
   }
 

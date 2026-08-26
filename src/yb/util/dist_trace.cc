@@ -42,6 +42,14 @@ DEFINE_NON_RUNTIME_PREVIEW_string(otel_collector_traces_endpoint, "",
     "OTLP HTTP endpoint for the OpenTelemetry collector. When set, distributed tracing is "
     "enabled and spans are exported to this endpoint on each query execution.");
 
+DEFINE_NON_RUNTIME_string(otel_ssl_ca_cert_path, "",
+    "CA certificate bundle path for OTLP HTTPS trace export. Takes precedence over "
+    "otel_ssl_ca_cert_string when configured.");
+
+DEFINE_NON_RUNTIME_string(otel_ssl_ca_cert_string, "",
+    "CA certificate bundle contents for OTLP HTTPS trace export. Used only when no CA certificate "
+    "bundle path is configured.");
+
 DEFINE_NON_RUNTIME_uint32(otel_batch_max_queue_size, 2048,
     "Maximum number of spans that can be buffered in the batch span processor queue. "
     "Spans arriving after this limit are dropped. Must be greater than 0 and at least as "
@@ -171,7 +179,19 @@ auto CreateExporter() {
   otlp_exporter::OtlpHttpExporterOptions opts;
   opts.url = FLAGS_otel_collector_traces_endpoint;
   opts.content_type = otlp_exporter::HttpRequestContentType::kBinary;
+
+  if (!FLAGS_otel_ssl_ca_cert_path.empty()) {
+    opts.ssl_ca_cert_path = FLAGS_otel_ssl_ca_cert_path;
+    opts.ssl_ca_cert_string.clear();
+  } else if (!FLAGS_otel_ssl_ca_cert_string.empty()) {
+    opts.ssl_ca_cert_path.clear();
+    opts.ssl_ca_cert_string = FLAGS_otel_ssl_ca_cert_string;
+  }
+
   LOG(INFO) << "OTEL: Exporting traces to collector at " << opts.url;
+  if (!opts.ssl_ca_cert_path.empty()) {
+    LOG(INFO) << "OTEL: Using CA certificate bundle at " << opts.ssl_ca_cert_path;
+  }
   return otlp_exporter::OtlpHttpExporterFactory::Create(opts);
 }
 

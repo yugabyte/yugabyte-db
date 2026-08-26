@@ -80,7 +80,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonNet.CloudInfoPB;
 import org.yb.CommonNet.PlacementBlockPB;
 import org.yb.CommonNet.ReplicationInfoPB;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import org.yb.util.ServerInfo;
 import play.libs.Json;
@@ -222,7 +222,7 @@ public class ImportUniverse extends UniverseTaskBase {
       certificate = CertificateInfo.get(taskParams().certUuid).getCertificate();
     }
 
-    try (YBClient client = ybService.getClient(masterAddrs, certificate)) {
+    try (YBClientApi client = ybService.getClient(masterAddrs, certificate)) {
       context.masterHosts =
           client.listMasterRaftPeers().getPeersList().stream()
               .map(peerInfo -> peerInfo.getLastKnownPrivateIps().get(0).getHost())

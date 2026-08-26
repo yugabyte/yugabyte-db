@@ -89,7 +89,6 @@
 
 /* YB includes */
 #include "access/sysattr.h"
-#include "access/yb_scan.h"
 #include "catalog/index.h"
 #include "catalog/pg_database.h"
 #include "executor/ybModifyTable.h"
@@ -251,6 +250,8 @@ static void YbDropInsertOnConflictReadSlots(YbInsertOnConflictBatchState *state)
 
 static Bitmapset *YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
 												ResultRelInfo *resultRelInfo);
+static bool ybCanSkipFetchingTargetTuple(ModifyTable *modifyTable,
+										 Relation targetRel);
 
 /*
  * Verify that the tuples to be produced by INSERT match the
@@ -1601,7 +1602,7 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		bool		row_found = YBCExecuteDelete(resultRelationDesc,
 												 context->planSlot,
 												 ((ModifyTable *) context->mtstate->ps.plan)->ybReturningColumns,
-												 context->mtstate->yb_fetch_target_tuple,
+												 !context->mtstate->yb_skip_fetch_target_tuple,
 												 (estate->yb_es_is_single_row_modify_txn ?
 												  YB_SINGLE_SHARD_TRANSACTION :
 												  YB_TRANSACTIONAL),
@@ -2340,7 +2341,7 @@ lreplace:
 	 *    (b) the WHERE clause of the query uniquely identifies the row
 	 */
 	partition_constraint_failed =
-		context->mtstate->yb_fetch_target_tuple && /* YB */
+		!context->mtstate->yb_skip_fetch_target_tuple &&
 		resultRelationDesc->rd_rel->relispartition &&
 		!ExecPartitionCheck(resultRelInfo, slot, estate, false);
 
@@ -2544,7 +2545,7 @@ lreplace:
 		else
 			row_found = YBCExecuteUpdate(resultRelInfo, context->planSlot, slot,
 										 oldtuple, estate, plan,
-										 context->mtstate->yb_fetch_target_tuple,
+										 !context->mtstate->yb_skip_fetch_target_tuple,
 										 (estate->yb_es_is_single_row_modify_txn ?
 										  YB_SINGLE_SHARD_TRANSACTION :
 										  YB_TRANSACTIONAL),
@@ -2611,7 +2612,7 @@ ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 		if ((YBCRelInfoHasSecondaryIndices(resultRelInfo) ||
 			 (resultRelInfo->ri_ybIocBatchingPossible &&
 			  mtstate->yb_ioc_state)) &&
-			mtstate->yb_fetch_target_tuple)
+			!mtstate->yb_skip_fetch_target_tuple)
 		{
 			recheckIndexes = YbExecUpdateIndexTuples(resultRelInfo, slot,
 													 YBCGetYBTupleIdFromSlot(context->planSlot),
@@ -4429,6 +4430,9 @@ ExecModifyTable(PlanState *pstate)
 
 		Relation	relation = resultRelInfo->ri_RelationDesc;
 
+		/* YB: the flag is never set for a non-YB relation */
+		Assert(!node->yb_skip_fetch_target_tuple || IsYBRelation(relation));
+
 		/*
 		 * For UPDATE/DELETE/MERGE, fetch the row identity info for the tuple
 		 * to be updated/deleted/merged.  For a heap relation, that's a TID;
@@ -4438,7 +4442,7 @@ ExecModifyTable(PlanState *pstate)
 		 */
 		if ((operation == CMD_UPDATE || operation == CMD_DELETE ||
 			 operation == CMD_MERGE) &&
-			(!IsYBRelation(relation) || node->yb_fetch_target_tuple))
+			!node->yb_skip_fetch_target_tuple)
 		{
 			char		relkind;
 			Datum		datum;
@@ -4572,7 +4576,7 @@ ExecModifyTable(PlanState *pstate)
 			case CMD_UPDATE:
 				tuplock = false;
 
-				if (!IsYBRelation(relation) || node->yb_fetch_target_tuple)
+				if (!node->yb_skip_fetch_target_tuple)
 				{
 					/* Initialize projection info if first time for this table */
 					if (unlikely(!resultRelInfo->ri_projectNewInfoValid))
@@ -4778,8 +4782,6 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	mtstate->mt_merge_updated = 0;
 	mtstate->mt_merge_deleted = 0;
 
-	mtstate->yb_fetch_target_tuple = !YbCanSkipFetchingTargetTupleForModifyTable(node);
-
 	/*----------
 	 * Resolve the target relation. This is the same as:
 	 *
@@ -4807,6 +4809,10 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		ExecInitResultRelation(estate, mtstate->resultRelInfo,
 							   linitial_int(node->resultRelations));
 	}
+
+	mtstate->yb_skip_fetch_target_tuple =
+		ybCanSkipFetchingTargetTuple(node,
+									 mtstate->rootResultRelInfo->ri_RelationDesc);
 
 	/*
 	 * YB: Check if the planner has passed down any optimization info for
@@ -4947,7 +4953,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 				/* YB note: MERGE command not supported yet. */
 				Assert(operation != CMD_MERGE);
 
-				if (mtstate->yb_fetch_target_tuple)
+				if (!mtstate->yb_skip_fetch_target_tuple)
 				{
 					resultRelInfo->ri_RowIdAttNo =
 						ExecFindJunkAttributeInTlist(subplan->targetlist, "ybctid");
@@ -5965,4 +5971,43 @@ YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
 
 	bms_free(cols_marked_for_update);
 	return partition_cols;
+}
+
+/*
+ * YB: Returns true if this ModifyTable can be executed by a single RPC,
+ * without an initial table scan fetching a target tuple.
+ *
+ * Right now, this is true iff:
+ *  - the target relation is a YB relation.
+ *  - it is UPDATE or DELETE command.
+ *  - source data is a Result node (meaning we are skipping scan and thus
+ *    are single row).
+ *
+ * Transition-table capture does not need to be checked here: the single-row
+ * UPDATE/DELETE path in createplan.c is only taken when no row triggers
+ * apply (see has_applicable_triggers()), and that helper consults
+ * YBRelHasOldRowTriggers() which already rejects any relation carrying an
+ * AFTER UPDATE/DELETE trigger with REFERENCING OLD/NEW TABLE.  So a Result
+ * outer plan implies no transition_capture.
+ */
+static bool
+ybCanSkipFetchingTargetTuple(ModifyTable *modifyTable, Relation targetRel)
+{
+	if (!IsYBRelation(targetRel))
+		return false;
+
+	/* Support UPDATE and DELETE. */
+	if (modifyTable->operation != CMD_UPDATE &&
+		modifyTable->operation != CMD_DELETE)
+		return false;
+
+	/*
+	 * Verify the single data source is a Result node and does not have outer plan.
+	 * Note that Result node never has inner plan.
+	 */
+	if (!IsA(outerPlan(&modifyTable->plan), Result) ||
+		outerPlan(outerPlan(&modifyTable->plan)))
+		return false;
+
+	return true;
 }

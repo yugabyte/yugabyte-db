@@ -255,7 +255,7 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "When enabled, newly created universes are automatically registered with the "
               + "first PA Collector for the customer.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 
   public static final ConfKeyInfo<Boolean> paAutoRegistrationAdvancedObservability =
       new ConfKeyInfo<>(
@@ -265,5 +265,5 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "When PA auto-registration is enabled, also enable advanced observability "
               + "(metrics export to Prometheus) for the universe.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -47,8 +47,11 @@ public class BasePgListenNotifyTest extends BasePgSQLTest {
   }
 
   /**
-   * Waits for the {@code yb_system} database and the
-   * {@code pg_yb_notifications} table to exist.
+   * Waits for the {@code yb_system} bootstrap to complete: the database, the
+   * {@code pg_yb_notifications} table and its publication must all exist.
+   * The publication is created by the last bootstrap statement, so waiting for it guarantees that
+   * the bootstrap DDLs no longer bump the yb_system catalog version concurrently with the caller's
+   * own DDLs, which are not retryable.
    */
   public static void waitForNotificationsTableReady(
       Connection defaultConn, ConnectionBuilder connBuilder) throws Exception {
@@ -64,6 +67,9 @@ public class BasePgListenNotifyTest extends BasePgSQLTest {
               + " WHERE relname = 'pg_yb_notifications'"
               + " AND relkind = 'r'"
               + " AND relnamespace = 2200"
+              + ") AND EXISTS ("
+              + "SELECT 1 FROM pg_publication"
+              + " WHERE pubname = 'pg_yb_notifications_publication'"
               + ") THEN 1 ELSE 0 END");
     } finally {
       ybSystemConn.close();

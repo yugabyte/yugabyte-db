@@ -15,14 +15,14 @@ SET enable_bitmapscan = true;
 SELECT $$
 :P :Q1 SELECT rolname FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P :Q1
 SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SET yb_enable_expression_pushdown = false;
 
@@ -31,7 +31,7 @@ SELECT $$
 SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 RESET yb_enable_expression_pushdown;
 RESET yb_enable_bitmapscan;

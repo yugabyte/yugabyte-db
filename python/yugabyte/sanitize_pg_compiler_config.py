@@ -18,10 +18,13 @@ to extension authors (pg_config --cflags/--cppflags/--cc and the installed Makef
 The YB build bakes absolute build-tree include paths, the build's compiler wrapper, and
 build-machine-only path-remap and libc++ flags into those values.  None of them are valid on an
 external machine: the -I paths are dangling, the wrapper does not exist, and the -fdebug-prefix-map
-and -stdlib=/libc++ flags point at build-machine locations.  The fixed ISA baseline
-(-march/-mtune/-mcpu) is intentionally kept: it is a portable minimum-CPU contract set in
-CMakeLists.txt, not derived from the build machine (no -march=native), so an extension should target
-the same baseline.
+and -stdlib=/libc++ flags point at build-machine locations.  Optimized release builds
+(PGO/BOLT) additionally bake profile-guided-optimization flags: -fprofile-use embeds a
+build-machine profile path and the -f*-profile-generate variants would instrument the extension
+being built, so those internal build-pipeline flags are dropped too.  The fixed ISA baseline
+(-march/-mtune/-mcpu) is intentionally kept: it is a portable minimum-CPU
+contract set in CMakeLists.txt, not derived from the build machine (no -march=native), so an
+extension should target the same baseline.
 
 Stripping the thirdparty -I is safe even though a few installed server headers reach a thirdparty
 library (ICU via <unicode/...>, OpenSSL/GSSAPI via <openssl/...>/<gssapi.h>): those are
@@ -67,6 +70,13 @@ _DROP_PREFIXES = (
     # paths into the build's sanitizer denylist (sanitizer builds only; absent from release
     # packages)
     '-fsanitize-blacklist=', '-fsanitize-ignorelist=',
+    # profile-guided-optimization and coverage instrumentation, internal to YB's optimized
+    # (PGO/BOLT) build pipeline, not portable optimization flags an extension should inherit.
+    # -fprofile-use=<file> embeds a build-machine profile path (ir_pgo.profdata under the build
+    # tree), and the -f*-profile-generate variants would instrument the extension being built.
+    # -fprofile-* also covers -fprofile-instr-*, -fprofile-sample-use, and gcov -fprofile-arcs.
+    # -fcs-profile-* is the context-sensitive PGO pass, and -fauto-profile is AutoFDO.
+    '-fprofile-', '-fcs-profile-', '-fauto-profile',
 )
 
 # Switches dropped on an exact match.  -nostdinc++ is the other half of the libc++ stdlib selection

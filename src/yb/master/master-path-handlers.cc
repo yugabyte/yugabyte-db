@@ -102,6 +102,7 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/object_provider.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"
@@ -1094,6 +1095,10 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
           jw.Uint64(path_metric.second.used_space);
           jw.String("total_space_size");
           jw.Uint64(path_metric.second.total_space);
+          if (!path_metric.second.storage_tier.empty()) {
+            jw.String("storage_tier");
+            jw.String(path_metric.second.storage_tier);
+          }
           jw.EndObject();
         }
         jw.EndArray();
@@ -1314,17 +1319,17 @@ string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
   std::ostringstream disk_size_html;
   disk_size_html << "<ul>"
                  << "<li>" << "Total: "
-                 << HumanReadableNumBytes::ToString(
+                 << HumanizeBytes(
                         info.sst_files_size + info.wal_files_size + info.vector_index_size)
                  << "<li>" << "WAL Files: "
-                 << HumanReadableNumBytes::ToString(info.wal_files_size)
+                 << HumanizeBytes(info.wal_files_size)
                  << "<li>" << "SST Files: "
-                 << HumanReadableNumBytes::ToString(info.sst_files_size)
+                 << HumanizeBytes(info.sst_files_size)
                  << "<li>" << "SST Files Uncompressed: "
-                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_file_size);
+                 << HumanizeBytes(info.uncompressed_sst_file_size);
   if (info.vector_index_size > 0) {
     disk_size_html << "<li>" << "Vector Indexes: "
-                   << HumanReadableNumBytes::ToString(info.vector_index_size);
+                   << HumanizeBytes(info.vector_index_size);
   }
   disk_size_html << "</ul>";
 
@@ -1671,20 +1676,20 @@ void MasterPathHandlers::HandleAllTablesJSON(
         jw.String("on_disk_size");
         jw.StartObject();
         jw.String("wal_files_size");
-        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.wal_files_size));
+        jw.String(HumanizeBytes(table.second.on_disk_size.wal_files_size));
         jw.String("wal_files_size_bytes");
         jw.Uint64(table.second.on_disk_size.wal_files_size);
         jw.String("sst_files_size");
-        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.sst_files_size));
+        jw.String(HumanizeBytes(table.second.on_disk_size.sst_files_size));
         jw.String("sst_files_size_bytes");
         jw.Uint64(table.second.on_disk_size.sst_files_size);
         jw.String("uncompressed_sst_file_size");
         jw.String(
-            HumanReadableNumBytes::ToString(table.second.on_disk_size.uncompressed_sst_file_size));
+            HumanizeBytes(table.second.on_disk_size.uncompressed_sst_file_size));
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(table.second.on_disk_size.uncompressed_sst_file_size);
         jw.String("vector_index_size");
-        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.vector_index_size));
+        jw.String(HumanizeBytes(table.second.on_disk_size.vector_index_size));
         jw.String("vector_index_size_bytes");
         jw.Uint64(table.second.on_disk_size.vector_index_size);
         jw.String("has_missing_size");
@@ -2533,8 +2538,33 @@ MasterPathHandlers::GetLeaderlessTablets() {
   return leaderless_tablets;
 }
 
-// Returns the placement_uuids of any placement in which the given tablet is underreplicated.
-vector<string> GetTabletUnderReplicatedPlacements(
+namespace {
+
+struct PlacementMissingReplicas {
+  struct PlacementBlockMissingReplicas {
+    std::string cloud_info;
+    int missing_replicas = 0;
+  };
+
+  std::string placement_uuid;
+  bool is_live = false;
+  int missing_replicas = 0;
+  std::vector<PlacementBlockMissingReplicas> block_missing_replicas;
+};
+
+struct UnderReplicatedTabletInfo {
+  TabletInfoPtr tablet;
+  int expected_num_replicas = 0;
+  std::vector<PlacementMissingReplicas> missing_placements;
+};
+
+string FormatCloudInfoCompact(const CloudInfoPB& cloud_info) {
+  return Format("$0.$1.$2", cloud_info.placement_cloud(), cloud_info.placement_region(),
+      cloud_info.placement_zone());
+}
+
+// Returns the placements in which the given tablet is underreplicated.
+vector<PlacementMissingReplicas> GetTabletUnderReplicatedPlacements(
     const TabletInfoPtr& tablet, const ReplicationInfoPB& replication_info) {
   VLOG_WITH_FUNC(1) << "Processing tablet " << tablet->id();
   // We will decrement the num_replicas and replication_factor counters in each placement as we find
@@ -2593,61 +2623,80 @@ vector<string> GetTabletUnderReplicatedPlacements(
   }
 
   // If the tablet is under-replicated, it will have some counter > 0.
-  vector<string> underreplicated_placements;
-  for (const auto* placement : placements) {
-    if (placement->num_replicas() > 0) {
-      VLOG_WITH_FUNC(1) << Format("Tablet $0 underreplicated in placement $1. Need $2 more "
-          "replicas.", tablet->id(), placement->placement_uuid(), placement->num_replicas());
-      underreplicated_placements.push_back(placement->placement_uuid());
-      continue;
-    }
+  vector<PlacementMissingReplicas> result;
+  for (size_t i = 0; i < placements.size(); ++i) {
+    const auto* placement = placements[i];
+    VLOG_IF_WITH_FUNC(1, placement->num_replicas() > 0)
+        << Format("Tablet $0 underreplicated in placement $1. Need $2 more replicas.",
+          tablet->id(), placement->placement_uuid(), placement->num_replicas());
 
     // Check placement blocks within this placement.
-    for (auto& placement_block : placement->placement_blocks()) {
+    std::vector<PlacementMissingReplicas::PlacementBlockMissingReplicas> missing_placement_blocks;
+    for (const auto& placement_block : placement->placement_blocks()) {
       if (placement_block.min_num_replicas() > 0) {
+        missing_placement_blocks.push_back(
+            {FormatCloudInfoCompact(placement_block.cloud_info()),
+             placement_block.min_num_replicas()});
         VLOG_WITH_FUNC(1) << Format("Tablet $0 underreplicated in placement block $1 for placement "
             "$2. Need $3 more replicas.", tablet->id(),
             placement_block.cloud_info().ShortDebugString(), placement->placement_uuid(),
             placement_block.min_num_replicas());
-        underreplicated_placements.push_back(placement->placement_uuid());
-        break;
       }
     }
+
+    if (placement->num_replicas() > 0 || !missing_placement_blocks.empty()) {
+      result.push_back(PlacementMissingReplicas{
+          .placement_uuid = placement->placement_uuid(),
+          .is_live = (i == 0),
+          .missing_replicas = placement->num_replicas(),
+          .block_missing_replicas = std::move(missing_placement_blocks)});
+    }
   }
-  return underreplicated_placements;
+  return result;
 }
 
-Result<vector<pair<TabletInfoPtr, vector<string>>>>
-    MasterPathHandlers::GetUnderReplicatedTablets() {
-  auto* catalog_mgr = master_->catalog_manager();
+Result<vector<UnderReplicatedTabletInfo>> GetUnderReplicatedTablets(Master* master) {
+  auto* catalog_mgr = master->catalog_manager();
 
   catalog_mgr->AssertLeaderLockAcquiredForReading();
-  auto tables = catalog_mgr->GetTables(GetTablesMode::kRunning);
+  // Skip colocated children: they share the parent tablegroup's tablets, and tablespace lookup
+  // always fails for those children so GetTableReplicationInfoWithDefault would use the cluster
+  // spec and report false under-replication for tablets that follow a custom tablespace.
+  auto tables = catalog_mgr->GetTables(GetTablesMode::kRunning, PrimaryTablesOnly::kTrue);
 
-  vector<pair<TabletInfoPtr, vector<string>>> underreplicated_tablets;
+  vector<UnderReplicatedTabletInfo> underreplicated_tablets;
   for (const auto& table : tables) {
     if (table->is_system()) {
       continue;
     }
     auto replication_info = catalog_mgr->GetTableReplicationInfoWithDefault(table);
+
+    int expected_num_replicas = replication_info.live_replicas().num_replicas();
+    for (int i = 0; i < replication_info.read_replicas_size(); ++i) {
+      expected_num_replicas += replication_info.read_replicas(i).num_replicas();
+    }
     for (TabletInfoPtr tablet : VERIFY_RESULT(table->GetTablets())) {
       auto underreplicated_placements =
           GetTabletUnderReplicatedPlacements(tablet, replication_info);
       if (!underreplicated_placements.empty()) {
-        underreplicated_tablets.emplace_back(
-            std::move(tablet), std::move(underreplicated_placements));
+        underreplicated_tablets.push_back(UnderReplicatedTabletInfo{
+            .tablet = std::move(tablet),
+            .expected_num_replicas = expected_num_replicas,
+            .missing_placements = std::move(underreplicated_placements)});
       }
     }
   }
   return underreplicated_tablets;
 }
 
+}  // anonymous namespace
+
 void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& req,
                                                   Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
 
   auto leaderless_tablets = GetLeaderlessTablets();
-  auto underreplicated_tablets = GetUnderReplicatedTablets();
+  auto underreplicated_tablets = GetUnderReplicatedTablets(master_);
 
   if (!leaderless_tablets || !underreplicated_tablets) {
     *output << "<h2>Cannot calculate tablet replicas. Try again.</h2>\n";
@@ -2671,7 +2720,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
   *output << "</table>\n";
 
   if (!underreplicated_tablets.ok()) {
-    LOG(WARNING) << underreplicated_tablets.ToString();
+    LOG(WARNING) << underreplicated_tablets.status().ToString();
     *output << "<h2>Call to GetUnderReplicatedTablets failed</h2>\n";
     return;
   }
@@ -2679,24 +2728,39 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
   *output << "<h3>Underreplicated Tablets</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "<tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th>"
-          << "<th>Tablet Replication Count</th><th>Underreplicated Placements</th></tr>\n";
+          << "<th>Tablet Replication Count</th><th>Expected Replica Count</th>"
+          << "<th>Missing Placements</th></tr>\n";
 
-  for (auto& [tablet, placement_uuids] : *underreplicated_tablets) {
+  for (auto& [tablet, expected_num_replicas, missing_placements] : *underreplicated_tablets) {
+
     auto rm = tablet.get()->GetReplicaLocations();
 
-    stringstream underreplicated_placements;
-    for (auto& uuid : placement_uuids) {
-      underreplicated_placements << (uuid == "" ? "Live (primary) cluster" : uuid) << "\n";
+    stringstream missing_replicas;
+    for (auto& placement : missing_placements) {
+      const string header = placement.is_live
+          ? "Primary cluster"
+          : Format("Read replica $0", EscapeForHtmlToString(placement.placement_uuid));
+      missing_replicas << "<b>" << header << "</b>\n";
+      if (placement.missing_replicas > 0) {
+        missing_replicas << "missing replicas: " << placement.missing_replicas << "\n";
+      }
+      for (auto& block : placement.block_missing_replicas) {
+        missing_replicas << "  " << EscapeForHtmlToString(block.cloud_info) << ": "
+                         << block.missing_replicas << "\n";
+      }
     }
     *output << Format(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td>"
-        "<td>$3</td><td>$4</td><td>$5</td></tr>\n",
+        "<td>$3</td><td>$4</td><td>$5</td>"
+        "<td><pre style=\"margin: 0; padding: 0; border: none; background: none; "
+        "font: inherit;\">$6</pre></td></tr>\n",
         UrlEncodeToString(tablet->table()->id()),
         EscapeForHtmlToString(tablet->table()->name()),
         EscapeForHtmlToString(tablet->table()->id()),
         EscapeForHtmlToString(tablet->tablet_id()),
         EscapeForHtmlToString(std::to_string(rm->size())),
-        EscapeForHtmlToString(underreplicated_placements.str()));
+        EscapeForHtmlToString(std::to_string(expected_num_replicas)),
+        missing_replicas.str());
   }
 
   *output << "</table>\n";
@@ -2740,7 +2804,7 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
   std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
 
-  auto underreplicated_tablets = GetUnderReplicatedTablets();
+  auto underreplicated_tablets = GetUnderReplicatedTablets(master_);
 
   if (!underreplicated_tablets.ok()) {
     jw.StartObject();
@@ -2754,16 +2818,42 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
   jw.String("underreplicated_tablets");
   jw.StartArray();
 
-  for (auto& [tablet, placement_uuids] : *underreplicated_tablets) {
+  for (auto& [tablet, expected_num_replicas, missing_placements] : *underreplicated_tablets) {
     jw.StartObject();
     jw.String("table_uuid");
     jw.String(tablet->table()->id());
     jw.String("tablet_uuid");
     jw.String(tablet.get()->tablet_id());
+    jw.String("expected_num_replicas");
+    jw.Int(expected_num_replicas);
     jw.String("underreplicated_placements");
     jw.StartArray();
-    for (auto& uuid : placement_uuids) {
-      jw.String(uuid);
+    for (auto& placement : missing_placements) {
+      jw.String(placement.placement_uuid);
+    }
+    jw.EndArray();
+    jw.String("missing_replicas");
+    jw.StartArray();
+    for (auto& placement : missing_placements) {
+      jw.StartObject();
+      jw.String("placement_uuid");
+      jw.String(placement.placement_uuid);
+      jw.String("is_live");
+      jw.Bool(placement.is_live);
+      jw.String("missing_replicas");
+      jw.Int(placement.missing_replicas);
+      jw.String("placement_blocks");
+      jw.StartArray();
+      for (auto& block : placement.block_missing_replicas) {
+        jw.StartObject();
+        jw.String("cloud_info");
+        jw.String(block.cloud_info);
+        jw.String("missing_replicas");
+        jw.Int(block.missing_replicas);
+        jw.EndObject();
+      }
+      jw.EndArray();
+      jw.EndObject();
     }
     jw.EndArray();
     jw.EndObject();
@@ -3812,9 +3902,9 @@ string MasterPathHandlers::ReplicaInfoToHtml(
     html << Format("UUID: $0<br/>", ts_uuid);
     html << Format(
         "Active SSTs size: $0<br/>",
-        HumanReadableNumBytes::ToString(replica.drive_info.sst_files_size));
+        HumanizeBytes(replica.drive_info.sst_files_size));
     html << Format(
-        "WALs size: $0\n", HumanReadableNumBytes::ToString(replica.drive_info.wal_files_size));
+        "WALs size: $0\n", HumanizeBytes(replica.drive_info.wal_files_size));
   }
   html << "</ul>\n";
   return html.str();

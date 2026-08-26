@@ -79,7 +79,7 @@ TEST_F(WriteStallConsensusTest, LeaderElectionSucceedsDuringWriteStop) {
   ASSERT_NE(db, nullptr);
 
   auto* db_impl = down_cast<rocksdb::DBImpl*>(db);
-  auto& write_controller = db_impl->TEST_write_controler();
+  auto& write_controller = db_impl->TEST_write_controller();
 
   auto stop_token = write_controller.GetStopToken();
   ASSERT_TRUE(write_controller.IsStopped());
@@ -123,7 +123,7 @@ TEST_F(WriteStallConsensusTest, OtherTabletsRemainWritableDuringWriteStop) {
   auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(mini_cluster(), tablet_id));
   auto tablet = ASSERT_RESULT(leader_peer->shared_tablet());
   auto* db_impl = down_cast<rocksdb::DBImpl*>(tablet->regular_db());
-  auto& write_controller = db_impl->TEST_write_controler();
+  auto& write_controller = db_impl->TEST_write_controller();
 
   auto stop_token = write_controller.GetStopToken();
   ASSERT_TRUE(write_controller.IsStopped());

@@ -88,7 +88,6 @@ export const AddDestinationChannelForm = (props) => {
       case 'pagerduty':
         payload['name'] = values['pagerDuty_name'];
         payload['params']['channelType'] = 'PagerDuty';
-        payload['params']['apiKey'] = values.apiKey;
         payload['params']['routingKey'] = values.routingKey;
         break;
       case 'webhook': {
@@ -185,7 +184,6 @@ export const AddDestinationChannelForm = (props) => {
 
   const validationSchemaPagerDuty = Yup.object().shape({
     pagerDuty_name: Yup.string().required('Name is Required'),
-    apiKey: Yup.string().required('API Key is Required'),
     routingKey: Yup.string().required('Integration Key is Required')
   });
 
@@ -327,18 +325,6 @@ export const AddDestinationChannelForm = (props) => {
                   type="text"
                   label="Name"
                   placeholder="Enter channel name"
-                  component={YBFormInput}
-                  disabled={isReadOnly}
-                />
-              </Col>
-            </Row>
-            <Row>
-              <Col lg={12}>
-                <Field
-                  name="apiKey"
-                  type="text"
-                  label="PagerDuty API Key"
-                  placeholder="Enter API key"
                   component={YBFormInput}
                   disabled={isReadOnly}
                 />

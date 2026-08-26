@@ -19,6 +19,7 @@
 #include "yb/master/master_rpc.h"
 
 #include "yb/util/cgroups.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/mutex.h"
 #include "yb/util/async_util.h"

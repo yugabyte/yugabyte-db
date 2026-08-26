@@ -5,13 +5,16 @@ import type { K8NodeSpec } from '@app/redesign/features/universe/universe-form/u
 import { StyledContent, StyledHeader } from './Component';
 import { mui, YBButton } from '@yugabyte-ui-library/core';
 
-import { StyledInfoRow } from '../../create-universe/components/DefaultComponents';
+import {
+  StyledInfoRow,
+  StyledInfoRowNew
+} from '../../create-universe/components/DefaultComponents';
 import { LinuxVersion } from '../components';
 
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
-import { useIsUniverseReady } from '../EditUniverseUtils';
+import { useEditUniverseContext, useIsUniverseReady, withUniverseResource } from '../EditUniverseUtils';
 interface InstanceCardProps {
   title: string;
   arch?: string;
@@ -34,12 +37,20 @@ export const InstanceCard: FC<InstanceCardProps> = ({
   onEditClicked
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.hardware' });
+  const { universeData } = useEditUniverseContext();
+  const universeUUID = universeData?.info?.universe_uuid;
   const isUniverseReady = useIsUniverseReady();
   return (
     <StyledContent>
       <StyledHeader>
         <div className="header-title">{title}</div>
-        <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT} isControl>
+        <RbacValidator
+          accessRequiredOn={withUniverseResource(
+            ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT,
+            universeUUID
+          )}
+          isControl
+        >
           <YBButton
             dataTestId="edit-placement-edit-button"
             variant="ghost"
@@ -111,7 +122,7 @@ export const InstanceCard: FC<InstanceCardProps> = ({
           </StyledInfoRow>
           <StyledInfoRow sx={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <div>
-              <span className="header">{t('volumeAndNode')}</span>
+              <span className="header">{t(isK8s ? 'volumeAndPod' : 'volumeAndNode')}</span>
               <span className="value">
                 {t('volumeAndNodeValue', {
                   volumeSize: storageSpec?.volume_size,
@@ -124,11 +135,11 @@ export const InstanceCard: FC<InstanceCardProps> = ({
               <span className="value">{storageSpec?.storage_type ?? '-'}</span>
             </div>
             <div>
-              <span className="header">{t('iops')}</span>
+              <span className="header">{t(isK8s ? 'iopsPod' : 'iops')}</span>
               <span className="value">{storageSpec?.disk_iops ?? '-'}</span>
             </div>
             <div>
-              <span className="header">{t('throughput')}</span>
+              <span className="header">{t(isK8s ? 'throughputPod' : 'throughput')}</span>
               <span className="value">
                 {storageSpec?.throughput
                   ? t('throughtputValue', { throughput: storageSpec?.throughput })

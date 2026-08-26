@@ -22,7 +22,7 @@ import org.yb.client.GetNamespaceInfoResponse;
 import org.yb.client.GetXClusterOutboundReplicationGroupsResponse;
 import org.yb.client.ListCDCStreamsResponse;
 import org.yb.client.XClusterDeleteOutboundReplicationGroupResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 
@@ -49,7 +49,7 @@ public class DeleteRemnantStreams extends XClusterConfigTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
 
       GetNamespaceInfoResponse getNamespaceInfoResponse =
           client.getNamespaceInfo(taskParams().namespaceName, YQLDatabase.YQL_DATABASE_PGSQL);
@@ -85,7 +85,7 @@ public class DeleteRemnantStreams extends XClusterConfigTaskBase {
                 .get()
                 .getId()
                 .toStringUtf8();
-        try (YBClient tgtClient = ybService.getUniverseClient(targetUniverse)) {
+        try (YBClientApi tgtClient = ybService.getUniverseClient(targetUniverse)) {
           GetXClusterOutboundReplicationGroupsResponse outboundReplicationGroupsResp =
               tgtClient.getXClusterOutboundReplicationGroups(tgtDbId);
           if (!outboundReplicationGroupsResp.hasError()) {

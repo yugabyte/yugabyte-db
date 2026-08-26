@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include "yb/client/namespace_info.h"
+
 #include "yb/integration-tests/create-table-itest-base.h"
 
 #include "yb/common/colocated_util.h"
@@ -551,18 +553,85 @@ TEST_F(CreateTableITest, TestIsRaftLeaderMetric) {
                 .num_tablets(kNumTablets)
                 .Create());
 
-  // Count the total Number of Raft Leaders in the cluster. Go through each tablet of every
-  // tablet-server and sum up the leaders.
-  int64_t kNumRaftLeaders = 0;
-  for (size_t i = 0 ; i < kNumReplicas; i++) {
-    auto tablet_ids = ASSERT_RESULT(cluster_->GetTabletIds(cluster_->tablet_server(i)));
-    for(size_t ti = 0; ti < inspect_->ListTabletsOnTS(i).size(); ti++) {
-      const char *tabletId = tablet_ids[ti].c_str();
-      kNumRaftLeaders += ASSERT_RESULT(cluster_->tablet_server(i)->GetMetric<int64>(
-          &METRIC_ENTITY_tablet, tabletId, &METRIC_is_raft_leader, "value"));
+  // Per-replica is_raft_leader gauge (0 = follower, 1 = leader), created lazily during bootstrap.
+  // NotFound means the replica isn't ready yet, so callers keep waiting.
+  auto get_raft_leaders_per_ts = [&]() -> Result<std::vector<int64_t>> {
+    std::vector<int64_t> leaders_per_ts(kNumReplicas, 0);
+    for (size_t i = 0; i < kNumReplicas; i++) {
+      auto tablet_ids = VERIFY_RESULT(cluster_->GetTabletIds(cluster_->tablet_server(i)));
+      if (tablet_ids.empty()) {
+        return STATUS(NotFound, "Replica has not created the tablet yet");
+      }
+      for (const auto& tablet_id : tablet_ids) {
+        leaders_per_ts[i] += VERIFY_RESULT(cluster_->tablet_server(i)->GetMetric<int64>(
+            &METRIC_ENTITY_tablet, tablet_id.c_str(), &METRIC_is_raft_leader, "value"));
+      }
+    }
+    return leaders_per_ts;
+  };
+
+  // Polls until done() is satisfied. Treats NotFound as "not ready yet, keep waiting".
+  int64_t num_raft_leaders = 0;
+  auto wait_for_raft_leaders = [&](
+      const std::function<bool(const std::vector<int64_t>&, int64_t)>& done,
+      const std::string& description) -> Status {
+    return LoggedWaitFor(
+        [&]() -> Result<bool> {
+          auto leaders_per_ts = get_raft_leaders_per_ts();
+          if (!leaders_per_ts.ok()) {
+            if (leaders_per_ts.status().IsNotFound()) {
+              return false;
+            }
+            return leaders_per_ts.status();
+          }
+          num_raft_leaders = 0;
+          for (auto leaders : *leaders_per_ts) {
+            num_raft_leaders += leaders;
+          }
+          return done(*leaders_per_ts, num_raft_leaders);
+        },
+        60s * kTimeMultiplier, description);
+  };
+
+  // Create() returning doesn't mean replicas bootstrapped or a leader was elected: wait for both.
+  ASSERT_OK(wait_for_raft_leaders(
+      [](const std::vector<int64_t>&, int64_t sum) { return sum > 0; },
+      "Wait for a raft leader to be elected for the table's tablet"));
+
+  // Pin the leader so a spurious re-election can't flip leadership while we check the count: stop
+  // the failure detector and skip any already-scheduled failure-detected election.
+  ASSERT_OK(cluster_->SetFlagOnTServers("enable_leader_failure_detection", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_election_when_fail_detected", "true"));
+  ASSERT_OK(wait_for_raft_leaders(
+      [](const std::vector<int64_t>&, int64_t sum) { return sum == kExpectedRaftLeaders; },
+      "Wait for the raft leader count to settle after pinning leadership"));
+
+  // Verify the gauge follows leadership: step the leader down, expect it to move to a new replica.
+  const auto tablet_id = ASSERT_RESULT(GetSingleTabletId(kTableName.table_name()));
+  itest::TServerDetails* old_leader = nullptr;
+  ASSERT_OK(itest::FindTabletLeader(ts_map_, tablet_id, 60s * kTimeMultiplier, &old_leader));
+
+  size_t old_leader_idx = kNumReplicas;
+  for (size_t i = 0; i < kNumReplicas; i++) {
+    if (cluster_->tablet_server(i)->uuid() == old_leader->uuid()) {
+      old_leader_idx = i;
+      break;
     }
   }
-  ASSERT_EQ(kNumRaftLeaders, kExpectedRaftLeaders);
+  ASSERT_LT(old_leader_idx, static_cast<size_t>(kNumReplicas))
+      << "Could not map leader " << old_leader->uuid() << " to a tserver";
+
+  // Force a graceful step down. The RPC can return while the transfer is still in flight (delayed
+  // step-down), so the poll below is what confirms a new leader took over and the gauge moved.
+  ASSERT_OK(itest::LeaderStepDown(
+      old_leader, tablet_id, /* new_leader = */ nullptr, 10s * kTimeMultiplier));
+
+  // The sum can briefly be 0 or 2 during handoff, so wait for it to settle at one new leader.
+  ASSERT_OK(wait_for_raft_leaders(
+      [old_leader_idx](const std::vector<int64_t>& leaders_per_ts, int64_t sum) {
+        return sum == kExpectedRaftLeaders && leaders_per_ts[old_leader_idx] == 0;
+      },
+      "Wait for the is_raft_leader gauge to move to a new leader after step down"));
 }
 
 TEST_F(CreateTableITest, TestLiveTabletPeersMetric) {
@@ -606,7 +675,10 @@ TEST_F(CreateTableITest, TestTransactionStatusTableCreation) {
       // TODO(#27854): We get stuck with object locking when there is no system.transactions
       // table. Disabling it for now until we fix the underlying issue.
       "--enable_object_locking_for_table_locks=false",
+      // Concurrent DDL requires object locking, so keep the two flags consistent.
+      "--ysql_enable_concurrent_ddl=false",
   };
+  AppendFlagToAllowedPreviewFlagsCsv(tserver_flags, "ysql_enable_concurrent_ddl");
   // We also need to enable ysql.
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 1, 1, true));
 

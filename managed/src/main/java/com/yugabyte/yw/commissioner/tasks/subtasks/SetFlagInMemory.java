@@ -25,7 +25,7 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class SetFlagInMemory extends ServerSubTaskBase {
@@ -90,7 +90,7 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     } else {
       gflags = new HashMap<>(taskParams().gflags);
     }
-    try (YBClient client = getClient()) {
+    try (YBClientApi client = getClient()) {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
       if (!taskParams().updateMasterAddrs) {
@@ -154,7 +154,7 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     }
   }
 
-  private void setFlag(YBClient client, String gflag, String value, HostAndPort hp)
+  private void setFlag(YBClientApi client, String gflag, String value, HostAndPort hp)
       throws Exception {
     log.debug("Setting gflag {} to {} on node {} via non-restart rpc", gflag, value, hp);
     boolean setSuccess = client.setFlag(hp, gflag, value, taskParams().force);

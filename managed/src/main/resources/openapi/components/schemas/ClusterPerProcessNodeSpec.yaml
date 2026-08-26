@@ -1,0 +1,10 @@
+title: ClusterPerProcessNodeSpec
+description: Instance settings for cluster-level (non-override) node specs. Storage requires volume_size and num_volumes. Part of ClusterNodeSpec.
+type: object
+properties:
+  instance_type:
+    description: Instance type for tserver/master nodes of cluster that determines the cpu and memory resources.
+    type: string
+    example: c5.xlarge
+  storage_spec:
+    $ref: "./ClusterStorageSpec.yaml"

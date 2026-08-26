@@ -138,6 +138,9 @@ public class PerfAdvisorService {
     if (filter.getPaUrl() != null) {
       query = query.eq("paUrl", filter.getPaUrl());
     }
+    if (filter.getEmbedded() != null) {
+      query = query.eq("embedded", filter.getEmbedded());
+    }
     return query.findList();
   }
 

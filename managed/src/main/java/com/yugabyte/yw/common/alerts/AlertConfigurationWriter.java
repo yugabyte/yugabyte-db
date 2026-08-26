@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfigurationTarget;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertTemplateSettings;
 import com.yugabyte.yw.models.MaintenanceWindow;
@@ -42,6 +43,7 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Singleton
 @Slf4j
@@ -165,6 +167,21 @@ public class AlertConfigurationWriter {
     syncDefinitions();
   }
 
+  /**
+   * Expands a maintenance window's alert-configuration target to make sure we also fetch
+   * configurations with target == all. For such configuration window will apply partially only for
+   * affected universes.
+   */
+  private AlertConfigurationTarget fromMaintenanceWindowTarget(
+      AlertConfigurationTarget windowTarget) {
+    if (windowTarget == null
+        || windowTarget.isAll()
+        || CollectionUtils.isEmpty(windowTarget.getUuids())) {
+      return windowTarget;
+    }
+    return new AlertConfigurationTarget().setAll(true).setUuids(windowTarget.getUuids());
+  }
+
   private void applyMaintenanceWindows() {
     try {
       MaintenanceWindowFilter filter =
@@ -174,10 +191,18 @@ public class AlertConfigurationWriter {
 
       Map<UUID, Set<UUID>> maintenanceWindowToAlertConfigs = new HashMap<>();
       for (MaintenanceWindow window : activeWindows) {
-        AlertConfigurationFilter alertConfigurationFilter =
+        AlertConfigurationFilter.AlertConfigurationFilterBuilder filterBuilder =
             window.getAlertConfigurationFilter().toFilter().toBuilder()
-                .customerUuid(window.getCustomerUUID())
-                .build();
+                .customerUuid(window.getCustomerUUID());
+        // Only override the target when we actually have an expansion to apply. The filter's
+        // target() setter is @NonNull, so passing a null (the common case when the window
+        // doesn't scope by target at all) would throw.
+        AlertConfigurationTarget expandedTarget =
+            fromMaintenanceWindowTarget(window.getAlertConfigurationFilter().getTarget());
+        if (expandedTarget != null) {
+          filterBuilder.target(expandedTarget);
+        }
+        AlertConfigurationFilter alertConfigurationFilter = filterBuilder.build();
         List<AlertConfiguration> configurations =
             alertConfigurationService.list(alertConfigurationFilter);
         List<AlertConfiguration> toSave =

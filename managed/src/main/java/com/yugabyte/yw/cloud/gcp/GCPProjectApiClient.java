@@ -43,6 +43,7 @@ import com.google.api.services.compute.model.NetworkList;
 import com.google.api.services.compute.model.Operation;
 import com.google.api.services.compute.model.Reservation;
 import com.google.api.services.compute.model.ReservationAggregatedList;
+import com.google.api.services.compute.model.ReservationList;
 import com.google.api.services.compute.model.ReservationsScopedList;
 import com.google.api.services.compute.model.SubnetworkList;
 import com.google.api.services.compute.model.TCPHealthCheck;
@@ -64,6 +65,9 @@ import java.io.IOException;
 import java.net.URI;
 import java.security.GeneralSecurityException;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -855,6 +859,14 @@ public class GCPProjectApiClient {
       String reservationName, String zone, String instanceType, int count, Map<String, String> tags)
       throws IOException {
 
+    if (fetchReservationIfExists(reservationName, zone) != null) {
+      log.info(
+          "Capacity reservation {} already exists in zone {}, skipping creation",
+          reservationName,
+          zone);
+      return reservationName;
+    }
+
     // Create the reservation object using the older API models
     com.google.api.services.compute.model.Reservation reservation =
         new com.google.api.services.compute.model.Reservation();
@@ -1004,5 +1016,105 @@ public class GCPProjectApiClient {
     Long count = specificReservation.getCount();
     Long inUseCount = specificReservation.getInUseCount();
     return count != null && inUseCount != null && inUseCount.equals(count);
+  }
+
+  /**
+   * Checks if a reservation is empty (no reserved instances are in use).
+   *
+   * @param reservation The reservation to check
+   * @return true if inUseCount is null or zero, false otherwise
+   */
+  public static boolean isReservationEmpty(Reservation reservation) {
+    if (reservation == null || reservation.getSpecificReservation() == null) {
+      return false;
+    }
+    Long inUseCount = reservation.getSpecificReservation().getInUseCount();
+    return inUseCount == null || inUseCount == 0L;
+  }
+
+  /**
+   * Checks whether the reservation was created at least {@code age} ago, based on its GCP {@code
+   * creationTimestamp}.
+   *
+   * @param reservation The reservation to check
+   * @param age Minimum age threshold
+   * @return true if the reservation is older than {@code age}; false if younger, missing a
+   *     timestamp, or the timestamp cannot be parsed
+   */
+  public static boolean isReservationOlderThan(Reservation reservation, Duration age) {
+    if (reservation == null
+        || age == null
+        || StringUtils.isBlank(reservation.getCreationTimestamp())) {
+      return false;
+    }
+    try {
+      Instant created = OffsetDateTime.parse(reservation.getCreationTimestamp()).toInstant();
+      return created.isBefore(Instant.now().minus(age));
+    } catch (DateTimeParseException e) {
+      log.warn(
+          "Failed to parse creationTimestamp '{}' for reservation {}",
+          reservation.getCreationTimestamp(),
+          reservation.getName(),
+          e);
+      return false;
+    }
+  }
+
+  /**
+   * Deletes a capacity reservation only if it is currently empty (no instances in use). Re-fetches
+   * the reservation before deleting to avoid racing with a newly attaching VM.
+   *
+   * @param reservationName Name of the reservation to delete
+   * @param zone GCP zone where the reservation exists
+   * @return true if deleted, false if not empty or not found
+   * @throws IOException when connection to GCP fails
+   */
+  public boolean deleteCapacityReservationIfEmpty(String reservationName, String zone)
+      throws IOException {
+    log.debug(
+        "Checking emptiness of capacity reservation: " + reservationName + " in zone: " + zone);
+
+    com.google.api.services.compute.model.Reservation reservation =
+        compute.reservations().get(project, zone, reservationName).execute();
+
+    if (reservation == null) {
+      log.warn("Reservation not found: " + reservationName + " in zone: " + zone);
+      return false;
+    }
+
+    if (!isReservationEmpty(reservation)) {
+      Long inUseCount =
+          reservation.getSpecificReservation() == null
+              ? null
+              : reservation.getSpecificReservation().getInUseCount();
+      log.info(
+          "Reservation "
+              + reservationName
+              + " is not empty (inUseCount: "
+              + inUseCount
+              + "). Skipping deletion.");
+      return false;
+    }
+
+    log.debug("Deleting empty capacity reservation: " + reservationName + " in zone: " + zone);
+    Operation response = compute.reservations().delete(project, zone, reservationName).execute();
+    operationPoller.waitForOperationCompletion(response);
+    log.info(
+        "Successfully deleted empty capacity reservation: "
+            + reservationName
+            + " in zone: "
+            + zone);
+    return true;
+  }
+
+  private Reservation fetchReservationIfExists(String reservationName, String zone)
+      throws IOException {
+    ReservationList list =
+        compute
+            .reservations()
+            .list(project, zone)
+            .setFilter("name = \"" + reservationName + "\"")
+            .execute();
+    return CollectionUtils.isEmpty(list.getItems()) ? null : list.getItems().get(0);
   }
 }

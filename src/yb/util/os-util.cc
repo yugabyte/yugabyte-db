@@ -45,8 +45,11 @@
 #include <vector>
 
 #include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/substitute.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 using std::ifstream;
 using std::istreambuf_iterator;
@@ -82,7 +85,7 @@ Result<std::string> ReadUnixConfigFromPath(const std::string& path, size_t max_l
   }
 
   if (bytes_read == 0) {
-    return STATUS_FORMAT(IllegalState, "config file $0 is empty", path);
+    return ""s;
   }
 
   // Last byte is a newline, drop it.

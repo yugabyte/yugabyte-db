@@ -19,7 +19,7 @@ import java.time.Duration;
 import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 // Helper class to wait for a minimum number of tservers to heartbeat to the
 // master leader. Currently the minimum is the same as the replication factor,
@@ -55,7 +55,7 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     int numTservers = universe.getTServers().size();
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       log.info(
           "Running {}: masterAddresses={}, numTservers={}.",
           getName(),

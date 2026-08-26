@@ -51,6 +51,11 @@ INSERT INTO tmp3
 
 ANALYZE tmp1, tmp2, tmp3;
 
+-- Load t1m non-transactionally; the provisional records the transactional path
+-- writes for this much data exhaust the test cluster's tserver memory limit,
+-- which then gets the ANALYZE below rejected for memory pressure.
+SET yb_disable_transactional_writes = true;
+
 /*+
   Leading(((tmp1 tmp2) tmp3))
   MergeJoin(tmp1 tmp2)
@@ -61,11 +66,21 @@ INSERT INTO t1m
       lpad(sha512((tmp1.v#tmp2.v#tmp3.v)::bpchar::bytea)::bpchar, 1536, '-')
   FROM tmp1 JOIN tmp2 USING (id) JOIN tmp3 USING(id);
 
+SET yb_disable_transactional_writes = false;
+
 ALTER TABLE t1m ALTER COLUMN k1 SET STATISTICS 500;
 ALTER TABLE t1m ALTER COLUMN k2 SET STATISTICS 500;
 ALTER TABLE t1m ALTER COLUMN k3 SET STATISTICS 500;
 
 ANALYZE t1m;
+
+-- Create t10k here rather than next to its use below: the first non-temp
+-- CREATE TABLE of a session scans pg_class for relfilenodes, and after the
+-- reconnect that scan races the commits of explain_filters.sql, yielding a read
+-- restart CREATE TABLE cannot retry.  This session's scan is already cached.
+CREATE TABLE t10k (id int, k1 int, k2 int, k3 int, v char(1536),
+    PRIMARY KEY (id ASC)) WITH (COLOCATION = on);
+INSERT INTO t10k SELECT * FROM t1m WHERE id <= 10000;
 
 
 \c colocated_db
@@ -236,6 +251,35 @@ SELECT 0 FROM t1m t;
 
 
 --
+-- Should choose SERIAL batched nested loop join.  A parallel BNL divides
+-- the outer row estimate, and with it the inner batch count, by the
+-- parallel divisor (#32653); at this size that win does not pay for
+-- parallel_setup_cost, which #33413 calibrated against the division.
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(160/2-1) AND 5000+(160/2);
+
+-- Undercharging the setup cost (the pre-#33413 default of 1700) flips it.
+/*+ Set(parallel_setup_cost 1700) */
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(160/2-1) AND 5000+(160/2);
+
+
+--
+-- Should choose PARALLEL batched nested loop join: with twice the rows the
+-- divided batch work exceeds the setup cost.  Flips serial if the outer
+-- row estimate loses its parallel-divisor division.
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT a.id, b.k2 FROM t1m a JOIN t1m b ON b.id = a.id
+WHERE a.k1 BETWEEN 5000-(330/2-1) AND 5000+(330/2);
+
+
+--
 -- Correctness tests
 --
 
@@ -249,9 +293,6 @@ SELECT 0 FROM t1m t;
 \set filename :abs_srcdir '/yb_commands/explain_filters.sql'
 \i :filename
 
-CREATE TABLE t10k (id int, k1 int, k2 int, k3 int, v char(1536),
-    PRIMARY KEY (id ASC)) WITH (COLOCATION = on);
-INSERT INTO t10k SELECT * FROM t1m WHERE id <= 10000;
 -- Ensure no stats even if we start auto-analyzing in the future.
 SELECT yb_reset_analyze_statistics('t10k'::regclass);
 

@@ -105,6 +105,7 @@ func initServices() {
 	serviceManager.RegisterService(NewPlatform(ybactl.Version))
 	serviceManager.RegisterService(NewPerfAdvisor(PerfAdvisorVersion))
 	serviceManager.RegisterService(NewNodeExporter(NodeExporterVersion))
+	serviceManager.RegisterService(NewByocApiProxy())
 	serviceManager.RegisterService(NewLogRotate())
 	var services []components.Service
 	for s := range serviceManager.Services() {

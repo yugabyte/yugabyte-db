@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/util/format.h"
 #include "yb/util/jwtcpp_util.h"
 #include "yb/util/jwt_test_keys.h"
 #include "yb/util/result.h"

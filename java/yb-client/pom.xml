@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.118-SNAPSHOT</version>
+    <version>0.8.122-SNAPSHOT</version>
   </parent>
 
   <artifactId>yb-client</artifactId>
@@ -224,6 +224,32 @@
             <goals>
               <goal>test-jar</goal>
             </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!--
+        Fail the Maven build (not Surefire) if a public YBClient instance method is missing
+        from YBClientApi. Bound to process-test-classes so the checker can live under src/test
+        and stay out of the published jar. Still runs with -DskipTests (use -Dmaven.test.skip
+        to skip compiling tests entirely).
+      -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.1.0</version>
+        <executions>
+          <execution>
+            <id>check-ybclient-api-coverage</id>
+            <phase>process-test-classes</phase>
+            <goals>
+              <goal>java</goal>
+            </goals>
+            <configuration>
+              <mainClass>org.yb.client.YBClientApiCoverageCheck</mainClass>
+              <classpathScope>test</classpathScope>
+              <!-- Propagate exceptions from main as a Maven BUILD FAILURE. -->
+              <cleanupDaemonThreads>false</cleanupDaemonThreads>
+            </configuration>
           </execution>
         </executions>
       </plugin>

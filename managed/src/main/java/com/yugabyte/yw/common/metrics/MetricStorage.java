@@ -87,6 +87,16 @@ public class MetricStorage {
     process(filter, metric -> metric.setDeleted(true));
   }
 
+  /**
+   * Drops all in-memory metric state. This store is a pure in-memory singleton (not backed by the
+   * database), so tests that reuse a single application across methods must reset it explicitly to
+   * get the same clean slate a freshly built application would have.
+   */
+  public void clear() {
+    metricsByKey.clear();
+    sourceStateMap.clear();
+  }
+
   public void markSource(UUID customerUuid, UUID metricSource, MetricSourceState state) {
     if (customerUuid == null) {
       throw new IllegalArgumentException("Customer UUID can't be null");

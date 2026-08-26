@@ -73,6 +73,31 @@ static inline const void *yb_od_circular_queue_peek(const yb_od_circular_queue_t
 	return q->data + q->head;
 }
 
+/*
+ * Peek at the most recently enqueued (tail) element, or NULL if empty.
+ */
+static inline const void *yb_od_circular_queue_peek_last(const yb_od_circular_queue_t *q)
+{
+	if (q->size == 0)
+		return NULL;
+	size_t last = q->head + q->size - q->elem_size;
+	if (last >= q->capacity)
+		last -= q->capacity;
+	return q->data + last;
+}
+
+/*
+ * Drop the most recently enqueued (tail) element.  Unlike dequeue (which
+ * advances head), this shrinks from the tail.
+ */
+static inline int yb_od_circular_queue_remove_last(yb_od_circular_queue_t *q)
+{
+	if (q->size == 0)
+		return -1;
+	q->size -= q->elem_size;
+	return 0;
+}
+
 static inline int yb_od_circular_queue_grow(yb_od_circular_queue_t *q)
 {
 	/*

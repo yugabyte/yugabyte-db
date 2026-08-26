@@ -673,44 +673,6 @@ class AbstractCloud(AbstractCommandParser):
         # No need to check the result of this command.
         remote_shell.run_command_raw('rm -d ' + xcluster_dest_certs_dir)
 
-    def copy_client_certs(
-            self,
-            connect_options,
-            root_cert_path,
-            client_cert_path,
-            client_key_path,
-            certs_location):
-        remote_shell = RemoteShell(connect_options)
-        yb_root_cert_path = os.path.join(
-            self.YSQLSH_CERT_DIR, self.CLIENT_ROOT_NAME)
-        yb_client_cert_path = os.path.join(
-            self.YSQLSH_CERT_DIR, self.CLIENT_CERT_NAME)
-        yb_client_key_path = os.path.join(
-            self.YSQLSH_CERT_DIR, self.CLIENT_KEY_NAME)
-
-        logging.info("Moving client certs located at {}, {}, {}.".format(
-            root_cert_path, client_cert_path, client_key_path))
-
-        remote_shell.check_exec_command('mkdir -p ' + self.YSQLSH_CERT_DIR)
-        # Give write permissions. If the command fails, ignore.
-        remote_shell.check_exec_command(
-            'chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
-
-        if certs_location == self.CERT_LOCATION_NODE:
-            remote_shell.check_exec_command("cp '{}' '{}'".format(root_cert_path,
-                                                                  yb_root_cert_path))
-            remote_shell.check_exec_command("cp '{}' '{}'".format(client_cert_path,
-                                                                  yb_client_cert_path))
-            remote_shell.check_exec_command("cp '{}' '{}'".format(client_key_path,
-                                                                  yb_client_key_path))
-        if certs_location == self.CERT_LOCATION_PLATFORM:
-            remote_shell.put_file(root_cert_path, yb_root_cert_path)
-            remote_shell.put_file(client_cert_path, yb_client_cert_path)
-            remote_shell.put_file(client_key_path, yb_client_key_path)
-
-        # Reset the write permission as a sanity check.
-        remote_shell.check_exec_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
-
     def cleanup_client_certs(self, connect_options):
         remote_shell = RemoteShell(connect_options)
         yb_root_cert_path = os.path.join(

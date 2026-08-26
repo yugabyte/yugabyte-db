@@ -60,7 +60,7 @@ INSERT INTO feature_pk_split
 -- Full scan.
 --
 \set query ':P SELECT * FROM feature_pk_split;'
-\i :iter_P2
+\i :run_query
 --
 -- Full scan with conditional operators.
 --
@@ -68,31 +68,31 @@ INSERT INTO feature_pk_split
 SELECT $$
 :P SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- Operator `IN`
 SELECT $$
 :P SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- Operator `<=`
 \set query ':P SELECT * FROM feature_pk_split WHERE col_double <= 10;'
-\i :iter_P2
+\i :run_query
 -- Operator `AND`
 SELECT $$
 :P SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <= 10;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 --
 -- Full scan with aggregate functions.
 --
 \set query ':P SELECT COUNT(*) FROM feature_pk_split;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT MAX(col_integer) FROM feature_pk_split;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT MIN(col_varchar) FROM feature_pk_split;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT AVG(col_double) FROM feature_pk_split;'
-\i :iter_P2
+\i :run_query
 --
 -- Primary key scan.
 -- This work needs to be optimized.
@@ -100,52 +100,52 @@ $$ AS query \gset
 SELECT $$
 :P SELECT * FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM feature_pk_split
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
 		  col_varchar >= 'a' AND col_varchar <= 'n'
 	ORDER BY col_integer, col_varchar;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT COUNT(*) FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT COUNT(*) FROM feature_pk_split
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
 		  col_varchar >= 'a' AND col_varchar <= 'n';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 --
 -- Secondary key scan.
 -- This work needs to be optimized.
 --
 -- Scan one tablet.
 \set query ':P SELECT * FROM feature_pk_split WHERE col_double < 2;'
-\i :iter_P2
+\i :run_query
 -- Scan two tablets.
 \set query ':P SELECT * FROM feature_pk_split WHERE col_double <= 5;'
-\i :iter_P2
+\i :run_query
 -- Scan three tablets.
 \set query ':P SELECT * FROM feature_pk_split WHERE col_double <= 8;'
-\i :iter_P2
+\i :run_query
 -- Scan four tablets.
 \set query ':P SELECT * FROM feature_pk_split WHERE col_double <= 11;'
-\i :iter_P2
+\i :run_query
 -- Scan five tablets.
 \set query ':P SELECT * FROM feature_pk_split WHERE col_double <= 14;'
-\i :iter_P2
+\i :run_query
 -- Scan six tablets.
 \set query ':P SELECT * FROM feature_pk_split WHERE col_double <= 17;'
-\i :iter_P2
+\i :run_query
 -- Scan all tablets.
 \set query ':P SELECT * FROM feature_pk_split WHERE col_double <= 100;'
-\i :iter_P2
+\i :run_query
 -- Index only scan.
 \set query ':P SELECT col_double FROM feature_pk_split WHERE col_double <= 8;'
-\i :iter_P2
+\i :run_query
 --
 -- Table that has min & max split values.
 -- * Using 3 splits: (1, MAX), (10, MIN), and (100, MIN).

@@ -143,7 +143,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                 .setMetric("valid_range_metric")
                 .setNodeAggregation(NodeAggregation.MAX)
                 .setTimeAggregation(TimeAggregation.MAX),
-            false);
+            false,
+            null);
 
     JsonNode result = qe.call();
     ArrayNode directUrls = (ArrayNode) result.get("directURLs");
@@ -174,7 +175,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                 .setMetric("valid_range_metric")
                 .setNodeAggregation(NodeAggregation.MAX)
                 .setTimeAggregation(TimeAggregation.MAX),
-            false);
+            false,
+            null);
 
     JsonNode result = qe.call();
     ArrayNode directUrls = (ArrayNode) result.get("directURLs");
@@ -208,7 +210,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                 .setSplitType(SplitType.NODE)
                 .setSplitMode(SplitMode.TOP)
                 .setSplitCount(2),
-            false);
+            false,
+            null);
 
     JsonNode responseJson =
         Json.parse(
@@ -258,7 +261,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                 .setSplitType(SplitType.NODE)
                 .setSplitMode(SplitMode.TOP)
                 .setSplitCount(2),
-            false);
+            false,
+            null);
 
     JsonNode responseJson =
         Json.parse(

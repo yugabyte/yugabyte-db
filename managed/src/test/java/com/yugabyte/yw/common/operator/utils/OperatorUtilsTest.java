@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.operator.utils;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,22 +29,52 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.export.TelemetryConfig;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.CiphertrustEARServiceUtil.CipherTrustKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthType;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ControllerLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.NodeAgentLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ServerLogLevel;
+import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.UniverseServerLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YnpLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YsqlConnMgrLogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -61,11 +92,37 @@ import io.fabric8.kubernetes.client.utils.Serialization;
 import io.fabric8.mockwebserver.Context;
 import io.fabric8.mockwebserver.ServerRequest;
 import io.fabric8.mockwebserver.ServerResponse;
+import io.yugabyte.operator.v1alpha1.KMSConfig;
+import io.yugabyte.operator.v1alpha1.KMSConfigSpec;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.Aws;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.Azure;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.CipherTrust;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.Gcp;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.Oci;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.Vault;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.aws.AccessKeyIdSecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.aws.CmkPolicySecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.aws.SecretAccessKeySecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.azure.ClientSecretSecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.ciphertrust.RefreshTokenSecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.ciphertrust.UserCredentials;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.ciphertrust.usercredentials.PasswordSecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.gcp.CredentialsSecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.oci.PrivateKeySecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.AppRole;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.TokenSecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.approle.SecretIdSecret;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.Metrics;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.UUID;
 import okhttp3.mockwebserver.Dispatcher;
 import okhttp3.mockwebserver.MockWebServer;
@@ -1209,5 +1266,1070 @@ public class OperatorUtilsTest extends FakeDBApplication {
         mockResourceClient = createMockResourceClient(mockResource);
 
     OperatorUtils.maybeAddYbaResourceId(configMap, resourceId, mockResourceClient);
+  }
+
+  /*--- getKMSConfigFormDataFromCr (Hashicorp Vault) tests ---*/
+
+  private KMSConfig baseKmsConfigCr(KMSConfigSpec.Provider provider) {
+    KMSConfig kmsConfig = new KMSConfig();
+    ObjectMeta metadata = new ObjectMeta();
+    metadata.setName("vault-kms");
+    metadata.setNamespace("test-namespace");
+    kmsConfig.setMetadata(metadata);
+    KMSConfigSpec spec = new KMSConfigSpec();
+    spec.setName("vault-kms-config");
+    spec.setProvider(provider);
+    kmsConfig.setSpec(spec);
+    return kmsConfig;
+  }
+
+  private static String field(ObjectNode node, String key) {
+    return node.get(key).asText();
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataHashicorpToken() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.HASHICORP);
+    Vault vault = new Vault();
+    vault.setAddress("http://vault:8200");
+    vault.setAuthType(Vault.AuthType.TOKEN);
+    TokenSecret tokenSecret = new TokenSecret();
+    tokenSecret.setName("vault-token");
+    tokenSecret.setKey("token");
+    vault.setTokenSecret(tokenSecret);
+    kmsConfig.getSpec().setVault(vault);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("root-token").when(operatorUtils).parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("vault-kms-config", formData.get("name").asText());
+    assertEquals("http://vault:8200", field(formData, HashicorpVaultConfigParams.HC_VAULT_ADDRESS));
+    assertEquals("root-token", field(formData, HashicorpVaultConfigParams.HC_VAULT_TOKEN));
+    assertEquals("transit/", field(formData, HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH));
+    assertEquals("transit", field(formData, HashicorpVaultConfigParams.HC_VAULT_ENGINE));
+    assertEquals("key_yugabyte", field(formData, HashicorpVaultConfigParams.HC_VAULT_KEY_NAME));
+    // TOKEN auth must not carry AppRole/authNamespace fields.
+    assertFalse(formData.has(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID));
+    assertFalse(formData.has(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID));
+    assertFalse(formData.has(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataHashicorpAppRolePrefixesMountPath() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.HASHICORP);
+    Vault vault = new Vault();
+    vault.setAddress("http://vault:8200");
+    vault.setAuthType(Vault.AuthType.APPROLE);
+    vault.setAuthNamespace("admin");
+    AppRole appRole = new AppRole();
+    appRole.setRoleID("role-id");
+    SecretIdSecret secretIdSecret = new SecretIdSecret();
+    secretIdSecret.setName("vault-approle-secret-id");
+    secretIdSecret.setKey("secret-id");
+    appRole.setSecretIdSecret(secretIdSecret);
+    vault.setAppRole(appRole);
+    kmsConfig.getSpec().setVault(vault);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("secret-id-value")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("role-id", field(formData, HashicorpVaultConfigParams.HC_VAULT_ROLE_ID));
+    assertEquals("secret-id-value", field(formData, HashicorpVaultConfigParams.HC_VAULT_SECRET_ID));
+    assertEquals("admin", field(formData, HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE));
+    // The default mount path is prefixed with the auth namespace for APPROLE.
+    assertEquals("admin/transit/", field(formData, HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH));
+    // APPROLE auth must not carry a token.
+    assertFalse(formData.has(HashicorpVaultConfigParams.HC_VAULT_TOKEN));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataAwsStaticCredentials() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AWS);
+    Aws aws = new Aws();
+    aws.setRegion("us-west-2");
+    aws.setCmkID("cmk-1234");
+    aws.setEndpoint("https://kms.us-west-2.amazonaws.com");
+    AccessKeyIdSecret accessKeyIdSecret = new AccessKeyIdSecret();
+    accessKeyIdSecret.setName("aws-access-key");
+    accessKeyIdSecret.setKey("access-key-id");
+    aws.setAccessKeyIdSecret(accessKeyIdSecret);
+    SecretAccessKeySecret secretAccessKeySecret = new SecretAccessKeySecret();
+    secretAccessKeySecret.setName("aws-secret-key");
+    secretAccessKeySecret.setKey("secret-access-key");
+    aws.setSecretAccessKeySecret(secretAccessKeySecret);
+    kmsConfig.getSpec().setAws(aws);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("resolved-secret")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("us-west-2", field(formData, AwsKmsAuthConfigField.REGION.fieldName));
+    assertEquals("resolved-secret", field(formData, AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName));
+    assertEquals(
+        "resolved-secret", field(formData, AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName));
+    assertEquals("cmk-1234", field(formData, AwsKmsAuthConfigField.CMK_ID.fieldName));
+    assertEquals(
+        "https://kms.us-west-2.amazonaws.com",
+        field(formData, AwsKmsAuthConfigField.ENDPOINT.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataAwsCmkPolicy() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AWS);
+    Aws aws = new Aws();
+    aws.setRegion("us-west-2");
+    aws.setUseIAMProfile(true);
+    CmkPolicySecret cmkPolicySecret = new CmkPolicySecret();
+    cmkPolicySecret.setName("cmk-policy");
+    cmkPolicySecret.setKey("policy.json");
+    aws.setCmkPolicySecret(cmkPolicySecret);
+    kmsConfig.getSpec().setAws(aws);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("{\"Version\":\"2012-10-17\"}")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals(
+        "{\"Version\":\"2012-10-17\"}",
+        field(formData, AwsKmsAuthConfigField.CMK_POLICY.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataAwsIamProfileOmitsCredentials() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AWS);
+    Aws aws = new Aws();
+    aws.setRegion("us-east-1");
+    aws.setUseIAMProfile(true);
+    kmsConfig.getSpec().setAws(aws);
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("us-east-1", field(formData, AwsKmsAuthConfigField.REGION.fieldName));
+    // With the host IAM profile no static credentials are emitted; the backend falls back to the
+    // default AWS credential chain.
+    assertFalse(formData.has(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName));
+    assertFalse(formData.has(AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName));
+    // cmkID, endpoint and cmkPolicy are optional and were not set.
+    assertFalse(formData.has(AwsKmsAuthConfigField.CMK_ID.fieldName));
+    assertFalse(formData.has(AwsKmsAuthConfigField.ENDPOINT.fieldName));
+    assertFalse(formData.has(AwsKmsAuthConfigField.CMK_POLICY.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataGcpWithCredentials() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.GCP);
+    Gcp gcp = new Gcp();
+    gcp.setLocation("us-east1");
+    gcp.setKeyRingName("yb-key-ring");
+    gcp.setCryptoKeyName("yb-crypto-key");
+    gcp.setProtectionLevel(Gcp.ProtectionLevel.HSM);
+    gcp.setEndpoint("https://cloudkms.googleapis.com");
+    CredentialsSecret credentialsSecret = new CredentialsSecret();
+    credentialsSecret.setName("gcp-creds");
+    credentialsSecret.setKey("credentials.json");
+    gcp.setCredentialsSecret(credentialsSecret);
+    kmsConfig.getSpec().setGcp(gcp);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("{\"type\":\"service_account\",\"project_id\":\"my-project\"}")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("us-east1", field(formData, GcpKmsAuthConfigField.LOCATION_ID.fieldName));
+    assertEquals("yb-key-ring", field(formData, GcpKmsAuthConfigField.KEY_RING_ID.fieldName));
+    assertEquals("yb-crypto-key", field(formData, GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName));
+    assertEquals("HSM", field(formData, GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName));
+    assertEquals(
+        "https://cloudkms.googleapis.com",
+        field(formData, GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName));
+    // The credentials JSON is stored as a nested object, not a string.
+    JsonNode gcpConfig = formData.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName);
+    assertTrue(gcpConfig.isObject());
+    assertEquals("my-project", gcpConfig.get("project_id").asText());
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataGcpMissingCredentialsThrows() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.GCP);
+    Gcp gcp = new Gcp();
+    gcp.setKeyRingName("yb-key-ring");
+    gcp.setCryptoKeyName("yb-crypto-key");
+    kmsConfig.getSpec().setGcp(gcp);
+
+    // credentialsSecret is required for GCP (the project ID is read from the credentials JSON).
+    assertThrows(RuntimeException.class, () -> operatorUtils.getKMSConfigFormDataFromCr(kmsConfig));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataAzureServicePrincipal() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AZU);
+    Azure azure = new Azure();
+    azure.setClientID("client-id");
+    azure.setTenantID("tenant-id");
+    azure.setKeyVaultURL("https://myvault.vault.azure.net/");
+    azure.setKeyName("yb-key");
+    azure.setKeySize(3072L);
+    ClientSecretSecret clientSecretSecret = new ClientSecretSecret();
+    clientSecretSecret.setName("azure-client-secret");
+    clientSecretSecret.setKey("client-secret");
+    azure.setClientSecretSecret(clientSecretSecret);
+    kmsConfig.getSpec().setAzure(azure);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("client-secret-value")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("client-id", field(formData, AzuKmsAuthConfigField.CLIENT_ID.fieldName));
+    assertEquals("tenant-id", field(formData, AzuKmsAuthConfigField.TENANT_ID.fieldName));
+    assertEquals(
+        "https://myvault.vault.azure.net/",
+        field(formData, AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName));
+    assertEquals("yb-key", field(formData, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName));
+    assertEquals("RSA", field(formData, AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName));
+    assertEquals("3072", field(formData, AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName));
+    assertEquals(
+        "client-secret-value", field(formData, AzuKmsAuthConfigField.CLIENT_SECRET.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataAzureManagedIdentityOmitsSecret() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AZU);
+    Azure azure = new Azure();
+    azure.setClientID("managed-identity-client-id");
+    azure.setTenantID("tenant-id");
+    azure.setKeyVaultURL("https://myvault.vault.azure.net/");
+    azure.setKeyName("yb-key");
+    azure.setUseManagedIdentity(true);
+    kmsConfig.getSpec().setAzure(azure);
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    // clientID and tenantID are always required, even with managed identity.
+    assertEquals(
+        "managed-identity-client-id", field(formData, AzuKmsAuthConfigField.CLIENT_ID.fieldName));
+    assertEquals("tenant-id", field(formData, AzuKmsAuthConfigField.TENANT_ID.fieldName));
+    // Managed identity omits the client secret; defaults are applied.
+    assertFalse(formData.has(AzuKmsAuthConfigField.CLIENT_SECRET.fieldName));
+    assertEquals("RSA", field(formData, AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName));
+    assertEquals("2048", field(formData, AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataCiphertrustUserCredentials() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.CIPHERTRUST);
+    CipherTrust cipherTrust = new CipherTrust();
+    cipherTrust.setManagerURL("https://web.ciphertrustmanager.local");
+    cipherTrust.setKeyName("yb-key");
+    cipherTrust.setKeySize(256L);
+    cipherTrust.setAuthType(CipherTrust.AuthType.USER_CREDENTIALS);
+    UserCredentials userCredentials = new UserCredentials();
+    userCredentials.setUsername("admin");
+    PasswordSecret passwordSecret = new PasswordSecret();
+    passwordSecret.setName("ciphertrust-password");
+    passwordSecret.setKey("password");
+    userCredentials.setPasswordSecret(passwordSecret);
+    cipherTrust.setUserCredentials(userCredentials);
+    kmsConfig.getSpec().setCipherTrust(cipherTrust);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("password-value")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals(
+        "https://web.ciphertrustmanager.local",
+        field(formData, CipherTrustKmsAuthConfigField.CIPHERTRUST_MANAGER_URL.fieldName));
+    assertEquals("yb-key", field(formData, CipherTrustKmsAuthConfigField.KEY_NAME.fieldName));
+    assertEquals("AES", field(formData, CipherTrustKmsAuthConfigField.KEY_ALGORITHM.fieldName));
+    assertEquals("256", field(formData, CipherTrustKmsAuthConfigField.KEY_SIZE.fieldName));
+    // USER_CREDENTIALS maps to the backend PASSWORD auth type.
+    assertEquals("PASSWORD", field(formData, CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName));
+    assertEquals("admin", field(formData, CipherTrustKmsAuthConfigField.USERNAME.fieldName));
+    assertEquals(
+        "password-value", field(formData, CipherTrustKmsAuthConfigField.PASSWORD.fieldName));
+    assertFalse(formData.has(CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataCiphertrustRefreshToken() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.CIPHERTRUST);
+    CipherTrust cipherTrust = new CipherTrust();
+    cipherTrust.setManagerURL("https://web.ciphertrustmanager.local");
+    cipherTrust.setKeyName("yb-key");
+    cipherTrust.setAuthType(CipherTrust.AuthType.REFRESH_TOKEN);
+    RefreshTokenSecret refreshTokenSecret = new RefreshTokenSecret();
+    refreshTokenSecret.setName("ciphertrust-refresh-token");
+    refreshTokenSecret.setKey("refresh-token");
+    cipherTrust.setRefreshTokenSecret(refreshTokenSecret);
+    kmsConfig.getSpec().setCipherTrust(cipherTrust);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("refresh-token-value")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals(
+        "REFRESH_TOKEN", field(formData, CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName));
+    assertEquals(
+        "refresh-token-value",
+        field(formData, CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName));
+    // Defaults are applied and the user-credentials fields are absent.
+    assertEquals("256", field(formData, CipherTrustKmsAuthConfigField.KEY_SIZE.fieldName));
+    assertFalse(formData.has(CipherTrustKmsAuthConfigField.USERNAME.fieldName));
+    assertFalse(formData.has(CipherTrustKmsAuthConfigField.PASSWORD.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataOci() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.OCI);
+    Oci oci = new Oci();
+    oci.setUserOCID("ocid1.user.oc1..user");
+    oci.setTenancyOCID("ocid1.tenancy.oc1..tenancy");
+    oci.setFingerprint("20:3b:97:13:55:1c");
+    oci.setRegion("us-ashburn-1");
+    oci.setCompartmentOCID("ocid1.compartment.oc1..comp");
+    oci.setVaultOCID("ocid1.vault.oc1..vault");
+    PrivateKeySecret privateKeySecret = new PrivateKeySecret();
+    privateKeySecret.setName("oci-private-key");
+    privateKeySecret.setKey("private-key.pem");
+    oci.setPrivateKeySecret(privateKeySecret);
+    kmsConfig.getSpec().setOci(oci);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("-----BEGIN PRIVATE KEY-----")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals(
+        "ocid1.user.oc1..user", field(formData, OciKmsAuthConfigField.ociUserId.fieldName));
+    assertEquals(
+        "ocid1.tenancy.oc1..tenancy",
+        field(formData, OciKmsAuthConfigField.ociTenancyId.fieldName));
+    assertEquals(
+        "20:3b:97:13:55:1c", field(formData, OciKmsAuthConfigField.ociFingerprint.fieldName));
+    assertEquals("us-ashburn-1", field(formData, OciKmsAuthConfigField.ociRegion.fieldName));
+    assertEquals(
+        "ocid1.compartment.oc1..comp",
+        field(formData, OciKmsAuthConfigField.ociCompartmentId.fieldName));
+    assertEquals(
+        "ocid1.vault.oc1..vault", field(formData, OciKmsAuthConfigField.ociVaultId.fieldName));
+    // keyName was not set, so the CR default is applied.
+    assertEquals("yba-master-key", field(formData, OciKmsAuthConfigField.ociKeyName.fieldName));
+    assertEquals(
+        "-----BEGIN PRIVATE KEY-----",
+        field(formData, OciKmsAuthConfigField.ociPrivateKeyContent.fieldName));
+    // keyOCID not set -> absent (YBA creates the key with keyName).
+    assertFalse(formData.has(OciKmsAuthConfigField.ociKeyOcid.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataOciMissingPrivateKeyThrows() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.OCI);
+    Oci oci = new Oci();
+    oci.setUserOCID("ocid1.user.oc1..user");
+    oci.setTenancyOCID("ocid1.tenancy.oc1..tenancy");
+    oci.setFingerprint("20:3b:97:13:55:1c");
+    oci.setRegion("us-ashburn-1");
+    oci.setCompartmentOCID("ocid1.compartment.oc1..comp");
+    oci.setVaultOCID("ocid1.vault.oc1..vault");
+    kmsConfig.getSpec().setOci(oci);
+
+    // The API signing key is required to authenticate against OCI KMS.
+    assertThrows(RuntimeException.class, () -> operatorUtils.getKMSConfigFormDataFromCr(kmsConfig));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataOciApiKeyOmitsAuthType() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.OCI);
+    Oci oci = new Oci();
+    oci.setUserOCID("ocid1.user.oc1..user");
+    oci.setTenancyOCID("ocid1.tenancy.oc1..tenancy");
+    oci.setFingerprint("20:3b:97:13:55:1c");
+    oci.setRegion("us-ashburn-1");
+    oci.setCompartmentOCID("ocid1.compartment.oc1..comp");
+    oci.setVaultOCID("ocid1.vault.oc1..vault");
+    PrivateKeySecret privateKeySecret = new PrivateKeySecret();
+    privateKeySecret.setName("oci-private-key");
+    privateKeySecret.setKey("private-key.pem");
+    oci.setPrivateKeySecret(privateKeySecret);
+    kmsConfig.getSpec().setOci(oci);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("-----BEGIN PRIVATE KEY-----")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    // API_KEY is the backend default when ociAuthType is blank. Leaving it unset keeps the auth
+    // config byte-identical to one produced before instance-principal support existed, so the
+    // reconciler does not see pre-existing configs as changed.
+    assertFalse(formData.has(OciKmsAuthConfigField.ociAuthType.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataOciInstancePrincipalOmitsCredentials() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.OCI);
+    Oci oci = new Oci();
+    oci.setUseInstancePrincipal(true);
+    oci.setRegion("us-ashburn-1");
+    oci.setCompartmentOCID("ocid1.compartment.oc1..comp");
+    oci.setVaultOCID("ocid1.vault.oc1..vault");
+    oci.setKeyName("yb-operator-oci-key");
+    kmsConfig.getSpec().setOci(oci);
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals(
+        OciKmsAuthType.INSTANCE_PRINCIPAL.name(),
+        field(formData, OciKmsAuthConfigField.ociAuthType.fieldName));
+    assertEquals("us-ashburn-1", field(formData, OciKmsAuthConfigField.ociRegion.fieldName));
+    assertEquals(
+        "ocid1.compartment.oc1..comp",
+        field(formData, OciKmsAuthConfigField.ociCompartmentId.fieldName));
+    assertEquals(
+        "ocid1.vault.oc1..vault", field(formData, OciKmsAuthConfigField.ociVaultId.fieldName));
+    assertEquals(
+        "yb-operator-oci-key", field(formData, OciKmsAuthConfigField.ociKeyName.fieldName));
+    // The instance principal is resolved from the host metadata service, so none of the API-key
+    // credentials are emitted.
+    assertFalse(formData.has(OciKmsAuthConfigField.ociUserId.fieldName));
+    assertFalse(formData.has(OciKmsAuthConfigField.ociTenancyId.fieldName));
+    assertFalse(formData.has(OciKmsAuthConfigField.ociFingerprint.fieldName));
+    assertFalse(formData.has(OciKmsAuthConfigField.ociPrivateKeyContent.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataOciInstancePrincipalIgnoresPrivateKeySecret() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.OCI);
+    Oci oci = new Oci();
+    oci.setUseInstancePrincipal(true);
+    oci.setRegion("us-ashburn-1");
+    oci.setCompartmentOCID("ocid1.compartment.oc1..comp");
+    oci.setVaultOCID("ocid1.vault.oc1..vault");
+    PrivateKeySecret privateKeySecret = new PrivateKeySecret();
+    privateKeySecret.setName("oci-private-key");
+    privateKeySecret.setKey("private-key.pem");
+    oci.setPrivateKeySecret(privateKeySecret);
+    kmsConfig.getSpec().setOci(oci);
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    // A leftover privateKeySecret is not read at all, so no Secret lookup is attempted.
+    verify(operatorUtils, Mockito.never()).getSecret(anyString(), nullable(String.class));
+    assertFalse(formData.has(OciKmsAuthConfigField.ociPrivateKeyContent.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataOciInstancePrincipalWithExistingKey() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.OCI);
+    Oci oci = new Oci();
+    oci.setUseInstancePrincipal(true);
+    oci.setRegion("us-sanjose-1");
+    oci.setCompartmentOCID("ocid1.compartment.oc1..comp");
+    oci.setVaultOCID("ocid1.vault.oc1.us-sanjose-1.vault");
+    oci.setKeyName("yb-operator-oci-key");
+    oci.setKeyOCID("ocid1.key.oc1.us-sanjose-1.key");
+    kmsConfig.getSpec().setOci(oci);
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    // keyOCID is orthogonal to the auth type and must still be passed through.
+    assertEquals(
+        "ocid1.key.oc1.us-sanjose-1.key",
+        field(formData, OciKmsAuthConfigField.ociKeyOcid.fieldName));
+    assertEquals(
+        OciKmsAuthType.INSTANCE_PRINCIPAL.name(),
+        field(formData, OciKmsAuthConfigField.ociAuthType.fieldName));
+  }
+
+  /*--- Telemetry export: section comparison (telemetrySectionDiffers) ---*/
+
+  // Internal-model fixtures, shaped the way the config is actually persisted: every section carries
+  // the server-derived fields (exportActive, the per-section 'enabled' flags, the metrics defaults)
+  // that a CR never authors.
+
+  private static UniverseLogsExporterConfig auditExporter(UUID exporterUuid) {
+    UniverseLogsExporterConfig exporter = new UniverseLogsExporterConfig();
+    exporter.setExporterUuid(exporterUuid);
+    exporter.setAdditionalTags(new HashMap<>(Map.of("env", "prod")));
+    return exporter;
+  }
+
+  private static UniverseServerLogsExporterConfig serverExporter(UUID exporterUuid) {
+    UniverseServerLogsExporterConfig exporter = new UniverseServerLogsExporterConfig();
+    exporter.setExporterUuid(exporterUuid);
+    return exporter;
+  }
+
+  private static AuditLogConfig storedAuditLogConfig(UUID exporterUuid) {
+    AuditLogConfig config = new AuditLogConfig();
+    YSQLAuditConfig ysql = new YSQLAuditConfig();
+    // Derived: the mapper force-sets this whenever the sub-object is present.
+    ysql.setEnabled(true);
+    ysql.setClasses(
+        EnumSet.of(
+            YSQLAuditConfig.YSQLAuditStatementClass.WRITE,
+            YSQLAuditConfig.YSQLAuditStatementClass.DDL));
+    ysql.setLogParameter(true);
+    config.setYsqlAuditConfig(ysql);
+    config.setUniverseLogsExporterConfig(new ArrayList<>(List.of(auditExporter(exporterUuid))));
+    // Derived: the mapper sets this from isNotEmpty(exporters).
+    config.setExportActive(true);
+    return config;
+  }
+
+  private static QueryLogConfig storedQueryLogConfig(UUID exporterUuid) {
+    QueryLogConfig config = new QueryLogConfig();
+    YSQLQueryLogConfig ysql = new YSQLQueryLogConfig();
+    ysql.setEnabled(true);
+    ysql.setLogConnections(true);
+    config.setYsqlQueryLogConfig(ysql);
+    UniverseQueryLogsExporterConfig exporter = new UniverseQueryLogsExporterConfig();
+    exporter.setExporterUuid(exporterUuid);
+    config.setUniverseLogsExporterConfig(new ArrayList<>(List.of(exporter)));
+    config.setExportActive(true);
+    return config;
+  }
+
+  private static MetricsExportConfig storedMetricsExportConfig(UUID exporterUuid) {
+    MetricsExportConfig config = new MetricsExportConfig();
+    // Defaulted: 30 / 20 / NORMAL come from the model, the target set from the operator.
+    config.setScrapeIntervalSeconds(30);
+    config.setScrapeTimeoutSeconds(20);
+    config.setCollectionLevel(MetricCollectionLevel.NORMAL);
+    config.setScrapeConfigTargets(EnumSet.copyOf(OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS));
+    UniverseMetricsExporterConfig exporter = new UniverseMetricsExporterConfig();
+    exporter.setExporterUuid(exporterUuid);
+    config.setUniverseMetricsExporterConfig(new ArrayList<>(List.of(exporter)));
+    return config;
+  }
+
+  private static MasterLogConfig storedMasterLogConfig(UUID exporterUuid) {
+    MasterLogConfig config = new MasterLogConfig();
+    config.setMinLevel(ServerLogLevel.INFO);
+    config.setNoiseSampleDropRatio(0.99);
+    config.setUniverseLogsExporterConfig(new ArrayList<>(List.of(serverExporter(exporterUuid))));
+    return config;
+  }
+
+  private static TServerLogConfig storedTserverLogConfig(UUID exporterUuid) {
+    TServerLogConfig config = new TServerLogConfig();
+    config.setMinLevel(ServerLogLevel.WARNING);
+    config.setUniverseLogsExporterConfig(new ArrayList<>(List.of(serverExporter(exporterUuid))));
+    return config;
+  }
+
+  private static YsqlConnMgrLogConfig storedYsqlConnMgrLogConfig(UUID exporterUuid) {
+    YsqlConnMgrLogConfig config = new YsqlConnMgrLogConfig();
+    config.setUniverseLogsExporterConfig(new ArrayList<>(List.of(serverExporter(exporterUuid))));
+    return config;
+  }
+
+  private static ControllerLogConfig storedControllerLogConfig(UUID exporterUuid) {
+    ControllerLogConfig config = new ControllerLogConfig();
+    config.setUniverseLogsExporterConfig(new ArrayList<>(List.of(serverExporter(exporterUuid))));
+    return config;
+  }
+
+  /** One TelemetryConfig per export type, populating only that type's section. */
+  private static Map<ExportType, TelemetryConfig> singleSectionConfigs(UUID exporterUuid) {
+    Map<ExportType, TelemetryConfig> configs = new EnumMap<>(ExportType.class);
+    configs.put(
+        ExportType.AUDIT_LOGS,
+        TelemetryConfig.builder().auditLogConfig(storedAuditLogConfig(exporterUuid)).build());
+    configs.put(
+        ExportType.QUERY_LOGS,
+        TelemetryConfig.builder().queryLogConfig(storedQueryLogConfig(exporterUuid)).build());
+    configs.put(
+        ExportType.METRICS,
+        TelemetryConfig.builder()
+            .metricsExportConfig(storedMetricsExportConfig(exporterUuid))
+            .build());
+    configs.put(
+        ExportType.MASTER_LOGS,
+        TelemetryConfig.builder().masterLogConfig(storedMasterLogConfig(exporterUuid)).build());
+    configs.put(
+        ExportType.TSERVER_LOGS,
+        TelemetryConfig.builder().tserverLogConfig(storedTserverLogConfig(exporterUuid)).build());
+    configs.put(
+        ExportType.YSQL_CONN_MGR_LOGS,
+        TelemetryConfig.builder()
+            .ysqlConnMgrLogConfig(storedYsqlConnMgrLogConfig(exporterUuid))
+            .build());
+    configs.put(
+        ExportType.CONTROLLER_LOGS,
+        TelemetryConfig.builder()
+            .controllerLogConfig(storedControllerLogConfig(exporterUuid))
+            .build());
+    return configs;
+  }
+
+  /**
+   * Guard test for a newly added {@link ExportType}. The per-section comparators in {@link
+   * OperatorUtils#telemetrySectionDiffers} are hand-written - they cannot derive from {@code
+   * ExportType.values()} the way {@code TelemetryConfig.diff} does, because they have to exclude
+   * the server-derived fields - so a new export type would otherwise silently never trigger a
+   * telemetry reconcile. Adding a value to {@code ExportType} fails this test: it has no fixture
+   * below, and {@code telemetrySectionDiffers} throws on the unhandled case.
+   */
+  @Test
+  public void testTelemetrySectionDiffersCoversEveryExportType() {
+    UUID exporterUuid = UUID.randomUUID();
+    Map<ExportType, TelemetryConfig> singleSection = singleSectionConfigs(exporterUuid);
+
+    // The VM-only set is pinned rather than derived, so a new unsupported type also has to be
+    // acknowledged here (and omitted from the universe CRD).
+    Set<ExportType> vmOnly = EnumSet.noneOf(ExportType.class);
+    for (ExportType type : ExportType.values()) {
+      if (!type.isSupportedOnKubernetes()) {
+        vmOnly.add(type);
+      }
+    }
+    assertEquals(
+        "The set of Kubernetes-unsupported export types changed. Decide whether the new type"
+            + " belongs in the universe CRD before updating this expectation.",
+        EnumSet.of(ExportType.NODE_AGENT_LOGS, ExportType.YNP_LOGS),
+        vmOnly);
+
+    NodeAgentLogConfig nodeAgentLogConfig = new NodeAgentLogConfig();
+    nodeAgentLogConfig.setUniverseLogsExporterConfig(
+        new ArrayList<>(List.of(serverExporter(exporterUuid))));
+    YnpLogConfig ynpLogConfig = new YnpLogConfig();
+    ynpLogConfig.setUniverseLogsExporterConfig(
+        new ArrayList<>(List.of(serverExporter(exporterUuid))));
+    TelemetryConfig vmOnlySections =
+        TelemetryConfig.builder()
+            .nodeAgentLogConfig(nodeAgentLogConfig)
+            .ynpLogConfig(ynpLogConfig)
+            .build();
+
+    for (ExportType type : ExportType.values()) {
+      if (vmOnly.contains(type)) {
+        assertFalse(
+            type + " is VM-only and must never trigger a telemetry reconcile on Kubernetes",
+            OperatorUtils.telemetrySectionDiffers(type, vmOnlySections, new TelemetryConfig()));
+        continue;
+      }
+      TelemetryConfig desired = singleSection.get(type);
+      assertNotNull(
+          "Export type "
+              + type
+              + " has no comparator fixture. Add its case to"
+              + " OperatorUtils.telemetrySectionDiffers and a fixture to singleSectionConfigs(),"
+              + " otherwise the operator will never reconcile it.",
+          desired);
+      assertTrue(
+          type + ": a newly configured section must differ from a config that has none",
+          OperatorUtils.telemetrySectionDiffers(type, desired, new TelemetryConfig()));
+      assertFalse(
+          type + ": an unchanged section must not differ from itself",
+          OperatorUtils.telemetrySectionDiffers(type, desired, desired));
+      // Each comparator must read only its own section - a copy-paste that compares the wrong field
+      // would make one section's change fire another section's branch.
+      for (ExportType other : ExportType.values()) {
+        if (other == type) {
+          continue;
+        }
+        assertFalse(
+            "Populating only " + type + " must not report a difference for " + other,
+            OperatorUtils.telemetrySectionDiffers(other, desired, new TelemetryConfig()));
+      }
+    }
+  }
+
+  // Note: the derived-field rules themselves (audit/query exportActive, the per-section 'enabled'
+  // flags, and that the comparison does not mutate the stored objects) are covered against real
+  // converter output in UniverseTelemetrySpecConverterTest. What follows is what that suite does
+  // not
+  // reach: the ExportType guard, and the exporter-level and metrics-level rules.
+
+  @Test
+  public void testTelemetrySectionDiffersTreatsNullAndEmptyExporterListsAsEqual() {
+    ControllerLogConfig storedSection = new ControllerLogConfig();
+    // Older stored rows can hold null where the shared mapper now always writes an empty list.
+    storedSection.setUniverseLogsExporterConfig(null);
+    ControllerLogConfig desiredSection = new ControllerLogConfig();
+    desiredSection.setUniverseLogsExporterConfig(new ArrayList<>());
+
+    assertFalse(
+        "null and empty exporter lists both mean 'no exporter'",
+        OperatorUtils.telemetrySectionDiffers(
+            ExportType.CONTROLLER_LOGS,
+            TelemetryConfig.builder().controllerLogConfig(desiredSection).build(),
+            TelemetryConfig.builder().controllerLogConfig(storedSection).build()));
+  }
+
+  @Test
+  public void testTelemetrySectionDiffersIgnoresUnsetMetricsExporterDefaults() {
+    UUID exporterUuid = UUID.randomUUID();
+    MetricsExportConfig stored = storedMetricsExportConfig(exporterUuid);
+    // A stored row predating the metricsPrefix/additionalTags defaults holds nulls the CR cannot
+    // express, so they must not read as a permanent difference.
+    stored.getUniverseMetricsExporterConfig().get(0).setMetricsPrefix(null);
+    stored.getUniverseMetricsExporterConfig().get(0).setAdditionalTags(null);
+    MetricsExportConfig desired = storedMetricsExportConfig(exporterUuid);
+
+    assertFalse(
+        OperatorUtils.telemetrySectionDiffers(
+            ExportType.METRICS,
+            TelemetryConfig.builder().metricsExportConfig(desired).build(),
+            TelemetryConfig.builder().metricsExportConfig(stored).build()));
+
+    // An authored metricsPrefix is still compared.
+    desired.getUniverseMetricsExporterConfig().get(0).setMetricsPrefix("ybdb.");
+    assertTrue(
+        OperatorUtils.telemetrySectionDiffers(
+            ExportType.METRICS,
+            TelemetryConfig.builder().metricsExportConfig(desired).build(),
+            TelemetryConfig.builder().metricsExportConfig(stored).build()));
+  }
+
+  @Test
+  public void testTelemetrySectionDiffersComparesAuthoredMetricsFields() {
+    UUID exporterUuid = UUID.randomUUID();
+    TelemetryConfig stored =
+        TelemetryConfig.builder()
+            .metricsExportConfig(storedMetricsExportConfig(exporterUuid))
+            .build();
+
+    MetricsExportConfig interval = storedMetricsExportConfig(exporterUuid);
+    interval.setScrapeIntervalSeconds(60);
+    assertTrue(
+        OperatorUtils.telemetrySectionDiffers(
+            ExportType.METRICS,
+            TelemetryConfig.builder().metricsExportConfig(interval).build(),
+            stored));
+
+    MetricsExportConfig level = storedMetricsExportConfig(exporterUuid);
+    level.setCollectionLevel(MetricCollectionLevel.ALL);
+    assertTrue(
+        OperatorUtils.telemetrySectionDiffers(
+            ExportType.METRICS,
+            TelemetryConfig.builder().metricsExportConfig(level).build(),
+            stored));
+
+    MetricsExportConfig targets = storedMetricsExportConfig(exporterUuid);
+    targets.setScrapeConfigTargets(EnumSet.of(ScrapeConfigTargetType.MASTER_EXPORT));
+    assertTrue(
+        OperatorUtils.telemetrySectionDiffers(
+            ExportType.METRICS,
+            TelemetryConfig.builder().metricsExportConfig(targets).build(),
+            stored));
+  }
+
+  /*--- Telemetry export: getDesiredTelemetryConfig ---*/
+
+  private static final String TELEMETRY_NAMESPACE = "test-namespace";
+  private static final String TELEMETRY_PROVIDER_CR = "datadog-prod";
+
+  private void createTelemetryProviderCr(String name, String state, UUID resourceUuid) {
+    io.yugabyte.operator.v1alpha1.TelemetryProvider cr =
+        new io.yugabyte.operator.v1alpha1.TelemetryProvider();
+    ObjectMeta metadata = new ObjectMeta();
+    metadata.setName(name);
+    metadata.setNamespace(TELEMETRY_NAMESPACE);
+    cr.setMetadata(metadata);
+    io.yugabyte.operator.v1alpha1.TelemetryProviderSpec spec =
+        new io.yugabyte.operator.v1alpha1.TelemetryProviderSpec();
+    spec.setProvider(io.yugabyte.operator.v1alpha1.TelemetryProviderSpec.Provider.DATA_DOG);
+    cr.setSpec(spec);
+    io.yugabyte.operator.v1alpha1.TelemetryProviderStatus status =
+        new io.yugabyte.operator.v1alpha1.TelemetryProviderStatus();
+    status.setState(state);
+    status.setResourceUUID(resourceUuid == null ? null : resourceUuid.toString());
+    cr.setStatus(status);
+    kubernetesClient
+        .resources(io.yugabyte.operator.v1alpha1.TelemetryProvider.class)
+        .inNamespace(TELEMETRY_NAMESPACE)
+        .resource(cr)
+        .create();
+  }
+
+  private static io.yugabyte.operator.v1alpha1.YBUniverse ybUniverseWithTelemetry(
+      Telemetry telemetry) {
+    io.yugabyte.operator.v1alpha1.YBUniverse ybUniverse =
+        new io.yugabyte.operator.v1alpha1.YBUniverse();
+    ObjectMeta metadata = new ObjectMeta();
+    metadata.setName("telemetry-universe");
+    metadata.setNamespace(TELEMETRY_NAMESPACE);
+    ybUniverse.setMetadata(metadata);
+    io.yugabyte.operator.v1alpha1.YBUniverseSpec spec =
+        new io.yugabyte.operator.v1alpha1.YBUniverseSpec();
+    spec.setTelemetry(telemetry);
+    ybUniverse.setSpec(spec);
+    return ybUniverse;
+  }
+
+  private static io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.metrics.Exporters
+      crMetricsExporter() {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.metrics.Exporters exporter =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.metrics.Exporters();
+    exporter.setTelemetryProvider(TELEMETRY_PROVIDER_CR);
+    return exporter;
+  }
+
+  private static Telemetry crTelemetryWithMetrics() {
+    Metrics metrics = new Metrics();
+    metrics.setExporters(List.of(crMetricsExporter()));
+    Telemetry telemetry = new Telemetry();
+    telemetry.setMetrics(metrics);
+    return telemetry;
+  }
+
+  @Test
+  public void testResolveReadyTelemetryProviderUuidResolvesReadyCr() throws Exception {
+    UUID providerUuid = UUID.randomUUID();
+    createTelemetryProviderCr(TELEMETRY_PROVIDER_CR, "Ready", providerUuid);
+
+    assertEquals(
+        providerUuid,
+        operatorUtils.resolveReadyTelemetryProviderUuid(
+            TELEMETRY_PROVIDER_CR, TELEMETRY_NAMESPACE));
+  }
+
+  @Test
+  public void testResolveReadyTelemetryProviderUuidResolvesInUseCr() throws Exception {
+    // InUse is what the TelemetryProvider reconciler reports after refusing to delete a provider a
+    // universe still references; that must not stop the universe from reconciling.
+    UUID providerUuid = UUID.randomUUID();
+    createTelemetryProviderCr(TELEMETRY_PROVIDER_CR, "InUse", providerUuid);
+
+    assertEquals(
+        providerUuid,
+        operatorUtils.resolveReadyTelemetryProviderUuid(
+            TELEMETRY_PROVIDER_CR, TELEMETRY_NAMESPACE));
+  }
+
+  @Test
+  public void testGetDesiredTelemetryConfigMissingProviderCrFails() {
+    io.yugabyte.operator.v1alpha1.YBUniverse ybUniverse =
+        ybUniverseWithTelemetry(crTelemetryWithMetrics());
+
+    Exception ex =
+        assertThrows(Exception.class, () -> operatorUtils.getDesiredTelemetryConfig(ybUniverse));
+    assertTrue(
+        "expected a message naming the missing CR, got: " + ex.getMessage(),
+        ex.getMessage().contains(TELEMETRY_PROVIDER_CR) && ex.getMessage().contains("not found"));
+  }
+
+  @Test
+  public void testGetDesiredTelemetryConfigNotReadyProviderCrFails() {
+    createTelemetryProviderCr(TELEMETRY_PROVIDER_CR, "Error", null);
+    io.yugabyte.operator.v1alpha1.YBUniverse ybUniverse =
+        ybUniverseWithTelemetry(crTelemetryWithMetrics());
+
+    Exception ex =
+        assertThrows(Exception.class, () -> operatorUtils.getDesiredTelemetryConfig(ybUniverse));
+    assertTrue(
+        "expected a message naming the CR and its state, got: " + ex.getMessage(),
+        ex.getMessage().contains(TELEMETRY_PROVIDER_CR) && ex.getMessage().contains("not ready"));
+  }
+
+  @Test
+  public void testGetDesiredTelemetryConfigReadyProviderWithoutUuidFails() {
+    // The readiness gate needs both halves: state Ready is not enough without a resolved UUID.
+    createTelemetryProviderCr(TELEMETRY_PROVIDER_CR, "Ready", null);
+    io.yugabyte.operator.v1alpha1.YBUniverse ybUniverse =
+        ybUniverseWithTelemetry(crTelemetryWithMetrics());
+
+    Exception ex =
+        assertThrows(Exception.class, () -> operatorUtils.getDesiredTelemetryConfig(ybUniverse));
+    assertTrue(
+        "expected a message about the missing resolved UUID, got: " + ex.getMessage(),
+        ex.getMessage().contains(TELEMETRY_PROVIDER_CR)
+            && ex.getMessage().contains("no resolved provider UUID"));
+  }
+
+  @Test
+  public void testGetDesiredTelemetryConfigDefaultsScrapeTargetsToK8sSupported() throws Exception {
+    UUID providerUuid = UUID.randomUUID();
+    createTelemetryProviderCr(TELEMETRY_PROVIDER_CR, "Ready", providerUuid);
+    // metrics with no scrapeConfigTargets: the shared mapper would default this to
+    // EnumSet.allOf(ScrapeConfigTargetType.class), which includes the two VM-only targets that
+    // verifyParams rejects on a Kubernetes universe, so every reconcile would 400.
+    io.yugabyte.operator.v1alpha1.YBUniverse ybUniverse =
+        ybUniverseWithTelemetry(crTelemetryWithMetrics());
+
+    TelemetryConfig desired = operatorUtils.getDesiredTelemetryConfig(ybUniverse);
+
+    Set<ScrapeConfigTargetType> targets = desired.getMetricsExportConfig().getScrapeConfigTargets();
+    assertEquals(OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS, targets);
+    assertFalse(
+        "NODE_EXPORT is VM-only and must never be defaulted in",
+        targets.contains(ScrapeConfigTargetType.NODE_EXPORT));
+    assertFalse(
+        "NODE_AGENT_EXPORT is VM-only and must never be defaulted in",
+        targets.contains(ScrapeConfigTargetType.NODE_AGENT_EXPORT));
+    // The exporter's TelemetryProvider CR name is resolved to the YBA UUID.
+    assertEquals(
+        providerUuid,
+        desired
+            .getMetricsExportConfig()
+            .getUniverseMetricsExporterConfig()
+            .get(0)
+            .getExporterUuid());
+    // The other metrics defaults come out as the REST path leaves them.
+    assertEquals(Integer.valueOf(30), desired.getMetricsExportConfig().getScrapeIntervalSeconds());
+    assertEquals(Integer.valueOf(20), desired.getMetricsExportConfig().getScrapeTimeoutSeconds());
+    assertEquals(
+        MetricCollectionLevel.NORMAL, desired.getMetricsExportConfig().getCollectionLevel());
+  }
+
+  @Test
+  public void testGetDesiredTelemetryConfigExplicitScrapeTargetsAreHonored() throws Exception {
+    createTelemetryProviderCr(TELEMETRY_PROVIDER_CR, "Ready", UUID.randomUUID());
+    Metrics metrics = new Metrics();
+    metrics.setExporters(List.of(crMetricsExporter()));
+    metrics.setScrapeConfigTargets(
+        List.of(
+            Metrics.ScrapeConfigTargets.MASTER_EXPORT, Metrics.ScrapeConfigTargets.TSERVER_EXPORT));
+    Telemetry telemetry = new Telemetry();
+    telemetry.setMetrics(metrics);
+
+    TelemetryConfig desired =
+        operatorUtils.getDesiredTelemetryConfig(ybUniverseWithTelemetry(telemetry));
+
+    assertEquals(
+        EnumSet.of(ScrapeConfigTargetType.MASTER_EXPORT, ScrapeConfigTargetType.TSERVER_EXPORT),
+        desired.getMetricsExportConfig().getScrapeConfigTargets());
+  }
+
+  @Test
+  public void testGetDesiredTelemetryConfigNoTelemetryBlockYieldsAllNullSections()
+      throws Exception {
+    io.yugabyte.operator.v1alpha1.YBUniverse ybUniverse = ybUniverseWithTelemetry(null);
+
+    TelemetryConfig desired = operatorUtils.getDesiredTelemetryConfig(ybUniverse);
+
+    assertFalse("no telemetry block must mean no exports at all", desired.hasAnyConfig());
+    for (ExportType type : ExportType.values()) {
+      assertNull(type + " must be null when the CR has no telemetry block", desired.section(type));
+    }
+  }
+
+  @Test
+  public void testGetDesiredTelemetryConfigEmptyTelemetryBlockYieldsAllNullSections()
+      throws Exception {
+    io.yugabyte.operator.v1alpha1.YBUniverse ybUniverse = ybUniverseWithTelemetry(new Telemetry());
+
+    TelemetryConfig desired = operatorUtils.getDesiredTelemetryConfig(ybUniverse);
+
+    assertFalse("an empty telemetry block must mean no exports", desired.hasAnyConfig());
+  }
+
+  @Test
+  public void testGetDesiredTelemetryConfigNeverSetsVmOnlySections() throws Exception {
+    createTelemetryProviderCr(TELEMETRY_PROVIDER_CR, "Ready", UUID.randomUUID());
+    io.yugabyte.operator.v1alpha1.YBUniverse ybUniverse =
+        ybUniverseWithTelemetry(crTelemetryWithMetrics());
+
+    TelemetryConfig desired = operatorUtils.getDesiredTelemetryConfig(ybUniverse);
+
+    // node-agent and YNP logs are absent from the universe CRD, so they can never be authored.
+    assertNull(desired.getNodeAgentLogConfig());
+    assertNull(desired.getYnpLogConfig());
+  }
+
+  /**
+   * The import path builds a CR spec out of a stored auth config, and the reconciler turns that CR
+   * back into an auth config. If the two disagree the reconciler sees an edit on every resync, so
+   * the round trip has to land on the config it started from. Vault AppRole is the sharpest case:
+   * the auth config holds a namespace-qualified mount path while the CR holds a relative one.
+   */
+  @Test
+  public void testBuildKMSConfigSpecHashicorpAppRoleRoundTrips() {
+    ObjectNode authConfig = Json.newObject();
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_ADDRESS, "http://vault:8200");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_KEY_NAME, "key_yugabyte");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_ENGINE, "transit");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID, "role-id");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID, "secret-id");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE, "yb-ns");
+    authConfig.put(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH, "yb-ns/transit/");
+    KmsConfig cfg =
+        KmsConfig.createKMSConfig(
+            testCustomer.getUuid(), KeyProvider.HASHICORP, authConfig, "vault-kms-config");
+
+    // Only the AppRole secret ID is a credential, so only it needs a Secret.
+    assertEquals(
+        Map.of(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID, "secret-id"),
+        OperatorUtils.getKMSConfigSecretValues(cfg));
+
+    KMSConfigSpec spec =
+        operatorUtils.buildKMSConfigSpec(
+            cfg,
+            "test-namespace",
+            Map.of(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID, "vault-secret-id"));
+
+    assertEquals(KMSConfigSpec.Provider.HASHICORP, spec.getProvider());
+    assertEquals(Vault.AuthType.APPROLE, spec.getVault().getAuthType());
+    assertEquals("role-id", spec.getVault().getAppRole().getRoleID());
+    assertEquals("vault-secret-id", spec.getVault().getAppRole().getSecretIdSecret().getName());
+    assertEquals(
+        HashicorpVaultConfigParams.HC_VAULT_SECRET_ID,
+        spec.getVault().getAppRole().getSecretIdSecret().getKey());
+    // The mount path on the CR is relative to the auth namespace.
+    assertEquals("transit/", spec.getVault().getMountPath());
+
+    KMSConfig kmsConfigCr = baseKmsConfigCr(KMSConfigSpec.Provider.HASHICORP);
+    kmsConfigCr.setSpec(spec);
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("secret-id").when(operatorUtils).parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode roundTripped = operatorUtils.getKMSConfigFormDataFromCr(kmsConfigCr);
+
+    // The form data carries the config name alongside the auth config fields; the rest of it has
+    // to match the auth config the spec was built from, exactly.
+    assertEquals("vault-kms-config", roundTripped.remove("name").asText());
+    assertEquals(authConfig, roundTripped);
+  }
+
+  /**
+   * A config authenticating with the host IAM profile stores no credentials at all, so nothing has
+   * to move into a Secret and the spec must not ask for one.
+   */
+  @Test
+  public void testBuildKMSConfigSpecAwsIamProfileNeedsNoSecrets() {
+    ObjectNode authConfig = Json.newObject();
+    authConfig.put(AwsKmsAuthConfigField.REGION.fieldName, "us-west-2");
+    authConfig.put(AwsKmsAuthConfigField.CMK_ID.fieldName, "arn:aws:kms:us-west-2:1:key/cmk");
+    KmsConfig cfg =
+        KmsConfig.createKMSConfig(
+            testCustomer.getUuid(), KeyProvider.AWS, authConfig, "aws-kms-config");
+
+    assertTrue(OperatorUtils.getKMSConfigSecretValues(cfg).isEmpty());
+
+    KMSConfigSpec spec = operatorUtils.buildKMSConfigSpec(cfg, "test-namespace", Map.of());
+
+    assertEquals(true, spec.getAws().getUseIAMProfile());
+    assertNull(spec.getAws().getAccessKeyIdSecret());
+    assertNull(spec.getAws().getSecretAccessKeySecret());
+    assertEquals("us-west-2", spec.getAws().getRegion());
+    // The CMK is carried over so that a later edit does not create a second one.
+    assertEquals("arn:aws:kms:us-west-2:1:key/cmk", spec.getAws().getCmkID());
   }
 }

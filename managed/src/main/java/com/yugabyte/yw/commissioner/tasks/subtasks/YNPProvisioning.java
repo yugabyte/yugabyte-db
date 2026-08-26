@@ -42,6 +42,10 @@ public class YNPProvisioning extends NodeTaskBase {
     public UUID customerUuid;
     public String nodeAgentInstallDir;
     public boolean isYbPrebuiltImage;
+    // True when re-provisioning a node of an existing universe (vs. provisioning a brand-new
+    // node). Propagated to the YNP config so configure_cgroup honors the persisted flag rather
+    // than the provider default for existing universes.
+    public boolean isReprovision;
   }
 
   @Override
@@ -69,6 +73,7 @@ public class YNPProvisioning extends NodeTaskBase {
             .universe(universe)
             .userIntent(userIntent)
             .isYbPrebuiltImage(taskParams().isYbPrebuiltImage)
+            .isReprovision(taskParams().isReprovision)
             .build();
     return ynpConfigGenerator.generateConfigFile(configParams);
   }

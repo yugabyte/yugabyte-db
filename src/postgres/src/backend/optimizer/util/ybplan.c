@@ -164,41 +164,6 @@ YBCIsSingleRowModify(PlannedStmt *pstmt)
 }
 
 /*
- * Returns true if this ModifyTable can be executed by a single RPC, without
- * an initial table scan fetching a target tuple.
- *
- * Right now, this is true iff:
- *  - it is UPDATE or DELETE command.
- *  - source data is a Result node (meaning we are skipping scan and thus
- *    are single row).
- *
- * Transition-table capture does not need to be checked here: the single-row
- * UPDATE/DELETE path in createplan.c is only taken when no row triggers
- * apply (see has_applicable_triggers()), and that helper consults
- * YBRelHasOldRowTriggers() which already rejects any relation carrying an
- * AFTER UPDATE/DELETE trigger with REFERENCING OLD/NEW TABLE.  So a Result
- * outer plan implies no transition_capture.
- */
-bool
-YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable)
-{
-	/* Support UPDATE and DELETE. */
-	if (modifyTable->operation != CMD_UPDATE &&
-		modifyTable->operation != CMD_DELETE)
-		return false;
-
-	/*
-	 * Verify the single data source is a Result node and does not have outer plan.
-	 * Note that Result node never has inner plan.
-	 */
-	if (!IsA(outerPlan(&modifyTable->plan), Result) ||
-		outerPlan(outerPlan(&modifyTable->plan)))
-		return false;
-
-	return true;
-}
-
-/*
  * Returns true if provided Bitmapset of attribute numbers
  * matches the primary key attribute numbers of the relation.
  * Expects YBGetFirstLowInvalidAttributeNumber to be subtracted from attribute numbers.
@@ -1148,10 +1113,13 @@ yb_extract_tserver_indexes_from_clause(Expr *clause, Index relid,
 
 		/*
 		 * The planner normalizes equality clauses so that the Var is the
-		 * left arg and the Const is the right arg.
+		 * left arg and the Const is the right arg. The rhs is only a Const
+		 * for a custom/one-off plan; a generic (prepared) plan leaves it as
+		 * a Param.
 		 */
-		Assert(IsA(linitial(opexpr->args), Var) &&
-			   IsA(lsecond(opexpr->args), Const));
+		Assert(IsA(linitial(opexpr->args), Var));
+		if (!IsA(lsecond(opexpr->args), Const))
+			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
 
 		var = (Var *) linitial(opexpr->args);
 		con = (Const *) lsecond(opexpr->args);
@@ -1187,8 +1155,11 @@ yb_extract_tserver_indexes_from_clause(Expr *clause, Index relid,
 
 		/* A ScalarArrayOpExpr always has exactly two args. */
 		Assert(list_length(saop->args) == 2);
-		Assert(IsA(linitial(saop->args), Var) &&
-			   IsA(lsecond(saop->args), Const));
+
+		/* As above: only a plain Const array is prunable at plan time. */
+		Assert(IsA(linitial(saop->args), Var));
+		if (!IsA(lsecond(saop->args), Const))
+			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
 
 		var = (Var *) linitial(saop->args);
 		con = (Const *) lsecond(saop->args);

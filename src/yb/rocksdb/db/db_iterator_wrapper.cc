@@ -13,6 +13,7 @@
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 using yb::Format;

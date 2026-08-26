@@ -13,12 +13,31 @@
 
 package org.yb.client;
 
+import java.util.Collections;
+import java.util.Map;
 import org.yb.annotations.InterfaceAudience;
 
 @InterfaceAudience.Public
 public class ValidateFlagValueResponse extends YRpcResponse {
 
+  private final Map<String, String> errors;
+
   public ValidateFlagValueResponse(long elapsedMillis, String uuid) {
     super(elapsedMillis, uuid);
+    this.errors = Collections.emptyMap();
+  }
+
+  public ValidateFlagValueResponse(long elapsedMillis, String uuid, Map<String, String> errors) {
+    super(elapsedMillis, uuid);
+    this.errors = errors != null ? errors : Collections.emptyMap();
+  }
+
+  /** Returns per-flag validation errors. Empty map means all flags passed validation. */
+  public Map<String, String> getErrors() {
+    return errors;
+  }
+
+  public boolean hasErrors() {
+    return !errors.isEmpty();
   }
 }

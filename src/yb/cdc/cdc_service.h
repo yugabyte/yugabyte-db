@@ -29,6 +29,8 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_context.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/util/net/net_util.h"
 #include "yb/util/one_time_bool.h"
 #include "yb/util/semaphore.h"
@@ -131,10 +133,7 @@ using RollBackTabletIdCheckpointMap = std::unordered_map<const std::string*, Rol
   TEST_SIMULATE_ERROR( \
       PeerNotReadyToServe, 3, LeaderNotReadyToServe, "Not ready to serve requested tablet id") \
   TEST_SIMULATE_ERROR(LogSegmentFooterNotFound, 4, NotFound, "Footer for segment not found") \
-  TEST_SIMULATE_ERROR( \
-      LogIndexCacheEntryNotFound, 5, NotFound, "Log index cache entry for op index not found") \
-  TEST_SIMULATE_ERROR( \
-      LogReaderNotInitialized, 6, IllegalState, "LogReader is not initialized")
+  TEST_SIMULATE_ERROR(LogReaderNotInitialized, 5, IllegalState, "LogReader is not initialized")
 
 enum TestSimulateErrorCode : int32_t {
 #define TEST_SIMULATE_ERROR(name, value, status_code, message) name = value,
@@ -252,7 +251,8 @@ class CDCServiceImpl : public CDCServiceIf {
       const MonoDelta& cdc_sdk_op_id_expiration,
       RollBackTabletIdCheckpointMap* rollback_tablet_id_map,
       const HybridTime cdc_sdk_safe_time = HybridTime::kInvalid,
-      bool initial_retention_barrier = false);
+      bool initial_retention_barrier = false,
+      tablet::CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   void RollbackCdcReplicatedIndexEntry(
       const std::string& tablet_id, const RollbackBarrierInfo& rollback_info);
@@ -444,7 +444,8 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Status UpdateTabletPeerWithCheckpoint(
       const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
-      bool enable_update_local_peer_min_index, bool ignore_rpc_failures = true);
+      bool enable_update_local_peer_min_index, bool ignore_rpc_failures = true,
+      tablet::CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(
       const TabletId& tablet_id, const bool use_cache = true);
@@ -468,7 +469,8 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Status UpdatePeersCdcMinReplicatedIndex(
       const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min,
-      bool ignore_failures = true, bool initial_retention_barrier = false);
+      bool ignore_failures = true, bool initial_retention_barrier = false,
+      tablet::CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   struct ChildrenTabletMeta {
     TabletStreamInfo parent_tablet_info;

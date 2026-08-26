@@ -132,29 +132,12 @@ When asking the user for a tracking reference, acceptable forms are:
    - A GitHub issue number (e.g., `#31151`)
    - A JIRA ticket (e.g., `PLAT-20518`)
 Offer to **auto-create** a GitHub issue or JIRA ticket if the user
-doesn't have one yet.
-
-To auto create a GitHub issue:
-  - before calling `gh issue create`, pick a matching issue template
-    from `.github/ISSUE_TEMPLATE/` based on the component (e.g.,
-    `docDB.yml` for DocDB, `ysql.yml` for YSQL, `ycql.yml` for YCQL,
-    `cdc.yml` for CDC, `ui.yml` for YBA/UI, `yugabyted.yml` for
-    yugabyted, `docs.yml` for docs, `feature_request.yml` as the generic
-    fallback for tooling/other, etc.).
-  - Read the chosen template YAML, then (a) collect its `labels` and
-    pass them via `--label`, (b) construct a markdown body mirroring the
-    template's `body` sections (e.g., `### Description` textarea → `##
-    Description` + user-facing content; `Issue Type` dropdown → pick one
-    of the listed `options`; sensitivity checkbox → include a confirming
-    line).
-  - Run `gh issue create --assignee @me --repo yugabyte/yugabyte-db --title <...> --body-file <path> --label <labels>`.
-  - Confirm the title/body with the user before creating.
-  - Always assign the issue to the current user.
-
-To auto create a JIRA issue:
-  - ask the user which project (e.g., `PLAT`)
-  - use the Atlassian MCP tool `createJiraIssue` to create it.  Confirm the summary/description with the user before creating.
-  - Capture the resulting issue number or JIRA key.
+doesn't have one yet. If they accept, invoke the **`/create-issue`**
+skill to file it (GitHub issue for core DB code, JIRA ticket for
+`managed/` platform work), then capture the issue number / JIRA key it
+reports back. Since the issue tracks this diff's work, tell
+`/create-issue` to assign it to the invoker (`@me`) rather than leaving
+it unassigned.
 
 ### Step 3.5: Gather remaining title metadata
 
@@ -193,6 +176,22 @@ Based on the files changed on the branch, decide the default subscriber:
 
 Confirm the subscriber list with the user before creating the diff.
 
+### Step 5.5: Cut the prose the branch added
+
+Re-read the **text** the branch adds — comments, `architecture/` docs,
+agent docs — and apply [`AGENTS.md` Prose
+discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
+It is a gate here because it is easy to hold at the start of a task and
+gone by the end of one, and this is the last point where cutting is
+free.
+
+```
+git diff <base>...HEAD -- '*.md'   # doc prose; also skim added comments in the code diff
+```
+
+Commit any resulting edits on the branch before Step 6, and re-run the
+linter (Step 2).
+
 ### Step 6: Create the diff with `arc diff --create`
 
 **Confidentiality — final scrub before publishing.** Phorge is treated
@@ -226,8 +225,14 @@ arc diff --create --message-file <path> --reviewers <reviewers> --cc <subscriber
 Pre-fill the message file with:
 
 - **Title**: the constructed title from step 4
-- **Summary**: a short description of the change (derive from branch commits)
-- **Test Plan**: ask the user for one if not obvious from the branch
+- **Summary**: derived from the branch commits.  Say **why**, always —
+  a reviewer who has to reverse-engineer the motivation is the
+  expensive case — then what changed, and whatever the reader must *act*
+  on (new gflags, upgrade/rollback consequences, migration steps).  Not
+  a narration of the diff.  See [`AGENTS.md` Prose
+  discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
+- **Test Plan**: ask the user for one if not obvious from the branch.
+  Keep it to what was actually run — it is not a place for prose.
 - **Reviewers**: (as provided)
 - **Subscribers**: `ybase` and/or `yugaware` per Step 4
 

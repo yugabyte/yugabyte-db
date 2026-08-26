@@ -28,19 +28,19 @@ import org.yb.client.CDCStreamInfo;
 import org.yb.client.ListCDCStreamsResponse;
 import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CdcStreamManagerTest {
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private NodeUniverseManager mockNodeUniverseManager;
   private CdcStreamManager streamManager;
 
   @Before
   public void setup() {
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     YBClientService mockClientService = mock(YBClientService.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     when(mockClientService.getUniverseClient(any())).thenReturn(mockClient);

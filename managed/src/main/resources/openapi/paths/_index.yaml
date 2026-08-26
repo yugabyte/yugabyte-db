@@ -115,31 +115,6 @@
           sourceType: endpoint
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
-/ybc/gflags-metadata:
-  get:
-    operationId: listYbcGflagsMetadata
-    summary: List YBC Gflags metadata
-    description: Get list of all YBC gflags and related metadata.
-    tags:
-      - Backup and Restore
-    responses:
-      '200':
-        $ref: "../components/responses/YbcGflagsResp.yaml"
-      '404':
-        description: Not found
-    security:
-      - apiKeyAuth: []
-    x-yba-api-audit:
-      noAudit: true
-    x-yba-api-authz:
-      - requiredPermission:
-          resourceType: other
-          action: read
-        resourceLocation:
-          path: customers
-          sourceType: endpoint
-    x-yba-api-since: 2024.2.0.0
-    x-yba-api-visibility: preview
 '/customers/{cUUID}/backups/page':
   parameters:
     - name: cUUID
@@ -156,6 +131,8 @@
     summary: List universe backups.
     description: |
       Returns universe backups for the specified customer with pagination and optional filters.
+      Only full (base) backups are returned. Use `pageListIncrementalBackups` to list incrementals
+      in a backup chain.
       WARNING: This is a preview API that could change.
     tags:
       - Backup and Restore
@@ -181,6 +158,87 @@
           sourceType: endpoint
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/backups/{bUUID}/increments/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: bUUID
+      in: path
+      description: Backup UUID of any backup in the incremental chain
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListIncrementalBackups
+    summary: List incremental backups for a backup chain.
+    description: |
+      Returns backups in the incremental chain for the specified backup, including the full
+      (base) backup. Pass either the full backup UUID or any incremental backup UUID in the chain.
+      `pageListBackups` returns only full backups; use this API to retrieve incrementals.
+      Rows are ordered by create time. The order is descending by default.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Backup and Restore
+    requestBody:
+      $ref: "../components/requestBodies/IncrementalBackupPagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/IncrementalBackupPagedResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer or backup not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+/ybc/gflags-metadata:
+  get:
+    operationId: listYbcGflagsMetadata
+    summary: List YBC Gflags metadata
+    description: Get list of all YBC gflags and related metadata.
+    tags:
+      - Backup and Restore
+    responses:
+      '200':
+        $ref: "../components/responses/YbcGflagsResp.yaml"
+      '404':
+        description: Not found
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/auto-yba-backups':
   parameters:
@@ -683,6 +741,66 @@
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/providers/{providerUUID}/image-bundles/{iBUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: providerUUID
+      in: path
+      description: Provider UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: iBUUID
+      in: path
+      description: Image Bundle UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getImageBundle
+    summary: Get an image bundle
+    description: |
+      Returns a single image bundle for the specified provider.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Image Bundle
+    responses:
+      '200':
+        $ref: "../components/responses/ImageBundleResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Provider or image bundle not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/yba-backups':
   parameters:
     - name: cUUID
@@ -1090,6 +1208,741 @@
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/restores/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListRestores
+    summary: List universe restores.
+    description: |
+      Returns universe backup restore events for the specified customer with pagination and optional filters.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Backup and Restore
+    requestBody:
+      $ref: "../components/requestBodies/RestorePagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/RestorePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/restores/{rUUID}/keyspaces/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: rUUID
+      in: path
+      description: Restore UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListRestoreKeyspaces
+    summary: List keyspaces for a universe restore.
+    description: |
+      Returns the keyspaces for the specified restore with pagination.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Backup and Restore
+    requestBody:
+      $ref: "../components/requestBodies/RestoreKeyspacePagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/RestoreKeyspacePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/support-bundle/components':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: listSupportBundleComponents
+    summary: List support bundle components
+    description: List all component types available for support bundle collection.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundleComponentsResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/support-bundles':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: createSupportBundle
+    summary: Create support bundle
+    description: Create a support bundle for the specified universe.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundleCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: SupportBundle
+      auditTargetId: obj.getResourceUuid().toString()
+      auditActionType: Create
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: debug
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/support-bundles/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListSupportBundles
+    summary: List support bundles (paged)
+    description: |
+      Returns support bundles for the specified universe with pagination.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundlePagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundlePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer or universe not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/support-bundles/estimate-size':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: estimateSupportBundleSize
+    summary: Estimate support bundle size
+    description: Estimate support bundle size for the given payload on a universe.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundleCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundleSizeEstimateResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/support-bundles/{sbUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: sbUUID
+      in: path
+      description: Support bundle UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getSupportBundle
+    summary: Get support bundle
+    description: Get a support bundle from a universe.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundleResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: deleteSupportBundle
+    summary: Delete support bundle
+    description: Delete a support bundle from a universe.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        description: OK
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '409':
+        description: Support bundle is still being collected
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: SupportBundle
+      auditTargetId: sbUUID.toString()
+      auditActionType: Delete
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+      - requiredPermission:
+          resourceType: other
+          action: delete
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/support-bundles/{sbUUID}/download':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: sbUUID
+      in: path
+      description: Support bundle UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: downloadSupportBundle
+    summary: Download support bundle
+    description: Download a completed support bundle archive.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        description: Support bundle archive
+        content:
+          application/x-compressed:
+            schema:
+              type: string
+              format: binary
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/support-bundles/yba':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: createYbaSupportBundle
+    summary: Create YBA-only support bundle
+    description: Create a support bundle from YBA host script components (YBAComponent) without requiring a universe.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundleCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: SupportBundle
+      auditTargetId: obj.getResourceUuid().toString()
+      auditActionType: Create
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/support-bundles/yba/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListYbaSupportBundles
+    summary: List YBA-only support bundles (paged)
+    description: |
+      Returns support bundles collected from the YBA platform host without a universe, with
+      pagination.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundlePagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundlePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/support-bundles/yba/estimate-size':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: estimateYbaSupportBundleSize
+    summary: Estimate YBA-only support bundle size
+    description: Estimate support bundle size for YBA host script components without a universe.
+    tags:
+      - Support Bundle
+    requestBody:
+      $ref: "../components/requestBodies/SupportBundleCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundleSizeEstimateResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/support-bundles/yba/{sbUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: sbUUID
+      in: path
+      description: Support bundle UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getYbaSupportBundle
+    summary: Get YBA-only support bundle
+    description: Get a YBA-only support bundle by UUID.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        $ref: "../components/responses/SupportBundleResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: deleteYbaSupportBundle
+    summary: Delete YBA-only support bundle
+    description: Delete a YBA-only support bundle.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        description: OK
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '409':
+        description: Support bundle is still being collected
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: SupportBundle
+      auditTargetId: sbUUID.toString()
+      auditActionType: Delete
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: delete
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/support-bundles/yba/{sbUUID}/download':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: sbUUID
+      in: path
+      description: Support bundle UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: downloadYbaSupportBundle
+    summary: Download YBA-only support bundle
+    description: Download a completed YBA-only support bundle archive.
+    tags:
+      - Support Bundle
+    responses:
+      '200':
+        description: Support bundle archive
+        content:
+          application/x-compressed:
+            schema:
+              type: string
+              format: binary
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/tasks/page':
   parameters:
     - name: cUUID
@@ -1130,6 +1983,63 @@
           path: customers
           sourceType: endpoint
         checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/tasks/{tUUID}/rollback':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: tUUID
+      in: path
+      description: Task UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: rollbackTask
+    summary: Rollback a failed task
+    description: |
+      Queues a task to rollback a previously failed, rollback-capable task and restore the
+      universe to its prior state.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Task
+    requestBody:
+      $ref: "../components/requestBodies/TaskRollbackReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: CustomerTask
+      auditTargetId: tUUID.toString()
+      auditActionType: Rollback
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: task_params_universe_uuid
+          sourceType: db
+          dbClass: com.yugabyte.yw.models.TaskInfo.class
+          identifier: tasks
+          columnName: uuid
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/telemetry-provider/types':
@@ -1249,7 +2159,7 @@
     x-yba-api-audit:
       auditTargetType: Universe
       auditTargetId: uniUUID.toString()
-      auditActionType: Update
+      auditActionType: UpdateClusters
       taskUuid: obj.getTaskUuid()
     x-yba-api-authz:
       - requiredPermission:
@@ -1774,6 +2684,61 @@
           sourceType: endpoint
         checkOnlyPermission: false
     x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/upgrade/node-agent':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: upgradeNodeAgent
+    summary: Upgrade node agents
+    description: |
+      Upgrade node agents in a universe. Optionally restrict the upgrade to a list of node names
+      and/or supply a certificate UUID. If node_names is omitted, all live nodes are upgraded.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Node Agent
+    requestBody:
+      $ref: "../components/requestBodies/NodeAgentUpgradeReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: Upgrade
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.7.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software/rollback':
   parameters:
@@ -2402,7 +3367,9 @@
   post:
     operationId: configureQueryLogging
     summary: Configure Query Log for YugabyteDB Universe
-    description: Configure Query Log for a YugabyteDB Universe.
+    description: |
+      Use the POST /customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs API instead.
+      Configure Query Log for a YugabyteDB Universe.
     tags:
       - Universe
     requestBody:
@@ -2449,8 +3416,10 @@
       required: true
   post:
     operationId: configureMetricsExport
-    summary: Configure metrics export
-    description: Configure metrics export from a universe to a metrics export telemetry provider
+    summary: Configure metrics export - deprecated
+    description: |
+      Use the POST /customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs API instead.
+      Configure metrics export from a universe to a metrics export telemetry provider.
     tags:
       - Universe
     requestBody:
@@ -2477,8 +3446,8 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
-    x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: preview
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: deprecated
 '/customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs':
   parameters:
     - name: cUUID
@@ -2528,8 +3497,8 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
-    x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: internal
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: preview
   get:
     operationId: getExportTelemetryConfig
     summary: Get configured export telemetry configs for a universe
@@ -2558,7 +3527,7 @@
           sourceType: endpoint
         checkOnlyPermission: false
     x-yba-api-since: 2026.1.2.0
-    x-yba-api-visibility: internal
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/operator-import':
   parameters:
     - name: cUUID
@@ -2937,6 +3906,63 @@
         checkOnlyPermission: false
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/proxy-config':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: updateProxyConfig
+    summary: Update proxy configuration
+    description: |
+      Queues a task to update HTTP/HTTPS proxy settings for nodes in the universe.
+      Supports universe-level proxy_config and per-availability-zone overrides via
+      az_networking.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseUpdateProxyConfigReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer or Universe or Cluster not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpdateProxyConfig
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/resize-nodes':
   parameters:
     - name: cUUID

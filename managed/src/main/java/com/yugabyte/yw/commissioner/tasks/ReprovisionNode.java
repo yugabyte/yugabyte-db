@@ -87,6 +87,17 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
 
       preTaskActions();
 
+      // Persist isCpuCgroupConfigured from the provider setting up front so the YNP systemd gate
+      // and the ConfigureServer wrapper copy stay in sync; otherwise a legacy universe gets a
+      // systemd unit pointing at a wrapper that was never shipped and the DB fails to start
+      // (PLAT-21526).
+      // TODO(PLAT-21526): revisit where this runs. ReprovisionNode is node-level, but this persists
+      // a universe-wide flag from the provider default and does so up front. Setting it too early
+      // (before the node is actually re-provisioned) can desync it from real node state, and a
+      // later YNP provisioning that reads the persisted flag could drop the cgroup config. Persist
+      // it at the right granularity/point instead.
+      createPersistCpuCgroupConfiguredTask(universe);
+
       // Update node state to Reprovisioning.
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Reprovisioning)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);

@@ -128,6 +128,8 @@ class BlockCache {
     return *metrics_;
   }
 
+  size_t capacity() const;
+
   BlockCacheHandle Insert(CachedBlock& block, bool retain);
   BlockCacheHandle Lookup(CachedBlock& block);
   void Erase(CachedBlock& block);

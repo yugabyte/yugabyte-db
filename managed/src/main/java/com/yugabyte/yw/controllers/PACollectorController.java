@@ -112,6 +112,10 @@ public class PACollectorController extends AuthenticatedController {
     if (collector.getUuid() != null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't create collector with uuid set");
     }
+    if (collector.isEmbedded()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't create embedded collector via API - it is managed by YBA");
+    }
     collector.setCustomerUUID(customerUUID);
     collector = perfAdvisorService.save(collector, false);
     auditService()
@@ -153,6 +157,14 @@ public class PACollectorController extends AuthenticatedController {
     }
     collector.setCustomerUUID(customerUUID);
     PACollector currentPlatform = perfAdvisorService.getOrBadRequest(customerUUID, paUUID);
+    if (currentPlatform.isEmbedded()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't edit embedded collector via API - it is managed by YBA");
+    }
+    if (collector.isEmbedded()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't set embedded flag via API - it is managed by YBA");
+    }
     collector = CommonUtils.unmaskObject(currentPlatform, collector);
     collector = perfAdvisorService.save(collector, force);
     auditService()
@@ -175,6 +187,14 @@ public class PACollectorController extends AuthenticatedController {
   public Result deletePACollector(
       UUID customerUUID, UUID collectorUUID, boolean force, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
+    PACollector collector = perfAdvisorService.getOrBadRequest(customerUUID, collectorUUID);
+    if (collector.isEmbedded()) {
+      // The embedded collector is fully owned by EmbeddedCollectorInitializer - deleting it
+      // via the API would just leave it half-configured until the next initializer tick
+      // recreates it. Force users to disable it via runtime config (yb.pa.url) instead.
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't delete embedded collector via API - it is managed by YBA");
+    }
 
     perfAdvisorService.delete(customerUUID, collectorUUID, force);
     auditService()

@@ -12,6 +12,7 @@
 //
 #include <gtest/gtest.h>
 
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/test_macros.h"

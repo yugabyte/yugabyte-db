@@ -162,9 +162,6 @@ spec:
                   This encrypts the data in transit between nodes.
                 type: boolean
                 default: true
-                x-kubernetes-validations:
-                - message: enableNodeToNodeEncrypt cannot be changed
-                  rule: self == oldSelf
               enableClientToNodeEncrypt:
                 description: >
                   Enable client to node encryption in the universe.
@@ -172,9 +169,33 @@ spec:
                   client and database.
                 type: boolean
                 default: true
-                x-kubernetes-validations:
-                - message: enableClientToNodeEncrypt cannot be changed
-                  rule: self == oldSelf
+              encryptionAtRest:
+                description: >
+                  Encryption at rest (EAR) configuration for the universe. Omit to leave EAR off.
+                  Set enabled to false to disable EAR while keeping the KMS config association so it
+                  can be re-enabled later. Changing kmsConfig while enabled triggers a master key
+                  rotation.
+                type: object
+                properties:
+                  kmsConfig:
+                    description: >
+                      Name of the KMSConfig CR (in the same namespace) to associate with the
+                      universe for encryption at rest. Only read while enabled is true: changing it
+                      on a disabled universe has no immediate effect, and takes effect when EAR is
+                      re-enabled. Because disabling EAR keeps the existing universe key, re-enabling
+                      against a kmsConfig other than the one that key was encrypted under performs a
+                      master key rotation.
+                    type: string
+                  enabled:
+                    description: >
+                      Whether encryption at rest is enabled. Defaults to true. Set to false to
+                      disable EAR without removing the kmsConfig association so it can be flipped
+                      back on later. Disabling and changing kmsConfig in the same edit applies the
+                      disable only; the new kmsConfig is applied on re-enable.
+                    type: boolean
+                    default: true
+                required:
+                  - kmsConfig
               rootCA:
                 description: >
                   Specify the name of the rootCA certificate to be used for cert-manager
@@ -229,6 +250,24 @@ spec:
                   the same container image as the database instead of being installed at runtime.
                 type: boolean
                 default: false
+              proxyConfig:
+                description: >
+                  Proxy configuration used by universe nodes for backup and restore traffic.
+                  Credentials can be included in the proxy URL, for example
+                  http://username:password@proxy.example.com:3128.
+                type: object
+                properties:
+                  httpProxy:
+                    description: HTTP proxy URL.
+                    type: string
+                  httpsProxy:
+                    description: HTTPS proxy URL.
+                    type: string
+                  noProxyList:
+                    description: Hosts and domains that should bypass the proxy.
+                    type: array
+                    items:
+                      type: string
               providerName:
                 description: Preexisting Provider name to use in the universe.
                 type: string
@@ -645,6 +684,691 @@ spec:
                     description: Disk write bytes per second to throttle disk usage during restores
                     type: integer
                     format: int64
+              telemetry:
+                description: >
+                  Telemetry export configuration for the universe. Each section below is one
+                  export type: present means that export is configured, omitted means it is
+                  disabled. Omitting this block entirely, or setting it to an empty object,
+                  configures no exports at all.
+
+                  Applying a telemetry change always performs a rolling helm upgrade of the
+                  master and tserver pods. 
+                type: object
+                properties:
+                  auditLogs:
+                    description: >
+                      YSQL and YCQL audit log export (pgaudit and the YCQL audit logger). Omit
+                      to disable. Changing this section restarts the DB processes, because the
+                      settings are delivered as postgres and tserver flags read at startup.
+                    type: object
+                    properties:
+                      ysqlAuditConfig:
+                        description: >
+                          pgaudit settings for YSQL audit logging. Present means YSQL audit
+                          logging is on; omit the whole object to leave YSQL auditing off.
+                        type: object
+                        properties:
+                          classes:
+                            description: >
+                              YSQL statement classes to audit. Omit to audit none of them
+                              explicitly, which in practice logs nothing until a class is added.
+                            type: array
+                            items:
+                              type: string
+                              enum:
+                                - READ
+                                - WRITE
+                                - FUNCTION
+                                - ROLE
+                                - DDL
+                                - MISC
+                                - MISC_SET
+                          logCatalog:
+                            description: >
+                              Log statements that touch only postgres catalog relations.
+                            type: boolean
+                            default: false
+                          logClient:
+                            description: >
+                              Echo audit records to the client as well as to the log.
+                            type: boolean
+                            default: false
+                          logLevel:
+                            description: >
+                              Postgres log level the audit records are emitted at. For NOTICE,
+                              INFO and the DEBUG levels the log_min_messages flag must also be
+                              lowered to that level, or the records are dropped before they
+                              reach the log (log_min_messages defaults to WARNING).
+                            type: string
+                            enum:
+                              - DEBUG1
+                              - DEBUG2
+                              - DEBUG3
+                              - DEBUG4
+                              - DEBUG5
+                              - INFO
+                              - NOTICE
+                              - WARNING
+                              - LOG
+                          logParameter:
+                            description: Include statement parameters in the audit record.
+                            type: boolean
+                            default: false
+                          logParameterMaxSize:
+                            description: >
+                              Maximum size in bytes of a logged parameter value; longer values
+                              are replaced by a placeholder.
+                            type: integer
+                          logRelation:
+                            description: >
+                              Emit a separate audit record per relation referenced by a
+                              statement, rather than one record per statement.
+                            type: boolean
+                            default: false
+                          logRows:
+                            description: Include the number of rows retrieved or affected.
+                            type: boolean
+                            default: false
+                          logStatement:
+                            description: Include the statement text in the audit record.
+                            type: boolean
+                            default: false
+                          logStatementOnce:
+                            description: >
+                              Log the statement text only with the first record of a statement
+                              rather than repeating it on every record.
+                            type: boolean
+                            default: false
+                          logRetentionDays:
+                            description: >
+                              Days to keep extracted YSQL audit log archives on the node. 0 or
+                              unset disables the dedicated audit-log retention pipeline and
+                              keeps the default size-based postgres log purge behavior.
+                            type: integer
+                            minimum: 0
+                      ycqlAuditConfig:
+                        description: >
+                          YCQL audit logger settings. Present means YCQL audit logging is on;
+                          omit the whole object to leave YCQL auditing off. Categories,
+                          keyspaces and users are filtered by include lists first, then by
+                          exclude lists.
+                        type: object
+                        properties:
+                          includedCategories:
+                            description: Statement categories to audit.
+                            type: array
+                            items:
+                              type: string
+                              enum:
+                                - QUERY
+                                - DML
+                                - DDL
+                                - DCL
+                                - AUTH
+                                - PREPARE
+                                - ERROR
+                                - OTHER
+                          excludedCategories:
+                            description: Statement categories to exclude from auditing.
+                            type: array
+                            items:
+                              type: string
+                              enum:
+                                - QUERY
+                                - DML
+                                - DDL
+                                - DCL
+                                - AUTH
+                                - PREPARE
+                                - ERROR
+                                - OTHER
+                          includedKeyspaces:
+                            description: Keyspaces to audit.
+                            type: array
+                            items:
+                              type: string
+                          excludedKeyspaces:
+                            description: Keyspaces to exclude from auditing.
+                            type: array
+                            items:
+                              type: string
+                          includedUsers:
+                            description: Users whose statements are audited.
+                            type: array
+                            items:
+                              type: string
+                          excludedUsers:
+                            description: Users whose statements are not audited.
+                            type: array
+                            items:
+                              type: string
+                          logLevel:
+                            description: tserver log level the audit records are emitted at.
+                            type: string
+                            enum:
+                              - INFO
+                              - WARNING
+                              - ERROR
+                          logRetentionDays:
+                            description: >
+                              Days to keep gzipped YCQL audit log archives on the node. 0 or
+                              unset disables the dedicated audit-log retention pipeline and
+                              keeps the default size-based tserver log purge behavior.
+                            type: integer
+                            minimum: 0
+                      exporters:
+                        description: >
+                          Audit log export destinations. An empty list means audit logging is
+                          configured on the DB side but nothing is shipped off the node. Audit
+                          exporters deliberately have no batching or memory-limiter knobs: YBA
+                          does not model them for audit logs (unlike every other section here).
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - telemetryProvider
+                          properties:
+                            telemetryProvider:
+                              description: >
+                                Name of the TelemetryProvider CR in this namespace to export to. The
+                                referenced CR must have reached status.state Ready and published its
+                                status.resourceUUID; until then this section is not reconciled.
+                              type: string
+                              minLength: 1
+                            additionalTags:
+                              description: >
+                                Extra key/value tags attached to every record exported through this
+                                exporter, in addition to the tags on the TelemetryProvider itself.
+                              type: object
+                              default: {}
+                              additionalProperties:
+                                type: string
+                  queryLogs:
+                    description: >
+                      YSQL query log export (the postgres statement log). Omit to disable.
+                      Changing this section restarts the DB processes, because the settings are
+                      delivered as postgres flags read at startup.
+                    type: object
+                    properties:
+                      ysqlQueryLogConfig:
+                        description: >
+                          Postgres logging settings for query log export. Present means YSQL
+                          query logging is on; omit the whole object to leave it off.
+                        type: object
+                        properties:
+                          logStatement:
+                            description: Which SQL statements are logged.
+                            type: string
+                            enum:
+                              - ALL
+                              - NONE
+                              - DDL
+                              - MOD
+                            default: NONE
+                          logMinErrorStatement:
+                            description: >
+                              Minimum message level at which the statement that caused an error
+                              is logged alongside it.
+                            type: string
+                            enum:
+                              - ERROR
+                            default: ERROR
+                          logErrorVerbosity:
+                            description: How much detail is written for each logged message.
+                            type: string
+                            enum:
+                              - VERBOSE
+                              - TERSE
+                              - DEFAULT
+                            default: DEFAULT
+                          logDuration:
+                            description: Log the duration of every completed statement.
+                            type: boolean
+                            default: false
+                          debugPrintPlan:
+                            description: >
+                              Log the execution plan of every executed query. Very verbose;
+                              intended for debugging.
+                            type: boolean
+                            default: false
+                          logConnections:
+                            description: >
+                              Log each attempted connection, plus successful authentication and
+                              authorization.
+                            type: boolean
+                            default: false
+                          logDisconnections:
+                            description: >
+                              Log each session termination, including the session duration.
+                            type: boolean
+                            default: false
+                          logMinDurationStatement:
+                            description: >
+                              Log the duration of a completed statement only if it ran for at
+                              least this many milliseconds. -1 disables duration logging, 0
+                              logs every statement.
+                            type: integer
+                            default: -1
+                          logLinePrefix:
+                            description: >
+                              printf-style prefix for each postgres log line, for example
+                              "%m [%p] ". A log_line_prefix set through gFlags takes precedence
+                              over this value.
+                            type: string
+                      exporters:
+                        description: >
+                          Query log export destinations. An empty list means query logging is
+                          configured on the DB side but nothing is shipped off the node.
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - telemetryProvider
+                          properties:
+                            telemetryProvider:
+                              description: >
+                                Name of the TelemetryProvider CR in this namespace to export to. The
+                                referenced CR must have reached status.state Ready and published its
+                                status.resourceUUID; until then this section is not reconciled.
+                              type: string
+                              minLength: 1
+                            additionalTags:
+                              description: >
+                                Extra key/value tags attached to every record exported through this
+                                exporter, in addition to the tags on the TelemetryProvider itself.
+                              type: object
+                              default: {}
+                              additionalProperties:
+                                type: string
+                            sendBatchSize:
+                              description: >
+                                Number of records the collector accumulates before sending a batch.
+                              type: integer
+                              default: 100
+                            sendBatchMaxSize:
+                              description: >
+                                Upper bound on the size of a single batch; larger batches are split.
+                                0 means no limit.
+                              type: integer
+                              default: 1000
+                            sendBatchTimeoutSeconds:
+                              description: >
+                                Longest the collector holds an incomplete batch before sending it.
+                              type: integer
+                              default: 10
+                            memoryLimitMib:
+                              description: >
+                                Soft memory limit in MiB for the collector process. Above it the memory
+                                limiter starts refusing data instead of growing without bound.
+                              type: integer
+                              default: 2048
+                            memoryLimitCheckIntervalSeconds:
+                              description: How often the collector re-checks its memory usage.
+                              type: integer
+                              default: 10
+                  metrics:
+                    description: >
+                      Metrics export. The collector scrapes the listed targets inside the pods
+                      and forwards the samples to the exporters. Omit to disable. Unlike audit
+                      and query logs this does not restart the DB processes.
+                    type: object
+                    properties:
+                      scrapeIntervalSeconds:
+                        description: >
+                          How often the collector scrapes each target. Applied to all scrape
+                          jobs.
+                        type: integer
+                        default: 30
+                      scrapeTimeoutSeconds:
+                        description: >
+                          Per-scrape timeout. Applied to all scrape jobs, and should be kept
+                          below scrapeIntervalSeconds.
+                        type: integer
+                        default: 20
+                      collectionLevel:
+                        description: >
+                          How much of the metric surface is collected. ALL keeps every metric,
+                          NORMAL keeps the standard prioritized set, TABLE_OFF keeps that set
+                          but drops per-table metrics, MINIMAL keeps only a small core
+                          allowlist, and OFF disables metric collection entirely.
+                        type: string
+                        enum:
+                          - ALL
+                          - NORMAL
+                          - TABLE_OFF
+                          - MINIMAL
+                          - "OFF"
+                        default: NORMAL
+                      scrapeConfigTargets:
+                        description: >
+                          Endpoints to scrape. Only pod-local targets exist on Kubernetes, so
+                          the VM-only NODE_EXPORT and NODE_AGENT_EXPORT targets are absent from
+                          this enum on purpose - the collector sidecar cannot reach them from
+                          inside the DB pods, and YBA rejects them for a Kubernetes universe.
+                          When omitted, the operator scrapes all five supported targets.
+                        type: array
+                        items:
+                          type: string
+                          enum:
+                            - MASTER_EXPORT
+                            - TSERVER_EXPORT
+                            - YSQL_EXPORT
+                            - CQL_EXPORT
+                            - OTEL_EXPORT
+                      exporters:
+                        description: >
+                          Metrics export destinations. An empty list means metrics are scraped but
+                          not shipped anywhere.
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - telemetryProvider
+                          properties:
+                            telemetryProvider:
+                              description: >
+                                Name of the TelemetryProvider CR in this namespace to export to. The
+                                referenced CR must have reached status.state Ready and published its
+                                status.resourceUUID; until then this section is not reconciled.
+                              type: string
+                              minLength: 1
+                            additionalTags:
+                              description: >
+                                Extra key/value tags attached to every record exported through this
+                                exporter, in addition to the tags on the TelemetryProvider itself.
+                              type: object
+                              default: {}
+                              additionalProperties:
+                                type: string
+                            metricsPrefix:
+                              description: >
+                                Prefix prepended to every exported metric name, for example "ybdb.".
+                                Empty means the metric names are exported unchanged.
+                              type: string
+                              default: ""
+                            sendBatchSize:
+                              description: >
+                                Number of records the collector accumulates before sending a batch.
+                              type: integer
+                              default: 100
+                            sendBatchMaxSize:
+                              description: >
+                                Upper bound on the size of a single batch; larger batches are split.
+                                0 means no limit.
+                              type: integer
+                              default: 1000
+                            sendBatchTimeoutSeconds:
+                              description: >
+                                Longest the collector holds an incomplete batch before sending it.
+                              type: integer
+                              default: 10
+                            memoryLimitMib:
+                              description: >
+                                Soft memory limit in MiB for the collector process. Above it the memory
+                                limiter starts refusing data instead of growing without bound.
+                              type: integer
+                              default: 2048
+                            memoryLimitCheckIntervalSeconds:
+                              description: How often the collector re-checks its memory usage.
+                              type: integer
+                              default: 10
+                  masterLogs:
+                    description: >
+                      yb-master glog export. Omit to disable. Does not restart the DB
+                      processes.
+                    type: object
+                    properties:
+                      minLevel:
+                        description: >
+                          Minimum glog severity to export; lines below this level are dropped.
+                        type: string
+                        enum:
+                          - INFO
+                          - WARNING
+                          - ERROR
+                          - FATAL
+                        default: INFO
+                      noiseSampleDropRatio:
+                        description: >
+                          Fraction (0.0-1.0) of known high-volume, low-value yb-master log
+                          lines to sample away. Defaults to 0.99, dropping 99% of them; set to
+                          0.0 to export all of them.
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                        default: 0.99
+                      exporters:
+                        description: >
+                          yb-master log export destinations. An empty list exports nothing.
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - telemetryProvider
+                          properties:
+                            telemetryProvider:
+                              description: >
+                                Name of the TelemetryProvider CR in this namespace to export to. The
+                                referenced CR must have reached status.state Ready and published its
+                                status.resourceUUID; until then this section is not reconciled.
+                              type: string
+                              minLength: 1
+                            additionalTags:
+                              description: >
+                                Extra key/value tags attached to every record exported through this
+                                exporter, in addition to the tags on the TelemetryProvider itself.
+                              type: object
+                              default: {}
+                              additionalProperties:
+                                type: string
+                            sendBatchSize:
+                              description: >
+                                Number of records the collector accumulates before sending a batch.
+                              type: integer
+                              default: 100
+                            sendBatchMaxSize:
+                              description: >
+                                Upper bound on the size of a single batch; larger batches are split.
+                                0 means no limit.
+                              type: integer
+                              default: 1000
+                            sendBatchTimeoutSeconds:
+                              description: >
+                                Longest the collector holds an incomplete batch before sending it.
+                              type: integer
+                              default: 10
+                            memoryLimitMib:
+                              description: >
+                                Soft memory limit in MiB for the collector process. Above it the memory
+                                limiter starts refusing data instead of growing without bound.
+                              type: integer
+                              default: 2048
+                            memoryLimitCheckIntervalSeconds:
+                              description: How often the collector re-checks its memory usage.
+                              type: integer
+                              default: 10
+                  tserverLogs:
+                    description: >
+                      yb-tserver glog export. Omit to disable. Does not restart the DB
+                      processes.
+                    type: object
+                    properties:
+                      minLevel:
+                        description: >
+                          Minimum glog severity to export; lines below this level are dropped.
+                          Defaults to WARNING rather than INFO because yb-tserver INFO output
+                          is very high volume. There is no noiseSampleDropRatio here: the
+                          tserver noise-sampling tiers are fixed in the collector config.
+                        type: string
+                        enum:
+                          - INFO
+                          - WARNING
+                          - ERROR
+                          - FATAL
+                        default: WARNING
+                      exporters:
+                        description: >
+                          yb-tserver log export destinations. An empty list exports nothing.
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - telemetryProvider
+                          properties:
+                            telemetryProvider:
+                              description: >
+                                Name of the TelemetryProvider CR in this namespace to export to. The
+                                referenced CR must have reached status.state Ready and published its
+                                status.resourceUUID; until then this section is not reconciled.
+                              type: string
+                              minLength: 1
+                            additionalTags:
+                              description: >
+                                Extra key/value tags attached to every record exported through this
+                                exporter, in addition to the tags on the TelemetryProvider itself.
+                              type: object
+                              default: {}
+                              additionalProperties:
+                                type: string
+                            sendBatchSize:
+                              description: >
+                                Number of records the collector accumulates before sending a batch.
+                              type: integer
+                              default: 100
+                            sendBatchMaxSize:
+                              description: >
+                                Upper bound on the size of a single batch; larger batches are split.
+                                0 means no limit.
+                              type: integer
+                              default: 1000
+                            sendBatchTimeoutSeconds:
+                              description: >
+                                Longest the collector holds an incomplete batch before sending it.
+                              type: integer
+                              default: 10
+                            memoryLimitMib:
+                              description: >
+                                Soft memory limit in MiB for the collector process. Above it the memory
+                                limiter starts refusing data instead of growing without bound.
+                              type: integer
+                              default: 2048
+                            memoryLimitCheckIntervalSeconds:
+                              description: How often the collector re-checks its memory usage.
+                              type: integer
+                              default: 10
+                  ysqlConnMgrLogs:
+                    description: >
+                      YSQL Connection Manager log export. Omit to disable. A plain file tail
+                      with no severity filter, and no DB process restart.
+                    type: object
+                    properties:
+                      exporters:
+                        description: >
+                          YSQL Connection Manager log export destinations. An empty list exports
+                          nothing.
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - telemetryProvider
+                          properties:
+                            telemetryProvider:
+                              description: >
+                                Name of the TelemetryProvider CR in this namespace to export to. The
+                                referenced CR must have reached status.state Ready and published its
+                                status.resourceUUID; until then this section is not reconciled.
+                              type: string
+                              minLength: 1
+                            additionalTags:
+                              description: >
+                                Extra key/value tags attached to every record exported through this
+                                exporter, in addition to the tags on the TelemetryProvider itself.
+                              type: object
+                              default: {}
+                              additionalProperties:
+                                type: string
+                            sendBatchSize:
+                              description: >
+                                Number of records the collector accumulates before sending a batch.
+                              type: integer
+                              default: 100
+                            sendBatchMaxSize:
+                              description: >
+                                Upper bound on the size of a single batch; larger batches are split.
+                                0 means no limit.
+                              type: integer
+                              default: 1000
+                            sendBatchTimeoutSeconds:
+                              description: >
+                                Longest the collector holds an incomplete batch before sending it.
+                              type: integer
+                              default: 10
+                            memoryLimitMib:
+                              description: >
+                                Soft memory limit in MiB for the collector process. Above it the memory
+                                limiter starts refusing data instead of growing without bound.
+                              type: integer
+                              default: 2048
+                            memoryLimitCheckIntervalSeconds:
+                              description: How often the collector re-checks its memory usage.
+                              type: integer
+                              default: 10
+                  controllerLogs:
+                    description: >
+                      YB-Controller (backup agent sidecar) log export. Omit to disable. A
+                      plain file tail with no severity filter, and no DB process restart.
+                    type: object
+                    properties:
+                      exporters:
+                        description: >
+                          YB-Controller log export destinations. An empty list exports nothing.
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - telemetryProvider
+                          properties:
+                            telemetryProvider:
+                              description: >
+                                Name of the TelemetryProvider CR in this namespace to export to. The
+                                referenced CR must have reached status.state Ready and published its
+                                status.resourceUUID; until then this section is not reconciled.
+                              type: string
+                              minLength: 1
+                            additionalTags:
+                              description: >
+                                Extra key/value tags attached to every record exported through this
+                                exporter, in addition to the tags on the TelemetryProvider itself.
+                              type: object
+                              default: {}
+                              additionalProperties:
+                                type: string
+                            sendBatchSize:
+                              description: >
+                                Number of records the collector accumulates before sending a batch.
+                              type: integer
+                              default: 100
+                            sendBatchMaxSize:
+                              description: >
+                                Upper bound on the size of a single batch; larger batches are split.
+                                0 means no limit.
+                              type: integer
+                              default: 1000
+                            sendBatchTimeoutSeconds:
+                              description: >
+                                Longest the collector holds an incomplete batch before sending it.
+                              type: integer
+                              default: 10
+                            memoryLimitMib:
+                              description: >
+                                Soft memory limit in MiB for the collector process. Above it the memory
+                                limiter starts refusing data instead of growing without bound.
+                              type: integer
+                              default: 2048
+                            memoryLimitCheckIntervalSeconds:
+                              description: How often the collector re-checks its memory usage.
+                              type: integer
+                              default: 10
               kubernetesOverrides:
                 description: >
                   Kubernetes overrides for the universe.

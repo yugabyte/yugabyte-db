@@ -19,8 +19,11 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/pg_util.h"
@@ -297,7 +300,7 @@ Result<int> getMaxConnectionsFromYsqlPgConf(const std::string &ysqlpgconf_path) 
   }
 
   std::string line;
-  std::string value("10");
+  std::optional<std::string> value;
   std::string max_connections_key = "max_connections";
   while (std::getline(ysql_pg_conf_file, line)) {
     if (line.length() == 0) {
@@ -321,9 +324,15 @@ Result<int> getMaxConnectionsFromYsqlPgConf(const std::string &ysqlpgconf_path) 
 
   // Close the input and output files.
   ysql_pg_conf_file.close();
-  int max = std::atoi(value.c_str());
+  if (!value.has_value()) {
+    return STATUS_FORMAT(
+        IllegalState, "Unable to find max_connections setting in ysql pg conf file. File path: $0",
+        ysqlpgconf_path);
+  }
+  int max = std::atoi(value.value().c_str());
   if (max <= 0) {
-    LOG(FATAL) << "Cannot determine the max_connection settings of the database";
+    return STATUS_FORMAT(
+        IllegalState, "Invalid max_connections setting '$0' in $1", value, ysqlpgconf_path);
   }
   LOG(INFO) << "Maximum physical connections settings found = " << max;
   return max;
@@ -341,8 +350,14 @@ Status YsqlConnMgrConf::UpdateConfigFromGFlags() {
   // some connections are reserved for internal operations which will bypass the
   // YSQL Connection Manager.
 
-  CHECK_LE(FLAGS_ysql_conn_mgr_reserve_internal_conns, max_connections)
-      << "ysql_conn_mgr_reserve_internal_conns must be less than or equal to maxConnections";
+  // Do not CHECK here: max_connections is read back from ysql_pg.conf on disk, so a stale or
+  // otherwise unexpected file must not crash the tserver. Returning an error makes the
+  // connection manager start fail, and its supervisor will retry.
+  SCHECK_LE(
+      FLAGS_ysql_conn_mgr_reserve_internal_conns, static_cast<uint32_t>(max_connections),
+      IllegalState,
+      "ysql_conn_mgr_reserve_internal_conns must be less than or equal to the max_connections "
+      "setting read from ysql_pg.conf");
 
   max_connections = static_cast<int>(max_connections - FLAGS_ysql_conn_mgr_reserve_internal_conns);
   CachedConf conf;

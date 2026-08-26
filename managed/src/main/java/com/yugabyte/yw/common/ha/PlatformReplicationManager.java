@@ -28,11 +28,14 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
+import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.PlatformInstance.State;
+import com.zaxxer.hikari.HikariDataSource;
 import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import io.prometheus.metrics.core.metrics.Gauge;
@@ -59,6 +62,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.sql.DataSource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pekko.actor.Cancellable;
@@ -99,6 +103,8 @@ public class PlatformReplicationManager {
 
   private final OperatorResourceRestorer operatorResourceRestorer;
 
+  private final EmbeddedCollectorInitializer embeddedCollectorInitializer;
+
   public static final Gauge HA_LAST_BACKUP_TIME =
       Gauge.builder()
           .name("yba_ha_last_backup_seconds")
@@ -120,7 +126,8 @@ public class PlatformReplicationManager {
       PrometheusConfigHelper prometheusConfigHelper,
       ConfigHelper configHelper,
       RuntimeConfGetter confGetter,
-      OperatorResourceRestorer operatorResourceRestorer) {
+      OperatorResourceRestorer operatorResourceRestorer,
+      EmbeddedCollectorInitializer embeddedCollectorInitializer) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.fileDataService = fileDataService;
@@ -128,6 +135,7 @@ public class PlatformReplicationManager {
     this.configHelper = configHelper;
     this.confGetter = confGetter;
     this.operatorResourceRestorer = operatorResourceRestorer;
+    this.embeddedCollectorInitializer = embeddedCollectorInitializer;
     this.schedule = new AtomicReference<>();
   }
 
@@ -404,6 +412,16 @@ public class PlatformReplicationManager {
     // Finally, switch the prometheus configuration to read from swamper targets directly.
     switchPrometheusToStandalone();
     oneOffSync();
+    // Refresh the embedded PA collector state right after promotion so the local PA gets
+    // pointed at the local YBA URL and its customer_metadata.collection_enabled is flipped
+    // back to true before the recurring EmbeddedCollectorInitializer schedule fires (~1 min).
+    try {
+      for (Customer customer : Customer.getAll()) {
+        embeddedCollectorInitializer.initialize(customer);
+      }
+    } catch (Exception e) {
+      log.warn("Failed to eagerly refresh embedded PA collector after promotion", e);
+    }
   }
 
   /**
@@ -799,11 +817,24 @@ public class PlatformReplicationManager {
     private final boolean excludePADatabase;
     // Whether to exclude PA collector collected data files from the backup or not.
     private final boolean excludePAFiles;
+    // When true, dump only the whitelisted PA "configuration" tables (data-only). Mutually
+    // exclusive with excludePADatabase. Used only by the HA replication path so the standby
+    // PA sees the same customer / universe metadata and runtime config as the active PA
+    // without inheriting the active's metrics / anomalies / support-bundle data.
+    private final boolean includePaConfigOnly;
     // Where to output the platform backup
     private final String outputDirectory;
 
     public CreatePlatformBackupParams() {
-      this(true, true, true, true, replicationHelper.getBackupDir().toString());
+      this(
+          true /* excludePrometheus */,
+          true /* excludeReleases */,
+          StringUtils.isBlank(
+              confGetter.getStaticConf().getString("yb.pa.url")) /* excludePADatabase */,
+          true /* excludePAFiles */,
+          StringUtils.isNotBlank(
+              confGetter.getStaticConf().getString("yb.pa.url")) /* includePaConfigOnly */,
+          replicationHelper.getBackupDir().toString());
     }
 
     public CreatePlatformBackupParams(
@@ -812,10 +843,27 @@ public class PlatformReplicationManager {
         boolean excludePADatabase,
         boolean excludePAFiles,
         String outputDirectory) {
+      this(
+          excludePrometheus,
+          excludeReleases,
+          excludePADatabase,
+          excludePAFiles,
+          false /* includePaConfigOnly */,
+          outputDirectory);
+    }
+
+    public CreatePlatformBackupParams(
+        boolean excludePrometheus,
+        boolean excludeReleases,
+        boolean excludePADatabase,
+        boolean excludePAFiles,
+        boolean includePaConfigOnly,
+        String outputDirectory) {
       this.excludePrometheus = excludePrometheus;
       this.excludeReleases = excludeReleases;
       this.excludePADatabase = excludePADatabase;
       this.excludePAFiles = excludePAFiles;
+      this.includePaConfigOnly = includePaConfigOnly;
       this.outputDirectory = outputDirectory;
     }
 
@@ -835,6 +883,9 @@ public class PlatformReplicationManager {
       }
       if (excludePAFiles) {
         commandArgs.add("--exclude_pa_files");
+      }
+      if (includePaConfigOnly) {
+        commandArgs.add("--include_pa_config_only");
       }
       commandArgs.add("--disable_version_check");
 
@@ -935,8 +986,16 @@ public class PlatformReplicationManager {
   }
 
   public boolean restoreBackupOnStandby(HighAvailabilityConfig config, File input) {
+    // HA sync path: the archive contains a --include_pa_config_only PA dump (whitelisted tables,
+    // data-only). Pass excludePADatabase=false so the script picks it up; it will detect
+    // the pa_ts_config_only.marker file and use the config-only restore path automatically.
     boolean succeeded =
-        restoreBackup(input, false /* k8sRestoreYbaDbOnRestart */, false /*skipOldFiles*/);
+        restoreBackup(
+            input,
+            false /* k8sRestoreYbaDbOnRestart */,
+            false /* skipOldFiles */,
+            false /* excludePADatabase */,
+            true /* excludePAFiles */);
     // Apply stored operator resources to Kubernetes whose persisted resourceVersion
     // is strictly greater than the live Kubernetes version, or that are absent.
     if (succeeded && confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
@@ -998,6 +1057,10 @@ public class PlatformReplicationManager {
     } else {
       log.info("Platform backup restored successfully");
       DB.cacheManager().clearAll();
+      DataSource ds = DB.getDefault().dataSource();
+      if (ds instanceof HikariDataSource hds && hds.getHikariPoolMXBean() != null) {
+        hds.getHikariPoolMXBean().softEvictConnections();
+      }
       // Wait for DB connection to be available after restore.
       // Restore wipes out tables, invalidating the underlying connections.
       Util.waitForDBConnection(5);

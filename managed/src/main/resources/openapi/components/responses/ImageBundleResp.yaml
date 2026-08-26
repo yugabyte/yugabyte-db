@@ -1,0 +1,5 @@
+description: Image bundle
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/ImageBundle.yaml"

@@ -28,9 +28,9 @@ The following table includes a list of supported data type mappings for migratin
 | Oracle data type | Maps to YugabyteDB as | Comments |
 | :--------------- | :------------------- | :------- |
 | CHAR | CHAR |
-| NCHAR | CHAR | Unsupported in [Live migration](../../migrate/live-migrate/), or [Live migration with fall-forward](../../migrate/live-fall-forward/) |
+| NCHAR | CHAR |
 | VARCHAR2 | VARCHAR |
-| NVARCHAR2 | VARCHAR | Unsupported in [Live migration](../../migrate/live-migrate/), or [Live migration with fall-forward](../../migrate/live-fall-forward/) |
+| NVARCHAR2 | VARCHAR |
 | RAW | BYTEA |
 | LONG RAW | BYTEA |
 | DATE | TIMESTAMP |
@@ -49,8 +49,8 @@ The following table includes a list of supported data type mappings for migratin
 | NUMBER(2,7) | NUMERIC |
 | NUMBER(6,-2) | NUMERIC(6,-2) | Results in an error because negative scale is currently not supported. Refer to the [GitHub issue](https://github.com/yugabyte/yb-voyager/issues/779) for more details.
 | BLOB | BYTEA | Data is ignored during export. Only the schema migration is allowed. Please use another mechanism to load the values. |
-| CLOB | TEXT | Data migration is allowed to a limit of 235MB per file. Unsupported in [Live migration](../../migrate/live-migrate/), [Live migration with fall-forward](../../migrate/live-fall-forward/) |
-| NCLOB | TEXT | Data migration is allowed to a limit of 235MB per file. Unsupported in [Live migration](../../migrate/live-migrate/), [Live migration with fall-forward](../../migrate/live-fall-forward/) |
+| CLOB | TEXT | Data migration is allowed to a limit of 235MB per file. |
+| NCLOB | TEXT | Data migration is allowed to a limit of 235MB per file. |
 | BFILE | BYTEA | Not supported. |
 | ROWID | OID | Currently, import schema is supported. Data import results in an error. |
 | UROWID [(size)] | OID | Currently, import schema is supported. Data import results in an error. |
@@ -61,7 +61,7 @@ The following table includes a list of supported data type mappings for migratin
 | URIType | URITYPE | Not supported. |
 | Objects | | Not supported. |
 | REF | | Not supported. |
-| Nested tables | Composite type |  Unsupported when used with [BETA_FAST_DATA_EXPORT](../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), and in [Live migration](../../migrate/live-migrate/) or [Live migration with fall-forward](../../migrate/live-fall-forward/)|
+| Nested tables | Composite type |  Unsupported when used with [BETA_FAST_DATA_EXPORT](../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle). |
 | VARRAY | Composite type |  Unsupported when used with [BETA_FAST_DATA_EXPORT](../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle). |
 
 ### ANSI supported data types

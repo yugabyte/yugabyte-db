@@ -78,8 +78,11 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -87,11 +90,17 @@
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(data_size_metric_updater_interval_sec);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enforce_tablet_replica_limits);
+DECLARE_int32(ht_lease_duration_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
+DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(metrics_snapshotter_interval_ms);
 DECLARE_int32(num_cpus);
+DECLARE_int32(num_reactor_threads);
+DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -105,10 +114,14 @@ DECLARE_uint32(TEST_clone_pg_schema_delay_ms);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_bool(TEST_fail_clone_pg_schema);
 DECLARE_bool(TEST_fail_clone_tablets);
+DECLARE_bool(TEST_pause_before_enabling_db_connections);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(ysql_enable_write_pipelining);
 
 namespace yb {
 namespace tserver {
@@ -495,6 +508,10 @@ class MasterExportSnapshotTest
       public ::testing::WithParamInterface<master::YsqlColocationConfig> {
  public:
   void SetUp() override {
+    // The snapshot generated as of a time reflects the tablet consensus state at that time, while
+    // the ground truth export reflects the current one. A load balancer leader move in between
+    // makes them differ, so keep tablet leadership stable.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     PostgresMiniClusterTest::SetUp();
     messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
@@ -1483,6 +1500,90 @@ TEST_F(PgCloneTest, PreventConnectionsUntilCloneSuccessful) {
       Format("database \"$0\" is not currently accepting connections", kTargetNamespaceName1));
 }
 
+TEST_F(PgCloneTest, ConnectAfterCloneWithStaleDisallowConnCache) {
+  // Regression test where connecting to a target database while a clone is happening could lead to
+  // a stale tserver catalog cache entry with datallowconn=false and thus fails connecting to a
+  // successful clone. Test steps:
+  //   1. Pause the clone right before it re-enables connections (target still disabled, but all
+  //      schema DDLs and the restore are already done, so the catalog version is final).
+  //   2. Attempt a connection to the target through the test's tserver. This fails (as expected
+  //      while disabled) but poisons that tserver's catalog cache with datallowconn = false at the
+  //      final catalog version.
+  //   3. Let the clone finish (connections re-enabled). This should invalidate the cache by
+  //      increasing the catalog version.
+  //   4. Assert that connecting to the (now fully cloned) target succeeds. Before the fix, the
+  //      stale cache entry causes this connection to be rejected.
+
+  // Disable auto-analyze so the only reader that touches the target's datallowconn cache is our
+  // controlled connection attempt below. Otherwise the auto-analyze background worker could either
+  // seed the stale entry non-deterministically or bump the catalog version and mask the bug.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+
+  // Pause the clone right before it re-enables connections to the target.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_enabling_db_connections) = true;
+
+  // Run the clone in the background. CREATE DATABASE ... TEMPLATE blocks until the clone is
+  // COMPLETE, which will not happen until we clear the pause flag below.
+  TestThreadHolder threads;
+  Status clone_status;
+  threads.AddThreadFunctor([this, &clone_status]() {
+    auto conn_result = ConnectToDB(kSourceNamespaceName);
+    if (!conn_result.ok()) {
+      clone_status = conn_result.status();
+      return;
+    }
+    auto conn = std::move(*conn_result);
+    clone_status = conn.ExecuteFormat(
+        "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
+  });
+
+  // Wait until the clone reaches the RESTORED state. At this point the target's schema is fully
+  // created and the restore is done (so the catalog version is final), but connections have not yet
+  // been re-enabled (we are paused right before EnableDbConnections).
+  const auto kCloneRestoredTimeout = RegularBuildVsDebugVsSanitizers(150s, 300s, 450s);
+  auto wait_status = WaitFor(
+      [this]() -> Result<bool> {
+        auto state = VERIFY_RESULT(source_conn_->FetchRows<std::string>(Format(
+            "SELECT state FROM yb_database_clones() WHERE db_name = '$0'", kTargetNamespaceName1)));
+        return state.size() == 1 && state[0] == "RESTORED";
+      },
+      kCloneRestoredTimeout, "Wait for clone to reach RESTORED state");
+
+  // Poison the tserver's catalog cache: attempt to connect to the target while connections to it
+  // are still disabled. This must fail, and in doing so caches datallowconn = false at the final
+  // catalog version on the tserver we connect through. We capture (rather than immediately assert)
+  // the result so we can always release the pause below before joining the clone thread.
+  Status poison_status;
+  if (wait_status.ok()) {
+    poison_status = ResultToStatus(ConnectToDB(kTargetNamespaceName1, 3 /* connection timeout */));
+  }
+
+  // Release the pause; the clone re-enables connections and completes. This must
+  // happen unconditionally (even if the waits/asserts above failed) so the background clone thread
+  // is not left blocked forever in the paused EnableDbConnections, which would hang test teardown.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_enabling_db_connections) = false;
+  threads.JoinAll();
+
+  ASSERT_OK(wait_status);
+  ASSERT_OK(clone_status);
+
+  // The poison connection attempt must have failed while the target was disabled.
+  ASSERT_NOK(poison_status);
+  ASSERT_STR_CONTAINS(
+      poison_status.message().ToBuffer(),
+      Format("database \"$0\" is not currently accepting connections", kTargetNamespaceName1));
+
+  // Sanity check: pg_database.datallowconn is now persisted as true for the target.
+  auto datallowconn = ASSERT_RESULT(source_conn_->FetchRow<bool>(
+      Format("SELECT datallowconn FROM pg_database WHERE datname = '$0'", kTargetNamespaceName1)));
+  ASSERT_TRUE(datallowconn);
+
+  // Since the clone completed and datallowconn is true, connecting to the target must succeed.
+  // Before the fix, the stale datallowconn = false cached during the disabled window is never
+  // invalidated (the re-enable is a non-DDL update), so this connection is wrongly rejected.
+  ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+}
+
 TEST_F(PgCloneTest, Tablespaces) {
   const auto kTablespaceName = "test_tablespace";
   // With (index_ + 1) / FLAGS_TEST_nodes_per_cloud formula, ts-0 (index_=1) is in cloud1.region1
@@ -1603,6 +1704,17 @@ TEST_P(PgCloneTestWithColocatedDBTabletLimitsCheck, TabletLimitsCheck) {
 class PgCloneColocationTestWithTabletLimitsCheck : public PgCloneColocationTest {
  public:
   void SetUp() override {
+    // num_cpus is only meant to affect the tablet replica limit computation. Keep it from also
+    // sizing the process wide rocksdb priority thread pool and the RPC reactors for one core,
+    // which serializes the sys catalog snapshot flushes of all three masters.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_reactor_threads) = 4;
+    // Cloning writes ~200k sys catalog entries, so the snapshot creation flush stalls each master
+    // for seconds. Relax the consensus timeouts so the leader keeps its lease and the followers do
+    // not start an election, which would abort the in-progress clone.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 15000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 15000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 30;
     // Simulate a single core cluster.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 1;
     PgCloneColocationTest::SetUp();
@@ -2094,6 +2206,59 @@ TEST_F(PgCloneTest, CloneAfterPitrRemovedTableFromSnapshot) {
   auto t1_count = ASSERT_RESULT(
       target_conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
   ASSERT_EQ(t1_count, 0);
+}
+
+class SysCatalogRestoreWithWritePipeliningTest : public PgCloneInitiallyEmptyDBTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
+    // Run both DDLs in one multi-statement transaction so its writes span the restore.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    PgCloneInitiallyEmptyDBTest::SetUp();
+  }
+};
+
+// Run a DDL with write pipelining across a restore. Since write pipelining attaches metadata to its
+// writes, we need to ensure that writes after the restore don't try to recreate the txn, and
+// abort instead.
+TEST_F(SysCatalogRestoreWithWritePipeliningTest, YB_DEBUG_ONLY_TEST(DdlTransactionAcrossRestore)) {
+  // Snapshot isolation would cause the post-restore write to conflict with the restore's catalog
+  // version write, so use read committed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+
+  // Hold the first async write confirmation until after the restore. This causes the next write to
+  // also include metadata (which previously would cause a recreated txn + fatal).
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency(
+      {{"DdlTransactionAcrossRestore::ReleaseAsyncWrites",
+        "TabletServiceImpl::WaitForAsyncWrite::BeforeRegister"}});
+  sync_point->EnableProcessing();
+
+  Timestamp restore_time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  HybridTime restore_ht = ASSERT_RESULT(HybridTime::ParseHybridTime(restore_time.ToString()));
+  // Sleep a bit before we start the txn.
+  SleepFor(500ms);
+
+  ASSERT_OK(source_conn_->Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE table1 (i int)"));
+
+  auto restoration_id = ASSERT_RESULT(
+      RestoreSnapshotSchedule(master_backup_proxy_.get(), schedule_id_, restore_ht, kTimeout));
+  ASSERT_OK(WaitForRestoration(master_backup_proxy_.get(), restoration_id, kTimeout));
+
+  auto ddl_after_restore = source_conn_->Execute("CREATE TABLE table2 (i int)");
+
+  // Unblock the writes. The txn should abort and roll back cleanly.
+  TEST_SYNC_POINT("DdlTransactionAcrossRestore::ReleaseAsyncWrites");
+  ASSERT_OK(source_conn_->Execute("COMMIT"));
+
+  ASSERT_FALSE(ddl_after_restore.ok())
+      << "post-restore DDL write across a sys-catalog restore unexpectedly succeeded";
+
+  // Ensure that the txn was rolled back.
+  auto table2_exists =
+      ASSERT_RESULT(source_conn_->FetchRow<bool>("SELECT to_regclass('table2') IS NOT NULL"));
+  ASSERT_FALSE(table2_exists) << "table2 from the aborted transaction unexpectedly persisted";
 }
 
 }  // namespace master

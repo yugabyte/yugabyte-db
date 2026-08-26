@@ -94,7 +94,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
@@ -666,6 +666,9 @@ public class BackupHelper {
         && storageConfig.getName().equals(CustomerConfigConsts.NAME_AZURE)) {
       validateIfYbdbInbuiltYbcHasAzureIAM(universe);
     }
+    if (storageUtil.isImmutableStorageEnabled(storageConfig)) {
+      validateIfYbdbInbuiltYbcHasImmutableStorage(universe);
+    }
   }
 
   // For k8s universes: if useYbdbInbuiltYbc is true, need to check if Azure IAM feature is
@@ -683,6 +686,24 @@ public class BackupHelper {
           BAD_REQUEST,
           "Azure IAM is not supported in the YB-Controller version running on this Kubernetes"
               + " Universe.");
+    }
+  }
+
+  // For k8s universes: if useYbdbInbuiltYbc is true, need to check if immutable storage feature
+  // is supported
+  private void validateIfYbdbInbuiltYbcHasImmutableStorage(Universe universe) {
+    if (universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes)
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
+        && !ybcManager.getEnabledBackupFeatures(universe.getUniverseUUID()).getImmutableStorage()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Immutable storage is not supported in the YB-Controller version running on this"
+              + " Kubernetes Universe.");
     }
   }
 
@@ -784,7 +805,7 @@ public class BackupHelper {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Masters are not currently queryable.");
     }
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       return client.getTablesList().getTableInfoList();
     } catch (Exception e) {
       log.warn(e.toString());
@@ -1301,6 +1322,12 @@ public class BackupHelper {
    * @param config
    * @param universe
    */
+  public void validateStorageConfigForBackupOnUniverse(
+      UUID storageConfigUUID, UUID customerUUID, Universe universe) {
+    CustomerConfig config = customerConfigService.getOrBadRequest(customerUUID, storageConfigUUID);
+    validateStorageConfigForBackupOnUniverse(config, universe);
+  }
+
   public void validateStorageConfigForBackupOnUniverse(CustomerConfig config, Universe universe) {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;

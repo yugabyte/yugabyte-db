@@ -15,6 +15,7 @@
 #include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/test_macros.h"
 

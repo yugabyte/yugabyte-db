@@ -93,6 +93,7 @@
 #include "yb/util/ntp_clock.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
 
@@ -134,6 +135,10 @@ TAG_FLAG(master_tserver_svc_queue_length, advanced);
 DEFINE_NON_RUNTIME_int32(master_svc_queue_length, 1000,
              "RPC queue length for master service");
 TAG_FLAG(master_svc_queue_length, advanced);
+
+DEFINE_NON_RUNTIME_int32(master_ysql_lease_svc_queue_length, 1000,
+             "RPC queue length for master YSQL lease service");
+TAG_FLAG(master_ysql_lease_svc_queue_length, advanced);
 
 DEFINE_NON_RUNTIME_int32(master_consensus_svc_queue_length, 1000,
              "RPC queue length for master consensus service");
@@ -307,6 +312,9 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClusterService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDclService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDdlService(this)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_ysql_lease_svc_queue_length, MakeMasterYsqlLeaseService(this),
+      rpc::ServicePriority::kHigh));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterEncryptionService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterHeartbeatService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterReplicationService(this)));

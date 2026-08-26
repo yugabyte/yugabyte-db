@@ -29,6 +29,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::chrono_literals;
 

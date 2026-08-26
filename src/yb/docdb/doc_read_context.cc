@@ -155,8 +155,13 @@ void DocReadContext::UpdateKeyPrefix() {
   }
 }
 
-Result<bool> DocReadContext::HaveEqualBloomFilterKey(Slice lhs, Slice rhs) const {
-  return dockv::HashedOrFirstRangeComponentsEqual(lhs, rhs);
+Result<std::optional<Slice>> DocReadContext::UserKeyForFixedBloomFilter(
+    Slice lower, Slice upper) const {
+  if (lower.empty() ||
+      !VERIFY_RESULT(dockv::HashedOrFirstRangeComponentsExistAndEqual(lower, upper))) {
+    return std::nullopt;
+  }
+  return lower;
 }
 
 size_t DocReadContext::NumColumnsUsedByBloomFilterKey() const {
@@ -164,6 +169,11 @@ size_t DocReadContext::NumColumnsUsedByBloomFilterKey() const {
   // pick the first range component.
   // So num columns used by bloom filter always num hash columns + 1.
   return schema_.num_hash_key_columns() + 1;
+}
+
+dockv::VectorValueFormat DocReadContext::vector_value_format() const {
+  return schema_.table_properties().owns_vector_reverse_mapping()
+      ? dockv::VectorValueFormat::kTyped : dockv::VectorValueFormat::kLegacy;
 }
 
 DocReadContext DocReadContext::TEST_Create(const Schema& schema) {

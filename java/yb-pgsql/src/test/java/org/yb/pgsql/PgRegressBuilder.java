@@ -82,15 +82,24 @@ public class PgRegressBuilder {
       throw new RuntimeException("Failed to create directory " + outputDir);
     }
 
+    // pg_regress-based executables (both pg_regress and pg_isolation_regress) look up expected
+    // files in outputDir before inputDir and post-process them in place before diffing (see
+    // addPostProcessEnvVar).  Give each run a private copy so runs sharing inputDir don't rewrite
+    // the same files.
+    try {
+      FileUtils.copyDirectory(new File(inputDir, "expected"), new File(outputDir, "expected"));
+    } catch (IOException ex) {
+      LOG.error("Failed to copy expected directory from " + inputDir + " to " + outputDir);
+      throw new RuntimeException(ex);
+    }
+
     if (isRegressExecutable()) {
       // Copy files needed by pg_regress.  "input" and "ouput" don't need to be copied since they
-      // can be read from inputDir.  Their purpose is to generate files into "expected" and "sql" in
-      // outputDir (implying "expected" and "sql" should be copied).  "data" doesn't need to be
-      // copied since it's only read from (by convention), which can be done from inputDir.
+      // can be read from inputDir.  Their purpose is to generate files into "sql" in outputDir
+      // (implying "sql" should be copied).  "data" doesn't need to be copied since it's only read
+      // from (by convention), which can be done from inputDir.
       try {
-        for (String name : new String[]{"expected", "sql"}) {
-          FileUtils.copyDirectory(new File(inputDir, name), new File(outputDir, name));
-        }
+        FileUtils.copyDirectory(new File(inputDir, "sql"), new File(outputDir, "sql"));
       } catch (IOException ex) {
         LOG.error("Failed to copy a directory from " + inputDir + " to " + outputDir);
         throw new RuntimeException(ex);

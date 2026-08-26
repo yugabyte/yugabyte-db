@@ -713,15 +713,25 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         + "  then echo \"$pid\"; exit 0; fi; "
         + "done; "
         + "exit 1";
-    Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", script});
-    try (BufferedReader reader =
-             new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-      String line = reader.readLine();
-      if (line == null || line.trim().isEmpty()) {
+    // After a cluster restart the odyssey process can be up (visible to pgrep)
+    // before it has finished binding its listening socket, so a single ss pass
+    // may miss it. Poll until the socket becomes visible rather than failing on
+    // the first miss.
+    final long deadlineMs = System.currentTimeMillis() + 30000;
+    for (;;) {
+      Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", script});
+      try (BufferedReader reader =
+               new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+        String line = reader.readLine();
+        if (line != null && !line.trim().isEmpty()) {
+          return Integer.parseInt(line.trim());
+        }
+      }
+      if (System.currentTimeMillis() >= deadlineMs) {
         throw new RuntimeException(
             "Could not find Odyssey process listening on host " + host);
       }
-      return Integer.parseInt(line.trim());
+      Thread.sleep(200);
     }
   }
 }

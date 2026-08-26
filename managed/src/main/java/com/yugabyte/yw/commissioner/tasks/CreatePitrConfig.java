@@ -28,7 +28,7 @@ import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.ListSnapshotsResponse;
 import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 @Slf4j
@@ -75,7 +75,7 @@ public class CreatePitrConfig extends UniverseTaskBase {
     log.info("Running {}", getName());
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       // Find the keyspace id of the keyspace name specified in the task params.
       String keyspaceId =
           getKeyspaceNameKeyspaceIdMap(client, taskParams().tableType)
@@ -224,7 +224,7 @@ public class CreatePitrConfig extends UniverseTaskBase {
   }
 
   private UUID findExistingSchedule(
-      YBClient client,
+      YBClientApi client,
       String keyspaceName,
       YQLDatabase dbType,
       long intervalSeconds,

@@ -145,6 +145,7 @@ extern YbGeolocationDistance get_geolocation_distance(Oid tablespaceoid);
 extern bool IsYugaByteEnabled();
 
 extern bool yb_enable_docdb_tracing;
+extern bool yb_enable_pg_subscription;
 extern bool yb_enable_spi_dist_tracing;
 
 extern bool yb_read_from_followers;
@@ -878,6 +879,11 @@ extern double yb_test_delay_next_ddl;
 extern int	yb_test_reset_retry_counts;
 
 /*
+ * If set to true, the walsender sends a keepalive after every decoded record.
+ */
+extern bool yb_test_walsender_keepalive_after_each_record;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -1042,9 +1048,24 @@ extern int	YBGetDdlNestingLevel();
 extern NodeTag YBGetCurrentStmtDdlNodeTag();
 extern bool YBIsCurrentStmtDdl();
 extern CommandTag YBGetCurrentStmtDdlCommandTag();
+extern CommandTag YBGetTopLevelStmtDdlCommandTag();
+extern CommandTag YBGetGlobalDdlCommandTag();
+extern CommandTag YBGetBreakingDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
-extern void YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
-											  CommandTag commandTag);
+
+/*
+ * Snapshot of the current top-level DDL statement identity. Used to preserve
+ * and restore state across intermediate commits (YbCommitTransactionCommandIntermediate).
+ */
+typedef struct YbDdlOriginalStmtState
+{
+	NodeTag		node_tag;
+	CommandTag	command_tag;
+	bool		is_top_level_ddl_active;
+} YbDdlOriginalStmtState;
+
+extern void YBGetDdlOriginalStmtState(YbDdlOriginalStmtState *state);
+extern void YBSetDdlOriginalStmtState(const YbDdlOriginalStmtState *state);
 extern void YbSetIsGlobalDDL();
 extern void YbIncrementPgTxnsCommitted();
 extern bool YbTrackPgTxnInvalMessagesForAnalyze();
@@ -1448,16 +1469,6 @@ LockWaitPolicy YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy);
 
 const char *yb_fetch_current_transaction_priority(void);
 
-void		GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YbcStatus s,
-										   const char **msg_buf, size_t *msg_nargs,
-										   const char ***msg_args,
-										   const char **detail_buf,
-										   size_t *detail_nargs,
-										   const char ***detail_args,
-										   const char **detail_log_buf,
-										   size_t *detail_log_nargs,
-										   const char ***detail_log_args);
-
 bool		YbIsBatchedExecution();
 void		YbSetIsBatchedExecution(bool value);
 
@@ -1514,79 +1525,23 @@ char	   *YbSplitOptionsToPresplitString(YbOptSplit *split_options);
 extern void YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options,
 										  List **options);
 
+extern void HandleYBStatusAtErrorLevelImpl(YbcStatus status, int elevel, const char *text_domain,
+											 const char *filename, int lineno, const char *funcname);
+
 #define HandleYBStatus(status) \
 	HandleYBStatusAtErrorLevel(status, ERROR)
 
 /*
  * Macro to convert DocDB Status to Postgres error.
- * It is generally based on the ereport macro, it makes a sequence of errxxx()
- * function calls, where errstart() comes the first and errfinish() the last.
- *
- * The error location info (file name, line number, function name) comes from
- * the status, so we need lower level access, that's why we can not use ereport
- * here. Also we don't need ereport's flexibility, as we support transfer of
- * limited subset of Postgres error fields.
- *
- * We require the compiler to support __builtin_constant_p.
  */
-#ifdef HAVE__BUILTIN_CONSTANT_P
 #define HandleYBStatusAtErrorLevel(status, elevel) \
 	do \
 	{ \
 		AssertMacro(!IsMultiThreadedMode()); \
 		YbcStatus _status = (status); \
 		if (_status) \
-		{ \
-			const int adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
-			const uint32_t pg_err_code = YBCStatusPgsqlError(_status); \
-			const char *filename = YBCStatusFilename(_status); \
-			int lineno = YBCStatusLineNumber(_status); \
-			const char *funcname = YBCStatusFuncname(_status); \
-			const char *msg_buf = NULL; \
-			const char *detail_buf = NULL; \
-			const char *detail_log_buf = NULL; \
-			size_t msg_nargs = 0; \
-			size_t detail_nargs = 0; \
-			size_t detail_log_nargs = 0; \
-			const char **msg_args = NULL; \
-			const char **detail_args = NULL; \
-			const char **detail_log_args = NULL; \
-			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, \
-										   &msg_buf, &msg_nargs, &msg_args, \
-										   &detail_buf, &detail_nargs, \
-										   &detail_args, &detail_log_buf, \
-										   &detail_log_nargs, \
-										   &detail_log_args); \
-			YBCFreeStatus(_status); \
-			if (errstart(adjusted_elevel, TEXTDOMAIN)) \
-			{ \
-				AssertMacro(msg_buf); \
-				yb_errmsg_from_status(msg_buf, msg_nargs, msg_args); \
-				if (detail_buf) \
-					yb_errdetail_from_status(detail_buf, detail_nargs, detail_args); \
-				if (detail_log_buf) \
-					yb_errdetail_log_from_status(detail_log_buf, \
-												 detail_log_nargs, \
-												 detail_log_args); \
-				errcode(pg_err_code); \
-				errhidecontext(true); \
-				if (yb_debug_log_docdb_error_backtrace) \
-					errbacktrace(); \
-				yb_errlocation_from_status(filename, lineno, funcname); \
-				errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
-				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
-					pg_unreachable(); \
-			} \
-			else \
-			{ \
-				if (filename) \
-					pfree((void*) filename); \
-				if (funcname) \
-					pfree((void*) funcname); \
-			} \
-		} \
+			HandleYBStatusAtErrorLevelImpl(_status, elevel, TEXTDOMAIN, __FILE__, __LINE__, PG_FUNCNAME_MACRO); \
 	} while (0)
-#endif
 
 /*
  * Increments a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS)
@@ -1799,7 +1754,6 @@ extern YbcPgStatement YbNewTruncateColocated(Relation rel,
 extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 														   YbcPgTransactionSetting transaction_setting);
 extern bool YbCanSkipIntentsWrite(Relation rel);
-extern void YbDisableSkipIntentsIfModifyingCTE(struct QueryDesc *queryDesc);
 extern void YbEnableSkipIntentsForNewTransaction();
 extern void YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid);
 
@@ -1828,6 +1782,14 @@ extern bool YBHasSkippedIntentsWrite();
  * server_type = 'federatedYugabyteDB'.
  */
 extern bool yb_is_federated_yb_foreign_table(Oid relid);
+
+/*
+ * If 'ft_relid' is a federatedYugabyteDB foreign table, resolve the local
+ * relation named by its schema_name/table_name options and return its OID.
+ * Returns InvalidOid if the table is not federated or the relation is not
+ * found locally.
+ */
+extern Oid	YbGetFederatedForeignTableBackingRelid(Oid ft_relid);
 
 struct PlannerInfo;
 struct RelOptInfo;

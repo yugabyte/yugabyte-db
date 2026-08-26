@@ -274,6 +274,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " it is passed as a component while creating.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<List> supportBundleExtraYbAdminCommands =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.extra_yb_admin_commands",
+          ScopeType.GLOBAL,
+          "Additional yb-admin commands allowed in Support Bundle",
+          "Support bundles only run yb-admin commands from a built-in read-only allow list. This"
+              + " config adds command names to that list. Only add commands that do not modify"
+              + " cluster state. Ex: [\"list_tables\",\"get_universe_config\"]",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> supportBundleNodeCheckTimeoutSec =
       new ConfKeyInfo<>(
           "yb.support_bundle.node_check_timeout_sec",
@@ -563,7 +573,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow Loki Exporter in Telemetry Provider",
           "Allow the usage of Loki Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> telemetryAllowS3 =
       new ConfKeyInfo<>(
           "yb.telemetry.allow_s3",
@@ -1571,7 +1581,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If this flag is enabled, user will be able to create telemetry providers and"
               + " enable/disable YSQL query logging on universes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> metricsExportEnabled =
       new ConfKeyInfo<>(
           "yb.universe.metrics_export_enabled",
@@ -2036,6 +2046,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable performing automatic rollback of edit operation (if possible)",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowEditUniverseRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_edit_universe_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Edit Universe Tasks",
+          "Allow rolling back a failed edit universe task (VM and Kubernetes) via the task"
+              + " rollback API",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.continuous_platform_backups",
@@ -2264,12 +2283,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> editUniverseV2UiEnabled =
       new ConfKeyInfo<>(
-          "yb.ui.feature_flags.edit_universe_v2_ui_enabled",
+          "yb.ui.feature_flags.enable_new_universe_experience",
           ScopeType.GLOBAL,
-          "Enable Edit Universe V2 UI",
-          "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
+          "Enable new Universe experience",
+          "Enable new Universe experience in UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> gcpCapacityReservationGcEnabled =
       new ConfKeyInfo<>(
           "yb.task.capacity_reservation.gcp_gc_enabled",
@@ -2286,12 +2305,31 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Interval for GCP capacity reservation garbage collection",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> gcpCapacityReservationGcEmptyAge =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.gcp_gc_empty_reservation_age",
+          ScopeType.GLOBAL,
+          "Age after which empty GCP capacity reservations are garbage collected",
+          "Minimum age of an unused (empty) GCP capacity reservation before the background"
+              + " garbage collector may delete it. Fully utilized reservations are deleted"
+              + " immediately regardless of age.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> gcpCapacityReservationTtl =
       new ConfKeyInfo<>(
           "yb.task.capacity_reservation.gcp_ttl",
           ScopeType.GLOBAL,
           "Time to live for GCP capacity reservation",
           "Time to live for GCP capacity reservation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> awsCapacityReservationTtl =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.aws_ttl",
+          ScopeType.GLOBAL,
+          "Time to live for AWS capacity reservation",
+          "Time to live for AWS capacity reservation. Reservations are created with a limited"
+              + " end date so AWS auto-releases them after this duration.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> paMemoryPerNodeAdvancedObservabilityMb =
@@ -2302,7 +2340,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Estimated memory usage per node when advanced observability is enabled (in MB). Used"
               + " to precheck YBA node memory headroom before enabling advanced observability.",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> paMemoryPerNodePaCollectorMb =
       new ConfKeyInfo<>(
           "yb.pa.memory_per_node_pa_collector_mb",
@@ -2312,13 +2350,32 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " observability (in MB). Used to precheck YBA node memory headroom before enabling"
               + " PA collection.",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> skipPaMemoryValidation =
       new ConfKeyInfo<>(
           "yb.pa.skip_memory_validation",
           ScopeType.GLOBAL,
           "Skip PA Collector memory validation",
           "Skip memory availability validation when enabling Performance Advisor Collection",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> paEmbeddedUiReverseProxyEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.embedded_ui.reverse_proxy.enabled",
+          ScopeType.GLOBAL,
+          "Reverse-proxy API calls from embedded PA Collector UI via YBA",
+          "When true, embedded PA Collector UI traffic is proxied through YBA (same origin)"
+              + " so YBA performs all authentication and universe RBAC; requires PA Collector to"
+              + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> showNewUniverseUIToEveryone =
+      new ConfKeyInfo<>(
+          "yb.ui.enable_new_universe_experience_for_all_users",
+          ScopeType.GLOBAL,
+          "Whether to enable new universe experience for all users",
+          "Whether to enable new universe experience for all users",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

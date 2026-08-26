@@ -1567,8 +1567,11 @@ public class TestIndex extends BaseCQLTest {
 
     waitForReadPermsOnAllIndexes("test_paging");
 
+    final String query = "select * from test_paging where v1 in (3, 4, 5);";
+    waitForIndexScanPlanOnAllNodes(query, "test_paging_idx");
+
     // Execute uncovered select by index column with small page size.
-    assertQuery(new SimpleStatement("select * from test_paging where v1 in (3, 4, 5);")
+    assertQuery(new SimpleStatement(query)
                 .setFetchSize(1),
                 new HashSet<String>(Arrays.asList("Row[2, 1, 3, c]",
                                                   "Row[2, 2, 4, d]",

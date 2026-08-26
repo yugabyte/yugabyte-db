@@ -21,64 +21,24 @@ The following table summarizes the support for transactions across the YSQL and 
 | Isolation levels | Serializable<br/>Snapshot<br/>Read Committed | Snapshot | Repeatable read isolation level in PostgreSQL maps to snapshot isolation in YSQL. |
 | `AUTOCOMMIT = false` setting | Yes | No | The transaction must be expressed as one statement in YCQL. |
 
-<div class="row">
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="distributed-transactions-ysql/">
-      <div class="head">
-        <div class="icon"><i class="fa-solid fa-sitemap"></i></div>
-        <div class="title">Distributed transactions</div>
-      </div>
-      <div class="body">
-        Distributed transactions in YugabyteDB.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="isolation-levels/">
-      <div class="head">
-        <div class="icon"><i class="fa-solid fa-bars-staggered"></i></div>
-        <div class="title">Isolation levels</div>
-      </div>
-      <div class="body">
-        Serializable, snapshot, and read committed isolation in YugabyteDB.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="explicit-locking/">
-      <div class="head">
-        <div class="icon"><i class="fa-solid fa-lock"></i></div>
-        <div class="title">Explicit locking</div>
-      </div>
-      <div class="body">
-        Explicit row-level locking in YSQL.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-<!-- ADD THIS ONCE READY:
+  {{<index/item
+    title="Distributed transactions"
+    body="Distributed transactions in YugabyteDB."
+    href="distributed-transactions-ysql/"
+    icon="fa-thin fa-sitemap">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ddl-operations/">
-      <div class="head">
-        <div class="icon"><i class="fa-solid fa-table"></i></div>
-        <div class="title">DDL Operations</div>
-      </div>
-      <div class="body">
-        How YugabyteDB handles DDL operations in transaction blocks.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="non-transactional-tables/">
-      <div class="head">
-        <div class="icon"><i class="fa-solid fa-strikethrough"></i></div>
-        <div class="title">Non-Transactional Tables</div>
-      </div>
-      <div class="body">
-        Disable multi-row transactions on a per-table basis in YCQL.
-      </div>
-    </a>
-  </div>
--->
-</div>
+  {{<index/item
+    title="Isolation levels"
+    body="Serializable, snapshot, and read committed isolation in YugabyteDB."
+    href="isolation-levels/"
+    icon="fa-thin fa-bars-staggered">}}
+
+  {{<index/item
+    title="Explicit locking"
+    body="Explicit row-level locking in YSQL."
+    href="explicit-locking/"
+    icon="fa-thin fa-lock">}}
+
+{{</index/block>}}

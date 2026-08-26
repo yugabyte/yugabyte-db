@@ -182,8 +182,8 @@ class DBImpl : public DB {
       const std::unordered_map<std::string, std::string>& options_map,
       bool dump_options = true) override;
 
-  // Set whether DB should be flushed on shutdown.
-  void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) override;
+  // Disable memtable flush on shutdown.
+  void SetDisableFlushOnShutdown() override;
   void StartShutdown() override;
 
   using DB::NumberLevels;
@@ -232,7 +232,7 @@ class DBImpl : public DB {
 
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) override;
 
-  yb::storage::UserFrontierPtr GetFlushedFrontier() override;
+  yb::storage::FrontierInfo GetFrontiers(yb::storage::FrontierKinds kinds) override;
 
   Status ModifyFlushedFrontier(
       yb::storage::UserFrontierPtr frontier,
@@ -242,12 +242,6 @@ class DBImpl : public DB {
 
   yb::storage::UserFrontierPtr GetMutableMemTableFrontier(
       yb::storage::UpdateUserValueType type) override;
-
-  // Calculates specified frontier_type for all mem tables (active and immutable).
-  yb::storage::UserFrontierPtr CalcMemTableFrontier(
-      yb::storage::UpdateUserValueType frontier_type) override;
-
-  UserFrontierRange CalcMemTableFrontiers() override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
@@ -415,7 +409,11 @@ class DBImpl : public DB {
 
   Cache* TEST_table_cache() { return table_cache_.get(); }
 
-  WriteController& TEST_write_controler() { return write_controller_; }
+  WriteController& TEST_write_controller() { return write_controller_; }
+
+  // Forces writes to the default column family to stop until this DB is destroyed. Used in tests to
+  // simulate a write stall that never clears.
+  void TEST_StopWrites();
 
   // Return maximum background compaction alowed to be scheduled based on
   // compaction status.
@@ -514,6 +512,8 @@ class DBImpl : public DB {
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
+
+  Result<uint64_t> TEST_Cross(Slice key) override;
 
   // Used in testing to replace current exclude_from_compaction functor. Returns current functor.
   CompactionFileExcluderPtr TEST_SetExcludeFromCompaction(

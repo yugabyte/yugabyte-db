@@ -80,7 +80,7 @@ class RetryableRequestTest : public YBTableTestBase {
   }
 
   void ShutdownTabletPeer(const std::shared_ptr<tablet::TabletPeer> &tablet_peer) {
-    ASSERT_OK(tablet_peer->Shutdown(tablet::ShouldAbortActiveTransactions::kTrue,
+    ASSERT_OK(tablet_peer->TEST_Shutdown(tablet::ShouldAbortActiveTransactions::kTrue,
                                     tablet::DisableFlushOnShutdown::kFalse));
   }
 
@@ -342,18 +342,27 @@ class MultiNodeRetryableRequestTest : public RetryableRequestTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 20 * 1000;
   }
 
+  // Right after table creation the leader may not have committed its NO_OP yet, so it is not
+  // LEADER_AND_READY and its peers may not even be serving the tablet. Poll until one is ready.
   Result<int> GetTabletLeaderIdx(const std::string& tablet_id) {
-    int index = 0;
-    for (const auto& server : mini_cluster()->mini_tablet_servers()) {
-      auto peer = VERIFY_RESULT(
-          server->server()->tablet_manager()->GetServingTablet(tablet_id));
-      if (VERIFY_RESULT(peer->GetRaftConsensus())->GetLeaderStatus() ==
-              consensus::LeaderStatus::LEADER_AND_READY) {
-        return index;
+    int leader_idx = -1;
+    RETURN_NOT_OK(WaitFor([this, &tablet_id, &leader_idx] {
+      int index = 0;
+      for (const auto& server : mini_cluster()->mini_tablet_servers()) {
+        auto peer = server->server()->tablet_manager()->GetServingTablet(tablet_id);
+        if (peer.ok()) {
+          auto consensus = (*peer)->GetRaftConsensus();
+          if (consensus.ok() &&
+              (*consensus)->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+            leader_idx = index;
+            return true;
+          }
+        }
+        ++index;
       }
-      ++index;
-    }
-    return STATUS(NotFound, "Cannot find a leader for tablet " + tablet_id);
+      return false;
+    }, 30s, "Cannot find a leader for tablet " + tablet_id));
+    return leader_idx;
   }
 };
 

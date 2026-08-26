@@ -65,6 +65,7 @@ add_library(yb-admin_lib
   yb-admin_util.cc)
 target_link_libraries(yb-admin_lib
   encryption
+  server_base_proto
   yb_tools_util
   ${LINK_LIBS})
 

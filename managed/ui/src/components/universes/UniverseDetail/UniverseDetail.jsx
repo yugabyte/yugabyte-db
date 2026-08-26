@@ -5,7 +5,8 @@ import { Link, withRouter, browserHistory } from 'react-router';
 import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { mouseTrap } from 'react-mousetrap';
-import { YBTag } from '@yugabyte-ui-library/core';
+import i18n from 'i18next';
+import { YBTag, YBTooltip } from '@yugabyte-ui-library/core';
 import { CustomerMetricsPanel } from '../../metrics';
 import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 import {
@@ -33,7 +34,6 @@ import {
 import { getReadOnlyClusters } from '../../../utils/universeUtilsTyped';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 
-import { YBTooltip } from '../../../redesign/components';
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { UniverseHealthCheckList } from './compounds/UniverseHealthCheckList';
 import { UniverseTaskList } from './compounds/UniverseTaskList';
@@ -59,6 +59,8 @@ import { EditConnectionPoolModal } from '../../../redesign/features/universe/uni
 import { EditMultiTenancyModal } from '../../../redesign/features/universe/universe-actions/edit-multi-tenancy/EditMultiTenancyModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { EditUniverse } from '@app/redesign/features-v2/universe/edit-universe';
+import { EditUniverseTabs } from '@app/redesign/features-v2/universe/edit-universe/EditUniverseContext';
+import { getEditUniverseSettingsRoute } from '@app/redesign/features-v2/universe/edit-universe/editUniverseTabUtils';
 import { UpgradeLinuxVersionModal } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/UpgradeLinuxVersionModal';
 import { DBUpgradeModal as LegacyDbUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
 import { DbUpgradeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModal';
@@ -86,13 +88,27 @@ import {
 } from '../../../redesign/helpers/constants';
 import { AppName } from '@app/redesign/helpers/dtos';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
-import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
+import { isK8OperatorApiBlocked } from '../../../redesign/helpers/k8OperatorResourceUtils';
+import {
+  subscribeOnboardingNewExperienceChange,
+  isOnboardingNewExperienceEnabled,
+  isUniverseRevampExperienceEnabled
+} from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
+import { SettingsTabTitleWithPopover } from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/DetailSettingsPopover';
+import { BeforeProceedWithNewModal } from '@app/redesign/features-v2/onboarding/universe-revamp/modals/BeforeProceedWithNewModal';
+import {
+  TourStep,
+  dismissTourStep,
+  isTourProgressReady,
+  isTourStepDismissed
+} from '@app/redesign/features-v2/onboarding/universe-revamp/tour-progress';
 import {
   getCurrentVersion,
   isVersionPGSupported,
   isVersionConnectionPoolSupported
 } from '../../../redesign/features/universe/universe-form/utils/helpers';
 import { DbUpgradeRollBackModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeRollBackModal';
+import { getAddReadReplicaRoute } from '@app/redesign/features-v2/universe/read-replica/readReplicaUtils';
 
 //icons
 import ClockRewind from '../../../redesign/assets/clock-rewind.svg?img';
@@ -136,6 +152,20 @@ const ActionMenu = {
   SECURITY: 'security'
 };
 
+const ASYMMETRIC_CLUSTER_EDIT_REASON =
+  'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.';
+const ASYMMETRIC_GFLAGS_EDIT_REASON =
+  'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.';
+
+const withDisabledActionTooltip = (title, children) =>
+  title ? (
+    <YBTooltip title={title} placement="left">
+      <span>{children}</span>
+    </YBTooltip>
+  ) : (
+    children
+  );
+
 class UniverseDetail extends Component {
   constructor(props) {
     super(props);
@@ -146,7 +176,9 @@ class UniverseDetail extends Component {
       dimensions: {},
       showAlert: false,
       actionsDropdownOpen: false,
-      refetchedUniverseDetails: false
+      refetchedUniverseDetails: false,
+      showBeforeProceedModal: true,
+      isOnboardingExperienceEnabled: isOnboardingNewExperienceEnabled()
     };
   }
 
@@ -155,7 +187,12 @@ class UniverseDetail extends Component {
     return clusters.some((cluster) => cluster.clusterType === 'ASYNC');
   };
 
+  handleOnboardingExperienceChange = (enabled) => {
+    this.setState({ isOnboardingExperienceEnabled: enabled });
+  };
+
   componentWillUnmount() {
+    this.unsubscribeOnboardingExperience?.();
     this.props.resetUniverseInfo();
     this.props.resetTablesList();
   }
@@ -176,6 +213,9 @@ class UniverseDetail extends Component {
 
   componentDidMount() {
     this.props.fetchPerfAdvisorList();
+    this.unsubscribeOnboardingExperience = subscribeOnboardingNewExperienceChange(
+      this.handleOnboardingExperienceChange
+    );
     const {
       customer: { currentCustomer }
     } = this.props;
@@ -549,11 +589,6 @@ class UniverseDetail extends Component {
       universePaRegistrationStatus?.data?.success &&
       universePaRegistrationStatus?.data?.advancedObservability;
 
-    const isK8OperatorBlocked =
-      runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.BLOCK_K8_OPERATOR
-      )?.value === 'true';
-
     const isAuditLogEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
@@ -579,7 +614,11 @@ class UniverseDetail extends Component {
         (config) => config.key === RuntimeConfigKey.ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION
       )?.value === 'true';
 
-    const isV2EditUniverseUIEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs?.data);
+    const isV2EditUniverseUIEnabled = isUniverseRevampExperienceEnabled(
+      runtimeConfigs?.data,
+      currentUser?.data?.role,
+      this.state.isOnboardingExperienceEnabled
+    );
 
     if (
       getPromiseState(currentUniverse).isLoading() ||
@@ -607,11 +646,25 @@ class UniverseDetail extends Component {
     )?.some((cluster) => isAsymmetricCluster(cluster));
     const allowedTasks = currentUniverse.data.allowedTasks;
     const isKubernetesUniverse = getIsKubernetesUniverse(currentUniverse.data);
-    const isKubernetesOperatorControlled =
-      currentUniverse.data?.universeDetails?.isKubernetesOperatorControlled;
-    // isKubernetesOperatorControlled can be undefined in older universes and
-    // hence using double exclamation to have a boolean value
-    const isK8ActionsDisabled = isK8OperatorBlocked && !!isKubernetesOperatorControlled;
+    const isK8ActionsDisabled = isK8OperatorApiBlocked(
+      currentUniverse.data?.universeDetails?.isKubernetesOperatorControlled,
+      runtimeConfigs?.data?.configEntries
+    );
+    const k8OperatorTooltipTitle = isK8ActionsDisabled
+      ? i18n.t('universeActions.blockedByKubernetesOperator')
+      : '';
+    const isAsymmetricPrimaryEditBlocked =
+      hasAsymmetricPrimaryCluster && !(isKubernetesUniverse && enableAzOverridesK8s);
+    const editUniverseTooltipTitle = isK8ActionsDisabled
+      ? k8OperatorTooltipTitle
+      : isAsymmetricPrimaryEditBlocked
+        ? ASYMMETRIC_CLUSTER_EDIT_REASON
+        : '';
+    const editGFlagsTooltipTitle = isK8ActionsDisabled
+      ? k8OperatorTooltipTitle
+      : isAsymmetricPrimaryEditBlocked
+        ? ASYMMETRIC_GFLAGS_EDIT_REASON
+        : '';
     const isUpgradeSoftwareDisabled =
       isUniverseStatusPending ||
       [SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) ||
@@ -623,20 +676,29 @@ class UniverseDetail extends Component {
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_DB_VERSION) ||
       isK8ActionsDisabled;
     const isRollBackUpgradeDisabled =
-      isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.ROLLBACK_UPGRADE);
+      isUniverseStatusPending ||
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.ROLLBACK_UPGRADE) ||
+      isK8ActionsDisabled;
 
     const isUpgradeLinuxDisabled =
-      isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_LINUX_VERSION);
+      isUniverseStatusPending ||
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_LINUX_VERSION) ||
+      isK8ActionsDisabled;
     const isUpgradeVMImageDisabled =
-      isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_VM_IMAGE);
+      isUniverseStatusPending ||
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_VM_IMAGE) ||
+      isK8ActionsDisabled;
     const isUpgradeToSystemdDisabled =
-      isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_TO_SYSTEMD);
+      isUniverseStatusPending ||
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_TO_SYSTEMD) ||
+      isK8ActionsDisabled;
     const isThirdPartySoftwareDisabled =
       isUniverseStatusPending ||
-      isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_THIRD_PARTY_SOFTWARE);
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_THIRD_PARTY_SOFTWARE) ||
+      isK8ActionsDisabled;
     const isEditUniverseDisabled =
       isUniverseStatusPending ||
-      (hasAsymmetricPrimaryCluster && !(isKubernetesUniverse && enableAzOverridesK8s)) ||
+      isAsymmetricPrimaryEditBlocked ||
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_UNIVERSE) ||
       isK8ActionsDisabled;
     const isEditGFlagsDisabled =
@@ -669,6 +731,11 @@ class UniverseDetail extends Component {
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.REPROVISION_NODES_WITH_YNP);
     const isReadReplicaAsymmetricBlocked =
       hasAsymmetricAsyncCluster && !(isKubernetesUniverse && enableAzOverridesK8s);
+    const readReplicaTooltipTitle = isK8ActionsDisabled
+      ? k8OperatorTooltipTitle
+      : isReadReplicaAsymmetricBlocked
+        ? ASYMMETRIC_CLUSTER_EDIT_REASON
+        : '';
     const isReadReplicaDisabled =
       isUniverseStatusPending ||
       isReadReplicaAsymmetricBlocked ||
@@ -681,10 +748,14 @@ class UniverseDetail extends Component {
     const isSupportBundleDisabled =
       this.isUniverseDeleting() || isActionFrozen(allowedTasks, UNIVERSE_TASKS.SUPPORT_BUNDLES);
     const isBackupsDisabled = isUniverseStatusPending || isK8ActionsDisabled;
+    const isUniverseRegisteredToPa =
+      universePaRegistrationStatus?.data?.success && isNonEmptyArray(ybaToPaServiceDetails?.data);
+    const isPerfAdvisorActionDisabled = isUniverseStatusPending;
     const isPauseUniverseDisabled =
       (universePaused && isUniverseStatusPending) ||
       this.isUniverseDeleting() ||
-      isActionFrozen(allowedTasks, UNIVERSE_TASKS.PAUSE_UNIVERSE);
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.PAUSE_UNIVERSE) ||
+      isK8ActionsDisabled;
     const isDeleteUniverseDisabled =
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.DELETE_UNIVERSE) || isK8ActionsDisabled;
 
@@ -709,7 +780,12 @@ class UniverseDetail extends Component {
       : 'overview';
     // Check if the pathname contains "performance" to determine if we should show the performance tab
     const isPerfAdvisorPath = location?.pathname?.includes(PERF_ADVISOR_PATH);
-    const activeTab = isPerfAdvisorPath ? PERF_ADVISOR_PATH : tab || defaultTab;
+    const isSettingsPath = location?.pathname?.includes('/settings');
+    const activeTab = isPerfAdvisorPath
+      ? PERF_ADVISOR_PATH
+      : isSettingsPath || tab === 'settings'
+        ? 'settings'
+        : tab || defaultTab;
     const tabElements = [
       //common tabs for every universe
       ...[
@@ -878,7 +954,7 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-            isAuditLogEnabled && isYSQLEnabledInUniverse && (
+            isAuditLogEnabled && isYSQLEnabledInUniverse && !isV2EditUniverseUIEnabled && (
               <Tab.Pane
                 eventKey={'db-audit-log'}
                 tabtitle="Logs"
@@ -939,7 +1015,7 @@ class UniverseDetail extends Component {
               <Tab.Pane
                 eventKey="settings"
                 key="settings-tab"
-                tabtitle="Settings"
+                tabtitle={<SettingsTabTitleWithPopover />}
                 mountOnEnter={true}
                 unmountOnExit={true}
               >
@@ -1003,6 +1079,7 @@ class UniverseDetail extends Component {
             title="Actions"
             id="bg-nested-dropdown"
             pullRight
+            open={this.state.actionsDropdownOpen}
             onToggle={(isOpen) => this.setState({ actionsDropdownOpen: isOpen })}
           >
             <MenuItemsContainer
@@ -1017,23 +1094,26 @@ class UniverseDetail extends Component {
                         ...ApiPermissionMap.MODIFY_UNIVERSE
                       }}
                     >
-                      <YBMenuItem
-                        disabled={isUpgradeSoftwareDisabled}
-                        onClick={showSoftwareUpgradesModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.upgradeSoftware'
-                        )}
-                      >
-                        <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
-                          Upgrade Software
-                        </YBLabelWithIcon>
-                        {this.showUpgradeMarker() && (
-                          <span className="badge badge-pill badge-red pull-right">
-                            {updateAvailable}
-                          </span>
-                        )}
-                      </YBMenuItem>
+                      {withDisabledActionTooltip(
+                        k8OperatorTooltipTitle,
+                        <YBMenuItem
+                          disabled={isUpgradeSoftwareDisabled}
+                          onClick={showSoftwareUpgradesModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.upgradeSoftware'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                            Upgrade Software
+                          </YBLabelWithIcon>
+                          {this.showUpgradeMarker() && (
+                            <span className="badge badge-pill badge-red pull-right">
+                              {updateAvailable}
+                            </span>
+                          )}
+                        </YBMenuItem>
+                      )}
                     </RbacValidator>
                   )}
                   {!universePaused && isRollBackFeatureEnabled && (
@@ -1044,23 +1124,21 @@ class UniverseDetail extends Component {
                         ...ApiPermissionMap.MODIFY_UNIVERSE
                       }}
                     >
-                      <YBMenuItem
-                        disabled={isUpgradeDBDisabled}
-                        onClick={showSoftwareUpgradesNewModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.upgradeSoftware'
-                        )}
-                      >
-                        <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
-                          Upgrade Database Version
-                        </YBLabelWithIcon>
-                        {/* {this.showUpgradeMarker() && (
-                          <span className="badge badge-pill badge-red pull-right">
-                            {updateAvailable}
-                          </span>
-                        )} */}
-                      </YBMenuItem>
+                      {withDisabledActionTooltip(
+                        k8OperatorTooltipTitle,
+                        <YBMenuItem
+                          disabled={isUpgradeDBDisabled}
+                          onClick={showSoftwareUpgradesNewModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.upgradeSoftware'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                            Upgrade Database Version
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                     </RbacValidator>
                   )}
                   {!universePaused && isRollBackAllowed && isRollBackFeatureEnabled && (
@@ -1071,23 +1149,26 @@ class UniverseDetail extends Component {
                         ...ApiPermissionMap.MODIFY_UNIVERSE
                       }}
                     >
-                      <YBMenuItem
-                        disabled={isRollBackUpgradeDisabled}
-                        onClick={showRollbackModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.upgradeSoftware'
-                        )}
-                      >
-                        <YBLabelWithIcon>
-                          <img
-                            src={isUniverseStatusPending ? ClockRewindDisabled : ClockRewind}
-                            height="16px"
-                            width="16px"
-                          />
-                          &nbsp; Roll Back Upgrade
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
+                      {withDisabledActionTooltip(
+                        k8OperatorTooltipTitle,
+                        <YBMenuItem
+                          disabled={isRollBackUpgradeDisabled}
+                          onClick={showRollbackModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.upgradeSoftware'
+                          )}
+                        >
+                          <YBLabelWithIcon>
+                            <img
+                              src={isUniverseStatusPending ? ClockRewindDisabled : ClockRewind}
+                              height="16px"
+                              width="16px"
+                            />
+                            &nbsp; Roll Back Upgrade
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                     </RbacValidator>
                   )}
                   {!universePaused &&
@@ -1100,18 +1181,21 @@ class UniverseDetail extends Component {
                           ...ApiPermissionMap.MODIFY_UNIVERSE
                         }}
                       >
-                        <YBMenuItem
-                          disabled={isUpgradeLinuxDisabled}
-                          onClick={showLinuxSoftwareUpgradeModal}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.upgradeSoftware'
-                          )}
-                        >
-                          <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
-                            Upgrade Linux Version
-                          </YBLabelWithIcon>
-                        </YBMenuItem>
+                        {withDisabledActionTooltip(
+                          k8OperatorTooltipTitle,
+                          <YBMenuItem
+                            disabled={isUpgradeLinuxDisabled}
+                            onClick={showLinuxSoftwareUpgradeModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.upgradeSoftware'
+                            )}
+                          >
+                            <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                              Upgrade Linux Version
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
                       </RbacValidator>
                     )}
                   {!universePaused &&
@@ -1127,14 +1211,17 @@ class UniverseDetail extends Component {
                           ...ApiPermissionMap.MODIFY_UNIVERSE
                         }}
                       >
-                        <YBMenuItem
-                          disabled={isUpgradeVMImageDisabled}
-                          onClick={showVMImageUpgradeModal}
-                        >
-                          <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
-                            Upgrade VM Image
-                          </YBLabelWithIcon>
-                        </YBMenuItem>
+                        {withDisabledActionTooltip(
+                          k8OperatorTooltipTitle,
+                          <YBMenuItem
+                            disabled={isUpgradeVMImageDisabled}
+                            onClick={showVMImageUpgradeModal}
+                          >
+                            <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                              Upgrade VM Image
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
                       </RbacValidator>
                     )}
                   {!universePaused && !useSystemd && !isKubernetesUniverse && (
@@ -1145,18 +1232,21 @@ class UniverseDetail extends Component {
                         ...ApiPermissionMap.MODIFY_UNIVERSE
                       }}
                     >
-                      <YBMenuItem
-                        disabled={isUpgradeToSystemdDisabled}
-                        onClick={showUpgradeSystemdModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.systemdUpgrade'
-                        )}
-                      >
-                        <YBLabelWithIcon icon="fa fa-wrench fa-fw">
-                          Upgrade To Systemd
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
+                      {withDisabledActionTooltip(
+                        k8OperatorTooltipTitle,
+                        <YBMenuItem
+                          disabled={isUpgradeToSystemdDisabled}
+                          onClick={showUpgradeSystemdModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.systemdUpgrade'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-wrench fa-fw">
+                            Upgrade To Systemd
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                     </RbacValidator>
                   )}
                   {!universePaused && enableThirdpartyUpgrade && (
@@ -1167,22 +1257,26 @@ class UniverseDetail extends Component {
                         ...ApiPermissionMap.MODIFY_UNIVERSE
                       }}
                     >
-                      <YBMenuItem
-                        disabled={isThirdPartySoftwareDisabled}
-                        onClick={showThirdpartyUpgradeModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.thirdpartyUpgrade'
-                        )}
-                      >
-                        <YBLabelWithIcon icon="fa fa-wrench fa-fw">
-                          Upgrade 3rd-party Software
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
+                      {withDisabledActionTooltip(
+                        k8OperatorTooltipTitle,
+                        <YBMenuItem
+                          disabled={isThirdPartySoftwareDisabled}
+                          onClick={showThirdpartyUpgradeModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.thirdpartyUpgrade'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-wrench fa-fw">
+                            Upgrade 3rd-party Software
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                     </RbacValidator>
                   )}
                   {!isReadOnlyUniverse &&
                     !universePaused &&
+                    !isV2EditUniverseUIEnabled &&
                     isNotHidden(
                       currentCustomer.data.features,
                       'universes.details.overview.editUniverse'
@@ -1194,29 +1288,92 @@ class UniverseDetail extends Component {
                           ...ApiPermissionMap.GET_UNIVERSES_BY_ID
                         }}
                       >
-                        <YBTooltip
-                          title={
-                            hasAsymmetricPrimaryCluster &&
-                            !(isKubernetesUniverse && enableAzOverridesK8s)
-                              ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
-                              : ''
-                          }
-                          placement="left"
+                        {withDisabledActionTooltip(
+                          editUniverseTooltipTitle,
+                          <YBMenuItem
+                            to={`/universes/${uuid}/edit/primary`}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.editUniverse'
+                            )}
+                            disabled={isEditUniverseDisabled}
+                          >
+                            <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
+                      </RbacValidator>
+                    )}
+                  {!isReadOnlyUniverse &&
+                    !universePaused &&
+                    isV2EditUniverseUIEnabled &&
+                    isNotHidden(
+                      currentCustomer.data.features,
+                      'universes.details.overview.editUniverse'
+                    ) && (
+                      <>
+                        <MenuItem divider />
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
                         >
-                          <span>
+                          {withDisabledActionTooltip(
+                            editUniverseTooltipTitle,
                             <YBMenuItem
-                              to={`/universes/${uuid}/edit/primary`}
+                              to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.PLACEMENT)}
                               availability={getFeatureState(
                                 currentCustomer.data.features,
                                 'universes.details.overview.editUniverse'
                               )}
                               disabled={isEditUniverseDisabled}
+                              className="no-border-bottom"
+                              onClick={() => this.setState({ actionsDropdownOpen: false })}
                             >
-                              <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
+                              <YBLabelWithIcon
+                                icon="fa fa-pencil"
+                                className="menu-item-subtext-container"
+                              >
+                                Edit Universe Placement
+                                <span className="menu-item-subtext">
+                                  Regions, Availability Zones, and Nodes
+                                </span>
+                              </YBLabelWithIcon>
                             </YBMenuItem>
-                          </span>
-                        </YBTooltip>
-                      </RbacValidator>
+                          )}
+                        </RbacValidator>
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
+                        >
+                          {withDisabledActionTooltip(
+                            editUniverseTooltipTitle,
+                            <YBMenuItem
+                              to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.HARDWARE)}
+                              availability={getFeatureState(
+                                currentCustomer.data.features,
+                                'universes.details.overview.editUniverse'
+                              )}
+                              disabled={isEditUniverseDisabled}
+                              className="no-border-bottom"
+                              onClick={() => this.setState({ actionsDropdownOpen: false })}
+                            >
+                              <YBLabelWithIcon
+                                icon="fa fa-pencil"
+                                className="menu-item-subtext-container"
+                              >
+                                Edit Hardware
+                                <span className="menu-item-subtext">Instances and storage</span>
+                              </YBLabelWithIcon>
+                            </YBMenuItem>
+                          )}
+                        </RbacValidator>
+                        <MenuItem divider />
+                      </>
                     )}
                   {!universePaused && !this.isRRFlagsEnabled() && (
                     <RbacValidator
@@ -1227,28 +1384,19 @@ class UniverseDetail extends Component {
                       }}
                       overrideStyle={{ display: 'block' }}
                     >
-                      <YBTooltip
-                        title={
-                          hasAsymmetricPrimaryCluster &&
-                          !(isKubernetesUniverse && enableAzOverridesK8s)
-                            ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
-                            : ''
-                        }
-                        placement="left"
-                      >
-                        <span>
-                          <YBMenuItem
-                            disabled={isEditGFlagsDisabled}
-                            onClick={showGFlagsModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.editGFlags'
-                            )}
-                          >
-                            <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
-                          </YBMenuItem>
-                        </span>
-                      </YBTooltip>
+                      {withDisabledActionTooltip(
+                        editGFlagsTooltipTitle,
+                        <YBMenuItem
+                          disabled={isEditGFlagsDisabled}
+                          onClick={showGFlagsModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.editGFlags'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                     </RbacValidator>
                   )}
                   {!universePaused && this.isRRFlagsEnabled() && (
@@ -1260,28 +1408,19 @@ class UniverseDetail extends Component {
                       }}
                       overrideStyle={{ display: 'block' }}
                     >
-                      <YBTooltip
-                        title={
-                          hasAsymmetricPrimaryCluster &&
-                          !(isKubernetesUniverse && enableAzOverridesK8s)
-                            ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
-                            : ''
-                        }
-                        placement="left"
-                      >
-                        <span>
-                          <YBMenuItem
-                            disabled={isEditGFlagsDisabled}
-                            onClick={showGFlagsNewModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.editGFlags'
-                            )}
-                          >
-                            <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
-                          </YBMenuItem>
-                        </span>
-                      </YBTooltip>
+                      {withDisabledActionTooltip(
+                        editGFlagsTooltipTitle,
+                        <YBMenuItem
+                          disabled={isEditGFlagsDisabled}
+                          onClick={showGFlagsNewModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.editGFlags'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                     </RbacValidator>
                   )}
                   {!universePaused && isKubernetesUniverse && (
@@ -1292,17 +1431,20 @@ class UniverseDetail extends Component {
                         ...ApiPermissionMap.MODIFY_UNIVERSE
                       }}
                     >
-                      <YBMenuItem
-                        disabled={isEditK8Overrides}
-                        onClick={
-                          showHelmOverridesModal ||
-                          isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_KUBERNETES_OVERRIDES)
-                        }
-                      >
-                        <YBLabelWithIcon icon="fa fa-pencil-square">
-                          Edit Kubernetes Overrides
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
+                      {withDisabledActionTooltip(
+                        k8OperatorTooltipTitle,
+                        <YBMenuItem
+                          disabled={isEditK8Overrides}
+                          onClick={
+                            showHelmOverridesModal ||
+                            isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_KUBERNETES_OVERRIDES)
+                          }
+                        >
+                          <YBLabelWithIcon icon="fa fa-pencil-square">
+                            Edit Kubernetes Overrides
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                     </RbacValidator>
                   )}
                   {!universePaused && (
@@ -1313,18 +1455,21 @@ class UniverseDetail extends Component {
                         ...ApiPermissionMap.MODIFY_UNIVERSE
                       }}
                     >
-                      <YBMenuItem
-                        disabled={isRollingRestartDisabled}
-                        onClick={showRollingRestartModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.restartUniverse'
-                        )}
-                      >
-                        <YBLabelWithIcon icon="fa fa-refresh fa-fw">
-                          Initiate Rolling Restart
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
+                      {withDisabledActionTooltip(
+                        k8OperatorTooltipTitle,
+                        <YBMenuItem
+                          disabled={isRollingRestartDisabled}
+                          onClick={showRollingRestartModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.restartUniverse'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-refresh fa-fw">
+                            Initiate Rolling Restart
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                     </RbacValidator>
                   )}
 
@@ -1338,35 +1483,28 @@ class UniverseDetail extends Component {
                           : ApiPermissionMap.CREATE_READ_REPLICA)
                       }}
                     >
-                      <YBTooltip
-                        title={
-                          isReadReplicaAsymmetricBlocked
-                            ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
-                            : ''
-                        }
-                        placement="left"
-                      >
-                        <span>
-                          <YBMenuItem
-                            disabled={isReadReplicaDisabled}
-                            to={
-                              this.isNewUIEnabled()
-                                ? `/universes/${uuid}/${
-                                    this.hasReadReplica(universeInfo) ? 'edit' : 'create'
-                                  }/async`
-                                : `/universes/${uuid}/edit/async`
-                            }
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.readReplica'
-                            )}
-                          >
-                            <YBLabelWithIcon icon="fa fa-copy fa-fw">
-                              {this.hasReadReplica(universeInfo) ? 'Edit' : 'Add'} Read Replica
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
-                        </span>
-                      </YBTooltip>
+                      {withDisabledActionTooltip(
+                        readReplicaTooltipTitle,
+                        <YBMenuItem
+                          disabled={isReadReplicaDisabled}
+                          to={
+                            isV2EditUniverseUIEnabled ? getAddReadReplicaRoute(uuid) : 
+                            this.isNewUIEnabled()
+                              ? `/universes/${uuid}/${
+                                  this.hasReadReplica(universeInfo) ? 'edit' : 'create'
+                                }/async`
+                              : `/universes/${uuid}/edit/async`
+                          }
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.readReplica'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-copy fa-fw">
+                            {this.hasReadReplica(universeInfo) ? 'Edit' : 'Add'} Read Replica
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                     </RbacValidator>
                   )}
                   {!universePaused && (
@@ -1423,18 +1561,6 @@ class UniverseDetail extends Component {
 
                   <MenuItem divider />
 
-                  {/* TODO:
-                  1. For now, we're enabling the Pause Universe for providerType one of
-                  'aws', 'gcp' or 'azu' only. This functionality needs to be enabled for
-                  all the cloud providers and once that's done this condition needs
-                  to be removed.
-                  2. One more condition needs to be added which specifies the
-                  current status of the universe. */}
-
-                  {/*
-                  Read-only users should not be given the rights to "Pause Universe"
-                  */}
-
                   {isPausableUniverse(currentUniverse?.data) &&
                     (featureFlags.test['pausedUniverse'] ||
                       featureFlags.released['pausedUniverse']) && (
@@ -1445,20 +1571,23 @@ class UniverseDetail extends Component {
                           ...ApiPermissionMap.RESUME_UNIVERSE
                         }}
                       >
-                        <YBMenuItem
-                          onClick={showToggleUniverseStateModal}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.pausedUniverse'
-                          )}
-                          disabled={isPauseUniverseDisabled}
-                        >
-                          <YBLabelWithIcon
-                            icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                        {withDisabledActionTooltip(
+                          k8OperatorTooltipTitle,
+                          <YBMenuItem
+                            onClick={showToggleUniverseStateModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.pausedUniverse'
+                            )}
+                            disabled={isPauseUniverseDisabled}
                           >
-                            {universePaused ? 'Resume Universe' : 'Pause Universe'}
-                          </YBLabelWithIcon>
-                        </YBMenuItem>
+                            <YBLabelWithIcon
+                              icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                            >
+                              {universePaused ? 'Resume Universe' : 'Pause Universe'}
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
                       </RbacValidator>
                     )}
                   <RbacValidator
@@ -1468,16 +1597,21 @@ class UniverseDetail extends Component {
                       ...ApiPermissionMap.DELETE_UNIVERSE
                     }}
                   >
-                    <YBMenuItem
-                      onClick={showDeleteUniverseModal}
-                      availability={getFeatureState(
-                        currentCustomer.data.features,
-                        'universes.details.overview.deleteUniverse'
-                      )}
-                      disabled={isDeleteUniverseDisabled}
-                    >
-                      <YBLabelWithIcon icon="fa fa-trash-o fa-fw">Delete Universe</YBLabelWithIcon>
-                    </YBMenuItem>
+                    {withDisabledActionTooltip(
+                      k8OperatorTooltipTitle,
+                      <YBMenuItem
+                        onClick={showDeleteUniverseModal}
+                        availability={getFeatureState(
+                          currentCustomer.data.features,
+                          'universes.details.overview.deleteUniverse'
+                        )}
+                        disabled={isDeleteUniverseDisabled}
+                      >
+                        <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                          Delete Universe
+                        </YBLabelWithIcon>
+                      </YBMenuItem>
+                    )}
                   </RbacValidator>
                 </>
               )}
@@ -1498,18 +1632,21 @@ class UniverseDetail extends Component {
                         }}
                         isControl
                       >
-                        <YBMenuItem
-                          disabled={isYSQLConfigDisabled}
-                          onClick={showEnableYSQLModal}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.editUniverse'
-                          )}
-                        >
-                          <YBLabelWithIcon icon="fa fa-database fa-fw">
-                            Edit YSQL Configuration
-                          </YBLabelWithIcon>
-                        </YBMenuItem>
+                        {withDisabledActionTooltip(
+                          k8OperatorTooltipTitle,
+                          <YBMenuItem
+                            disabled={isYSQLConfigDisabled}
+                            onClick={showEnableYSQLModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.editUniverse'
+                            )}
+                          >
+                            <YBLabelWithIcon icon="fa fa-database fa-fw">
+                              Edit YSQL Configuration
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
                       </RbacValidator>
                     )}
                     {!universePaused && isConfigureYCQLEnabled && (
@@ -1520,18 +1657,21 @@ class UniverseDetail extends Component {
                         }}
                         isControl
                       >
-                        <YBMenuItem
-                          disabled={isYCQLConfigDisabled}
-                          onClick={showEnableYCQLModal}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.editUniverse'
-                          )}
-                        >
-                          <YBLabelWithIcon icon="fa fa-database fa-fw">
-                            Edit YCQL Configuration
-                          </YBLabelWithIcon>
-                        </YBMenuItem>
+                        {withDisabledActionTooltip(
+                          k8OperatorTooltipTitle,
+                          <YBMenuItem
+                            disabled={isYCQLConfigDisabled}
+                            onClick={showEnableYCQLModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.editUniverse'
+                            )}
+                          >
+                            <YBLabelWithIcon icon="fa fa-database fa-fw">
+                              Edit YCQL Configuration
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
                       </RbacValidator>
                     )}
                     {!universePaused && isPGCompatibilitySupported && (
@@ -1542,35 +1682,26 @@ class UniverseDetail extends Component {
                         }}
                         isControl
                       >
-                        <YBTooltip
-                          title={
-                            hasAsymmetricPrimaryCluster &&
-                            !(isKubernetesUniverse && enableAzOverridesK8s)
-                              ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
-                              : ''
-                          }
-                          placement="left"
-                        >
-                          <span>
-                            <YBMenuItem
-                              disabled={isEditGFlagsDisabled}
-                              onClick={showPGCompatibilityModal}
-                              availability={getFeatureState(
-                                currentCustomer.data.features,
-                                'universes.details.overview.editGFlags'
-                              )}
-                            >
-                              <YBLabelWithIcon>
-                                <img
-                                  src={isUniverseStatusPending ? PGDisabled : PGIcon}
-                                  height="16px"
-                                  width="16px"
-                                />
-                                &nbsp; Edit Postgres Compatibility
-                              </YBLabelWithIcon>
-                            </YBMenuItem>
-                          </span>
-                        </YBTooltip>
+                        {withDisabledActionTooltip(
+                          editGFlagsTooltipTitle,
+                          <YBMenuItem
+                            disabled={isEditGFlagsDisabled}
+                            onClick={showPGCompatibilityModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.editGFlags'
+                            )}
+                          >
+                            <YBLabelWithIcon>
+                              <img
+                                src={isUniverseStatusPending ? PGDisabled : PGIcon}
+                                height="16px"
+                                width="16px"
+                              />
+                              &nbsp; Edit Postgres Compatibility
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
                       </RbacValidator>
                     )}
                     {!universePaused &&
@@ -1581,31 +1712,34 @@ class UniverseDetail extends Component {
                         <RbacValidator
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR
+                            ...ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL
                           }}
                           isControl
                         >
-                          <YBMenuItem
-                            disabled={isYSQLConfigDisabled}
-                            onClick={showConnectionPoolModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.editUniverse'
-                            )}
-                          >
-                            <YBLabelWithIcon>
-                              <img
-                                src={
-                                  isUniverseStatusPending
-                                    ? ConnectionPoolDisabled
-                                    : ConnectionPoolIcon
-                                }
-                                height="16px"
-                                width="16px"
-                              />
-                              &nbsp; Edit Connection Pooling
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
+                          {withDisabledActionTooltip(
+                            k8OperatorTooltipTitle,
+                            <YBMenuItem
+                              disabled={isYSQLConfigDisabled}
+                              onClick={showConnectionPoolModal}
+                              availability={getFeatureState(
+                                currentCustomer.data.features,
+                                'universes.details.overview.editUniverse'
+                              )}
+                            >
+                              <YBLabelWithIcon>
+                                <img
+                                  src={
+                                    isUniverseStatusPending
+                                      ? ConnectionPoolDisabled
+                                      : ConnectionPoolIcon
+                                  }
+                                  height="16px"
+                                  width="16px"
+                                />
+                                &nbsp; Edit Connection Pooling
+                              </YBLabelWithIcon>
+                            </YBMenuItem>
+                          )}
                         </RbacValidator>
                       )}
                     {!universePaused &&
@@ -1621,18 +1755,21 @@ class UniverseDetail extends Component {
                           }}
                           isControl
                         >
-                          <YBMenuItem
-                            disabled={isYSQLConfigDisabled}
-                            onClick={showMultiTenancyModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.editUniverse'
-                            )}
-                          >
-                            <YBLabelWithIcon icon="fa fa-sliders fa-fw">
-                              Edit multi-tenancy (QoS)
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
+                          {withDisabledActionTooltip(
+                            k8OperatorTooltipTitle,
+                            <YBMenuItem
+                              disabled={isYSQLConfigDisabled}
+                              onClick={showMultiTenancyModal}
+                              availability={getFeatureState(
+                                currentCustomer.data.features,
+                                'universes.details.overview.editUniverse'
+                              )}
+                            >
+                              <YBLabelWithIcon icon="fa fa-sliders fa-fw">
+                                Edit multi-tenancy (QoS)
+                              </YBLabelWithIcon>
+                            </YBMenuItem>
+                          )}
                         </RbacValidator>
                       )}
                     {!universePaused && (
@@ -1643,19 +1780,22 @@ class UniverseDetail extends Component {
                           ...ApiPermissionMap.GET_UNIVERSES_BY_ID
                         }}
                       >
-                        <YBMenuItem
-                          disabled={isEditSecurityDisabled}
-                          onClick={() => setActiveSubmenu(ActionMenu.SECURITY)}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.manageEncryption'
-                          )}
-                        >
-                          <YBLabelWithIcon icon="fa fa-key fa-fw">Edit Security</YBLabelWithIcon>
-                          <span className="pull-right">
-                            <i className="fa fa-chevron-right submenu-icon" />
-                          </span>
-                        </YBMenuItem>
+                        {withDisabledActionTooltip(
+                          k8OperatorTooltipTitle,
+                          <YBMenuItem
+                            disabled={isEditSecurityDisabled}
+                            onClick={() => setActiveSubmenu(ActionMenu.SECURITY)}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.manageEncryption'
+                            )}
+                          >
+                            <YBLabelWithIcon icon="fa fa-key fa-fw">Edit Security</YBLabelWithIcon>
+                            <span className="pull-right">
+                              <i className="fa fa-chevron-right submenu-icon" />
+                            </span>
+                          </YBMenuItem>
+                        )}
                       </RbacValidator>
                     )}
                     {!isReadOnlyUniverse && !universePaused && !isKubernetesUniverse && (
@@ -1692,7 +1832,7 @@ class UniverseDetail extends Component {
                             onClick={showReprovisionNodesWithYnpModal}
                           >
                             <YBLabelWithIcon icon="fa fa-refresh">
-                              Reprovision Nodes with YNP
+                              Reprovision Universe Nodes
                             </YBLabelWithIcon>
                           </YBMenuItem>
                         </RbacValidator>
@@ -1705,27 +1845,30 @@ class UniverseDetail extends Component {
                           ...ApiPermissionMap.MODIFY_UNIVERSE
                         }}
                       >
-                        <YBMenuItem
-                          disabled={isBackupsDisabled}
-                          onClick={handleBackupToggle}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.backup'
-                          )}
-                        >
-                          <YBLabelWithIcon
-                            icon={
-                              currentUniverse.data.universeConfig.takeBackups === 'true'
-                                ? 'fa fa-pause'
-                                : 'fa fa-play'
-                            }
+                        {withDisabledActionTooltip(
+                          k8OperatorTooltipTitle,
+                          <YBMenuItem
+                            disabled={isBackupsDisabled}
+                            onClick={handleBackupToggle}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.backup'
+                            )}
                           >
-                            {currentUniverse.data.universeConfig &&
-                            currentUniverse.data.universeConfig.takeBackups === 'true'
-                              ? 'Disable Backup'
-                              : 'Enable Backup'}
-                          </YBLabelWithIcon>
-                        </YBMenuItem>
+                            <YBLabelWithIcon
+                              icon={
+                                currentUniverse.data.universeConfig.takeBackups === 'true'
+                                  ? 'fa fa-pause'
+                                  : 'fa fa-play'
+                              }
+                            >
+                              {currentUniverse.data.universeConfig &&
+                              currentUniverse.data.universeConfig.takeBackups === 'true'
+                                ? 'Disable Backup'
+                                : 'Enable Backup'}
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
                       </RbacValidator>
                     )}
                     {!universePaused &&
@@ -1735,13 +1878,17 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                            ...(isUniverseRegisteredToPa
+                              ? ApiPermissionMap.UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR
+                              : ApiPermissionMap.REGISTER_UNIVERSE_TO_PERF_ADVISOR)
                           }}
                         >
-                          <YBMenuItem onClick={showEnablePerfAdvisorModal}>
+                          <YBMenuItem
+                            disabled={isPerfAdvisorActionDisabled}
+                            onClick={showEnablePerfAdvisorModal}
+                          >
                             <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
-                              {universePaRegistrationStatus?.data?.success &&
-                              isNonEmptyArray(ybaToPaServiceDetails?.data)
+                              {isUniverseRegisteredToPa
                                 ? 'Disable Perf Advisor Collector'
                                 : 'Enable Perf Advisor Collector'}
                             </YBLabelWithIcon>
@@ -1756,10 +1903,13 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                            ...ApiPermissionMap.REGISTER_UNIVERSE_TO_PERF_ADVISOR
                           }}
                         >
-                          <YBMenuItem onClick={showEnableAdvancedObservabilityModal}>
+                          <YBMenuItem
+                            disabled={isPerfAdvisorActionDisabled}
+                            onClick={showEnableAdvancedObservabilityModal}
+                          >
                             <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
                               Enable Advanced Observability
                             </YBLabelWithIcon>
@@ -1774,10 +1924,13 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                            ...ApiPermissionMap.REGISTER_UNIVERSE_TO_PERF_ADVISOR
                           }}
                         >
-                          <YBMenuItem onClick={showDisableAdvancedObservabilityModal}>
+                          <YBMenuItem
+                            disabled={isPerfAdvisorActionDisabled}
+                            onClick={showDisableAdvancedObservabilityModal}
+                          >
                             <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
                               Disable Advanced Observability
                             </YBLabelWithIcon>
@@ -1791,18 +1944,21 @@ class UniverseDetail extends Component {
                         ...ApiPermissionMap.DELETE_UNIVERSE
                       }}
                     >
-                      <YBMenuItem
-                        onClick={showForceDeleteUniverseModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.deleteUniverse'
-                        )}
-                        disabled={isDeleteUniverseDisabled}
-                      >
-                        <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
-                          Force Delete Universe
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
+                      {withDisabledActionTooltip(
+                        k8OperatorTooltipTitle,
+                        <YBMenuItem
+                          onClick={showForceDeleteUniverseModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.deleteUniverse'
+                          )}
+                          disabled={isDeleteUniverseDisabled}
+                        >
+                          <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                            Force Delete Universe
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                     </RbacValidator>
                   </>
                 ),
@@ -2116,11 +2272,26 @@ class UniverseDetail extends Component {
             activeTab={activeTab}
             routePrefix={`/universes/${currentUniverse.data.universeUUID}/`}
             id={'universe-tab-panel'}
-            className={'universe-detail'}
+            className={`universe-detail${
+              activeTab === 'settings' ? ' universe-detail-settings' : ''
+            }`}
           >
             {[...tabElements, <div title={actionMenuButtons} />]}
           </YBTabsWithLinksPanel>
         </Measure>
+        {isV2EditUniverseUIEnabled && (
+          <BeforeProceedWithNewModal
+            open={
+              isTourProgressReady() &&
+              this.state.showBeforeProceedModal &&
+              !isTourStepDismissed(TourStep.BeforeProceed)
+            }
+            onClose={() => {
+              dismissTourStep(TourStep.BeforeProceed);
+              this.setState({ showBeforeProceedModal: false });
+            }}
+          />
+        )}
       </Grid>
     );
   }

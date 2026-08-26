@@ -40,6 +40,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/flags/auto_flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/status.h"
 
 // Macro for the registration of a flag validator.

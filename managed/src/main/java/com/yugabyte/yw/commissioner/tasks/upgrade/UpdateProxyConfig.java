@@ -72,7 +72,7 @@ public class UpdateProxyConfig extends UpgradeTaskBase {
                     curIntent,
                     newIntent,
                     ctx -> {
-                      ctx.getCurrent().setProxyConfig(ctx.getTarget().getProxyConfig());
+                      ctx.getCurrent().setBackupProxyConfig(ctx.getSource().getBackupProxyConfig());
                     });
                 continue;
               }

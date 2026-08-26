@@ -27,32 +27,29 @@ BEGIN;
 COMMIT;
 
 
-BEGIN;
-  DROP VIEW pg_catalog.yb_tablet_metadata;
-  CREATE OR REPLACE VIEW pg_catalog.yb_tablet_metadata
-    WITH (use_initdb_acl = true) AS
-    SELECT
-        t.tablet_id,
-        -- Stable PG table oid (pg_class.oid) reported by the master; unlike the
-        -- relfilenode, it survives table rewrites. NULL for non-YSQL tables
-        -- (e.g. the 'transactions' table) and colocation parents.
-        t.oid,
-        t.namespace    AS db_name,
-        t.object_name  AS relname,
-        t.start_hash_code,
-        t.end_hash_code,
-        t.leader,
-        t.replicas,
-        t.start_range,
-        t.end_range,
-        t.tablet_attrs,
-        t.tablet_state
-    FROM
-        yb_get_tablet_metadata() t
-    WHERE
-        -- Condition 1: Include the system 'transactions' table.
-        (t.namespace = 'system' AND t.object_name = 'transactions')
-    OR
-        -- Condition 2: Include YSQL tables.
-        (t.type = 'YSQL');
-COMMIT;
+CREATE OR REPLACE VIEW pg_catalog.yb_tablet_metadata
+  WITH (use_initdb_acl = true) AS
+  SELECT
+      t.tablet_id,
+      -- Stable PG table oid (pg_class.oid) reported by the master; unlike the
+      -- relfilenode, it survives table rewrites. NULL for non-YSQL tables
+      -- (e.g. the 'transactions' table) and colocation parents.
+      t.oid,
+      t.namespace    AS db_name,
+      t.object_name  AS relname,
+      t.start_hash_code,
+      t.end_hash_code,
+      t.leader,
+      t.replicas,
+      t.start_range,
+      t.end_range,
+      t.tablet_attrs,
+      t.tablet_state
+  FROM
+      yb_get_tablet_metadata() t
+  WHERE
+      -- Condition 1: Include the system 'transactions' table.
+      (t.namespace = 'system' AND t.object_name = 'transactions')
+  OR
+      -- Condition 2: Include YSQL tables.
+      (t.type = 'YSQL');

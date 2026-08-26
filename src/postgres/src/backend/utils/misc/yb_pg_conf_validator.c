@@ -46,8 +46,6 @@
 PG_FUNCTION_INFO_V1(yb_pg_validate_conf_file);
 
 static char *yb_capture_error(MemoryContext oldcxt);
-static void
-			yb_validate_guc_conf_file(const char *conf_file_path);
 
 /*
  * yb_pg_validate_conf_file(hba_path text, guc_path text, ident_path text,
@@ -95,7 +93,7 @@ yb_pg_validate_conf_file(PG_FUNCTION_ARGS)
 	{
 		PG_TRY();
 		{
-			yb_validate_guc_conf_file(guc_path);
+			YbValidateConfigFile(guc_path);
 		}
 		PG_CATCH();
 		{
@@ -166,84 +164,6 @@ yb_pg_validate_conf_file(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
-}
-
-static void
-yb_validate_guc_conf_file(const char *conf_file_path)
-{
-	ConfigVariable *head = NULL;
-	ConfigVariable *tail = NULL;
-	ConfigVariable *item;
-	bool		parse_ok;
-	StringInfoData errbuf;
-
-	/* Attempt to parse and load conf file entries */
-	parse_ok = ParseConfigFile(conf_file_path, true /* strict */ ,
-							   NULL, 0, 0, LOG,
-							   &head, &tail);
-
-	if (!parse_ok)
-	{
-		initStringInfo(&errbuf);
-		for (item = head; item; item = item->next)
-		{
-			if (item->errmsg)
-				appendStringInfo(&errbuf, "%s\n",
-								 item->errmsg);
-		}
-		FreeConfigVariables(head);
-		ereport(ERROR,
-				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-				 errmsg("syntax error in configuration file \"%s\"",
-						conf_file_path),
-				 errdetail("%s", errbuf.data)));
-	}
-
-	initStringInfo(&errbuf);
-
-	/*
-	 * Validate each entry by calling set_config_option with ERROR elevel
-	 * wrapped in PG_TRY/PG_CATCH. This lets PG construct the full ErrorData
-	 * including the error hint - the hint is useful to pass back to the user to fix
-	 * the problem.
-	 */
-	for (item = head; item; item = item->next)
-	{
-		MemoryContext loop_cxt = CurrentMemoryContext;
-
-		if (item->ignore)
-			continue;
-
-		if (item->errmsg)
-			continue;
-
-		PG_TRY();
-		{
-			set_config_option(item->name, item->value,
-							  PGC_SIGHUP, PGC_S_FILE,
-							  GUC_ACTION_SET, false /* changeVal */ ,
-							  ERROR, false /* is_reload */ );
-		}
-		PG_CATCH();
-		{
-			char	   *err = yb_capture_error(loop_cxt);
-
-			Assert(err != NULL);
-			appendStringInfo(&errbuf, "%s\n", err);
-			pfree(err);
-		}
-		PG_END_TRY();
-	}
-
-	FreeConfigVariables(head);
-
-	if (errbuf.len > 0)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-				 errmsg("configuration file contains invalid settings"),
-				 errdetail("%s", errbuf.data)));
-	}
 }
 
 /*

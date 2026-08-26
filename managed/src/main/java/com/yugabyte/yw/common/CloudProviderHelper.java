@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Multimap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -69,6 +70,18 @@ public class CloudProviderHelper {
       Json.parse("{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.5, \"memSizeGB\": 1.5}");
   private static final JsonNode KUBERNETES_DEV_INSTANCE_TYPE =
       Json.parse("{\"instanceTypeCode\": \"dev\", \"numCores\": 0.5, \"memSizeGB\": 0.5}");
+
+  // Kubernetes cloud info fields holding the kubeconfig and the auth data parsed out of it. These
+  // are excluded when checking whether an in-use region/zone is being modified, so that customers
+  // can rotate an aged or compromised kubeconfig on a provider that has running universes.
+  private static final Set<String> KUBE_CONFIG_FIELDS =
+      Set.of(
+          "kubeConfig",
+          "kubeConfigName",
+          "kubeConfigContent",
+          "kubeConfigCAFile",
+          "kubeConfigTokenFile",
+          "apiServerEndpoint");
 
   private static final JsonNode KUBERNETES_INSTANCE_TYPES =
       Json.parse(
@@ -824,6 +837,7 @@ public class CloudProviderHelper {
      * 2. Removal of region/availability zone from the provider, in case they are not used.
      * 3. Addition of new access keys, we will not allow removal of the existing ones.
      * 4. Addition of new image bundles/ removal of unused image bundles.
+     * 5. Kubernetes kubeconfig rotation at provider/region/zone level (PLAT-21218).
      */
 
     // Check if provider details are being modified
@@ -879,7 +893,10 @@ public class CloudProviderHelper {
         Region existingRegion = existingRegions.get(regionCode);
 
         // Check if region details are being modified & the region is in use by universe.
-        if (existingRegion.isUpdateNeeded(currentRegion) && existingRegion.getNodeCount() > 0) {
+        // Kubernetes kubeconfig rotation is exempt so credentials can be replaced in place.
+        if (existingRegion.isUpdateNeeded(currentRegion)
+            && existingRegion.getNodeCount() > 0
+            && !isKubeConfigOnlyRegionUpdate(provider, existingRegion, currentRegion)) {
           throw new PlatformServiceException(
               BAD_REQUEST,
               String.format(
@@ -921,7 +938,10 @@ public class CloudProviderHelper {
             AvailabilityZone existingZone = existingAZs.get(zoneCode);
 
             // Check if availability zone details are being modified & the az is in use by universe.
-            if (existingZone.isUpdateNeeded(currentZone) && existingZone.getNodeCount() > 0) {
+            // Kubernetes kubeconfig rotation is exempt so credentials can be replaced in place.
+            if (existingZone.isUpdateNeeded(currentZone)
+                && existingZone.getNodeCount() > 0
+                && !isKubeConfigOnlyZoneUpdate(provider, existingZone, currentZone)) {
               throw new PlatformServiceException(
                   BAD_REQUEST,
                   String.format(
@@ -1022,9 +1042,10 @@ public class CloudProviderHelper {
                   });
         }
 
-        if (enableVMOSPatching && provider.getCloudCode() == CloudType.aws) {
+        if (enableVMOSPatching && provider.getCloudCode().usesPerRegionImages()) {
           // Validate the image_bundles when the VM OS Patching is enabled
-          // for AWS providers, as these only have the concept the per region AMIs.
+          // for providers with per-region images (AWS, OCI), as these have the
+          // concept of a per region image.
           validateImageBundles(region, bundles);
         }
       }
@@ -1062,7 +1083,7 @@ public class CloudProviderHelper {
   public void validateImageBundles(Region region, List<ImageBundle> bundles) {
     /*
      * Utility function for validating the image bundle when the region is added to
-     * the AWS provider.
+     * a provider with per-region images (AWS, OCI).
      * We will validate as follows:
      * 1. YBA_ACTIVE: No Validation
      * 2. YBA_DEPRECATED: In case the region is not present, we will mark the bundle
@@ -1088,7 +1109,7 @@ public class CloudProviderHelper {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(
-                    "Specify the AMI for the region %s in the image bundle %s",
+                    "Specify the image for the region %s in the image bundle %s",
                     region.getCode(), bundle.getName()));
           }
         }
@@ -1127,6 +1148,51 @@ public class CloudProviderHelper {
       return r.getCode();
     }
     return null;
+  }
+
+  /**
+   * True when the provider is Kubernetes and the requested region differs from the stored one only
+   * in its kubeconfig. Region level `isUpdateNeeded` compares securityGroupId/vnetName/ybImage,
+   * which for Kubernetes are all read out of the same region details, so comparing details is
+   * sufficient here.
+   */
+  private boolean isKubeConfigOnlyRegionUpdate(
+      Provider provider, Region existingRegion, Region currentRegion) {
+    return provider.getCloudCode() == CloudType.kubernetes
+        && isKubeConfigOnlyDetailsChange(existingRegion.getDetails(), currentRegion.getDetails());
+  }
+
+  /**
+   * True when the provider is Kubernetes and the requested zone differs from the stored one only in
+   * its kubeconfig. Subnets are separate columns, so they are compared explicitly; the zone env
+   * vars that `isUpdateNeeded` also looks at are derived from the details compared below.
+   */
+  private boolean isKubeConfigOnlyZoneUpdate(
+      Provider provider, AvailabilityZone existingZone, AvailabilityZone currentZone) {
+    return provider.getCloudCode() == CloudType.kubernetes
+        && Objects.equals(existingZone.getSubnet(), currentZone.getSubnet())
+        && Objects.equals(existingZone.getSecondarySubnet(), currentZone.getSecondarySubnet())
+        && isKubeConfigOnlyDetailsChange(existingZone.getDetails(), currentZone.getDetails());
+  }
+
+  /**
+   * Compares region/zone details with the Kubernetes kubeconfig fields stripped out, so that a
+   * kubeconfig rotation is not mistaken for a settings change (PLAT-21218). Both sides go through
+   * the same serialization, so any field added later is compared - and therefore still blocked -
+   * without having to be listed here.
+   */
+  private boolean isKubeConfigOnlyDetailsChange(Object existingDetails, Object requestedDetails) {
+    return detailsWithoutKubeConfig(existingDetails)
+        .equals(detailsWithoutKubeConfig(requestedDetails));
+  }
+
+  private JsonNode detailsWithoutKubeConfig(Object details) {
+    JsonNode detailsJson = Json.toJson(details);
+    JsonNode kubernetesInfo = detailsJson.path("cloudInfo").path("kubernetes");
+    if (kubernetesInfo.isObject()) {
+      ((ObjectNode) kubernetesInfo).remove(KUBE_CONFIG_FIELDS);
+    }
+    return detailsJson;
   }
 
   private void checkCloudInfoFieldsInUseProvider(

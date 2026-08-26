@@ -112,7 +112,7 @@ struct Range {
 typedef std::unordered_map<std::string, std::shared_ptr<const TableProperties>>
     TablePropertiesCollection;
 
-using UserFrontierRange = std::pair<yb::storage::UserFrontierPtr, yb::storage::UserFrontierPtr>;
+using UserFrontierRange = yb::storage::UserFrontierRange;
 
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
@@ -646,7 +646,7 @@ class DB {
     return SetOptions(DefaultColumnFamily(), new_options, dump_options);
   }
 
-  virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+  virtual void SetDisableFlushOnShutdown() {}
   virtual void StartShutdown() {}
 
   // CompactFiles() inputs a list of files specified by file numbers and
@@ -842,7 +842,33 @@ class DB {
     return result;
   }
 
-  virtual yb::storage::UserFrontierPtr GetFlushedFrontier() { return nullptr; }
+  // Computes the requested frontiers atomically (under a single lock) so the returned views are
+  // mutually consistent. This is the single primitive subclasses override; the accessors below are
+  // expressed in terms of it.
+  virtual yb::storage::FrontierInfo GetFrontiers(yb::storage::FrontierKinds kinds) {
+    return {};
+  }
+
+  yb::storage::UserFrontierPtr GetFlushedFrontier() {
+    return GetFrontiers(yb::storage::FrontierKinds{yb::storage::FrontierKind::kFlushed}).flushed;
+  }
+
+  // Returns the (smallest, largest) frontiers of the in-memory (not yet flushed) state.
+  UserFrontierRange GetInMemoryFrontiers() {
+    return GetFrontiers(yb::storage::FrontierKinds{
+        yb::storage::FrontierKind::kInMemorySmallest,
+        yb::storage::FrontierKind::kInMemoryLargest}).in_memory;
+  }
+
+  // Returns the smallest or largest frontier of the in-memory (not yet flushed) state.
+  yb::storage::UserFrontierPtr GetInMemoryFrontier(yb::storage::UpdateUserValueType type) {
+    if (type == yb::storage::UpdateUserValueType::kSmallest) {
+      return GetFrontiers(yb::storage::FrontierKinds{
+          yb::storage::FrontierKind::kInMemorySmallest}).in_memory.smallest;
+    }
+    return GetFrontiers(yb::storage::FrontierKinds{
+        yb::storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
+  }
 
   virtual Status ModifyFlushedFrontier(
       yb::storage::UserFrontierPtr values,
@@ -857,14 +883,6 @@ class DB {
   virtual yb::storage::UserFrontierPtr GetMutableMemTableFrontier(
       yb::storage::UpdateUserValueType type) {
     return nullptr;
-  }
-
-  virtual yb::storage::UserFrontierPtr CalcMemTableFrontier(yb::storage::UpdateUserValueType type) {
-    return nullptr;
-  }
-
-  virtual UserFrontierRange CalcMemTableFrontiers() {
-    return {};
   }
 
   virtual void ListenFilesChanged(std::function<void()> listener) {}
@@ -962,6 +980,11 @@ class DB {
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}
+
+  // Returns the sum of SeekOffsetOf(key) across all SSTs in the current version.
+  virtual yb::Result<uint64_t> TEST_Cross(Slice key) {
+    return STATUS(NotSupported, "");
+  }
 
  private:
   // No copying allowed

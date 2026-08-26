@@ -159,18 +159,18 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.7.11",
+  "org.postgresql" % "postgresql" % "42.7.13",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
-  "ch.qos.logback" % "logback-classic" % "1.5.32",
+  "ch.qos.logback" % "logback-classic" % "1.5.38",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.20.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
   "org.apache.commons" % "commons-compress" % "1.27.1",
   "org.apache.commons" % "commons-csv" % "1.13.0",
-  "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
-  "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
-  "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
-  "org.apache.mina" % "mina-core" % "2.2.7",
+  "org.apache.httpcomponents.core5" % "httpcore5" % "5.4.3",
+  "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.4.3",
+  "org.apache.httpcomponents.client5" % "httpclient5" % "5.6.4",
+  "org.apache.mina" % "mina-core" % "2.2.9",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
@@ -231,12 +231,13 @@ libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.80.0",
   "com.google.cloud" % "google-cloud-logging" % "3.23.7",
   "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
-  "com.oracle.oci.sdk" % "oci-java-sdk-common" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.57.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-common" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-objectstorage" % "3.77.2",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "3.1.0",
@@ -273,7 +274,6 @@ libraryDependencies ++= Seq(
   "org.mockito" % "mockito-core" % "5.3.1" % Test,
   "org.mockito" % "mockito-inline" % "5.2.0" % Test,
   "org.mindrot" % "jbcrypt" % "0.4" % Test,
-  "com.h2database" % "h2" % "2.1.212" % Test,
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
   "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test,
   "com.icegreen" % "greenmail" % "2.0.1" % Test,
@@ -282,8 +282,12 @@ libraryDependencies ++= Seq(
   "io.grpc" % "grpc-testing" % "1.67.1" % Test,
   "io.grpc" % "grpc-inprocess" % "1.67.1" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
+  // embedded-postgres only pulls the darwin-amd64 binaries by default, which forces Apple Silicon
+  // machines to run Postgres under Rosetta (very slow initdb/startup, and flaky). Add the native
+  // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
+  "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.4.0" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.0" % Test,
   "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
@@ -619,17 +623,34 @@ openApiFormat := {
       throw new RuntimeException("openapi format installation failed!!!")
     }
   }
-  def formatFile(file: Path): Unit = {
-    ybLog(s"formatting api file $file")
-    val rc = Process(s"./openapi_format.sh $file", baseDirectory.value / "scripts").!
+  // Format all changed fragments in a single Node process instead of spawning the openapi-format
+  // CLI once per file. Node/npx startup (~1-2s) previously dominated since the formatting itself is
+  // milliseconds; batching collapses hundreds of spawns into one. See scripts/openapi_format_batch.js.
+  def formatFiles(files: Seq[Path]): Unit = {
+    val resourcesDir = baseDirectory.value / "src/main/resources"
+    val sortFile = (resourcesDir / "openapi_sort_format.json").getAbsolutePath
+    val sortComponentsFile = (resourcesDir / "openapi_sort_components.json").getAbsolutePath
+    val listFile = target.value / "openapi-format-files.txt"
+    IO.write(listFile, files.map(_.toAbsolutePath.toString).mkString("\n"))
+    ybLog(s"formatting ${files.size} openapi file(s)")
+    val rc = Process(
+        Seq(
+          "node",
+          "openapi_format_batch.js",
+          sortFile,
+          sortComponentsFile,
+          listFile.getAbsolutePath),
+        baseDirectory.value / "scripts").!
     if (rc != 0) {
       throw new RuntimeException("openapi format failed!!!")
     }
   }
   val changes = openApiFormat.inputFileChanges
-  val changedFiles = (changes.created ++ changes.modified).toSet
+  val changedFiles = (changes.created ++ changes.modified).toSeq
   installOpenapiFormat()
-  changedFiles.par.foreach(formatFile)
+  if (changedFiles.nonEmpty) {
+    formatFiles(changedFiles)
+  }
 }
 
 lazy val openApiLint = taskKey[Unit]("Running lint on openapi spec")
@@ -715,7 +736,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.4.0",
+    version := "1.8.0",
     target := file("client/java/target/v2"),
   )
 
@@ -1022,29 +1043,32 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.118-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b4"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.122-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b10"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "io.netty" % "netty-codec-haproxy" % "4.1.135.Final",
+  "io.netty" % "netty-codec-haproxy" % "4.1.136.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
 )
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.136.Final"
 // netty-all does not force these core modules, so they stay at the next-highest
-// requested version (4.1.130) and must be pinned explicitly to reach 4.1.135.
-dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-codec" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-common" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-handler" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-transport" % "4.1.135.Final"
+// requested version (4.1.130) and must be pinned explicitly to reach 4.1.136.
+dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-codec" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-common" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-handler" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-transport" % "4.1.136.Final"
+
+// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949.
+dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.1"
 
 dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
@@ -1088,11 +1112,13 @@ val pekkoOverrides = pekkoLibs.map(_ % pekkoVersion)
 
 dependencyOverrides ++= pekkoOverrides
 
-val jacksonVersion         = "2.18.6"
+val jacksonVersion         = "2.22.2"
+// jackson-annotations dropped the patch component from 2.20 onward: it publishes 2.20, 2.21,
+// 2.22, so it cannot follow jacksonVersion.
+val jacksonAnnotationsVersion = "2.22"
 
 val jacksonLibs = Seq(
   "com.fasterxml.jackson.core"       % "jackson-core",
-  "com.fasterxml.jackson.core"       % "jackson-annotations",
   "com.fasterxml.jackson.core"       % "jackson-databind",
   "com.fasterxml.jackson.datatype"   % "jackson-datatype-jdk8",
   "com.fasterxml.jackson.datatype"   % "jackson-datatype-jsr310",
@@ -1104,7 +1130,8 @@ val jacksonLibs = Seq(
   "com.fasterxml.jackson.module"     %% "jackson-module-scala",
 )
 
-val jacksonOverrides = jacksonLibs.map(_ % jacksonVersion)
+val jacksonOverrides = jacksonLibs.map(_ % jacksonVersion) :+
+  ("com.fasterxml.jackson.core" % "jackson-annotations" % jacksonAnnotationsVersion)
 
 dependencyOverrides ++= jacksonOverrides
 
@@ -1133,7 +1160,7 @@ testShardSize := 30
 
 val testLocalShardSize = SettingKey[Int]("testLocalShardSize",
   "Number of local test classes, executed by each forked JVM")
-testLocalShardSize := 2
+testLocalShardSize := 1
 
 val testLocalIpRangeStart = SettingKey[Int]("testLocalIpRangeStart",
   "First loopback IP index for local provider tests (127.0.x.y encoding)")
@@ -1145,23 +1172,56 @@ testLocalIpRangeSize := 35
 
 Global / concurrentRestrictions += Tags.limit(Tags.ForkedTestGroup, testParallelForks.value)
 
-def partitionTests(tests: Seq[TestDefinition], shardSize: Int) =
+def partitionTests(tests: Seq[TestDefinition], shardSize: Int, extraJvmOptions: Seq[String]) =
   tests.sortWith(_.name.hashCode() < _.name.hashCode()).grouped(shardSize).zipWithIndex map {
     case (tests, index) =>
       val options = ForkOptions().withRunJVMOptions(Vector(
         "-Xmx2g", "-XX:MaxMetaspaceSize=600m", "-XX:MetaspaceSize=200m",
         "-Dconfig.resource=application.test.conf"
-      ))
+      ) ++ extraJvmOptions)
       Group("testGroup" + index, tests, SubProcess(options))
   } toSeq
+
+// Per-class wall-clock weights (seconds), from a full 7-fork run on a 16-core/32-thread box where
+// the machine was no longer saturated (average load 8 of 32), so they are close to the intrinsic
+// cost. Used only to order forks longest-first (LPT); unknown classes get a mid default so new
+// tests still schedule fine. Re-profile periodically and refresh when the suite shape changes.
+val localTestDurationWeight: Map[String, Int] = Map(
+  "EditUniverseLocalTest" -> 2282,
+  "SoftwareUpgradeLocalTest" -> 2146,
+  "DRDbScopedLocalTest" -> 1768,
+  "GFlagsUpgradeLocalTest" -> 1704,
+  "SoftwareUpgradeRetryPg15LocalTest" -> 1683,
+  "SoftwareUpgradeRetryLocalTest" -> 1470,
+  "DRDbScopedSwitchoverLocalTest" -> 1275,
+  "NodeOperationsLocalTest" -> 1257,
+  "XClusterLocalTest" -> 1099,
+  "BackupLocalTest" -> 734,
+  "ConfigureDBApiLocalTest" -> 316,
+  "DRLocalTest" -> 302,
+  "AutoMasterFailoverLocalTest" -> 275,
+  "CertRotationLocalTest" -> 170,
+  "TLSToggleTest" -> 71,
+  "UpdateConsistencyLocalTest" -> 62,
+  "RetryableLocalTests" -> 1
+)
+
+def localTestWeight(name: String): Int = {
+  val simple = name.substring(name.lastIndexOf('.') + 1)
+  localTestDurationWeight.getOrElse(simple, 500)
+}
 
 def partitionLocalTests(
     tests: Seq[TestDefinition],
     shardSize: Int,
     ipRangeStart: Int,
-    ipRangeSize: Int) =
-  tests.sortWith(_.name.hashCode() < _.name.hashCode()).grouped(shardSize).zipWithIndex map {
-    case (tests, index) =>
+    ipRangeSize: Int,
+    extraJvmOptions: Seq[String]) = {
+  // Longest-first so the concurrent-fork limit fills with the heaviest work up front (LPT),
+  // instead of hashCode order which previously paired the two slowest classes onto one JVM.
+  val ordered = tests.sortBy(t => -localTestWeight(t.name))
+  ordered.grouped(shardSize).zipWithIndex.map {
+    case (groupTests, index) =>
       val rangeStart = ipRangeStart + index * ipRangeSize
       val rangeEnd = rangeStart + ipRangeSize
       val options = ForkOptions().withRunJVMOptions(Vector(
@@ -1169,16 +1229,42 @@ def partitionLocalTests(
         "-Dconfig.resource=application.test.conf",
         s"-Dyb.local.test.ipRangeStart=$rangeStart",
         s"-Dyb.local.test.ipRangeEnd=$rangeEnd"
-      ))
-      Group("testGroup" + index, tests, SubProcess(options))
-  } toSeq
+      ) ++ extraJvmOptions)
+      Group("testGroup" + index, groupTests, SubProcess(options))
+  }.toSeq
+}
+
+// Path of the file describing the single shared embedded postgres started for the whole run (see
+// SharedEmbeddedPostgres / TestPostgres). Handed to every forked test JVM via a system property.
+def sharedPgConfPath(base: File): String =
+  (base / "shared-embedded-pg.properties").getAbsolutePath
+
+// The shared-server optimization (one embedded postgres + one migration for the whole run, cloned
+// per fork) is on by default. Set YB_SHARED_PG=false to fall back to the old per-fork embedded
+// postgres (each fork starts its own server and migrates it) - useful for debugging or A/B timing.
+val sharedPgEnabled: Boolean = sys.env.getOrElse("YB_SHARED_PG", "true").toBoolean
+
+// JVM options handed to every fork so it can find the shared server; empty when disabled so forks
+// transparently use the embedded fallback.
+def sharedPgJvmOpts(base: File): Seq[String] =
+  if (sharedPgEnabled) Seq(s"-Dyb.test.sharedPgConf=${sharedPgConfPath(base)}") else Seq.empty
+
+// Starts / stops the one shared embedded postgres in the (long-lived) sbt JVM around a test task.
+// The test classpath (which carries the compiled test classes + zonky) is captured at the call
+// site because the ClassLoader sbt passes to forked Setup/Cleanup lacks the test classes.
+def startSharedPg(classpath: Seq[File], confPath: String): Tests.Setup =
+  Tests.Setup(() => SharedPgControl.start(classpath, confPath))
+
+def stopSharedPg(confPath: String): Tests.Cleanup =
+  Tests.Cleanup(() => SharedPgControl.stop(confPath))
 
 Test / parallelExecution := true
 Test / fork := true
 Test / testGrouping := partitionTests(
   (Test / definedTests).value
     .filter(t => !localTestSuiteFilter(t.name)),
-  testShardSize.value
+  testShardSize.value,
+  sharedPgJvmOpts(target.value)
 )
 
 // Add local tests only grouping to avoid multiple local tests falling into one bucket.
@@ -1188,8 +1274,21 @@ TestLocalProviderSuite / testGrouping := partitionLocalTests(
     .filter(t => localTestSuiteFilter(t.name)),
   testLocalShardSize.value,
   testLocalIpRangeStart.value,
-  testLocalIpRangeSize.value
+  testLocalIpRangeSize.value,
+  sharedPgJvmOpts(target.value)
 )
+
+// Start one embedded postgres for the whole test run (shared by every fork) and stop it after.
+// TestQuickSuite/TestRetrySuite reuse Test's (delegated) testGrouping, so their forks receive the
+// same -Dyb.test.sharedPgConf; each suite still needs its own Setup/Cleanup because their
+// testOptions are set with ":=" and do not inherit Test's. Those three suites therefore get theirs
+// further down, *after* the ":=" that would otherwise discard it.
+Test / testOptions ++=
+  (if (sharedPgEnabled)
+     Seq(
+       startSharedPg((Test / fullClasspath).value.map(_.data), sharedPgConfPath(target.value)),
+       stopSharedPg(sharedPgConfPath(target.value)))
+   else Seq.empty)
 
 Test / javaOptions += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
@@ -1210,16 +1309,36 @@ def upgradeRetryTestSuiteFilter(name: String): Boolean = (name startsWith "com.y
 TestLocalProviderSuite / javaOptions += "-Dconfig.resource=application.test.conf"
 TestLocalProviderSuite / testOptions := Seq(Tests.Filter(localTestSuiteFilter))
 TestLocalProviderSuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+TestLocalProviderSuite / testOptions ++=
+  (if (sharedPgEnabled)
+     Seq(
+       startSharedPg(
+         (TestLocalProviderSuite / fullClasspath).value.map(_.data),
+         sharedPgConfPath(target.value)),
+       stopSharedPg(sharedPgConfPath(target.value)))
+   else Seq.empty)
 testLocal := (TestLocalProviderSuite / test).value
 
 TestQuickSuite / javaOptions += "-Dconfig.resource=application.test.conf"
 TestQuickSuite / testOptions := Seq(Tests.Filter(quickTestSuiteFilter))
 TestQuickSuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+TestQuickSuite / testOptions ++=
+  (if (sharedPgEnabled)
+     Seq(
+       startSharedPg((TestQuickSuite / fullClasspath).value.map(_.data), sharedPgConfPath(target.value)),
+       stopSharedPg(sharedPgConfPath(target.value)))
+   else Seq.empty)
 testFast := (TestQuickSuite / test).value
 
 TestRetrySuite / javaOptions += "-Dconfig.resource=application.test.conf"
 TestRetrySuite / testOptions := Seq(Tests.Filter(upgradeRetryTestSuiteFilter))
 TestRetrySuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+TestRetrySuite / testOptions ++=
+  (if (sharedPgEnabled)
+     Seq(
+       startSharedPg((TestRetrySuite / fullClasspath).value.map(_.data), sharedPgConfPath(target.value)),
+       stopSharedPg(sharedPgConfPath(target.value)))
+   else Seq.empty)
 testUpgradeRetry := (TestRetrySuite / test).value
 
 // Skip packaging javadoc for now

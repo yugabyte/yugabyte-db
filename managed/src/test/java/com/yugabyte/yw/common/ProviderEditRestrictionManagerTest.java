@@ -58,6 +58,21 @@ public class ProviderEditRestrictionManagerTest extends CommissionerBaseTest {
 
   public static class FakeParams extends AbstractTaskParams {}
 
+  // This class binds a ProviderEditRestrictionManager whose overridden methods close over this test
+  // instance's mutable fields (editProviderIdByTaskId, useProviderIdsByTaskId, isEnabled).
+  // Per-class
+  // application reuse would build that manager once against the first test instance and keep
+  // reading
+  // its (now stale/empty) maps for every later method, so the manager would register no edit/use
+  // and
+  // the "conflict" tests would see no PlatformServiceException. Force a per-method application
+  // build
+  // so each method gets a manager bound to its own instance.
+  @Override
+  protected boolean reusableApplication() {
+    return false;
+  }
+
   @Override
   protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
     builder = super.configureApplication(builder);

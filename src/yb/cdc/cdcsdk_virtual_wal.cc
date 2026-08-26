@@ -10,6 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <optional>
+#include <string>
+
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/cdcsdk_virtual_wal.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
@@ -20,6 +23,7 @@
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 
 // TODO(22655): Remove the below macro once YB_LOG_EVERY_N_SECS_OR_VLOG() is fixed.
 #define YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, n_secs, verbose_level) \
@@ -47,21 +51,6 @@
     } \
   } while (0)
 
-#define GET_OID_FROM_PG_CLASS_RECORD(record) \
-  record->row_message().new_tuple().Get(0).pg_catalog_value().uint32_value()
-
-#define GET_RELFILENODE_FROM_PG_CLASS_RECORD(record) \
-  record->row_message().new_tuple().Get(7).pg_catalog_value().uint32_value()
-
-#define GET_RELKIND_FROM_PG_CLASS_RECORD(record) \
-  record->row_message().new_tuple().Get(16).pg_catalog_value().int8_value()
-
-#define GET_PUBOID_FROM_PG_PUBLICATION_REL_RECORD(record) \
-  record->row_message().new_tuple().Get(1).pg_catalog_value().uint32_value()
-
-#define GET_OID_FROM_PG_PUBLICATION_RECORD(record) \
-  record->row_message().new_tuple().Get(0).pg_catalog_value().uint32_value()
-
 DEFINE_RUNTIME_uint32(cdcsdk_vwal_tablets_to_poll_batch_size, 200,
     "The maximum number of tablets to poll in a single GetConsistentChanges call. If there are "
     "more tablets to be polled, then an empty response is sent in current call.");
@@ -86,6 +75,12 @@ DEFINE_test_flag(bool, cdcsdk_use_microseconds_refresh_interval, false,
 DEFINE_test_flag(uint64, cdcsdk_publication_list_refresh_interval_micros, 300000000 /* 5 minutes */,
     "Interval in micro seconds at which the table list in the publication will be refreshed. This "
     "will be used only when cdcsdk_use_microseconds_refresh_interval is set to true");
+
+DEFINE_test_flag(uint64, cdcsdk_publication_list_refresh_interval_ht_delta, 0,
+    "When non-zero, the publication refresh interval is this raw HybridTime delta and the interval "
+    "flags above are ignored. Unlike a microseconds based interval, this lets tests place the "
+    "publication refresh record exactly at a transaction's commit time, including its logical "
+    "component.");
 
 DEFINE_RUNTIME_bool(cdcsdk_enable_dynamic_table_support, true,
     "This flag can be used to switch the dynamic addition of tables ON or OFF.");
@@ -118,6 +113,30 @@ DECLARE_bool(cdc_enable_local_rpc_in_virtual_wal);
 
 namespace yb::cdc {
 
+namespace {
+
+// Look up a pg_catalog column by name.
+#define DEFINE_GET_PG_CATALOG_COLUMN(Type, type_name, capitalize_type_name) \
+  std::optional<Type> GetPgCatalog##capitalize_type_name##Column( \
+      const RowMessage& row_message, const std::string& col_name, bool use_new_tuple) { \
+    const auto& tuple = use_new_tuple ? row_message.new_tuple() : row_message.old_tuple(); \
+    for (const auto& col : tuple) { \
+      if (col.has_column_name() && col.column_name() == col_name && col.has_pg_catalog_value() && \
+          col.pg_catalog_value().has_##type_name##_value()) { \
+        return col.pg_catalog_value().type_name##_value(); \
+      } \
+    } \
+    return std::nullopt; \
+  }
+
+DEFINE_GET_PG_CATALOG_COLUMN(uint32_t, uint32, Uint32)
+// Protobuf represents int8 as int32.
+DEFINE_GET_PG_CATALOG_COLUMN(int32_t, int8, Int8)
+
+#undef DEFINE_GET_PG_CATALOG_COLUMN
+
+}  // namespace
+
 using RecordInfo = CDCSDKVirtualWAL::RecordInfo;
 using TabletRecordInfoPair = CDCSDKVirtualWAL::TabletRecordInfoPair;
 
@@ -141,6 +160,7 @@ std::string CDCSDKVirtualWAL::GetChangesRequestInfo::ToString() const {
   result += Format(", write_id: $0", write_id);
   result += Format(", safe_hybrid_time: $0", safe_hybrid_time);
   result += Format(", wal_segment_index: $0", wal_segment_index);
+  result += Format(", max_index_in_sort_window: $0", max_index_in_sort_window);
 
   return result;
 }
@@ -358,6 +378,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
       info.write_id = checkpoint.write_id();
       info.safe_hybrid_time = checkpoint.snapshot_time();
       info.wal_segment_index = 0;
+      info.max_index_in_sort_window = 0;
       children_tablet_to_next_req_info.emplace_back(tablet_id, info);
     }
 
@@ -399,6 +420,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
       info.write_id = checkpoint.write_id();
       info.safe_hybrid_time = checkpoint.snapshot_time();
       info.wal_segment_index = 0;
+      info.max_index_in_sort_window = 0;
       tablet_next_req_map_[tablet_id] = info;
       VLOG_WITH_PREFIX(1) << "Adding entry in tablet_next_req map for tablet_id: " << tablet_id
                           << " table_id: " << table_id
@@ -987,6 +1009,7 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
   req->set_safe_hybrid_time(
       std::max(next_req_info.safe_hybrid_time, last_persisted_record_id_commit_time_.ToUint64()));
   req->set_wal_segment_index(next_req_info.wal_segment_index);
+  req->set_max_index_in_sort_window(next_req_info.max_index_in_sort_window);
 
   // We dont set the snapshot_time in from_cdc_sdk_checkpoint object of GetChanges request since it
   // is not used by the GetChanges RPC.
@@ -1096,6 +1119,7 @@ Status CDCSDKVirtualWAL::UpdateTabletCheckpointForNextRequest(
   tablet_checkpoint_info.write_id = resp->cdc_sdk_checkpoint().write_id();
   tablet_checkpoint_info.safe_hybrid_time = resp->safe_hybrid_time();
   tablet_checkpoint_info.wal_segment_index = resp->wal_segment_index();
+  tablet_checkpoint_info.max_index_in_sort_window = resp->max_index_in_sort_window();
 
   return Status::OK();
 }
@@ -1210,8 +1234,8 @@ Status CDCSDKVirtualWAL::ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordI
   // fails this check since we filter while inserting to the priority queue.
   RSTATUS_DCHECK(
       popped_record.GetCommitTime() >= virtual_wal_safe_time_.ToUint64(), IllegalState,
-      "Received a record with commit time: {} lesser than the Virtual WAL safe "
-      "time: {}. This record will not be shipped, filtered record: {}",
+      "Received a record with commit time: $0 lesser than the Virtual WAL safe "
+      "time: $1. This record will not be shipped, filtered record: $2",
       popped_record.GetCommitTime(), virtual_wal_safe_time_.ToUint64(), popped_record.ToString());
 
   virtual_wal_safe_time_ = HybridTime(popped_record.GetCommitTime());
@@ -1504,7 +1528,11 @@ Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
 
   auto last_decided_pub_refresh_time_hybrid = HybridTime(last_decided_pub_refresh_time.first);
   HybridTime hybrid_sum;
-  if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
+  if (FLAGS_TEST_cdcsdk_publication_list_refresh_interval_ht_delta > 0) {
+    hybrid_sum = HybridTime(
+        last_decided_pub_refresh_time.first +
+        FLAGS_TEST_cdcsdk_publication_list_refresh_interval_ht_delta);
+  } else if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
     hybrid_sum = last_decided_pub_refresh_time_hybrid.AddMicroseconds(
         FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros);
   } else {
@@ -1815,8 +1843,10 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
     // We are only interested in INSERTS to pg_class when pub_all_tables is true. Also we are only
     // interested in tables (relations) but pg_class can get entries for indexes, views etc. We only
     // signal for a pub refresh when an entry is INSERTED into pg_class table for a relation.
-    if (!pub_all_tables_ || record->row_message().op() != RowMessage_Op_INSERT ||
-        GET_RELKIND_FROM_PG_CLASS_RECORD(record) != 'r') {
+    auto relkind = GetPgCatalogInt8Column(
+        record->row_message(), "relkind", true /* use_new_tuple */);
+    if (!pub_all_tables_ || record->row_message().op() != RowMessage_Op_INSERT || !relkind ||
+        *relkind != 'r') {
       return false;
     }
 
@@ -1833,8 +1863,9 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
       return true;
     }
 
-    auto pub_oid = GET_PUBOID_FROM_PG_PUBLICATION_REL_RECORD(record);
-    if (!publications_list_.contains(pub_oid)) {
+    auto pub_oid = GetPgCatalogUint32Column(
+        record->row_message(), "prpubid", true /* use_new_tuple */);
+    if (!pub_oid || !publications_list_.contains(*pub_oid)) {
       return false;
     }
 
@@ -1850,8 +1881,9 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
       return false;
     }
 
-    auto pub_oid = GET_OID_FROM_PG_PUBLICATION_RECORD(record);
-    if (!publications_list_.contains(pub_oid)) {
+    auto pub_oid =
+        GetPgCatalogUint32Column(record->row_message(), "oid", true /* use_new_tuple */);
+    if (!pub_oid || !publications_list_.contains(*pub_oid)) {
       return false;
     }
 
@@ -1875,27 +1907,31 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
 
 bool CDCSDKVirtualWAL::CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record) {
   auto row_message = record->row_message();
-  auto oid = GET_OID_FROM_PG_CLASS_RECORD(record);
-
-  if (!oid_to_relfilenode_.contains(oid)) {
+  auto oid = GetPgCatalogUint32Column(row_message, "oid", true /* use_new_tuple */);
+  if (!oid || !oid_to_relfilenode_.contains(*oid)) {
     return false;
   }
 
   // Drop table case.
   if (row_message.op() == RowMessage_Op_DELETE) {
-    VLOG_WITH_PREFIX(1) << "Dropping of table with OID: " << oid << " has been detected";
+    VLOG_WITH_PREFIX(1) << "Dropping of table with OID: " << *oid << " has been detected";
     return true;
   }
 
   if (row_message.op() == RowMessage_Op_INSERT || row_message.op() == RowMessage_Op_UPDATE) {
-    DCHECK_GT(row_message.new_tuple().size(), 7);
-    auto new_rel_file_node = GET_RELFILENODE_FROM_PG_CLASS_RECORD(record);
+    auto new_rel_file_node =
+        GetPgCatalogUint32Column(row_message, "relfilenode", true /* use_new_tuple */);
+    if (!new_rel_file_node) {
+      LOG_WITH_PREFIX(DFATAL) << "relfilenode column not found in pg_class record for OID: "
+                              << *oid;
+      return false;
+    }
 
     // Table re-write case.
-    if (new_rel_file_node != oid_to_relfilenode_[oid]) {
-      VLOG_WITH_PREFIX(1) << "Rewrite of table with OID " << oid
-                          << " has been detected. Old relfilenode: " << oid_to_relfilenode_[oid]
-                          << " new relfilenode: " << new_rel_file_node;
+    if (*new_rel_file_node != oid_to_relfilenode_[*oid]) {
+      VLOG_WITH_PREFIX(1) << "Rewrite of table with OID " << *oid
+                          << " has been detected. Old relfilenode: " << oid_to_relfilenode_[*oid]
+                          << " new relfilenode: " << *new_rel_file_node;
       return true;
     }
   }

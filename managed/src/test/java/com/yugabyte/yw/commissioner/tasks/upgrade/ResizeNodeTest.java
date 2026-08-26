@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -405,6 +406,34 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             mockBaseTaskDependencies.getConfGetter()));
   }
 
+  @Test
+  public void testResizeRejectsClearingMasterDeviceInfoForDedicated() {
+    modifyToDedicated();
+    UniverseDefinitionTaskParams.UserIntent currentIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    UniverseDefinitionTaskParams.UserIntent targetIntent = currentIntent.clone();
+    targetIntent.deviceInfo.volumeSize = currentIntent.deviceInfo.volumeSize + 10;
+    targetIntent.masterDeviceInfo = null;
+
+    assertFalse(
+        ResizeNodeParams.checkResizeIsPossible(
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid,
+            currentIntent,
+            targetIntent,
+            defaultUniverse,
+            mockBaseTaskDependencies.getConfGetter()));
+
+    ResizeNodeParams taskParams = createResizeParams();
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY, targetIntent);
+    cluster.uuid = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    taskParams.clusters = Collections.singletonList(cluster);
+    Exception thrown =
+        assertThrows(RuntimeException.class, () -> taskParams.verifyParams(defaultUniverse, true));
+    assertTrue(thrown.getMessage().contains("Cannot clear masterDeviceInfo"));
+  }
+
   private void applyConfig(
       String conf, UniverseDefinitionTaskParams.UserIntent intent, boolean toMaster) {
     char instType = conf.charAt(0);
@@ -527,6 +556,19 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .applyRound()
         .addTasks(TaskType.UpdateAndPersistGFlags)
         .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagRejectedForResize() {
+    ResizeNodeParams taskParams = createResizeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.clusters.get(0).userIntent.specificGFlags =
+        SpecificGFlags.construct(Map.of("emergency_repair_mode", "true"), Map.of());
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
   }
 
   @Test

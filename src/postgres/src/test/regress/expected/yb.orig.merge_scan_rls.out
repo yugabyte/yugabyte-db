@@ -1,0 +1,207 @@
+--
+-- See yb_merge_scan_schedule for details about the test.  Tests merge scan
+-- under row-level security.
+--
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :filename
+\set _echo_parameterized_query :ECHO
+\set ECHO none
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set off '/*+Set(yb_max_merge_scan_streams 0)*/'
+\set on '/*+Set(yb_max_merge_scan_streams 64)*/'
+\set P1 ':explain'
+\set P2
+\set Q1 ':off'
+\set Q2 ':on'
+CREATE INDEX NONCONCURRENTLY bkt_tbl_expr_idx ON bkt_tbl ((yb_hash_code(r3, r2, r4, r5, r1) % 3) ASC, r1, r2, r3, r4, r5);
+CREATE ROLE regress_merge_scan_rls_user;
+GRANT SELECT ON bkt_tbl TO regress_merge_scan_rls_user;
+ALTER TABLE bkt_tbl ENABLE ROW LEVEL SECURITY;
+-- The policy passes every row so that correct results are identical with and
+-- without RLS applied.
+CREATE POLICY bkt_tbl_rls_policy ON bkt_tbl
+    FOR SELECT TO regress_merge_scan_rls_user USING (n >= 0);
+SET ROLE regress_merge_scan_rls_user;
+-- Derived SAOPs with no query clause: both access paths merge through SAOPs
+-- derived from the secondary index expression and the generated pk bucket
+-- column.  Derived SAOPs are exempt from the securely-promotable check, so
+-- they form streams even for an RLS subject.
+\set Q1 '/*+IndexScan(bkt_tbl bkt_tbl_pkey) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops on)*/'
+\set Q2 '/*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops on)*/'
+\set query ':P :Q SELECT r1, r2, r3, r4, r5 FROM bkt_tbl ORDER BY r1, r2, r3, r4, r5 LIMIT 5;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(bkt_tbl bkt_tbl_pkey) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops on)*/ SELECT r1, r2, r3, r4, r5 FROM bkt_tbl ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, r3, r4, r5
+   ->  Index Scan using bkt_tbl_pkey on public.bkt_tbl (actual rows=5 loops=1)
+         Output: r1, r2, r3, r4, r5
+         Index Cond: (bkt_tbl.bkt = ANY ('{0,1,2}'::integer[]))
+         Merge Sort Key: bkt_tbl.r1, bkt_tbl.r2, bkt_tbl.r3, bkt_tbl.r4, bkt_tbl.r5
+         Merge Stream Key: bkt_tbl.bkt
+         Merge Streams: 3
+         Merge Cond: (bkt_tbl.bkt = ANY ('{0,1,2}'::integer[]))
+         Storage Filter: (bkt_tbl.n >= 0)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 15
+(13 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops on)*/ SELECT r1, r2, r3, r4, r5 FROM bkt_tbl ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, r3, r4, r5
+   ->  Index Scan using bkt_tbl_expr_idx on public.bkt_tbl (actual rows=5 loops=1)
+         Output: r1, r2, r3, r4, r5
+         Index Cond: ((yb_hash_code(bkt_tbl.r3, bkt_tbl.r2, bkt_tbl.r4, bkt_tbl.r5, bkt_tbl.r1) % 3) = ANY ('{0,1,2}'::integer[]))
+         Merge Sort Key: bkt_tbl.r1, bkt_tbl.r2, bkt_tbl.r3, bkt_tbl.r4, bkt_tbl.r5
+         Merge Stream Key: (yb_hash_code(bkt_tbl.r3, bkt_tbl.r2, bkt_tbl.r4, bkt_tbl.r5, bkt_tbl.r1) % 3)
+         Merge Streams: 3
+         Merge Cond: ((yb_hash_code(bkt_tbl.r3, bkt_tbl.r2, bkt_tbl.r4, bkt_tbl.r5, bkt_tbl.r1) % 3) = ANY ('{0,1,2}'::integer[]))
+         Storage Filter: (bkt_tbl.n >= 0)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 11
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 3
+         Storage Index Rows Scanned: 15
+(16 rows)
+
+/*+IndexScan(bkt_tbl bkt_tbl_pkey) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops on)*/ SELECT r1, r2, r3, r4, r5 FROM bkt_tbl ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+ r1 | r2 | r3 | r4 | r5 
+----+----+----+----+----
+  0 |  0 |  0 |  6 |  8
+  0 |  0 |  0 |  6 |  9
+  0 |  0 |  0 |  8 |  9
+  0 |  0 |  1 |  1 |  3
+  0 |  0 |  1 |  3 |  4
+(5 rows)
+
+/*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops on)*/ SELECT r1, r2, r3, r4, r5 FROM bkt_tbl ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+(output identical to previous)
+\unset Q2
+-- A clause on the generated bucket column, without derivation: the clause
+-- matches the leading pk column and is leakproof (bare int column, builtin
+-- equality), so it remains securely promotable under RLS.  The promoted clause
+-- supplies the pk streams.
+\set Q1 '/*+IndexScan(bkt_tbl bkt_tbl_pkey) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/'
+\set query ':P :Q1 SELECT r1, r2, r3, r4, r5, bkt FROM bkt_tbl WHERE bkt IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(bkt_tbl bkt_tbl_pkey) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, bkt FROM bkt_tbl WHERE bkt IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, r3, r4, r5, bkt
+   ->  Index Scan using bkt_tbl_pkey on public.bkt_tbl (actual rows=5 loops=1)
+         Output: r1, r2, r3, r4, r5, bkt
+         Index Cond: (bkt_tbl.bkt = ANY ('{0,1,2}'::integer[]))
+         Merge Sort Key: bkt_tbl.r1, bkt_tbl.r2, bkt_tbl.r3, bkt_tbl.r4, bkt_tbl.r5
+         Merge Stream Key: bkt_tbl.bkt
+         Merge Streams: 3
+         Merge Cond: (bkt_tbl.bkt = ANY ('{0,1,2}'::integer[]))
+         Storage Filter: (bkt_tbl.n >= 0)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 15
+(13 rows)
+
+/*+IndexScan(bkt_tbl bkt_tbl_pkey) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, bkt FROM bkt_tbl WHERE bkt IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+ r1 | r2 | r3 | r4 | r5 | bkt 
+----+----+----+----+----+-----
+  0 |  0 |  0 |  6 |  8 |   2
+  0 |  0 |  0 |  6 |  9 |   0
+  0 |  0 |  0 |  8 |  9 |   2
+  0 |  0 |  1 |  1 |  3 |   1
+  0 |  0 |  1 |  3 |  4 |   1
+(5 rows)
+
+-- A clause on the index expression, without derivation: the clause matches the
+-- secondary index expression, but neither yb_hash_code nor int4mod is
+-- leakproof, so under RLS the clause is not securely promotable and must not
+-- form merge streams.  The hint falls back to an ordinary sorted plan with the
+-- clause as a filter.
+\set Q1 '/*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/'
+\set query ':P :Q1 SELECT r1, r2, r3, r4, r5, yb_hash_code(r3, r2, r4, r5, r1) % 3 FROM bkt_tbl WHERE yb_hash_code(r3, r2, r4, r5, r1) % 3 IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, yb_hash_code(r3, r2, r4, r5, r1) % 3 FROM bkt_tbl WHERE yb_hash_code(r3, r2, r4, r5, r1) % 3 IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, r3, r4, r5, ((yb_hash_code(r3, r2, r4, r5, r1) % 3))
+   ->  Sort (actual rows=5 loops=1)
+         Output: r1, r2, r3, r4, r5, ((yb_hash_code(r3, r2, r4, r5, r1) % 3))
+         Sort Key: bkt_tbl.r1, bkt_tbl.r2, bkt_tbl.r3, bkt_tbl.r4, bkt_tbl.r5
+         Sort Method: top-N heapsort
+         ->  Seq Scan on public.bkt_tbl (actual rows=5048 loops=1)
+               Output: r1, r2, r3, r4, r5, (yb_hash_code(r3, r2, r4, r5, r1) % 3)
+               Storage Filter: (bkt_tbl.n >= 0)
+               Filter: ((yb_hash_code(bkt_tbl.r3, bkt_tbl.r2, bkt_tbl.r4, bkt_tbl.r5, bkt_tbl.r1) % 3) = ANY ('{0,1,2}'::integer[]))
+               Storage Table Read Requests: 3
+               Storage Table Read Ops: 11
+               Storage Table Rows Scanned: 5048
+(13 rows)
+
+/*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, yb_hash_code(r3, r2, r4, r5, r1) % 3 FROM bkt_tbl WHERE yb_hash_code(r3, r2, r4, r5, r1) % 3 IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+ r1 | r2 | r3 | r4 | r5 | ?column? 
+----+----+----+----+----+----------
+  0 |  0 |  0 |  6 |  8 |        2
+  0 |  0 |  0 |  6 |  9 |        0
+  0 |  0 |  0 |  8 |  9 |        2
+  0 |  0 |  1 |  1 |  3 |        1
+  0 |  0 |  1 |  3 |  4 |        1
+(5 rows)
+
+RESET ROLE;
+-- The table owner is not subject to RLS: the same query and hint now promote
+-- the clause, and merge scan engages.
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, yb_hash_code(r3, r2, r4, r5, r1) % 3 FROM bkt_tbl WHERE yb_hash_code(r3, r2, r4, r5, r1) % 3 IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, r3, r4, r5, ((yb_hash_code(r3, r2, r4, r5, r1) % 3))
+   ->  Index Scan using bkt_tbl_expr_idx on public.bkt_tbl (actual rows=5 loops=1)
+         Output: r1, r2, r3, r4, r5, (yb_hash_code(r3, r2, r4, r5, r1) % 3)
+         Index Cond: ((yb_hash_code(bkt_tbl.r3, bkt_tbl.r2, bkt_tbl.r4, bkt_tbl.r5, bkt_tbl.r1) % 3) = ANY ('{0,1,2}'::integer[]))
+         Merge Sort Key: bkt_tbl.r1, bkt_tbl.r2, bkt_tbl.r3, bkt_tbl.r4, bkt_tbl.r5
+         Merge Stream Key: (yb_hash_code(bkt_tbl.r3, bkt_tbl.r2, bkt_tbl.r4, bkt_tbl.r5, bkt_tbl.r1) % 3)
+         Merge Streams: 3
+         Merge Cond: ((yb_hash_code(bkt_tbl.r3, bkt_tbl.r2, bkt_tbl.r4, bkt_tbl.r5, bkt_tbl.r1) % 3) = ANY ('{0,1,2}'::integer[]))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 11
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 3
+         Storage Index Rows Scanned: 15
+(15 rows)
+
+/*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, yb_hash_code(r3, r2, r4, r5, r1) % 3 FROM bkt_tbl WHERE yb_hash_code(r3, r2, r4, r5, r1) % 3 IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+ r1 | r2 | r3 | r4 | r5 | ?column? 
+----+----+----+----+----+----------
+  0 |  0 |  0 |  6 |  8 |        2
+  0 |  0 |  0 |  6 |  9 |        0
+  0 |  0 |  0 |  8 |  9 |        2
+  0 |  0 |  1 |  1 |  3 |        1
+  0 |  0 |  1 |  3 |  4 |        1
+(5 rows)
+
+-- Cleanup
+DROP POLICY bkt_tbl_rls_policy ON bkt_tbl;
+ALTER TABLE bkt_tbl DISABLE ROW LEVEL SECURITY;
+REVOKE SELECT ON bkt_tbl FROM regress_merge_scan_rls_user;
+DROP ROLE regress_merge_scan_rls_user;
+DROP INDEX bkt_tbl_expr_idx;

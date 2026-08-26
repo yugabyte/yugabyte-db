@@ -27,6 +27,7 @@
 
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
+#include "yb/common/txn_error_injection.h"
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
@@ -54,6 +55,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/flags.h"
@@ -125,6 +127,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
   // But in CDCServiceTest we have ql write batch with external time.
   if (client_request.has_external_hybrid_time()) {
     out_request->set_external_hybrid_time(client_request.external_hybrid_time());
+  }
+  if (client_request.has_xcluster_target_applied()) {
+    out_request->set_xcluster_target_applied(client_request.xcluster_target_applied());
   }
 }
 
@@ -1125,6 +1130,15 @@ Status WriteQuery::DoCompleteExecute() {
         doc_ops_, read_operation_data, tablet->doc_db(), &tablet->GetSchemaPackingProvider(),
         scoped_read_operation_, &write_batch, init_marker_behavior,
         tablet->monotonic_counter(), &read_restart_data_, tablet->metadata()->table_name()));
+
+    if (!read_restart_data_.is_valid() &&
+        ShouldInjectReadRestart(read_operation_data.read_time)) {
+      const auto safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
+      read_restart_data_ = ReadRestartData{
+          InjectedReadRestartTime(read_operation_data.read_time, safe_time), {}};
+      VLOG(3) << "Injected read restart " << read_restart_data_.restart_time
+              << " into write reading at " << read_operation_data.read_time;
+    }
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.

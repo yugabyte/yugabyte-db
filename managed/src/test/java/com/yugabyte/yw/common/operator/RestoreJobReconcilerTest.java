@@ -5,12 +5,16 @@ package com.yugabyte.yw.common.operator;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -43,6 +47,7 @@ import io.yugabyte.operator.v1alpha1.RestoreJobSpec;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -242,5 +247,47 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
     assertEquals(testCustomer.getUuid(), params.customerUUID);
     assertEquals(testUniverse.getUniverseUUID(), params.getUniverseUUID());
     assertEquals(testStorageConfig.getConfigUUID(), params.storageConfigUUID);
+  }
+
+  @Test
+  public void testGetRestoreParamsResolvesKmsConfigWhenSet() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    UUID resolvedKmsConfigUUID = UUID.randomUUID();
+    doReturn(resolvedKmsConfigUUID)
+        .when(operatorUtils)
+        .resolveReadyKmsConfigUuid(eq("test-kms-config-cr"), eq(NAMESPACE));
+
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
+    restoreJob.getSpec().setKmsConfig("test-kms-config-cr");
+
+    RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
+
+    // The referenced KMSConfig CR is resolved to its YBA config UUID and plumbed into the params.
+    assertEquals(resolvedKmsConfigUUID, params.kmsConfigUUID);
+    verify(operatorUtils).resolveReadyKmsConfigUuid(eq("test-kms-config-cr"), eq(NAMESPACE));
+  }
+
+  @Test
+  public void testGetRestoreParamsLeavesKmsConfigNullWhenUnset() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    // kmsConfig left unset on the spec (plaintext backup case).
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
+
+    RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
+
+    assertNull(params.kmsConfigUUID);
+    verify(operatorUtils, never()).resolveReadyKmsConfigUuid(anyString(), anyString());
   }
 }

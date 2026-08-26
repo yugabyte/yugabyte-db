@@ -30,6 +30,7 @@
 #include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_log.h"
 
 using std::string;
 
@@ -56,7 +57,7 @@ void RemoteBootstrapSessionTest::TearDown() {
   messenger_->Shutdown();
   session_.reset();
   WARN_NOT_OK(
-    tablet_peer_->Shutdown(
+    tablet_peer_->TEST_Shutdown(
         tablet::ShouldAbortActiveTransactions::kTrue, tablet::DisableFlushOnShutdown::kFalse),
     "Tablet peer shutdown failed");
   multi_raft_manager_->CompleteShutdown();
@@ -150,6 +151,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       table_metric_entity,
       tablet_metric_entity,
       raft_pool_.get(),
+      raft_pool_.get() /* snapshot_cleanup_pool */,
       raft_notifications_pool_.get(),
       tablet_prepare_pool_.get(),
       &retryable_requests,

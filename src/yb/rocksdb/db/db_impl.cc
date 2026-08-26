@@ -1976,7 +1976,9 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
   Status s;
   {
     auto file_number_holder = pending_outputs_->NewFileNumber();
-    meta.fd = FileDescriptor(file_number_holder.Last(), 0, 0, 0);
+    const uint32_t flush_path_id = SafePathId(
+        cfd->GetLatestMutableCFOptions()->target_path_id, db_options_.db_paths.size());
+    meta.fd = FileDescriptor(file_number_holder.Last(), flush_path_id, 0, 0);
     const auto* frontier = mem->Frontiers();
     if (frontier) {
       meta.smallest.user_frontier = frontier->Smallest().Clone();
@@ -2678,15 +2680,10 @@ void DBImpl::NotifyOnNoOpCompactionCompleted(
   mutex_.Lock();
 }
 
-void DBImpl::SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {
-  // disable_flush_on_shutdown_ can only transition from false to true. This location
-  // can be called multiple times with arg as false. It is only called once with arg
-  // as true. Subsequently, the destructor reads this flag. Setting this flag
-  // to true and the destructor are expected to run on the same thread and hence
-  // it is not required for disable_flush_on_shutdown_ to be atomic.
-  if (disable_flush_on_shutdown) {
-    disable_flush_on_shutdown_ = disable_flush_on_shutdown;
-  }
+void DBImpl::SetDisableFlushOnShutdown() {
+  // Setting this flag and the destructor that reads it are expected to run on the same thread,
+  // hence it is not required for disable_flush_on_shutdown_ to be atomic.
+  disable_flush_on_shutdown_ = true;
 }
 
 Status DBImpl::SetOptions(
@@ -2878,8 +2875,12 @@ Status DBImpl::WaitForFlush(ColumnFamilyHandle* column_family) {
 
 Status DBImpl::UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) {
   InstrumentedMutexLock l(&mutex_);
-  SCHECK(column_family_memtables_->Seek(0), NotFound, "Column family not found");
-  column_family_memtables_->GetMemTable()->UpdateFrontiers(frontiers);
+  // Access the default column family's memtable directly rather than through the shared
+  // column_family_memtables_ object. The latter's current_/handle_ members are mutated by write
+  // threads (which do not hold mutex_), so seeking on it here would race with concurrent writes.
+  auto* cfd = versions_->GetColumnFamilySet()->GetDefault();
+  SCHECK(cfd, NotFound, "Column family not found");
+  cfd->mem()->UpdateFrontiers(frontiers);
   return Status::OK();
 }
 
@@ -3184,6 +3185,12 @@ int DBImpl::GetCfdImmNumNotFlushed() {
   auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
   InstrumentedMutexLock guard_lock(&mutex_);
   return cfd->imm()->NumNotFlushed();
+}
+
+void DBImpl::TEST_StopWrites() {
+  auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
+  InstrumentedMutexLock guard_lock(&mutex_);
+  cfd->TEST_StopWrites();
 }
 
 FlushAbility DBImpl::GetFlushAbility() {
@@ -5686,7 +5693,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
     // in this case.
     while (bg_error_.ok() && write_controller_.IsStopped() && !IsShuttingDown()) {
       delayed = true;
-      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
+      TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
       bg_cv_.Wait();
     }
   }
@@ -6124,11 +6131,6 @@ Result<std::string> DBImpl::GetMiddleKey(Slice lower_bound_key) {
   return default_cf_handle_->cfd()->current()->GetMiddleKey(kEmptyInternalKey);
 }
 
-yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
-  InstrumentedMutexLock lock(&mutex_);
-  return default_cf_handle_->cfd()->current()->TEST_GetLargestSstTableReader();
-}
-
 void DBImpl::TEST_SwitchMemtable() {
   std::lock_guard lock(mutex_);
   WriteContext context;
@@ -6367,36 +6369,38 @@ void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   versions_->GetLiveFilesMetaData(metadata);
 }
 
-yb::storage::UserFrontierPtr DBImpl::GetFlushedFrontier() {
+yb::storage::FrontierInfo DBImpl::GetFrontiers(yb::storage::FrontierKinds kinds) {
+  using yb::storage::FrontierKind;
+  using yb::storage::UpdateUserValueType;
   InstrumentedMutexLock l(&mutex_);
-  auto result = versions_->FlushedFrontier();
-  if (result) {
-    return result->Clone();
-  }
-  std::vector<LiveFileMetaData> files;
-  versions_->GetLiveFilesMetaData(&files);
-  yb::storage::UserFrontierPtr accumulated;
-  for (const auto& file : files) {
-    if (!file.imported) {
-      yb::storage::UserFrontier::Update(
-          file.largest.user_frontier.get(), yb::storage::UpdateUserValueType::kLargest,
-          &accumulated);
+  yb::storage::FrontierInfo result;
+  if (kinds.Test(FrontierKind::kFlushed)) {
+    auto flushed = versions_->FlushedFrontier();
+    if (flushed) {
+      result.flushed = flushed->Clone();
+    } else {
+      std::vector<LiveFileMetaData> files;
+      versions_->GetLiveFilesMetaData(&files);
+      for (const auto& file : files) {
+        if (!file.imported) {
+          yb::storage::UserFrontier::Update(
+              file.largest.user_frontier.get(), UpdateUserValueType::kLargest, &result.flushed);
+        }
+      }
     }
   }
-  return accumulated;
-}
-
-yb::storage::UserFrontierPtr DBImpl::CalcMemTableFrontier(
-    yb::storage::UpdateUserValueType frontier_type) {
-  InstrumentedMutexLock l(&mutex_);
-  auto cfd = default_cf_handle_->cfd();
-  return cfd->imm()->GetFrontier(cfd->mem()->GetFrontier(frontier_type), frontier_type);
-}
-
-UserFrontierRange DBImpl::CalcMemTableFrontiers() {
-  InstrumentedMutexLock l(&mutex_);
-  auto cfd = default_cf_handle_->cfd();
-  return cfd->imm()->MergeFrontiersWith(cfd->mem()->GetFrontiers());
+  if (kinds.Test(FrontierKind::kInMemorySmallest) || kinds.Test(FrontierKind::kInMemoryLargest)) {
+    auto cfd = default_cf_handle_->cfd();
+    if (kinds.Test(FrontierKind::kInMemorySmallest)) {
+      result.in_memory.smallest = cfd->imm()->GetFrontier(
+          cfd->mem()->GetFrontier(UpdateUserValueType::kSmallest), UpdateUserValueType::kSmallest);
+    }
+    if (kinds.Test(FrontierKind::kInMemoryLargest)) {
+      result.in_memory.largest = cfd->imm()->GetFrontier(
+          cfd->mem()->GetFrontier(UpdateUserValueType::kLargest), UpdateUserValueType::kLargest);
+    }
+  }
+  return result;
 }
 
 yb::storage::UserFrontierPtr DBImpl::GetMutableMemTableFrontier(
@@ -6638,9 +6642,9 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     }
   }
 
-  if (db_options.db_paths.size() > 4) {
-    return STATUS(NotSupported,
-        "More than four DB paths are not supported yet. ");
+  if (db_options.db_paths.size() > kMaxPathId + 1) {
+    return STATUS(NotSupported, yb::Format(
+        "More than $0 DB paths are not supported yet. ", kMaxPathId + 1));
   }
 
   *dbptr = nullptr;

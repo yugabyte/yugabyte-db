@@ -21,6 +21,7 @@
 #include "yb/rocksdb/util/heap.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/status_format.h"
 #include "yb/util/two_group_mutex.h"
 
 #include "yb/vector_index/coordinate_types.h"
@@ -40,10 +41,6 @@ namespace yb::vector_index {
 class BlockCacheReservation {
  public:
   BlockCacheReservation() = default;
-  // Consumes `bytes` of `cache`, unless `cache` is null, `bytes` is zero, or the reservation is
-  // disabled via the gflag -- in those cases the reservation stays empty.
-  BlockCacheReservation(rocksdb::Cache* cache, size_t bytes);
-
   BlockCacheReservation(BlockCacheReservation&& rhs) noexcept;
   BlockCacheReservation& operator=(BlockCacheReservation&& rhs) noexcept;
 
@@ -59,7 +56,14 @@ class BlockCacheReservation {
   // Releases the reserved space back to the cache.
   void Reset();
 
+  // Reserves `bytes` in `cache`. Returns an empty reservation if there is nothing to reserve or
+  // reservations are disabled. In strict mode, returns TryAgain if the reservation cannot be made.
+  static Result<BlockCacheReservation> Create(
+    rocksdb::Cache* cache, size_t bytes, rocksdb::Cache::ReservationMode reservation_mode);
+
  private:
+  BlockCacheReservation(rocksdb::Cache* cache, size_t bytes) : cache_(cache), bytes_(bytes) {}
+
   rocksdb::Cache* cache_ = nullptr;
   size_t bytes_ = 0;
 };
@@ -151,8 +155,15 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
   // blocks instead of letting the index grow total memory consumption past the limits (#32357).
   // Subclasses call this from their Reserve() with the backend-specific estimate of the chunk's
   // footprint; the reservation is a no-op when `block_cache` is null, `bytes` is zero, or disabled.
-  void ReserveBlockCacheSpace(rocksdb::Cache* block_cache, size_t bytes) {
-    block_cache_reservation_ = BlockCacheReservation(block_cache, bytes);
+  Status ReserveBlockCacheSpace(
+      rocksdb::Cache* block_cache, size_t bytes,
+      rocksdb::Cache::ReservationMode reservation_mode) {
+    // Release any prior reservation first so ConsumeSpace does not double-count it.
+    block_cache_reservation_.Reset();
+
+    block_cache_reservation_ = VERIFY_RESULT(
+        BlockCacheReservation::Create(block_cache, bytes, reservation_mode));
+    return Status::OK();
   }
 
  private:

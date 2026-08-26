@@ -66,6 +66,10 @@ public class YNPConfigGenerator {
     private Universe universe;
     private boolean isYbPrebuiltImage;
     private UserIntent userIntent;
+    // True when re-provisioning a node of an existing universe (vs. provisioning a brand-new
+    // node). Controls whether the cgroup decision honors the persisted flag or falls back to the
+    // provider default. See configure_cgroup handling in populateFromNodeDetails.
+    private boolean isReprovision;
   }
 
   @Inject
@@ -186,7 +190,19 @@ public class YNPConfigGenerator {
     if (node.cloudInfo.private_ip != null) {
       ynpNode.put("node_ip", node.cloudInfo.private_ip);
     }
-    ynpNode.put("configure_cgroup", Util.configureCgroup(userIntent, provider, true, confGetter));
+    // Task-aware configure_cgroup, read from the fresh universe cluster (same source as
+    // ConfigureServer in NodeAgentRpcPayload) so the systemd ExecStart gate and the wrapper copy
+    // agree. Re-provisioning an existing node honors the persisted isCpuCgroupConfigured flag only
+    // (falling back to the provider default would enable cgroup for a legacy universe and reference
+    // a wrapper that was never shipped); brand-new provisioning falls back to the provider default
+    // since the flag isn't frozen yet.
+    // TODO(vivek): revisit this flag. isCpuCgroupConfigured lives in UserIntent (the user spec) but
+    // records what was configured; it should be a separate persisted universe attribute.
+    UserIntent persistedUserIntent = universe.getCluster(node.placementUuid).userIntent;
+    boolean isForProvision = !params.isReprovision();
+    ynpNode.put(
+        "configure_cgroup",
+        Util.configureCgroup(persistedUserIntent, provider, isForProvision, confGetter));
     DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
     if (deviceInfo.mountPoints != null) {
       extraNode.put("mount_paths", deviceInfo.mountPoints);

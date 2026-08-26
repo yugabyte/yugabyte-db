@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -196,7 +197,9 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
                           "Specify the placementInfo for which the bundle %s needs to be used.",
                           bundleUpgradeInfo.getImageBundleUuid()));
                 }
-                validateBundleInfo(universe, node, bundleUpgradeInfo);
+                if (Objects.equals(node.placementUuid, bundleUpgradeInfo.getClusterUuid())) {
+                  validateBundleInfo(universe, node, bundleUpgradeInfo);
+                }
               });
         }
 
@@ -212,7 +215,7 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     UUID providerUUID = cluster.getProviderUUIDForNode(node);
     ImageBundle bundle =
         ImageBundle.getOrBadRequest(providerUUID, bundleUpgradeInfo.getImageBundleUuid());
-    if (bundle.getProvider().getCloudCode().equals(CloudType.aws)
+    if (bundle.getProvider().getCloudCode().usesPerRegionImages()
         && !super.runtimeConfGetter.getStaticConf().getBoolean("yb.cloud.enabled")
         && !super.runtimeConfGetter.getGlobalConf(GlobalConfKeys.disableImageBundleValidation)) {
       Map<String, ImageBundleDetails.BundleInfo> regionsBundleInfo =
@@ -224,7 +227,7 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
             String.format(
-                "Image Bundle %s is missing AMI ID for region %s",
+                "Image Bundle %s is missing the image for region %s",
                 bundle.getName(), cloudSpecificInfo.region));
       }
     }

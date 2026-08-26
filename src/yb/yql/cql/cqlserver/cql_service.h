@@ -32,8 +32,6 @@
 #include "yb/yql/cql/ql/parser/parser_fwd.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
 
-#include "ybgate/ybgate_api.h"
-
 namespace yb {
 
 namespace tserver {
@@ -167,7 +165,10 @@ class CQLServiceImpl : public CQLServerServiceIf,
     return jwt_allowed_audience_;
   }
 
-  const YbgMemoryContext& GetJwtIdentMemCtx() const {
+  // Opaque ybgate memory context (YbgMemoryContext is a void*).  Typed as void* here so this
+  // public header stays ybgate-free.  The .cc files (which include ybgate) use it directly as a
+  // YbgMemoryContext.
+  void* GetJwtIdentMemCtx() const {
     return jwt_ident_memctx_;
   }
 
@@ -298,7 +299,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   std::string jwt_matching_claim_key_ = "sub";
   std::vector<std::string> jwt_allowed_audience_;
   std::vector<std::string> jwt_allowed_issuers_;
-  YbgMemoryContext jwt_ident_memctx_;
+  void* jwt_ident_memctx_ = nullptr;  // YbgMemoryContext (void*); see GetJwtIdentMemCtx().
 };
 
 }  // namespace cqlserver

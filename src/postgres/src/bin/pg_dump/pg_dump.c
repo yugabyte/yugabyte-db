@@ -380,6 +380,8 @@ static void isDatabaseColocated(Archive *fout);
 static char *extractYbPresplitFromReloptions(const char *reloptions);
 static char *removeYbPresplitFromReloptions(const char *reloptions);
 static bool ybDumpPresplitInCreate(Archive *fout);
+static const char *ybFindIndexdefClause(const char *indexdef,
+										const char *clause);
 static char *ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 										  const char *value);
 static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
@@ -2197,9 +2199,41 @@ selectDumpableExtension(ExtensionInfo *extinfo, DumpOptions *dopt)
 	 * user installed extension if the user drops and then re-creates it.
 	 * Avoid dumping plpgsql to prevent potential issues with upgrade:
 	 * see GH issue #25346.
+	 *
+	 * All the objects under builtin extensions are created in pg_catalog
+	 * schema with an OID not greater than g_last_builtin_oid. If an user
+	 * drops and recreates it, it will be created in some other schema than
+	 * pg_catalog (creating objects in pg_catalog is only allowed during
+	 * initdb and ysql upgrade) with an OID more than g_last_builtin_oid.
+	 *
+	 * Without the following check on postgres_fdw and pg_stat_statements,
+	 * if the user then creates a backup with --include-yb-metadata after
+	 * dropping and recreating a system created extension,
+	 * DROP EXTENSION IF EXISTS ... is emitted in the restore script, followed
+	 * by creating the extension via binary_upgrade_create_empty_extension,
+	 * and then the related objects in the same schema are created and linked
+	 * to the extension.
+	 *
+	 * Global views add dependency on postgres_fdw and pg_stat_statements,
+	 * so a DROP EXTENSION postgres_fdw / pg_stat_statements fails with an
+	 * error message saying there are dependent objects and you need to run it
+	 * with CASCADE.
+	 *
+	 * During restore, the DROP EXTENSION IF EXISTS ... and the subsequent
+	 * creation of extension via binary_upgrade_create_empty_extension fails,
+	 * but the rest of the script creates the functions linked to the
+	 * extensions. The end result is that there is a copy of each function of
+	 * the extension, one in pg_catalog schema that was created by the system,
+	 * one in the schema where the user created.
+	 *
+	 * With the following check on postgres_fdw and pg_stat_statements, we
+	 * avoid the duplicate objects by excluding DROP + CREATE of these
+	 * extensions from the restore script.
 	 */
 	if (extinfo->dobj.catId.oid <= (Oid) g_last_builtin_oid ||
-		strcmp("plpgsql", extinfo->dobj.name) == 0)
+		strcmp("plpgsql", extinfo->dobj.name) == 0 ||
+		strcmp("postgres_fdw", extinfo->dobj.name) == 0 ||
+		strcmp("pg_stat_statements", extinfo->dobj.name) == 0)
 		extinfo->dobj.dump = extinfo->dobj.dump_contains = DUMP_COMPONENT_ACL;
 	else
 	{
@@ -2798,11 +2832,14 @@ dumpTableData(Archive *fout, const TableDataInfo *tdinfo)
 		 forcePartitionRootLoad(tbinfo)))
 	{
 		TableInfo  *parentTbinfo;
+		char	   *sanitized;
 
 		parentTbinfo = getRootTableInfo(tbinfo);
 		copyFrom = fmtQualifiedDumpable(parentTbinfo);
+		sanitized = sanitize_line(copyFrom, true);
 		printfPQExpBuffer(copyBuf, "-- load via partition root %s",
-						  copyFrom);
+						  sanitized);
+		free(sanitized);
 		tdDefn = pg_strdup(copyBuf->data);
 	}
 	else
@@ -9538,7 +9575,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 bool
 shouldPrintColumn(const DumpOptions *dopt, const TableInfo *tbinfo, int colno)
 {
-	if (dopt->binary_upgrade || dopt->include_yb_metadata)
+	if (dopt->binary_upgrade)
 		return true;
 	if (tbinfo->attisdropped[colno])
 		return false;
@@ -9998,6 +10035,15 @@ getForeignServers(Archive *fout, int *numForeignServers)
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(srvinfo[i].dobj), fout);
+
+		/*
+		 * YB: yb_global_views_server is created during initdb (see
+		 * yb_global_views.sql) and exists in every database. Dumping it would
+		 * break clone/restore with "server already exists", so never dump it.
+		 */
+		if (IsYugabyteEnabled &&
+			strcmp(srvinfo[i].dobj.name, "yb_global_views_server") == 0)
+			srvinfo[i].dobj.dump = DUMP_COMPONENT_NONE;
 
 		/* Servers have user mappings */
 		srvinfo[i].dobj.components |= DUMP_COMPONENT_USERMAP;
@@ -16833,7 +16879,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 					 */
 					if (OidIsValid(tbinfo->reloftype) &&
 						!print_default && !print_notnull &&
-						!dopt->binary_upgrade && !dopt->include_yb_metadata)
+						!dopt->binary_upgrade)
 						continue;
 
 					/* Format properly if not first attr */
@@ -17224,10 +17270,11 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				if (tbinfo->attisdropped[j])
 				{
 					/*
-					 * For YB backups, we also need to recreate and drop the dropped columns
-					 * (even if the docdb snapshot import can handle such gaps in the col order)
-					 * because the table can be used as a type - referenced by another table column.
+					 * For YB backups, we don't need to recreate dropped cols because
+					 * docdb snapshot import can handle such gaps in the col order.
 					 */
+					if (!dopt->include_yb_metadata)
+					{
 						appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate dropped column.\n");
 						appendPQExpBuffer(q, "UPDATE pg_catalog.pg_attribute\n"
 										  "SET attlen = %d, "
@@ -17249,6 +17296,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 											  qualrelname);
 						appendPQExpBuffer(q, "DROP COLUMN %s;\n",
 										  fmtId(tbinfo->attnames[j]));
+					}
 				}
 				else if (!tbinfo->attislocal[j] && (IsYugabyteEnabled && !tbinfo->ispartition))
 				{
@@ -20300,8 +20348,15 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbcTableProperties properties,
 		 * Gated by the yb_dump_presplit_in_create AutoFlag: the sentinel is
 		 * only emitted once the folded-WITH form is safe for the restore
 		 * target (see ybDumpPresplitInCreate).
+		 *
+		 * Skip partitioned PARENT tables (RELKIND_PARTITIONED_TABLE): they
+		 * have no storage and never emit a SPLIT clause, so folding the
+		 * sentinel into their WITH clause produces a spurious
+		 * "PARTITION BY ... WITH (yb_presplit='')".  This mirrors the
+		 * SPLIT-clause emission which already excludes partitioned tables.
 		 */
 		if (ybDumpPresplitInCreate(fout) &&
+			relkind != RELKIND_PARTITIONED_TABLE &&
 			!extractYbPresplitFromReloptions(existing_reloptions))
 			appendPGArray(reloptions_buf, "yb_presplit=");
 	}
@@ -20481,6 +20536,57 @@ extractYbPresplitFromReloptions(const char *reloptions)
 	return result;
 }
 
+/* Find a top-level clause, ignoring quoted text and parenthesized expressions. */
+static const char *
+ybFindIndexdefClause(const char *indexdef, const char *clause)
+{
+	const size_t clause_len = strlen(clause);
+	int			paren_depth = 0;
+	char		quote = '\0';
+
+	for (const char *p = indexdef; *p != '\0'; p++)
+	{
+		if (quote != '\0')
+		{
+			if (*p == quote)
+			{
+				if (p[1] == quote)
+					p++;
+				else
+					quote = '\0';
+			}
+			continue;
+		}
+
+		/*
+		 * Check for the clause before consuming *p as a quote or
+		 * parenthesis so a clause that begins with one of those
+		 * characters can still match at top level.
+		 */
+		if (paren_depth == 0 && strncmp(p, clause, clause_len) == 0)
+			return p;
+
+		if (*p == '\'' || *p == '"')
+		{
+			quote = *p;
+			continue;
+		}
+		if (*p == '(')
+		{
+			paren_depth++;
+			continue;
+		}
+		if (*p == ')')
+		{
+			if (paren_depth > 0)
+				paren_depth--;
+			continue;
+		}
+	}
+
+	return NULL;
+}
+
 /*
  * YB: Return a newly-allocated copy of `indexdef` with a yb_presplit=<value>
  * entry folded into the WITH clause.
@@ -20492,11 +20598,15 @@ extractYbPresplitFromReloptions(const char *reloptions)
  *
  * `indexdef` is the string produced by pg_get_indexdef(), shaped roughly
  * as "CREATE [UNIQUE] INDEX ... ON tbl USING am (cols) [WITH (opts)]
- * [SPLIT ...]".  We splice the new option into the existing WITH clause
- * if present; otherwise we insert a fresh `WITH (yb_presplit='<value>')`
- * before the SPLIT keyword if present; otherwise we append it at the end
- * of the indexdef (e.g. for a single-tablet index that still has an
- * explicit reloption to preserve).
+ * [SPLIT ...] [WHERE ...]".  We splice the new option into the existing
+ * WITH clause if present; otherwise we insert a fresh
+ * `WITH (yb_presplit='<value>')` before SPLIT or WHERE, whichever comes
+ * first.  If neither is present, we append it at the end of the indexdef
+ * (e.g. for a single-tablet index that still has an explicit reloption to
+ * preserve).
+ *
+ * The SQL pg_get_indexdef() used by getIndexes() intentionally omits
+ * TABLESPACE; pg_dump carries it separately in the archive entry metadata.
  */
 static char *
 ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
@@ -20505,6 +20615,8 @@ ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 	const char *with_start;
 	const char *with_close;
 	const char *split_start;
+	const char *where_start;
+	const char *insert_start;
 	PQExpBuffer buf;
 	char	   *result;
 
@@ -20513,7 +20625,7 @@ ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 	if (!value)
 		value = "";
 
-	with_start = strstr(indexdef, " WITH (");
+	with_start = ybFindIndexdefClause(indexdef, " WITH (");
 	if (with_start != NULL)
 	{
 		/* Find the matching ')' after WITH ( -- the first ')'. */
@@ -20536,19 +20648,24 @@ ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 
 	/*
 	 * No existing WITH clause.  Insert a fresh `WITH (yb_presplit='...')`
-	 * before the SPLIT keyword if there is one, otherwise at the end of
-	 * the indexdef.
+	 * before the first SPLIT or WHERE clause, otherwise at the end of the
+	 * indexdef.
 	 */
-	split_start = strstr(indexdef, " SPLIT ");
-	if (split_start == NULL)
-		split_start = indexdef + strlen(indexdef);
+	split_start = ybFindIndexdefClause(indexdef, " SPLIT ");
+	where_start = ybFindIndexdefClause(indexdef, " WHERE ");
+	insert_start = split_start;
+	if (where_start != NULL &&
+		(insert_start == NULL || where_start < insert_start))
+		insert_start = where_start;
+	if (insert_start == NULL)
+		insert_start = indexdef + strlen(indexdef);
 
 	buf = createPQExpBuffer();
-	appendBinaryPQExpBuffer(buf, indexdef, split_start - indexdef);
+	appendBinaryPQExpBuffer(buf, indexdef, insert_start - indexdef);
 	appendPQExpBufferStr(buf, " WITH (yb_presplit=");
 	appendStringLiteralAH(buf, value, fout);
 	appendPQExpBufferChar(buf, ')');
-	appendPQExpBufferStr(buf, split_start);
+	appendPQExpBufferStr(buf, insert_start);
 	result = pg_strdup(buf->data);
 	destroyPQExpBuffer(buf);
 	return result;

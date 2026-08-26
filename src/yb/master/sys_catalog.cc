@@ -147,6 +147,7 @@ METRIC_DEFINE_counter(
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
 DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_int32(snapshot_cleanup_pool_size);
 DECLARE_bool(TEST_check_catalog_version_overflow);
 
 DEFINE_UNKNOWN_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
@@ -207,6 +208,12 @@ Status SysCatalogTable::Start(ElectedLeaderCallback leader_cb) {
     .name = "raft_notifications",
     .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
   });
+  SCHECK_GT(FLAGS_snapshot_cleanup_pool_size, 0, InvalidArgument,
+            "snapshot_cleanup_pool_size must be positive");
+  RETURN_NOT_OK(ThreadPoolBuilder("snapshot-cleanup")
+                    .set_min_threads(1)
+                    .set_max_threads(FLAGS_snapshot_cleanup_pool_size)
+                    .Build(&snapshot_cleanup_pool_));
   RETURN_NOT_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
   RETURN_NOT_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
   RETURN_NOT_OK(ThreadPoolBuilder("log-sync").set_min_threads(1).Build(&log_sync_pool_));
@@ -219,12 +226,21 @@ Status SysCatalogTable::Start(ElectedLeaderCallback leader_cb) {
 }
 
 void SysCatalogTable::StartShutdown() {
+  // A removed master going into shell mode (GoIntoShellMode) can race with process shutdown
+  // (CatalogManager::StartShutdown / CompleteShutdown). Both drive the tablet peer's two-phase
+  // shutdown, so the controller makes each phase run at most once and in order.
+  auto scope = shutdown_controller_.CheckedStartShutdown();
+  if (!scope) {
+    return;
+  }
+
   if (mem_manager_) {
     mem_manager_->Shutdown();
   }
   auto peer = tablet_peer();
   if (peer) {
-    CHECK(peer->StartShutdown());
+    CHECK(peer->StartShutdown(
+        tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse));
   }
 
   if (multi_raft_manager_) {
@@ -233,11 +249,17 @@ void SysCatalogTable::StartShutdown() {
 }
 
 void SysCatalogTable::CompleteShutdown() {
+  auto scope = shutdown_controller_.CheckedCompleteShutdown();
+  if (!scope) {
+    return;
+  }
+
   auto peer = tablet_peer();
   if (peer) {
-    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
+    peer->CompleteShutdown();
   }
   inform_removed_master_pool_->Shutdown();
+  snapshot_cleanup_pool_->Shutdown();
   raft_pool_->Shutdown();
   tablet_prepare_pool_->Shutdown();
   if (multi_raft_manager_) {
@@ -560,6 +582,7 @@ Status SysCatalogTable::GoIntoShellMode() {
   std::atomic_store(&tablet_peer_, null_tablet_peer);
   inform_removed_master_pool_.reset();
   raft_pool_.reset();
+  snapshot_cleanup_pool_.reset();
   tablet_prepare_pool_.reset();
 
   return Status::OK();
@@ -684,6 +707,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetTableMetricsEntity(),
           tablet->GetTabletMetricsEntity(),
           raft_pool(),
+          snapshot_cleanup_pool(),
           raft_notifications_pool(),
           tablet_prepare_pool(),
           &retryable_requests,

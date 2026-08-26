@@ -3,8 +3,9 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
-import { UniverseCard } from './UniverseCard';
 import { useQuery } from 'react-query';
+import { useSelector } from 'react-redux';
+import { UniverseCard } from './UniverseCard';
 
 import { CronToSystemdReminderBanner } from './CronToSystemdReminderBanner';
 import { OnboardingPanel } from './OnboardingPanel';
@@ -27,7 +28,14 @@ import { YBProvider } from '../../configRedesign/providerRedesign/types';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { InstallNodeAgentReminderBanner } from '../../../redesign/features/NodeAgent/InstallNodeAgentReminderBanner';
 import { getIsKubernetesUniverse } from '@app/utils/UniverseUtils';
-import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
+import {
+  isUniverseRevampExperienceEnabled,
+  useOnboardingNewExperienceEnabled
+} from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
+import {
+  UniverseCreationPopover,
+  useUniverseCreationPopover
+} from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/UniverseCreationPopover';
 import { compareUniversesForDashboardDisplay } from './universeDisplaySort';
 
 import './UniverseDisplayPanel.scss';
@@ -39,6 +47,15 @@ export const UniverseDisplayPanel = ({
   runtimeConfigs,
   fetchUniverseMetadata
 }: any) => {
+  const {
+    open: isUniverseCreationPopoverOpen,
+    anchorRef: createUniverseAnchorRef,
+    handleClose: handleUniverseCreationPopoverClose,
+    handleClickAway: handleUniverseCreationPopoverClickAway
+  } = useUniverseCreationPopover();
+  const isOnboardingExperienceEnabled = useOnboardingNewExperienceEnabled();
+  const currentUser = useSelector((state: any) => state.customer.currentUser.data);
+
   const providerUuidToName = {};
   (providers.data as YBProvider[]).forEach(
     (provider) => (providerUuidToName[provider.uuid] = provider.name)
@@ -108,8 +125,10 @@ export const UniverseDisplayPanel = ({
       )?.value === 'true';
 
     const showNodeAgentInstallReminderBanner = isNodeAgentEnabled && hasUniverseMissingNodeAgent;
-    const isNewV2CreateUniverseUIEnabled = isV2CreateEditUniverseEnabled(
-      globalRuntimeConfigQuery?.data
+    const isNewV2CreateUniverseUIEnabled = isUniverseRevampExperienceEnabled(
+      globalRuntimeConfigQuery?.data,
+      currentUser?.role,
+      isOnboardingExperienceEnabled
     );
 
     return (
@@ -126,17 +145,19 @@ export const UniverseDisplayPanel = ({
                 }}
                 isControl
               >
-                <Link
-                  to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}
-                >
-                  <YBButton
-                    btnClass="universe-button btn btn-lg btn-orange"
-                    disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
-                    btnText="Create Universe"
-                    btnIcon="fa fa-plus"
-                    data-testid="Dashboard-CreateUniverse"
-                  />
-                </Link>
+                <span ref={createUniverseAnchorRef} style={{ display: 'inline-block' }}>
+                  <Link
+                    to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}
+                  >
+                    <YBButton
+                      btnClass="universe-button btn btn-lg btn-orange"
+                      disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                      btnText="Create Universe"
+                      btnIcon="fa fa-plus"
+                      data-testid="Dashboard-CreateUniverse"
+                    />
+                  </Link>
+                </span>
               </RbacValidator>
             )}
           </Col>
@@ -149,6 +170,16 @@ export const UniverseDisplayPanel = ({
         )}
         {hasCronBasedUniverse && <CronToSystemdReminderBanner />}
         <Row className="list-group">{universeDisplayList}</Row>
+        {isNewV2CreateUniverseUIEnabled && (
+          <>
+            <UniverseCreationPopover
+              open={isUniverseCreationPopoverOpen}
+              anchorRef={createUniverseAnchorRef}
+              onClose={handleUniverseCreationPopoverClose}
+              onClickAway={handleUniverseCreationPopoverClickAway}
+            />
+          </>
+        )}
       </div>
     );
   } else if (getPromiseState(providers).isEmpty()) {

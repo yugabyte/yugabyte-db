@@ -37,8 +37,7 @@ function(check_parse_build_root_basename
          BUILD_ROOT_BASENAME
          EXPECTED_BUILD_TYPE
          EXPECTED_COMPILER_TYPE
-         EXPECTED_LINKING_TYPE
-         EXPECTED_USING_LINUXBREW)
+         EXPECTED_LINKING_TYPE)
   set(CMAKE_CURRENT_BINARY_DIR "/somedir/${BUILD_ROOT_BASENAME}")
   unset(ENV{YB_COMPILER_TYPE})
   parse_build_root_basename()
@@ -46,31 +45,24 @@ function(check_parse_build_root_basename
   assert_equals("${EXPECTED_COMPILER_TYPE}" "${YB_COMPILER_TYPE}" "(CMake var)")
   assert_equals("${EXPECTED_COMPILER_TYPE}" "$ENV{YB_COMPILER_TYPE}" "(env var)")
   assert_equals("${EXPECTED_LINKING_TYPE}" "${YB_LINKING_TYPE}")
-  assert_equals("${EXPECTED_USING_LINUXBREW}" "${YB_USING_LINUXBREW_FROM_BUILD_ROOT}")
 endfunction()
 
 function(test_parse_build_root_basename)
-  # BUILD_ROOT_BASENAME                  BUILD_TYPE      COMPILER_TYPE LINK_TYPE USING_LINUXBREW
+  # BUILD_ROOT_BASENAME                  BUILD_TYPE      COMPILER_TYPE LINK_TYPE
   check_parse_build_root_basename(
-    "debug-clang-dynamic-ninja"          "debug"         "clang"       "dynamic"  OFF)
+    "debug-clang-dynamic-ninja"          "debug"         "clang"       "dynamic")
   check_parse_build_root_basename(
-    "debug-clang-dynamic"                "debug"         "clang"       "dynamic"  OFF)
+    "debug-clang-dynamic"                "debug"         "clang"       "dynamic")
   check_parse_build_root_basename(
-    "asan-gcc12-dynamic-ninja"           "asan"          "gcc12"       "dynamic"  OFF)
+    "asan-gcc12-dynamic-ninja"           "asan"          "gcc12"       "dynamic")
   check_parse_build_root_basename(
-    "asan_release-clang19-dynamic-ninja" "asan_release"  "clang19"     "dynamic"  OFF)
+    "asan_release-clang19-dynamic-ninja" "asan_release"  "clang19"     "dynamic")
   check_parse_build_root_basename(
-    "debug-clang-dynamic"                "debug"         "clang"       "dynamic"  OFF)
+    "debug-clang-dynamic"                "debug"         "clang"       "dynamic")
   check_parse_build_root_basename(
-    "tsan-clang14-dynamic"               "tsan"          "clang14"     "dynamic"  OFF)
+    "tsan-clang14-dynamic"               "tsan"          "clang14"     "dynamic")
   check_parse_build_root_basename(
-    "tsan_release-clang19-dynamic"       "tsan_release"  "clang19"     "dynamic"  OFF)
-  check_parse_build_root_basename(
-    "release-clang15-linuxbrew-dynamic"  "release"       "clang15"     "dynamic"  ON)
-  check_parse_build_root_basename(
-    "release-clang15-linuxbrew-thin-lto" "release"       "clang15"     "thin-lto" ON)
-  check_parse_build_root_basename(
-    "release-clang15-linuxbrew-full-lto" "release"       "clang15"     "full-lto" ON)
+    "tsan_release-clang19-dynamic"       "tsan_release"  "clang19"     "dynamic")
 endfunction()
 
 # -------------------------------------------------------------------------------------------------

@@ -25,9 +25,13 @@ In YugabyteDB Aeon, a VPC network consists of the following components:
 | :--- | :--- |
 | [VPC](cloud-add-vpc/) | A VPC reserves a block of IP addresses on the cloud provider.<br />You deploy your cluster in a VPC. |
 | [Peering connection](cloud-add-peering/) | Links the cluster VPC to an application VPC on the same cloud provider.<br />AWS and GCP only.<br />A peering connection is created for a VPC.<br />You need to add the IP address of your peered application VPC to the cluster [IP allow list](../../cloud-secure-clusters/add-connections/).<br/>Required for smart load balancing features of [YugabyteDB smart drivers](/stable/develop/drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon). |
-| [Private service endpoint](cloud-add-endpoint/) | Links the cluster endpoint to an application VPC endpoint, using the cloud provider's private linking service.<br />AWS and Azure only.<br />A private service endpoint (PSE) is added to a cluster; the cluster must be deployed in a VPC.<br/>No need to add the IP address of your application to the cluster IP allow list. |
+| [Private service endpoint](cloud-add-endpoint/) | Links the cluster endpoint to an application VPC endpoint, using the cloud provider's private linking service.<br />AWS and Azure only.<br />A private service endpoint (PSE) is added to a cluster; the cluster must be deployed in a VPC.<br />No need to add the IP address of your application to the cluster IP allow list. |
 
 Typically, you would either have a VPC network with peering, or use PSEs.
+
+{{< note title="VPCs with multiple CIDR blocks" >}}
+Currently, VPC peering in YugabyteDB Aeon only supports VPCs with a single CIDR block. If you have VPCs with multiple CIDR blocks, use a private service endpoint.
+{{< /note >}}
 
 VPCs and peering connections are managed on the **VPC Network** tab of the **Networking** page.
 

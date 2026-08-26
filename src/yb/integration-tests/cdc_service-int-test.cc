@@ -52,8 +52,10 @@
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -65,6 +67,7 @@ DECLARE_bool(TEST_record_segments_violate_max_time_policy);
 DECLARE_bool(TEST_record_segments_violate_min_space_policy);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_log_retention_by_op_idx);
+DECLARE_bool(enable_maintenance_manager);
 DECLARE_bool(enable_ysql);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(cdc_min_replicated_index_considered_stale_secs);
@@ -2297,6 +2300,12 @@ class CDCServiceTestMinSpace : public CDCServiceTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_stop_retaining_min_disk_mb) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_record_segments_violate_min_space_policy) = true;
 
+    // TEST_segments_violate_min_space_policy_ is appended to on every GetSegmentPrefixNotIncluding
+    // call and never cleared. The maintenance manager's LogGCOp polls GetGCableDataSize, which goes
+    // down the same path, so leaving it enabled would mix background results into the list the test
+    // compares against its own GC query.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = false;
+
     // This will rollover log segments a lot faster.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 500;
     CDCServiceTest::SetUp();
@@ -2336,7 +2345,14 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
       std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_EQ(segment_sequence.size(), 0);
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = 128;
+  // Sit just below the log_stop_retaining_min_disk_mb threshold so that only the first few
+  // segments violate the min space policy: each one adds its size to the reclaimed space that
+  // ViolatesMinSpacePolicy() credits against the threshold, which closes the gap after a handful
+  // of segments. Staying near the threshold rather than at a few bytes also keeps the simulated
+  // free space above the WAL pre-allocation size, which consults the same flag and would
+  // otherwise fail every segment allocation in the process with ENOSPC.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) =
+      FLAGS_log_stop_retaining_min_disk_mb * 1_MB - 1_KB;
 
   ASSERT_OK(tablet_peer->log()->TEST_GetSegmentsToGC(
       std::numeric_limits<int64_t>::max(), &segment_sequence));

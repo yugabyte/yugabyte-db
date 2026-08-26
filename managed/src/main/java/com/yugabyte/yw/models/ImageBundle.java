@@ -9,7 +9,6 @@ import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -228,8 +227,9 @@ public class ImageBundle extends Model {
     // We will allow fine grain edit in case the bundle is associated with
     // the universe. We will allow addition of new AMI in the newly added
     // region but will not allow any other edit.
-    if (existingBundle.getProvider().getCloudCode() == CloudType.aws) {
-      // Compare that AMI is not removed for any region in used bundle for AWS.
+    if (existingBundle.getProvider().getCloudCode().usesPerRegionImages()) {
+      // Compare that the per-region image is not removed for any region in the used
+      // bundle for clouds with per-region images (AWS AMIs, OCI image OCIDs).
       Map<String, ImageBundleDetails.BundleInfo> infoExistingBundle = existingDetails.getRegions();
       Map<String, ImageBundleDetails.BundleInfo> info = details.getRegions();
 

@@ -15,6 +15,17 @@ import (
 
 const OtelCollectorService = "otel-collector.service"
 
+const (
+	// Name of the executable inside the published archive. The YugabyteDB unified collector is a
+	// custom ocb distribution rather than the upstream contrib one, so it does not ship under the
+	// contrib name.
+	otelCollectorPackagedBinary = "otelcol-unified"
+	// Name the executable is installed under on the node. This becomes the running process name,
+	// which the systemd unit, the health check's `ps -C` lookup and the `process` label on the
+	// per-process metrics all key off, so it must stay stable across collector version changes.
+	otelCollectorInstalledBinary = "otelcol-contrib"
+)
+
 type InstallOtelCollector struct {
 	shellTask *ShellTask
 	param     *pb.InstallOtelCollectorInput
@@ -55,11 +66,43 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 
+	// Fast path: caller only wants to refresh the on-node log-purge script and
+	// its audit-log cleanup env. This is invoked on every audit-log settings
+	// change (even for universes that don't have otel-collector installed) so
+	// that fixes shipped in newer node-agent builds reach the on-node script.
+	if h.param.GetRefreshScriptOnly() {
+		util.FileLogger().Infof(
+			ctx, "Refresh-only mode: skipping otel-collector install steps")
+		if err := h.writeLogCleanupEnv(ctx, h.param.GetYbHomeDir()); err != nil {
+			util.FileLogger().Error(ctx, err.Error())
+			return nil, err
+		}
+		if err := h.refreshLogPurgeScript(ctx, h.param.GetYbHomeDir()); err != nil {
+			util.FileLogger().Error(ctx, err.Error())
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	userInfo, err := util.UserInfo(h.username)
+	if err != nil {
+		return nil, err
+	}
+	ybUserHome := userInfo.User.HomeDir
 	// 2) Put & setup the otel collector.
-	err := h.execOtelCollectorSetupSteps(ctx, h.param.GetYbHomeDir())
+	err = h.execOtelCollectorSetupSteps(ctx, h.param.GetYbHomeDir())
 	if err != nil {
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
+	}
+
+	// Runs ahead of the stop in 4) and the config swap in 5) so a rejected config leaves the
+	// running collector and its existing config.yml untouched.
+	if h.param.GetOtelColConfigFile() != "" {
+		if err = h.validateOtelCollectorConfig(ctx, h.param.GetYbHomeDir()); err != nil {
+			util.FileLogger().Error(ctx, err.Error())
+			return nil, err
+		}
 	}
 
 	// 3) Place the otel-collector.service at desired location.
@@ -71,6 +114,10 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		"user_name":           h.username,
 		"yb_home_dir":         h.param.GetYbHomeDir(),
 		"otel_col_max_memory": otelColMaxMemory,
+		// Must mirror the conditions the setup steps use to write these credentials.
+		"otel_col_aws_creds_present": h.param.GetOtelColAwsAccessKey() != "" &&
+			h.param.GetOtelColAwsSecretKey() != "",
+		"otel_col_gcp_creds_present": h.param.GetOtelColGcpCredsFile() != "",
 	}
 
 	// Copy otel-collector.service
@@ -78,7 +125,7 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		ctx,
 		otelCollectorServiceContext,
 		filepath.Join(module.ServerTemplateSubpath, OtelCollectorService),
-		filepath.Join(h.param.GetYbHomeDir(), module.UserSystemdUnitPath, OtelCollectorService),
+		filepath.Join(ybUserHome, module.UserSystemdUnitPath, OtelCollectorService),
 		fs.FileMode(0755),
 		h.username,
 	)
@@ -122,8 +169,32 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		if err = module.EnableSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
 			return nil, err
 		}
+		// start/enable both return 0 over a collector that died parsing its config.
+		if err = module.VerifySystemdServiceStarted(
+			ctx, h.username, OtelCollectorService, h.logOut,
+		); err != nil {
+			return nil, err
+		}
 	}
 	return nil, nil
+}
+
+// Covers config unmarshalling and Validate() only - components are not constructed until the
+// service runs, so an exporter that fails to build still has to be caught after start.
+func (h *InstallOtelCollector) validateOtelCollectorConfig(
+	ctx context.Context,
+	ybHome string,
+) error {
+	cmd := fmt.Sprintf(
+		"%s validate --config=file:%s",
+		filepath.Join(ybHome, "otel-collector", otelCollectorInstalledBinary),
+		h.param.GetOtelColConfigFile(),
+	)
+	if _, err := module.RunShellCmd(
+		ctx, h.username, "ValidateOtelCollectorConfig", cmd, h.logOut); err != nil {
+		return fmt.Errorf("otel-collector config was rejected: %w", err)
+	}
+	return nil
 }
 
 // GetOtelCollectorSetupSteps returns the sequence of steps needed for configuring the otel collector.
@@ -160,10 +231,20 @@ func (h *InstallOtelCollector) execOtelCollectorSetupSteps(
 			),
 		},
 		{
-			"ensure 755 permission for otelcol-contrib",
+			// mv rather than cp: rename(2) succeeds even when the previous binary is still mapped
+			// by a running collector, which overwriting in place would not (ETXTBSY).
+			"rename-otel-collector-binary",
+			fmt.Sprintf(
+				"mv -f %s %s",
+				filepath.Join(otelCollectorDirectory, otelCollectorPackagedBinary),
+				filepath.Join(otelCollectorDirectory, otelCollectorInstalledBinary),
+			),
+		},
+		{
+			fmt.Sprintf("ensure 755 permission for %s", otelCollectorInstalledBinary),
 			fmt.Sprintf(
 				"chmod -R 755 %s",
-				filepath.Join(otelCollectorDirectory, "otelcol-contrib"),
+				filepath.Join(otelCollectorDirectory, otelCollectorInstalledBinary),
 			),
 		},
 		{
@@ -252,31 +333,14 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 			"remove-gcp-credentials",
 			fmt.Sprintf("rm -rf %s", gcpCredsFile),
 		},
-		{
-			"clean-up-otel-log-cleanup-env",
-			fmt.Sprintf("rm -rf %s", otelColLogCleanupEnv),
-		},
-		{
-			"write-otel-log-cleanup-env",
-			fmt.Sprintf(
-				`echo "preserve_audit_logs=true" > %s `+
-					`&& echo "ycql_audit_log_level=%s" >> %s `+
-					`&& echo "ysql_audit_log_retention_days=%d" >> %s `+
-					`&& echo "ycql_audit_log_retention_days=%d" >> %s`,
-				otelColLogCleanupEnv,
-				h.param.GetYcqlAuditLogLevel(),
-				otelColLogCleanupEnv,
-				h.param.GetYsqlAuditLogRetentionDays(),
-				otelColLogCleanupEnv,
-				h.param.GetYcqlAuditLogRetentionDays(),
-				otelColLogCleanupEnv,
-			),
-		},
-		{
-			"set-permission-otel-log-cleanup-env",
-			fmt.Sprintf(`chmod 0440 %s`, otelColLogCleanupEnv),
-		},
 	}
+	// log_cleanup_env carries the audit-log retention settings that the
+	// zip_purge_yb_logs.sh script sources on every run. Regenerating it here
+	// keeps the full install flow in sync with the refresh-only flow.
+	steps = append(steps, logCleanupEnvSteps(otelColLogCleanupEnv,
+		h.param.GetYcqlAuditLogLevel(),
+		h.param.GetYsqlAuditLogRetentionDays(),
+		h.param.GetYcqlAuditLogRetentionDays())...)
 
 	if h.param.GetOtelColAwsAccessKey() != "" && h.param.GetOtelColAwsSecretKey() != "" {
 		steps = append(steps, struct {
@@ -351,4 +415,71 @@ func (h *InstallOtelCollector) refreshLogPurgeScript(
 		h.username,
 	)
 	return err
+}
+
+// logCleanupEnvSteps returns the shell steps that (re)generate the
+// otel-collector/log_cleanup_env file consumed by zip_purge_yb_logs.sh. Kept
+// separate so the refresh-only path can reuse it without pulling in the rest
+// of the otel-collector configureOtelCollector cleanup steps.
+func logCleanupEnvSteps(
+	envPath, ycqlAuditLogLevel string,
+	ysqlAuditLogRetentionDays, ycqlAuditLogRetentionDays uint32,
+) []struct {
+	Desc string
+	Cmd  string
+} {
+	return []struct {
+		Desc string
+		Cmd  string
+	}{
+		{
+			"clean-up-otel-log-cleanup-env",
+			fmt.Sprintf("rm -rf %s", envPath),
+		},
+		{
+			"write-otel-log-cleanup-env",
+			fmt.Sprintf(
+				`echo "preserve_audit_logs=true" > %s `+
+					`&& echo "ycql_audit_log_level=%s" >> %s `+
+					`&& echo "ysql_audit_log_retention_days=%d" >> %s `+
+					`&& echo "ycql_audit_log_retention_days=%d" >> %s`,
+				envPath,
+				ycqlAuditLogLevel,
+				envPath,
+				ysqlAuditLogRetentionDays,
+				envPath,
+				ycqlAuditLogRetentionDays,
+				envPath,
+			),
+		},
+		{
+			"set-permission-otel-log-cleanup-env",
+			fmt.Sprintf(`chmod 0440 %s`, envPath),
+		},
+	}
+}
+
+// writeLogCleanupEnv (re)generates <yb_home>/otel-collector/log_cleanup_env
+// under a pre-existing otel-collector directory (created lazily here if
+// missing). Used by the refresh-only path to propagate audit-log retention
+// changes even when otel-collector isn't being (re)installed.
+func (h *InstallOtelCollector) writeLogCleanupEnv(ctx context.Context, ybHome string) error {
+	otelDir := filepath.Join(ybHome, "otel-collector")
+	envPath := filepath.Join(otelDir, "log_cleanup_env")
+	steps := []struct {
+		Desc string
+		Cmd  string
+	}{
+		// Refresh-only mode can run on universes that never had otel-collector
+		// installed, so ensure the directory exists before writing the env file.
+		{
+			"ensure-otel-collector-dir",
+			fmt.Sprintf("mkdir -p %s && chmod 0755 %s", otelDir, otelDir),
+		},
+	}
+	steps = append(steps, logCleanupEnvSteps(envPath,
+		h.param.GetYcqlAuditLogLevel(),
+		h.param.GetYsqlAuditLogRetentionDays(),
+		h.param.GetYcqlAuditLogRetentionDays())...)
+	return module.RunShellSteps(ctx, h.username, steps, h.logOut)
 }

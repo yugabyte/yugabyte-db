@@ -182,10 +182,7 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
   const validationSchema = Yup.object().shape({
     backup_location: Yup.string().required('Backup location is required'),
     storage_config: Yup.object().nullable().required('Required'),
-    keyspace_name: Yup.string().when('api_type', {
-      is: (api_type) => api_type.value !== BACKUP_API_TYPES.YEDIS,
-      then: Yup.string().required('required')
-    }),
+    keyspace_name: Yup.string().required('required'),
     keyspaces:
       currentStep === 1
         ? Yup.array(
@@ -350,11 +347,6 @@ function RestoreForm({
               })}
               onChange={(_: any, val: any) => {
                 setFieldValue('api_type', val);
-                if (val.value === BACKUP_API_TYPES.YEDIS) {
-                  setFieldValue('should_rename_keyspace', false);
-                  setFieldValue('keyspace_name', '');
-                  setOverrideSubmitLabel(TEXT_RESTORE);
-                }
               }}
             />
           </Col>
@@ -394,63 +386,59 @@ function RestoreForm({
             />
           </Col>
         </Row>
-        {values['api_type'].value !== BACKUP_API_TYPES.YEDIS && (
-          <Row>
-            <Col lg={12} className="no-padding">
-              <Field
-                name="keyspace_name"
-                component={YBFormInput}
-                label={`${
-                  values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Database' : 'Keyspace'
-                } name`}
-                placeholder={`${
-                  values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Database' : 'Keyspace'
-                } name`}
-                validate={(name: string) => {
-                  // Restoring with duplicate keyspace name is supported in redis and YCQL
-                  if (
-                    Array.isArray(tablesInUniverse) &&
-                    values['api_type'].value === BACKUP_API_TYPES.YSQL &&
-                    find(tablesInUniverse, { tableType: values['api_type'].value, keySpace: name })
-                  ) {
-                    setFieldValue('should_rename_keyspace', true, false);
-                    setFieldValue('disable_keyspace_rename', true, false);
-                    setOverrideSubmitLabel(undefined);
-                  } else {
-                    setFieldValue('disable_keyspace_rename', false, false);
-                  }
-                }}
-              />
-            </Col>
-          </Row>
-        )}
-        {values['api_type'].value !== BACKUP_API_TYPES.YEDIS && (
-          <Row>
-            <Col lg={12} className="should-rename-keyspace">
-              <Field
-                name="should_rename_keyspace"
-                component={YBCheckBox}
-                label={`Rename databases in this backup before restoring (${
-                  values['disable_keyspace_rename'] ? 'Required' : 'Optional'
-                })`}
-                input={{
-                  checked: values['should_rename_keyspace'],
-                  onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-                    setFieldValue('should_rename_keyspace', event.target.checked);
-                    setOverrideSubmitLabel(event.target.checked ? undefined : TEXT_RESTORE);
-                  }
-                }}
-                disabled={values['disable_keyspace_rename']}
-              />
-              {values['disable_keyspace_rename'] && (
-                <div className="disable-keyspace-subtext">
-                  <b>Note!</b> This is required since there are databases with the same name in the
-                  selected target universe.
-                </div>
-              )}
-            </Col>
-          </Row>
-        )}
+        <Row>
+          <Col lg={12} className="no-padding">
+            <Field
+              name="keyspace_name"
+              component={YBFormInput}
+              label={`${
+                values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Database' : 'Keyspace'
+              } name`}
+              placeholder={`${
+                values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Database' : 'Keyspace'
+              } name`}
+              validate={(name: string) => {
+                // Restoring with duplicate keyspace name is supported in YCQL
+                if (
+                  Array.isArray(tablesInUniverse) &&
+                  values['api_type'].value === BACKUP_API_TYPES.YSQL &&
+                  find(tablesInUniverse, { tableType: values['api_type'].value, keySpace: name })
+                ) {
+                  setFieldValue('should_rename_keyspace', true, false);
+                  setFieldValue('disable_keyspace_rename', true, false);
+                  setOverrideSubmitLabel(undefined);
+                } else {
+                  setFieldValue('disable_keyspace_rename', false, false);
+                }
+              }}
+            />
+          </Col>
+        </Row>
+        <Row>
+          <Col lg={12} className="should-rename-keyspace">
+            <Field
+              name="should_rename_keyspace"
+              component={YBCheckBox}
+              label={`Rename databases in this backup before restoring (${
+                values['disable_keyspace_rename'] ? 'Required' : 'Optional'
+              })`}
+              input={{
+                checked: values['should_rename_keyspace'],
+                onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+                  setFieldValue('should_rename_keyspace', event.target.checked);
+                  setOverrideSubmitLabel(event.target.checked ? undefined : TEXT_RESTORE);
+                }
+              }}
+              disabled={values['disable_keyspace_rename']}
+            />
+            {values['disable_keyspace_rename'] && (
+              <div className="disable-keyspace-subtext">
+                <b>Note!</b> This is required since there are databases with the same name in the
+                selected target universe.
+              </div>
+            )}
+          </Col>
+        </Row>
         <Row>
           <Col lg={12} className="no-padding">
             <Field

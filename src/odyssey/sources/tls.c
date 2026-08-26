@@ -18,9 +18,13 @@ machine_tls_t *od_tls_frontend(od_config_listen_t *config)
 		return NULL;
 
 	switch (config->tls_opts->tls_mode) {
+	/*
+	 * YB: On enabling encryption in yugabyteDB, conn mgr is configured by default
+	 * in allow mode. So enable SSL_VERIFY_PEER in allow mode as well. Although
+	 * conn mgr still doesn't still support cert authentication but SSL_VERIFY_PEER
+	 * performs additional checks like expiration of server certificate etc.
+	 */
 	case OD_CONFIG_TLS_ALLOW:
-		machine_tls_set_verify(tls, "none");
-		break;
 	case OD_CONFIG_TLS_REQUIRE:
 		machine_tls_set_verify(tls, "peer");
 		break;
@@ -112,6 +116,7 @@ int od_tls_frontend_accept(od_client_t *client, od_logger_t *logger,
 				 machine_time_us() - client->time_accept);
 			return -1;
 		}
+		client->startup.yb_ssl_established = 1;
 		od_debug(logger, "tls", client, NULL, "ok");
 		return 0;
 	}

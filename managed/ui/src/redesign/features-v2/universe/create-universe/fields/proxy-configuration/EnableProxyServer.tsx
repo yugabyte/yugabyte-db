@@ -32,7 +32,7 @@ import {
   BYPASS_PROXY_LIST_VALUES_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 
-import InfoIcon from '../../../../../assets/info-new.svg';
+import InfoIcon from '../../../../../assets/approved/info-new.svg';
 import WarningIcon from '../../../../../assets/warning-triangle.svg';
 
 const { Box, Typography, styled } = mui;

@@ -45,8 +45,10 @@ type CommonInfo struct {
 }
 
 type NodeAgentConfig struct {
-	ServerCert string `json:"serverCert,omitempty"`
-	ServerKey  string `json:"serverKey,omitempty"`
+	ServerCert       string `json:"serverCert,omitempty"`
+	ServerKey        string `json:"serverKey,omitempty"`
+	SignerPublicKey  string `json:"signerPublicKey,omitempty"`
+	SignerPrivateKey string `json:"signerPrivateKey,omitempty"`
 }
 
 type Customer struct {

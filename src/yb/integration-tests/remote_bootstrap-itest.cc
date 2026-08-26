@@ -1067,14 +1067,30 @@ void RemoteBootstrapITest::CreateTableAssignLeaderAndWaitForTabletServersReady(
 
   // Elect leaders on each tablet for term 1. All leaders will be on TS leader_index.
   const string kLeaderUuid = cluster_->tablet_server(leader_index)->uuid();
+  TServerDetails* const desired_leader = ts_map_[kLeaderUuid].get();
   for (const string& tablet_id : *tablet_ids) {
-    ASSERT_OK(itest::StartElection(ts_map_[kLeaderUuid].get(), tablet_id, timeout));
+    ASSERT_OK(itest::StartElection(desired_leader, tablet_id, timeout));
   }
 
   for (const string& tablet_id : *tablet_ids) {
-    TServerDetails* leader_ts = nullptr;
-    ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
-    ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(3, leader_ts, tablet_id, timeout));
+    // The master's create-table leader hint can win term 1 before the election started above,
+    // which then loses. Step the elected leader down in favor of the requested one.
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          TServerDetails* leader_ts = nullptr;
+          if (!FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts).ok()) {
+            return false;
+          }
+          if (leader_ts == desired_leader) {
+            return true;
+          }
+          WARN_NOT_OK(
+              itest::LeaderStepDown(leader_ts, tablet_id, desired_leader, timeout),
+              "Step down in favor of the requested leader failed");
+          return false;
+        },
+        timeout, "Leader of tablet " + tablet_id + " is on TS " + kLeaderUuid));
+    ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(3, desired_leader, tablet_id, timeout));
   }
 }
 
@@ -1722,6 +1738,7 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
       "--consensus_rpc_timeout_ms=300",
       "--TEST_delay_removing_peer_with_failed_tablet_secs=10",
       "--memstore_size_mb=1",
+      "--rocksdb_disable_compactions=true",
       // Increase the number of missed heartbeats used to detect leader failure since in slow
       // testing instances it is very easy to miss the default (6) heartbeats since they are being
       // sent very fast (50ms).
@@ -2917,12 +2934,16 @@ class PersistRetryableRequestsRBSITest: public RemoteBootstrapMiniClusterITest {
         20s * kTimeMultiplier, "Waiting for new tserver having one tablet."));
 
     if (elect_new_replica_as_leader) {
-      SleepFor(5s);
-      ASSERT_OK(itest::LeaderStepDown(
-          ts_map_[leader_id].get(), tablet_id, ts_map_[new_ts_id].get(), 10s));
+      // The leader refuses to step down while the new peer is still in transition to VOTER.
+      ASSERT_OK(itest::WaitUntilCommittedConfigNumVotersIs(
+          new_ts + 1, leader, tablet_id, 60s * kTimeMultiplier));
+      // The new peer also has to catch up with the leader before it can be nominated.
+      ASSERT_OK(WaitFor([&] {
+        return itest::LeaderStepDown(leader, tablet_id, ts_map_[new_ts_id].get(), 10s).ok();
+      }, 60s * kTimeMultiplier, "Leader steps down in favor of the new tablet peer"));
       ASSERT_OK(WaitFor([&] {
         return new_tserver->LeaderAndReady(tablet_id);
-      }, 10s, "New tablet peer is elected as new leader"));
+      }, 10s * kTimeMultiplier, "New tablet peer is elected as new leader"));
     }
   }
 

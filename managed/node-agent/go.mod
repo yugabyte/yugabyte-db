@@ -1,8 +1,8 @@
 module node-agent
 
-go 1.26.4
+go 1.26.5
 
-replace golang.org/x/crypto => golang.org/x/crypto v0.18.0
+replace golang.org/x/crypto => golang.org/x/crypto v0.54.0
 
 require (
 	github.com/apex/log v1.9.0
@@ -11,7 +11,6 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.0
-	github.com/magiconair/properties v1.8.6
 	github.com/nikolalohinski/gonja/v2 v2.4.1
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/prometheus/client_golang v1.15.1
@@ -19,8 +18,8 @@ require (
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.12.0
 	github.com/thoas/go-funk v0.9.2
-	golang.org/x/crypto v0.43.0
-	golang.org/x/net v0.46.1-0.20251013234738-63d1a5100f82
+	golang.org/x/crypto v0.54.0
+	golang.org/x/net v0.56.0
 	google.golang.org/grpc v1.77.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/ini.v1 v1.66.4
@@ -39,6 +38,7 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/magiconair/properties v1.8.6 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
@@ -59,7 +59,7 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.3.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
-	golang.org/x/sys v0.37.0 // indirect
-	golang.org/x/text v0.30.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
 )

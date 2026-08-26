@@ -25,6 +25,7 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
@@ -256,6 +257,115 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     String expectedError = "Cannot find universe " + uuid;
     assertBadRequest(r, expectedError);
     assertAuditEntry(0, customer.getUuid());
+  }
+
+  // Creates a kubernetes universe (host-n1..n3, host-n1 in AZ "az-1") with the given overrides
+  // persisted on the primary cluster's UserIntent, mimicking an operator-managed universe.
+  private Universe createK8sUniverseWithOverrides(
+      String universeName, String universeOverrides, Map<String, String> azOverrides) {
+    if (Provider.get(customer.getUuid(), CloudType.kubernetes).isEmpty()) {
+      Provider k8sProvider = ModelFactory.kubernetesProvider(customer);
+      Region k8sRegion = Region.create(k8sProvider, "test-region", "Test Region", "yb-image-1");
+      AvailabilityZone.createOrThrow(k8sRegion, "az-1", "AZ 1", "subnet-1");
+    }
+    Universe u =
+        Universe.saveDetails(
+            ModelFactory.createUniverse(universeName, customer.getId()).getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater("host", CloudType.kubernetes));
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.universeOverrides = universeOverrides;
+          details.getPrimaryCluster().userIntent.azOverrides = azOverrides;
+          universe.setUniverseDetails(details);
+        });
+  }
+
+  private String getKubernetesOverrides(Universe universe, String nodeName) {
+    Result r = getNodeDetails(universe.getUniverseUUID(), nodeName);
+    checkOk(r);
+    return parseResult(r).get("kubernetesOverrides").asText();
+  }
+
+  @Test
+  public void testGetNodeDetailsK8sReturnsStoredOverridesWhenHelmValuesEmpty() {
+    // Operator-managed universe where "helm get values" yields nothing, but overrides are
+    // persisted on the UserIntent. The endpoint should fall back to them. See PLAT-20542.
+    String storedOverrides = "master:\n  podLabels:\n    myLabel: myValue\n";
+    Universe u = createK8sUniverseWithOverrides("k8s-empty-helm", storedOverrides, null);
+
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any())).thenReturn("");
+
+    assertEquals(storedOverrides, getKubernetesOverrides(u, "host-n1"));
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testGetNodeDetailsK8sFallsBackWhenHelmThrows() {
+    // The helm invocation failing (e.g. release/namespace not resolvable) must not blank the
+    // overrides - we fall back to the stored ones.
+    String storedOverrides = "master:\n  podLabels:\n    myLabel: myValue\n";
+    Universe u = createK8sUniverseWithOverrides("k8s-helm-throws", storedOverrides, null);
+
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any()))
+        .thenThrow(new RuntimeException("release not found"));
+
+    assertEquals(storedOverrides, getKubernetesOverrides(u, "host-n1"));
+  }
+
+  @Test
+  public void testGetNodeDetailsK8sMergesUniverseAndAzOverrides() {
+    // Both universe-level and AZ-level overrides exist; they should be merged for display.
+    String universeOverrides = "master:\n  podLabels:\n    fromUniverse: u\n";
+    Map<String, String> azOverrides =
+        ImmutableMap.of("az-1", "master:\n  podLabels:\n    fromAz: a\n");
+    Universe u = createK8sUniverseWithOverrides("k8s-merge", universeOverrides, azOverrides);
+
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any())).thenReturn("");
+
+    String overrides = getKubernetesOverrides(u, "host-n1");
+    assertTrue(
+        "Expected universe override to be present: " + overrides,
+        overrides.contains("fromUniverse"));
+    assertTrue("Expected AZ override to be present: " + overrides, overrides.contains("fromAz"));
+  }
+
+  @Test
+  public void testGetNodeDetailsK8sReturnsAzOverridesWhenNoUniverseOverrides() {
+    // Only AZ-level overrides exist (no universe-level overrides).
+    Map<String, String> azOverrides =
+        ImmutableMap.of("az-1", "master:\n  podLabels:\n    fromAz: a\n");
+    Universe u = createK8sUniverseWithOverrides("k8s-az-only", null, azOverrides);
+
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any())).thenReturn("");
+
+    assertTrue(getKubernetesOverrides(u, "host-n1").contains("fromAz"));
+  }
+
+  @Test
+  public void testGetNodeDetailsK8sPrefersLiveHelmValues() {
+    // Regression: when the live helm values are available, they must be returned as-is and the
+    // stored overrides must NOT override them.
+    String liveHelmValues = "resource:\n  master:\n    requests:\n      cpu: 2\n";
+    Universe u =
+        createK8sUniverseWithOverrides("k8s-live-helm", "master:\n  podLabels:\n    x: y\n", null);
+
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any()))
+        .thenReturn(liveHelmValues);
+
+    assertEquals(liveHelmValues, getKubernetesOverrides(u, "host-n1"));
+  }
+
+  @Test
+  public void testGetNodeDetailsNonK8sReturnsNoOverrides() {
+    // Regression: non-kubernetes universes never touch the helm/override path.
+    Universe u =
+        Universe.saveDetails(
+            ModelFactory.createUniverse("non-k8s", customer.getId()).getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater());
+
+    assertEquals("", getKubernetesOverrides(u, "host-n1"));
   }
 
   @Test

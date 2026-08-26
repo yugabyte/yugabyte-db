@@ -525,6 +525,14 @@ public class AWSInitializer extends AbstractInitializer {
     return productAttrs;
   }
 
+  static String[] parseStorageDetails(String storage) {
+    return storage
+        .replaceAll(",", "")
+        .replaceAll("(?i)(\\d+)\\s*x\\s*(\\d+)", "$1 x $2")
+        .trim()
+        .split("\\s+");
+  }
+
   /**
    * Store information about the various instance types to the database. Uses UPSERT semantics if
    * the row for the instance type already exists.
@@ -564,7 +572,8 @@ public class AWSInitializer extends AbstractInitializer {
       // 1 x 800 SSD
       // 12 x 2000 HDD
       // 2 x 900 GB NVMe SSD
-      String[] parts = productAttrs.get("storage").replaceAll(",", "").split(" ");
+      // 1x1900 GB NVMe SSD
+      String[] parts = parseStorageDetails(productAttrs.get("storage"));
       log.trace("Storage details for instance type {} are {}", instanceTypeCode, parts);
       if (parts.length < 4) {
         if (!productAttrs.get("storage").equals("EBS only")) {

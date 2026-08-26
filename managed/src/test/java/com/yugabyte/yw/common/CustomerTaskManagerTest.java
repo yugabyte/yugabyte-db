@@ -6,26 +6,41 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import com.google.inject.Injector;
+import com.google.inject.Key;
+import com.google.inject.TypeLiteral;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AZUpgradeState;
 import com.yugabyte.yw.forms.AZUpgradeStatus;
+import com.yugabyte.yw.forms.DrConfigTaskParams;
+import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
@@ -34,9 +49,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -44,8 +61,9 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -53,7 +71,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   Customer customer;
   Universe universe;
   CustomerTaskManager taskManager;
-  YBClient mockClient;
+  YBClientApi mockClient;
 
   private CustomerTask createTask(
       CustomerTask.TargetType targetType, UUID targetUUID, CustomerTask.TaskType taskType) {
@@ -99,7 +117,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testHandlePendingTasksForCompletedCustomerTask() throws Exception {
     universe = ModelFactory.createUniverse(customer.getId());
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe))
@@ -128,7 +146,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testFailPendingTasksForRunningTaskInfo() throws Exception {
     universe = ModelFactory.createUniverse(customer.getId());
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe))
@@ -160,7 +178,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testFailPendingTasksForCompletedTaskInfo() throws Exception {
     universe = ModelFactory.createUniverse(customer.getId());
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe))
@@ -257,6 +275,59 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
               autoRetryableTaskUuids.remove(ct.getTaskUUID()));
         });
     assertEquals(0, autoRetryableTaskUuids.size());
+  }
+
+  // Retryability is decided in two independent places: the @ITask.Retryable annotation, which
+  // drives
+  // the retryable flag in the task API and therefore the Retry button, and the switch in
+  // retryCustomerTask that rebuilds task params. A task type annotated but missing from the switch
+  // renders a Retry button that always fails with "Invalid task type", so both halves are asserted
+  // here. testAutoRetryAbortedTasks covers only the annotation half - it supplies its own retry
+  // function and never reaches the switch.
+  @Test
+  public void testConfigureExportTelemetryConfigRetryRebuildsParams() {
+    when(mockCommissioner.getTaskParams(any())).thenReturn(Json.newObject());
+    for (TaskType taskType :
+        List.of(
+            TaskType.ConfigureExportTelemetryConfig,
+            TaskType.KubernetesConfigureExportTelemetryConfig)) {
+      assertTrue(
+          taskType + " must be annotated @ITask.Retryable",
+          Commissioner.isTaskTypeRetryable(taskType));
+      assertFalse(
+          taskType + " is missing a case in retryCustomerTask",
+          retryFailsWithUnmappedTaskType(taskType));
+    }
+  }
+
+  private boolean retryFailsWithUnmappedTaskType(TaskType taskType) {
+    TaskInfo taskInfo = new TaskInfo(taskType, null);
+    taskInfo.setTaskParams(Json.newObject());
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    taskInfo.save();
+    Pair<CustomerTask.TaskType, CustomerTask.TargetType> pair =
+        Iterables.getFirst(taskType.getCustomerTaskIds(), null);
+    CustomerTask cTask =
+        CustomerTask.create(
+            customer,
+            UUID.randomUUID(),
+            taskInfo.getUuid(),
+            pair.getSecond(),
+            pair.getFirst(),
+            "FakeTarget");
+    cTask.setCompletionTime(new Date());
+    cTask.save();
+    try {
+      taskManager.retryCustomerTask(customer.getUuid(), taskInfo.getUuid());
+      return false;
+    } catch (Exception e) {
+      // Other failures are expected with these synthetic fixtures (no such universe,
+      // updatingTaskUUID
+      // mismatch); only an unmapped task type is the defect under test.
+      return e.getMessage() != null && e.getMessage().contains("Invalid task type");
+    }
   }
 
   @Test
@@ -425,5 +496,340 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     // The restore task itself is re-inserted from the marker files.
     TaskInfo reinsertedRestoreTaskInfo = TaskInfo.getOrBadRequest(restoreTaskInfo.getUuid());
     assertEquals(TaskInfo.State.Success, reinsertedRestoreTaskInfo.getTaskState());
+  }
+
+  // Creates a failed universe task (TaskInfo in Failure state) plus its CustomerTask row.
+  private CustomerTask createFailedUniverseTask(
+      Universe universe,
+      TaskType taskInfoType,
+      CustomerTask.TaskType customerTaskType,
+      JsonNode taskParams) {
+    TaskInfo taskInfo = new TaskInfo(taskInfoType, null);
+    UUID taskUUID = UUID.randomUUID();
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskParams(taskParams);
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    taskInfo.save();
+    return CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        customerTaskType,
+        universe.getName());
+  }
+
+  // Puts the universe into the state a failed software upgrade leaves it in.
+  private Universe markSoftwareUpgradeFailed(Universe universe, boolean rollbackAllowed) {
+    PrevYBSoftwareConfig prev = new PrevYBSoftwareConfig();
+    prev.setSoftwareVersion("2.21.0.0-b1");
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams d = u.getUniverseDetails();
+          d.softwareUpgradeState = SoftwareUpgradeState.UpgradeFailed;
+          d.isSoftwareRollbackAllowed = rollbackAllowed;
+          d.prevYBSoftwareConfig = prev;
+          d.updateInProgress = false;
+          u.setUniverseDetails(d);
+        });
+  }
+
+  private JsonNode softwareUpgradeTaskParams(Universe universe) {
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.clusters = universe.getUniverseDetails().clusters;
+    params.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    params.ybSoftwareVersion = "2.21.0.0-b2";
+    return Json.toJson(params);
+  }
+
+  private JsonNode editUniverseTaskParams(Universe universe) {
+    UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    return Json.toJson(params);
+  }
+
+  private Universe createKubernetesUniverse(String name) {
+    Universe k8sUniverse =
+        ModelFactory.createUniverse(name, customer.getId(), CloudType.kubernetes);
+    k8sUniverse.updateConfig(Map.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    k8sUniverse.save();
+    return k8sUniverse;
+  }
+
+  /** Persists a TaskInfo row so CustomerTask.create can satisfy the task_uuid FK. */
+  private void persistTaskInfoPlaceholder(UUID taskUUID, TaskType taskType) {
+    TaskInfo taskInfo = new TaskInfo(taskType, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskParams(Json.newObject());
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    taskInfo.setTaskState(TaskInfo.State.Created);
+    taskInfo.save();
+  }
+
+  private XClusterConfig createOldXClusterWithReplicationDone() {
+    Universe source =
+        ModelFactory.createUniverse("dr-source-" + UUID.randomUUID(), customer.getId());
+    Universe target =
+        ModelFactory.createUniverse("dr-target-" + UUID.randomUUID(), customer.getId());
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(
+            "dr-old-xcluster-" + UUID.randomUUID(),
+            source.getUniverseUUID(),
+            target.getUniverseUUID());
+    String tableId = UUID.randomUUID().toString();
+    xClusterConfig.addTables(Collections.singleton(tableId));
+    xClusterConfig.updateReplicationSetupDone(Collections.singleton(tableId));
+    return xClusterConfig;
+  }
+
+  private JsonNode switchoverTaskParams(XClusterConfig oldXCluster) {
+    DrConfigTaskParams params = new DrConfigTaskParams();
+    params.setOldXClusterConfig(oldXCluster);
+    return Json.toJson(params);
+  }
+
+  @Test
+  public void testRollbackSwitchoverDrConfigSubmitsSwitchoverRollback() {
+    universe = ModelFactory.createUniverse(customer.getId());
+    XClusterConfig oldXCluster = createOldXClusterWithReplicationDone();
+    JsonNode taskParams = switchoverTaskParams(oldXCluster);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.SwitchoverDrConfig, CustomerTask.TaskType.Switchover, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    UUID rollbackTaskUUID = UUID.randomUUID();
+    persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.SwitchoverDrConfigRollback);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.SwitchoverDrConfigRollback), any()))
+        .thenReturn(rollbackTaskUUID);
+
+    CustomerTask rollbackTask =
+        taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.SwitchoverDrConfigRollback), paramsCaptor.capture());
+    assertEquals(failedTaskUUID, paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(CustomerTask.TaskType.SwitchoverRollback, rollbackTask.getType());
+    assertEquals(rollbackTaskUUID, rollbackTask.getTaskUUID());
+  }
+
+  @Test
+  public void testRollbackSwitchoverDrConfigRejectedWhenOldXClusterMissing() {
+    universe = ModelFactory.createUniverse(customer.getId());
+    JsonNode taskParams = switchoverTaskParams(null);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.SwitchoverDrConfig, CustomerTask.TaskType.Switchover, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
+    assertTrue(ex.getMessage().contains("old xCluster config"));
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testRollbackFailedSoftwareUpgradeSubmitsRollbackUpgrade() {
+    universe = ModelFactory.createUniverse(customer.getId());
+    universe = markSoftwareUpgradeFailed(universe, true /* rollbackAllowed */);
+    JsonNode taskParams = softwareUpgradeTaskParams(universe);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe,
+            TaskType.SoftwareUpgradeYB,
+            CustomerTask.TaskType.SoftwareUpgrade,
+            taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    UUID rollbackTaskUUID = UUID.randomUUID();
+    // commissioner.submit is mocked, so it does not persist the TaskInfo the real submit would.
+    // Create it here to satisfy the customer_task.task_uuid -> task_info.uuid foreign key.
+    persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.RollbackUpgrade);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.RollbackUpgrade), any())).thenReturn(rollbackTaskUUID);
+
+    CustomerTask rollbackTask =
+        taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    // A failed software upgrade should be rolled back via a fresh RollbackUpgrade (downgrade)
+    // task, not linked as a retry of the failed upgrade.
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.RollbackUpgrade), paramsCaptor.capture());
+    assertNull(paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(CustomerTask.TaskType.RollbackUpgrade, rollbackTask.getType());
+    assertEquals(universe.getUniverseUUID(), rollbackTask.getTargetUUID());
+    assertEquals(rollbackTaskUUID, rollbackTask.getTaskUUID());
+  }
+
+  @Test
+  public void testRollbackFailedSoftwareKubernetesUpgradeSubmitsRollbackKubernetesUpgrade() {
+    universe = createKubernetesUniverse("k8s-upgrade-" + UUID.randomUUID());
+    universe = markSoftwareUpgradeFailed(universe, true /* rollbackAllowed */);
+    JsonNode taskParams = softwareUpgradeTaskParams(universe);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe,
+            TaskType.SoftwareKubernetesUpgradeYB,
+            CustomerTask.TaskType.SoftwareUpgrade,
+            taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    UUID rollbackTaskUUID = UUID.randomUUID();
+    persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.RollbackKubernetesUpgrade);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.RollbackKubernetesUpgrade), any()))
+        .thenReturn(rollbackTaskUUID);
+
+    CustomerTask rollbackTask =
+        taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.RollbackKubernetesUpgrade), paramsCaptor.capture());
+    assertNull(paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(CustomerTask.TaskType.RollbackUpgrade, rollbackTask.getType());
+    assertEquals(universe.getUniverseUUID(), rollbackTask.getTargetUUID());
+    assertEquals(rollbackTaskUUID, rollbackTask.getTaskUUID());
+  }
+
+  @Test
+  public void testRollbackFailedSoftwareUpgradeRejectedWhenRollbackNotAllowed() {
+    universe = ModelFactory.createUniverse(customer.getId());
+    universe = markSoftwareUpgradeFailed(universe, false /* rollbackAllowed */);
+    JsonNode taskParams = softwareUpgradeTaskParams(universe);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe,
+            TaskType.SoftwareUpgradeYB,
+            CustomerTask.TaskType.SoftwareUpgrade,
+            taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+
+    // Rollback eligibility here is gated by the upgrade path (isSoftwareRollbackAllowed), so an
+    // ineligible universe fails fast with a clear error and no rollback task is submitted.
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
+    assertTrue(ex.getMessage().contains("Cannot rollback software upgrade"));
+    verify(mockCommissioner, times(0)).submit(eq(TaskType.RollbackUpgrade), any());
+  }
+
+  @Test
+  public void testRollbackEditUniverseDisabledByRuntimeFlag() {
+    // With yb.task.allow_edit_universe_rollback off (default), edit-universe rollback is rejected.
+    universe = ModelFactory.createUniverse(customer.getId());
+    JsonNode taskParams = editUniverseTaskParams(universe);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.EditUniverse, CustomerTask.TaskType.Update, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
+    assertTrue(ex.getMessage().contains("not enabled"));
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testRollbackEditUniverseSubmitsRollbackEditUniverseWhenEnabled() {
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_edit_universe_rollback", "true");
+    universe = ModelFactory.createUniverse(customer.getId());
+    JsonNode taskParams = editUniverseTaskParams(universe);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.EditUniverse, CustomerTask.TaskType.Update, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    UUID rollbackTaskUUID = UUID.randomUUID();
+    persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.RollbackEditUniverse);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.RollbackEditUniverse), any()))
+        .thenReturn(rollbackTaskUUID);
+
+    CustomerTask rollbackTask =
+        taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.RollbackEditUniverse), paramsCaptor.capture());
+    assertNull(paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(CustomerTask.TaskType.RollbackEditUniverse, rollbackTask.getType());
+    assertEquals(rollbackTaskUUID, rollbackTask.getTaskUUID());
+  }
+
+  @Test
+  public void testRollbackEditKubernetesUniverseNotYetSupported() {
+    // K8s edit is not bound in TaskRollbackModule until RollbackEditKubernetesUniverse lands.
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_edit_universe_rollback", "true");
+    universe = createKubernetesUniverse("k8s-edit-" + UUID.randomUUID());
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe,
+            TaskType.EditKubernetesUniverse,
+            CustomerTask.TaskType.Update,
+            Json.newObject());
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(Json.newObject());
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
+    assertTrue(ex.getMessage().contains("not implemented"));
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testTaskRollbackComputerRegistryBindings() {
+    Injector guiceInjector = app.injector().instanceOf(Injector.class);
+    Map<TaskType, TaskRollbackComputer> computers =
+        guiceInjector.getInstance(
+            Key.get(new TypeLiteral<Map<TaskType, TaskRollbackComputer>>() {}));
+    assertNotNull(computers.get(TaskType.SwitchoverDrConfig));
+    assertNotNull(computers.get(TaskType.SoftwareUpgradeYB));
+    assertNotNull(computers.get(TaskType.SoftwareKubernetesUpgradeYB));
+    assertNotNull(computers.get(TaskType.EditUniverse));
+    assertNull(computers.get(TaskType.EditKubernetesUniverse));
+    assertNull(computers.get(TaskType.CreateUniverse));
+  }
+
+  @Test
+  public void testRollbackUnregisteredTaskTypeNotImplemented() {
+    // Force eligibility for a TaskType with no TaskRollbackComputer binding.
+    universe = ModelFactory.createUniverse(customer.getId());
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.CreateUniverse, CustomerTask.TaskType.Create, Json.newObject());
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(Json.newObject());
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
+    assertTrue(ex.getMessage().contains("not implemented"));
+    verify(mockCommissioner, times(0)).submit(any(), any());
   }
 }

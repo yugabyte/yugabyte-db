@@ -92,14 +92,6 @@ export function sanitizeClusters(clusters: ClusterSpec[] | undefined): ClusterSp
   return (clusters ?? []).map((cluster) => sanitizeClusterForPricing(cluster));
 }
 
-function replaceClusterByUuid(
-  clusters: ClusterSpec[],
-  clusterUuid: string,
-  updater: (cluster: ClusterSpec) => ClusterSpec
-): ClusterSpec[] {
-  return clusters.map((cluster) => (cluster.uuid === clusterUuid ? updater(cluster) : cluster));
-}
-
 function buildPricingSpecFromClusters(
   universeData: Universe,
   clusters: ClusterSpec[]
@@ -141,12 +133,13 @@ export function getReadReplicaPricingFingerprint(
 
 /**
  * Builds a create-time universe spec for POST /fetch-universe-resources so pricing
- * reflects the current universe plus the read-replica cluster being added.
+ * reflects only the read-replica cluster (primary cluster is not included).
  *
+ * Stock fetch-universe-resources always configures ClusterType.PRIMARY first, so the
+ * RR cluster is sent as PRIMARY for that API only — sizing/placement remain the RR's.
  */
 function clusterSpecFromAddPayload(
   add: ClusterAddReqBody,
-  primary: ClusterSpec | undefined,
   proposedAsyncClusterUuid: string,
   primaryProviderSpec: NonNullable<ClusterSpec['provider_spec']>
 ): ClusterSpec {
@@ -161,10 +154,14 @@ function clusterSpecFromAddPayload(
 
   return sanitizeClusterForPricing({
     uuid: proposedAsyncClusterUuid,
-    cluster_type: ClusterSpecClusterType.ASYNC,
+    cluster_type: ClusterSpecClusterType.PRIMARY,
     num_nodes: add.num_nodes,
     replication_factor: add.num_nodes,
-    node_spec: add.node_spec,
+    node_spec: {
+      ...add.node_spec,
+      // RR has no masters; dedicated would inflate fetch-universe-resources node counts.
+      dedicated_nodes: false
+    },
     provider_spec,
     ...(placement_spec ? { placement_spec } : {}),
     ...(add.partitions_spec ? { partitions_spec: add.partitions_spec } : {}),
@@ -173,14 +170,36 @@ function clusterSpecFromAddPayload(
   });
 }
 
-/** Current universe spec only (no proposed read replica) — for primary-row pricing. */
+/** Price RR as a standalone PRIMARY cluster for fetch-universe-resources. */
+function asStandalonePrimaryForPricing(
+  rrCluster: ClusterSpec,
+  pricingUuid: string
+): ClusterSpec {
+  return sanitizeClusterForPricing({
+    ...rrCluster,
+    uuid: pricingUuid || rrCluster.uuid,
+    cluster_type: ClusterSpecClusterType.PRIMARY,
+    node_spec: {
+      ...(rrCluster.node_spec ?? {}),
+      dedicated_nodes: false
+    }
+  });
+}
+
+/** Current universe primary cluster only — for primary-row pricing. */
 export function buildUniverseSpecCurrentStatePricing(
   universeData: Universe | undefined
 ): UniverseCreateReqBody | undefined {
   if (!universeData?.spec || !universeData.info?.arch) {
     return undefined;
   }
-  return buildPricingSpecFromClusters(universeData, sanitizeClusters(universeData.spec.clusters));
+  const primaryOnly = sanitizeClusters(universeData.spec.clusters).filter(
+    (cluster) => cluster.cluster_type === ClusterSpecClusterType.PRIMARY
+  );
+  if (!primaryOnly.length) {
+    return undefined;
+  }
+  return buildPricingSpecFromClusters(universeData, primaryOnly);
 }
 
 export function buildUniverseSpecForReadReplicaPricing(
@@ -208,33 +227,36 @@ export function buildUniverseSpecForReadReplicaPricing(
     } catch {
       return undefined;
     }
-    const existingClusters = sanitizeClusters(universeData.spec.clusters);
-    const updatedClusters = replaceClusterByUuid(
-      existingClusters,
-      existingReadReplica.uuid,
-      (cluster) => {
-      const mergedProviderSpec = {
-        ...(cluster.provider_spec ?? {}),
-        ...(editSpec.provider_spec ?? {})
-      };
-      const placementFromEditPartitions =
-        editSpec.partitions_spec?.find((p) => p.default_partition) ??
-        editSpec.partitions_spec?.[0];
-      const mirroredPlacement =
-        placementFromEditPartitions?.placement ?? editSpec.placement_spec;
-
-      return sanitizeClusterForPricing({
-        ...cluster,
-        ...(editSpec.num_nodes !== undefined ? { num_nodes: editSpec.num_nodes } : {}),
-        ...(editSpec.node_spec ? { node_spec: editSpec.node_spec } : {}),
-        ...(editSpec.partitions_spec ? { partitions_spec: editSpec.partitions_spec } : {}),
-        ...(mirroredPlacement ? { placement_spec: mirroredPlacement } : {}),
-        provider_spec: mergedProviderSpec
-      });
-      }
+    const existingAsync = sanitizeClusters(universeData.spec.clusters).find(
+      (cluster) => cluster.uuid === existingReadReplica.uuid
     );
+    if (!existingAsync) {
+      return undefined;
+    }
+    const mergedProviderSpec = {
+      ...(existingAsync.provider_spec ?? {}),
+      ...(editSpec.provider_spec ?? {})
+    };
+    const placementFromEditPartitions =
+      editSpec.partitions_spec?.find((p) => p.default_partition) ?? editSpec.partitions_spec?.[0];
+    const mirroredPlacement =
+      placementFromEditPartitions?.placement ?? editSpec.placement_spec;
 
-    return buildPricingSpecFromClusters(universeData, updatedClusters);
+    const updatedAsync = sanitizeClusterForPricing({
+      ...existingAsync,
+      ...(editSpec.num_nodes !== undefined ? { num_nodes: editSpec.num_nodes } : {}),
+      ...(editSpec.node_spec ? { node_spec: editSpec.node_spec } : {}),
+      ...(editSpec.partitions_spec ? { partitions_spec: editSpec.partitions_spec } : {}),
+      ...(mirroredPlacement ? { placement_spec: mirroredPlacement } : {}),
+      provider_spec: mergedProviderSpec
+    });
+
+    return buildPricingSpecFromClusters(universeData, [
+      asStandalonePrimaryForPricing(
+        updatedAsync,
+        proposedAsyncClusterUuid || existingReadReplica.uuid
+      )
+    ]);
   }
 
   let add: ClusterAddReqBody;
@@ -244,13 +266,14 @@ export function buildUniverseSpecForReadReplicaPricing(
     return undefined;
   }
 
+  const pricingUuid =
+    proposedAsyncClusterUuid || '00000000-0000-4000-8000-000000000001';
+
   const newAsyncCluster = clusterSpecFromAddPayload(
     add,
-    primary,
-    proposedAsyncClusterUuid,
+    pricingUuid,
     primaryProviderSpec
   );
-  const existingClusters = sanitizeClusters(universeData.spec.clusters);
 
-  return buildPricingSpecFromClusters(universeData, [...existingClusters, newAsyncCluster]);
+  return buildPricingSpecFromClusters(universeData, [newAsyncCluster]);
 }

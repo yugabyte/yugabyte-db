@@ -15,6 +15,7 @@
 
 #include <string>
 
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
 
 #include "yb/docdb/docdb_fwd.h"

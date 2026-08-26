@@ -20,6 +20,8 @@
 
 #include "yb/rocksdb/db/dbformat.h"
 
+#include "yb/util/status_format.h"
+
 using namespace std::literals;
 
 namespace yb::tablet {

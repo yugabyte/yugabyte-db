@@ -97,7 +97,7 @@ void ChangeMetadataOperation::SetIndexes(const RepeatedPtrField<IndexInfoPB>& in
 
 std::string ChangeMetadataOperation::ToString() const {
   return Format("ChangeMetadataOperation { hybrid_time: $0 schema: $1 request: $2 }",
-                hybrid_time_even_if_unset(), schema_, request());
+                hybrid_time_even_if_unset(), schema(), request());
 }
 
 Status ChangeMetadataOperation::Prepare(IsLeaderSide is_leader_side) {
@@ -256,7 +256,8 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
       RETURN_NOT_OK(tablet->MarkBackfillDone(
-          id, request()->backfill_done_table_id().ToBuffer()));
+          id, request()->backfill_done_table_id().ToBuffer(),
+          request()->birth_time()));
       break;
     case MetadataChange::ADD_MULTIPLE_TABLES:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "

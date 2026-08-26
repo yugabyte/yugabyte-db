@@ -293,13 +293,23 @@ export const QueryInfoSidePanel = ({
                 <TabPanel value={QueryInfoTab.RESPONSE_TIME}>
                   <div>
                     <Box display="flex" flexDirection="column" gridGap="24px" marginBottom={2}>
-                      <Box>
-                        <Typography variant="body1" className={classes.totalCountMetric}>
-                          {t('field.calls')}
-                        </Typography>
-                        <Typography variant="body2" className={classes.totalCountMetric}>
-                          {formatQueryData('calls')}
-                        </Typography>
+                      <Box display="flex" gridGap="16px">
+                        <Box>
+                          <Typography variant="body1" className={classes.totalCountMetric}>
+                            {t('field.calls')}
+                          </Typography>
+                          <Typography variant="body2" className={classes.totalCountMetric}>
+                            {formatQueryData('calls')}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="body1" className={classes.totalCountMetric}>
+                            {translateWithFallback('field.total_time', 'total_time')}
+                          </Typography>
+                          <Typography variant="body2" className={classes.totalCountMetric}>
+                            {formatQueryData('total_time')}
+                          </Typography>
+                        </Box>
                       </Box>
                       <Box display="flex" gridGap="16px">
                         {(['max_time', 'min_time', 'mean_time'] as const).map(

@@ -259,11 +259,11 @@ Status MiniCluster::StartAsync(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease_expiry_check) = false;
 
   // This dictates the RF of newly created tables.
-  FLAGS_replication_factor = options_.num_tablet_servers >= 3 ? 3 : 1;
-  FLAGS_memstore_size_mb = 16;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = options_.num_tablet_servers >= 3 ? 3 : 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_memstore_size_mb) = 16;
   // Default master args to make sure we don't wait to trigger new LB tasks upon master leader
   // failover.
-  FLAGS_load_balancer_initial_delay_secs = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 0;
 
   // Unlike real deployments, minicluster tests have multiple master/tserver in one process. This
   // results in multiple reserved address segments needed in one process, which is likely enough to
@@ -703,7 +703,10 @@ void MiniCluster::Shutdown() {
   }
   yb_controller_servers_.clear();
 
-  messenger_->Shutdown();
+  // The messenger is created last in Start, so it is missing when startup failed before that.
+  if (messenger_) {
+    messenger_->Shutdown();
+  }
 
   running_ = false;
 }
@@ -1709,7 +1712,7 @@ Result<size_t> ServerWithLeaders(MiniCluster* cluster) {
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t bytes_per_sec) {
   LOG(INFO) << "Setting FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec to: " << bytes_per_sec
             << " and updating compact/flush rate in existing tablets";
-  FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec = bytes_per_sec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = bytes_per_sec;
   for (auto& tablet_peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
     auto tablet_result = tablet_peer->shared_tablet();
     if (!tablet_result.ok()) {
@@ -1921,15 +1924,8 @@ std::vector<std::string> DumpDocDBToStrings(MiniCluster* cluster, ListPeersFilte
 void DisableFlushOnShutdown(MiniCluster& cluster, bool disable) {
   for (const auto& peer : ListTabletPeers(&cluster, ListPeersFilter::kAll)) {
     auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet) {
-      continue;
-    }
-    auto doc_db = tablet->doc_db();
-    if (doc_db.regular) {
-      doc_db.regular->SetDisableFlushOnShutdown(disable);
-    }
-    if (doc_db.intents) {
-      doc_db.intents->SetDisableFlushOnShutdown(disable);
+    if (tablet) {
+      tablet->TEST_SetDisableFlushOnShutdown(disable);
     }
   }
 }

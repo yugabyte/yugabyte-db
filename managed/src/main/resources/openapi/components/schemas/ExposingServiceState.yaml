@@ -1,0 +1,12 @@
+title: ExposingServiceState
+description: |
+  Whether to create a load balancer service for this cluster.
+  Allowed values are:
+    - NONE: Not explicitly set
+    - EXPOSED: Create a load balancer service
+    - UNEXPOSED: Do not create a load balancer service
+type: string
+enum:
+  - NONE
+  - EXPOSED
+  - UNEXPOSED

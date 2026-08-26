@@ -175,7 +175,11 @@ func FileLogger() AppLogger {
 		}
 
 		setupGrpcLogger(config)
-		logFilepath := filepath.Join(LogsDir(), config.String(NodeAgentLoggerKey))
+		logFileName := config.String(NodeAgentLoggerKey)
+		if logFileName == "" {
+			logFileName = NodeAgentDefaultLog
+		}
+		logFilepath := filepath.Join(LogsDir(), logFileName)
 		fileLogger = createLogger(
 			logFilepath,
 			config.Int(NodeAgentLogMaxMbKey),

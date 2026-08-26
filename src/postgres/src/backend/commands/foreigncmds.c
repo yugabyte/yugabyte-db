@@ -1489,6 +1489,18 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid)
 	referenced.objectSubId = 0;
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 
+	/* YB: Add view dependency on the foreign table */
+	Oid			yb_base_relid = YbGetFederatedForeignTableBackingRelid(relid);
+
+	if (OidIsValid(yb_base_relid))
+	{
+		ObjectAddress referenced_view;
+		referenced_view.classId = RelationRelationId;
+		referenced_view.objectId = yb_base_relid;
+		referenced_view.objectSubId = 0;
+		recordDependencyOn(&myself, &referenced_view, DEPENDENCY_NORMAL);
+	}
+
 	table_close(ftrel, RowExclusiveLock);
 }
 

@@ -136,10 +136,10 @@ Implicit publication is controlled by the following flags. Set them on both YB-M
 
 | Flag | Details |
 | :--- | :--- |
-| [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) | When set to `true` (default), modifications to a publication are reflected implicitly, providing PostgreSQL-like semantics for dynamic tables. When set to `false`, the publication's tables list is [periodically refreshed](#periodoc-publication). |
+| [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) | When set to `true` (default), modifications to a publication are reflected implicitly, providing PostgreSQL-like semantics for dynamic tables. When set to `false`, the publication's tables list is [periodically refreshed](#periodic-publication). |
 | cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
 
-### Periodoc publication
+### Periodic publication
 
 If [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`, YugabyteDB does not apply publication changes immediately. (This is also the behavior in versions earlier than v2026.1.) Instead, the publication's tables list is periodically refreshed, and changes (if any) are applied. This behavior differs from PostgreSQL.
 
@@ -305,8 +305,6 @@ In a bi-directional replication setup where two databases replicate changes to e
 
 This ensures that changes only flow in one direction.
 
-Note that, currently, you must create the replication origin before you start streaming changes from a replication slot. (Tracked in issue {{<issue 30068>}}.)
-
 The YugabyteDB implementation of replication origins mimics that of PostgreSQL; refer to [Replication Progress Tracking](https://www.postgresql.org/docs/15/replication-origins.html) in the PostgreSQL documentation.
 
 ### Properties
@@ -369,7 +367,3 @@ The PostgreSQL logical replication protocol streams transactions with origin inf
 - Implement different processing logic based on the transaction origin
 
 When a session has a replication origin configured using `pg_replication_origin_session_setup()`, the origin information is included in the WAL records and streamed as part of the logical replication protocol. This enables output plugins and replication clients to detect the origin of events and avoid loops in bi-directional replication setups.
-
-### Limitations
-
-- Currently, you must create the replication origin before you start streaming changes from a replication slot. Tracked in issue {{<issue 30068>}}.

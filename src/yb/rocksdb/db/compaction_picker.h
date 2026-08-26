@@ -309,6 +309,7 @@ class UniversalCompactionPicker : public CompactionPicker {
   // Pick a path ID to place a newly generated file, with its estimated file
   // size.
   static uint32_t GetPathId(const ImmutableCFOptions& ioptions,
+                            const MutableCFOptions& mutable_cf_options,
                             uint64_t file_size);
 };
 

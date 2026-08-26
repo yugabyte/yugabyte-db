@@ -56,8 +56,9 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_cost.h"
 #include "pg_yb_utils.h"
+#include "utils/catcache.h"
 
 /* GUC parameter */
 int			constraint_exclusion = CONSTRAINT_EXCLUSION_PARTITION;

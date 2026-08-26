@@ -720,15 +720,8 @@ public class LocalNodeManager {
           args.get("--server_cert_path_client_to_server"),
           args.get("--server_key_path_client_to_server"));
     }
-    if (args.containsKey("--client_cert_path")) {
-      // These certs will be used for testing the connectivity of `yugabyte` client with postgres.
-      String certsForYSQLClientDir = homeDir + "/.yugabytedb";
-      copyCerts(
-          certsForYSQLClientDir,
-          args.get("--client_cert_path"),
-          args.get("--client_key_path"),
-          args.get("--root_cert_path_client_to_server"));
-    }
+    // Do not deploy client certs to ~/.yugabytedb on DB nodes. Leftovers are cleaned
+    // only during ROTATE_CERTS via cleanup_client_certs on remote nodes.
   }
 
   private void copyCerts(String baseDir, String... certs) throws IOException {

@@ -1,4 +1,4 @@
-import { FC } from 'react';
+import { FC, useEffect } from 'react';
 import clsx from 'clsx';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useForm, FormProvider } from 'react-hook-form';
@@ -71,7 +71,17 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
-  const { control, watch, handleSubmit } = formMethods;
+  const { control, watch, handleSubmit, reset } = formMethods;
+
+  // Modal stays mounted in SecurityTab; defaultValues only apply on first mount.
+  useEffect(() => {
+    if (!open) return;
+    reset({
+      encryptionAtRestEnabled,
+      kmsConfigUUID: kmsConfigUUID ?? '',
+      rotateUniverseKey: false
+    });
+  }, [open, encryptionAtRestEnabled, kmsConfigUUID, reset]);
 
   //watch field values
   const earToggleEnabled = watch(EAR_FIELD_NAME);
@@ -99,6 +109,7 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     {
       onSuccess: () => {
         void queryClient.invalidateQueries(QUERY_KEY.getKMSHistory);
+        void queryClient.invalidateQueries([QUERY_KEY.fetchUniverse, universeId]);
 
         if (earToggleEnabled) {
           //enabling kms for the first time

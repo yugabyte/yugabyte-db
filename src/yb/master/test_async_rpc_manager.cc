@@ -13,6 +13,8 @@
 
 #include "yb/master/test_async_rpc_manager.h"
 
+#include "yb/util/status_format.h"
+
 namespace yb {
 namespace master {
 

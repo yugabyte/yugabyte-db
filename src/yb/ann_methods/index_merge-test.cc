@@ -30,7 +30,7 @@ using vector_index::DistanceKind;
 using vector_index::FactoryMode;
 using vector_index::HNSWOptions;
 using vector_index::VectorId;
-using vector_index::VectorIndexFactory;
+using vector_index::VectorIndexTraitsPtr;
 using vector_index::VectorIndexIfPtr;
 using vector_index::VectorIndexReaderIf;
 
@@ -62,9 +62,11 @@ class IndexMergeTest : public YBTest {
   };
 
   IndexData CreateAndFillIndex(
-      VectorIndexFactory<FloatVector, float> index_factory, size_t first_id, size_t num_entries) {
-    auto index = index_factory(vector_index::FactoryMode::kCreate);
-    CHECK_OK(index->Reserve(num_entries, 1, 1));
+      const VectorIndexTraitsPtr<FloatVector, float>& index_traits, size_t first_id,
+      size_t num_entries) {
+    auto index = index_traits->Create(vector_index::FactoryMode::kCreate);
+    CHECK_OK(index->Reserve(
+        num_entries, 1, 1, rocksdb::Cache::ReservationMode::kAlways));
 
     std::vector<VectorId> ids;
     ids.reserve(num_entries);
@@ -86,14 +88,14 @@ class IndexMergeTest : public YBTest {
     ASSERT_TRUE(expected_ids.empty()); // Verify all expected IDs were found.
   }
 
-  void TestMergeIndices(VectorIndexFactory<FloatVector, float> index_factory) {
+  void TestMergeIndices(const VectorIndexTraitsPtr<FloatVector, float>& index_traits) {
       // Generate indexes for the input set.
     const auto half_size = input_vectors_.size() / 2;
-    auto data_a = CreateAndFillIndex(index_factory, 0, half_size);
-    auto data_b = CreateAndFillIndex(index_factory, half_size, half_size);
+    auto data_a = CreateAndFillIndex(index_traits, 0, half_size);
+    auto data_b = CreateAndFillIndex(index_traits, half_size, half_size);
 
     VectorIndexIfPtr<FloatVector, float> merged_index =
-      ASSERT_RESULT(Merge(index_factory, {data_a.index, data_b.index}));
+      ASSERT_RESULT(Merge(index_traits, {data_a.index, data_b.index}));
 
     // Check that the merged index contains all entries.
     auto result_a = ASSERT_RESULT(merged_index->Search(
@@ -115,16 +117,17 @@ class IndexMergeTest : public YBTest {
     VerifyExpectedVertexIds(all_results, MergeValues(data_a.vector_ids, data_b.vector_ids));
   }
 
-  void TestMergeWithEmptyIndex(VectorIndexFactory<FloatVector, float> index_factory) {
+  void TestMergeWithEmptyIndex(const VectorIndexTraitsPtr<FloatVector, float>& index_traits) {
     // Create an empty index with the same options.
-    VectorIndexIfPtr<FloatVector, float> empty_index = index_factory(FactoryMode::kCreate);
-    CHECK_OK(empty_index->Reserve(10, 0, 0));
+    VectorIndexIfPtr<FloatVector, float> empty_index = index_traits->Create(FactoryMode::kCreate);
+    CHECK_OK(empty_index->Reserve(
+        10, 0, 0, rocksdb::Cache::ReservationMode::kAlways));
 
     // Generate indexes for the input set.
-    auto data_a = CreateAndFillIndex(index_factory, 0, input_vectors_.size() / 2);
+    auto data_a = CreateAndFillIndex(index_traits, 0, input_vectors_.size() / 2);
 
     // Merge empty_index with data_a.
-    auto merged_index = ASSERT_RESULT(Merge(index_factory, {data_a.index, empty_index}));
+    auto merged_index = ASSERT_RESULT(Merge(index_traits, {data_a.index, empty_index}));
 
     // Check that the merged index contains only the entries from data_a.
     auto all_results = ASSERT_RESULT(merged_index->Search(
@@ -135,8 +138,8 @@ class IndexMergeTest : public YBTest {
     VerifyExpectedVertexIds(all_results, MergeValues(data_a.vector_ids));
   }
 
-  void TestGetVector(VectorIndexFactory<FloatVector, float> index_factory) {
-    auto data = CreateAndFillIndex(index_factory, 0, input_vectors_.size());
+  void TestGetVector(const VectorIndexTraitsPtr<FloatVector, float>& index_traits) {
+    auto data = CreateAndFillIndex(index_traits, 0, input_vectors_.size());
     for (size_t i = 0; i < input_vectors_.size(); ++i) {
       auto vector = ASSERT_RESULT(data.index->GetVector(data.vector_ids[i]));
       ASSERT_EQ(vector, input_vectors_[i]);
@@ -150,14 +153,12 @@ class IndexMergeTest : public YBTest {
           .ef_construction = 20,
           .distance_kind = DistanceKind::kL2Squared};
 
-    hnswlib_index_factory_ = [hnsw_options](FactoryMode) -> VectorIndexIfPtr<FloatVector, float> {
-      return SimplifiedHnswlibIndexFactory<FloatVector, float>::Create(
-          FactoryMode::kCreate, hnsw_options);
-    };
-    usearch_index_factory_ = [hnsw_options](FactoryMode) -> VectorIndexIfPtr<FloatVector, float> {
-      return SimplifiedUsearchIndexFactory<FloatVector, float>::Create(
-          FactoryMode::kCreate, hnsw_options);
-    };
+    hnswlib_index_traits_ = CHECK_RESULT((CreateHnswlibIndexTraits<FloatVector, float>(
+        /* block_cache= */ nullptr, hnsw_options, HnswBackend::HNSWLIB,
+        /* mem_tracker= */ nullptr)));
+    usearch_index_traits_ = CHECK_RESULT((CreateUsearchIndexTraits<FloatVector, float>(
+        /* block_cache= */ nullptr, hnsw_options, HnswBackend::USEARCH,
+        /* mem_tracker= */ nullptr)));
   }
 
   const std::vector<std::vector<float>> input_vectors_ = {
@@ -167,28 +168,28 @@ class IndexMergeTest : public YBTest {
     {1.0f, 1.1f, 1.2f}
   };
 
-  VectorIndexFactory<FloatVector, float> hnswlib_index_factory_, usearch_index_factory_;
+  VectorIndexTraitsPtr<FloatVector, float> hnswlib_index_traits_, usearch_index_traits_;
 };
 
 TEST_F(IndexMergeTest, TestMergeHnswlibIndices) {
-  TestMergeIndices(hnswlib_index_factory_);
+  TestMergeIndices(hnswlib_index_traits_);
 }
 
 TEST_F(IndexMergeTest, TestMergeUsearchIndices) {
-  TestMergeIndices(usearch_index_factory_);
+  TestMergeIndices(usearch_index_traits_);
 }
 
 // Test case to verify merging an empty index with a non-empty one.
 TEST_F(IndexMergeTest, TestMergeWithEmptyHnswlibIndex) {
-  TestMergeWithEmptyIndex(hnswlib_index_factory_);
+  TestMergeWithEmptyIndex(hnswlib_index_traits_);
 }
 
 TEST_F(IndexMergeTest, TestMergeUsearchWithEmptyUsearchIndex) {
-  TestMergeWithEmptyIndex(usearch_index_factory_);
+  TestMergeWithEmptyIndex(usearch_index_traits_);
 }
 
 TEST_F(IndexMergeTest, TestGetVectorUsearchIndex) {
-  TestGetVector(usearch_index_factory_);
+  TestGetVector(usearch_index_traits_);
 }
 
 }  // namespace yb::ann_methods

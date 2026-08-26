@@ -4,6 +4,8 @@ headerTitle: YSQL major upgrade
 linkTitle: YSQL major upgrade
 description: Upgrade YugabyteDB to PostgreSQL 15 using yugabyted
 headcontent: Upgrade YugabyteDB to a version that supports PG 15
+tags:
+  feature: early-access
 menu:
   v2025.1:
     identifier: ysql-major-upgrade-1

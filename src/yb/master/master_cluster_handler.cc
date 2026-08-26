@@ -21,7 +21,9 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 DECLARE_bool(ysql_yb_enable_listen_notify);

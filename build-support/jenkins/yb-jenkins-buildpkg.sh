@@ -42,11 +42,8 @@ set_common_test_paths
 
 # -------------------------------------------------------------------------------------------------
 # Now that all C++ and Java code has been built, test creating a package.
-#
-# Skip this in ASAN/TSAN, as there are still unresolved issues with dynamic libraries there
-# (conflicting versions of the same library coming from thirdparty vs. Linuxbrew) as of 12/04/2017.
 
-if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" ]] && ! is_sanitizer ; then
+if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" ]] ; then
   heading "Creating a distribution package"
 
   package_path_file="${BUILD_ROOT}/package_path.txt"

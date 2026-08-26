@@ -30,6 +30,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/source_location.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/threadpool.h"
 

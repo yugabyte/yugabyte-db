@@ -102,6 +102,8 @@ canonicalized
 captcha
 CentOS
 Certbot
+cgroup
+cgroups
 chai
 changeset
 changesets
@@ -217,6 +219,7 @@ Elasticsearch
 enablement
 enqueued
 enqueues
+Entra
 enum
 enums
 ETag
@@ -240,6 +243,7 @@ firewalled
 firewalling
 fixup
 Flawfinder
+Flink
 Flowdock
 Fluentd
 Flycheck
@@ -426,6 +430,7 @@ Monokai
 monorepo
 monorepos
 multiline
+multitenancy
 mutex
 nameserver
 nameservers
@@ -474,6 +479,7 @@ PgBouncer
 pgLoader
 pgvector
 pg_hint_plan
+pg_partman
 pg_stat_activity
 pg_stat_statements
 pg_stats
@@ -548,6 +554,10 @@ reauthenticate
 reauthenticated
 reauthenticates
 reauthenticating
+rebalance
+rebalanced
+rebalancer
+rebalances
 rebalancing
 rebar
 rebase
@@ -732,6 +742,7 @@ tablespace
 tablespaces
 tanuki
 tcpdump
+Tectia
 templated
 Thanos
 Thoughtbot

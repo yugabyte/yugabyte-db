@@ -78,6 +78,14 @@ Automatic master failover works as follows:
 
 ## Replace a live or unreachable node
 
+Before replacing a node for an on-premises universe:
+
+- Ensure the [on-premises provider](../../configure-yugabyte-platform/on-premises-provider/) has a provisioned node available in its free pool.
+
+    To view available on-premises nodes, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
+
+- If necessary, [provision a new node](../../prepare/server-nodes-software/software-on-prem/) for the provider.
+
 To replace a live node for extended maintenance or replace an unhealthy node, do the following:
 
 1. Navigate to **Universes**, select your universe, and open the **Nodes** tab.
@@ -85,36 +93,39 @@ To replace a live node for extended maintenance or replace an unhealthy node, do
 
     ![Replace Node Actions](/images/ee/replace-node.png)
 
-1. Click OK to confirm.
+1. Click **OK** to confirm.
 
-YugabyteDB Anywhere (YBA) starts the node replacement process, and you can view the progress on the **Tasks** tab. As part of the node replacement process, all data (tablets) on the existing node will be moved to other nodes to ensure that the desired replication factor is maintained throughout the operation.
+YugabyteDB Anywhere starts the node replacement process, and you can view the progress on the **Tasks** tab. As part of the node replacement process, all data (tablets) on the existing node will be moved to other nodes to ensure that the desired replication factor is maintained throughout the operation.
 
-For cloud providers (AWS, Azure, or GCP), YBA returns the existing node back to the provider and provisions a new replacement node from the cloud provider. For on-premises universes, the existing node is returned to the [on-premises provider node pool](../../configure-yugabyte-platform/on-premises-nodes/) and a new replacement node is selected from the free pool.
+For cloud providers (AWS, Azure, or GCP), YugabyteDB Anywhere returns the existing node back to the provider and provisions a new replacement node from the cloud provider.
 
-For on-premises universes, clean up of existing data directories and running processes may fail if the node is unhealthy. In such cases, YBA sets the state to Decommissioned. This prevents the node from being added to a new universe.
+For on-premises universes, the existing node is returned to the [on-premises provider node pool](../../configure-yugabyte-platform/on-premises-nodes/) and a new replacement node is selected from the free pool.
+
+For on-premises universes, clean up of existing data directories and running processes may fail if the node is unhealthy. In such cases, YugabyteDB Anywhere sets the state to _Decommissioned_. This prevents the node from being added to a new universe.
 
 ### Check on-premises node state
 
-On-premises nodes have three states: In use, Free, and Decommissioned as described in the following illustration.
+On-premises nodes have three states: _In use_, _Free_, and _Decommissioned_ as described in the following illustration.
 
 ![Decommissioned node workflow](/images/ee/on-prem-replace-workflow.png)
+
 To check the state of an on-premises node, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
 ### Recommission a decommissioned on-premises node
 
-You can return a Decommissioned node to the on-premises provider Free pool after it becomes reachable and is cleaned up.
+You can return a _Decommissioned_ node to the on-premises provider Free pool after it becomes reachable and is cleaned up.
 
 Perform the following steps to recommission a node:
 
 1. Navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
-1. Under Instances, for the decommissioned node, click **Actions > Recommission Node**. YBA will now re-attempt to clean up existing data directories and processes on this node.
+1. Under Instances, for the decommissioned node, click **Actions > Recommission Node**. YugabyteDB Anywhere will now re-attempt to clean up existing data directories and processes on this node.
 
     ![Recommission Node](/images/ee/recommission-node.png)
 
-1. Click OK to confirm.
+1. Click **OK** to confirm.
 
-YugabyteDB Anywhere (YBA) starts the node recommissioning process, and you can view the progress on the **Tasks** tab.
+YugabyteDB Anywhere starts the node recommissioning process, and you can view the progress on the **Tasks** tab.
 
 ## Eliminate an unresponsive node
 

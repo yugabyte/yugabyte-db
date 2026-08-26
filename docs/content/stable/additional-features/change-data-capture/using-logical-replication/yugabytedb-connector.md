@@ -49,17 +49,22 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ## Connector compatibility
 
-The connector uses the following naming convention:
+Connector versions follow this scheme:
 
 ```output
-dz.<Debezium Release>.yb.<YugabyteDB Version>.<Patch>
+dz.<debezium-base>.yb.<yugabytedb-series>.<connector-patch>[.SNAPSHOT.<n>]
 ```
 
-* *Debezium Release*: Debezium release the connector is based on
-* *YugabyteDB Version*: Version of YugabyteDB the connector is built for
-* *Patch*:patch release version, if applicable
+| Component | Example | Description |
+| :---- | :------ | :------ |
+| `dz.<debezium-base>` | `dz.2.5.2` | Upstream Debezium release the connector is built on. |
+| `yb.<yugabytedb-series>` | `yb.2025.2` | YugabyteDB release series the build is aligned to. |
+| `<connector-patch>` | `.3` | Connector patch in that series. Higher is more recent. |
+| `.SNAPSHOT.<n>` | `.SNAPSHOT.1` | Pre-release. Don't use in production. |
 
 The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not newer releases* (that is, forward compatibility is not supported). For example, connector release `dz.2.5.2.yb.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
+
+Because connectors are backward compatible with YugabyteDB releases, you don't need to match the connector to the database release; use the latest stable connector release regardless of the YugabyteDB version you are running. If a connector release for a particular YugabyteDB version is not available, use the latest released connector.
 
 ## How the connector works
 

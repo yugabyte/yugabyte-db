@@ -21,7 +21,7 @@ import com.yugabyte.yw.models.Universe;
 import java.util.Base64;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class RestoreUniverseKeys extends AbstractTaskBase {
@@ -64,7 +64,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     EncryptionKey activeKeyRef = null;
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       log.info("Running {}: hostPorts={}.", getName(), universe.getMasterAddresses());
 
       // Retrieve the universe key set (if one is set) to restore universe to original state

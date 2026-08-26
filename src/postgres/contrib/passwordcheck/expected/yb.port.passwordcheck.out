@@ -1,4 +1,4 @@
--- YB note: LOAD is not ported because The extension is loaded using cmd line flag.
+LOAD 'passwordcheck';
 CREATE USER regress_user1;
 -- YB Note: In passwordcheck_extra, the default length is 15. However in passwordcheck there was
 -- no check for max length. Increase max length to accomodate the tests in this file.

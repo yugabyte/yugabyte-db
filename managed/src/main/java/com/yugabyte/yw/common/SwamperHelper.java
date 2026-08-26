@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -293,16 +294,33 @@ public class SwamperHelper {
     if (universe.getUniverseDetails().otelCollectorEnabled) {
       ArrayNode otelTargets = Json.newArray();
       swamperFile = getSwamperFile(universe.getUniverseUUID(), TARGET_FILE_OTEL_PREFIX);
+      // On K8s the collector is a sidecar: always injected into yb-tserver pods, and injected into
+      // yb-master pods only when the chart was told to do so. Resolve that once per universe (it
+      // reads the export telemetry config) rather than per node, and only for K8s universes.
+      boolean otelOnK8sMasterPods =
+          Util.isKubernetesBasedUniverse(universe)
+              && OtelCollectorUtil.isOtelSidecarNeededOnK8sMasterPods(
+                  OtelCollectorUtil.getCurrentTelemetryConfig(universe));
       universe
           .getNodes()
           .forEach(
               (node) -> {
-                if (universe.getNodeDeploymentMode(node).equals(CloudType.kubernetes)) {
-                  // no otel collector on k8s pods yet
+                if (!processSwamperForNode(node)) {
+                  // Skip nodes that are not active (for example removed).
                   return;
                 }
-                if (!node.isTserver || !processSwamperForNode(node)) {
-                  // otel collector is only available on active TServers
+                if (!node.isMaster && !node.isTserver) {
+                  // The collector always lives alongside a DB process.
+                  return;
+                }
+                if (universe.getNodeDeploymentMode(node).equals(CloudType.kubernetes)
+                    && !node.isTserver
+                    && !otelOnK8sMasterPods) {
+                  // Master and TServer pods are modelled as separate nodes on K8s, so a
+                  // master-only node here means a yb-master pod, which only has a sidecar when
+                  // the chart was told to inject one. On VMs there is no such gating:
+                  // ManageOtelCollector runs on every master and tserver node, dedicated master
+                  // nodes included (that is where master log export reads yb-master glog from).
                   return;
                 }
                 otelTargets.add(getIndividualConfig(universe, TargetType.OTEL_EXPORT, node));

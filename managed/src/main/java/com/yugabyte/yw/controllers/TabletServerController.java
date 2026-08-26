@@ -32,7 +32,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.ServerInfo;
 import play.libs.ws.WSClient;
 import play.mvc.Result;
@@ -101,7 +101,7 @@ public class TabletServerController extends AuthenticatedController {
       tabletServersAPIResp = apiHelper.getRequest(masterLeaderUrl);
 
       if (tabletServersAPIResp != null && tabletServersAPIResp.size() > 0) {
-        try (YBClient client = ybService.getUniverseClient(universe)) {
+        try (YBClientApi client = ybService.getUniverseClient(universe)) {
           ListTabletServersResponse listTServerResp = client.listTabletServers();
           Iterator<Entry<String, JsonNode>> iter = tabletServersAPIResp.fields();
           while (iter.hasNext()) {

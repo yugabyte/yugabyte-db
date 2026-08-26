@@ -18,8 +18,10 @@
 #include "yb/util/env.h"
 #include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/date_time.h"
 
 using namespace std::literals;
 
@@ -105,6 +107,7 @@ void ProcessSupervisor::RunThread() {
       }
     }
 
+    bool start_failed = false;
     {
       UniqueLock lock(mtx_);
       if (state_ == YbSubProcessState::kPaused) {
@@ -122,8 +125,14 @@ void ProcessSupervisor::RunThread() {
       if (!start_status.ok()) {
         LOG(WARNING) << "Failed trying to start " << process_name
                      << " process: " << start_status << ", waiting a bit";
-        SleepFor(MonoDelta::FromSeconds(1));
+        start_failed = true;
       }
+    }
+    if (start_failed) {
+      // Back off outside the lock so that other threads are not blocked.
+      SleepFor(MonoDelta::FromSeconds(1));
+    } else {
+      cond_.notify_all();
     }
   }
   LOG(INFO) << "Supervisor thread for " << process_name << " exiting";
@@ -148,6 +157,7 @@ Status ProcessSupervisor::StartProcessUnlocked() {
 #endif
 
   process_wrapper_.swap(process_wrapper);
+  last_process_start_time_ = DateTime::TimestampNow();
   return Status::OK();
 }
 
@@ -175,6 +185,26 @@ Status ProcessSupervisor::Pause() {
   return StopProcessAndChangeState(YbSubProcessState::kPaused);
 }
 
+Status ProcessSupervisor::WaitForProcessStartAfterLastRestart(MonoDelta timeout) {
+  UniqueLock lock(mtx_);
+  // Note: last_restart_request_time_ is re-read on every wakeup, so a restart requested while
+  // we are waiting moves the goalpost to a start that is newer than that request.
+  cond_.wait_for(GetLockForCondition(lock), timeout.ToSteadyDuration(), [this]() REQUIRES(mtx_) {
+    return last_process_start_time_ > last_restart_request_time_ ||
+           state_ == YbSubProcessState::kStopping;
+  });
+  if (last_process_start_time_ > last_restart_request_time_) {
+    return Status::OK();
+  }
+  if (state_ == YbSubProcessState::kStopping) {
+    return STATUS_FORMAT(ShutdownInProgress, "$0 supervisor is stopping", GetProcessName());
+  }
+  return STATUS_FORMAT(
+      TimedOut,
+      "Timed out after $0 waiting for the $1 process to start after the last restart request at $2",
+      timeout, GetProcessName(), last_restart_request_time_.ToHumanReadableTime());
+}
+
 void ProcessSupervisor::Stop() {
   LOG(INFO) << "Stopping " << GetProcessName();
   {
@@ -188,7 +218,7 @@ void ProcessSupervisor::Stop() {
       return;
     }
   }
-  cond_.notify_one();
+  cond_.notify_all();
   auto start = CoarseMonoClock::now();
   for (;;) {
     if (thread_finished_latch_.WaitFor(10s)) {
@@ -218,12 +248,15 @@ Status ProcessSupervisor::StopProcessAndChangeState(YbSubProcessState new_state)
       return STATUS_FORMAT(
           IllegalState, "State must be either paused or running, state is $0", state_);
     }
+    if (new_state == YbSubProcessState::kRunning) {
+      last_restart_request_time_ = DateTime::TimestampNow();
+    }
     if (process_wrapper_) {
       process_wrapper_->Shutdown();
     }
     state_ = new_state;
   }
-  cond_.notify_one();
+  cond_.notify_all();
   return Status::OK();
 }
 

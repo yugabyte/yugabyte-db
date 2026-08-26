@@ -144,6 +144,56 @@ TEST(TestProcessSupervisor, StartAndRestart) {
   supervisor->Stop();
 }
 
+TEST(TestProcessSupervisor, WaitForProcessStartAfterLastRestart) {
+  auto supervisor = MakeTestSupervisor();
+  ASSERT_OK(supervisor->InitPaused());
+  // The supervisor is paused, so no process has been started yet: the wait should time out.
+  auto status = supervisor->WaitForProcessStartAfterLastRestart(MonoDelta::FromMilliseconds(200));
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+
+  // Wait from another thread, then trigger the first process start via Restart.
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&supervisor] {
+    ASSERT_OK(supervisor->WaitForProcessStartAfterLastRestart(MonoDelta::FromSeconds(10)));
+  });
+  ASSERT_OK(supervisor->Restart());
+  thread_holder.JoinAll();
+
+  // Once the requested process start has happened, the wait returns immediately.
+  ASSERT_OK(supervisor->WaitForProcessStartAfterLastRestart(MonoDelta::FromMilliseconds(1)));
+  supervisor->Stop();
+}
+
+TEST(TestProcessSupervisor, WaitForProcessStartAfterLastRestartNeedsFreshStart) {
+  FailStartProcessSupervisor supervisor;
+  ASSERT_OK(supervisor.Start());
+  auto first_proc = supervisor.WaitForProcessSpawn(1);
+  ASSERT_OK(first_proc->WaitForStart());
+  // The initial start satisfies the wait: no restart has been requested yet.
+  ASSERT_OK(supervisor.WaitForProcessStartAfterLastRestart(MonoDelta::FromSeconds(10)));
+
+  // Request a restart whose process starts keep failing. Even though the process was
+  // successfully started once before, the wait must not be satisfied by that old start.
+  supervisor.SetSucceedProcessStart(false);
+  ASSERT_OK(supervisor.Restart());
+  auto status = supervisor.WaitForProcessStartAfterLastRestart(MonoDelta::FromMilliseconds(200));
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+
+  // Once process starts succeed again, the supervisor thread's retry loop starts the process and
+  // the wait completes.
+  supervisor.SetSucceedProcessStart(true);
+  ASSERT_OK(supervisor.WaitForProcessStartAfterLastRestart(MonoDelta::FromSeconds(30)));
+  supervisor.Stop();
+}
+
+TEST(TestProcessSupervisor, WaitForProcessStartAfterLastRestartOnStoppedSupervisor) {
+  auto supervisor = MakeTestSupervisor();
+  ASSERT_OK(supervisor->InitPaused());
+  supervisor->Stop();
+  auto status = supervisor->WaitForProcessStartAfterLastRestart(MonoDelta::FromSeconds(10));
+  ASSERT_TRUE(status.IsShutdownInProgress()) << status;
+}
+
 TEST(TestProcessSupervisor, RestartOnUnStarted) {
   auto supervisor = MakeTestSupervisor();
   auto s = supervisor->Restart();

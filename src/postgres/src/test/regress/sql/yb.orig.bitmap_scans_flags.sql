@@ -20,25 +20,29 @@ CREATE INDEX ON tmp_test_disable(b ASC);
 \set P1 'test_disable'
 \set P2 'tmp_test_disable'
 \set Q1
-\set bitmap_hint_iter_Q2 :abs_srcdir '/yb_commands/bitmap_hint_iter_Q2.sql'
-\set Pnext :bitmap_hint_iter_Q2
+\set Q2 ':hint'
+\set bitmap_hint_from_P :abs_srcdir '/yb_commands/bitmap_hint_from_P.sql'
 SELECT $$EXPLAIN (COSTS OFF) :Q SELECT * FROM :P WHERE a < 5 OR b < 5;$$ AS query \gset
 
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
-\i :iter_P2
+\set Pnext :bitmap_hint_from_P
+\i :run_query
 
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = false;
-\i :iter_P2
+\set Pnext :bitmap_hint_from_P
+\i :run_query
 
 SET yb_enable_bitmapscan = false;
 SET enable_bitmapscan = true;
-\i :iter_P2
+\set Pnext :bitmap_hint_from_P
+\i :run_query
 
 SET yb_enable_bitmapscan = false;
 SET enable_bitmapscan = false;
-\i :iter_P2
+\set Pnext :bitmap_hint_from_P
+\i :run_query
 
 RESET enable_bitmapscan;
 RESET yb_enable_bitmapscan;

@@ -85,6 +85,8 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+#include "ybgate/ybgate_api.h"
+
 using namespace std::literals;
 
 DECLARE_bool(ysql_disable_index_backfill);
@@ -1113,6 +1115,12 @@ class PgsqlVectorFilter {
     return status_;
   }
 
+  // The reader used to resolve candidates, or nullptr when the filter is inactive; Search reuses it
+  // to resolve ybctids on the same snapshot.
+  docdb::DocVectorIndexReverseMappingReader* reverse_mapping_reader() const {
+    return reverse_mapping_reader_.get();
+  }
+
  private:
   const docdb::DocVectorIndexMetrics& metrics_;
   FilteringIterator iter_;
@@ -1487,7 +1495,8 @@ Status PgsqlWriteOperation::InsertColumn(
     return DoInsertColumn(data, column_id, column, value, pack_context);
   }
 
-  dockv::DocVectorValue vector_value(value, vector_index::VectorId::GenerateRandom());
+  dockv::DocVectorValue vector_value(
+    doc_read_context_->vector_value_format(), value, vector_index::VectorId::GenerateRandom());
   return DoInsertColumn(data, column_id, column, vector_value, pack_context);
 }
 
@@ -1550,6 +1559,11 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       key_bytes.AppendRawBytes(*it++);
       auto key = key_bytes.AsSlice();
       Slice packed_value(*it++);
+      // TODO(vector_index): This pass-through writes the pggate-packed row (from BindPackedRow)
+      // directly without intercepting vector columns. Vector columns won't get a VectorId
+      // assigned. When owns_vector_reverse_mapping tables are enabled, vector columns must be
+      // intercepted here (e.g. by falling through to the unpack-repack path below for tables
+      // with vectors).
       if (pack_row &&
           packed_value.size() < dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
@@ -1663,7 +1677,9 @@ Status PgsqlWriteOperation::UpdateColumn(
     return DoUpdateColumn(data, column_id, column, result->Value(), pack_context);
   }
 
-  dockv::DocVectorValue vector_value(result->Value(), vector_index::VectorId::GenerateRandom());
+  dockv::DocVectorValue vector_value(
+      doc_read_context_->vector_value_format(), result->Value(),
+      vector_index::VectorId::GenerateRandom());
   return DoUpdateColumn(data, column_id, column, vector_value, pack_context);
 }
 
@@ -2153,6 +2169,8 @@ class PgsqlReadRequestYbctidProvider {
       PgsqlResponseMsg& response)
       : request_(request), response_(response) {
     const auto& batch_args = request_.batch_arguments();
+
+    VLOG_WITH_FUNC(3) << "batch_args.size(): " << batch_args.size();
 
     Slice min_arg;
     Slice max_arg;
@@ -2726,6 +2744,18 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   RSTATUS_DCHECK(
       data_.vector_index->BackfillDone(), IllegalState,
       "Vector index query on non ready index: $0", *data_.vector_index);
+
+  // Resolve ybctids with the filter's reader so Search sees the same snapshot the filter used
+  // (avoids a spurious "Vector not found" when a DELETE applies between the two reads). When the
+  // filter is inactive it has no reader, so create one here.
+  auto* reverse_mapping_reader = filter.reverse_mapping_reader();
+  DocVectorIndexReverseMappingReaderPtr owned_reader;
+  if (reverse_mapping_reader == nullptr) {
+    owned_reader = VERIFY_RESULT(data_.vector_index->context().CreateReverseMappingReader(
+        data_.read_operation_data.read_time, data_.read_operation_data.statistics));
+    reverse_mapping_reader = owned_reader.get();
+  }
+
   auto result = VERIFY_RESULT(data_.vector_index->Search(
       vector_slice,
       vector_index::SearchOptions {
@@ -2734,7 +2764,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
         .filter = std::ref(filter),
       },
       could_have_missing_entries,
-      data_.read_operation_data.statistics
+      *reverse_mapping_reader
   ));
   RETURN_NOT_OK(filter.status());
   VLOG_WITH_FUNC(2) << "Search results: " << result.ToString();

@@ -31,6 +31,8 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/lw_function.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/std_util.h"
 #include "yb/util/tostring.h"
 
 namespace yb::docdb {
@@ -53,78 +55,132 @@ class ObjectLockOwnerRegistry {
  public:
   class [[nodiscard]] RegistrationGuard {
    public:
-    RegistrationGuard(Impl& registry, SessionLockOwnerTag tag) : registry_(registry), tag_(tag) {}
+    RegistrationGuard(Impl& registry, TransactionId id) : registry_(&registry), id_(id) {}
+    RegistrationGuard(RegistrationGuard&& other)
+        : registry_(std::exchange(other.registry_, nullptr)), id_(other.id_) {}
     ~RegistrationGuard();
 
-    [[nodiscard]] SessionLockOwnerTag tag() const { return tag_; }
+    [[nodiscard]] TransactionId txn_id() const { return id_; }
 
    private:
     DISALLOW_COPY_AND_ASSIGN(RegistrationGuard);
 
-    Impl& registry_;
-    const SessionLockOwnerTag tag_;
+    Impl* registry_;
+    const TransactionId id_;
   };
 
   struct OwnerInfo {
-    OwnerInfo(TransactionId txn_id_, const TabletId& status_tablet_)
-        : txn_id(txn_id_), status_tablet(status_tablet_) {}
+    OwnerInfo(ObjectLockSharedState& shared_, TransactionId txn_id_, const TabletId& status_tablet_)
+        : shared(&shared_), txn_id(txn_id_), status_tablet(status_tablet_) {}
 
+    ObjectLockSharedState* shared;
     TransactionId txn_id;
     TabletId status_tablet;
   };
-
   ObjectLockOwnerRegistry();
   ~ObjectLockOwnerRegistry();
 
-  RegistrationGuard Register(const TransactionId& id, const TabletId& tablet_id);
+  RegistrationGuard Register(
+      ObjectLockSharedState& shared, TransactionId id, const TabletId& tablet_id);
 
-  [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(SessionLockOwnerTag tag) const;
+  [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(TransactionId id) const;
+
+  [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(ObjectLockSharedState& state) const;
 
  private:
   std::unique_ptr<Impl> impl_;
 };
 
+class [[nodiscard]] ObjectLockSharedStateHolder {
+ public:
+  ObjectLockSharedStateHolder(ObjectLockSharedStateManager& manager, ObjectLockSharedState& state)
+      : manager_{&manager}, state_{&state} {}
+
+  ObjectLockSharedStateHolder(ObjectLockSharedStateHolder&& other)
+      : manager_{std::exchange(other.manager_, nullptr)},
+        state_{std::exchange(other.state_, nullptr)} {}
+
+  ~ObjectLockSharedStateHolder();
+
+  [[nodiscard]] constexpr ObjectLockSharedState* get() const { return state_; }
+  constexpr ObjectLockSharedState* operator->() const { return state_; }
+  constexpr ObjectLockSharedState& operator*() const { return *state_; }
+
+ private:
+  ObjectLockSharedStateManager* manager_;
+  ObjectLockSharedState* state_;
+};
+
 class ObjectLockSharedStateManager {
  public:
-  explicit ObjectLockSharedStateManager(std::shared_ptr<ObjectLockTracker> object_lock_tracker)
-      : object_lock_tracker_(std::move(object_lock_tracker)) {}
+  ObjectLockSharedStateManager(
+      std::shared_ptr<ObjectLockTracker> object_lock_tracker,
+      const MetricEntityPtr& metric_entity);
 
-  void SetupShared(ObjectLockSharedState& shared);
+  void SetupShared(SharedMemoryBackingAllocator& allocator);
 
-  void PauseAndResetSharedLockState();
-  void ResumeSharedLockState();
+  Result<ObjectLockSharedStateHolder> AllocateShared();
+
+  // Start allowing creation of new shared states.
+  void Start();
+
+  // Shutdown existing shared states and stop creation of new ones.
+  // All requests are cleared and new requests are permanently blocked, but we do not free the
+  // states immediately and instead expect the states to be freed normally (via destruction of the
+  // guard object returned by AllocateShared).
+  void Stop();
 
   [[nodiscard]] ObjectLockOwnerRegistry& registry() { return registry_; }
 
-  size_t ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
+  // If txn_id is set, consumes only lock requests for that transaction. Otherwise, consumes all
+  // lock requests for all transactions.
+  void ConsumePendingSharedLockRequests(
+      const LockRequestConsumer& consume, TransactionId txn_id = TransactionId::Nil());
 
-  size_t ConsumeAndAcquireExclusiveLockIntents(
+  void ConsumeAndAcquireExclusiveLockIntents(
       const LockRequestConsumer& consume,
       std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries);
 
+  void DropPendingSharedLockRequests(TransactionId txn_id);
+
   void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state);
 
-  [[nodiscard]] TransactionId TEST_last_owner() const;
+  void MarkTServerLoaded(TransactionId txn_id);
 
   [[nodiscard]] bool TEST_has_exclusive_intents() const;
 
  private:
-  template<typename ConsumeMethod>
-  size_t CallWithRequestConsumer(
-      ObjectLockSharedState* shared, ConsumeMethod&& m, const LockRequestConsumer& consume);
+  friend class ObjectLockSharedStateHolder;
+  void ReleaseShared(ObjectLockSharedState& state);
 
-  std::atomic<ObjectLockSharedState*> shared_{nullptr};
+  struct MetricInfo;
+  struct MetricInfos;
+  uint64_t CalculateMetric(const MetricInfo& metric) const;
+
+  template<typename ConsumeMethod>
+  void CallWithRequestConsumer(
+      ObjectLockSharedState& state, ConsumeMethod&& m, const LockRequestConsumer& consume)
+      REQUIRES(mutex_);
+
+  SharedMemoryBackingAllocator* allocator_ = nullptr;
   ObjectLockOwnerRegistry registry_;
 
   const std::shared_ptr<ObjectLockTracker> object_lock_tracker_;
 
-  std::mutex setup_mutex_;
-  ObjectLockSharedState::ActivationGuard shared_activate_ GUARDED_BY(setup_mutex_);
-  // We can accumulate exclusive lock intents before shared memory is set up via lock manager
-  // bootstrap. If these are not released before shared memory is set up, they must be transferred
-  // to shared memory before PG has a chance to use the fastpath. We track them here until setup
-  // time.
-  std::unordered_map<ObjectLockPrefix, LockState> pre_setup_locks_ GUARDED_BY(setup_mutex_);
+  mutable std::mutex mutex_;
+  bool stopped_ GUARDED_BY(mutex_) = true;
+  std::condition_variable start_cond_;
+  std::unordered_map<ObjectLockPrefix, SharedWriteLockState> write_locks_ GUARDED_BY(mutex_);
+
+  PointerUnorderedSet<SharedMemoryUniquePtr<ObjectLockSharedState>>
+      shared_states_ GUARDED_BY(mutex_);
+
+  uint64_t num_pg_acquires_ GUARDED_BY(mutex_) = 0;
+  uint64_t num_tserver_acquires_ GUARDED_BY(mutex_) = 0;
+  uint64_t num_pg_releases_ GUARDED_BY(mutex_) = 0;
+  uint64_t num_tserver_releases_ GUARDED_BY(mutex_) = 0;
+
+  std::shared_ptr<void> metric_detacher_;
 };
 
 } // namespace yb::docdb

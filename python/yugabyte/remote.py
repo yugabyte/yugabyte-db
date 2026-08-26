@@ -24,9 +24,11 @@ REMOTE_BUILD_HOST_ENV_VAR = 'YB_REMOTE_BUILD_HOST'
 DEFAULT_UPSTREAM = 'origin'
 CONFIG_FILE_PATH = '~/.yb_remote_build.json'
 
-# Allow to prefix the branch name with e.g. "2.18_" so we can auto-detect the upstream branch to
-# use.
-LOCAL_BRANCH_PREFIX_RE = re.compile(r'^([0-9](?:[.][0-9]+)+)_.*')
+# Allow to prefix the branch name with a release version or a "pgNN" tag followed by '_' or '-'
+# (e.g. "2.18_...", "2026.1-31514" or "pg15_...") so we can auto-detect the upstream branch to
+# use. The major version may have multiple digits to support year-based releases like "2026.1".
+# The branch pattern mirrors PHAB_TITLE_RE from the detective-webapp repo.
+LOCAL_BRANCH_PREFIX_RE = re.compile(r'^([0-9]+(?:[.][0-9]+)+|pg[0-9]+)[_-].*')
 
 
 def check_output(args: List[str]) -> str:

@@ -28,13 +28,14 @@ import {
   getIsDbUpgradePrecheckTask,
   getLatestUniverseTask
 } from '../../../redesign/features/tasks/TaskUtils';
+import { colors } from '@app/redesign/theme/variables';
 
 //icons
-import AlertIcon from '../../../redesign/assets/approved/alert.svg';
-import SuccessIcon from '../../../redesign/assets/approved/success.svg';
+import AlertIcon from '../../../redesign/assets/approved/alert-solid.svg';
+import SuccessIcon from '../../../redesign/assets/approved/circle-check-solid.svg';
 import PendingIcon from '../../../redesign/assets/approved/pending.svg';
 import PausedIcon from '../../../redesign/assets/approved/paused.svg';
-import ErrorIcon from '../../../redesign/assets/approved/error.svg';
+import ErrorIcon from '../../../redesign/assets/approved/warning-solid.svg';
 import LoadingIcon from '../../../redesign/assets/default-loading-circles.svg';
 
 import './UniverseStatus.scss';
@@ -131,7 +132,7 @@ export default class UniverseStatus extends Component {
         (latestUniverseTask.status === 'Failure' || latestUniverseTask.status === 'Aborted');
       statusDisplay = (
         <div className="status-container good">
-          <SuccessIcon width={24} height={24} />
+          <SuccessIcon width={24} height={24} style={{ color: colors.success[500] }} />
           {showLabelText && universeStatus.state.text && <span>{universeStatus.state.text}</span>}
         </div>
       );
@@ -163,7 +164,7 @@ export default class UniverseStatus extends Component {
       ) {
         statusDisplay = (
           <div className="status-container warning">
-            <AlertIcon width={24} height={24} />
+            <AlertIcon width={24} height={24} style={{ color: colors.warning[500] }} />
             {showLabelText && universeStatus.state.text && <span>DB upgrade pre-check failed</span>}
           </div>
         );
@@ -175,7 +176,7 @@ export default class UniverseStatus extends Component {
       ) {
         statusDisplay = (
           <div className="status-container warning">
-            <AlertIcon width={24} height={24} />
+            <AlertIcon width={24} height={24} style={{ color: colors.warning[500] }} />
             {showLabelText && <span>DB upgrade aborted</span>}
           </div>
         );
@@ -204,6 +205,18 @@ export default class UniverseStatus extends Component {
           {showLabelText && (
             <span>{`${pendingTaskLabel}... (${universePendingTask.percentComplete}%)`}</span>
           )}
+        </div>
+      );
+    } else if (universeStatus.state === UniverseState.CREATION_FAILED) {
+      // Dedicated rendering so operators immediately see that this universe never came up.
+      // Health checks and alert definitions are intentionally suppressed for it on the backend,
+      // and no failed task button is required here beyond the standard task details drawer.
+      const failedTask = getcurrentUniverseFailedTask(currentUniverse, customerTaskList);
+      taskToDisplayInDrawer = failedTask;
+      statusDisplay = (
+        <div className={showLabelText ? 'status-error' : ''}>
+          <ErrorIcon width={24} height={24} />
+          {showLabelText && <span>{universeStatus.state.text}</span>}
         </div>
       );
     } else if (
@@ -348,7 +361,11 @@ export default class UniverseStatus extends Component {
       >
         {statusDisplay}
         {showTaskDetails &&
-          [UniverseState.PENDING, UniverseState.BAD].includes(universeStatus.state) && (
+          [
+            UniverseState.PENDING,
+            UniverseState.BAD,
+            UniverseState.CREATION_FAILED
+          ].includes(universeStatus.state) && (
             <TaskDetailSimpleComp
               taskUUID={taskToDisplayInDrawer?.id}
               universeUUID={currentUniverse.universeUUID}

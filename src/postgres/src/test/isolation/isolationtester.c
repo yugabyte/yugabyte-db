@@ -81,6 +81,9 @@ static void printResultSet(PGresult *res);
 static void isotesterNoticeProcessor(void *arg, const char *message);
 static void blackholeNoticeProcessor(void *arg, const char *message);
 
+/* YB declarations */
+static bool yb_step_never_waits(PermutationStep *pstep);
+
 /* This is YB specific logic. See usage for description */
 #define YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED 4
 
@@ -355,7 +358,8 @@ check_testspec(TestSpec *testspec)
 				PermutationStepBlocker *blocker = pstep->blockers[k];
 				int			n;
 
-				if (blocker->blocktype == PSB_ONCE)
+				if (blocker->blocktype == PSB_ONCE ||
+					blocker->blocktype == PSB_YB_NEVER_WAITS)
 					continue;	/* nothing to link to */
 
 				blocker->step = NULL;
@@ -701,8 +705,15 @@ run_permutation(TestSpec *testspec, int nsteps, PermutationStep **steps)
 					conns[blocker->step->session + 1].total_notices;
 		}
 
-		/* Try to complete this step without blocking.  */
-		mustwait = try_complete_step(testspec, pstep, STEP_NONBLOCK);
+		/*
+		 * Try to complete this step without blocking.  YB: except for the last
+		 * step of the permutation when nothing else is in flight -- no later
+		 * step can unblock it, so just wait for it instead of letting the
+		 * assume-session-blocked timeout report a merely slow step as waiting.
+		 */
+		mustwait = try_complete_step(testspec, pstep,
+									 (i == nsteps - 1 && nwaiting == 0) ?
+									 0 : STEP_NONBLOCK);
 
 		/* Check for completion of any steps that were previously waiting. */
 		nwaiting = try_complete_steps(testspec, waiting, nwaiting,
@@ -896,6 +907,14 @@ try_complete_step(TestSpec *testspec, PermutationStep *pstep, int flags)
 		}
 	}
 
+	/*
+	 * YB: A step annotated with (yb_never_waits) is simply waited for, however
+	 * slow it is, rather than being misreported as waiting by the
+	 * YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED heuristic.
+	 */
+	if (yb_step_never_waits(pstep))
+		flags &= ~STEP_NONBLOCK;
+
 	if (sock < 0)
 	{
 		fprintf(stderr, "invalid socket: %s", PQerrorMessage(conn));
@@ -924,7 +943,7 @@ try_complete_step(TestSpec *testspec, PermutationStep *pstep, int flags)
 			struct timeval current_time;
 			int64		td;
 
-			/* Figure out how long we've been waiting for this step. */
+			/* YB: Figure out how long we've been waiting for this step. */
 			gettimeofday(&current_time, NULL);
 			td = (int64) current_time.tv_sec - (int64) start_time.tv_sec;
 			td *= USECS_PER_SEC;
@@ -1184,7 +1203,24 @@ step_has_blocker(PermutationStep *pstep)
 				if (iconn->total_notices < blocker->target_notices)
 					return true;
 				break;
+			case PSB_YB_NEVER_WAITS:
+				/* Ignore; try_complete_step handles this specially */
+				break;
 		}
+	}
+	return false;
+}
+
+/* YB: Detect whether a step is annotated with (yb_never_waits) */
+static bool
+yb_step_never_waits(PermutationStep *pstep)
+{
+	int			i;
+
+	for (i = 0; i < pstep->nblockers; i++)
+	{
+		if (pstep->blockers[i]->blocktype == PSB_YB_NEVER_WAITS)
+			return true;
 	}
 	return false;
 }

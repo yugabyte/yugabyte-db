@@ -24,7 +24,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
 @Slf4j
@@ -84,7 +84,7 @@ public class DeleteKeyspace extends UniverseTaskBase {
           "Preparing to make a call on {} to delete keyspace {} if it exists",
           masterAddresses,
           keyspaceName);
-      try (YBClient client = ybService.getUniverseClient(universe)) {
+      try (YBClientApi client = ybService.getUniverseClient(universe)) {
         // Get all tables in the keyspace name.
         ListTablesResponse response = client.getTablesList(null, false, keyspaceName);
         // Filter by table type YCQL.

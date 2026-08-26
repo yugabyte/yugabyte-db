@@ -34,6 +34,8 @@
 #include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
 #include "yb/util/striped64.h"

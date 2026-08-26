@@ -29,10 +29,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 (7 rows)
 
 LOAD 'pg_hint_plan';
-ERROR:  LOAD not supported yet
-LINE 1: LOAD 'pg_hint_plan';
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+LOG:  Incrementing sticky object count for LOAD 'pg_hint_plan'
 SET pg_hint_plan.debug_print TO on;
 SELECT setting <> 'off' FROM pg_settings WHERE name = 'compute_query_id';
  ?column? 
@@ -63,8 +60,6 @@ HINT:  Set compute_query_id to "auto" or "on" to use hint table.
 (1 row)
 
 SELECT 1;									-- gets warning with conn mgr
-WARNING:  hint table feature is deactivated because queryid is not available
-HINT:  Set compute_query_id to "auto" or "on" to use hint table.
  ?column? 
 ----------
         1
@@ -72,6 +67,7 @@ HINT:  Set compute_query_id to "auto" or "on" to use hint table.
 
 SET compute_query_id to on;
 SELECT 1;									-- reactivated
+LOG:  hint table feature is reactivated
  ?column? 
 ----------
         1

@@ -10,10 +10,13 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -22,6 +25,7 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -53,12 +57,52 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public boolean ignoreUseCustomImageConfig = false;
     // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
     public int cgroupSize = 0;
-    // Setup Audit Log Config for the node
-    public AuditLogConfig auditLogConfig = null;
-    // Setup Query Log Config for the node
-    public QueryLogConfig queryLogConfig = null;
-    // Setup Metrics Export Config for the node
-    public MetricsExportConfig metricsExportConfig = null;
+    // All telemetry export sections (audit/query/metrics/master) for the node, in one carrier.
+    public TelemetryConfig telemetryConfig = null;
+
+    @JsonIgnore
+    public AuditLogConfig getAuditLogConfig() {
+      return telemetryConfig != null ? telemetryConfig.getAuditLogConfig() : null;
+    }
+
+    @JsonIgnore
+    public QueryLogConfig getQueryLogConfig() {
+      return telemetryConfig != null ? telemetryConfig.getQueryLogConfig() : null;
+    }
+
+    @JsonIgnore
+    public MetricsExportConfig getMetricsExportConfig() {
+      return telemetryConfig != null ? telemetryConfig.getMetricsExportConfig() : null;
+    }
+
+    @JsonIgnore
+    public MasterLogConfig getMasterLogConfig() {
+      return telemetryConfig != null ? telemetryConfig.getMasterLogConfig() : null;
+    }
+
+    // Backward-compat: fold pre-migration top-level fields into telemetryConfig on deserialize.
+    private TelemetryConfig ensureTelemetryConfig() {
+      if (telemetryConfig == null) {
+        telemetryConfig = new TelemetryConfig();
+      }
+      return telemetryConfig;
+    }
+
+    @JsonProperty("auditLogConfig")
+    public void setLegacyAuditLogConfig(AuditLogConfig auditLogConfig) {
+      ensureTelemetryConfig().setAuditLogConfig(auditLogConfig);
+    }
+
+    @JsonProperty("queryLogConfig")
+    public void setLegacyQueryLogConfig(QueryLogConfig queryLogConfig) {
+      ensureTelemetryConfig().setQueryLogConfig(queryLogConfig);
+    }
+
+    @JsonProperty("metricsExportConfig")
+    public void setLegacyMetricsExportConfig(MetricsExportConfig metricsExportConfig) {
+      ensureTelemetryConfig().setMetricsExportConfig(metricsExportConfig);
+    }
+
     /*
      Reboot node for applying the ulimits, needed for 3 flows.
      1. Create Universe.

@@ -52,9 +52,18 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
     // The test suite asserts for DML failing with catalog version mismatch when run
     // immediately after DDLs, which isn't true with object locking enabled.
     flags.put("enable_object_locking_for_table_locks", "false");
-    // TODO(29142): Fix the test with txn ddl and reenable.
-    flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    flags.put("ysql_enable_concurrent_ddl", "false");
+    flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
+        (existing, added) -> existing + "," + added);
     return flags;
+  }
+
+  private boolean isTransactionalDdlEnabled(Statement stmt) throws SQLException {
+    try (ResultSet rs = stmt.executeQuery("SHOW yb_ddl_transaction_block_enabled")) {
+      assertTrue(rs.next());
+      return "on".equalsIgnoreCase(rs.getString(1));
+    }
   }
 
   @Test
@@ -282,16 +291,17 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Force a cache refresh on connection 2.
       statement2.execute("SELECT * FROM test_table");
 
-      // For the non-ConnMgr path, disable heartbeats so that catalog version
-      // updates from each ALTER on connection 1 are not propagated to
-      // connection 2's tserver during the loop. Without this, the prologue
-      // check in YBCheckSharedCatalogCacheVersion may refresh connection 2's
-      // catcache before the SELECT runs, hiding the expected "Catalog Version
+      // Disable heartbeats so that catalog version updates from each ALTER on
+      // connection 1 are not propagated to connection 2's tserver during the
+      // loop. Without this, the prologue check in
+      // YBCheckSharedCatalogCacheVersion may refresh connection 2's catcache
+      // before the SELECT runs, hiding the expected "Catalog Version
       // Mismatch" error. The race window is widened under TSAN where ALTER
-      // runtimes span multiple heartbeat intervals. The ConnMgr path
-      // intentionally waits for the heartbeat (DDL sleeps), so keep heartbeats
-      // enabled there to preserve the separate "no failures" assertion below.
-      final boolean disableHeartbeats = !isTestRunningWithConnectionManager();
+      // runtimes span multiple heartbeat intervals. This applies to the
+      // ConnMgr path as well: a DDL commit only waits for its own node's
+      // shared memory catalog version, so connection 2's node learns about
+      // each ALTER through the heartbeat, the same as without ConnMgr.
+      final boolean disableHeartbeats = true;
 
       final int attempts = 5;
       final List<Throwable> errors;
@@ -327,25 +337,17 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         }
       }
 
-      if (isTestRunningWithConnectionManager()) {
-        // Due to DDL sleeps with Connection Manager, all select statements
-        // should succeed.
-        assertEquals("No failures are expected with Connection Manager enabled",
-         errors.size(),
-         0);
-      } else {
-        // Expect at least one of the select statements to fail (the transparent retry can mask
-        // most of them, but the very first attempt typically races the heartbeat).
-        assertGreaterThanOrEqualTo(
-            String.format(
-                "Expected at least 1 failure out of %d attempts, got %d",
-                attempts,
-                errors.size()
-              ),
-            errors.size(),
-            1
-          );
-      }
+      // Expect at least one of the select statements to fail (the transparent retry can mask
+      // most of them, but the very first attempt typically races the heartbeat).
+      assertGreaterThanOrEqualTo(
+          String.format(
+              "Expected at least 1 failure out of %d attempts, got %d",
+              attempts,
+              errors.size()
+            ),
+          errors.size(),
+          1
+        );
 
       // All errors should be due to a stale catalog cache (either the new column is not yet
       // visible in pg's parser, or docdb returns a schema version mismatch).
@@ -396,12 +398,14 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       waitForTServerHeartbeat();
 
       statement2.execute("BEGIN");
-      // Perform a DDL operation, which cannot (as of 07/01/2019) be rolled back.
+      // Without transactional DDL, CREATE TABLE runs in an autonomous transaction and cannot be
+      // rolled back. With transactional DDL, it participates in the enclosing transaction and can
+      // be rolled back when the transaction aborts.
       statement2.execute("CREATE TABLE other_table(id int)");
 
       statement2.execute("SELECT * FROM test_table");
 
-      // Modify table from connection 2.
+      // Modify table from connection 1.
       statement1.execute("ALTER TABLE test_table ADD COLUMN c int");
 
       waitForTServerHeartbeat();
@@ -412,8 +416,13 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // COMMIT will succeed as a command but will rollback the transaction due to the error above.
       statement2.execute("COMMIT");
 
-      // Check that the other table was created.
-      statement2.execute("SELECT * FROM other_table");
+      if (isTransactionalDdlEnabled(statement2)) {
+        // CREATE TABLE was part of the aborted transaction and should be rolled back.
+        runInvalidQuery(statement2, "SELECT * FROM other_table", "does not exist");
+      } else {
+        // Check that the other table was created.
+        statement2.execute("SELECT * FROM other_table");
+      }
     }
   }
 
@@ -610,6 +619,11 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
   @Test
   public void testPgInheritsCacheConsistency() throws Exception {
+    // Force a single backend so stmt2's transaction reuses the backend that cached
+    // prt, matching the snapshot assumptions below. Under Connection Manager the
+    // default warmup spreads queries across backends, so the transaction could pin
+    // its snapshot on a backend that loads prt after the concurrent CREATE.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Connection connection2 = getConnectionBuilder().withTServer(1).connect();
          Statement stmt1 = connection1.createStatement();

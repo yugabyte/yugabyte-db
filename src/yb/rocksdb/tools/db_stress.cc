@@ -68,6 +68,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 
 using std::unique_ptr;

@@ -12,17 +12,26 @@ import api.v2.models.ClusterResizeNodeSpec;
 import api.v2.models.ClusterResizeStorageSpec;
 import api.v2.models.K8SNodeResourceSpec;
 import api.v2.models.PerProcessResizeNodeSpec;
+import api.v2.models.PerProviderResizeNodesSpec;
+import api.v2.models.ResizeProviderNodeSpec;
+import api.v2.models.ResizeProviderRootNodesSpec;
 import api.v2.models.UniverseResizeNodes;
 import api.v2.models.UniverseResizeNodesCluster;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ProviderSpecification;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.Test;
@@ -146,6 +155,49 @@ public class UniverseResizeNodesMapperTest {
     assertEquals((Object) 800, tserverDevice.volumeSize);
     assertEquals((Object) 6000, tserverDevice.diskIops);
     assertEquals((Object) 250, tserverDevice.throughput);
+
+    assertEquals("c5.4xlarge", cluster.userIntent.masterInstanceType);
+    assertEquals((Object) 100, cluster.userIntent.masterDeviceInfo.volumeSize);
+    assertEquals((Object) 5000, cluster.userIntent.masterDeviceInfo.diskIops);
+  }
+
+  @Test
+  public void testMasterResizeSyncsLegacyFieldsWhenAlreadySet() {
+    UUID cUUID = UUID.randomUUID();
+    UniverseResizeNodes req = new UniverseResizeNodes();
+
+    PerProcessResizeNodeSpec masterSpec = new PerProcessResizeNodeSpec();
+    masterSpec.setInstanceType("c5.4xlarge");
+    masterSpec.setStorageSpec(new ClusterResizeStorageSpec().volumeSize(200).diskIops(6000));
+
+    ClusterResizeNodeSpec nodeSpec = new ClusterResizeNodeSpec();
+    nodeSpec.setMaster(masterSpec);
+
+    UniverseResizeNodesCluster resizeCluster = createResizeCluster(cUUID);
+    resizeCluster.setNodeSpec(nodeSpec);
+    req.addClustersItem(resizeCluster);
+
+    ResizeNodeParams v1Params = new ResizeNodeParams();
+    Cluster v1c = createV1Cluster(cUUID, ClusterType.PRIMARY);
+    v1c.userIntent.dedicatedNodes = true;
+    v1c.userIntent.instanceType = "c5.xlarge";
+    v1c.userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    v1c.userIntent.masterInstanceType = "c5.xlarge";
+    v1c.userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    v1Params.clusters.add(v1c);
+
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
+
+    Cluster cluster = v1Params.getClusterByUuid(cUUID);
+    NodeDetails masterNode = new NodeDetails();
+    masterNode.dedicatedTo = ServerType.MASTER;
+
+    assertEquals("c5.4xlarge", cluster.userIntent.masterInstanceType);
+    assertEquals("c5.4xlarge", cluster.userIntent.getInstanceTypeForNode(masterNode));
+    assertEquals((Object) 200, cluster.userIntent.masterDeviceInfo.volumeSize);
+    assertEquals((Object) 6000, cluster.userIntent.masterDeviceInfo.diskIops);
+    assertEquals((Object) 1, cluster.userIntent.masterDeviceInfo.numVolumes);
+    assertEquals((Object) 200, cluster.userIntent.getDeviceInfoForNode(masterNode).volumeSize);
   }
 
   @Test
@@ -466,5 +518,61 @@ public class UniverseResizeNodesMapperTest {
     assertEquals((Object) 600, cluster.userIntent.getDeviceInfoForNode(az2Node).volumeSize);
     assertEquals((Object) 5000, cluster.userIntent.getDeviceInfoForNode(az2Node).diskIops);
     assertEquals((Object) 300, cluster.userIntent.getDeviceInfoForNode(az2Node).throughput);
+  }
+
+  @Test
+  public void testProviderNodesSpecsMergedIntoProviderSpecification() {
+    UUID cUUID = UUID.randomUUID();
+    UUID providerUUID = UUID.randomUUID();
+
+    DeviceInfo existingDevice = new DeviceInfo();
+    existingDevice.volumeSize = 100;
+    existingDevice.numVolumes = 1;
+
+    ProviderSpecification providerSpecification = new ProviderSpecification();
+    providerSpecification.setProviderUUID(providerUUID);
+    providerSpecification.setProviderType(CloudType.aws);
+    providerSpecification.setNodesSpecs(
+        HierarchicalNodesSpec.RootNodesSpec.builder()
+            .tserverSpecification(
+                HierarchicalNodesSpec.NodeSpec.builder()
+                    .instanceType("c5.xlarge")
+                    .deviceInfo(existingDevice)
+                    .build())
+            .build());
+
+    Cluster v1Cluster = createV1Cluster(cUUID, ClusterType.PRIMARY);
+    v1Cluster.userIntent.providerSpecifications = new ArrayList<>(List.of(providerSpecification));
+
+    UniverseResizeNodes req = new UniverseResizeNodes();
+    UniverseResizeNodesCluster resizeCluster = createResizeCluster(cUUID);
+    PerProviderResizeNodesSpec providerNodesSpec = new PerProviderResizeNodesSpec();
+    providerNodesSpec.setProvider(providerUUID);
+    ResizeProviderNodeSpec tserverSpec = new ResizeProviderNodeSpec();
+    tserverSpec.setInstanceType("c5.2xlarge");
+    tserverSpec.setStorageSpec(
+        new ClusterResizeStorageSpec().volumeSize(500).diskIops(3000).throughput(125));
+    ResizeProviderRootNodesSpec nodesSpec = new ResizeProviderRootNodesSpec();
+    nodesSpec.setTserverSpecification(tserverSpec);
+    providerNodesSpec.setNodesSpec(nodesSpec);
+    resizeCluster.addProviderNodesSpecsItem(providerNodesSpec);
+    req.addClustersItem(resizeCluster);
+
+    ResizeNodeParams v1Params = new ResizeNodeParams();
+    v1Params.clusters.add(v1Cluster);
+
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
+
+    Cluster cluster = v1Params.getClusterByUuid(cUUID);
+    ProviderSpecification resized = cluster.userIntent.getProviderSpecification(providerUUID);
+    assertNotNull(resized);
+    assertEquals("c5.2xlarge", resized.getNodesSpecs().getTserverSpecification().getInstanceType());
+    DeviceInfo device = resized.getNodesSpecs().getTserverSpecification().getDeviceInfo();
+    assertNotNull(device);
+    assertEquals((Object) 500, device.volumeSize);
+    assertEquals((Object) 3000, device.diskIops);
+    assertEquals((Object) 125, device.throughput);
+    // Unspecified fields are preserved from the existing provider nodes spec.
+    assertEquals((Object) 1, device.numVolumes);
   }
 }

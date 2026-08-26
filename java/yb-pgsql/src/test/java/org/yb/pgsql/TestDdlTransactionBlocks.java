@@ -38,6 +38,20 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("TEST_hide_details_for_pg_regress", "false");
+    flagMap.put("yb_enable_read_committed_isolation", "true");
+    if (!org.yb.util.BuildTypeUtil.isRelease()) {
+      appendToYsqlPgConf(flagMap, "default_transaction_isolation='repeatable read'");
+    }
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("yb_enable_read_committed_isolation", "true");
+    if (!org.yb.util.BuildTypeUtil.isRelease()) {
+      appendToYsqlPgConf(flagMap, "default_transaction_isolation='repeatable read'");
+    }
     return flagMap;
   }
 
@@ -50,7 +64,8 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
     builder.addCommonTServerFlag("enable_object_locking_for_table_locks", "true");
     builder.addCommonTServerFlag("ysql_bypass_anonymous_savepoint_ddl_check", "false");
     builder.addCommonTServerFlag(
-        "allowed_preview_flags_csv", "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
+        "allowed_preview_flags_csv",
+        "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
     boolean enableSkipIntents = ThreadLocalRandom.current().nextBoolean();
     if (enableSkipIntents) {
       builder.addCommonTServerFlag(

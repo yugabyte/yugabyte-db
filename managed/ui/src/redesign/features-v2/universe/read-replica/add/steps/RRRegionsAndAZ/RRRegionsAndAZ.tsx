@@ -4,12 +4,14 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState
 } from 'react';
 import { useForm, FormProvider, useFieldArray, useWatch } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useTranslation, Trans } from 'react-i18next';
 import { useQuery } from 'react-query';
+import { isEqual, omit } from 'lodash';
 import { IconButton } from '@material-ui/core';
 import CloseRounded from '@app/redesign/assets/close-large.svg';
 import {
@@ -26,7 +28,7 @@ import {
   ClusterSpecClusterType,
   UniverseRespResponse
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { CloudType, Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import { getClusterByType } from '../../../../edit-universe/EditUniverseUtils';
 import { RRBreadCrumbs } from '../../ReadReplicaBreadCrumbs';
@@ -47,12 +49,14 @@ import { RRRegionsAndAZValidationSchema } from './ValidationSchema';
 import { RRRegionCard } from './RRRegionCard';
 import { NodeInstanceDetails } from '@app/redesign/features-v2/universe/geo-partition/add/NodeInstanceDetails';
 import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
+import { useSubmitReadReplica } from '../../useSubmitReadReplica';
+import { useYBToast } from '@app/redesign/features-v2/universe/create-universe/helpers/ToastUtils';
 
 const { Box, styled, Typography } = mui;
 
 const StyledOuterPanel = styled('div')(({ theme }) => ({
-  width: '100%',
-  maxWidth: '720px',
+  width: '718px',
+  maxWidth: '718px',
   borderRadius: '8px',
   border: `1px solid ${theme.palette.grey[200]}`,
   overflow: 'hidden',
@@ -62,9 +66,7 @@ const StyledOuterPanel = styled('div')(({ theme }) => ({
 const StyledPanelHeader = styled('div')(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
-  height: '64px',
-  padding: `${theme.spacing(1.25)} ${theme.spacing(3)}`,
-  borderBottom: `1px solid ${theme.palette.grey[200]}`,
+  padding: theme.spacing(3),
   backgroundColor: theme.palette.common.white
 }));
 
@@ -86,7 +88,7 @@ const StyledBanner = styled(Box)(({ theme }) => ({
 
 type MapPin = { key: string; lat: number; lng: number; name: string };
 
-function getPrimaryMapPins(
+export function getPrimaryMapPins(
   universeData: UniverseRespResponse | undefined,
   providerRegions: Region[]
 ): MapPin[] {
@@ -205,25 +207,39 @@ function RRPlacementMap({
 }
 
 export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
-  const [
-    { regionsAndAZ, regionsAndAZBaseline, readReplicaPlacementFromUniverse, universeData, activeStep },
-    {
-      moveToNextPage,
-      moveToPreviousPage,
-      saveRegionsAndAZSettings,
-      spliceRegionsAndAZBaseline
-    }
-  ] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
+  const [rrContext, rrMethods] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
+  const {
+    regionsAndAZ,
+    regionsAndAZBaseline,
+    readReplicaPlacementFromUniverse,
+    universeData,
+    activeStep,
+    isEditPlacementOnly
+  } = rrContext;
+  const {
+    moveToNextPage,
+    moveToPreviousPage,
+    saveRegionsAndAZSettings,
+    spliceRegionsAndAZBaseline
+  } = rrMethods;
+
+  const { submit } = useSubmitReadReplica();
 
   const { t } = useTranslation('translation', { keyPrefix: 'readReplica.addRR' });
   const { t: tc } = useTranslation('translation', { keyPrefix: 'common' });
 
   const [bannerVisible, setBannerVisible] = useState(true);
+  const toast = useYBToast();
+  // Baseline is spliced on region remove; keep the open-time snapshot for change detection.
+  const initialPlacementRef = useRef(regionsAndAZBaseline);
 
   const primaryCluster = universeData
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
     : undefined;
   const providerUUID = primaryCluster?.provider_spec?.provider ?? '';
+  const useDedicatedNodes = Boolean(primaryCluster?.node_spec?.dedicated_nodes);
+  const isK8s =
+    primaryCluster?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
 
   const { data: regionsList = [], isLoading: isRegionsLoading } = useQuery(
     [QUERY_KEY.getRegionsList, providerUUID],
@@ -271,7 +287,21 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
     () => ({
       onNext: () => {
         return handleSubmit((data) => {
+          if (
+            isEditPlacementOnly &&
+            isEqual(
+              data.regions.map((r) => omit(r, 'isNew')),
+              initialPlacementRef.current?.regions.map((r) => omit(r, 'isNew'))
+            )
+          ) {
+            toast.warn(t('toast.noPlacementChanges'));
+            return;
+          }
           saveRegionsAndAZSettings(data);
+          if (isEditPlacementOnly) {
+            // Placement-only edit: submit from this page using fresh form data (context update is async).
+            return submit({ ...rrContext, regionsAndAZ: data }, regionsList as Region[]);
+          }
           moveToNextPage();
         })();
       },
@@ -279,7 +309,18 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
         moveToPreviousPage();
       }
     }),
-    [handleSubmit, saveRegionsAndAZSettings, moveToNextPage, moveToPreviousPage]
+    [
+      handleSubmit,
+      saveRegionsAndAZSettings,
+      moveToNextPage,
+      moveToPreviousPage,
+      isEditPlacementOnly,
+      submit,
+      rrContext,
+      regionsList,
+      toast,
+      t
+    ]
   );
 
   return (
@@ -319,8 +360,8 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '24px',
-                pt: 1,
+                gap: '16px',
+                pt: 0,
                 px: 3,
                 pb: 3
               }}
@@ -338,6 +379,8 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                     regionsList={regionsList as Region[]}
                     baselineRegion={regionsAndAZBaseline?.regions?.[index]}
                     allowAzUndo={Boolean(readReplicaPlacementFromUniverse)}
+                    useDedicatedNodes={useDedicatedNodes}
+                    isK8s={isK8s}
                     showRemoveRegion={regionFields.length > 1}
                     onRemoveRegion={
                       regionFields.length > 1
@@ -373,7 +416,9 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                       letterSpacing: '0.026px'
                     }}
                   >
-                    {t('totalNodesPlacement')}
+                    {useDedicatedNodes
+                      ? t(isK8s ? 'totalPodsPlacementTserver' : 'totalNodesPlacementTserver')
+                      : t(isK8s ? 'totalPodsPlacement' : 'totalNodesPlacement')}
                   </Typography>
                   <Typography
                     sx={{
@@ -396,7 +441,13 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                   disabled={
                     !regionsList.length || regionFields.length >= (regionsList as Region[]).length
                   }
-                  onClick={() => appendRegion(getEmptyRRPlacementRegion({ isNew: true }))}
+                  onClick={() =>
+                    appendRegion(
+                      getEmptyRRPlacementRegion(
+                        isEditPlacementOnly ? { isNew: true } : undefined
+                      )
+                    )
+                  }
                   dataTestId="rr-add-region"
                 >
                   {t('addRegion')}

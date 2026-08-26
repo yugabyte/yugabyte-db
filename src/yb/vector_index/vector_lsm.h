@@ -52,6 +52,8 @@ struct VectorLSMInsertEntry {
 struct VectorLSMInsertContext {
   const storage::UserFrontiers* frontiers = nullptr;
   size_t chunk_size = 0;
+  rocksdb::Cache::ReservationMode reservation_mode =
+      rocksdb::Cache::ReservationMode::kAlways;
 };
 
 template<IndexableVectorType Vector,
@@ -76,13 +78,13 @@ using VectorLSMMergeFilterPtr = std::unique_ptr<VectorLSMMergeFilter>;
 template<IndexableVectorType Vector,
          ValidDistanceResultType DistanceResult>
 struct VectorLSMOptions {
-  using VectorIndexFactory = vector_index::VectorIndexFactory<Vector, DistanceResult>;
+  using VectorIndexTraits = vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>;
   using MergeFilterFactory = std::function<Result<VectorLSMMergeFilterPtr>()>;
   using FrontiersFactory   = std::function<storage::UserFrontiersPtr()>;
 
   std::string log_prefix;
   std::string storage_dir;
-  VectorIndexFactory vector_index_factory;
+  VectorIndexTraits vector_index_traits;
   size_t vectors_per_chunk;
   rpc::ThreadPool* thread_pool;
   rpc::ThreadPool* insert_thread_pool;
@@ -91,6 +93,7 @@ struct VectorLSMOptions {
   MergeFilterFactory vector_merge_filter_factory;
   std::string file_extension;
   MetricEntityPtr metric_entity;
+  size_t block_cache_capacity = 0;
 };
 
 YB_DEFINE_ENUM(CompactionType, (kBackground)(kManual));
@@ -119,7 +122,13 @@ class VectorLSM {
   Status Destroy();
   Status CreateCheckpoint(const std::string& out);
 
+  // Computes the requested frontiers atomically under the LSM lock so the flushed and in-memory
+  // views are mutually consistent.
+  storage::FrontierInfo GetFrontiers(storage::FrontierKinds kinds);
   storage::UserFrontierPtr GetFlushedFrontier();
+  // Returns the (smallest, largest) frontiers over the in-memory state that has not been flushed
+  // to disk yet (the mutable chunk and immutable chunks not yet in the manifest).
+  storage::UserFrontierRange GetInMemoryFrontiers();
   storage::FlushAbility GetFlushAbility();
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
@@ -202,7 +211,8 @@ class VectorLSM {
   friend struct MutableChunk;
 
   // Saves the current mutable chunk to disk and creates a new one.
-  Status RollChunk(size_t min_vectors) REQUIRES(mutex_);
+  Status RollChunk(
+      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
 
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
@@ -215,7 +225,9 @@ class VectorLSM {
   Result<SaveIndexToFileResult> SaveIndexToFile(VectorIndex& index, uint64_t serial_no);
 
   // The argument `chunk` must be the very first chunk from `updates_queue_`.
-  Status UpdateManifest(WritableFile& manifest_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
+  Status UpdateManifest(
+      WritableFile& manifest_file, ImmutableChunkPtr chunk, bool schedule_compaction)
+      EXCLUDES(mutex_);
   Status AddChunkToManifest(WritableFile& manifest_file, ImmutableChunk& chunk);
 
   bool ManifestAcquired() EXCLUDES(mutex_);
@@ -227,20 +239,11 @@ class VectorLSM {
   Result<uint64_t> GetChunkFileSize(uint64_t serial_no) const;
 
   // Creates vector index and reserve at least for `min_vectors` entries.
-  Result<VectorIndexPtr> CreateVectorIndex(size_t min_vectors) const;
+  Result<VectorIndexPtr> CreateVectorIndex(
+      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) const;
 
-  // Returns an index instance suitable for queries that don't depend on chunk contents
-  // (e.g. Distance). Reuses an existing chunk's index when available (including immutable on-disk
-  // chunks), and falls back to a freshly created factory probe otherwise.
-  VectorIndexPtr GetProbeIndex() const EXCLUDES(mutex_);
-
-  // Returns an in-memory (kCreate-mode) index, suitable for EstimateNumVectorsForBytes and other
-  // requests that require the in-memory format. Never returns an on-disk read-only index
-  // (e.g. yb_hnsw) which may not support the request.
-  // TODO(#32369): Replace GetProbeIndex/GetInMemoryProbeIndex with index traits.
-  VectorIndexPtr GetInMemoryProbeIndex() const EXCLUDES(mutex_);
-
-  Status CreateNewMutableChunk(size_t min_vectors) REQUIRES(mutex_);
+  Status CreateNewMutableChunk(
+      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
 
   Result<std::vector<VectorIndexPtr>> AllIndexes() const EXCLUDES(mutex_);
 
@@ -365,14 +368,13 @@ class VectorLSM {
   std::unique_ptr<VectorLSMMetrics> metrics_;
 };
 
-template<template<class, class> class Factory, class VectorIndex>
-using MakeVectorIndexFactory =
-    Factory<typename VectorIndex::Vector, typename VectorIndex::DistanceResult>;
-
 template<ValidDistanceResultType DistanceResult>
 void MergeChunkResults(
     std::vector<VectorWithDistance<DistanceResult>>& combined_results,
     std::vector<VectorWithDistance<DistanceResult>>& chunk_results,
     size_t max_num_results);
+
+// Resolves max mem-store size for a Vector LSM compaction output chunk. Returns 0 for no limit.
+size_t TEST_GetCompactionChunkMaxMemStoreBytes(size_t block_cache_capacity);
 
 }  // namespace yb::vector_index

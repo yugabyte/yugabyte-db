@@ -19,36 +19,36 @@ SET yb_enable_distinct_pushdown = true;
 SET enable_bitmapscan = false;
 
 \set query ':P SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;'
-\i :iter_P2
+\i :run_query
 
 RESET enable_bitmapscan;
 
 \set Q1 '/*+ BitmapScan(test_distinct) */'
 \set query ':P :Q1 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;'
-\i :iter_P2
+\i :run_query
 
 SET yb_enable_distinct_pushdown TO false;
 SET enable_bitmapscan = false;
 
 \set query ':P SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;'
-\i :iter_P2
+\i :run_query
 
 RESET enable_bitmapscan;
 
 \set query ':P :Q1 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;'
-\i :iter_P2
+\i :run_query
 
 RESET yb_enable_distinct_pushdown;
 DROP TABLE test_distinct;
@@ -66,12 +66,11 @@ SET yb_enable_distinct_pushdown = true;
 
 -- Default plan and different hints to enforce bitmap scan. Result should be 4
 -- distinct values of k in each case.
-\set Pnext :iter_Q3
 \set Q1
 \set Q2 '/*+ Set(enable_seqscan off) Set(enable_indexscan off) */'
 \set Q3 '/*+ BitmapScan(test_distinct_hash) */'
 \set query ':P :Q SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;'
-\i :iter_P2
+\i :run_query
 
 RESET yb_enable_distinct_pushdown;
 DROP TABLE test_distinct_hash;

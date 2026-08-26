@@ -33,7 +33,7 @@ Fault-tolerance for a given shard is similar in both systems because both rely o
 
 ## Synchronous data replication
 
-While primary election is Raft-based in MongoDB, actual data replication is not. Data replication is asynchronous where secondary pulls from primary. Both leader election and data replication are based on Raft distributed consensus.
+While primary election is Raft-based in MongoDB, actual data replication is not. Data replication is asynchronous where secondary pulls from primary. In YugabyteDB, both leader election and data replication are based on Raft distributed consensus.
 
 ## Durable and fast writes
 

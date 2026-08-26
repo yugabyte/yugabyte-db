@@ -354,9 +354,9 @@ const isTableMatchedBySearchTokens = (
       ...(totalStorageBytes !== undefined && {
         sizeBytes: { value: totalStorageBytes, type: FieldType.NUMBER }
       }),
-      ...(table.statusLabel && {
-        status: { value: table.statusLabel, type: FieldType.STRING }
-      })
+      ...(table.statusSearchValues.length > 0 && {
+        status: { value: table.statusSearchValues, type: FieldType.STRING_ARRAY }
+      }),
     }),
     ...(table.replicationLag !== undefined &&
       table.replicationLag !== null &&

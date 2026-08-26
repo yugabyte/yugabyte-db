@@ -38,6 +38,10 @@ public class TestPgRegressPgMiscIndependent extends BasePgRegressTestPorted {
     // TODO(#26734): Enable transactional DDL (& table locks) once savepoint for DDLs are supported.
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
     flagMap.put("enable_object_locking_for_table_locks", "false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    flagMap.put("ysql_enable_concurrent_ddl", "false");
+    flagMap.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
+        (existing, added) -> existing + "," + added);
     return flagMap;
   }
 

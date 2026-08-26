@@ -528,6 +528,22 @@ public class HealthChecker {
         !shouldSendStatusUpdate && alertingData != null && alertingData.reportOnlyErrors;
 
     c.getUniverses().stream()
+        .filter(
+            u -> {
+              // Skip universes that were never successfully brought up. Running health checks on
+              // them just produces noisy failures and misleading alerts for something that never
+              // reached a healthy baseline. The UI surfaces a "Universe creation failed" state
+              // for these so operators still see the problem. Null details are handled downstream
+              // in checkSingleUniverse (which reports a failure metric), so let them through here.
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              if (details != null && !details.creationSucceeded) {
+                log.debug(
+                    "Skipping universe {} - universe creation has never successfully completed",
+                    u.getName());
+                return false;
+              }
+              return true;
+            })
         .map(
             u -> {
               String destinations = getAlertDestinations(u, c);
@@ -694,9 +710,12 @@ public class HealthChecker {
           "Skipping universe " + params.universe.getName() + " as it is in the paused state...");
       return;
     }
-    if (details.isUniverseBusyByTask()) {
-      log.warn("Skipping universe " + params.universe.getName() + " due to task in progress...");
-      return;
+    boolean universeBusyByTask = details.isUniverseBusyByTask();
+    if (universeBusyByTask) {
+      log.debug(
+          "Universe {} is busy by task; will only refresh node health scripts and skip the health"
+              + " check run.",
+          params.universe.getName());
     }
     Date startTime = new Date();
     List<NodeInfo> nodeMetadata = new ArrayList<>();
@@ -727,7 +746,11 @@ public class HealthChecker {
               String.format(
                   "Universe %s has active unprovisioned node %s.",
                   params.universe.getName(), nd.nodeName));
-          setHealthCheckFailedMetric(params.customer, params.universe);
+          // Do not raise a health-check-failed metric while a task is in progress: a node may be
+          // transiently unprovisioned (e.g. being added) and that is expected, not a failure.
+          if (!universeBusyByTask) {
+            setHealthCheckFailedMetric(params.customer, params.universe);
+          }
           return;
         }
       }
@@ -761,7 +784,9 @@ public class HealthChecker {
                   + params.universe.getName()
                   + " due to invalid provider for node "
                   + nodeDetails.nodeName);
-          setHealthCheckFailedMetric(params.customer, params.universe);
+          if (!universeBusyByTask) {
+            setHealthCheckFailedMetric(params.customer, params.universe);
+          }
 
           return;
         }
@@ -875,6 +900,10 @@ public class HealthChecker {
               || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
               || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
             nodeInfo.setOtelCollectorEnabled(true);
+            nodeInfo.setOtelCollectorInstalled(
+                nodeInfo.isK8s()
+                    ? nodeDetails.isTserver
+                    : nodeDetails.isMaster || nodeDetails.isTserver);
           }
         }
         nodeInfo.setClockboundEnabled(
@@ -888,6 +917,10 @@ public class HealthChecker {
                 .isUseYbdbInbuiltYbc());
         nodeMetadata.add(nodeInfo);
       }
+    }
+
+    if (!isShutdown()) {
+      uploadHealthScriptsToNodes(params.universe, nodeMetadata);
     }
 
     // If last check had errors, set the flag to send an email. If this check will have an error,
@@ -1159,51 +1192,18 @@ public class HealthChecker {
 
   private Details checkNode(
       Universe universe, NodeInfo nodeInfo, NodeCheckContext nodeCheckContext) {
-    Pair<UUID, String> nodeKey = new Pair<>(universe.getUniverseUUID(), nodeInfo.getNodeName());
-    NodeInfo uploadedInfo = uploadedNodeInfo.get(nodeKey);
     ShellProcessContext context =
         ShellProcessContext.builder()
             .logCmdOutput(nodeCheckContext.isLogOutput())
             .traceLogging(true)
             .timeoutSecs(nodeCheckContext.getTimeoutSec())
             .build();
-    if ((uploadedInfo == null || !uploadedInfo.equals(nodeInfo)) && !nodeInfo.isK8s()) {
-      // Node IP change means node name was reused and underlying node is a fresh one.
-      // Skip upload for k8s as no one will call it on k8s pod.
-      String generatedScriptPath =
-          generateCollectMetricsScript(universe.getUniverseUUID(), nodeInfo);
+    // Ensure the node has the up-to-date metrics/health scripts before running the check. This is
+    // idempotent with the pre-check upload done in checkSingleUniverse (a cache hit here is a
+    // no-op).
+    maybeUploadNodeScripts(universe, nodeInfo, context);
 
-      log.info("Uploading metrics collection script to node {}", nodeInfo.getNodeName());
-      String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
-      nodeUniverseManager.uploadFileToNode(
-          nodeInfo.nodeDetails,
-          universe,
-          generatedScriptPath,
-          scriptPath,
-          SCRIPT_PERMISSIONS,
-          context);
-    }
-
-    String scriptPath =
-        Paths.get(
-                (nodeInfo.isK8s()
-                    ? KubernetesTaskBase.K8S_NODE_YW_DATA_DIR
-                    : nodeInfo.getYbHomeDir()),
-                "/bin/node_health.py")
-            .toString();
-    if (uploadedInfo == null || !uploadedInfo.equals(nodeInfo)) {
-      log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
-      String generatedScriptPath = generateNodeCheckScript(universe.getUniverseUUID(), nodeInfo);
-
-      nodeUniverseManager.uploadFileToNode(
-          nodeInfo.nodeDetails,
-          universe,
-          generatedScriptPath,
-          scriptPath,
-          SCRIPT_PERMISSIONS,
-          context);
-    }
-    uploadedNodeInfo.put(nodeKey, nodeInfo);
+    String scriptPath = getNodeHealthScriptPath(nodeInfo);
 
     List<String> commandToRun = new ArrayList<>();
     commandToRun.add(scriptPath);
@@ -1215,7 +1215,10 @@ public class HealthChecker {
       commandToRun.add("--cronbased");
     }
 
-    if (!nodeInfo.isK8s()) {
+    // Only run the YNP version skew check when the global runtime config is enabled. When it is
+    // disabled, we skip passing the YBA YNP version so the node health script reports no skew and
+    // the YNP_VERSION_SKEW alert does not fire.
+    if (!nodeInfo.isK8s() && confGetter.getGlobalConf(GlobalConfKeys.enableYnpVersionCheck)) {
       Object ynpVersion =
           configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
       if (ynpVersion != null) {
@@ -1230,6 +1233,94 @@ public class HealthChecker {
             .processErrors();
 
     return Json.fromJson(Json.parse(response.extractRunCommandOutput()), Details.class);
+  }
+
+  private String getNodeHealthScriptPath(NodeInfo nodeInfo) {
+    return Paths.get(
+            (nodeInfo.isK8s() ? KubernetesTaskBase.K8S_NODE_YW_DATA_DIR : nodeInfo.getYbHomeDir()),
+            "/bin/node_health.py")
+        .toString();
+  }
+
+  private void maybeUploadNodeScripts(
+      Universe universe, NodeInfo nodeInfo, ShellProcessContext context) {
+    Pair<UUID, String> nodeKey = new Pair<>(universe.getUniverseUUID(), nodeInfo.getNodeName());
+    NodeInfo uploadedInfo = uploadedNodeInfo.get(nodeKey);
+    if (uploadedInfo != null && uploadedInfo.equals(nodeInfo)) {
+      // Node already has the scripts matching its current metadata.
+      return;
+    }
+    // Skip the metrics-collection script for k8s as no one will call it on a k8s pod. A changed
+    // NodeInfo can also mean the node IP changed (node name reused for a fresh underlying node).
+    if (!nodeInfo.isK8s()) {
+      String generatedScriptPath =
+          generateCollectMetricsScript(universe.getUniverseUUID(), nodeInfo);
+      log.info("Uploading metrics collection script to node {}", nodeInfo.getNodeName());
+      String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
+      nodeUniverseManager.uploadFileToNode(
+          nodeInfo.nodeDetails,
+          universe,
+          generatedScriptPath,
+          scriptPath,
+          SCRIPT_PERMISSIONS,
+          context);
+    }
+
+    log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
+    String generatedScriptPath = generateNodeCheckScript(universe.getUniverseUUID(), nodeInfo);
+    nodeUniverseManager.uploadFileToNode(
+        nodeInfo.nodeDetails,
+        universe,
+        generatedScriptPath,
+        getNodeHealthScriptPath(nodeInfo),
+        SCRIPT_PERMISSIONS,
+        context);
+
+    // Only record the node as up to date after both uploads succeeded, so a failed upload is
+    // retried on the next cycle.
+    uploadedNodeInfo.put(nodeKey, nodeInfo);
+  }
+
+  /**
+   * Refreshes the health/metrics scripts on all given nodes in parallel, isolating per-node
+   * failures so one unreachable node does not block the others. Intended to run every health-check
+   * cycle regardless of whether the universe is busy with a task.
+   */
+  private void uploadHealthScriptsToNodes(Universe universe, List<NodeInfo> nodes) {
+    boolean shouldLogOutput =
+        confGetter.getConfForScope(universe, UniverseConfKeys.healthLogOutput);
+    int nodeCheckTimeoutSec =
+        confGetter.getConfForScope(universe, UniverseConfKeys.nodeCheckTimeoutSec);
+    ShellProcessContext context =
+        ShellProcessContext.builder()
+            .logCmdOutput(shouldLogOutput)
+            .traceLogging(true)
+            .timeoutSecs(nodeCheckTimeoutSec)
+            .build();
+    List<CompletableFuture<Void>> uploads = new ArrayList<>();
+    for (NodeInfo nodeInfo : nodes) {
+      uploads.add(
+          CompletableFuture.runAsync(
+              () -> {
+                try {
+                  maybeUploadNodeScripts(universe, nodeInfo, context);
+                } catch (Exception e) {
+                  log.warn(
+                      "Failed to refresh health scripts on node {} of universe {}: {}",
+                      nodeInfo.getNodeName(),
+                      universe.getUniverseUUID(),
+                      e.getMessage());
+                }
+              },
+              nodeExecutor));
+    }
+    for (CompletableFuture<Void> upload : uploads) {
+      try {
+        upload.get();
+      } catch (Exception e) {
+        // Individual node failures are already logged above; nothing else to do here.
+      }
+    }
   }
 
   private void setHealthCheckFailedMetric(Customer customer, Universe universe) {
@@ -1366,6 +1457,7 @@ public class HealthChecker {
     private int ybcPort = 18018;
     private UUID universeUuid;
     private boolean otelCollectorEnabled = false;
+    private boolean otelCollectorInstalled = false;
     private boolean clockSyncServiceRequired = true;
     private boolean clockboundEnabled = false;
 

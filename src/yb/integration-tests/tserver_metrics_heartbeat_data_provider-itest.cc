@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/fs/fs_manager.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/tsan_util.h"
 
@@ -78,6 +80,34 @@ class TServerMetricsHeartbeatDataProviderITest : public MiniClusterTestWithClien
     return true;
   }
 };
+
+// Verify that the heartbeat carries a storage_tier label on every path_metric
+// entry.  In a default mini-cluster (no labeled --fs_data_dirs), all paths
+// should report "ssd" (kDefaultStorageTier).
+TEST_F(TServerMetricsHeartbeatDataProviderITest, PathMetricsCarryStorageTier) {
+  ASSERT_TRUE(ASSERT_RESULT(AddDataSatisfies(
+      [](const master::TSHeartbeatRequestPB& req) -> Result<bool> {
+        if (!req.has_metrics()) {
+          return false;
+        }
+        const auto& metrics = req.metrics();
+        // At least one path metric must be present.
+        if (metrics.path_metrics_size() == 0) {
+          return false;
+        }
+        for (const auto& pm : metrics.path_metrics()) {
+          // Every path metric must carry a storage_tier.
+          if (!pm.has_storage_tier()) {
+            return false;
+          }
+          // Default cluster: no labels set, so all tiers should equal the default.
+          if (pm.storage_tier() != FsManager::kDefaultStorageTier) {
+            return false;
+          }
+        }
+        return true;
+      })));
+}
 
 class TServerFullCompactionStatusMetricsHeartbeatDataProviderITest
     : public TServerMetricsHeartbeatDataProviderITest {

@@ -3814,20 +3814,12 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level
 	dbid = dbid != InvalidOid ? dbid : MyDatabaseId;
 	pgssHashKey key;
 	pgssEntry  *entry;
-	bool		is_allowed_role = has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS);
 
 	memset(&key, 0, sizeof(pgssHashKey));
 	key.queryid = queryid;
 	key.userid = userid;
 	key.dbid = dbid;
 	key.toplevel = top_level;
-
-	if (!is_allowed_role && userid != GetUserId())
-	{
-		ereport(ERROR,
-				(errmsg("insufficient privilege to read this query detail")));
-		PG_RETURN_DATUM(0);
-	}
 
 	entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_FIND, NULL);
 

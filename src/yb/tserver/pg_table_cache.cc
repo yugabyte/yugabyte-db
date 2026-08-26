@@ -27,6 +27,7 @@
 #include "yb/tserver/pg_client.pb.h"
 
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 
 namespace yb::tserver {

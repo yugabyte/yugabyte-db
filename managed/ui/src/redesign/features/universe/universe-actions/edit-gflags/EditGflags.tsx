@@ -254,7 +254,16 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
     if (event.target.checked) {
       if (_.isEmpty(asyncFlags)) setValue('inheritFlagsFromPrimary', true);
       else setOpenInheritRRModal(true);
-    } else setValue('inheritFlagsFromPrimary', false);
+    } else {
+      setValue('inheritFlagsFromPrimary', false);
+      if (_.isEmpty(asyncFlags) && !_.isEmpty(primaryFlags)) {
+        const tserverOnlyFlags = primaryFlags
+          .filter((flag) => flag.TSERVER !== undefined)
+          .map((flag) => _.omit(flag, 'MASTER'));
+        setValue('asyncGflags', tserverOnlyFlags);
+      }
+      setIsPrimary(false);
+    }
   };
 
   useUpdateEffect(() => {

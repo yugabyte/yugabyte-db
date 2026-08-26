@@ -40,6 +40,7 @@
 
 #include "yb/gutil/strings/util.h"
 
+#include "yb/util/drive_io_stats.h"
 #include "yb/util/metrics.h"
 #include "yb/util/multi_drive_test_env.h"
 #include "yb/util/status.h"
@@ -54,6 +55,7 @@ using std::vector;
 DECLARE_string(fs_data_dirs);
 DECLARE_string(fs_wal_dirs);
 DECLARE_bool(TEST_fail_write_pb_container);
+DECLARE_bool(export_drive_io_metrics);
 
 namespace yb {
 
@@ -358,6 +360,251 @@ TEST_F(FsManagerTestBase, AutoFlagsTest) {
   ASSERT_FALSE(env_->FileExists(auto_flags_path));
 }
 
+// ==========================================================================
+//  Storage-tier label tests
+// ==========================================================================
+
+class StorageTierTest : public YBTest {
+ public:
+  void SetUp() override {
+    YBTest::SetUp();
+  }
+
+  // Build a FsManager directly from explicit paths + tiers without going
+  // through the gflag-based FsManagerOpts() constructor.
+  std::unique_ptr<FsManager> MakeFsManager(
+      const vector<string>& data_paths,
+      const std::unordered_map<string, string>& tier_by_path,
+      const vector<string>& wal_paths = {}) {
+    FsManagerOpts opts;
+    opts.data_paths = data_paths;
+    opts.tier_by_path = tier_by_path;
+    opts.wal_paths = wal_paths.empty() ? data_paths : wal_paths;
+    opts.server_type = kServerType;
+    auto mgr = std::make_unique<FsManager>(env_.get(), opts);
+    CHECK_OK(mgr->CreateInitialFileSystemLayout());
+    CHECK_OK(mgr->CheckAndOpenFileSystemRoots());
+    return mgr;
+  }
+
+  const char* kServerType = "tserver_test";
+};
+
+// All paths labeled: tier map is populated correctly.
+TEST_F(StorageTierTest, AllLabeled) {
+  auto fast_path = GetTestPath("nvme0");
+  auto slow_path = GetTestPath("hdd1");
+  ASSERT_OK(env_->CreateDir(fast_path));
+  ASSERT_OK(env_->CreateDir(slow_path));
+
+  auto mgr = MakeFsManager({fast_path, slow_path}, {{fast_path, "ssd"}, {slow_path, "hdd"}});
+
+  // GetDataRootsByTier should have exactly two entries.
+  const auto& by_tier = mgr->GetDataRootsByTier();
+  ASSERT_EQ(2u, by_tier.size());
+  ASSERT_EQ(1u, by_tier.count("ssd"));
+  ASSERT_EQ(1u, by_tier.count("hdd"));
+
+  // Each tier maps to exactly one directory.
+  ASSERT_EQ(1u, mgr->GetDataRootDirsForTier("ssd").size());
+  ASSERT_EQ(1u, mgr->GetDataRootDirsForTier("hdd").size());
+  ASSERT_TRUE(mgr->GetDataRootDirsForTier("tape").empty());
+
+  // GetTierForDataRoot round-trips for each canonicalized fs root.
+  // The FsRootDirs returned by GetFsRootDirs() are the canonicalized fs roots.
+  for (const auto& fs_root : mgr->GetFsRootDirs()) {
+    const auto& tier = mgr->GetTierForDataRoot(fs_root);
+    ASSERT_TRUE(tier == "ssd" || tier == "hdd")
+        << "Unexpected tier for root " << fs_root << ": " << tier;
+  }
+}
+
+// No paths labeled: all roots fall back to "ssd" (kDefaultStorageTier).
+TEST_F(StorageTierTest, NoLabels) {
+  auto path_a = GetTestPath("a");
+  auto path_b = GetTestPath("b");
+  ASSERT_OK(env_->CreateDir(path_a));
+  ASSERT_OK(env_->CreateDir(path_b));
+
+  // Every empty tier_by_path entry gets "ssd".
+  auto mgr = MakeFsManager({path_a, path_b}, {} /* no tiers */);
+
+  const auto& by_tier = mgr->GetDataRootsByTier();
+  ASSERT_EQ(1u, by_tier.size());
+  ASSERT_EQ(1u, by_tier.count("ssd"));
+  ASSERT_EQ(2u, by_tier.at("ssd").size());
+
+  for (const auto& fs_root : mgr->GetFsRootDirs()) {
+    ASSERT_EQ("ssd", mgr->GetTierForDataRoot(fs_root));
+  }
+}
+
+// Mixed: first path explicitly labeled "hdd", second unlabeled (falls back to "ssd").
+TEST_F(StorageTierTest, MixedLabels) {
+  auto hdd_path = GetTestPath("hdd_mixed");
+  auto plain_path = GetTestPath("plain_mixed");
+  ASSERT_OK(env_->CreateDir(hdd_path));
+  ASSERT_OK(env_->CreateDir(plain_path));
+
+  // plain_path is absent from the map so it should fall back to "ssd".
+  auto mgr = MakeFsManager({hdd_path, plain_path}, {{hdd_path, "hdd"}});
+
+  const auto& by_tier = mgr->GetDataRootsByTier();
+  ASSERT_EQ(2u, by_tier.size());
+  ASSERT_EQ(1u, by_tier.count("hdd"));
+  ASSERT_EQ(1u, by_tier.count("ssd"));
+}
+
+// Duplicate paths: tier map should not duplicate entries.
+TEST_F(StorageTierTest, DuplicatePaths) {
+  auto path_d = GetTestPath("dup_d");
+  ASSERT_OK(env_->CreateDir(path_d));
+
+  auto mgr = MakeFsManager({path_d, path_d}, {{path_d, "hdd"}});
+
+  // Duplicates are deduplicated; each tier should have at most 1 entry.
+  const auto& dirs = mgr->GetDataRootDirsForTier("hdd");
+  ASSERT_EQ(1u, dirs.size());
+}
+
+// Unknown root returns "ssd" (kDefaultStorageTier) from GetTierForDataRoot.
+TEST_F(StorageTierTest, UnknownRootReturnsDefault) {
+  auto path_e = GetTestPath("path_e");
+  ASSERT_OK(env_->CreateDir(path_e));
+
+  auto mgr = MakeFsManager({path_e}, {{path_e, "ssd"}});
+
+  ASSERT_EQ("ssd", mgr->GetTierForDataRoot("/nonexistent/root"));
+}
+
+// A label outside the static set {ssd, hdd} is rejected at init time.
+TEST_F(StorageTierTest, InvalidTierRejected) {
+  auto path = GetTestPath("bad_tier");
+  ASSERT_OK(env_->CreateDir(path));
+
+  FsManagerOpts opts;
+  opts.data_paths = {path};
+  opts.tier_by_path = {{path, "gold"}};  // not a valid storage tier
+  opts.wal_paths = {path};
+  opts.server_type = kServerType;
+  auto mgr = std::make_unique<FsManager>(env_.get(), opts);
+
+  Status s = mgr->CreateInitialFileSystemLayout();
+  ASSERT_NOK(s);
+  ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+  ASSERT_STR_CONTAINS(s.ToString(), "Invalid storage tier");
+}
+
+// IsValidStorageTier / ValidStorageTiers reflect the static set.
+TEST_F(StorageTierTest, ValidStorageTierSet) {
+  ASSERT_TRUE(FsManager::IsValidStorageTier("ssd"));
+  ASSERT_TRUE(FsManager::IsValidStorageTier("hdd"));
+  ASSERT_FALSE(FsManager::IsValidStorageTier("gold"));
+  ASSERT_FALSE(FsManager::IsValidStorageTier(""));
+
+  // The default tier must always be a valid tier.
+  ASSERT_TRUE(FsManager::IsValidStorageTier(FsManager::kDefaultStorageTier));
+}
+
+// ParseDataDirSpec edge cases exercised via FLAGS_fs_data_dirs.
+// These go through the full FsManagerOpts() constructor code path.
+TEST_F(StorageTierTest, FlagParsingLabeled) {
+  auto fast_path = GetTestPath("nvme_flag");
+  auto slow_path = GetTestPath("hdd_flag");
+  ASSERT_OK(env_->CreateDir(fast_path));
+  ASSERT_OK(env_->CreateDir(slow_path));
+
+  // Set flag to "path:ssd,path:hdd" format.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) =
+      fast_path + ":ssd," + slow_path + ":hdd";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_wal_dirs) = "";
+
+  FsManagerOpts opts;
+  opts.server_type = kServerType;
+  // opts.data_paths and tier_by_path are populated by the default constructor.
+  ASSERT_EQ(2u, opts.data_paths.size());
+  ASSERT_EQ(fast_path, opts.data_paths[0]);
+  ASSERT_EQ(slow_path, opts.data_paths[1]);
+  ASSERT_EQ(2u, opts.tier_by_path.size());
+  ASSERT_EQ("ssd", opts.tier_by_path[fast_path]);
+  ASSERT_EQ("hdd", opts.tier_by_path[slow_path]);
+
+  // WAL defaults to the fastest available tier (default tier "ssd").
+  ASSERT_EQ(1u, opts.wal_paths.size());
+  ASSERT_EQ(fast_path, opts.wal_paths[0]);
+}
+
+// If no default-tier roots exist, WAL falls back to the next configured tier.
+TEST_F(StorageTierTest, FlagParsingWalFallbackToNextTier) {
+  auto hdd_path_a = GetTestPath("hdd_a");
+  auto hdd_path_b = GetTestPath("hdd_b");
+  ASSERT_OK(env_->CreateDir(hdd_path_a));
+  ASSERT_OK(env_->CreateDir(hdd_path_b));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) =
+      hdd_path_a + ":hdd," + hdd_path_b + ":hdd";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_wal_dirs) = "";
+
+  FsManagerOpts opts;
+  opts.server_type = kServerType;
+
+  ASSERT_EQ(2u, opts.wal_paths.size());
+  ASSERT_EQ(hdd_path_a, opts.wal_paths[0]);
+  ASSERT_EQ(hdd_path_b, opts.wal_paths[1]);
+}
+
+// ParseDataDirSpec: trailing colon is treated as unlabeled.
+TEST_F(StorageTierTest, FlagParsingTrailingColon) {
+  auto path_t = GetTestPath("trailing_colon");
+  ASSERT_OK(env_->CreateDir(path_t));
+
+  // "path:" has an empty tier suffix is treated as unlabeled.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) = path_t + ":";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_wal_dirs) = "";
+
+  FsManagerOpts opts;
+  opts.server_type = kServerType;
+  ASSERT_EQ(1u, opts.data_paths.size());
+  // Trailing colon is stripped: path is just path_t, tier defaults to "ssd".
+  ASSERT_EQ(path_t, opts.data_paths[0]);
+  ASSERT_EQ("ssd", opts.tier_by_path[path_t]);
+}
+
+// ParseDataDirSpec: no colon is treated as unlabeled, full path preserved.
+TEST_F(StorageTierTest, FlagParsingNoColon) {
+  auto path_nc = GetTestPath("no_colon");
+  ASSERT_OK(env_->CreateDir(path_nc));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) = path_nc;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_wal_dirs) = "";
+
+  FsManagerOpts opts;
+  opts.server_type = kServerType;
+  ASSERT_EQ(1u, opts.data_paths.size());
+  ASSERT_EQ(path_nc, opts.data_paths[0]);
+  ASSERT_EQ("ssd", opts.tier_by_path[path_nc]);
+}
+
+// Explicitly setting --fs_wal_dirs with a ":tier" annotation must be rejected.
+TEST_F(StorageTierTest, WalDirWithTierRejected) {
+  auto wal_path = GetTestPath("wal_with_tier");
+  ASSERT_OK(env_->CreateDir(wal_path));
+
+  FsManagerOpts opts;
+  opts.data_paths = {wal_path};
+  opts.tier_by_path = {{wal_path, "ssd"}};
+  // Deliberately set a WAL path with a tier annotation.
+  opts.wal_paths = {wal_path + ":ssd"};
+  opts.server_type = kServerType;
+  auto mgr = std::make_unique<FsManager>(env_.get(), opts);
+
+  Status s = mgr->CreateInitialFileSystemLayout();
+  ASSERT_NOK(s);
+  ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+  ASSERT_STR_CONTAINS(s.ToString(), "Storage-tier annotation");
+  ASSERT_STR_CONTAINS(s.ToString(), "--fs_wal_dirs");
+}
+
 class FsManagerTestDriveFault : public YBTest {
  public:
   void SetUp() override {
@@ -408,5 +655,68 @@ TEST_F(FsManagerTestDriveFault, SingleDriveFault) {
   EXPECT_TRUE(Slice(dirs[0]).starts_with(Slice(GetTestPath(kOkDrive))));
 }
 
+// A drive that failed the startup write check must not be registered for IO metrics: it has been
+// dropped from the root lists, nothing will be written to it, and it already reports drive_fault.
+TEST_F(FsManagerTestDriveFault, FaultyDriveIsNotRegisteredForIoMetrics) {
+  // The fixture's SetUp only gets as far as creating the layout; the first
+  // CheckAndOpenFileSystemRoots returns NotFound and returns before reaching registration. Real
+  // startup re-opens after creating (server_base.cc), so do the same here.
+  ASSERT_OK(fs_manager()->CheckAndOpenFileSystemRoots());
+
+  ASSERT_NE(nullptr, DriveIoStatsRegistry::Instance().Find(GetTestPath(kOkDrive)));
+  ASSERT_EQ(nullptr, DriveIoStatsRegistry::Instance().Find(GetTestPath(kFailedDrive)));
+}
+
+// Coverage for FsManager::SetUpDriveIoMetrics: which roots get registered, and the flag that
+// turns the whole thing off. Roots are GetTestPath-derived and so unique per test, which is what
+// lets these tests share the process-global registry.
+class FsManagerTestDriveIoMetrics : public YBTest {
+ public:
+  void ReinitFsManager(const vector<string>& wal_paths, const vector<string>& data_paths) {
+    fs_manager_.reset();
+    FsManagerOpts opts;
+    opts.wal_paths = wal_paths;
+    opts.data_paths = data_paths;
+    opts.server_type = kServerType;
+    opts.metric_registry = &metric_registry_;
+    fs_manager_ = std::make_unique<FsManager>(env_.get(), opts);
+  }
+
+  Status OpenFileSystem(const vector<string>& wal_paths, const vector<string>& data_paths) {
+    ReinitFsManager(wal_paths, data_paths);
+    RETURN_NOT_OK(fs_manager_->CreateInitialFileSystemLayout());
+    return fs_manager_->CheckAndOpenFileSystemRoots();
+  }
+
+  const char* kServerType = "tserver_test";
+
+ private:
+  std::unique_ptr<FsManager> fs_manager_;
+  MetricRegistry metric_registry_;
+};
+
+// The WAL and data roots can be different devices, and both must be attributed.
+TEST_F(FsManagerTestDriveIoMetrics, RegistersWalAndDataRoots) {
+  const auto wal = GetTestPath("wal_root");
+  const auto data = GetTestPath("data_root");
+  ASSERT_OK(OpenFileSystem({ wal }, { data }));
+
+  auto& registry = DriveIoStatsRegistry::Instance();
+  ASSERT_NE(nullptr, registry.Find(wal)) << "WAL root should be registered";
+  ASSERT_NE(nullptr, registry.Find(data)) << "data root should be registered";
+  ASSERT_NE(registry.Find(wal), registry.Find(data)) << "and they are distinct drives";
+
+  // A file under a root resolves to that root's counters, which is the whole attribution path.
+  ASSERT_EQ(registry.Find(wal), registry.Find(wal + "/yb-data/tserver_test/wals/x/wal-000001"));
+}
+
+TEST_F(FsManagerTestDriveIoMetrics, FlagOffRegistersNothing) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_export_drive_io_metrics) = false;
+  const auto root = GetTestPath("fs_root");
+  ASSERT_OK(OpenFileSystem({ root }, { root }));
+
+  ASSERT_EQ(nullptr, DriveIoStatsRegistry::Instance().Find(root))
+      << "with --export_drive_io_metrics off, the write path must see no drive at all";
+}
 
 } // namespace yb

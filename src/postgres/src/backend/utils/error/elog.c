@@ -1315,6 +1315,8 @@ set_backtrace(ErrorData *edata, int num_skip)
 
 	initStringInfo(&errtrace);
 
+	num_skip += edata->yb_backtrace_extra_frames_skip;
+
 	if (IsYugaByteEnabled() && !yb_debug_original_backtrace_format)
 	{
 		const char *backtrace = YBCGetStackTrace();
@@ -4515,135 +4517,68 @@ yb_format_and_append(StringInfo buf, const char *fmt, const size_t nargs,
 
 /*
  * Same as EVALUATE_MESSAGE except
+ * - implemented as function instead of macro
  * - assert not multithreaded mode
- * - get args from passed nargs and args rather than VA args
+ * - get args from passed YbStatusErrorDataFormatText struct rather than VA args
  * - generate actual output using yb_format_and_append
  */
-#define YB_EVALUATE_MESSAGE_FROM_STATUS(domain, targetfield, appendval, \
-										translateit, nargs, args) \
-	{ \
-		AssertMacro(!IsMultiThreadedMode()); \
-		StringInfoData	buf; \
-		/* Internationalize the error format string */ \
-		if ((translateit) && !in_error_recursion_trouble()) \
-			fmt = dgettext((domain), fmt);				  \
-		initStringInfo(&buf); \
-		if ((appendval) && edata->targetfield) { \
-			appendStringInfoString(&buf, edata->targetfield); \
-			appendStringInfoChar(&buf, '\n'); \
-		} \
-		/* Generate actual output --- have to use appendStringInfoVA */ \
-		yb_format_and_append(&buf, fmt, nargs, args); \
-		/* Save the completed message into the stack item */ \
-		if (edata->targetfield) \
-			pfree(edata->targetfield); \
-		edata->targetfield = pstrdup(buf.data); \
-		pfree(buf.data); \
-	}
-
-/*
- * yb_errmsg_from_status - set error message from Status data
- *
- * The yb_errmsg_from_status is equivalent of errmsg to work in
- * HandleYBStatus context, rather then in ereport. The
- * yb_errmsg_from_status sets message field on current ErrorData frame
- * from the info retrieved from DocDB Status object.
- *
- * Status object carries messages as a format string and string arguments for
- * rendering on the client. Therefore the functions parses the format string
- * only to find template locations, and ignores their data types and formatting
- * flags.
- *
- * Please refer yb_errmsg_va() for details on how message and argument are
- * prepared before they are stored into a Status object.
- */
-int
-yb_errmsg_from_status(const char *fmt, const size_t nargs, const char **args)
+static void
+YbEvaluateMessage(const char *domain, char **target, bool appendval, bool translateit,
+				  const YbStatusErrorDataFormatText *text)
 {
 	Assert(!IsMultiThreadedMode());
-
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
-
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
-
-	edata->message_id = fmt;
-	YB_EVALUATE_MESSAGE_FROM_STATUS(edata->domain, message,
-									false /* appendval */ ,
-									true /* translateit */ , nargs, args);
-
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
-	return 0;					/* return value does not matter */
-}
-
-int
-yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args)
-{
-	Assert(!IsMultiThreadedMode());
-
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
-
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
-
-	YB_EVALUATE_MESSAGE_FROM_STATUS(edata->domain, detail,
-									false /* appendval */ ,
-									true /* translateit */ , nargs, args);
-
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
-	return 0;					/* return value does not matter */
-}
-
-int
-yb_errdetail_log_from_status(const char *fmt, const size_t nargs, const char **args)
-{
-	Assert(!IsMultiThreadedMode());
-
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
-
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
-
-	YB_EVALUATE_MESSAGE_FROM_STATUS(edata->domain, detail_log,
-									false /* appendval */ ,
-									true /* translateit */ , nargs, args);
-
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
-	return 0;					/* return value does not matter */
-}
-
-/*
- * In Yugabyte filename and funcname retrieved from a Status are palloc-d, and
- * should be properly pfree-d to avoid memory leaks. We assume status data are
- * decoded into new ErrorData structure and therefore filename/funcname fields
- * are empty.
- */
-void
-yb_errlocation_from_status(const char *filename, int lineno, const char *funcname)
-{
-	Assert(!IsMultiThreadedMode());
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-
-	/*
-	 * If Status don't have location info don't change anything and allow
-	 * errfinish to capture the location where Status was handled.
-	 */
-	if (filename || funcname)
+	StringInfoData buf;
+	const char *fmt = text->fmt;
+	/* Internationalize the error format string */
+	if (translateit && !in_error_recursion_trouble())
+		fmt = dgettext(domain, fmt);
+	initStringInfo(&buf);
+	if (appendval && *target)
 	{
-		Assert(!edata->filename);
-		Assert(!edata->funcname);
-		edata->filename = filename;
-		edata->lineno = lineno;
-		edata->funcname = funcname;
+		appendStringInfoString(&buf, *target);
+		appendStringInfoChar(&buf, '\n');
+	}
+	/* Generate actual output --- have to use appendStringInfoVA */
+	yb_format_and_append(&buf, fmt, text->nargs, text->args);
+	/* Save the completed message into the stack item */
+	if (*target)
+		pfree(*target);
+	*target = pstrdup(buf.data);
+	pfree(buf.data);
+}
+
+void
+yb_errapply_yb_status(const YbStatusErrorData *status_data, int backtrace_extra_frames_skip)
+{
+	Assert(!IsMultiThreadedMode());
+
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+	MemoryContext oldcontext = MemoryContextSwitchTo(edata->assoc_context);
+	edata->yb_backtrace_extra_frames_skip = backtrace_extra_frames_skip;
+	edata->message_id = status_data->msg.fmt;
+	YbEvaluateMessage(edata->domain, &edata->message, false /* appendval */ ,
+					  true /* translateit */ , &status_data->msg);
+
+	if (status_data->detail.fmt)
+		YbEvaluateMessage(edata->domain, &edata->detail, false /* appendval */ ,
+						  true /* translateit */ , &status_data->detail);
+
+	if (status_data->detail_log.fmt)
+		YbEvaluateMessage(edata->domain, &edata->detail_log, false /* appendval */ ,
+						  true /* translateit */ , &status_data->detail_log);
+
+	const YbStatusErrorDataErrorLocation *loc = &status_data->location;
+	if (loc->funcname || loc->filename)
+	{
+		Assert(!(edata->filename || edata->funcname));
+		edata->filename = loc->filename;
+		edata->lineno = loc->lineno;
+		edata->funcname = loc->funcname;
 		edata->yb_owns_file_and_func = true;
 	}
+	MemoryContextSwitchTo(oldcontext);
+	recursion_depth--;
 }

@@ -1083,10 +1083,9 @@ PostmasterMain(int argc, char *argv[])
 	 * Register the apply launcher.  It's probably a good idea to call this
 	 * before any modules had a chance to take the background worker slots.
 	 *
-	 * Logical replication is not supported in YugaByte mode currently and the
-	 * registration is disabled.
+	 * In YugaByte mode, only register if pg_subscription support is enabled.
 	 */
-	if (!YBIsEnabledInPostgresEnvVar())
+	if (!YBIsEnabledInPostgresEnvVar() || yb_enable_pg_subscription)
 		ApplyLauncherRegister();
 
 	if (YBIsEnabledInPostgresEnvVar())
@@ -2581,9 +2580,10 @@ retry1:
 			/*
 			 * HARD Code connection type between client and ysql_conn_mgr to
 			 * AF_INET which is the only supported connection type for
-			 * authentication.
+			 * authentication. Also set salen for ipv4 address.
 			 */
 			port->raddr.addr.ss_family = AF_INET;
+			port->raddr.salen = sizeof(struct sockaddr_in);
 			port->remote_host = yb_auth_backend_remote_host;
 
 			struct sockaddr_in *ip_address_1;

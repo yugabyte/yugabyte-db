@@ -41,9 +41,13 @@ import { GraphPanelHeaderTimezone } from './GraphPanelHeaderTimezone';
 import { YBFormatDate, ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 import { DEFAULT_TIMEZONE, RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import { UniverseMetricsExportConfigModal } from '@app/redesign/features/export-telemetry/UniverseMetricsExportConfigModal';
+import { RedirectToUniverseTelemetryExportModal } from '@app/redesign/features/export-telemetry/RedirectToUniverseTelemetryExportModal';
+import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/utils/createUniverseRuntime';
 
 import './GraphPanelHeader.scss';
 import 'react-widgets/dist/css/react-widgets.css';
+
+import InternalLinkIcon from '@app/redesign/assets/approved/internal-link.svg';
 
 // We can define different filter types here, the type parameter should be
 // valid type that moment supports except for custom and divider.
@@ -145,6 +149,7 @@ class GraphPanelHeader extends Component {
       outlierType: outlierTypes[DEFAULT_OUTLIER_TYPE].value,
       outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES,
       isUniverseMetricsExportModalOpen: false,
+      isRedirectToTelemetryExportModalOpen: false,
       isSingleNodeSelected: false,
       openPreviewMetricsModal: false,
       pdfDownloadInProgress: false,
@@ -624,6 +629,7 @@ class GraphPanelHeader extends Component {
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.METRICS_EXPORT_FEATURE_FLAG
       )?.value === 'true';
+    const isV2EditUniverseUIEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs?.data);
 
     const self = this;
     const menuItems = filterTypes.map((filter, idx) => {
@@ -845,12 +851,21 @@ class GraphPanelHeader extends Component {
                             {isMetricsExportEnabled && (
                               <MenuItem
                                 onSelect={() => {
-                                  this.setState({
-                                    isUniverseMetricsExportModalOpen: true
-                                  });
+                                  this.setState(
+                                    isV2EditUniverseUIEnabled
+                                      ? { isRedirectToTelemetryExportModalOpen: true }
+                                      : { isUniverseMetricsExportModalOpen: true }
+                                  );
                                 }}
                               >
-                                Export Metrics
+                                {isV2EditUniverseUIEnabled ? (
+                                  <span className="export-metrics-menu-item">
+                                    Export Metrics
+                                    <InternalLinkIcon width={24} height={24} />
+                                  </span>
+                                ) : (
+                                  'Export Metrics'
+                                )}
                               </MenuItem>
                             )}
                           </Dropdown.Menu>
@@ -915,6 +930,17 @@ class GraphPanelHeader extends Component {
                           isUniverseMetricsExportModalOpen: false
                         });
                       }
+                    }}
+                  />
+                )}
+                {this.state.isRedirectToTelemetryExportModalOpen && (
+                  <RedirectToUniverseTelemetryExportModal
+                    universeUuid={this.props.universe.currentUniverse.data.universeUUID}
+                    open={this.state.isRedirectToTelemetryExportModalOpen}
+                    onClose={() => {
+                      this.setState({
+                        isRedirectToTelemetryExportModalOpen: false
+                      });
                     }}
                   />
                 )}

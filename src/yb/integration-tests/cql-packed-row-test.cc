@@ -18,6 +18,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 

@@ -33,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.client.YBTable;
 
 @Slf4j
@@ -167,7 +168,7 @@ public class CreateTable extends AbstractTaskBase {
           "No master host/ports for a table creation op in " + taskParams().getUniverseUUID());
     }
 
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       if (StringUtils.isEmpty(taskParams().tableName)) {
         taskParams().tableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
       }

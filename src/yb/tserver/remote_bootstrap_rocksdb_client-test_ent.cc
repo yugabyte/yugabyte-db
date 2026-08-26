@@ -181,6 +181,39 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadSnapshotFilesFailure) {
   }
 }
 
+// Tiered storage: remote-bootstrapping a tablet onto a new node must rewrite the tablet metadata's
+// tier_paths to THIS node's disk layout (not the source node's), and persist them to the on-disk
+// superblock so the persisted superblock matches the in-memory metadata.
+TEST_F(RemoteBootstrapRocksDBClientTest, TierPathsUpdatedOnDestination) {
+  ASSERT_NO_FATAL_FAILURE(CheckSnapshotsInSrc());
+
+  TabletStatusListener listener(meta_);
+  ASSERT_OK(client_->FetchAll(&listener));
+
+  // The destination metadata carries tier_paths, and path_id 0 is this node's local rocksdb_dir.
+  const auto& tier_paths = meta_->tier_paths();
+  ASSERT_FALSE(tier_paths.empty());
+  ASSERT_EQ(tier_paths[0].path_id, 0u);
+  ASSERT_EQ(tier_paths[0].path, meta_->rocksdb_dir());
+
+  // Paths point at THIS node (the client fs root), not the source tablet's directory.
+  ASSERT_NE(meta_->rocksdb_dir(), src_rocksdb_dir_);
+  for (const auto& tp : tier_paths) {
+    ASSERT_NE(tp.path.find("client_tablet"), std::string::npos) << tp.path;
+  }
+
+  // Regression guard: FetchAll writes new_superblock_ to disk, so the persisted superblock's
+  // tier_paths must match the in-memory metadata.
+  tablet::RaftGroupReplicaSuperBlockPB on_disk;
+  ASSERT_OK(meta_->ReadSuperBlockFromDisk(&on_disk));
+  ASSERT_EQ(on_disk.kv_store().tier_paths_size(), static_cast<int>(tier_paths.size()));
+  for (int i = 0; i < on_disk.kv_store().tier_paths_size(); ++i) {
+    ASSERT_EQ(on_disk.kv_store().tier_paths(i).path_id(), tier_paths[i].path_id);
+    ASSERT_EQ(on_disk.kv_store().tier_paths(i).tier(), tier_paths[i].tier);
+    ASSERT_EQ(on_disk.kv_store().tier_paths(i).path(), tier_paths[i].path);
+  }
+}
+
 class RemoteSnapshotTransferDocksDBClientTest : public RemoteBootstrapRocksDBClientTest {
  public:
   RemoteSnapshotTransferDocksDBClientTest() : RemoteBootstrapRocksDBClientTest() {}

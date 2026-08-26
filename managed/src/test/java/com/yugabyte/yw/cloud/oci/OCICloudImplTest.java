@@ -93,6 +93,30 @@ public class OCICloudImplTest extends FakeDBApplication {
   }
 
   @Test
+  public void testIsValidCredsReturnsFalseWhenInstancePrincipalCompartmentMissing() {
+    defaultProvider.getDetails().getCloudInfo().getOci().setOciAuthType("INSTANCE_PRINCIPAL");
+    defaultProvider.getDetails().getCloudInfo().getOci().setOciTenancyId(null);
+    defaultProvider.getDetails().getCloudInfo().getOci().setOciUserId(null);
+    defaultProvider.getDetails().getCloudInfo().getOci().setOciFingerprint(null);
+    defaultProvider.getDetails().getCloudInfo().getOci().setOciPrivateKeyContent(null);
+    defaultProvider.getDetails().getCloudInfo().getOci().setOciCompartmentId("");
+    assertFalse(ociCloudImpl.isValidCreds(defaultProvider));
+  }
+
+  @Test
+  public void testInstancePrincipalEnvVarsExcludeApiKeyFields() {
+    OCICloudInfo ociCloudInfo =
+        OCICloudInfo.builder()
+            .ociAuthType("INSTANCE_PRINCIPAL")
+            .ociCompartmentId("ocid1.compartment.oc1..example")
+            .ociRegion("us-ashburn-1")
+            .build();
+
+    assertFalse(ociCloudInfo.getEnvVars().containsKey(OCICloudImpl.OCI_TENANCY_ID));
+    assertEquals("INSTANCE_PRINCIPAL", ociCloudInfo.getEnvVars().get(OCICloudImpl.OCI_AUTH_TYPE));
+  }
+
+  @Test
   public void testManageNodeGroupThrowsUnsupportedOperationException() {
     Region region = new Region();
     region.setProvider(defaultProvider);

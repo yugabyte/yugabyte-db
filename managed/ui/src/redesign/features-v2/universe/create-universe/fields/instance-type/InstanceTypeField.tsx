@@ -1,4 +1,4 @@
-import { ChangeEvent, ReactElement, useLayoutEffect } from 'react';
+import { ChangeEvent, ReactElement, useEffect, useMemo } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -14,12 +14,12 @@ import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/creat
 import { getDeviceInfoFromInstance } from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
 import { NodeType } from '@app/redesign/utils/dtos';
 import {
-  CloudType,
   InstanceType,
   InstanceTypeWithGroup,
   Placement,
   Region
 } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import {
@@ -90,11 +90,12 @@ export const InstanceTypeField = ({
     ],
     () => api.getInstanceTypes(provider?.uuid, zoneNames, osPatchingEnabled ? cpuArch : null),
     {
-      enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones
+      enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones,
+      refetchOnWindowFocus: false
     }
   );
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!data?.length || !provider?.code) return;
 
     const instanceExists = (code: string | null | undefined) =>
@@ -102,21 +103,21 @@ export const InstanceTypeField = ({
 
     const currentInstanceType = getValues(UPDATE_FIELD);
 
+    // In edit mode, allow a cleared value — do not autofill it back.
+    if (isEditMode && !currentInstanceType) return;
+
     if (!instanceExists(currentInstanceType)) {
       const defaultInstanceType = getDefaultInstanceType(provider.code, providerRuntimeConfigs);
       const code =
         defaultInstanceType && instanceExists(defaultInstanceType)
           ? defaultInstanceType
           : data[0].instanceTypeCode;
-      setValue(UPDATE_FIELD, code, { shouldValidate: true });
+      setValue(UPDATE_FIELD, code);
       const option = data.find((i) => i.instanceTypeCode === code);
       if (option) {
         setValue(
           UPDATE_DEVICE_INFO_FIELD,
-          getDeviceInfoFromInstance(option, providerRuntimeConfigs),
-          {
-            shouldValidate: true
-          }
+          getDeviceInfoFromInstance(option, providerRuntimeConfigs)
         );
       }
     } else if (!isEditMode && !getValues(UPDATE_DEVICE_INFO_FIELD)) {
@@ -124,10 +125,7 @@ export const InstanceTypeField = ({
       if (option) {
         setValue(
           UPDATE_DEVICE_INFO_FIELD,
-          getDeviceInfoFromInstance(option, providerRuntimeConfigs),
-          {
-            shouldValidate: true
-          }
+          getDeviceInfoFromInstance(option, providerRuntimeConfigs)
         );
       }
     }
@@ -142,12 +140,16 @@ export const InstanceTypeField = ({
     isEditMode
   ]);
 
-  const instanceTypes = sortAndGroup(data, provider?.code);
+  const instanceTypes = useMemo(() => sortAndGroup(data, provider?.code), [data, provider?.code]);
 
-  const handleChange = (e: ChangeEvent<{}>, option: any) => {
-    setValue(UPDATE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
-    const deviceInfo = getDeviceInfoFromInstance(option, providerRuntimeConfigs);
-    setValue(UPDATE_DEVICE_INFO_FIELD, deviceInfo, { shouldValidate: true });
+  const handleChange = (_e: ChangeEvent<{}>, option: InstanceType | null) => {
+    if (!option) {
+      setValue(UPDATE_FIELD, null, { shouldValidate: true });
+      setValue(UPDATE_DEVICE_INFO_FIELD, null);
+      return;
+    }
+    setValue(UPDATE_FIELD, option.instanceTypeCode, { shouldValidate: true });
+    setValue(UPDATE_DEVICE_INFO_FIELD, getDeviceInfoFromInstance(option, providerRuntimeConfigs));
   };
 
   return (
@@ -157,7 +159,7 @@ export const InstanceTypeField = ({
       render={({ field, fieldState }) => {
         const value =
           instanceTypes.find((i: InstanceTypeWithGroup) => i.instanceTypeCode === field.value) ??
-          '';
+          null;
 
         return (
           <Box
@@ -174,6 +176,10 @@ export const InstanceTypeField = ({
                 options={instanceTypes as unknown as Record<string, string>[]}
                 getOptionLabel={getOptionLabel}
                 renderOption={renderOption}
+                isOptionEqualToValue={(option, val) =>
+                  option?.instanceTypeCode === val?.instanceTypeCode
+                }
+                filterSelectedOptions={false}
                 onChange={handleChange}
                 ybInputProps={{
                   error: !!fieldState.error,
@@ -183,8 +189,7 @@ export const InstanceTypeField = ({
                 }}
                 dataTestId="instance-type-field-container"
                 groupBy={
-                  provider?.code &&
-                  [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code)
+                  isCloudVendorCloudType(provider?.code)
                     ? (option: Record<string, string>) => option.groupName
                     : undefined
                 }

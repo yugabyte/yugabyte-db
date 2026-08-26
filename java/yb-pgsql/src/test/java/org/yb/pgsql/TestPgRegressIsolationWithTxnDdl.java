@@ -33,7 +33,11 @@ public class TestPgRegressIsolationWithTxnDdl extends BasePgRegressTest {
     // from what is expected.  When we enable table locks by default, we could
     // consider updating the expected output accordingly, to expect a
     // deadlock detection error. For now, disable table locks here.
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     flagMap.put("enable_object_locking_for_table_locks", "false");
+    flagMap.put("ysql_enable_concurrent_ddl", "false");
+    flagMap.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
+        (e, a) -> e + "," + a);
     return flagMap;
   }
 

@@ -18,6 +18,8 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/logging.h"

@@ -20,9 +20,12 @@
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/rocksdb_writer.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/partition.h"
+
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace yb::docdb {
 
@@ -56,7 +59,8 @@ class CountingVectorIndex : public DocVectorIndex {
   const DocVectorIndexMetrics& metrics() const override { LOG(FATAL) << "Unexpected call"; }
   size_t EstimateNumVectorsForBytes(size_t) const override { LOG(FATAL) << "Unexpected call"; }
   Result<DocVectorIndexSearchResult> Search(
-      Slice, const vector_index::SearchOptions&, bool, DocDBStatistics*) override {
+      Slice, const vector_index::SearchOptions&, bool, DocVectorIndexReverseMappingReader&)
+      override {
     LOG(FATAL) << "Unexpected call";
   }
   Result<EncodedDistance> Distance(Slice, Slice) override { LOG(FATAL) << "Unexpected call"; }
@@ -65,7 +69,9 @@ class CountingVectorIndex : public DocVectorIndex {
   Status WaitForCompaction() override { LOG(FATAL) << "Unexpected call"; }
   Status Flush() override { LOG(FATAL) << "Unexpected call"; }
   Status WaitForFlush() override { LOG(FATAL) << "Unexpected call"; }
-  ConsensusFrontierPtr GetFlushedFrontier() override { LOG(FATAL) << "Unexpected call"; }
+  storage::FrontierInfo GetFrontiers(storage::FrontierKinds) override {
+    LOG(FATAL) << "Unexpected call";
+  }
   storage::FlushAbility GetFlushAbility() override { LOG(FATAL) << "Unexpected call"; }
   Status CreateCheckpoint(const std::string&) override { LOG(FATAL) << "Unexpected call"; }
   const std::string& ToString() const override { LOG(FATAL) << "Unexpected call"; }
@@ -100,12 +106,14 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
   Status SendWriteBatch(
       const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime write_ht, HybridTime batch_ht,
       const DocVectorIndexesPtr& vector_indexes = nullptr,
-      const StorageSet& apply_to_storages = StorageSet::All()) {
+      const StorageSet& apply_to_storages = StorageSet::All(),
+      TableType table_type = TableType::PGSQL_TABLE_TYPE,
+      std::atomic<bool>* can_advance_intents_flush_op_id = nullptr) {
     ConsensusFrontiers frontiers;
     rocksdb::WriteBatch intents_write_batch;
     NonTransactionalBatchWriter batcher(
         put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, *this, frontiers,
-        vector_indexes, apply_to_storages);
+        vector_indexes, apply_to_storages, table_type, can_advance_intents_flush_op_id);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetFrontiers(&frontiers);
@@ -603,6 +611,113 @@ TEST_F(NonTransactionalBatchWriterTest, ExternalApplyGatesVectorIndexFeed) {
   vector_lagging.SetVectorIndex(0);
   EXPECT_EQ(fed_entries(vector_lagging, "0000000000000002", 100), 1)
       << "External apply did not feed a vector index whose bit was set.";
+}
+
+namespace {
+
+std::string EncodeTableOwnedVectorColumnValue(
+    const vector_index::VectorId& id, Slice vector_binary_value = {}) {
+  LWQLValuePB ql_value(nullptr);
+  ql_value.ref_binary_value(vector_binary_value);
+  dockv::DocVectorValue doc_vector_value(dockv::VectorValueFormat::kTyped, ql_value, id);
+  std::string out;
+  doc_vector_value.EncodeTo(&out);
+  return out;
+}
+
+KeyBytes EncodeDocPathKey(const DocPath& doc_path) {
+  KeyBytes encoded_key(doc_path.encoded_doc_key().AsSlice());
+  for (size_t i = 0; i < doc_path.num_subkeys(); ++i) {
+    doc_path.subkey(i).AppendToKey(&encoded_key);
+  }
+  return encoded_key;
+}
+
+}  // namespace
+
+// GH#32310: YSQL single-shard fast path applies via NonTransactionalBatchWriter without intents.
+// Table-owned reverse mapping must be written for column-keyed vector values, and delete_vector_ids
+// must tombstone obsolete vector ids.
+TEST_F(NonTransactionalBatchWriterTest, FastPathVectorReverseMapping) {
+  const auto vector_id = ASSERT_RESULT(vector_index::VectorIdFromString(
+      "10000000-2000-3000-4000-000000000001"));
+
+  const DocKey doc_key(MakeKeyEntryValues("row1"));
+  const auto column_path = DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)));
+  const auto encoded_key = EncodeDocPathKey(column_path);
+  const auto encoded_value = EncodeTableOwnedVectorColumnValue(vector_id);
+
+  const auto kWriteHT = 6000_usec_ht;
+  const auto kBatchHT = 5000_usec_ht;
+
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  auto* write_pair = put_batch.add_write_pairs();
+  write_pair->dup_key(encoded_key.AsSlice());
+  write_pair->dup_value(encoded_value);
+  ASSERT_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 6000 }]) -> \
+    SubDocKey(DocKey([], ["row1"]), [ColumnId(11)])
+SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
+    VECTOR_DATA(561000000020003000400000000000000111)
+  )#");
+
+  put_batch.Clear();
+  put_batch.dup_delete_vector_ids(vector_id.AsSlice());
+  ASSERT_OK(SendWriteBatch(put_batch, 7000_usec_ht, 6500_usec_ht));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 7000 }]) -> DEL
+MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 6000 }]) -> \
+    SubDocKey(DocKey([], ["row1"]), [ColumnId(11)])
+SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
+    VECTOR_DATA(561000000020003000400000000000000111)
+  )#");
+}
+
+// GH#32694: whenever the writer fills the intents write batch, it must clear the tablet's
+// can_advance_intents_flush_op_id_.
+TEST_F(NonTransactionalBatchWriterTest, ClearsCanAdvanceIntentsFlushOpId) {
+  const Uuid involved_tablet = ASSERT_RESULT(Uuid::FromString(kTabletUUID));
+  const TransactionId txn = ASSERT_RESULT(FullyDecodeTransactionId(kTxnId));
+  const DocKey doc_key(MakeKeyEntryValues("row1"));
+  const auto kBatchHT = 5000_usec_ht;
+  const auto kWriteHT = 6000_usec_ht;
+
+  std::atomic<bool> can_advance{true};
+
+  // A batch that writes nothing to the intents db leaves the flag alone.
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  auto* write_pair = put_batch.add_write_pairs();
+  write_pair->dup_key(
+      EncodeDocPathKey(
+          DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)))).AsSlice());
+  write_pair->dup_value(EncodeValue(QLValue::Primitive("value1")));
+  ASSERT_OK(SendWriteBatch(
+      put_batch, kWriteHT, kBatchHT, /* vector_indexes= */ nullptr, StorageSet::All(),
+      TableType::PGSQL_TABLE_TYPE, &can_advance));
+  ASSERT_TRUE(can_advance.load());
+
+  // External intents are Put into the intents write batch (AddEntryToWriteBatch).
+  put_batch.Clear();
+  std::vector<ExternalIntent> intents = {
+      {DocPath(doc_key.Encode()), EncodeValue(QLValue::Primitive("value2"))}};
+  AddExternalIntentsWritePair(&put_batch, txn, kMinSubTransactionId, intents, involved_tablet);
+  ASSERT_OK(SendWriteBatch(
+      put_batch, kWriteHT, kBatchHT, /* vector_indexes= */ nullptr, StorageSet::All(),
+      TableType::PGSQL_TABLE_TYPE, &can_advance));
+  ASSERT_FALSE(can_advance.load());
+
+  // Applying them SingleDeletes those intents into the intents write batch
+  // (PrepareApplyExternalIntents).
+  can_advance.store(true);
+  put_batch.Clear();
+  AddApplyExternalTxn(&put_batch, txn, kWriteHT);
+  ASSERT_OK(SendWriteBatch(
+      put_batch, kWriteHT, kBatchHT, /* vector_indexes= */ nullptr, StorageSet::All(),
+      TableType::PGSQL_TABLE_TYPE, &can_advance));
+  ASSERT_FALSE(can_advance.load());
 }
 
 }  // namespace yb::docdb

@@ -38,6 +38,10 @@
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DEFINE_RUNTIME_AUTO_bool(enable_xcluster_api_v2, kExternal, false, true,
     "Allow the usage of v2 xCluster APIs that support DB Scoped replication groups");
@@ -56,6 +60,12 @@ DEFINE_RUNTIME_uint32(xcluster_ysql_statement_timeout_sec, 120,
 
 DEFINE_RUNTIME_AUTO_bool(xcluster_enable_ddl_replication, kExternal, false, true,
     "Enables xCluster automatic DDL replication.");
+
+DEFINE_RUNTIME_AUTO_bool(xcluster_enable_target_applied_filter, kExternal, false, true,
+    "When promoted, new xCluster streams in unidirectional automatic-DDL-mode replication "
+    "groups use WritePB.xcluster_target_applied (instead of has_external_hybrid_time) as the "
+    "producer's loop-prevention predicate, allowing index backfill writes to replicate "
+    "end-to-end. Bi-directional and pre-existing streams are unaffected.");
 
 DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
     "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
@@ -329,10 +339,10 @@ Status XClusterManager::GetXClusterSafeTime(
   return XClusterTargetManager::GetXClusterSafeTime(resp, epoch);
 }
 
-Result<std::optional<HybridTime>> XClusterManager::TryGetXClusterSafeTimeForBackfill(
+Result<XClusterBackfillDecision> XClusterManager::TryGetXClusterInfoForIndexBackfill(
     const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
     const LeaderEpoch& epoch) const {
-  return XClusterTargetManager::TryGetXClusterSafeTimeForBackfill(
+  return XClusterTargetManager::TryGetXClusterInfoForIndexBackfill(
       index_table_ids, indexed_table, epoch);
 }
 
@@ -1193,7 +1203,8 @@ void XClusterManager::ProcessCleanupTablesPeriodically() {
     WARN_NOT_OK(
         ExecutePgsqlStatements(
             namespace_name, statements, catalog_manager_,
-            CoarseMonoClock::now() + MonoDelta::FromSeconds(60), std::move(callback)),
+            CoarseMonoClock::now() + MonoDelta::FromSeconds(60), std::move(callback),
+            pgwrapper::YbInternalConnKindWireName::kXClusterSetup),
         "Cleanup of xCluster DDL replication tables failed");
   }
 }

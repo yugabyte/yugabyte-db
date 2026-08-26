@@ -19,7 +19,10 @@
 
 #include "yb/gutil/strings/join.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/util/flags.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 using namespace std::literals;

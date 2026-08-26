@@ -171,6 +171,93 @@ function rightnavAutoScroll() {
   }
 }
 
+/**
+ * Keep the docs page header bar pinned below fixed chrome (site header + mobile docs menu).
+ */
+function getDocsPageHeaderOffset() {
+  const header = document.querySelector('body > header');
+  if (!header) {
+    return 0;
+  }
+
+  let offset = header.getBoundingClientRect().bottom;
+
+  const docsMenu = document.querySelector('.docs-menu.desktop-hide');
+  if (docsMenu) {
+    const docsMenuStyle = window.getComputedStyle(docsMenu);
+    if (docsMenuStyle.display !== 'none') {
+      offset = Math.max(offset, docsMenu.getBoundingClientRect().bottom);
+    }
+  }
+
+  return Math.max(0, Math.ceil(offset));
+}
+
+/**
+ * Visible height of the sticky breadcrumbs/version bar (padding box), or 0 when
+ * the bar is absent or hidden.
+ */
+function getDocsPageHeaderBarHeight() {
+  const headerBar = document.querySelector('.docs-page-header-bar');
+  if (!headerBar) {
+    return 0;
+  }
+
+  const style = window.getComputedStyle(headerBar);
+  if (!style || style.display === 'none' || style.visibility === 'hidden') {
+    return 0;
+  }
+
+  return Math.max(0, Math.ceil(headerBar.getBoundingClientRect().height));
+}
+
+function updateDocsPageHeaderBarOffset() {
+  const offset = getDocsPageHeaderOffset();
+
+  // If the fixed chrome can't be measured (offset <= 0), leave the CSS
+  // fallback value in place rather than pinning content under the navbar.
+  if (offset <= 0) {
+    return;
+  }
+
+  const root = document.documentElement;
+  root.style.setProperty('--docs-sticky-header-top', `${offset}px`);
+
+  // Heading anchors must clear both the fixed site chrome and the sticky
+  // breadcrumbs/version bar. Keep a small gap so the heading isn't flush.
+  const headerBarHeight = getDocsPageHeaderBarHeight();
+  const headingGap = 20;
+  root.style.setProperty(
+    '--docs-heading-anchor-offset',
+    `${offset + headerBarHeight + headingGap}px`,
+  );
+}
+
+function observeDocsHeaderHeight() {
+  if (typeof ResizeObserver === 'undefined') {
+    return;
+  }
+
+  const observer = new ResizeObserver(() => {
+    updateDocsPageHeaderBarOffset();
+  });
+
+  const header = document.querySelector('body > header');
+  if (header) {
+    observer.observe(header);
+  }
+
+  const docsMenu = document.querySelector('.docs-menu.desktop-hide');
+  if (docsMenu) {
+    observer.observe(docsMenu);
+  }
+
+  const headerBar = document.querySelector('.docs-page-header-bar');
+  if (headerBar) {
+    observer.observe(headerBar);
+  }
+}
+
 $(document).ready(() => {
   const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
   if (isSafari) {
@@ -761,11 +848,14 @@ $(document).ready(() => {
   });
 
   rightnavAutoScroll();
+  updateDocsPageHeaderBarOffset();
+  observeDocsHeaderHeight();
 });
 
 $(window).resize(() => {
   rightnavAppend();
   rightnavAutoScroll();
+  updateDocsPageHeaderBarOffset();
   $('.td-main .td-sidebar').attr('style', '');
   $('.td-main #dragbar').attr('style', '');
   $('.td-main').attr('style', '');

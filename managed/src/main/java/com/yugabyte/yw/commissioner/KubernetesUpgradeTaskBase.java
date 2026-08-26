@@ -351,6 +351,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             newNamingStyle);
 
     boolean tserverFirst = (upgradeContext != null && upgradeContext.isProcessTServersFirst());
+    this.reconcilePgDataOwnershipToRoot =
+        upgradeContext != null && upgradeContext.isReconcilePgDataOwnershipToRoot();
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState =
         upgradeContext != null ? upgradeContext.getYsqlMajorVersionUpgradeState() : null;
     UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
@@ -389,7 +391,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           rootCAUUID,
           useExistingServerCert,
           null /* skipAZs */,
-          targetUniverseState);
+          targetUniverseState,
+          false /* useNewMasterDeviceInfo */,
+          false /* useNewTserverDeviceInfo */);
     }
 
     if (upgradeTservers) {
@@ -419,7 +423,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           rootCAUUID,
           useExistingServerCert,
           null /* skipAZs */,
-          targetUniverseState);
+          targetUniverseState,
+          false /* useNewMasterDeviceInfo */,
+          false /* useNewTserverDeviceInfo */);
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -471,7 +477,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             rootCAUUID,
             useExistingServerCert,
             null /* skipAZs */,
-            targetUniverseState);
+            targetUniverseState,
+            false /* useNewMasterDeviceInfo */,
+            false /* useNewTserverDeviceInfo */);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
@@ -509,7 +517,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           rootCAUUID,
           useExistingServerCert,
           null /* skipAZs */,
-          targetUniverseState);
+          targetUniverseState,
+          false /* useNewMasterDeviceInfo */,
+          false /* useNewTserverDeviceInfo */);
     }
   }
 
@@ -801,6 +811,10 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
   private void createCheckShellConnectivityTask() {
     Universe universe = getUniverse();
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.checkShellConnectivity)) {
+      log.info("Skipping shell connectivity check.");
+      return;
+    }
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (userIntent.enableClientToNodeEncrypt) {

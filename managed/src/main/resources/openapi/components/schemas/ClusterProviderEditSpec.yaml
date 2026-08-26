@@ -10,3 +10,12 @@ properties:
     items:
       type: string
       format: uuid
+  aws_instance_profile:
+    description: 'The AWS IAM instance profile ARN to use for the nodes in this cluster. Applicable only for nodes on AWS Cloud Provider. If specified, YugabyteDB Anywhere will use this instance profile instead of the access key.'
+    type: string
+    example: 'arn:aws:iam::myorg:instance-profile/testco-ec2-role'
+  image_bundle_uuid:
+    description: Image bundle UUID to use for node VM image. Refers to one of the image bundles defined in the cloud provider.
+    type: string
+    format: uuid
+    example: 914aa5a8-febc-44ba-9b60-ea3e22127218

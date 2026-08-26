@@ -159,6 +159,8 @@ DEFINE_test_flag(bool, check_catalog_version_overflow, false,
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidation_messages, true,
     "True to enable invalidation messages");
+DEFINE_validator(ysql_yb_enable_invalidation_messages,
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 
 // Keep in sync with the same definition in ybc_guc.h
 #ifdef NDEBUG
@@ -244,6 +246,7 @@ DEFINE_validator(ysql_enable_concurrent_ddl,
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_enable_invalidation_messages),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_DELAYED_COND_VALIDATOR(
@@ -356,10 +359,27 @@ DEFINE_RUNTIME_bool(cdc_disable_sending_composite_values, true,
     "of composite types");
 
 DEFINE_RUNTIME_int32(timestamp_history_retention_interval_sec, 900,
-    "The time interval in seconds to retain DocDB history for. Point-in-time "
-    "reads at a hybrid time further than this in the past might not be allowed "
-    "after a compaction. Set this to be higher than the expected maximum duration "
-    "of any single transaction in your application.");
+    "The time interval in seconds that DocDB history will always retain for. Any "
+    "snapshot that has lived shorter than this will not be compacted even if no read "
+    "time pin is protecting it (marked as removable).");
+
+DEFINE_RUNTIME_int32(db_history_retention_pin_max_txn_age_sec, 86400,
+    "The time interval in seconds that DocDB history will retain for at most. Any "
+    "snapshot that is older than this will be removed on compaction even if the snapshot "
+    "is protected by a read time pin.");
+
+DEFINE_RUNTIME_bool(enable_db_history_retention_pins, true,
+    "Enables the dynamic per-database history retention pin feature. When disabled, tservers "
+    "stop reporting per-database read-time snapshot pins in the heartbeat and stop applying "
+    "the cluster-global pin to the history retention cutoff, and history retention falls back "
+    "to only using the fixed history retention window.");
+
+DEFINE_RUNTIME_int32(db_history_retention_pin_min_txn_age_sec, 300,
+    "The minimal time a transaction is alive for before its read time is reported "
+    "as a per-database history retention pin in the tserver heartbeat to master, used to reduce "
+    "sending irrelevant pins that are protected by the history retention window. This "
+    "value must be less than timestamp_history_retention_interval_sec to prevent "
+    "snapshot too old errors.");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
 DEFINE_RUNTIME_PG_FLAG(int32, yb_test_notify_queue_max_pages, 0,

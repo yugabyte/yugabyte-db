@@ -482,7 +482,16 @@ struct pg_conn
 	PGContextVisibility show_context;	/* whether to show CONTEXT field */
 	PGlobjfuncs *lobjfuncs;		/* private state for large-object access fns */
 
-	/* Buffer for data received from backend and not yet processed */
+	/*
+	 * Buffer for data received from backend and not yet processed.
+	 *
+	 * NB: We rely on a maximum inBufSize/outBufSize of INT_MAX (and therefore
+	 * an INT_MAX upper bound on the size of any and all packet contents) to
+	 * avoid overflow; for example in reportErrorPosition(). Changing the type
+	 * would require not only an adjustment to the overflow protection in
+	 * pqCheck{In,Out}BufferSpace(), but also a careful audit of all libpq
+	 * code that uses ints during size calculations.
+	 */
 	char	   *inBuffer;		/* currently allocated buffer */
 	int			inBufSize;		/* allocated size of buffer */
 	int			inStart;		/* offset to first unconsumed data in buffer */
@@ -681,6 +690,9 @@ extern int	pqRowProcessor(PGconn *conn, const char **errmsgp);
 extern void pqCommandQueueAdvance(PGconn *conn, bool isReadyForQuery,
 								  bool gotSync);
 extern int	PQsendQueryContinue(PGconn *conn, const char *query);
+extern PGresult *PQnfn(PGconn *conn, int fnid, int *result_buf, int buf_size,
+					   int *result_len, int result_is_int,
+					   const PQArgBlock *args, int nargs);
 
 /* === in fe-protocol3.c === */
 
@@ -695,7 +707,8 @@ extern int	pqGetline3(PGconn *conn, char *s, int maxlen);
 extern int	pqGetlineAsync3(PGconn *conn, char *buffer, int bufsize);
 extern int	pqEndcopy3(PGconn *conn);
 extern PGresult *pqFunctionCall3(PGconn *conn, Oid fnid,
-								 int *result_buf, int *actual_result_len,
+								 int *result_buf, int buf_size,
+								 int *actual_result_len,
 								 int result_is_int,
 								 const PQArgBlock *args, int nargs);
 

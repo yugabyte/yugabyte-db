@@ -1057,11 +1057,12 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
   OverrideFlagForSlowTests("seconds_to_run", "30");
 
   if (!FLAGS_ts_flags.empty()) {
-    FLAGS_ts_flags += " ";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ts_flags) = FLAGS_ts_flags + " ";
   }
 
-  FLAGS_ts_flags += "--log_cache_size_limit_mb=2";
-  FLAGS_ts_flags += " --global_log_cache_size_limit_mb=4";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ts_flags) = FLAGS_ts_flags + "--log_cache_size_limit_mb=2";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ts_flags) =
+      FLAGS_ts_flags + " --global_log_cache_size_limit_mb=4";
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablets) = 1;

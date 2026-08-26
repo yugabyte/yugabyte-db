@@ -28,6 +28,8 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 
 using namespace std::literals;
@@ -670,6 +672,7 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
     req.set_tablet_id(tablet_->tablet_id());
     req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
     req.set_mark_backfill_done(true);
+    req.set_birth_time(birth_time_);
     schema_version_ = l->pb.version();
   }
 

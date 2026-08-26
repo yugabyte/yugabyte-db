@@ -37,6 +37,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/symbolize.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
@@ -56,7 +57,11 @@ typedef sig_t sighandler_t;
 DEFINE_test_flag(bool, disable_thread_stack_collection_wait, false,
     "When set to true, ThreadStacks() will not wait for threads to respond");
 
-DEFINE_RUNTIME_bool(use_libunwind_for_stack_trace_collection, true,
+// TODO(#32197): glibc backtrace() is not safe for use inside signal handlers, and is known to
+// cause trouble in TSAN builds (deadlock during collection). But the alternative (llvm libunwind)
+// currently has issues with BOLT-ed binaries that we use for releases, and backtrace() is what
+// we have been using in the past. So disabling in non-sanitizer builds until #32197 is resolved.
+DEFINE_RUNTIME_bool(use_libunwind_for_stack_trace_collection, yb::IsSanitizer(),
     "Use (llvm-)libunwind for stack trace collection instead of glibc backtrace().");
 TAG_FLAG(use_libunwind_for_stack_trace_collection, advanced);
 TAG_FLAG(use_libunwind_for_stack_trace_collection, hidden);

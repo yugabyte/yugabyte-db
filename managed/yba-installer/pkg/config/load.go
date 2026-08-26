@@ -51,7 +51,7 @@ func loadLegacyConfig() (*viper.Viper, error) {
 	viper.SetDefault("installRoot", "/opt/yugabyte")
 	viper.SetDefault("as_root", common.HasSudoAccess())
 
-	viper.SetDefault("perfAdvisor.enabled", false)
+	viper.SetDefault("perfAdvisor.enabled", true)
 	viper.SetDefault("perfAdvisor.port", 8443)
 	viper.SetDefault("perfAdvisor.restartSeconds", 10)
 	viper.SetDefault("perfAdvisor.callhome.enabled", true)

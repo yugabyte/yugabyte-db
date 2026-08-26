@@ -1,9 +1,10 @@
 import { FC, useRef } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { Field, FieldProps, FormikProps } from 'formik';
-import { Typography } from '@material-ui/core';
+import { Typography, Box } from '@material-ui/core';
+import { AlertVariant, YBAlert } from '@yugabyte-ui-library/core';
 
 import { YBModalForm } from '../common/forms';
 import { YBFormInput, YBToggle } from '../common/forms/fields';
@@ -12,6 +13,7 @@ import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/utils/dtos
 import { isEmptyObject } from '../../utils/ObjectUtils';
 import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 import { YBBanner, YBBannerVariant } from '../common/descriptors';
+import { DEFAULT_RELEASE_NOTES_URL } from '../../redesign/features-v2/onboarding/universe-revamp/modals/HelperComponent';
 
 const CONFIG_DATA_TYPE_TO_TOOLTIP_MESSAGE = {
   Bytes: 'BytesTooltipMessage',
@@ -57,6 +59,8 @@ export const EditConfig: FC<EditConfigData> = ({
     config_value:
       configData.type === 'Boolean' ? configData.configValue === 'true' : configData.configValue
   };
+  const isEditUniverseV2Config =
+    configData.configKey === RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI;
 
   const handleSubmit = async (
     values: EditConfigDataValues,
@@ -147,6 +151,35 @@ export const EditConfig: FC<EditConfigData> = ({
                 </Col>
               )}
             </Row>
+            {isEditUniverseV2Config && (
+              <Box width="100%" mt={1.5} mb={10} pl="15px">
+                <YBAlert
+                  open
+                  variant={AlertVariant.Info}
+                  className="edit-universe-v2-config-alert"
+                  text={
+                    <Trans
+                      t={t}
+                      i18nKey="admin.advanced.globalConfig.EditUniverseV2ConfigInfo"
+                      components={{
+                        experienceLink: (
+                          <a
+                            href={DEFAULT_RELEASE_NOTES_URL}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: 'inherit',
+                              textDecoration: 'underline',
+                              textUnderlinePosition: 'from-font'
+                            }}
+                          />
+                        )
+                      }}
+                    />
+                  }
+                />
+              </Box>
+            )}
             {configData.configKey === RuntimeConfigKey.NODE_AGENT_CLIENT_ENABLE &&
               configValue === false && (
                 <YBBanner variant={YBBannerVariant.WARNING}>

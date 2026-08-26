@@ -237,6 +237,63 @@ def parse_file(path: str | Path) -> ParsedDocument:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Size cap for embed-ready chunks
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Heading-scoped chunks have no inherent size bound: a long section between two
+# headings becomes one large chunk, which can exceed the embedding provider's
+# per-request limit (Bedrock ``amazon.titan-embed-text-v1`` = 8192 tokens) and
+# fail the whole document. ``split_embed_text`` splits an oversized block into a
+# few parts on paragraph boundaries; blocks that already fit pass through as-is.
+
+# ~4 chars per token, so 24000 chars stays comfortably under the 8192-token cap.
+MAX_EMBED_CHARS = 24000
+
+
+def split_embed_text(text: str, max_chars: int = MAX_EMBED_CHARS) -> list[str]:
+    """Split an embed-ready block into a few parts if it exceeds ``max_chars``.
+
+    Returns ``[text]`` unchanged when it fits (the common case). Oversized text
+    is packed into the fewest parts that each fit, breaking on nearby paragraph
+    boundaries; a single paragraph larger than the budget is hard-split by
+    characters. The ``Document:``/``Section:`` breadcrumb header is repeated on
+    each part so every piece keeps its context.
+    """
+    if len(text) <= max_chars:
+        return [text]
+
+    # Keep the breadcrumb header (the first line block) to repeat on every part.
+    header = ""
+    body = text
+    head, sep, rest = text.partition("\n\n")
+    if sep and (head.startswith("Document:") or head.startswith("Section:")):
+        header, body = head, rest
+
+    budget = max(1, max_chars - len(header) - 2)
+    parts: list[str] = []
+    current = ""
+    for para in re.split(r"\n{2,}", body):
+        if not para.strip():
+            continue
+        candidate = f"{current}\n\n{para}" if current else para
+        if len(candidate) <= budget:
+            current = candidate
+            continue
+        if current:
+            parts.append(current)
+            current = ""
+        if len(para) <= budget:
+            current = para
+        else:  # one paragraph bigger than the budget -> hard character split
+            for i in range(0, len(para), budget):
+                parts.append(para[i:i + budget])
+    if current:
+        parts.append(current)
+
+    return [f"{header}\n\n{p}" if header else p for p in parts] or [text]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LangChain-compatible wrapper
 # ─────────────────────────────────────────────────────────────────────────────
 

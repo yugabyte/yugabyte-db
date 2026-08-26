@@ -239,6 +239,8 @@ Status YBSubTransaction::RollbackToSubTransaction(SubTransactionId id) {
 
 const SubTransactionMetadata& YBSubTransaction::get() const { return sub_txn_; }
 
+CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline);
+
 class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, TransactionFullLocality locality)
@@ -574,6 +576,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
           if (state == TransactionState::kRunning) {
             abort = true;
+            // Remember why we abort, so that the operations that fail because of this abort could
+            // report the original failure instead of their own kAborted error.
+            flush_abort_cause_ = status;
             // State will be changed to aborted in SetError
           }
           SetErrorUnlocked(status, "Flush");
@@ -600,6 +605,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
+  Status FlushAbortCause() EXCLUDES(mutex_) override {
+    std::lock_guard lock(mutex_);
+    return flush_abort_cause_;
+  }
+
   void Commit(CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback)
       EXCLUDES(mutex_) {
     auto transaction = transaction_->shared_from_this();
@@ -614,7 +624,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       }
       if (!inflight_async_writes_.empty()) {
         async_write_commit_waiter_ = [transaction, seal_only, deadline,
+                                      wait_state = ash::WaitStateInfo::CurrentWaitState(),
                                       callback = std::move(callback)](const Status& status) {
+          ADOPT_WAIT_STATE(wait_state);
+          SCOPED_WAIT_STATUS(OnCpu_Active);
           TRACE_TO(transaction->trace(), "YBTransaction::Commit Async writes completed");
           if (status.ok()) {
             transaction->Commit(deadline, seal_only, std::move(callback));
@@ -622,9 +635,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             callback(status);
           }
         };
+        // The commit stays blocked after we return and resumes on the thread that completes the
+        // last async write.
+        ASH_ENABLE_CONCURRENT_UPDATES();
+        SET_WAIT_STATUS(YBClient_WaitingForPipelinedWrites);
         return;
       }
     }
+
+    // Adjust the deadline after completing the async write drain, so that the drain does not
+    // contribute to the commit deadline.
+    deadline = AdjustDeadline(deadline);
 
     {
       UniqueLock lock(mutex_);
@@ -664,6 +685,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         RequestStatusTablet(deadline);
         return;
       }
+      DropPendingStatusMovesWithoutMetadata();
       if (!transaction_status_move_handles_.empty()) {
         DCHECK(!commit_waiter_);
         VLOG_WITH_PREFIX(1) << "Waiting for transaction move RPCs to finish";
@@ -1090,7 +1112,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtransaction_.HasSubTransaction(id);
   }
 
-  Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {
+  Status RollbackToSubTransaction(
+      SubTransactionId id, CoarseTimePoint deadline,
+      bool* is_heartbeat_aborted_or_expired = nullptr) EXCLUDES(mutex_) {
     // A heartbeat should be sent (& waited for) to the txn status tablet(s) as part of a rollback.
     // This is for updating the list of aborted sub-txns and ensures that other txns don't see false
     // conflicts with this txn.
@@ -1160,7 +1184,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
       auto state = state_.load(std::memory_order_acquire);
       DCHECK(state != TransactionState::kPromoting); // can't happen, see comment above for details
-      if (state == TransactionState::kRunning) {
+      if (state == TransactionState::kAborted) {
+        if (is_heartbeat_aborted_or_expired != nullptr) {
+          *is_heartbeat_aborted_or_expired = true;
+        }
+        VLOG_WITH_PREFIX(2) << "Rollback to subtransaction: already aborted";
+      } else if (state == TransactionState::kRunning) {
         VLOG_WITH_PREFIX(2) << "Sending heartbeat to status tablet for sub-txn rollback.";
         heartbeat_futures.push_back(SendHeartBeatOnRollback(
             deadline, status_tablet_, &rollback_heartbeat_handle_,
@@ -1169,8 +1198,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
 
     // Wait for the heartbeat response
+    bool heartbeat_aborted_or_expired = false;
     for (auto& future : heartbeat_futures) {
       auto status = future.get();
+      if (status.IsAborted() || status.IsExpired()) {
+        heartbeat_aborted_or_expired = true;
+      }
+
       // If the transaction has been aborted or no longer exists, we don't have to do anything
       // further. The rollback heartbeat which tries to update the list of aborted sub-txns is as
       // good as successful.
@@ -1185,6 +1219,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     RETURN_NOT_OK(subtransaction_.RollbackToSubTransaction(id));
     VLOG_WITH_PREFIX(2) << "Aborted sub-txns from " << id
                         << "; subtransaction_=" << subtransaction_.ToString();
+
+    if (heartbeat_aborted_or_expired && is_heartbeat_aborted_or_expired != nullptr) {
+      *is_heartbeat_aborted_or_expired = true;
+    }
 
     return Status::OK();
   }
@@ -1309,8 +1347,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // abort the transaction.
     auto min_op = *write_query->op_ids.begin();
     auto max_op = *write_query->op_ids.rbegin();
-    SCHECK_FORMAT(
+    SCHECK_EC_FORMAT(
         max_op.term - min_op.term <= 1, IllegalState,
+        TransactionError(TransactionErrorCode::kAborted),
         "Tablet $0: tablet leader moved more than once before async writes completed "
         "(min_op: $1, max_op: $2)",
         tablet_id, min_op, max_op);
@@ -1356,6 +1395,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   void SetOriginId(uint32_t origin_id) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     origin_id_ = origin_id;
+  }
+
+  void RemoteAbortCallback(std::function<void(void)> callback) {
+    std::lock_guard lock(mutex_);
+    remote_abort_callback_ = std::move(callback);
   }
 
  private:
@@ -2269,6 +2313,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // If state is committed, then we should not cleanup.
         if (status.IsExpired() &&
             (state == TransactionState::kRunning || state == TransactionState::kPromoting)) {
+           std::function<void(void)> remote_abort_callback;
+          {
+            std::lock_guard lock(mutex_);
+            std::swap(remote_abort_callback_, remote_abort_callback);
+          }
+          if (remote_abort_callback) {
+            remote_abort_callback();
+          }
           DoAbortCleanup(transaction, CleanupType::kImmediate);
         }
         return;
@@ -2297,6 +2349,30 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           DoSendUpdateTransactionPromotingRpcs(std::move(transaction), id);
         },
         std::chrono::milliseconds(FLAGS_TEST_txn_status_moved_rpc_send_delay_ms));
+  }
+
+  // Stops waiting on the participants whose UpdateTransaction(PROMOTING) rpc is never going to be
+  // sent. DoSendUpdateTransactionPromotingRpcs() skips a participant until one of its batches
+  // completes, so a participant whose only batches failed keeps its entry in
+  // transaction_status_move_handles_ forever and the commit waits on an rpc that never goes out.
+  //
+  // Only safe at commit time: CheckCouldCommitUnlocked() rejects a commit with running requests, so
+  // no further batch can complete. Such a participant is not part of the commit either, since
+  // DoCommit() drops tablets without metadata.
+  void DropPendingStatusMovesWithoutMetadata() REQUIRES(mutex_) {
+    for (auto it = transaction_status_move_tablets_.begin();
+         it != transaction_status_move_tablets_.end();) {
+      const auto tablet_state = tablets_.find(*it);
+      CHECK(tablet_state != tablets_.end());
+      if (tablet_state->second.has_metadata) {
+        ++it;
+        continue;
+      }
+      VLOG_WITH_PREFIX(1) << "Tablet " << *it << " has no metadata, dropping its"
+                          << " UpdateTransaction(PROMOTING) rpc";
+      transaction_status_move_handles_.erase(*it);
+      it = transaction_status_move_tablets_.erase(it);
+    }
   }
 
   void DoSendUpdateTransactionPromotingRpcs(
@@ -2637,6 +2713,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // We might need to fix this before turning on transactions sealing.
   // https://github.com/yugabyte/yugabyte-db/issues/7984.
   size_t running_requests_ GUARDED_BY(mutex_) = 0;
+  // Flush failure that made this transaction abort itself, if any.
+  Status flush_abort_cause_ GUARDED_BY(mutex_);
   // Set to true after commit record is replicated. Used only during transaction sealing.
   bool commit_replicated_ GUARDED_BY(mutex_) = false;
 
@@ -2660,6 +2738,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   Status async_write_status_ GUARDED_BY(async_write_query_mutex_);
 
   uint32_t origin_id_ GUARDED_BY(mutex_) = 0;
+
+  std::function<void(void)> remote_abort_callback_ GUARDED_BY(mutex_);
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -2717,7 +2797,8 @@ internal::TxnBatcherIf& YBTransaction::batcher_if() {
 
 void YBTransaction::Commit(
     CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback) {
-  impl_->Commit(AdjustDeadline(deadline), seal_only, std::move(callback));
+  // Impl::Commit adjusts the deadline after the async-write drain; pass it through unchanged.
+  impl_->Commit(deadline, seal_only, std::move(callback));
 }
 
 void YBTransaction::Commit(CoarseTimePoint deadline, CommitCallback callback) {
@@ -2747,7 +2828,8 @@ ConsistentReadPoint& YBTransaction::read_point() {
 std::future<Status> YBTransaction::CommitFuture(
     CoarseTimePoint deadline, SealOnly seal_only) {
   return MakeFuture<Status>([this, deadline, seal_only](auto callback) {
-    impl_->Commit(AdjustDeadline(deadline), seal_only, std::move(callback));
+    // Impl::Commit adjusts the deadline after the async-write drain; pass it through unchanged.
+    impl_->Commit(deadline, seal_only, std::move(callback));
   });
 }
 
@@ -2840,8 +2922,9 @@ SubTransactionId YBTransaction::GetActiveSubTransactionId() const {
   return impl_->GetActiveSubTransactionId();
 }
 
-Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) {
-  return impl_->RollbackToSubTransaction(id, deadline);
+Status YBTransaction::RollbackToSubTransaction(
+    SubTransactionId id, CoarseTimePoint deadline, bool* is_heartbeat_aborted_or_expired) {
+  return impl_->RollbackToSubTransaction(id, deadline, is_heartbeat_aborted_or_expired);
 }
 
 bool YBTransaction::HasSubTransaction(SubTransactionId id) {
@@ -2899,6 +2982,10 @@ void YBTransaction::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallb
 }
 
 void YBTransaction::SetOriginId(uint32_t origin_id) { impl_->SetOriginId(origin_id); }
+
+void YBTransaction::RemoteAbortCallback(std::function<void(void)> callback) {
+  impl_->RemoteAbortCallback(std::move(callback));
+}
 
 } // namespace client
 } // namespace yb

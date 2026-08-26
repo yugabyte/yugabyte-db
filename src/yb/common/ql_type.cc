@@ -21,6 +21,7 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
 
 namespace yb {

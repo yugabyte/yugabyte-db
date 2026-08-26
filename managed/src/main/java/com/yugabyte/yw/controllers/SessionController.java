@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -169,7 +170,6 @@ public class SessionController extends AbstractPlatformController {
   public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
   private static final Duration FOREVER = Duration.ofSeconds(2147483647);
-  public static final String FILTERED_LOGS_SCRIPT = "bin/filtered_logs.sh";
   private static final String OIDC_TOKEN_EXPIRATION = "expiration";
 
   @Inject
@@ -236,8 +236,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "customerCount", response = CustomerCountResp.class)
   public Result customerCount() {
-    int customerCount = Customer.find.all().size();
-    return PlatformResults.withData(new CustomerCountResp(customerCount));
+    return PlatformResults.withData(new CustomerCountResp(Customer.find.query().findCount()));
   }
 
   @ApiOperation(value = "appVersion", responseContainer = "Map", response = String.class)
@@ -779,7 +778,7 @@ public class SessionController extends AbstractPlatformController {
           "Created new system role binding for user '{}' (email '{}') of new customer '{}', "
               + "with role '{}' (name '{}'), and default role binding '{}'.",
           user.getUuid(),
-          user.getEmail(),
+          RedactingService.SECRET_REPLACEMENT,
           cust.getUuid(),
           newRbacRole.getRoleUUID(),
           newRbacRole.getName(),

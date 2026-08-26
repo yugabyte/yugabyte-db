@@ -17,6 +17,7 @@
 #include <functional>
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 #if defined(YB_PROFGEN) && defined(__clang__)

@@ -139,10 +139,18 @@ class ColumnPackerV1 {
   }
 
   bool PackValue(const QLValuePB& value, size_t limit) {
+    if (column_data_.data_type == DataType::VECTOR &&
+        value.value_case() == QLValuePB::kBinaryValue) {
+      return PackDocdbEncodedVectorValue(value, limit);
+    }
     return DoPackValue(/* prefix= */ nullptr, value, limit);
   }
 
   bool PackValue(const LWQLValuePB& value, size_t limit) {
+    if (column_data_.data_type == DataType::VECTOR &&
+        value.value_case() == QLValuePB::kBinaryValue) {
+      return PackDocdbEncodedVectorValue(value, limit);
+    }
     return DoPackValue(/* prefix= */ nullptr, value, limit);
   }
 
@@ -165,6 +173,10 @@ class ColumnPackerV1 {
 
  private:
   size_t PackedValueSize(const QLValuePB& value) {
+    if (column_data_.data_type == DataType::VECTOR &&
+        value.value_case() == QLValuePB::kBinaryValue) {
+      return value.binary_value().size();
+    }
     return EncodedValueSize(value);
   }
 
@@ -173,6 +185,10 @@ class ColumnPackerV1 {
   }
 
   size_t PackedValueSize(const LWQLValuePB& value) {
+    if (column_data_.data_type == DataType::VECTOR &&
+        value.value_case() == QLValuePB::kBinaryValue) {
+      return value.binary_value().size();
+    }
     return EncodedValueSize(value);
   }
 
@@ -206,6 +222,19 @@ class ColumnPackerV1 {
     }
     PackPrefix(prefix, &buffer_);
     DoPackValueImpl(value);
+    return true;
+  }
+
+  template <class Value>
+  bool PackDocdbEncodedVectorValue(const Value& value, size_t limit) {
+    if (IsNull(value)) {
+      return true;
+    }
+    const auto& bytes = value.binary_value();
+    if (bytes.size() > limit && column_data_.varlen()) {
+      return false;
+    }
+    buffer_.append(bytes);
     return true;
   }
 

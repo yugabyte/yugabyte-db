@@ -31,7 +31,7 @@ import org.yb.Opid.OpIdPB;
 import org.yb.client.GetConsensusStateResponse;
 import org.yb.client.GetLatestEntryOpIdResponse;
 import org.yb.client.ListTabletsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.tablet.Tablet.TabletStatusPB;
 import org.yb.tserver.Tserver.ListTabletsResponsePB.StatusAndSchemaPB;
 import play.libs.Json;
@@ -84,7 +84,7 @@ public class TabletReportComponent implements SupportBundleComponent {
     }
 
     // Create tablet report from each tserver.
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       universe.getTServersInPrimaryCluster().parallelStream()
           .forEach(
               tserver -> {
@@ -216,7 +216,7 @@ public class TabletReportComponent implements SupportBundleComponent {
     Map<String, Long> res = new HashMap<>();
     // ~12KB for universe details.
     long size = 12000;
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       List<NodeDetails> tservers = universe.getTServersInPrimaryCluster();
       int numTservers = tservers.size();
       NodeDetails tserver = tservers.get(0);

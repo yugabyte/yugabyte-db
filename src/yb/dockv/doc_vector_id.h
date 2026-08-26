@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include "yb/common/column_id.h"
+#include "yb/common/value.messages.h"
+
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/packed_row.h"
@@ -41,10 +44,30 @@ struct EncodedDocVectorValue final {
   static EncodedDocVectorValue FromSlice(Slice encoded);
 };
 
+struct EncodedDocVectorMetaValue final {
+  // Optional colocation prefix, always empty for tombstone entries.
+  Slice table_key_prefix;
+
+  // A tuple without colocation prefix or a tombstone marker.
+  Slice ybctid;
+
+  // Optional column id, always invalid for tombstone entries.
+  ColumnId column_id = kInvalidColumnId;
+
+  bool IsTombstone() const {
+    return ybctid.starts_with(ValueEntryTypeAsChar::kTombstone);
+  }
+
+  static Result<EncodedDocVectorMetaValue> Decode(Slice encoded);
+};
+
 class DocVectorValue final : public PackableValue {
  public:
-  DocVectorValue(std::reference_wrapper<const QLValueMsg> value, const vector_index::VectorId& id)
-      : value_(value), id_(id)
+  DocVectorValue(
+      VectorValueFormat format,
+      std::reference_wrapper<const QLValueMsg> value,
+      const vector_index::VectorId& id)
+      : value_(value), id_(id), value_type_prefix_(ValueTypePrefix(format))
   {}
 
   bool IsNull() const override;
@@ -66,14 +89,28 @@ class DocVectorValue final : public PackableValue {
   std::string ToString() const override;
 
  private:
+  static char ValueTypePrefix(VectorValueFormat format);
+
+  template <class Buffer>
+  void AppendEncodedVectorValue(Buffer* buffer) const;
+
   template <class Buffer>
   void AppendVectorId(Buffer* buffer) const;
 
   const QLValueMsg& value_;
   vector_index::VectorId id_;
+  char value_type_prefix_;
 };
 
 bool IsNull(const DocVectorValue& v);
+
+// Encodes a raw pgvector binary value into DocDB format for schema missing_value storage.
+// The result has no VectorId suffix (trailing 0 byte).
+Result<QLValuePB> EncodeVectorSchemaMissingValue(
+    const QLValuePB& raw_pgvector_value, VectorValueFormat format);
+
+// Converts a DocDB-encoded vector schema missing_value into the format used by PgTableRow.
+Result<QLValuePB> DecodeVectorSchemaMissingValueForPgRow(const QLValuePB& docdb_missing_value);
 
 KeyBytes DocVectorKey(vector_index::VectorId vector_id);
 std::array<Slice, 3> DocVectorKeyAsParts(Slice id, Slice encoded_write_time);
@@ -90,5 +127,9 @@ std::string DocVectorKeyToString(const vector_index::VectorId& vector_id);
 std::string DocVectorKeyToString(const vector_index::VectorId& vector_id, const DocHybridTime& ht);
 
 Result<std::string> DocVectorMetaKeyToString(Slice input);
+Result<std::string> DocVectorMetaValueToString(Slice value);
+
+// Encodes vector reverse entry value in V1 format (table_key_prefix + ybctid + column_id).
+KeyBytes DocVectorMetaValue(Slice table_key_prefix, Slice ybctid, ColumnId column_id);
 
 } // namespace yb::dockv

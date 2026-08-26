@@ -15,8 +15,12 @@
 
 #include <arpa/inet.h>
 
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+
 #include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/format.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
@@ -211,6 +215,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kReplicaState_TakeUpdateLock:
       return "A write/alter RPC needs to wait for the ReplicaState lock to replicate a "
           "batch of writes through Raft.";
+    case WaitStateCode::kRaft_WaitingForPipelinedReplication:
+      return "A WaitForAsyncWrite rpc is waiting for a pipelined write to be Raft replicated.";
     case WaitStateCode::kRocksDB_ReadBlockFromFile:
       return "RocksDB is reading a block from a file.";
     case WaitStateCode::kRocksDB_OpenFile:
@@ -254,8 +260,13 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "YB client is looking up tablet information from the master.";
     case WaitStateCode::kYBClient_WaitingOnMaster:
       return "YB client is waiting on an RPC sent to the master.";
+    case WaitStateCode::kYBClient_WaitingForPipelinedWrites:
+      return "YB client is waiting for its pipelined writes to be Raft replicated before it can "
+             "commit the transaction.";
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
       return "Waiting for index backfill chunk to be processed.";
+    case WaitStateCode::kVectorIndex_Search:
+      return "The vector index is performing an approximate nearest neighbor search.";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
@@ -273,6 +284,7 @@ bool AshIsPGClass(ash::Class class_id) {
     case ash::Class::kTabletWait:
     case ash::Class::kRocksDB:
     case ash::Class::kCommon:
+    case ash::Class::kVectorIndex:
       return false;
   }
   FATAL_INVALID_ENUM_VALUE(ash::Class, class_id);
@@ -311,6 +323,22 @@ void AshMetadata::set_client_host_port(const HostPort &host_port) {
 
 void AshMetadata::clear_rpc_request_id() {
   rpc_request_id = 0;
+}
+
+void AshMetadata::RootRequestIdToPB(AshMetadataPB* pb) const {
+  pb->set_root_request_id(root_request_id.data(), root_request_id.size());
+}
+
+void AshMetadata::RootRequestIdToPB(LWAshMetadataPB* pb) const {
+  pb->dup_root_request_id(root_request_id.AsSlice());
+}
+
+void AshMetadata::TopLevelNodeIdToPB(AshMetadataPB* pb) const {
+  pb->set_top_level_node_id(top_level_node_id.data(), top_level_node_id.size());
+}
+
+void AshMetadata::TopLevelNodeIdToPB(LWAshMetadataPB* pb) const {
+  pb->dup_top_level_node_id(top_level_node_id.AsSlice());
 }
 
 std::string AshMetadata::ToString() const {
@@ -652,6 +680,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
       return WaitStateType::kLock;
 
     case WaitStateCode::kRaft_WaitingForReplication:
+    case WaitStateCode::kRaft_WaitingForPipelinedReplication:
     case WaitStateCode::kRemoteBootstrap_StartRemoteSession:
     case WaitStateCode::kRemoteBootstrap_FetchData:
     case WaitStateCode::kXCluster_WaitingForGetChanges:
@@ -704,7 +733,11 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kYBClient_WaitingOnDocDB:
     case WaitStateCode::kYBClient_LookingUpTablet:
     case WaitStateCode::kYBClient_WaitingOnMaster:
+    case WaitStateCode::kYBClient_WaitingForPipelinedWrites:
       return WaitStateType::kRPCWait;
+
+    case WaitStateCode::kVectorIndex_Search:
+      return WaitStateType::kCpu;
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
@@ -719,6 +752,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kYBClient_WaitingOnDocDB:
     case WaitStateCode::kYBClient_LookingUpTablet:
     case WaitStateCode::kYBClient_WaitingOnMaster:
+    case WaitStateCode::kYBClient_WaitingForPipelinedWrites:
     case WaitStateCode::kRetryableRequests_SaveToDisk:
     case WaitStateCode::kMVCC_WaitForSafeTime:
     case WaitStateCode::kLockedBatchEntry_Lock:
@@ -740,6 +774,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kSnapshot_CleanupSnapshotDir:
     case WaitStateCode::kSnapshot_RestoreCheckpoint:
     case WaitStateCode::kRaft_WaitingForReplication:
+    case WaitStateCode::kRaft_WaitingForPipelinedReplication:
     case WaitStateCode::kRaft_ApplyingEdits:
     case WaitStateCode::kWAL_Append:
     case WaitStateCode::kWAL_Sync:
@@ -761,6 +796,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
     case WaitStateCode::kXCluster_RateLimiter:
     case WaitStateCode::kXCluster_WaitForSafeTime:
+    case WaitStateCode::kVectorIndex_Search:
       return "This contains tablet ID.";
 
     case WaitStateCode::kYCQL_Parse:

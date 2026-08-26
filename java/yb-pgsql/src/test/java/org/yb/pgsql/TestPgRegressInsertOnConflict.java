@@ -34,9 +34,15 @@ public class TestPgRegressInsertOnConflict extends BasePgRegressTest {
     builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
     builder.addCommonTServerFlag(
         "allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
-    // (Auto Analyze #28389, #28731) Disable auto analyze due to ddl conflicts between
-    // auto-Analyze and PL/pgSQL function.
-    builder.addCommonTServerFlag("ysql_enable_auto_analyze", "true");
+    // (Auto Analyze #28389, #28731) Disable auto analyze: the ANALYZE statements it issues in the
+    // background race with the DDL this schedule runs, and the resulting errors leak into the
+    // regress output. A DDL executed inside a plain transaction block (ALTER TRIGGER from a
+    // PL/pgSQL trigger function fired by INSERT ... ON CONFLICT) keeps the priority already
+    // assigned to the enclosing DML transaction instead of kHighestPriority, so the FOR KEY SHARE
+    // lock it takes on pg_yb_catalog_version is not guaranteed to preempt the FOR UPDATE lock held
+    // by auto analyze, and the user statement fails with a 40001 conflict instead of aborting the
+    // ANALYZE. Auto analyze concurrency with DDL is covered by pg_auto_analyze-test instead.
+    builder.addCommonTServerFlag("ysql_enable_auto_analyze", "false");
   }
 
   @Test

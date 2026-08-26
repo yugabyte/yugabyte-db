@@ -199,6 +199,9 @@ typedef struct ReplicationSlot
 	XLogRecPtr	candidate_xmin_lsn;
 	XLogRecPtr	candidate_restart_valid;
 	XLogRecPtr	candidate_restart_lsn;
+
+	/* YB fields */
+	YbCRSLsnType yb_lsn_type;
 } ReplicationSlot;
 
 #define SlotIsPhysical(slot) ((slot)->data.database == InvalidOid)
@@ -228,6 +231,7 @@ extern PGDLLIMPORT int max_replication_slots;
 /* YB */
 extern PGDLLIMPORT const char *YB_OUTPUT_PLUGIN;
 extern PGDLLIMPORT const char *PG_OUTPUT_PLUGIN;
+extern PGDLLIMPORT const char *YB_GRPC_STREAM_INDICATOR;
 extern PGDLLIMPORT const char *LSN_TYPE_SEQUENCE;
 extern PGDLLIMPORT const char *LSN_TYPE_HYBRID_TIME;
 extern PGDLLIMPORT const char *ORDERING_MODE_ROW;

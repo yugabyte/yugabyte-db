@@ -18,4 +18,18 @@ yb.depd.foo are targeted dependency tests that set up certain objects and
 eliminate the need to run whole dependency tests such as yb.port.test_setup and
 yb.port.create_index.
 
-The yb_commands directory holds sql scripts to be \i included in tests.
+The yb_commands directory holds sql scripts to be \i included in tests.  Its
+naming convention is as follows:
+- psql variable leading-underscore names are internal to the yb_commands
+  scripts and unique across all of them, and tests must not use them.
+- psql variable bare names (query, P1, Pnext, run_query) are the public
+  interface for tests.
+- Filenames follow the same underscore rule: tests may \i public scripts
+  (e.g. parameterized_query.sql) but not internal ones (e.g. _iter_P2.sql).
+- A path variable is named after the file it points to: _iter_P2 holds the
+  path of _iter_P2.sql.
+- Internal environment variables carry a _YB_REGRESS_ prefix, and the
+  scratch files they point to are named after them (e.g. yb_regress_cur_query).
+Some older scripts still use bare names for internal scratch variables (e.g.
+filename, copy_cmd): do not rely on those, and follow the convention in new or
+modified code.

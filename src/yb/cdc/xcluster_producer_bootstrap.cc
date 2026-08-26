@@ -25,6 +25,7 @@
 #include "yb/dockv/reader_projection.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
     "Injects an error after updating a tablet's replication index entry");

@@ -45,6 +45,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -104,6 +106,17 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     return flagMap;
+  }
+
+  private void assertReplicationSlotExists(String slotName, boolean expectedExists)
+      throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res = stmt.executeQuery(
+          "SELECT count(*) FROM pg_replication_slots WHERE slot_name = '" + slotName + "'");
+      assertTrue(res.next());
+      assertEquals("Unexpected pg_replication_slots state for slot " + slotName,
+          expectedExists ? 1 : 0, res.getInt(1));
+    }
   }
 
   void createSlot(PGReplicationConnection replConnection, String slotName, String pluginName)
@@ -278,6 +291,39 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   private void validateChange(JsonObject jsonObject, int origin_id, int count) {
     assertEquals(jsonObject.get("origin").getAsInt(), origin_id);
     assertEquals(jsonObject.getAsJsonArray("change").size(), count);
+  }
+
+  private PGReplicationStream openStream(
+      Connection conn, String slotName, String pubName, int walSenderTimeoutMs) throws Exception {
+    if (walSenderTimeoutMs > 0) {
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("SET wal_sender_timeout = " + walSenderTimeoutMs);
+        stmt.execute("SET yb_test_walsender_keepalive_after_each_record = true");
+      }
+    }
+    return conn.unwrap(PGConnection.class).getReplicationAPI().replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", pubName)
+        .withStatusInterval(60, TimeUnit.SECONDS)
+        .start();
+  }
+
+  private int drainInserts(PGReplicationStream stream, long deadlineMs) throws Exception {
+    int inserts = 0;
+    while (System.currentTimeMillis() < deadlineMs) {
+      ByteBuffer buf = stream.readPending();
+      if (buf == null) {
+        Thread.sleep(50);
+        continue;
+      }
+      if (buf.array()[buf.arrayOffset()] == 'I') {
+        inserts++;
+      }
+    }
+    return inserts;
   }
 
   // TODO(#20726): Add more test cases covering:
@@ -1959,6 +2005,55 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.setFlushedLSN(stream.getLastReceiveLSN());
     stream.forceUpdateStatus();
     waitForRestartLSN(connection, slotName, expectedRestartLSNs.get(4));
+
+    stream.close();
+  }
+
+  private LogSequenceNumber getConfirmedFlushLSN(Connection connection, String slotName)
+      throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res = stmt.executeQuery(String.format(
+          "select confirmed_flush_lsn from pg_replication_slots where slot_name = '%s'", slotName));
+      assertTrue(res.next());
+      return LogSequenceNumber.valueOf(res.getString("confirmed_flush_lsn"));
+    }
+  }
+
+  @Test
+  public void testRestartLSNAdvancesForFilteredTransactions() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test");
+      stmt.execute("CREATE TABLE test (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    String slotName = "test_filtered_transactions_ack";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test VALUES(1, 'abcd')");
+      stmt.execute("INSERT INTO test VALUES(2, 'defg')");
+      stmt.execute("INSERT INTO test VALUES(3, 'xyz')");
+    }
+
+    // Streaming starts at LSN 2 and we have 3 txns with one insert each. Start with
+    // a large start_lsn (100) that so that all three transactions are dropped by
+    // the decoder and nothing is streamed to the client.
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(100L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    // The stream is deliberately not read from: the client sends no feedback at all, so the
+    // restart LSN can only advance past the dropped transactions if the walsender acknowledges
+    // them itself. Without that it stays at the snapshot LSN (1).
+    waitForRestartLSN(connection, slotName, 10L);
+    assertEquals(LogSequenceNumber.valueOf(10L), getConfirmedFlushLSN(connection, slotName));
 
     stream.close();
   }
@@ -6785,5 +6880,184 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
     colConn.close();
     replConn.close();
+  }
+
+  @Test
+  public void testDropReplicationSlotWaitWalsender() throws Exception {
+    restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
+
+    String slotName = "drop_slot_wait_test";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_drop_wait");
+      stmt.execute("CREATE TABLE t_drop_wait(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_drop_wait VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+    assertReplicationSlotExists(slotName, true);
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    // Without WAIT, the drop must fail immediately since the slot lock is
+    // held by the active walsender on tserver 0.
+    Connection replConn1 = getConnectionBuilder().withTServer(1).replicationConnect();
+    boolean exceptionThrown = false;
+    try (Statement stmt = replConn1.createStatement()) {
+      stmt.execute("DROP_REPLICATION_SLOT " + slotName);
+    } catch (PSQLException e) {
+      exceptionThrown = true;
+      String expectedErrorMessage = "could not acquire replication slot";
+      if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+            e.getMessage(), expectedErrorMessage));
+      }
+    } finally {
+      replConn1.close();
+    }
+    assertTrue("Expected DROP_REPLICATION_SLOT without WAIT to fail for an in-use slot",
+        exceptionThrown);
+    assertReplicationSlotExists(slotName, true);
+
+    // With WAIT, the drop must block until the slot is released.
+    AtomicReference<Exception> dropError = new AtomicReference<>();
+    Thread dropThread = new Thread(() -> {
+      try (Connection replConn2 = getConnectionBuilder().withTServer(1).replicationConnect();
+           Statement stmt = replConn2.createStatement()) {
+        stmt.execute("DROP_REPLICATION_SLOT " + slotName + " WAIT");
+      } catch (Exception e) {
+        dropError.set(e);
+      }
+    });
+    dropThread.start();
+
+    // Verify the drop is still blocked while the slot is in use.
+    Thread.sleep(5000);
+    assertTrue("Expected DROP_REPLICATION_SLOT ... WAIT to block while the slot is in use",
+        dropThread.isAlive());
+    assertReplicationSlotExists(slotName, true);
+
+    // Release the slot; the blocked drop should now finish.
+    stream0.close();
+    replConn0.close();
+
+    dropThread.join(60000);
+    assertFalse("Expected DROP_REPLICATION_SLOT ... WAIT to complete after the slot was released",
+        dropThread.isAlive());
+    if (dropError.get() != null) {
+      throw new AssertionError("DROP_REPLICATION_SLOT ... WAIT failed", dropError.get());
+    }
+    assertReplicationSlotExists(slotName, false);
+  }
+
+  @Test
+  public void testDropReplicationSlotWaitRequiresExclusiveLock() throws Exception {
+    // Without yb_enable_replication_slot_exclusive_lock, WAIT must be rejected.
+    restartClusterWithFlags(getMasterFlags(), getTServerFlags());
+
+    String slotName = "drop_slot_wait_no_lock_test";
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+    assertReplicationSlotExists(slotName, true);
+
+    boolean exceptionThrown = false;
+    try (Statement stmt = replConn0.createStatement()) {
+      stmt.execute("DROP_REPLICATION_SLOT " + slotName + " WAIT");
+    } catch (PSQLException e) {
+      exceptionThrown = true;
+      String expectedErrorMessage = "waiting for a replication slot is not yet supported";
+      if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+            e.getMessage(), expectedErrorMessage));
+      }
+    }
+    assertTrue("Expected DROP_REPLICATION_SLOT ... WAIT to fail when the exclusive slot lock"
+        + " is disabled", exceptionThrown);
+    assertReplicationSlotExists(slotName, true);
+
+    // Cleanup: a plain drop still works.
+    Connection replConn1 = getConnectionBuilder().withTServer(0).replicationConnect();
+    replConn1.unwrap(PGConnection.class).getReplicationAPI().dropReplicationSlot(slotName);
+    assertReplicationSlotExists(slotName, false);
+    replConn1.close();
+    replConn0.close();
+  }
+
+  @Test
+  public void testHybridTimeKeepAliveAutoFlushCausesDataLoss() throws Exception {
+    final int kSmallRows = 10;
+    final int kLargeRows = 1200;
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t");
+      stmt.execute("CREATE TABLE t (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS");
+      stmt.execute("ALTER TABLE t REPLICA IDENTITY DEFAULT");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t");
+      stmt.execute("SELECT pg_create_logical_replication_slot("
+          + "'slot', 'pgoutput', false, false, 'HYBRID_TIME')");
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(1, 10) i");
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(100, 1299) i");
+    }
+
+    Connection c1 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream s1 = openStream(c1, "slot", "pub", 3000);
+    List<PgOutputMessage> txn1 = receiveMessage(s1, kSmallRows + 3);
+    assertEquals(kSmallRows,
+        (int) txn1.stream().filter(m -> m instanceof PgOutputInsertMessage).count());
+    LogSequenceNumber afterTxn1 = s1.getLastReceiveLSN();
+    s1.setFlushedLSN(afterTxn1);
+    s1.forceUpdateStatus();
+    s1.close();
+    c1.close();
+
+    // txn2: Wait for the driver's auto flush, transmit it, then disconnect mid delivery.
+    Connection c2 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream s2 = openStream(c2, "slot", "pub", 3000);
+    long deadline = System.currentTimeMillis() + 60_000L * kMultiplier;
+    // A keep alive echoing the slot's confirmed_flush is harmless, only an
+    // auto flush past txn1 proves an undelivered transaction was acked.
+    while (s2.getLastFlushedLSN().asLong() <= afterTxn1.asLong()) {
+      assertTrue("timed out waiting for the keep alive auto flush past txn1",
+          System.currentTimeMillis() < deadline);
+      if (s2.readPending() == null) {
+        Thread.sleep(50);
+      }
+    }
+    for (int i = 0; i < 15; i++) {
+      s2.forceUpdateStatus();
+      Thread.sleep(200);
+    }
+    s2.close();
+    c2.close();
+
+    // txn3: committed after the disconnect.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(5000, 5009) i");
+    }
+
+    Connection c3 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream s3 = openStream(c3, "slot", "pub", 3000);
+    int received = drainInserts(s3, System.currentTimeMillis() + 60_000L * kMultiplier);
+    s3.close();
+    c3.close();
+
+    assertEquals("txn2 must be re-streamed after the disconnect, losing it means the keep alive"
+        + " auto flush acked an undelivered transaction", kLargeRows + kSmallRows, received);
   }
 }

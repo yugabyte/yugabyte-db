@@ -37,6 +37,8 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.messages.h"
@@ -91,6 +93,9 @@ DECLARE_int32(auto_compact_memory_cleanup_interval_sec);
 DECLARE_bool(allow_encryption_at_rest);
 DECLARE_int32(db_block_cache_num_shard_bits);
 DECLARE_int32(num_cpus);
+DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 
 namespace yb::tserver {
 
@@ -121,7 +126,7 @@ class TsTabletManagerTest : public YBTest {
     return JoinPathSegments(test_data_root_, Substitute("drive-$0", index + 1));
   }
 
-  void CreateMiniTabletServer() {
+  virtual void CreateMiniTabletServer() {
     auto options_result = TabletServerOptions::CreateTabletServerOptions();
     ASSERT_OK(options_result);
     std::vector<std::string> paths;
@@ -885,6 +890,146 @@ TEST_F(TsTabletManagerTest, EvenDriveSelection) {
   ASSERT_LE(max_count - min_count, 1);
 }
 
+// ---------------------------------------------------------------------------
+// Tiered-drive fixture: 2 ssd drives + 2 hdd drives, labelled via ":tier" suffix.
+// Exercises SelectPathIdForTier.
+// ---------------------------------------------------------------------------
+class TsTabletManagerTieredDriveTest : public TsTabletManagerTest {
+ protected:
+  static constexpr int kSsdDrives = 2;
+  static constexpr int kHddDrives = 2;
+  static constexpr int kTieredDrivesNum = kSsdDrives + kHddDrives;
+
+  // Index helpers: ssd drives are 0..(kSsdDrives-1), hdd drives are kSsdDrives..
+  std::string GetTieredDrivePath(int index) {
+    return JoinPathSegments(test_data_root_, Substitute("tiered-drive-$0", index));
+  }
+
+  // Overrides the parent's disk layout with 2 ssd + 2 hdd drives instead of the plain
+  // kDrivesNum drives. The rest of TsTabletManagerTest::SetUp() is reused.
+  void CreateMiniTabletServer() override {
+    test_data_root_ = GetTestPath("TsTabletManagerTieredDriveTest-fsroot");
+
+    auto options_result = TabletServerOptions::CreateTabletServerOptions();
+    ASSERT_OK(options_result);
+
+    // Disable AutoFlags management and encryption at rest, same as the base fixture (there's
+    // no master here).
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+
+    // Build paths: drive-0 and drive-1 are ssd; drive-2 and drive-3 are hdd.
+    // MiniTabletServer copies data_paths straight into fs_opts.data_paths and does NOT parse a
+    // ":tier" suffix (that parsing only happens for the --fs_data_dirs gflag in FsManagerOpts).
+    // So pass clean paths and populate fs_opts.tier_by_path explicitly below.
+    std::vector<std::string> data_paths;
+    std::vector<std::string> wal_paths;
+    std::unordered_map<std::string, std::string> tier_by_path;
+    for (int i = 0; i < kTieredDrivesNum; ++i) {
+      const auto dir = GetTieredDrivePath(i);
+      ASSERT_OK(env_->CreateDirs(dir));
+      data_paths.push_back(dir);
+      tier_by_path[dir] = (i < kSsdDrives) ? "ssd" : "hdd";
+      // WAL dirs must not carry storage-tier annotations, so only use the
+      // ssd drives for WAL.
+      if (i < kSsdDrives) {
+        wal_paths.push_back(dir);
+      }
+    }
+
+    // MiniTabletServer ctor takes (wal_paths, data_paths, ...): WAL first, data second.
+    mini_server_ = std::make_unique<MiniTabletServer>(
+        wal_paths, data_paths, 0, *options_result, 0);
+    // The ctor does not derive tiers from data_paths, so set the tier map before Start().
+    mini_server_->options()->fs_opts.tier_by_path = tier_by_path;
+  }
+};
+
+// Confirm that SelectPathIdForTier returns a path_id whose tier_paths entry has the
+// correct tier label and not one from another tier.
+TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierPicksCorrectTier) {
+  std::shared_ptr<tablet::TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
+  auto meta = peer->tablet_metadata();
+
+  // The tablet must have tier_paths covering all configured drives.
+  const auto& tier_paths = meta->tier_paths();
+  ASSERT_EQ(tier_paths.size(), static_cast<size_t>(kTieredDrivesNum));
+
+  // Build a path_id -> tier map for easy lookup.
+  std::unordered_map<uint32_t, std::string> tier_by_path_id;
+  for (const auto& tp : tier_paths) {
+    tier_by_path_id[tp.path_id] = tp.tier;
+  }
+
+  // SelectPathIdForTier("hdd") must return a path_id labelled "hdd".
+  auto hdd_pid = ASSERT_RESULT(
+      tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_EQ(tier_by_path_id.at(hdd_pid), "hdd")
+      << "path_id " << hdd_pid << " is not an hdd disk";
+
+  // SelectPathIdForTier("ssd") must return a path_id labelled "ssd".
+  auto ssd_pid = ASSERT_RESULT(
+      tablet_manager_->SelectPathIdForTier(*meta, kTableId, "ssd"));
+  ASSERT_EQ(tier_by_path_id.at(ssd_pid), "ssd")
+      << "path_id " << ssd_pid << " is not an ssd disk";
+
+  // A bogus tier must return NotFound.
+  auto bad = tablet_manager_->SelectPathIdForTier(*meta, kTableId, "nvme");
+  ASSERT_NOK(bad);
+  ASSERT_TRUE(bad.status().IsNotFound()) << bad.status();
+}
+
+// Confirm that SelectPathIdForTier balances across disks within a tier: loading
+// one hdd disk more than the other causes the picker to prefer the lighter disk.
+TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierBalancesWithinTier) {
+  std::shared_ptr<tablet::TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
+  auto meta = peer->tablet_metadata();
+
+  // Collect the two hdd path_ids and their corresponding data roots.
+  std::vector<std::pair<uint32_t, std::string>> hdd_entries;  // (path_id, data_root)
+  for (const auto& tp : meta->tier_paths()) {
+    if (tp.tier == "hdd") {
+      hdd_entries.push_back({tp.path_id, tablet::GetDataRootFromTabletDir(tp.path)});
+    }
+  }
+  ASSERT_EQ(hdd_entries.size(), static_cast<size_t>(kHddDrives));
+
+  // Initially both hdd drives are equally loaded; pick the winner.
+  uint32_t first_pid = ASSERT_RESULT(
+      tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_TRUE(first_pid == hdd_entries[0].first || first_pid == hdd_entries[1].first);
+
+  // Load the winning hdd drive by registering extra tablets there.
+  // The drive that first_pid points to becomes heavier.
+  const std::string& heavier_data_root = (first_pid == hdd_entries[0].first)
+      ? hdd_entries[0].second
+      : hdd_entries[1].second;
+  const uint32_t lighter_pid = (first_pid == hdd_entries[0].first)
+      ? hdd_entries[1].first
+      : hdd_entries[0].first;
+
+  // RegisterDataAndWalDir requires a wal_root_dir that FsManager actually knows about.
+  // We don't care which WAL root is used here since this test only exercises data-dir (hdd)
+  // balancing, so just grab the first configured one.
+  const std::string any_wal_root = fs_manager_->GetWalRootDirs().front();
+
+  // Directly register extra tablets on the heavier drive to skew load.
+  for (int i = 0; i < 3; ++i) {
+    tablet_manager_->RegisterDataAndWalDir(
+        fs_manager_, kTableId, Substitute("fake-tablet-hdd-$0", i),
+        heavier_data_root, any_wal_root);
+  }
+
+  // After loading, the picker must switch to the lighter hdd drive.
+  uint32_t second_pid = ASSERT_RESULT(
+      tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_EQ(second_pid, lighter_pid)
+      << "Expected picker to prefer the lighter hdd drive (path_id " << lighter_pid
+      << ") but got path_id " << second_pid;
+}
+
 namespace {
   const HybridTime kNoLastCompact = HybridTime(tablet::kNoLastFullCompactionTime);
   // An arbitrary realistic time.
@@ -1150,6 +1295,178 @@ TEST_F(TsTabletManagerTest, FullCompactionManagerCleanup) {
   ASSERT_FALSE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId1));
   ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId2));
   ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId3));
+}
+
+// End-to-end coverage of the DB history-retention-pin path inside
+// TSTabletManager::AllowedHistoryCutoff (lookup of cluster pin by namespace,
+// flag/table-type gating, and interaction with the existing cutoff).
+//
+// AllowedHistoryCutoff returns HybridTime::kMin until the tserver has seen at least one
+// xcluster safe-time map update (even an empty one). The fixture seeds that via a synthetic
+// heartbeat response.
+class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
+ protected:
+  static constexpr PgOid kDbOid = 10001;
+  static constexpr int32_t kSafetyWindowSec = 100;
+  static constexpr int32_t kHardCapSec = 1000;
+
+  void SetUp() override {
+    TsTabletManagerTest::SetUp();
+
+    // Unblock AllowedHistoryCutoff's xCluster GetSafeTime early-return so the DB pin logic runs.
+    ASSERT_OK(mini_server_->server()->XClusterHandleMasterHeartbeatResponse(
+        master::TSHeartbeatResponsePB()));
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_history_retention_pins) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kSafetyWindowSec;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_history_retention_pin_max_txn_age_sec) = kHardCapSec;
+  }
+
+  HybridTime Now() const { return mini_server_->server()->Clock()->Now(); }
+
+  HybridTime SafetyWindowCutoff(HybridTime now) const {
+    return now.AddSeconds(-FLAGS_timestamp_history_retention_interval_sec);
+  }
+
+  HybridTime HardCapCutoff(HybridTime now) const {
+    return now.AddSeconds(-FLAGS_db_history_retention_pin_max_txn_age_sec);
+  }
+
+  void SetClusterPin(HybridTime pin, PgOid db_oid = kDbOid) {
+    master::TSHeartbeatResponsePB resp;
+    (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
+        .set_db_level_oldest_read_time(pin.ToPB());
+    mini_server_->server()->UpdateClusterYsqlDbOldestPinnedReadTimes(resp);
+  }
+
+  void ClearClusterPins() {
+    mini_server_->server()->UpdateClusterYsqlDbOldestPinnedReadTimes(
+        master::TSHeartbeatResponsePB());
+  }
+
+  // Creates a running PGSQL tablet whose namespace_id encodes kDbOid.
+  Result<std::shared_ptr<TabletPeer>> CreatePgsqlTablet(const std::string& tablet_id) {
+    Schema full_schema = SchemaBuilder(schema_).Build();
+    auto partition = tablet::CreateDefaultPartition(full_schema);
+    auto table_info = tablet::TableInfo::TEST_Create(
+        GetPgsqlTableId(kDbOid, /*table_oid=*/1), "db", "t", TableType::PGSQL_TABLE_TYPE,
+        full_schema, partition.first);
+    auto peer = VERIFY_RESULT(tablet_manager_->CreateNewTablet(
+        table_info, tablet_id, partition.second, config_));
+    RETURN_NOT_OK(peer->tablet_metadata()->set_namespace_id(GetPgsqlNamespaceId(kDbOid)));
+    RETURN_NOT_OK(peer->WaitUntilConsensusRunning(
+        MonoDelta::FromMilliseconds(kConsensusRunningWaitMs)));
+    RETURN_NOT_OK(VERIFY_RESULT(peer->GetConsensus())->EmulateElection());
+    return peer;
+  }
+
+  docdb::HistoryCutoff AllowedCutoff(const tablet::RaftGroupMetadataPtr& metadata) {
+    return tablet_manager_->AllowedHistoryCutoff(metadata.get());
+  }
+
+  HybridTime AllowedPrimaryCutoff(const tablet::RaftGroupMetadataPtr& metadata) {
+    return AllowedCutoff(metadata).primary_cutoff_ht;
+  }
+
+  HybridTime DbPinCutoff(
+      HybridTime now, const tablet::RaftGroupMetadataPtr& metadata, PgOid db_oid = kDbOid) {
+    return tablet_manager_->ComputeDbHistoryRetentionPinCutoff(now, db_oid, metadata.get());
+  }
+
+  // A pin roughly midway between the safety window and the hard cap: old enough to bind
+  // (not clamped to the safety window) yet young enough not to hit the hard cap
+  HybridTime MidwayPin() const {
+    return Now().AddSeconds(-(kSafetyWindowSec + kHardCapSec) / 2);
+  }
+};
+
+// Without a pin the database is governed solely by the safety-window cutoff
+TEST_F(ComputeDbHistoryRetentionPinCutoffTest, NoPinComputesSafetyWindow) {
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-no-pin"));
+  ClearClusterPins();
+  const auto now = Now();
+
+  EXPECT_EQ(DbPinCutoff(now, peer->tablet_metadata()), SafetyWindowCutoff(now));
+}
+
+// A pin registered for a different database is not observed
+TEST_F(ComputeDbHistoryRetentionPinCutoffTest, PinForDifferentDbComputesSafetyWindow) {
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-other-db"));
+  const auto now = Now();
+  SetClusterPin(now.AddSeconds(-(kSafetyWindowSec + kHardCapSec) / 2), kDbOid + 7);
+
+  EXPECT_EQ(DbPinCutoff(now, peer->tablet_metadata()), SafetyWindowCutoff(now));
+}
+
+// A pin that sits between the hard cap and the safety window binds the cutoff to exactly the pin
+TEST_F(ComputeDbHistoryRetentionPinCutoffTest, CutoffNotLaterThanOldestReadPin) {
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-pin"));
+  const auto now = Now();
+  const auto pin = now.AddSeconds(-(kSafetyWindowSec + kHardCapSec) / 2);
+  ASSERT_LT(HardCapCutoff(now), pin);
+  ASSERT_LT(pin, SafetyWindowCutoff(now));
+  SetClusterPin(pin);
+
+  EXPECT_EQ(DbPinCutoff(now, peer->tablet_metadata()), pin);
+}
+
+// Never makes the history cutoff newer than it would have been without the feature: a pin more
+// recent than the safety window is clamped back to the safety-window cutoff (now -
+// timestamp_history_retention_interval_sec)
+TEST_F(ComputeDbHistoryRetentionPinCutoffTest, NeverNewerThanWithoutFeature) {
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-new-pin"));
+  const auto now = Now();
+  const auto pin = now.AddSeconds(-(kSafetyWindowSec / 2));
+  ASSERT_GT(pin, SafetyWindowCutoff(now));
+  SetClusterPin(pin);
+
+  EXPECT_EQ(DbPinCutoff(now, peer->tablet_metadata()), SafetyWindowCutoff(now));
+}
+
+// Respects db_history_retention_pin_max_txn_age_sec: a pin older than the hard cap is clamped
+// up to the hard-cap cutoff (now - db_history_retention_pin_max_txn_age_sec),
+// so a single long-running transaction cannot block compaction indefinitely.
+TEST_F(ComputeDbHistoryRetentionPinCutoffTest, RespectsMaxActiveTxnRetention) {
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-old-pin"));
+  const auto now = Now();
+  const auto pin = now.AddSeconds(-(kHardCapSec + 500));
+  ASSERT_LT(pin, HardCapCutoff(now));
+  SetClusterPin(pin);
+
+  EXPECT_EQ(DbPinCutoff(now, peer->tablet_metadata()), HardCapCutoff(now));
+}
+
+// The DB pin can only lower the allowed cutoff. When another source (here the CDC SDK safe time)
+// has already produced an older cutoff, the DB pin must not raise it back up.
+TEST_F(ComputeDbHistoryRetentionPinCutoffTest, DoesNotRaiseAboveOlderCutoff) {
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-cdc-older"));
+  const auto pin = MidwayPin();
+  const auto cdc_safe_time = pin.AddSeconds(-100);  // older (smaller) than the pin
+  ASSERT_OK(peer->tablet_metadata()->set_cdc_sdk_safe_time(cdc_safe_time));
+  SetClusterPin(pin);
+
+  EXPECT_EQ(AllowedPrimaryCutoff(peer->tablet_metadata()), cdc_safe_time);
+}
+
+// When another source's cutoff (CDC SDK safe time) is newer than the DB pin, the DB pin still
+// constrains the result down to the pin.
+TEST_F(ComputeDbHistoryRetentionPinCutoffTest, ConstrainsNewerCutoffDownToPin) {
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-cdc-newer"));
+  const auto pin = MidwayPin();
+  const auto cdc_safe_time = pin.AddSeconds(100);  // newer (larger) than the pin, still < now
+  ASSERT_OK(peer->tablet_metadata()->set_cdc_sdk_safe_time(cdc_safe_time));
+  SetClusterPin(pin);
+
+  EXPECT_EQ(AllowedPrimaryCutoff(peer->tablet_metadata()), pin);
+}
+
+// When the feature is disabled, pins do not constrain the allowed cutoff
+TEST_F(ComputeDbHistoryRetentionPinCutoffTest, DisabledFeatureIgnoresPin) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_history_retention_pins) = false;
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-disabled"));
+  SetClusterPin(MidwayPin());
+
+  EXPECT_EQ(AllowedPrimaryCutoff(peer->tablet_metadata()), HybridTime::kMax);
 }
 
 } // namespace yb::tserver

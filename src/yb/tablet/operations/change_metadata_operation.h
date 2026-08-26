@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <string>
 
@@ -70,8 +71,11 @@ class ChangeMetadataOperation
 
   ~ChangeMetadataOperation();
 
-  void set_schema(const Schema* schema) { schema_ = schema; }
-  const Schema* schema() const { return schema_; }
+  // schema_ is set during Prepare() but can be read concurrently by ToString() (e.g. from
+  // OperationTracker::WaitForAllToFinish() while the tablet is being deleted), so access it
+  // atomically to avoid a data race.
+  void set_schema(const Schema* schema) { schema_.store(schema, std::memory_order_release); }
+  const Schema* schema() const { return schema_.load(std::memory_order_acquire); }
 
   void SetIndexes(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);
 
@@ -133,7 +137,7 @@ class ChangeMetadataOperation
   log::Log* const log_;
 
   // The new (target) Schema.
-  const Schema* schema_ = nullptr;
+  std::atomic<const Schema*> schema_ = nullptr;
   std::unique_ptr<Schema> schema_holder_;
 
   // Lookup map for the associated indexes.

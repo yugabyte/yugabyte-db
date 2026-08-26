@@ -315,6 +315,11 @@ message IndexInfoPB {
   // are not included in this count. Moreover, after backfill is completed, this field is no longer
   // updated.
   optional double num_rows_backfilled_in_index = 36;
+
+  // Index inception / birth hybrid time: the backfill read time, persisted on the index
+  // table's IndexInfoPB after backfill completes successfully. Used to reject reads whose
+  // snapshot predates when the index became consistent.
+  optional fixed64 birth_time = 37;
 }
 
 // The possible order modes for clients.
@@ -821,17 +826,4 @@ enum DocDbBlocksSamplingMethod {
 enum YsqlSamplingAlgorithm {
   FULL_TABLE_SCAN = 0;
   BLOCK_BASED_SAMPLING = 1;
-}
-
-message PgResultPB {
-  message PgResultRowPB {
-    message PgResultColumnPB {
-      // Absence of value (has_value() == false) indicates NULL.
-      optional bytes value = 1;
-    }
-    repeated PgResultColumnPB columns = 1;
-  }
-  repeated PgResultRowPB rows = 1;
-  optional int32 exec_status = 2;
-  optional string error_message = 3;
 }

@@ -1,0 +1,16 @@
+{{- $showBreadcrumbs := and (not .Site.Params.ui.breadcrumb_disable) (not .Params.breadcrumbDisable) -}}
+{{- $showVersion := and (.Site.Params.versions) (not .Params.unversioned) -}}
+{{- if or $showBreadcrumbs $showVersion -}}
+<div class="docs-page-header-bar d-print-none{{- if and $showVersion (not $showBreadcrumbs) }} docs-page-header-bar--version-only{{- end }}">
+  {{- if $showBreadcrumbs -}}
+    {{- partial "breadcrumb.html" . -}}
+  {{- end -}}
+  {{- if $showVersion -}}
+    <div class="header-version-dropdown dropdown-list">
+      <div class="dropdown">
+        {{- partial "navbar-version-selector.html" . -}}
+      </div>
+    </div>
+  {{- end -}}
+</div>
+{{- end -}}

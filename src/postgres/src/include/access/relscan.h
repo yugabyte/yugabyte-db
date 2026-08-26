@@ -28,8 +28,6 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 
-typedef struct YbScanDescData *YbScanDesc;
-
 struct ParallelTableScanDescData;
 
 /*
@@ -56,8 +54,6 @@ typedef struct TableScanDescData
 
 	struct ParallelTableScanDescData *rs_parallel;	/* parallel scan
 													 * information */
-
-	YbScanDesc	ybscan;			/* ignored for non-yb scans */
 } TableScanDescData;
 typedef struct TableScanDescData *TableScanDesc;
 
@@ -176,23 +172,33 @@ typedef struct IndexScanDescData
 	struct ParallelIndexScanDescData *parallel_scan;
 
 	/*
-	 * YB: During execution, Postgres will push down hints to YugaByte for
-	 * performance purpose. (currently, only LIMIT values are being pushed
-	 * down). All these execution information will kept in "yb_exec_params".
+	 * YB: execution parameters (LIMIT, rowmark, wait_policy, fetch limits,
+	 * etc.) pushed down to PgGate.  The canonical home is
+	 * estate->yb_exec_params; a pointer is stashed here because AM-level index
+	 * scan functions do not receive EState.
 	 *
-	 * - Generally, "yb_exec_params" is kept in execution-state. As Postgres
-	 *   executor traverses and excutes the nodes, it passes along the
-	 *   execution state. Necessary information (such as LIMIT values) will be
-	 *   collected and written to "yb_exec_params" in EState.
+	 * TODO(#32796): the exec_params lifecycle is inconsistent between table
+	 * and index scans and should be unified:
 	 *
-	 * - However, IndexScan execution doesn't use Postgres's node execution
-	 *   infrastructure. Neither execution plan nor execution state is passed
-	 *   to IndexScan operators. As a result, "yb_exec_params" is kept in
-	 *   "IndexScanDescData" to avoid passing EState to a lot of IndexScan
-	 *   functions.
+	 * - Table scans pass exec_params via YbTableScanOptions at beginscan time,
+	 *   so the opaque has it immediately.  Rowmark and wait_policy are then
+	 *   mutated on exec_params in ybc_heap_beginscan.
+	 * - Executor index scans leave yb_exec_params NULL through beginscan.
+	 *   ExecInitIndexScan sets the pointer and mutates rowmark/wait_policy
+	 *   afterward; the opaque only receives it at gettuple time (ybcingettuple
+	 *   / ybcgetbitmap).  This means exec_params is unavailable during scan
+	 *   setup.
+	 * - Non-executor index scans (e.g. execIndexing.c uniqueness checks) never
+	 *   set yb_exec_params at all, so it stays NULL throughout.  This silently
+	 *   disables LIMIT pushdown and rowmark handling rather than making it an
+	 *   explicit choice.
+	 * - The rowmark + pg_wait_policy + docdb_wait_policy triple is duplicated
+	 *   between nodeIndexscan.c and ybc_heap_beginscan with the same pattern
+	 *   but different sources.
 	 *
-	 * - Postgres IndexScan function will call and pass "yb_exec_params" to
-	 *   PgGate to control the index-scan execution in YugaByte.
+	 * Ideally exec_params (or at least its scan-relevant subset) would be
+	 * passed at beginscan time for both table and index scans, and rowmark
+	 * setup would happen in one place.
 	 */
 	YbcPgExecParameters *yb_exec_params;
 

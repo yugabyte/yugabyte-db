@@ -112,6 +112,7 @@ class RWCLock {
   // - No threads hold the lock for Commit.
   void ReadLock();
   void ReadUnlock();
+  bool ReadLock(CoarseTimePoint deadline);
 
   // Return true if there are any readers currently holding the lock.
   // Useful for debug assertions.
@@ -129,6 +130,7 @@ class RWCLock {
   // - No other threads hold the lock for Write or Commit.
   void WriteLock() ACQUIRE(write_mutex_);
   void WriteUnlock() RELEASE(write_mutex_);
+  bool WriteLock(CoarseTimePoint deadline) ACQUIRE(write_mutex_);
 
   // Boost-like wrappers
   void lock() ACQUIRE(write_mutex_) { WriteLock(); }
@@ -142,6 +144,9 @@ class RWCLock {
   void CommitUnlock() RELEASE();
 
  private:
+  bool DoReadLock(CoarseTimePoint deadline);
+  bool DoWriteLock(CoarseTimePoint deadline);
+
   // The thread (there can be only one) that holds this COW lock in write or commit mode holds this
   // mutex.
   //

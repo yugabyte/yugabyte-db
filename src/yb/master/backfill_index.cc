@@ -47,6 +47,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -57,6 +58,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
@@ -118,6 +120,9 @@ DEFINE_test_flag(bool, skip_index_backfill, false,
 
 DEFINE_test_flag(bool, block_do_backfill, false,
     "Block DoBackfill from proceeding.");
+
+DEFINE_test_flag(bool, pause_compute_safe_time_for_backfill_read, false,
+    "Pauses the compute safe time for backfill read.");
 
 DEFINE_test_flag(bool, skip_ddl_requester_liveness_check, false,
     "Skip starting the requester liveness task. Used in tests to simulate the pre-fix behavior "
@@ -478,8 +483,8 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
         catalog_manager, indexed_table, current_version, /* change state to RUNNING */ true, epoch);
   }
 
-  if (!FLAGS_allow_batching_non_deferred_indexes &&
-      indexes_to_backfill.size() > 1) {
+  const bool batch_backfill_req = FLAGS_allow_batching_non_deferred_indexes && !is_ysql_table;
+  if (indexes_to_backfill.size() > 1 && !batch_backfill_req) {
     LOG(INFO) << "Batching of non-deferred index-backfill(s) is disabled. Will be only backfilling "
                  "one index at a time.";
     indexes_to_backfill.resize(1);
@@ -778,18 +783,24 @@ void BackfillTable::LaunchBackfillOrAbort() {
 
 Status BackfillTable::LaunchComputeSafeTimeForRead() {
   RSTATUS_DCHECK(!timestamp_chosen(), IllegalState, "Backfill timestamp already set");
+  TEST_PAUSE_IF_FLAG(TEST_pause_compute_safe_time_for_backfill_read);
 
   std::vector<TableId> index_table_ids;
   std::transform(
       index_infos_.begin(), index_infos_.end(), std::back_inserter(index_table_ids),
       [](const IndexInfoPB& idx_info) { return idx_info.table_id(); });
 
-  auto opt_xcluster_backfill_time =
-      VERIFY_RESULT(master_->xcluster_manager()->TryGetXClusterSafeTimeForBackfill(
+  auto xcluster_decision =
+      VERIFY_RESULT(master_->xcluster_manager()->TryGetXClusterInfoForIndexBackfill(
           index_table_ids, indexed_table_, epoch()));
 
-  if (opt_xcluster_backfill_time) {
-    return SetSafeTimeAndStartBackfill(*opt_xcluster_backfill_time);
+  switch (xcluster_decision.kind) {
+    case XClusterBackfillDecision::Kind::kRunLocalAtHybridTime:
+      return SetSafeTimeAndStartBackfill(xcluster_decision.hybrid_time);
+    case XClusterBackfillDecision::Kind::kDeferToReplicatedBackfill:
+      return FinalizeReplicatedIndexBackfill(xcluster_decision.hybrid_time);
+    case XClusterBackfillDecision::Kind::kRunLocalWithTabletSafeTime:
+      break;
   }
 
   {
@@ -947,6 +958,51 @@ Status BackfillTable::SetSafeTimeAndStartBackfill(const HybridTime& read_time) {
   return PersistSafeTimeAndStartBackfill();
 }
 
+Status BackfillTable::FinalizeReplicatedIndexBackfill(HybridTime source_backfill_ht) {
+  RSTATUS_DCHECK(
+      source_backfill_ht.is_valid() && !source_backfill_ht.is_special(), InvalidArgument,
+      "Invalid source backfill hybrid time for replicated xCluster backfill");
+
+  // At this point, the source's backfill writes are already applied on the target:
+  // As part of create index, we already wait for AddTableToXClusterTargetTask to wait for
+  // safe time to reach beyond the source backfill commit time, so here we can just mark
+  // backfill as done.
+  num_tablets_.store(0, std::memory_order_release);
+  tablets_pending_.store(0, std::memory_order_release);
+
+  const auto namespace_id = indexed_table_->namespace_id();
+  auto& xcluster_manager = *master_->xcluster_manager();
+
+  auto safe_time_result = xcluster_manager.GetXClusterSafeTimeForNamespace(
+      namespace_id, XClusterSafeTimeFilter::DDL_QUEUE);
+  if (!safe_time_result.ok() && !safe_time_result.status().IsNotFound()) {
+    return safe_time_result.status();
+  }
+  SCHECK(
+      safe_time_result.ok() && safe_time_result->is_valid() && !safe_time_result->is_special(),
+      TryAgain, "xCluster safe time for namespace $0 is not available yet", namespace_id);
+  const auto& safe_time = *safe_time_result;
+  RSTATUS_DCHECK(
+      safe_time >= source_backfill_ht, IllegalState,
+      Format(
+          "xCluster safe time $0 has not reached source backfill ht $1 for replicated "
+          "index backfill. AddTableToXClusterTargetTask should have ensured this before the index "
+          "started backfilling",
+          safe_time, source_backfill_ht));
+
+  LOG_WITH_PREFIX(INFO) << "Completed backfilling the index table, "
+                        << "finalizing replicated index backfill without local backfill.";
+
+  RETURN_NOT_OK_PREPEND(
+      MarkAllIndexesAsSuccess(),
+      "Failed to mark indexes as successfully backfilled (replicated backfill path)");
+  RETURN_NOT_OK_PREPEND(
+      UpdateIndexPermissionsForIndexes(),
+      "Failed to update index permissions (replicated backfill path)");
+  state_.store(State::kSuccess, std::memory_order_release);
+  return Status::OK();
+}
+
 Status BackfillTable::WaitForTabletSplitting() {
   auto& tablet_split_manager = master_->tablet_split_manager();
   tablet_split_manager.DisableSplittingForBackfillingTable(indexed_table_->id());
@@ -983,9 +1039,9 @@ Status BackfillTable::DoBackfill() {
     SleepFor(kSpinWait);
   }
   if (VLOG_IS_ON(1)) {
-    std::lock_guard l(mutex_);
-    VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: " << read_time_for_backfill_;
+    VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: " << read_time_for_backfill();
   }
+
   auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
@@ -1323,11 +1379,20 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     VLOG_WITH_FUNC(2) << "Unlocked index table for Read";
   } while (!is_ready);
   {
+    const auto idx_birth_time = read_time_for_backfill();
     TRACE("Locking index table");
     VLOG_WITH_FUNC(2) << "Trying to lock index table for Write";
     auto index_table_wlock = index_table_info->LockForWrite();
     VLOG_WITH_FUNC(2) << "Locked index table for Write";
     UnsetIndexTableRetainsDeleteMarkers(index_table_wlock.mutable_data());
+
+    // Persist the index birth time in the index table's index_info.
+    // TODO(#33155): read_time_for_backfill isn't set for xCluster automatic-mode target (where
+    // backfill is replicated from the source).
+    if (index_table_wlock.mutable_data()->pb.has_index_info() && !idx_birth_time.is_special()) {
+      index_table_wlock.mutable_data()->pb.mutable_index_info()->set_birth_time(
+          idx_birth_time.ToUint64());
+    }
 
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating index table metadata on disk");
@@ -1361,8 +1426,13 @@ Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
 Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
     const TabletInfoPtr& tablet, const std::string& table_id) {
   ADOPT_WAIT_STATE(wait_state_);
-  auto call =
-      std::make_shared<AsyncBackfillDone>(master_, callback_pool_, tablet, table_id, epoch_);
+  // TODO(#33155): read_time_for_backfill isn't set for xCluster automatic-mode target (where
+  // backfill is replicated from the source).
+  auto idx_birth_time = read_time_for_backfill().is_special()
+      ? 0 : read_time_for_backfill().ToUint64();
+  auto call = std::make_shared<AsyncBackfillDone>(
+      master_, callback_pool_, tablet, table_id, epoch_,
+      idx_birth_time);
   tablet->table()->AddTask(call);
   RETURN_NOT_OK_PREPEND(
       master_->catalog_manager()->ScheduleTask(call),

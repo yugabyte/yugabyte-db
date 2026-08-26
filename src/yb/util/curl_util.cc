@@ -39,6 +39,7 @@
 #include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/faststring.h"
 #include "yb/util/scope_exit.h"

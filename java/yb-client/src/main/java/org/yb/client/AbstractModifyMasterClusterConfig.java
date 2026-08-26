@@ -28,10 +28,10 @@ import org.yb.master.MasterTypes.MasterErrorPB.Code;
 public abstract class AbstractModifyMasterClusterConfig {
   private static final Logger LOG = LoggerFactory.getLogger(
       AbstractModifyMasterClusterConfig.class);
-  private YBClient ybClient = null;
+  private final YBClientApi ybClient;
 
-  public AbstractModifyMasterClusterConfig(YBClient client) {
-    ybClient = client;
+  public AbstractModifyMasterClusterConfig(YBClientApi client) {
+    this.ybClient = client;
   }
 
   private CatalogEntityInfo.SysClusterConfigEntryPB getConfig() throws Exception {

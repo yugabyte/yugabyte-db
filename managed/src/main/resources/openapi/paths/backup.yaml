@@ -14,6 +14,8 @@
     summary: List universe backups.
     description: |
       Returns universe backups for the specified customer with pagination and optional filters.
+      Only full (base) backups are returned. Use `pageListIncrementalBackups` to list incrementals
+      in a backup chain.
       WARNING: This is a preview API that could change.
     tags:
       - Backup and Restore
@@ -24,6 +26,62 @@
         $ref: "../components/responses/BackupPagedResp.yaml"
       '400':
         description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/backups/{bUUID}/increments/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: bUUID
+      in: path
+      description: Backup UUID of any backup in the incremental chain
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListIncrementalBackups
+    summary: List incremental backups for a backup chain.
+    description: |
+      Returns backups in the incremental chain for the specified backup, including the full
+      (base) backup. Pass either the full backup UUID or any incremental backup UUID in the chain.
+      `pageListBackups` returns only full backups; use this API to retrieve incrementals.
+      Rows are ordered by create time. The order is descending by default.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Backup and Restore
+    requestBody:
+      $ref: "../components/requestBodies/IncrementalBackupPagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/IncrementalBackupPagedResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer or backup not found
       '500':
         description: Server error
     security:

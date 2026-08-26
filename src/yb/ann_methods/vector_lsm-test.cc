@@ -31,6 +31,7 @@
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
@@ -53,6 +54,8 @@ DECLARE_int32(vector_index_compaction_size_ratio_min_merge_width);
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
 DECLARE_uint64(vector_index_compaction_always_include_size_threshold);
 DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
+DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
+DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_task_size);
 
 METRIC_DEFINE_entity(table);
@@ -97,6 +100,7 @@ Result<std::vector<vector_index::VectorLSMChunkPB>> LoadAliveManifestChunks(
 
 } // namespace
 
+using vector_index::TEST_GetCompactionChunkMaxMemStoreBytes;
 using vector_index::VectorId;
 
 using FloatVectorLSM = vector_index::VectorLSM<std::vector<float>, float>;
@@ -198,7 +202,15 @@ class TestFrontier : public storage::UserFrontier {
   VectorId vertex_id_;
 };
 
-using TestFrontiers = storage::UserFrontiersBase<TestFrontier>;
+class TestFrontiers : public storage::UserFrontiersBase<TestFrontier> {
+ public:
+  TestFrontiers() = default;
+
+  explicit TestFrontiers(const InsertEntries& entries) {
+    Smallest().SetVertexId(entries.front().vector_id);
+    Largest().SetVertexId(entries.front().vector_id);
+  }
+};
 
 class VectorLSMTest
     : public hnsw::VectorIndexTestBase,
@@ -219,6 +231,9 @@ class VectorLSMTest
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 1;
     hnsw::VectorIndexTestBase::SetUp();
   }
 
@@ -285,8 +300,15 @@ class VectorLSMTest
 
     Status Run(size_t num_dimensions, size_t num_input_chunks, size_t mem_store_limit_mb);
 
+    Status RunWithBlockCachePercentage(
+        size_t num_dimensions, size_t num_input_chunks, uint32_t block_cache_percentage);
+
    private:
-    static auto ScopedCompactionFlags(bool enable_compactions, size_t mem_store_limit_mb);
+    static auto ScopedCompactionFlags(
+        bool enable_compactions, size_t mem_store_limit_mb, uint32_t block_cache_percentage);
+
+    Status RunInternal(
+        size_t num_dimensions, size_t num_input_chunks, size_t mem_store_limit_bytes);
   };
 
   template <typename FilterImpl>
@@ -317,31 +339,19 @@ class VectorLSMTest
       METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test_table");
 };
 
-auto GetVectorIndexFactory(
-    const ParamType& param, const hnsw::BlockCachePtr& block_cache,
-    const MemTrackerPtr& mem_tracker = {}) {
+Result<vector_index::VectorIndexTraitsPtr<std::vector<float>, float>> GetVectorIndexTraits(
+    const ParamType& param, const vector_index::HNSWOptions& options,
+    const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker = {}) {
   bool use_yb_hnsw = UseYbHnsw(param);
   switch (GetANNMethodKind(param)) {
     case ANNMethodKind::kUsearch:
-      return std::function<vector_index::VectorIndexIfPtr<std::vector<float>, float>(
-          vector_index::FactoryMode, const vector_index::HNSWOptions&)>(
-          [use_yb_hnsw, block_cache, mem_tracker](
-              vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
-            return UsearchIndexFactory<std::vector<float>, float>::Create(
-                mode, block_cache, options,
-                use_yb_hnsw ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::USEARCH,
-                mem_tracker);
-          });
+      return CreateUsearchIndexTraits<std::vector<float>, float>(
+          block_cache, options,
+          use_yb_hnsw ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::USEARCH, mem_tracker);
     case ANNMethodKind::kHnswlib:
-      return std::function<vector_index::VectorIndexIfPtr<std::vector<float>, float>(
-          vector_index::FactoryMode, const vector_index::HNSWOptions&)>(
-          [use_yb_hnsw, block_cache, mem_tracker](
-              vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
-            return HnswlibIndexFactory<std::vector<float>, float>::Create(
-                mode, block_cache, options,
-                use_yb_hnsw ? HnswBackend::YB_HNSW_HNSWLIB : HnswBackend::HNSWLIB,
-                mem_tracker);
-          });
+      return CreateHnswlibIndexTraits<std::vector<float>, float>(
+          block_cache, options,
+          use_yb_hnsw ? HnswBackend::YB_HNSW_HNSWLIB : HnswBackend::HNSWLIB, mem_tracker);
   }
   FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(param));
 }
@@ -408,9 +418,7 @@ Status VectorLSMTest::InsertCube(
       begin += delta;
     }
     FloatVectorLSM::InsertEntries block_entries(begin, end);
-    TestFrontiers frontiers;
-    frontiers.Smallest().SetVertexId(block_entries.front().vector_id);
-    frontiers.Largest().SetVertexId(block_entries.front().vector_id);
+    TestFrontiers frontiers(block_entries);
     for (; begin != end; ++begin) {
       key_value_storage_.StoreVector(
           begin->vector_id, begin - inserted_entries_.begin() + 1);
@@ -431,9 +439,7 @@ Status VectorLSMTest::InsertRandom(
     auto begin = inserted_entries_.begin() + i;
     auto end = inserted_entries_.begin() + std::min(i + batch_size, inserted_entries_.size());
     FloatVectorLSM::InsertEntries block_entries(begin, end);
-    TestFrontiers frontiers;
-    frontiers.Smallest().SetVertexId(block_entries.front().vector_id);
-    frontiers.Largest().SetVertexId(block_entries.front().vector_id);
+    TestFrontiers frontiers(block_entries);
     for (; begin != end; ++begin) {
       key_value_storage_.StoreVector(
           begin->vector_id, begin - inserted_entries_.begin() + 1);
@@ -478,17 +484,15 @@ Status VectorLSMTest::OpenVectorLSM(
         test_dir, "vector_lsm_test_" + Uuid::Generate().ToString(), "vector_lsm");
   }
 
-  auto factory = GetVectorIndexFactory(GetParam(), block_cache_, mem_tracker);
+  vector_index::HNSWOptions hnsw_options = {
+    .dimensions = dimensions,
+    .distance_kind = distance_kind,
+  };
   FloatVectorLSM::Options options = {
     .log_prefix = "Test: ",
     .storage_dir = dir,
-    .vector_index_factory = [factory, dimensions, distance_kind](vector_index::FactoryMode mode) {
-      vector_index::HNSWOptions hnsw_options = {
-        .dimensions = dimensions,
-        .distance_kind = distance_kind,
-      };
-      return factory(mode, hnsw_options);
-    },
+    .vector_index_traits = VERIFY_RESULT(GetVectorIndexTraits(
+        GetParam(), hnsw_options, block_cache_, mem_tracker)),
     .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
     .insert_thread_pool = &thread_pool_,
@@ -497,6 +501,7 @@ Status VectorLSMTest::OpenVectorLSM(
     .vector_merge_filter_factory = [this] { return GetMergeFilter(); },
     .file_extension = "",
     .metric_entity = vector_index_metric_entity_,
+    .block_cache_capacity = block_cache_->capacity(),
   };
   auto status = lsm.Open(std::move(options));
   if (status.ok()) {
@@ -509,34 +514,53 @@ VectorLSMTest::ChunkedCompactionHelper::ChunkedCompactionHelper(VectorLSMTest& t
     : test(test) {}
 
 auto VectorLSMTest::ChunkedCompactionHelper::ScopedCompactionFlags(
-    bool enable_compactions, size_t mem_store_limit_mb) {
+    bool enable_compactions, size_t mem_store_limit_mb, uint32_t block_cache_percentage) {
   const bool old_enable_compactions = FLAGS_vector_index_enable_compactions;
   const uint64_t old_chunk_max_mem_store_size_mb =
       FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb;
+  const uint32_t old_chunk_max_mem_store_size_percentage =
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = enable_compactions;
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = mem_store_limit_mb;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = block_cache_percentage;
 
-  return ScopeExit([old_enable_compactions, old_chunk_max_mem_store_size_mb] {
+  return ScopeExit([old_enable_compactions, old_chunk_max_mem_store_size_mb,
+                    old_chunk_max_mem_store_size_percentage] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = old_enable_compactions;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) =
         old_chunk_max_mem_store_size_mb;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) =
+        old_chunk_max_mem_store_size_percentage;
   });
 }
 
 Status VectorLSMTest::ChunkedCompactionHelper::Run(
     size_t num_dimensions, size_t num_input_chunks, size_t mem_store_limit_mb) {
-  // Update flags and restore on exit.
   auto flags_scope = ChunkedCompactionHelper::ScopedCompactionFlags(
-      /* enable_compactions = */ false, mem_store_limit_mb);
+      /* enable_compactions = */ false, mem_store_limit_mb, /* block_cache_percentage = */ 0);
+  return RunInternal(num_dimensions, num_input_chunks, mem_store_limit_mb * 1_MB);
+}
 
+Status VectorLSMTest::ChunkedCompactionHelper::RunWithBlockCachePercentage(
+    size_t num_dimensions, size_t num_input_chunks, uint32_t block_cache_percentage) {
+  auto flags_scope = ChunkedCompactionHelper::ScopedCompactionFlags(
+      /* enable_compactions = */ false, /* mem_store_limit_mb = */ 0, block_cache_percentage);
+  const size_t mem_store_limit_bytes = TEST_GetCompactionChunkMaxMemStoreBytes(
+      test.block_cache_->capacity());
+  SCHECK_GT(mem_store_limit_bytes, 0, InvalidArgument, "percentage-based limit must be positive");
+  return RunInternal(num_dimensions, num_input_chunks, mem_store_limit_bytes);
+}
+
+Status VectorLSMTest::ChunkedCompactionHelper::RunInternal(
+    size_t num_dimensions, size_t num_input_chunks, size_t mem_store_limit_bytes) {
   FloatVectorLSM lsm;
   RETURN_NOT_OK(test.OpenVectorLSM(lsm, num_dimensions, kDefaultChunkSize));
 
   storage_dir = lsm.StorageDir();
-  max_vectors_per_compaction_chunk =
-      lsm.EstimateNumVectorsForBytes(mem_store_limit_mb * 1_MB);
+  max_vectors_per_compaction_chunk = lsm.EstimateNumVectorsForBytes(mem_store_limit_bytes);
   SCHECK_GT(
       max_vectors_per_compaction_chunk, 0, InvalidArgument,
       "max_vectors_per_compaction_chunk must be positive");
@@ -950,6 +974,48 @@ TEST_P(VectorLSMTest, ShutdownDuringBackgroundMerge) {
   lsm.CompleteShutdown();
 }
 
+// Reproduces a race in VectorLSMInsertRegistryBase::ExecuteTasks: tasks used to be enqueued
+// before being moved from the caller's stack-local list to active_tasks_, so a task completing
+// within that window unlinked itself from the local list from a worker thread. The sync point
+// sleep widens the window; such tasks reach TaskDone with active_tasks_ empty, tripping its
+// DCHECK. Concurrent batches also let TSAN catch an unsynchronized read of a spliced task's
+// successor in ExecuteTasks.
+TEST_P(VectorLSMTest, InsertTaskRegistrationRace) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kBatchSize = 16;
+  constexpr size_t kBatches = 20;
+  constexpr size_t kNumThreads = 8;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 1;
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSMInsertRegistryBase::ExecuteTasks:Enqueued",
+      [](void*) { std::this_thread::sleep_for(10ms * kTimeMultiplier); });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, /* vectors_per_chunk = */ 1024));
+
+  ThreadHolder threads;
+  for (size_t i = 0; i != kNumThreads; ++i) {
+    threads.AddThreadFunctor([&lsm] {
+      for (size_t batch = 0; batch != kBatches; ++batch) {
+        auto entries = RandomEntries(kDimensions, kBatchSize);
+        TestFrontiers frontiers(entries);
+        ASSERT_OK(lsm.Insert(entries, { .frontiers = &frontiers }));
+      }
+    });
+  }
+  threads.JoinAll();
+
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+}
+
 void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumLargeChunks = 2;
@@ -1090,16 +1156,27 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   ASSERT_EQ(0, lsm.TEST_NextManifestFileNo());
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
   ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), 0);
+  ASSERT_EQ(lsm.metrics().flush_write_bytes->value(), 0);
+  ASSERT_EQ(lsm.metrics().flush_us->TotalCount(), 0);
+  ASSERT_EQ(lsm.metrics().compact_us->TotalCount(), 0);
 
-  // Empty compaction, write metric remains unchanged.
+  // Empty compaction, write metric remains unchanged. No chunks are compacted, so the compaction
+  // time metric must not be recorded.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
   ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), 0);
+  ASSERT_EQ(lsm.metrics().compact_us->TotalCount(), 0);
 
   // Insert 1 batch of entries to create 1 chunk file.
   ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kNumEntriesPerChunk));
   ASSERT_EQ(kNumEntriesPerChunk, inserted_entries_.size());
   ASSERT_EQ(1, lsm.NumImmutableChunks());
+
+  // Flushing the chunk to disk must record a flush and bump the flush write metric by its size.
+  // Track cumulative flush bytes; compaction writes go through a separate path and must not count.
+  auto flush_writes = lsm.TEST_LatestChunkSize();
+  ASSERT_EQ(lsm.metrics().flush_write_bytes->value(), flush_writes);
+  ASSERT_EQ(lsm.metrics().flush_us->TotalCount(), 1);
 
   // Compact single file into a single file, write metric increases by size of new chunk file.
   // The single input chunk is read during compaction.
@@ -1109,6 +1186,10 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   auto compaction_writes = lsm.TEST_LatestChunkSize();
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), compaction_writes);
   ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), compaction_reads);
+  // A non-empty compaction must record exactly one compaction time sample. The compaction wrote a
+  // new chunk via its own path, so the flush write metric must be unchanged.
+  ASSERT_EQ(lsm.metrics().compact_us->TotalCount(), 1);
+  ASSERT_EQ(lsm.metrics().flush_write_bytes->value(), flush_writes);
 
   // Insert 5 more batches for a total of 6 chunk files.
   // Track input sizes: the compacted chunk from the 1st compaction is now an input to the 2nd.
@@ -1117,9 +1198,16 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   for (size_t i = 1; i < kNumChunks; ++i) {
     ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kNumEntriesPerChunk));
     ASSERT_EQ(kNumEntriesPerChunk, inserted_entries_.size());
-    compaction_reads += lsm.TEST_LatestChunkSize();
+    const auto latest_chunk_size = lsm.TEST_LatestChunkSize();
+    compaction_reads += latest_chunk_size;
+    flush_writes += latest_chunk_size;
   }
   ASSERT_EQ(kNumChunks, lsm.NumImmutableChunks());
+
+  // Each flushed chunk (the initial one plus the kNumChunks - 1 just inserted) is recorded, and the
+  // flush write metric accounts for every flushed chunk file.
+  ASSERT_EQ(lsm.metrics().flush_us->TotalCount(), kNumChunks);
+  ASSERT_EQ(lsm.metrics().flush_write_bytes->value(), flush_writes);
 
   // Compact all files into a single file.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
@@ -1127,6 +1215,8 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   compaction_writes += lsm.TEST_LatestChunkSize();
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), compaction_writes);
   ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), compaction_reads);
+  // The second non-empty compaction adds another compaction time sample.
+  ASSERT_EQ(lsm.metrics().compact_us->TotalCount(), 2);
 }
 
 TEST_P(VectorLSMTest, ChunkedCompactionRespectsMemStoreLimit) {
@@ -1157,6 +1247,143 @@ TEST_P(VectorLSMTest, ChunkedCompactionRespectsMemStoreLimit) {
   for (size_t i = 1; i < manifest_chunks.size(); ++i) {
     ASSERT_LE(manifest_chunks[i - 1].order_no(), manifest_chunks[i].order_no());
   }
+}
+
+// Same chunk-splitting behavior as ChunkedCompactionRespectsMemStoreLimit, but the byte budget
+// comes from a percentage of the vector index block cache capacity.
+TEST_P(VectorLSMTest, ChunkedCompactionRespectsBlockCachePercentage) {
+  constexpr size_t kDimensions = 16;
+  constexpr size_t kNumInputChunks = 4;
+  // Test block cache is 8MB. The percentage only scales the per-chunk vector budget, so a smaller
+  // one keeps the same number of output chunks with fewer inserts, fitting the sanitizer timeout.
+  constexpr uint32_t kBlockCachePercentage = RegularBuildVsSanitizers<uint32_t>(13, 4);
+
+  ChunkedCompactionHelper compaction(*this);
+  ASSERT_OK(compaction.RunWithBlockCachePercentage(
+      kDimensions, kNumInputChunks, kBlockCachePercentage));
+  ASSERT_GT(compaction.expected_output_chunks, 1);
+
+  const auto manifest_chunks =
+      ASSERT_RESULT(LoadAliveManifestChunks(Env::Default(), compaction.storage_dir));
+  ASSERT_EQ(compaction.expected_output_chunks, manifest_chunks.size());
+}
+
+TEST_P(VectorLSMTest, ConcurrentCompactionsDisableBlockCachePercentage) {
+  constexpr size_t kDimensions = 16;
+  constexpr size_t kNumInputChunks = 4;
+  constexpr uint32_t kBlockCachePercentage = 13;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = kBlockCachePercentage;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 2;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+
+  const size_t percentage_limit_bytes =
+      block_cache_->capacity() * kBlockCachePercentage / 100;
+  const size_t max_vectors_with_percentage =
+      lsm.EstimateNumVectorsForBytes(percentage_limit_bytes);
+  ASSERT_GT(max_vectors_with_percentage, 0);
+  const size_t vectors_per_input_chunk =
+      max_vectors_with_percentage + std::max<size_t>(max_vectors_with_percentage / 4, 1);
+
+  for (size_t i = 0; i < kNumInputChunks; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, vectors_per_input_chunk));
+  }
+  ASSERT_EQ(kNumInputChunks, lsm.NumImmutableChunks());
+
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+
+  // With the percentage disabled and no absolute MB limit, compaction produces one output chunk.
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+}
+
+// Absolute MB limit wins over the percentage-of-cache limit when both are set.
+TEST_P(VectorLSMTest, MemStoreSizeMbOverridesBlockCachePercentage) {
+  constexpr size_t kDimensions = 16;
+  constexpr size_t kNumInputChunks = 4;
+  constexpr size_t kMemStoreLimitMb = 1;
+  // 100% of the 8MB test cache would allow ~8x more vectors per chunk than the 1MB absolute limit.
+  constexpr uint32_t kBlockCachePercentage = 100;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = kMemStoreLimitMb;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = kBlockCachePercentage;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+
+  const size_t cache_capacity = block_cache_->capacity();
+  ASSERT_EQ(
+      kMemStoreLimitMb * 1_MB,
+      TEST_GetCompactionChunkMaxMemStoreBytes(cache_capacity));
+  ASSERT_LT(
+      TEST_GetCompactionChunkMaxMemStoreBytes(cache_capacity),
+      cache_capacity * kBlockCachePercentage / 100);
+
+  const size_t max_vectors_per_chunk =
+      lsm.EstimateNumVectorsForBytes(kMemStoreLimitMb * 1_MB);
+  ASSERT_GT(max_vectors_per_chunk, 0);
+  const size_t vectors_per_input_chunk =
+      max_vectors_per_chunk + std::max<size_t>(max_vectors_per_chunk / 4, 1);
+
+  for (size_t i = 0; i < kNumInputChunks; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, vectors_per_input_chunk));
+  }
+  ASSERT_EQ(kNumInputChunks, lsm.NumImmutableChunks());
+
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+
+  const size_t total_vectors = vectors_per_input_chunk * kNumInputChunks;
+  const size_t expected_output_chunks = ceil_div(total_vectors, max_vectors_per_chunk);
+  ASSERT_EQ(expected_output_chunks, lsm.NumImmutableChunks());
+  ASSERT_GT(expected_output_chunks, 1);
+}
+
+TEST(VectorLSMCompactionLimitTest, MaxMemStoreBytesFlagPriority) {
+  constexpr size_t kCacheCapacity = 8_MB;
+  const uint64_t old_mb = FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb;
+  const uint32_t old_percentage = FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage;
+  const uint32_t old_num_compactions = FLAGS_vector_index_num_compactions_limit;
+  auto restore = ScopeExit([old_mb, old_percentage, old_num_compactions] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = old_mb;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = old_percentage;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = old_num_compactions;
+  });
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 1;
+  ASSERT_EQ(0, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
+
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 25;
+  ASSERT_EQ(2_MB, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
+  ASSERT_EQ(0, TEST_GetCompactionChunkMaxMemStoreBytes(/* block_cache_capacity = */ 0));
+
+  // Values above 100% are clamped to the full block cache capacity.
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 125;
+  ASSERT_EQ(kCacheCapacity, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
+
+  // The percentage limit is disabled when concurrent compactions are enabled.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 2;
+  ASSERT_EQ(0, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
+  ASSERT_EQ(0, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
+
+  // Absolute MB size takes priority and remains enabled with concurrent compactions.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 1;
+  ASSERT_EQ(1_MB, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+  ASSERT_EQ(1_MB, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
 }
 
 // Reopen VectorLSM after chunked compaction and verify the multi-chunk manifest loads correctly.
@@ -1193,6 +1420,7 @@ TEST_P(VectorLSMTest, DefaultCompactionMergesMultipleChunks) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
@@ -1293,9 +1521,7 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
     key_value_storage_.StoreVector(inserted_entries_[i].vector_id, i + 1);
   }
 
-  TestFrontiers frontiers;
-  frontiers.Smallest().SetVertexId(inserted_entries_.front().vector_id);
-  frontiers.Largest().SetVertexId(inserted_entries_.front().vector_id);
+  TestFrontiers frontiers(inserted_entries_);
   ASSERT_OK(lsm.Insert(inserted_entries_, {
     .frontiers = &frontiers,
     .chunk_size = num_vectors,

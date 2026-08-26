@@ -28,7 +28,7 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
-#include "access/yb_scan.h"
+#include "access/yb_target.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
 #include "catalog/indexing.h"
@@ -40,6 +40,7 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_replication_origin_d.h"
 #include "catalog/pg_shseclabel_d.h"
+#include "catalog/pg_subscription_d.h"
 #include "catalog/pg_tablespace_d.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
@@ -299,6 +300,9 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				   relid == ReplicationOriginRelationId ||
 				   relid == ReplicationOriginIdentIndex ||
 				   relid == ReplicationOriginNameIndex ||
+				   relid == SubscriptionRelationId ||
+				   relid == SubscriptionObjectIndexId ||
+				   relid == SubscriptionNameIndexId ||
 
 				   relid == DatabaseNameIndexId ||
 				   relid == SharedSecLabelRelationId ||

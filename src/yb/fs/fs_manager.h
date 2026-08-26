@@ -33,9 +33,11 @@
 #pragma once
 
 #include <iosfwd>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "yb/util/flags.h"
@@ -79,8 +81,9 @@ struct FsManagerOpts {
   FsManagerOpts(const FsManagerOpts&);
   FsManagerOpts& operator=(const FsManagerOpts&);
 
-  // The aggregated registry associated with the server.
-  MetricRegistry* metric_registry;
+  // The aggregated registry associated with the server. Left null by callers that do not export
+  // metrics (tools, unit tests), so every use has to be null-checked.
+  MetricRegistry* metric_registry = nullptr;
 
   // The memory tracker under which all new memory trackers will be parented.
   // If NULL, new memory trackers will be parented to the root tracker.
@@ -91,6 +94,9 @@ struct FsManagerOpts {
 
   // The paths where data blocks will be stored. Cannot be empty.
   std::vector<std::string> data_paths;
+
+  // Storage tier stored by data path.
+  std::unordered_map<std::string, std::string> tier_by_path;
 
   // Whether or not read-write operations should be allowed. Defaults to false.
   bool read_only;
@@ -122,6 +128,19 @@ class FsManager {
   static const char *kWalsRecoveryDirSuffix;
   static const char *kRocksDBDirName;
   static const char *kDataDirName;
+
+  // Storage-tier labels are a fixed, predefined set (see ValidStorageTiers()).
+  // Data roots in --fs_data_dirs that carry no explicit ":tier" suffix fall back
+  // to this default tier, so existing/unlabeled deployments keep working.
+  static const char *kDefaultStorageTier;  // = "ssd"
+
+  // The set of valid storage-tier labels, in a stable order. Any label outside
+  // this set is rejected at FsManager::Init(). kDefaultStorageTier is always a
+  // member.
+  static const std::vector<std::string>& ValidStorageTiers();
+
+  // Whether `tier` is one of ValidStorageTiers().
+  static bool IsValidStorageTier(const std::string& tier);
 
   // Only for unit tests.
   FsManager(Env* env, const std::string& root_path, const std::string& server_type);
@@ -167,6 +186,19 @@ class FsManager {
   std::set<std::string> GetFsRootDirs() const;
 
   std::vector<std::string> GetDataRootDirs() const;
+
+  // Returns the storage-tier label for a given canonicalized fs root (as
+  // returned by GetFsRootDirs()).  Returns kDefaultStorageTier when the root
+  // is not found in the tier map (e.g. WAL-only roots).
+  const std::string& GetTierForDataRoot(const std::string& canonicalized_fs_root) const;
+
+  // Returns all data-root directories (i.e. the paths that GetDataRootDirs()
+  // would return) that are tagged with the given tier label.
+  std::vector<std::string> GetDataRootDirsForTier(const std::string& tier) const;
+
+  // Returns the full tier -> data-root-dirs mapping (values are the same paths
+  // as GetDataRootDirs()).  Populated after Init().
+  const std::map<std::string, std::vector<std::string>>& GetDataRootsByTier() const;
 
   std::vector<std::string> GetWalRootDirs() const;
 
@@ -292,6 +324,24 @@ class FsManager {
 
   void CreateAndSetFaultDriveMetric(const std::string& path);
 
+  // The union of the WAL and data roots we are actually going to use, i.e. excluding any dropped
+  // for failing the startup write check.
+  //
+  // Deliberately not canonicalized_all_fs_roots_, which is the same union as configured but is
+  // never narrowed afterwards: the write-check failure path in CheckAndOpenFileSystemRoots()
+  // erases a faulted root from the WAL and data sets only. That is the right set for callers that
+  // clean up (lock files, DeleteFileSystemLayout, DumpFileSystemTree), which still have business
+  // with a faulted root, and the wrong one for callers about to write to or account for a drive.
+  std::set<std::string> UsableFsRoots() const;
+
+  // Instantiates the 'drive' metric entity for every root we are going to use and wires it to the
+  // per-drive IO counters that the writable-file layer feeds. Until a root is registered here,
+  // writes under it are not attributed to any drive and cost nothing.
+  void SetUpDriveIoMetrics();
+
+  // Instantiates the 'drive' metric entity for 'path', creating it if needed.
+  scoped_refptr<MetricEntity> GetOrCreateDriveMetricEntity(const std::string& path);
+
   // ==========================================================================
   //  file-system helpers
   // ==========================================================================
@@ -314,6 +364,9 @@ class FsManager {
   // as-is; they are first canonicalized during Init().
   const std::vector<std::string> wal_fs_roots_;
   const std::vector<std::string> data_fs_roots_;
+  // Storage-tier label keyed by (raw) data path. Paths absent from the map fall
+  // back to kDefaultStorageTier. Consumed while building the tier maps in Init().
+  const std::unordered_map<std::string, std::string> tier_by_data_path_;
   const std::string server_type_;
 
   MetricRegistry* metric_registry_;
@@ -329,6 +382,10 @@ class FsManager {
   std::string canonicalized_default_fs_root_;
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
+
+  // Tier maps built during Init().
+  std::unordered_map<std::string, std::string> tier_by_canonicalized_fs_root_;
+  std::map<std::string, std::vector<std::string>> data_roots_by_tier_;
 
   std::unordered_map<std::string, std::string> tablet_id_to_path_ GUARDED_BY(data_mutex_);
   mutable std::mutex data_mutex_;

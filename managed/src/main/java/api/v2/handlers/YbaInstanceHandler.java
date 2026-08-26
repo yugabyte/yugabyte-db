@@ -8,14 +8,24 @@ import api.v2.models.YBAInfo;
 import api.v2.utils.ApiControllerUtils;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import play.mvc.Http;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.models.Customer;
 
 public class YbaInstanceHandler extends ApiControllerUtils {
-  @Inject private Config config;
+  private final Config config;
 
-  public YBAInfo getYBAInstanceInfo(Http.Request request) throws Exception {
+  @Inject
+  public YbaInstanceHandler(AuditService auditService, Config config) {
+    super(auditService);
+    this.config = config;
+  }
+
+  public YBAInfo getYBAInstanceInfo() {
     YBAInfo ybaInfo = new YBAInfo();
     ybaInfo.setFipsEnabled(config.getBoolean(FIPS_ENABLED));
+    ybaInfo.setCustomerCount(Customer.find.query().findCount());
+    ybaInfo.setVersion(Util.getYbaVersion());
     return ybaInfo;
   }
 }

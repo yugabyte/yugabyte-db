@@ -76,6 +76,12 @@ void YBCDistTraceEndSpan();
 bool YBCDistTraceIsRootSpan();
 void YBCDistTraceClearStack();
 
+YbcOtelNodeSpan YBCDistTraceCreateNodeSpan(const char* op_name);
+void YBCDistTraceNodeSpanPushScope(YbcOtelNodeSpan node_span);
+void YBCDistTraceNodeSpanPopScope(YbcOtelNodeSpan node_span);
+void YBCDistTraceEndNodeSpan(YbcOtelNodeSpan node_span);
+void YBCDistTraceEndNodeSpanOnError(YbcOtelNodeSpan node_span);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

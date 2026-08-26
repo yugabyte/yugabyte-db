@@ -13,7 +13,8 @@ package com.yugabyte.yw.common.kms.util;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.oracle.bmc.Region;
-import com.oracle.bmc.auth.AuthenticationDetailsProvider;
+import com.oracle.bmc.auth.AbstractAuthenticationDetailsProvider;
+import com.oracle.bmc.auth.InstancePrincipalsAuthenticationDetailsProvider;
 import com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
 import com.oracle.bmc.identity.IdentityClient;
 import com.oracle.bmc.identity.requests.ListRegionsRequest;
@@ -43,6 +44,7 @@ public class OciEARServiceUtil {
     ociUserId("ociUserId", true, false),
     ociFingerprint("ociFingerprint", true, false),
     ociPrivateKeyContent("ociPrivateKeyContent", true, false),
+    ociAuthType("ociAuthType", false, false),
     ociCompartmentId("ociCompartmentId", true, false),
     ociVaultId("ociVaultId", false, false),
     ociRegion("ociRegion", false, true),
@@ -81,6 +83,29 @@ public class OciEARServiceUtil {
     }
   }
 
+  /** Supported authentication mechanisms for talking to the OCI KMS service. */
+  public enum OciKmsAuthType {
+    // API signing key: tenancy + user + fingerprint + private key.
+    API_KEY,
+    // OCI Instance Principal (YBA host is part of a dynamic group with a KMS policy).
+    INSTANCE_PRINCIPAL;
+  }
+
+  /**
+   * Resolves the configured authentication type, defaulting to API_KEY when the field is absent so
+   * that pre-existing configs keep working.
+   *
+   * @param authConfig the OCI KMS auth config object
+   * @return the resolved authentication type
+   */
+  public OciKmsAuthType getAuthType(ObjectNode authConfig) {
+    String authTypeStr = getSafeText(authConfig, OciKmsAuthConfigField.ociAuthType.fieldName);
+    if (StringUtils.isBlank(authTypeStr)) {
+      return OciKmsAuthType.API_KEY;
+    }
+    return OciKmsAuthType.valueOf(authTypeStr.trim().toUpperCase());
+  }
+
   public SimpleAuthenticationDetailsProvider getCredentials(ObjectNode authConfig) {
     String tenancyOcid = authConfig.path(OciKmsAuthConfigField.ociTenancyId.fieldName).asText();
     String userOcid = authConfig.path(OciKmsAuthConfigField.ociUserId.fieldName).asText();
@@ -100,12 +125,19 @@ public class OciEARServiceUtil {
         .build();
   }
 
-  public AuthenticationDetailsProvider getAuthenticationProvider(ObjectNode authConfig) {
-    return getCredentials(authConfig);
+  public AbstractAuthenticationDetailsProvider getAuthenticationProvider(ObjectNode authConfig) {
+    OciKmsAuthType authType = getAuthType(authConfig);
+    switch (authType) {
+      case INSTANCE_PRINCIPAL:
+        return InstancePrincipalsAuthenticationDetailsProvider.builder().build();
+      case API_KEY:
+      default:
+        return getCredentials(authConfig);
+    }
   }
 
   public KmsVaultClient getKmsVaultClient(UUID configUUID, ObjectNode authConfig) {
-    AuthenticationDetailsProvider provider = getAuthenticationProvider(authConfig);
+    AbstractAuthenticationDetailsProvider provider = getAuthenticationProvider(authConfig);
     if (provider == null) {
       return null;
     }
@@ -117,7 +149,7 @@ public class OciEARServiceUtil {
   }
 
   public KmsManagementClient getKmsManagementClient(UUID configUUID, ObjectNode authConfig) {
-    AuthenticationDetailsProvider provider = getAuthenticationProvider(authConfig);
+    AbstractAuthenticationDetailsProvider provider = getAuthenticationProvider(authConfig);
     if (provider == null) {
       return null;
     }
@@ -131,7 +163,7 @@ public class OciEARServiceUtil {
   }
 
   public KmsCryptoClient getKmsCryptoClient(UUID configUUID, ObjectNode authConfig) {
-    AuthenticationDetailsProvider provider = getAuthenticationProvider(authConfig);
+    AbstractAuthenticationDetailsProvider provider = getAuthenticationProvider(authConfig);
     if (provider == null) {
       return null;
     }
@@ -423,17 +455,22 @@ public class OciEARServiceUtil {
           "Invalid OCI_REGION: '" + regionStr + "' is not a recognized OCI region identifier.", e);
     }
 
-    // Step 3: validate credentials with a live Identity API call (listRegions is cheap and global).
-    // This is the only step that can confirm tenancy/user/fingerprint/private-key are all correct.
-    SimpleAuthenticationDetailsProvider authProvider = getCredentials(formData);
+    // API signing key fields are only required when using API_KEY authentication. For
+    // Instance/Resource Principal modes the credentials come from the host/pod identity.
+    OciKmsAuthType authType = getAuthType(formData);
+    AbstractAuthenticationDetailsProvider authProvider = getAuthenticationProvider(formData);
     try {
       validateCredentialsWithIdentityService(region, authProvider);
     } catch (BmcException e) {
       if (e.getStatusCode() == 401 || e.getStatusCode() == 403) {
-        throw new RuntimeException(
-            "Invalid OCI credentials. Please verify REGION, TENANCY_OCID, USER_OCID, FINGERPRINT,"
-                + " and PRIVATE_KEY.",
-            e);
+        String message =
+            authType == OciKmsAuthType.API_KEY
+                ? "Invalid OCI credentials. Please verify REGION, TENANCY_OCID, USER_OCID, "
+                    + "FINGERPRINT, and PRIVATE_KEY."
+                : "Instance principal authentication failed. Ensure this YugabyteDB Anywhere "
+                    + "host is an OCI compute instance in a dynamic group with IAM policies "
+                    + "granting access to OCI services.";
+        throw new RuntimeException(message, e);
       }
       throw new RuntimeException("OCI credential validation failed: " + e.getMessage(), e);
     } catch (Exception e) {
@@ -491,7 +528,7 @@ public class OciEARServiceUtil {
    * successfully authenticate against OCI. Extracted as a protected method so tests can stub it.
    */
   protected void validateCredentialsWithIdentityService(
-      Region region, SimpleAuthenticationDetailsProvider authProvider) {
+      Region region, AbstractAuthenticationDetailsProvider authProvider) {
     try (IdentityClient identityClient =
         IdentityClient.builder().region(region).build(authProvider)) {
       identityClient.listRegions(ListRegionsRequest.builder().build());

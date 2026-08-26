@@ -1,6 +1,9 @@
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
@@ -44,6 +47,12 @@ public class ScheduleResp {
   long incrementalBackupFrequency;
   TimeUnit incrementalBackupFrequencyTimeUnit;
   Boolean tableByTableBackup;
+
+  @ApiModelProperty(
+      value = "True if this schedule is controlled by the Kubernetes operator",
+      accessMode = READ_ONLY)
+  @JsonProperty("isKubernetesOperatorControlled")
+  boolean kubernetesOperatorControlled;
 
   @Value
   @Builder

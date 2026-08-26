@@ -45,7 +45,7 @@
 
 /* YB includes */
 #include "access/htup_details.h"
-#include "access/yb_scan.h"
+#include "access/yb_target.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_constraint.h"
@@ -53,6 +53,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "executor/ybExpr.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
@@ -3724,12 +3725,31 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				return false;
 			}
 
-			/*
-			 * If the column is set to itself (SET col = col), it will not
-			 * get updated. So it has no impact on single row computation.
-			 */
-			if (varattno == tle->resno)
+			/* The column is set to itself (SET col = col). */
+			if (varattno == resno)
+			{
+				/*
+				 * If the column has a NOT NULL constraint, avoid the single row
+				 * path. NOT NULL constraint checks happen in the postgres
+				 * executor and require the value of the column to be populated.
+				 * Since the single row path skips fetching the target tuple,
+				 * the check cannot correctly distinguish between missing values
+				 * and NULL values.
+				 * TODO(kramanathan): Optimizing this path requires code
+				 * refactor.
+				 */
+				if (TupleDescAttr(tupDesc, resno - 1)->attnotnull)
+				{
+					RelationClose(relation);
+					return false;
+				}
+
+				/*
+				 * In all other cases, the column has no impact on the single
+				 * row computation.
+				 */
 				continue;
+			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);
 			update_attrs = bms_add_member(update_attrs, resno - attr_offset);
@@ -4991,13 +5011,25 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	Assert(baserelid > 0);
 	Assert(best_path->path.parent->rtekind == RTE_RELATION);
 
-	/* Process the bitmapqual tree into a Plan tree and qual lists */
+	/* Process the bitmapqual tree into a Plan tree and qual lists. */
+
 	bitmapqualplan = create_bitmap_subplan(root, best_path->bitmapqual,
 										   &indexqual, &indexquals,
 										   &indexECs, tlist, &scan_clauses);
 
+	/*
+	 * YB: The indexquals output of create_bitmap_subplan() only captures index
+	 * conditions and partial-index predicates. The clauses pushed down to the
+	 * index as storage filters (yb_idx_pushdown) are not captured, so using it
+	 * for recheck would produce a weaker condition which can lead to wrong
+	 * results when recheck is necessary.
+	 *
+	 * Instead we use yb_get_bitmap_index_quals() which accounts for the
+	 * pushed-down filters and is the same function used during costing.
+	 */
 	allindexquals = yb_get_bitmap_index_quals(root, best_path->bitmapqual,
 											  scan_clauses);
+	indexquals = allindexquals;
 
 	/*
 	 * The qpqual list must contain all restrictions not automatically handled
@@ -5021,8 +5053,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	 * Unlike create_indexscan_plan(), the predicate_implied_by() test here is
 	 * useful for getting rid of qpquals that are implied by index predicates,
 	 * because the predicate conditions are included in the "indexquals"
-	 * returned by create_bitmap_subplan().  Bitmap scans have to do it that
-	 * way because predicate conditions need to be rechecked if the scan
+	 * returned by yb_get_bitmap_index_quals().  Bitmap scans have to do it
+	 * that way because predicate conditions need to be rechecked if the scan
 	 * becomes lossy, so they have to be included in indexqual.
 	 */
 	qpqual = NIL;

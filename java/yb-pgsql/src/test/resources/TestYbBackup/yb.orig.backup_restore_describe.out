@@ -114,19 +114,17 @@ Indexes:
     "ch_pkey" PRIMARY KEY, lsm (chc1 HASH)
 Inherits: par
 
-           attname            | attnum | attislocal 
-------------------------------+--------+------------
- parc1                        |      1 | f
- parc2                        |      2 | f
- ........pg.dropped.3........ |      3 | t
- parc3                        |      4 | f
- parc4                        |      5 | t
- parc5                        |      6 | t
- chc1                         |      7 | t
- ........pg.dropped.8........ |      8 | t
- parc9                        |      9 | f
- parc10                       |     10 | f
-(10 rows)
+ attname | attnum | attislocal 
+---------+--------+------------
+ parc1   |      1 | f
+ parc2   |      2 | f
+ parc3   |      3 | f
+ parc4   |      4 | t
+ parc5   |      5 | t
+ chc1    |      6 | t
+ parc9   |      7 | f
+ parc10  |      8 | f
+(8 rows)
 
 INSERT 0 1
  parc1 | parc2 | parc3 | chc1 |   chc2   | parc5  | parc6 |    parc7    

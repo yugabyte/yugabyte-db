@@ -104,12 +104,17 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     for (Cluster cluster : clusters) {
       Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
       UserIntent newUserIntent = cluster.userIntent;
+      Util.validateSpecificationsIfPresent(newUserIntent.providerSpecifications, true);
       UserIntent currentUserIntent =
           universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
+      String masterDeviceInfoError =
+          getDedicatedMasterDeviceInfoErasedError(currentUserIntent, newUserIntent);
+      if (masterDeviceInfoError != null) {
+        throw new PlatformServiceException(Status.BAD_REQUEST, masterDeviceInfoError);
+      }
       if (!hasResizeChanges(currentUserIntent, newUserIntent, nodesInCluster)) {
         continue;
       }
-
       String errorStr =
           getResizeIsPossibleError(
               cluster.uuid, currentUserIntent, newUserIntent, universe, runtimeConfGetter);
@@ -126,6 +131,19 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     if (!hasChanges && !forceResizeNode && isFirstTry) {
       throw new PlatformServiceException(Status.BAD_REQUEST, "No changes!");
     }
+  }
+
+  /** Dedicated universes must keep masterDeviceInfo once set. */
+  private static String getDedicatedMasterDeviceInfoErasedError(
+      UserIntent currentUserIntent, UserIntent newUserIntent) {
+
+    if (currentUserIntent != null
+        && currentUserIntent.dedicatedNodes
+        && currentUserIntent.masterDeviceInfo != null
+        && (newUserIntent != null && newUserIntent.masterDeviceInfo == null)) {
+      return "Cannot clear masterDeviceInfo for a dedicated nodes universe";
+    }
+    return null;
   }
 
   private boolean hasResizeChanges(
@@ -219,6 +237,11 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     }
     if (currentUserIntent.dedicatedNodes != newUserIntent.dedicatedNodes) {
       return "Smart resize is not possible if is dedicated mode changed";
+    }
+    String masterDeviceInfoError =
+        getDedicatedMasterDeviceInfoErasedError(currentUserIntent, newUserIntent);
+    if (masterDeviceInfoError != null) {
+      return masterDeviceInfoError;
     }
     Collection<NodeDetails> nodes = universe.getUniverseDetails().getNodesInCluster(clusterUUID);
     boolean hasChanges = false;

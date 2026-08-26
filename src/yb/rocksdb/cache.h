@@ -42,6 +42,7 @@
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/status_fwd.h"
 
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
 
 namespace rocksdb {
@@ -80,6 +81,15 @@ constexpr int kSharedLRUCacheDefaultNumShardBits = 4;
 
 class Cache {
  public:
+  enum class ReservationMode {
+    // Always consume the requested capacity. If reservations exceed the configured cache
+    // capacity, the cache is left with no effective capacity for entries.
+    kAlways,
+
+    // Reject the reservation without changing cache capacity when it does not fit.
+    kStrict,
+  };
+
   Cache() { }
 
   // Destroys all existing entries by calling the "deleter"
@@ -154,9 +164,12 @@ class Cache {
   // Reserves `bytes` of cache space without storing an actual entry: it reduces the capacity
   // available to real entries (spread across shards), evicting as needed. Used to account
   // out-of-cache memory (e.g. a vector index chunk) within the cache budget so it does not grow
-  // total memory consumption. ReleaseSpace returns the reserved bytes. Default: no-op.
-  virtual void ConsumeSpace(size_t bytes) {}
-  virtual void ReleaseSpace(size_t bytes) {}
+  // total memory consumption. A successful result indicates whether the reservation is within the
+  // configured capacity: true means within capacity, false means over capacity. kAlways applies
+  // the reservation in both cases. kStrict returns an error (TryAgain) instead of applying
+  // a reservation that would exceed capacity.
+  virtual yb::Result<bool> ConsumeSpace(size_t bytes, ReservationMode mode) = 0;
+  virtual void ReleaseSpace(size_t bytes) = 0;
 
   // Set whether to return error on insertion when cache reaches its full
   // capacity.

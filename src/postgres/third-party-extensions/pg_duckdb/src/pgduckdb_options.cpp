@@ -9,6 +9,9 @@
 #include "pgduckdb/pg/functions.hpp"
 #include "pgduckdb/utility/cpp_wrapper.hpp"
 
+/* YB includes */
+#include "pgduckdb/pgduckdb_guc.hpp"
+
 extern "C" {
 #include "postgres.h"
 #include "executor/spi.h"
@@ -78,6 +81,13 @@ ReadOptions(FunctionCallInfo fcinfo, int start, const std::vector<std::string> &
 extern "C" {
 
 DECLARE_PG_FUNCTION(pgduckdb_raw_query) {
+	/* YB: duckdb.raw_query() runs arbitrary DuckDB SQL directly (no planner hook) -- reject it in lake_io mode. */
+	if (pgduckdb::YbIsLakeIoMode()) {
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		         errmsg("duckdb.raw_query() is not supported")));
+	}
+
 	const char *query = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	auto result = pgduckdb::DuckDBQueryOrThrow(query);
 	elog(NOTICE, "result: %s", result->ToString().c_str());
@@ -90,6 +100,12 @@ DECLARE_PG_FUNCTION(pgduckdb_is_motherduck_enabled) {
 
 DECLARE_PG_FUNCTION(pgduckdb_enable_motherduck) {
 	pgduckdb::pg::PreventInTransactionBlock("duckdb.enable_motherduck()");
+
+	if (pgduckdb::YbIsLakeIoMode()) {
+		ereport(ERROR,
+		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		         errmsg("MotherDuck is not supported")));
+	}
 
 	if (pgduckdb::IsMotherDuckEnabled()) {
 		elog(NOTICE, "MotherDuck is already enabled");

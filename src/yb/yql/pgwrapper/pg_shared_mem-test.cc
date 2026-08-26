@@ -21,6 +21,7 @@
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/backoff_waiter.h"
 
@@ -35,10 +36,11 @@ DECLARE_bool(TEST_skip_remove_tserver_shared_memory_object);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(TEST_transactional_read_delay_ms);
+DECLARE_uint64(TEST_doc_op_next_result_prefetching_delay_ms);
 DECLARE_uint64(TEST_shared_exchange_big_response_delay_ms);
 DECLARE_uint64(big_shared_memory_segment_expiration_time_ms);
 DECLARE_uint64(big_shared_memory_segment_session_expiration_time_ms);
-
+DECLARE_uint64(TEST_big_shared_memory_segment_initial_id);
 
 namespace yb {
 
@@ -139,7 +141,7 @@ TEST_F(PgSharedMemTest, TimeOut) {
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT generate_series(1, $0)", kNumRows));
 
-    FLAGS_TEST_transactional_read_delay_ms =
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transactional_read_delay_ms) =
         delay ? FLAGS_ysql_client_read_write_timeout_ms * 2 : 0;
     auto result = conn.FetchRow<int64_t>(
         "SELECT SUM(key) FROM t WHERE key > 0 OR key < 0");
@@ -234,6 +236,84 @@ TEST_F(PgSharedMemTest, AbandonedBigResponse) {
     auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
     ASSERT_EQ(result, value);
   }
+}
+
+class PgSharedMemNextResultPrefetchingDelayTest : public PgSharedMemTest {
+ protected:
+  void SetUp() override {
+    PgSharedMemTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_doc_op_next_result_prefetching_delay_ms) =
+        FLAGS_ysql_client_read_write_timeout_ms + 2 * kExtraDelayMs;
+  }
+
+  int GetReadWriteTimeout() const override {
+    return RegularBuildVsSanitizers(2, 10) * 1000;
+  }
+
+  static constexpr auto kExtraDelayMs = 500;
+};
+
+// The test checks absence of unexpectedly missed responses after first request timeout.
+// Test simulates the following situation:
+// 1. pggate initiates request over shared exchange
+// 2. t-server respond with delay large then request's deadline
+// 3. pggate marks request as failed due to timeout
+// 4. pggate initiates new read request, but shared exchange is busy, so request goes over RPC
+// 5. pggate initiates prefetching of next request after delay, to be sure that shared exchange is
+//   free and request will go over it
+// 6. pggate initiates new read request without waiting for previous request's response,
+//    it is expected that shared exchange is busy and request will go over RPC
+// Note: In case on step #6 shared exchange will be used, the response for prefetching request
+//       (sent on step #5) will be overwritten. Later pggate's attempt to get response for this
+//       request will fail with the 'Timed out waiting kResponseSent, state: kIdle' error
+TEST_F_EX(
+    PgSharedMemTest, ReadAfterPreviousRequestTimeout, PgSharedMemNextResultPrefetchingDelayTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT, PRIMARY KEY(k ASC))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE long_text(k INT, v TEXT, PRIMARY KEY(k ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION any_read(key INT) RETURNS INT AS $$"
+      "DECLARE"
+      " result INT;"
+      "BEGIN "
+      "  SELECT v FROM t WHERE k = key INTO result; "
+      "  RETURN result; "
+      "END;$$ LANGUAGE plpgsql"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION read_after_shared_exchange_timeout() RETURNS INT AS $$ "
+      "DECLARE"
+      " result INT; "
+      " msg_text TEXT; "
+      "BEGIN "
+      "  BEGIN "
+      "    SELECT SUM(LENGTH(v)) FROM long_text INTO result; "
+      "  EXCEPTION WHEN OTHERS THEN "
+      "    GET STACKED DIAGNOSTICS msg_text = MESSAGE_TEXT; "
+      "    RAISE NOTICE 'Expected time out exception: %', msg_text; "
+      "  END;"
+      "  SELECT COUNT(any_read(k)) FROM t INTO result;"
+      "  RETURN result; "
+      "END;$$ LANGUAGE plpgsql"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_shared_exchange_big_response_delay_ms) =
+      FLAGS_ysql_client_read_write_timeout_ms + kExtraDelayMs;
+  constexpr auto kFetchRowLimit = 10;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT s, s FROM generate_series(1, $0) AS s", kFetchRowLimit * 2));
+
+  auto do_read_after_shared_exchange_timeout = [&conn]() {
+    return conn.FetchRow<int32_t>("SELECT read_after_shared_exchange_timeout()");
+  };
+
+  // Warmup YSQL caches
+  ASSERT_RESULT(do_read_after_shared_exchange_timeout());
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO long_text SELECT s, '$0' FROM generate_series(1, 10) AS s",
+      RandomHumanReadableString(512*100)));
+
+  ASSERT_OK(conn.ExecuteFormat("SET yb_fetch_row_limit = $0", kFetchRowLimit));
+  auto row = ASSERT_RESULT(do_read_after_shared_exchange_timeout());
+  ASSERT_EQ(row, 20);
 }
 
 TEST_F(PgSharedMemTest, Crash) {
@@ -332,6 +412,57 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   ASSERT_OK(WaitFor([client_service] {
     return client_service->TEST_SessionsCount() <= 1;
   }, 5s * kTimeMultiplier, "Sessions cleanup"));
+}
+
+class PgSharedMemBigSegmentOverflowTest : public PgSharedMemTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_big_shared_memory_segment_initial_id) =
+        tserver::kBigSharedMemoryMaxId;
+    PgSharedMemTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgSharedMemTest, BigDataOverflow, PgSharedMemBigSegmentOverflowTest) {
+  auto no_allocated_segments_functor = [this] {
+    auto usage = SumBigSharedMemUsage();
+    LOG(INFO) << "Allocated big shared mem bytes: " << usage.first;
+    return usage.first == 0;
+  };
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto value = RandomHumanReadableString(boost::interprocess::mapped_region::get_page_size());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, value) VALUES (1, '$0')", value));
+
+  ASSERT_OK(WaitFor(no_allocated_segments_functor, 5s, "No allocated segments"));
+
+  for (size_t i = 0; i < 2; ++i) {
+    auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+    ASSERT_EQ(result, value);
+
+    auto usage = SumBigSharedMemUsage();
+    ASSERT_GT(usage.first, 0); // allocated big shared memory segment
+    ASSERT_EQ(usage.second, 0); // big shared memory segment in use
+
+    auto segment_in_pool_functor = [this] {
+      auto usage = SumBigSharedMemUsage();
+      LOG(INFO) << "Big shared mem bytes, allocated: " << usage.first << ", available: "
+                << usage.second;
+      return usage.first == usage.second;
+    };
+
+    ASSERT_OK(WaitFor(
+        segment_in_pool_functor, 5s, "Connection released big shared memory segment"));
+    usage = SumBigSharedMemUsage();
+    ASSERT_GT(usage.first, 0); // Check segment still in pool.
+
+    ASSERT_OK(WaitFor(
+        no_allocated_segments_functor,
+        FLAGS_big_shared_memory_segment_expiration_time_ms * 2ms,
+        "Big shared memory segment cleaned up"));
+  }
 }
 
 } // namespace yb::pgwrapper

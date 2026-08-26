@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/master/master_ysql_lease.pb.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
@@ -24,6 +26,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

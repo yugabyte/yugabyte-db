@@ -623,6 +623,8 @@ bool ParseCompactionOptions(const std::string& name, const std::string& value,
     }
   } else if (name == "verify_checksums_in_compaction") {
     new_options->verify_checksums_in_compaction = ParseBoolean(name, value);
+  } else if (name == "target_path_id") {
+    new_options->target_path_id = ParseUint32(value);
   } else {
     return false;
   }
@@ -1458,6 +1460,7 @@ ColumnFamilyOptions BuildColumnFamilyOptions(
   cf_opts.paranoid_file_checks = mutable_cf_options.paranoid_file_checks;
   cf_opts.compaction_measure_io_stats =
       mutable_cf_options.compaction_measure_io_stats;
+  cf_opts.target_path_id = mutable_cf_options.target_path_id;
 
   cf_opts.table_factory = options.table_factory;
   // TODO(yhchiang): find some way to handle the following derived options

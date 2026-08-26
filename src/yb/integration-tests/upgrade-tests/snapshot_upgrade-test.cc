@@ -18,6 +18,7 @@
 #include "yb/master/master_backup.proxy.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/physical_time.h"
+#include "yb/util/status_format.h"
 #include "yb/util/timestamp.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 

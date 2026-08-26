@@ -52,6 +52,7 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
@@ -66,12 +67,14 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
@@ -83,6 +86,8 @@ import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.AttachDetachSpec;
 import com.yugabyte.yw.models.AttachDetachSpec.PlatformPaths;
@@ -108,6 +113,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.ebean.PagedList;
@@ -134,20 +140,54 @@ import play.mvc.Http.Request;
 
 @Slf4j
 public class UniverseManagementHandler extends ApiControllerUtils {
-  @Inject private RuntimeConfGetter confGetter;
-  @Inject private ReleaseManager releaseManager;
-  @Inject private SwamperHelper swamperHelper;
-  @Inject private ConfigHelper configHelper;
-  @Inject private UniverseCRUDHandler universeCRUDHandler;
-  @Inject private UniverseInfoHandler universeInfoHandler;
-  @Inject private Commissioner commissioner;
-  @Inject private YsqlQueryExecutor ysqlQueryExecutor;
-  @Inject private NodeScriptRunner nodeScriptRunner;
-  @Inject private NodeFileCollector nodeFileCollector;
-  @Inject private FileCollectionDownloader fileCollectionDownloader;
-  @Inject private LocalhostAccessChecker localhostChecker;
-  @Inject private RoleBindingUtil roleBindingUtil;
-  @Inject private KubernetesOverridesHandler kubernetesOverridesHandler;
+  private final RuntimeConfGetter confGetter;
+  private final ReleaseManager releaseManager;
+  private final SwamperHelper swamperHelper;
+  private final ConfigHelper configHelper;
+  private final UniverseCRUDHandler universeCRUDHandler;
+  private final UniverseInfoHandler universeInfoHandler;
+  private final Commissioner commissioner;
+  private final YsqlQueryExecutor ysqlQueryExecutor;
+  private final NodeScriptRunner nodeScriptRunner;
+  private final NodeFileCollector nodeFileCollector;
+  private final FileCollectionDownloader fileCollectionDownloader;
+  private final LocalhostAccessChecker localhostChecker;
+  private final RoleBindingUtil roleBindingUtil;
+  private final KubernetesOverridesHandler kubernetesOverridesHandler;
+
+  @Inject
+  public UniverseManagementHandler(
+      AuditService auditService,
+      RuntimeConfGetter confGetter,
+      ReleaseManager releaseManager,
+      SwamperHelper swamperHelper,
+      ConfigHelper configHelper,
+      UniverseCRUDHandler universeCRUDHandler,
+      UniverseInfoHandler universeInfoHandler,
+      Commissioner commissioner,
+      YsqlQueryExecutor ysqlQueryExecutor,
+      NodeScriptRunner nodeScriptRunner,
+      NodeFileCollector nodeFileCollector,
+      FileCollectionDownloader fileCollectionDownloader,
+      LocalhostAccessChecker localhostChecker,
+      RoleBindingUtil roleBindingUtil,
+      KubernetesOverridesHandler kubernetesOverridesHandler) {
+    super(auditService);
+    this.confGetter = confGetter;
+    this.releaseManager = releaseManager;
+    this.swamperHelper = swamperHelper;
+    this.configHelper = configHelper;
+    this.universeCRUDHandler = universeCRUDHandler;
+    this.universeInfoHandler = universeInfoHandler;
+    this.commissioner = commissioner;
+    this.ysqlQueryExecutor = ysqlQueryExecutor;
+    this.nodeScriptRunner = nodeScriptRunner;
+    this.nodeFileCollector = nodeFileCollector;
+    this.fileCollectionDownloader = fileCollectionDownloader;
+    this.localhostChecker = localhostChecker;
+    this.roleBindingUtil = roleBindingUtil;
+    this.kubernetesOverridesHandler = kubernetesOverridesHandler;
+  }
 
   private static final String RELEASES_PATH = "yb.releases.path";
 
@@ -277,6 +317,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     boolean isNewUI = isNewUI();
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
+    JsonNode dbUniverseJson = Json.toJson(dbUniverse);
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     // inherit RR cluster properties from primary cluster in given edit spec
@@ -306,6 +347,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
+    for (Cluster cluster : v1Params.clusters) {
+      // Since in V2 API is based on partial updates,
+      // we cannot detect the case when these fields are removed (during dedicated mode switch)
+      // Keeping these fields will lead to error in validation.
+      clearMasterFieldsIfNotDedicated(cluster.userIntent);
+    }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
     // edit universe with v1 spec
@@ -331,6 +378,22 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       taskType = TaskType.EditKubernetesUniverse;
       universeCRUDHandler.notHelm2LegacyOrBadRequest(dbUniverse);
       universeCRUDHandler.checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
+      // Unlike the v1 flow, the v2 edit path submits the task directly instead of going through
+      // UniverseCRUDHandler.update() -> updatePrimaryCluster()/updateCluster(). Replicate the
+      // K8s-specific pre-submit placement finalization those methods perform. In particular,
+      // applyK8sStsIndexIncrement() bumps the per-AZ statefulset index whenever configure() marked
+      // nodes as both ToBeAdded and ToBeRemoved in the same AZ; EditKubernetesUniverse relies on
+      // that index change (via getPodsToAdd/getPodsToRemove) to detect and trigger a full move.
+      // Without this, a v2 full move (e.g. instance type / storage class change) would silently
+      // become a no-op.
+      //
+      // Note: userIntent volume overrides are already generated per-cluster inside configure() for
+      // EDIT (see UniverseCRUDHandler.configure), and they are keyed only on the AZ set, not on the
+      // statefulset index, so there is no need to regenerate them here.
+      applyK8sPlacementFinalization(dbUniverse, v1Params, primaryCluster);
+      if (isRREdited && !v1Params.getReadOnlyClusters().isEmpty()) {
+        applyK8sPlacementFinalization(dbUniverse, v1Params, v1Params.getReadOnlyClusters().get(0));
+      }
     } else {
       universeCRUDHandler.mergeNodeExporterInfo(dbUniverse, v1Params);
     }
@@ -350,7 +413,98 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         CustomerTask.TaskType.Update,
         dbUniverse.getName(),
         CustomerTaskManager.getCustomTaskName(CustomerTask.TaskType.Update, v1Params, null));
+    // Additional audit call so that old UI can show changes for edit operation.
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            dbUniverse.getUniverseUUID().toString(),
+            Audit.ActionType.Update,
+            Json.toJson(v1Params),
+            taskUUID,
+            dbUniverseJson);
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+  }
+
+  /**
+   * Finalizes a Kubernetes cluster's placement before submitting an edit task, mirroring the
+   * K8s-specific handling in {@code UniverseCRUDHandler.updatePrimaryCluster()} / {@code
+   * updateCluster()}. This is required because the v2 edit path submits the task directly rather
+   * than routing through {@code UniverseCRUDHandler.update()}.
+   *
+   * <p>First, the persisted per-AZ statefulset indices are re-hydrated from the existing universe
+   * (see {@link #reconcileK8sStsIndicesFromExisting}). This is required because the v2 API is
+   * spec-based and the placement schema ({@code PlacementAZ.yaml}) does not carry these
+   * server-managed indices; any edit that reconstructs the placement (or partition placements) from
+   * the spec would otherwise reset them to 0 and diverge from the deployed statefulset generation.
+   *
+   * <p>Then {@link PlacementInfoUtil#applyK8sStsIndexIncrement} bumps the per-AZ statefulset index
+   * for AZs undergoing a full move (nodes both ToBeAdded and ToBeRemoved), which is the signal
+   * {@code EditKubernetesUniverse} uses (via getPodsToAdd/getPodsToRemove) to trigger a full move.
+   *
+   * @param dbUniverse the existing universe, source of truth for the current statefulset indices
+   * @param taskParams the configured v1 edit params
+   * @param cluster the Kubernetes cluster (primary or read-replica) to finalize
+   */
+  private void applyK8sPlacementFinalization(
+      Universe dbUniverse, UniverseDefinitionTaskParams taskParams, Cluster cluster) {
+    reconcileK8sStsIndicesFromExisting(dbUniverse, cluster);
+    PlacementInfoUtil.applyK8sStsIndexIncrement(
+        cluster, taskParams.getNodesInCluster(cluster.uuid));
+  }
+
+  /**
+   * Restores the server-managed Kubernetes statefulset indices ({@code masterStsIndex} / {@code
+   * tsStsIndex}) onto the configured cluster placement (and every partition placement) from the
+   * existing universe, matched by AZ UUID.
+   *
+   * <p>These indices are internal bookkeeping that must stay in sync with the physically-deployed
+   * statefulsets, and they are deliberately absent from the v2 API schema. Since a v2 edit may
+   * rebuild {@link PlacementInfo} or partition placements from the request spec, the indices can be
+   * silently reset to 0 during mapping/configure. Re-hydrating them here (before applying the
+   * full-move increment) keeps the persisted state aligned with reality for every edit, not just
+   * full moves. AZs absent from the existing placement (newly added) correctly retain the default
+   * 0.
+   *
+   * @param dbUniverse the existing universe, source of truth for the current statefulset indices
+   * @param cluster the configured cluster whose placement/partitions should be reconciled
+   */
+  private void reconcileK8sStsIndicesFromExisting(Universe dbUniverse, Cluster cluster) {
+    Cluster dbCluster = dbUniverse.getUniverseDetails().getClusterByUuid(cluster.uuid);
+    if (dbCluster == null) {
+      // Newly added cluster: there is no prior statefulset generation to preserve.
+      return;
+    }
+    PlacementInfo dbPlacement = dbCluster.getOverallPlacement();
+    if (dbPlacement == null) {
+      return;
+    }
+    Map<UUID, PlacementInfo.PlacementAZ> dbAzByUuid =
+        dbPlacement.azStream().collect(Collectors.toMap(az -> az.uuid, az -> az, (a, b) -> a));
+    if (cluster.placementInfo != null) {
+      restoreStsIndices(cluster.placementInfo, dbAzByUuid);
+    }
+    if (!CollectionUtils.isEmpty(cluster.getPartitions())) {
+      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+        if (partition.getPlacement() != null) {
+          restoreStsIndices(partition.getPlacement(), dbAzByUuid);
+        }
+      }
+    }
+  }
+
+  private static void restoreStsIndices(
+      PlacementInfo placementInfo, Map<UUID, PlacementInfo.PlacementAZ> dbAzByUuid) {
+    placementInfo
+        .azStream()
+        .forEach(
+            az -> {
+              PlacementInfo.PlacementAZ dbAz = dbAzByUuid.get(az.uuid);
+              if (dbAz != null) {
+                az.masterStsIndex = dbAz.masterStsIndex;
+                az.tsStsIndex = dbAz.tsStsIndex;
+              }
+            });
   }
 
   public YBATask addCluster(
@@ -366,10 +520,19 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     v1Params.currentClusterType = ClusterType.ASYNC;
     // to construct the new v1 cluster, start with a copy of primary cluster
     Cluster primaryCluster = dbUniverse.getUniverseDetails().getPrimaryCluster();
-    Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent);
+    Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent.clone());
     // overwrite the copy of primary cluster with user provided spec for read replica
     newReadReplica.setUuid(UUID.randomUUID());
     newReadReplica = ClusterMapper.INSTANCE.overwriteClusterAddSpec(clusterAddSpec, newReadReplica);
+    // Intent is cloned from primary. Omitted dedicated_nodes must default to false (schema),
+    // not inherit dedicated mode from the primary cluster.
+    if (clusterAddSpec.getDedicatedNodes() == null
+        && (clusterAddSpec.getNodeSpec() == null
+            || clusterAddSpec.getNodeSpec().getDedicatedNodes() == null)) {
+      newReadReplica.userIntent.dedicatedNodes = false;
+    }
+    // Copied from a dedicated primary; clear master fields for non-dedicated RR.
+    clearMasterFieldsIfNotDedicated(newReadReplica.userIntent);
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
@@ -386,6 +549,19 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // start the add cluster task
     UUID taskUUID = universeCRUDHandler.createCluster(customer, dbUniverse, v1Params);
     return new YBATask().resourceUuid(newReadReplica.uuid).taskUuid(taskUUID);
+  }
+
+  // Drop master settings cloned from a dedicated primary onto a non-dedicated cluster.
+  private static void clearMasterFieldsIfNotDedicated(UserIntent userIntent) {
+    if (userIntent == null || userIntent.dedicatedNodes) {
+      return;
+    }
+    userIntent.masterInstanceType = null;
+    userIntent.masterDeviceInfo = null;
+    UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
+    if (overrides != null && overrides.getPerProcess() != null) {
+      overrides.getPerProcess().remove(ServerType.MASTER);
+    }
   }
 
   public YBATask deleteReadReplicaCluster(
@@ -969,6 +1145,24 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot migrate universes with AZ level overrides.");
     }
+
+    // Encryption at rest is migrated as a KMSConfig CR, which only covers some KMS providers.
+    // Checking here keeps an unsupported one from failing the import halfway through.
+    UUID kmsConfigUUID = OperatorUtils.getUniverseKmsConfigUuid(universe);
+    KmsConfig kmsConfig = kmsConfigUUID == null ? null : KmsConfig.get(kmsConfigUUID);
+    if (kmsConfig != null
+        && !OperatorUtils.SUPPORTED_KMS_PROVIDERS.contains(kmsConfig.getKeyProvider())) {
+      log.error(
+          "Universe {} uses a {} KMS config, cannot migrate to operator",
+          universe.getName(),
+          kmsConfig.getKeyProvider());
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot migrate universes using a %s KMS config, it is not supported by the"
+                  + " operator.",
+              kmsConfig.getKeyProvider()));
+    }
     log.info("Universe {} precheck for operator import success", universe.getName());
   }
 
@@ -1504,11 +1698,17 @@ public class UniverseManagementHandler extends ApiControllerUtils {
           BAD_REQUEST,
           String.format("Cluster with UUID '%s' does not exist.", spec.getClusterUuid()));
     }
-    UserIntentMapper.INSTANCE.fillUserIntentFromClusterNodeSpec(
-        spec.getNodeSpec(), cluster.userIntent);
-    log.debug(
-        "Spec {} userIntent {}", Json.toJson(spec.getNodeSpec()), Json.toJson(cluster.userIntent));
-
+    if (CollectionUtils.isNotEmpty(spec.getProviderNodesSpecs())) {
+      if (!cluster.userIntent.isMulticloudSupport()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "provider_nodes_specs is only supported for multicloud clusters");
+      }
+      UserIntentMapper.INSTANCE.applyPerProviderResizeNodesSpecsToUserIntent(
+          spec.getProviderNodesSpecs(), cluster.userIntent);
+    } else if (spec.getNodeSpec() != null) {
+      UserIntentMapper.INSTANCE.fillUserIntentFromClusterNodeSpec(
+          spec.getNodeSpec(), cluster.userIntent);
+    }
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID, customer);
 
     PlacementInfoUtil.updateUniverseDefinitionV2(
@@ -1531,6 +1731,16 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       } catch (Exception ignored) {
         log.error("Incorrect option: " + updateOption);
       }
+    }
+    // Kubernetes hardware/instance edits are reported by getUpdateOptions as UPDATE (rather than
+    // one of the ResizeUpdateOption values) because k8s resizes are applied by recreating the
+    // StatefulSet pods rather than doing a smart resize. There is no UPDATE member in
+    // ResizeUpdateOption, so without this the endpoint would report no available options for k8s.
+    // Surface it as FULL_MOVE, which is the only strategy supported for k8s resizes.
+    if (Util.isKubernetesBasedUniverse(dbUniverse)
+        && !res.contains(ResizeUpdateOption.FULL_MOVE)
+        && updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)) {
+      res.add(ResizeUpdateOption.FULL_MOVE);
     }
     return new CheckResizeOptionsResp().options(res);
   }

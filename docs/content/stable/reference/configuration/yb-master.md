@@ -1142,7 +1142,7 @@ Number of seconds to retain log files. Log files older than this value will be d
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `102400`
+Default: `100`
 {{% /tags/wrap %}}
 
 Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
@@ -1581,7 +1581,7 @@ Default: `-1000` (use the built-in recommended value; commonly `0` when [--use_m
 
 Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
 
-Each tablet replica generally requires 700 MiB of this memory.
+Each tablet replica generally requires 0.7 MiB of this tablet overhead memory.
 
 ### Raft and consistency/timing flags
 
@@ -2044,6 +2044,32 @@ Default: `300000`
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 
+### Multitenancy (resource governor) flags
+
+These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
+
+For information on other resource governor configuration flags, see the [YB-TServer reference](../yb-tserver/#multitenancy-resource-governor-flags).
+
+##### --enable_qos
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables per-database CPU limits and the maximum database count cap. When `false`, per-database cgroups are not created and none of the other `qos_*` flags have any effect.
+
+##### --qos_max_db_count
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+Default: `0`
+{{% /tags/wrap %}}
+
+The maximum number of non-template databases that can be created. `CREATE DATABASE` fails if it would exceed this limit. Because per-database cgroups are weighted equally, this cap sets the effective per-database minimum CPU as `1 / qos_max_db_count` (for example, a value of `20` guarantees each database at least 5% of the available CPU). Has no effect unless `enable_qos` is `true`.
+
 ### Other performance tuning options
 
 ##### --allowed_preview_flags_csv
@@ -2407,6 +2433,7 @@ When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL
 ##### --pg_client_use_shared_memory
 
 {{% tags/wrap %}}
+
 Default: `true`
 {{% /tags/wrap %}}
 

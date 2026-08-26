@@ -23,6 +23,7 @@
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
+#include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/rpc/tasks_pool.h"

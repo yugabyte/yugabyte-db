@@ -16,14 +16,23 @@ import {
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { SecuritySettingsProps } from './dtos';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
+import { SecuritySettingsProps, CertType } from './dtos';
 import { useUpdateEffect } from 'react-use';
 import {
   NTON_CERT_FIELD,
   CTON_CERT_FIELD,
   COMMON_CERT_FIELD,
-  KMS_CONFIG_FIELD
+  KMS_CONFIG_FIELD,
+  ENABLE_EAR_FIELD,
+  ENABLE_BOTH_ENCRYPTION,
+  ENABLE_NTON_FIELD,
+  ENABLE_CTON_FIELD,
+  COMMON_CERT_TYPE_FIELD,
+  CTON_CERT_TYPE_FIELD,
+  NTON_CERT_TYPE_FIELD
 } from '../../fields/FieldNames';
 
 const { Box } = mui;
@@ -42,18 +51,32 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
   });
 
   const methods = useForm<SecuritySettingsProps>({
-    defaultValues: { ...securitySettings },
+    defaultValues: {
+      useSameCertificate: true,
+      enableBothEncryption: true,
+      certType: CertType.SELF_SIGNED,
+      ...securitySettings
+    },
     mode: 'onChange'
   });
+
+  usePersistStepFormValues(methods.watch, methods.getValues, saveSecuritySettings);
 
   const { trigger, formState, watch } = methods;
   const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
   const { errors, isSubmitted } = formState;
 
+  const enableBothEncrytVal = watch(ENABLE_BOTH_ENCRYPTION);
+  const enableNToNVal = watch(ENABLE_NTON_FIELD);
+  const enableCToNVal = watch(ENABLE_CTON_FIELD);
   const nTonCertVal = watch(NTON_CERT_FIELD);
   const cTonCertVal = watch(CTON_CERT_FIELD);
   const commonCertVal = watch(COMMON_CERT_FIELD);
+  const EnableEARVal = watch(ENABLE_EAR_FIELD);
   const kmsConfigVal = watch(KMS_CONFIG_FIELD);
+  const nTonCerttypeVal = watch(NTON_CERT_TYPE_FIELD);
+  const cTonCertTypeVal = watch(CTON_CERT_TYPE_FIELD);
+  const commonCertTypeVal = watch(COMMON_CERT_TYPE_FIELD);
 
   useUpdateEffect(() => {
     if (isSubmitted) {
@@ -61,15 +84,26 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
         if (isValid) setShowErrorsAfterSubmit(false);
       });
     }
-  }, [nTonCertVal, cTonCertVal, commonCertVal, kmsConfigVal]);
+  }, [
+    nTonCertVal,
+    cTonCertVal,
+    commonCertVal,
+    kmsConfigVal,
+    enableBothEncrytVal,
+    enableNToNVal,
+    enableCToNVal,
+    EnableEARVal,
+    nTonCerttypeVal,
+    cTonCertTypeVal,
+    commonCertTypeVal
+  ]);
 
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
         setShowErrorsAfterSubmit(true);
-        return methods.handleSubmit((data) => {
-          saveSecuritySettings(data);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },
@@ -87,13 +121,12 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
           <StyledPanel>
             <StyledHeader>{t('networkAcessTitle')}</StyledHeader>
             <StyledContent sx={{ gap: '16px' }}>
-              {provider &&
-                [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) && (
-                  <AssignPublicIPField
-                    disabled={false}
-                    providerCode={generalSettings?.providerConfiguration?.code ?? ''}
-                  />
-                )}
+              {provider && isCloudVendorCloudType(provider?.code) && (
+                <AssignPublicIPField
+                  disabled={false}
+                  providerCode={generalSettings?.providerConfiguration?.code ?? ''}
+                />
+              )}
               {provider?.code === CloudType.kubernetes && <IPV6Field disabled={false} />}
               {provider?.code === CloudType.kubernetes && <NetworkAcessField disabled={false} />}
             </StyledContent>

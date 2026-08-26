@@ -111,6 +111,9 @@ message TabletDriveStorageMetadataPB {
   optional bool may_have_orphaned_post_split_data = 5 [default = true];
   optional uint64 total_size = 6;
   optional uint64 vector_index_size = 7;
+  // Whether a vector index backfill is currently in progress on this tablet. The tablet must not be
+  // split while a backfill is running (see GH#32321).
+  optional bool has_active_vector_index_backfill = 8;
 }
 
 message TabletLeaderMetricsPB {
@@ -145,6 +148,10 @@ message FullCompactionStatusPB {
    // Time of completion of the last fully completed full compaction.
    // Raw representation of a HybridTime.
   optional fixed64 last_full_compaction_time = 3;
+}
+
+message YsqlDbOldestPinnedReadTime {
+  optional fixed64 db_level_oldest_read_time = 1;
 }
 
 message ReportedTabletUpdatesPB {
@@ -253,6 +260,10 @@ message TSHeartbeatRequestPB {
 
   repeated XClusterConsumerReplicationStatusPB
       xcluster_consumer_replication_status = 23;
+
+  // Per-database oldest read HybridTime pinned by live PG transactions on this tserver.
+  // map[db_oid] -> earliest local live transaction registered for that db.
+  map<uint32, YsqlDbOldestPinnedReadTime> ts_ysql_db_oldest_pinned_read_times = 24;
 }
 
 message TSHeartbeatResponsePB {
@@ -344,6 +355,10 @@ message TSHeartbeatResponsePB {
   // as per master's view. Tservers use this to proactively mark replicas hosted by
   // these tservers as followers in their meta-cache.
   repeated string leader_blacklisted_tservers_with_no_leaders = 32;
+
+  // Cluster-wide oldest read HybridTime pinned by live PG transactions, aggregated across
+  // all live tservers. map[db_oid] -> earliest live transaction registered for that db.
+  map<uint32, YsqlDbOldestPinnedReadTime> cluster_ysql_db_oldest_pinned_read_times = 33;
 }
 
 service MasterHeartbeat {

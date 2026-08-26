@@ -100,7 +100,7 @@ public class ThirdPartyLoginHandler {
    * @return the newly created user
    */
   public Users findUserByEmailOrCreateNewUser(Request request, String email) {
-    int customerCount = Customer.getAll().size();
+    int customerCount = Customer.find.query().findCount();
     boolean multiTenant = confGetter.getStaticConf().getBoolean("yb.multiTenant");
     if (multiTenant || customerCount > 1) {
       throw new PlatformServiceException(
@@ -128,8 +128,8 @@ public class ThirdPartyLoginHandler {
       user.setRole(userRole);
       user.setUserType(UserType.oidc);
     } else {
-      log.info("Adding new user with email: " + email);
       user = Users.create(email, getRandomPassword(), userRole, custUUID, false, UserType.oidc);
+      log.info("Added new user with uuid: {}", user.getUuid());
     }
 
     // add role bindings if RBAC is on

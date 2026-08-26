@@ -27,6 +27,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
 
 #include "yb/ann_methods/index_memory_consumption.h"
 
@@ -141,7 +142,14 @@ class UsearchIndex :
   }
 
   Status Reserve(
-      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) override {
+      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads,
+      rocksdb::Cache::ReservationMode reservation_mode) override {
+    // Reserve block cache space before allocating the index to reject the operation in
+    // strict mode without first allocating the memory it is intended to control.
+    RETURN_NOT_OK(this->ReserveBlockCacheSpace(
+        block_cache_ ? &block_cache_->cache() : nullptr,
+        index_.estimate_bytes_for_num_vectors(num_vectors), reservation_mode));
+
     // Reserve allocates both the per-vector heap structures (vectors_lookup_, nodes_) and the
     // per-thread search contexts buffer, so we update both children when it returns.
     auto se = UpdateAllConsumptionOnExit();
@@ -160,12 +168,6 @@ class UsearchIndex :
     index_.reserve(unum::usearch::index_limits_t(
       num_members, max_concurrent_inserts + max_concurrent_reads));
     search_semaphore_.emplace(max_concurrent_reads);
-    // Reserve block cache space for this chunk's full footprint now: the index grows its node and
-    // vector tapes lazily up to the reserved capacity, so the cache evicts other blocks instead of
-    // letting the index push total memory past the limits.
-    this->ReserveBlockCacheSpace(
-        block_cache_ ? &block_cache_->cache() : nullptr,
-        index_.estimate_bytes_for_num_vectors(num_vectors));
     static std::once_flag log_once;
     std::call_once(log_once, [index = &index_]() {
       LOG(INFO) << "Usearch metric: " << index->metric().isa_name();
@@ -337,23 +339,63 @@ class UsearchIndex :
   IndexMemoryConsumption consumption_;
 };
 
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class UsearchIndexTraits :
+    public vector_index::VectorIndexTraitsIf<Vector, DistanceResult> {
+ public:
+  using IndexImpl = index_dense_gt<VectorId>;
+
+  UsearchIndexTraits(
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend,
+      const MemTrackerPtr& mem_tracker)
+      : block_cache_(block_cache), options_(options), backend_(backend),
+        mem_tracker_(mem_tracker),
+        metric_(options.CreateMetric<Vector>()) {
+    LOG_IF(DFATAL, backend != HnswBackend::USEARCH && backend != HnswBackend::YB_HNSW_USEARCH) <<
+        "Invalid backend for usearch index: " << HnswBackend_Name(backend);
+  }
+
+  vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
+      vector_index::FactoryMode mode) const override {
+    if (backend_ == HnswBackend::YB_HNSW_USEARCH && mode == vector_index::FactoryMode::kLoad) {
+      return CreateYbHnsw<Vector, DistanceResult>(block_cache_, options_);
+    }
+    return std::make_shared<UsearchIndex<Vector, DistanceResult>>(
+        block_cache_, options_, backend_, mem_tracker_);
+  }
+
+  DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
+    return metric_(
+        pointer_cast<const byte_t*>(lhs.data()), pointer_cast<const byte_t*>(rhs.data()));
+  }
+
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return IndexImpl::estimate_num_vectors_for_bytes(
+        bytes_limit, metric_, CreateIndexDenseConfig(options_));
+  }
+
+ private:
+  const hnsw::BlockCachePtr block_cache_;
+  const HNSWOptions options_;
+  const HnswBackend backend_;
+  const MemTrackerPtr mem_tracker_;
+  const metric_punned_t metric_;
+};
+
 }  // namespace
 
 template <vector_index::IndexableVectorType Vector,
           vector_index::ValidDistanceResultType DistanceResult>
-vector_index::VectorIndexIfPtr<Vector, DistanceResult>
-    UsearchIndexFactory<Vector, DistanceResult>::Create(
-    vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
-    const HNSWOptions& options, HnswBackend backend, const MemTrackerPtr& mem_tracker) {
-  LOG_IF(DFATAL, backend != HnswBackend::USEARCH && backend != HnswBackend::YB_HNSW_USEARCH) <<
-      "Invalid backed for usearch index: " << HnswBackend_Name(backend);
-  if (backend == HnswBackend::YB_HNSW_USEARCH && mode == vector_index::FactoryMode::kLoad) {
-    return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
-  }
-  return std::make_shared<UsearchIndex<Vector, DistanceResult>>(
+Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateUsearchIndexTraits(
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+    HnswBackend backend, const MemTrackerPtr& mem_tracker) {
+  return std::make_shared<UsearchIndexTraits<Vector, DistanceResult>>(
       block_cache, options, backend, mem_tracker);
 }
 
-template class UsearchIndexFactory<FloatVector, float>;
+template Result<vector_index::VectorIndexTraitsPtr<FloatVector, float>>
+    CreateUsearchIndexTraits<FloatVector, float>(
+        const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
+        HnswBackend backend, const MemTrackerPtr& mem_tracker);
 
 }  // namespace yb::ann_methods

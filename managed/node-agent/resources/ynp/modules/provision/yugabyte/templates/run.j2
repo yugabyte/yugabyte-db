@@ -53,9 +53,6 @@ else
     echo "User {{ yb_user }} added to systemd-journal group"
 fi
 
-# Determine the PLATFORM_ID
-platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
-
 if [[ "{{ os_family }}" == "RedHat" ]]; then
     # Check SELinux status
     SELINUX_STATUS=$(sestatus | grep 'SELinux status' | awk '{print $3}')

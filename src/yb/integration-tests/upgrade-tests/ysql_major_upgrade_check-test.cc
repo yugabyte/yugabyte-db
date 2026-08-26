@@ -671,9 +671,26 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedRenamedFunctionsAcl) {
       "currtid,pg_create_logical_replication_slot,pg_stat_statements_reset,"
       "pg_read_file_old,pg_rotate_logfile_old}";
 
+  // Shared WHERE fragments matching check.c macros YB_ACL_SKIP_EXTENSION_OWNED
+  // and YB_ACL_SKIP_IF_INIT_PRIVS_MATCH. Must stay in sync with those defines.
+  const std::string not_extension_owned =
+      "  AND NOT EXISTS ("
+      "      SELECT 1 FROM pg_depend d"
+      "      WHERE d.classid = 'pg_proc'::regclass"
+      "        AND d.objid = pg_proc.oid"
+      "        AND d.objsubid = 0"
+      "        AND d.deptype = 'e')";
+  const std::string proacl_differs_from_init_privs =
+      "  AND proacl IS DISTINCT FROM ("
+      "      SELECT initprivs FROM pg_init_privs pip"
+      "      WHERE pip.objoid = pg_proc.oid"
+      "        AND pip.classoid = 'pg_proc'::regclass"
+      "        AND pip.objsubid = 0)";
+
   // Restore pg_catalog function ACLs to their initdb defaults, matching the mitigation SQL
   // that yb_check_removed_renamed_functions_acl prints in its output.
-  auto reset_acl = [&removed_renamed_pronames](pgwrapper::PGConn& c) -> Status {
+  auto reset_acl = [&removed_renamed_pronames, &not_extension_owned,
+                    &proacl_differs_from_init_privs](pgwrapper::PGConn& c) -> Status {
     RETURN_NOT_OK(c.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed TO on"));
     RETURN_NOT_OK(c.ExecuteFormat(
         "UPDATE pg_proc SET proacl = ("
@@ -683,12 +700,9 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedRenamedFunctionsAcl) {
         "      AND pip.objsubid = 0)"
         "WHERE pronamespace = 'pg_catalog'::regnamespace"
         "  AND proname = ANY('$0')"
-        "  AND proacl IS DISTINCT FROM ("
-        "      SELECT initprivs FROM pg_init_privs pip"
-        "      WHERE pip.objoid = pg_proc.oid"
-        "        AND pip.classoid = 'pg_proc'::regclass"
-        "        AND pip.objsubid = 0)",
-        removed_renamed_pronames));
+        "$1"
+        "$2",
+        removed_renamed_pronames, not_extension_owned, proacl_differs_from_init_privs));
     RETURN_NOT_OK(c.Execute("RESET yb_non_ddl_txn_for_sys_tables_allowed"));
     return Status::OK();
   };
@@ -766,14 +780,15 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedRenamedFunctionsAcl) {
 
   // Sub-test 3: set proacl = '{}' on the full removed/renamed function list.
   auto single_database_set_proacl_empty =
-      [this, &conn, &reset_acl, &expected_removed_renamed_acl_failure, &removed_renamed_pronames]()
-          -> Status {
+      [this, &conn, &reset_acl, &expected_removed_renamed_acl_failure, &removed_renamed_pronames,
+       &not_extension_owned]() -> Status {
     RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed TO on"));
     RETURN_NOT_OK(conn.ExecuteFormat(
         "UPDATE pg_proc SET proacl = '{}'::aclitem[] "
         "WHERE pronamespace = 'pg_catalog'::regnamespace "
-        "  AND proname = ANY('$0')",
-        removed_renamed_pronames));
+        "  AND proname = ANY('$0') "
+        "$1",
+        removed_renamed_pronames, not_extension_owned));
     RETURN_NOT_OK(conn.Execute("RESET yb_non_ddl_txn_for_sys_tables_allowed"));
 
     RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(expected_removed_renamed_acl_failure));

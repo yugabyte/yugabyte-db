@@ -120,6 +120,37 @@ public class PerfAdvisorServiceTest extends FakeDBApplication {
   }
 
   @Test
+  public void testListByEmbeddedFlag() throws IOException {
+    // The embedded flag is how EmbeddedCollectorInitializer identifies "its" collector
+    // after an HA restore (paUrl still points at the old active's PA and can't be used).
+    // Verify the filter picks up only the embedded row.
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      HttpUrl baseUrl = server.url("/api/customer_metadata/" + defaultCustomerUuid.toString());
+      PACollector embeddedPlatform =
+          createTestPlatform(baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
+      embeddedPlatform.setEmbedded(true);
+      server.enqueue(new MockResponse().setBody(convertToCustomerMetadata(embeddedPlatform)));
+      perfAdvisorService.save(embeddedPlatform, false);
+
+      PACollector externalPlatform =
+          createTestPlatform(baseUrl.scheme() + "://127.0.0.1:" + baseUrl.port());
+      server.enqueue(new MockResponse().setBody(convertToCustomerMetadata(externalPlatform)));
+      perfAdvisorService.save(externalPlatform, false);
+
+      PACollectorFilter filter =
+          PACollectorFilter.builder().customerUuid(defaultCustomerUuid).embedded(true).build();
+      List<PACollector> platforms = perfAdvisorService.list(filter);
+      assertThat(platforms, contains(embeddedPlatform));
+
+      PACollectorFilter nonEmbeddedFilter =
+          PACollectorFilter.builder().customerUuid(defaultCustomerUuid).embedded(false).build();
+      List<PACollector> nonEmbeddedPlatforms = perfAdvisorService.list(nonEmbeddedFilter);
+      assertThat(nonEmbeddedPlatforms, contains(externalPlatform));
+    }
+  }
+
+  @Test
   public void testDelete() throws IOException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();

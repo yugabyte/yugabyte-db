@@ -14,7 +14,7 @@ import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsYsqlMajorCatalogUpgradeDoneResponse;
 import org.yb.client.RollbackYsqlMajorCatalogVersionResponse;
 import org.yb.client.StartYsqlMajorCatalogUpgradeResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterAdminOuterClass;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 import org.yb.master.MasterTypes.MasterErrorPB;
@@ -60,7 +60,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
   }
 
   protected void startYsqlMajorCatalogUpgrade() throws Exception {
-    try (YBClient client = getClient(getAdminOperationTimeoutMs())) {
+    try (YBClientApi client = getClient(getAdminOperationTimeoutMs())) {
       StartYsqlMajorCatalogUpgradeResponse resp = client.startYsqlMajorCatalogUpgrade();
       if (resp.hasError()) {
         MasterErrorPB errorPB = resp.getServerError();
@@ -81,7 +81,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
           attempts,
           maxAttempts);
       waitFor(Duration.ofSeconds(DELAY_BETWEEN_ATTEMPTS_SEC));
-      try (YBClient client = getClient(getAdminOperationTimeoutMs())) {
+      try (YBClientApi client = getClient(getAdminOperationTimeoutMs())) {
         IsYsqlMajorCatalogUpgradeDoneResponse resp = client.isYsqlMajorCatalogUpgradeDone();
         if (resp.hasError()) {
           MasterErrorPB errorPB = resp.getServerError();
@@ -100,7 +100,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
   }
 
   protected YsqlMajorCatalogUpgradeState getYsqlMajorCatalogUpgradeState() throws Exception {
-    try (YBClient client = getClient(getAdminOperationTimeoutMs())) {
+    try (YBClientApi client = getClient(getAdminOperationTimeoutMs())) {
       GetYsqlMajorCatalogUpgradeStateResponse resp = client.getYsqlMajorCatalogUpgradeState();
       if (resp.hasError()) {
         MasterErrorPB errorPB = resp.getServerError();
@@ -113,7 +113,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
   }
 
   protected void rollbackYsqlMajorCatalogVersion() throws Exception {
-    try (YBClient client = getClient(getAdminOperationTimeoutMs())) {
+    try (YBClientApi client = getClient(getAdminOperationTimeoutMs())) {
       RollbackYsqlMajorCatalogVersionResponse resp = client.rollbackYsqlMajorCatalogVersion();
       if (resp.hasError()) {
         MasterErrorPB errorPB = resp.getServerError();
@@ -126,7 +126,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
   }
 
   protected void finalizeYsqlMajorCatalogUpgrade() throws Exception {
-    try (YBClient client = getClient(getAdminOperationTimeoutMs())) {
+    try (YBClientApi client = getClient(getAdminOperationTimeoutMs())) {
       FinalizeYsqlMajorCatalogUpgradeResponse resp = client.finalizeYsqlMajorCatalogUpgrade();
       if (resp.hasError()) {
         MasterErrorPB errorPB = resp.getServerError();

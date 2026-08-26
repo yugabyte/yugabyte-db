@@ -6,6 +6,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -200,7 +201,8 @@ public class KubernetesToggleImmutableYbcTest extends KubernetesUpgradeTaskTest 
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
@@ -256,7 +258,8 @@ public class KubernetesToggleImmutableYbcTest extends KubernetesUpgradeTaskTest 
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());

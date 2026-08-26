@@ -53,15 +53,6 @@ When run at the same time, flags take precedence over configuration flag setting
 | <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
-| --run-guardrails-checks |
-
-```yaml{.nocopy}
-export-data:
-  run-guardrails-checks:
-```
-
-| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
-
 | --disable-pb |
 
 ```yaml{.nocopy}
@@ -126,7 +117,7 @@ export-data:
   allow-oracle-clob-data-export:
 ```
 
-| [Experimental] Allow exporting data of CLOB columns in offline migration. Oracle migrations only. The flag is _not supported_ for live migrations or [BETA_FAST_DATA_EXPORT](../../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle). <br> Default: false <br> Accepted parameters: true, false |
+| [Experimental] Allow exporting data of CLOB columns in offline migration. Oracle migrations only. The flag is _not supported_ with [BETA_FAST_DATA_EXPORT](../../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle). <br> Default: false <br> Accepted parameters: true, false |
 
 | -e, --export-dir |
 
@@ -247,30 +238,6 @@ source:
 ```
 
 | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --oracle-cdb-name |
-
-```yaml{.nocopy}
-source:
-  oracle-cdb-name:
-```
-
-| Oracle Container Database Name in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
-| --oracle-cdb-sid |
-
-```yaml{.nocopy}
-source:
-  oracle-cdb-sid:
-```
-
-| Oracle System Identifier (SID) of the Container Database that you wish to use while exporting data from Oracle instances. Required for Oracle live migrations only. |
-| --oracle-cdb-tns-alias |
-
-```yaml{.nocopy}
-source:
-  oracle-cdb-tns-alias:
-```
-
-| Name of TNS Alias you wish to use to connect to Oracle Container Database in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
 | --oracle-db-sid |
 
 ```yaml{.nocopy}
@@ -300,6 +267,14 @@ source:
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
 | -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+export-data:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 <br>**Note**: Setting this flag to false is unsafe, as it skips critical pre-migration validations (such as source/target database permissions, binary dependencies, and version compatibility) and may lead to migration failures or data issues. Leave the default (true) unless you have a specific reason to disable checks.|
 
 {{</table>}}
 
@@ -602,6 +577,11 @@ The available SSL modes are as follows:
   - disable: Only try a non-SSL connection.
   - require: Only try an SSL connection; fail if that can't be established.
   - verify-ca: Only try an SSL connection; verify the server TLS certificate against the configured CA certificates, and fail if no valid matching CA certificate is found.
+
+  {{< note title="SSL configuration for node-to-node TLS" >}}
+On a target YugabyteDB cluster with [node-to-node encryption](../../../../reference/configuration/yb-tserver/#use-node-to-node-encryption) only (where client-to-node/YSQL TLS is disabled), use `--target-ssl-mode=disable` together with `--target-ssl-root-cert=<cluster CA cert>`. The `--target-ssl-mode` flag applies only to the YSQL connection (port 5433). Setting it to `require`, `verify-ca`, or `verify-full` fails in this setup because those modes force TLS on a non-TLS YSQL port. However, the `--target-ssl-root-cert` flag should still be provided to authenticate the secure internal RPC ports (7100/9100).
+  {{< /note >}}
+
 - [YugabyteDB Connector](../../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/):
   - disable: Uses an unencrypted connection.
   - allow: Tries an unencrypted connection first and, if it fails, attempts a secure (encrypted) connection.

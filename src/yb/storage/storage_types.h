@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "yb/storage/storage_fwd.h"
 
 #include "yb/util/enums.h"
@@ -21,5 +23,24 @@ namespace yb::storage {
 
 YB_DEFINE_ENUM(FilterDecision, (kKeep)(kDiscard));
 YB_DEFINE_ENUM(FlushAbility, (kNoNewData)(kHasNewData)(kAlreadyFlushing));
+
+// A {smallest, largest} pair of frontiers.
+struct UserFrontierRange {
+  UserFrontierPtr smallest;
+  UserFrontierPtr largest;
+};
+
+// Which parts of FrontierInfo should be computed by GetFrontiers.
+YB_DEFINE_ENUM(FrontierKind, (kFlushed)(kInMemorySmallest)(kInMemoryLargest));
+using FrontierKinds = EnumBitSet<FrontierKind>;
+
+// Aggregated frontier information that GetFrontiers computes atomically (under a single lock), so
+// that the flushed and in-memory views are mutually consistent.
+struct FrontierInfo {
+  // Frontier of the data that has already been flushed to disk.
+  UserFrontierPtr flushed;
+  // {smallest, largest} frontiers of the in-memory (not yet flushed) state.
+  UserFrontierRange in_memory;
+};
 
 } // namespace yb::storage

@@ -109,6 +109,15 @@ public class Common {
       return this == aws || this == azu || this == gcp || this == oci;
     }
 
+    /**
+     * Whether image bundles for this cloud store a distinct image per region (AWS AMIs, OCI image
+     * OCIDs are region scoped) as opposed to a single global image shared across all regions
+     * (GCP/Azure).
+     */
+    public boolean usesPerRegionImages() {
+      return this == aws || this == oci;
+    }
+
     public boolean regionBootstrapSupported() {
       return this == aws || this == azu || this == gcp || this == oci;
     }

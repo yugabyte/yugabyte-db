@@ -11,6 +11,9 @@
 # Required inputs:
 #   -i issue       GitHub issue number ("31151" or "#31151") or JIRA key
 #                  ("PLAT-20518"). Prepended to the title as "[<issue>] ...".
+#                  For several, pass a comma-separated list of one kind --
+#                  "33431,32640" -> "[#33431,#32640] ...". GH and JIRA cannot
+#                  be mixed; the pr-title check rejects that.
 #   -t title       Title body including the "Component: " prefix
 #                  (e.g. "DocDB: Fix flake in SamplingProfilerTest").
 #                  The "[<issue>] " prefix is added automatically.
@@ -67,7 +70,8 @@ usage: $(basename "$0") -i <issue> -t <title> -d <description-file> -T <test-pla
                         [-U <upgrade-file>] [-r <reviewers>] [-b <base>] [-D]
 
 Required:
-  -i issue       GitHub issue (#NNNN, NNNN) or JIRA key (PLAT-NNN)
+  -i issue       GitHub issue (#NNNN, NNNN) or JIRA key (PLAT-NNN).
+                 Several: comma-separated, all one kind ("33431,32640").
   -t title       Title with "Component: " prefix (e.g. "DocDB: Fix flake")
   -d file        Path to PR description (markdown). Becomes "## Summary".
   -T file        Path to test plan (markdown). Becomes "## Test plan".
@@ -138,10 +142,19 @@ fi
 command -v gh >/dev/null || { echo "error: 'gh' CLI not found in PATH" >&2; exit 1; }
 
 # Normalize -i: accept a single issue or a comma-separated list. Bare digits
-# get a "#" prefix; JIRA keys are left alone. Each token is validated; the
-# rebuilt list joins with ", " for the canonical "[#a, #b, PLAT-c] ..." prefix.
+# get a "#" prefix; JIRA keys are left alone. Each token is validated and the
+# list is rebuilt joined with "," (no space) as "[#a,#b] ...".
+#
+# The shape here is dictated by .github/workflows/pr-title.yml, which accepts
+# either an all-GitHub list or an all-JIRA list -- never a space after the comma,
+# never the two trackers mixed, and no digits in a JIRA project key. (That check
+# carries paths-ignore for README.md and docs/**, so a docs-only PR is not gated
+# by it; every PR touching code is.) Keep this validation in step with that
+# regex; a mismatch means the script builds titles that fail CI the moment the
+# PR is opened (#33472).
 normalized_issue=""
 sep=""
+issue_kind=""
 IFS=',' read -ra _issue_tokens <<< "$issue"
 for _tok in "${_issue_tokens[@]}"; do
   # Trim leading/trailing whitespace.
@@ -151,14 +164,26 @@ for _tok in "${_issue_tokens[@]}"; do
   if [[ "$_tok" =~ ^[0-9]+$ ]]; then
     _tok="#${_tok}"
   fi
-  if ! [[ "$_tok" =~ ^(#[0-9]+|[A-Z][A-Z0-9]*-[0-9]+)$ ]]; then
+  if [[ "$_tok" =~ ^#[0-9]+$ ]]; then
+    _kind="gh"
+  elif [[ "$_tok" =~ ^[A-Z]+-[0-9]+$ ]]; then
+    _kind="jira"
+  else
     echo "error: -i tokens must be GH issues (#NNNN, NNNN) or JIRA keys" >&2
-    echo "       (PROJECT-NNN); use a comma-separated list for multiple." >&2
+    echo "       (PROJECT-NNN, uppercase letters only); use a comma-separated" >&2
+    echo "       list for multiple." >&2
     echo "       got: $_tok" >&2
     exit 1
   fi
+  if [[ -n "$issue_kind" && "$_kind" != "$issue_kind" ]]; then
+    echo "error: -i cannot mix GH issues and JIRA keys -- the pr-title check" >&2
+    echo "       accepts an all-GH list or an all-JIRA list, not both." >&2
+    echo "       got: $issue" >&2
+    exit 1
+  fi
+  issue_kind="$_kind"
   normalized_issue="${normalized_issue}${sep}${_tok}"
-  sep=", "
+  sep=","
 done
 [[ -z "$normalized_issue" ]] && {
   echo "error: -i is empty after normalization" >&2; exit 1;

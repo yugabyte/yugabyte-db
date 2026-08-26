@@ -34,6 +34,8 @@
 #include <memory>
 #include <vector>
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/tools/fs_tool.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"

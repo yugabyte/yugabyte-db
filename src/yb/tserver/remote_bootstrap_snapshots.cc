@@ -184,6 +184,7 @@ Status RemoteBootstrapSnapshotsSource::Init() {
 
   for (const string& dir_name : snapshots) {
     const std::string snapshot_dir = JoinPathSegments(top_snapshots_dir, dir_name);
+    // Deleted snapshots use the .deleted.tmp suffix and must not be transferred.
     if (tablet::TabletSnapshots::IsTempSnapshotDir(snapshot_dir)) {
       continue;
     }

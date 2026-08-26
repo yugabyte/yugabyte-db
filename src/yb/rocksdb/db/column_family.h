@@ -351,6 +351,11 @@ class ColumnFamilyData {
   void RecalculateWriteStallConditions(
       const MutableCFOptions& mutable_cf_options);
 
+  // Forces writes to this column family to stop (as if a hard write stall condition were active)
+  // and keeps them stopped until the column family is destroyed. Used in tests to simulate a write
+  // stall that never clears. Must be triggered under the DB's mutex.
+  void TEST_StopWrites();
+
   // Used in testing to replace current exclude_from_compaction functor. Returns current functor.
   // Must be triggered under DBs mutex.
   CompactionFileExcluderPtr TEST_SetExcludeFromCompaction(
@@ -417,6 +422,11 @@ class ColumnFamilyData {
   ColumnFamilySet* column_family_set_;
 
   std::unique_ptr<WriteControllerToken> write_controller_token_;
+
+  // When set (via TEST_StopWrites), RecalculateWriteStallConditions forces a stop token regardless
+  // of the actual memtable/compaction state. Used in tests to simulate a write stall that never
+  // clears.
+  bool TEST_stop_writes_ = false;
 
   // Engaged while a flush is scheduled / in flight for this CF (DB mutex). Value is best-effort.
   std::optional<FlushReason> pending_flush_;

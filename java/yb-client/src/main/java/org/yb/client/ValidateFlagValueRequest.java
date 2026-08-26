@@ -15,6 +15,7 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import io.netty.buffer.ByteBuf;
+import java.util.Map;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.server.ServerBase;
 import org.yb.util.Pair;
@@ -25,11 +26,21 @@ public class ValidateFlagValueRequest
 
   private final String flagName;
   private final String flagValue;
+  private final Map<String, String> batchFlags;
 
   public ValidateFlagValueRequest(YBTable masterTable, String flagName, String flagValue) {
     super(masterTable);
     this.flagName = flagName;
     this.flagValue = flagValue;
+    this.batchFlags = null;
+  }
+
+  /** Batch validation sent directly to a master or tserver process. */
+  public ValidateFlagValueRequest(Map<String, String> batchFlags) {
+    super(null);
+    this.flagName = null;
+    this.flagValue = null;
+    this.batchFlags = batchFlags;
   }
 
   @Override
@@ -37,8 +48,18 @@ public class ValidateFlagValueRequest
     assert header.isInitialized();
     final ServerBase.ValidateFlagValueRequestPB.Builder builder =
         ServerBase.ValidateFlagValueRequestPB.newBuilder();
-    builder.setFlagName(flagName);
-    builder.setFlagValue(flagValue);
+    if (batchFlags != null) {
+      for (Map.Entry<String, String> entry : batchFlags.entrySet()) {
+        builder.addFlags(
+            ServerBase.ValidateFlagValueRequestPB.FlagValuePB.newBuilder()
+                .setName(entry.getKey())
+                .setValue(entry.getValue() == null ? "" : entry.getValue())
+                .build());
+      }
+    } else {
+      builder.setFlagName(flagName);
+      builder.setFlagValue(flagValue);
+    }
     return toChannelBuffer(header, builder.build());
   }
 
@@ -61,7 +82,8 @@ public class ValidateFlagValueRequest
     ValidateFlagValueResponse response =
         new ValidateFlagValueResponse(
             deadlineTracker.getElapsedMillis(),
-            tsUUID);
+            tsUUID,
+            respBuilder.getErrorsMap());
     return new Pair<>(response, null);
   }
 }

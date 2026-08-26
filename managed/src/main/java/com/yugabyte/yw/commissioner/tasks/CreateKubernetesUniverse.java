@@ -303,7 +303,13 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
           allTserversAdded /* newTservers */,
           nonRestartMasterGflagUpgrade);
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
+      // This also flips universeDetails.creationSucceeded to true (see UniverseUpdateSucceeded)
+      // which is what gates health checks and alert definition creation for this universe.
       createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Alert definitions are created only after the universe is fully up and marked as
+      // successfully created. See the equivalent block in CreateUniverse for the rationale.
+      createUnivCreateAlertDefinitionsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       // Run all the tasks.
       getRunnableTask().runSubTasks();

@@ -50,6 +50,8 @@
 #include "yb/server/clock.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_NON_RUNTIME_bool(master_register_ts_check_desired_host_port, true,
     "When set to true, master will only do duplicate address checks on the used host/port instead "
@@ -409,6 +411,21 @@ size_t TSManager::NumLiveDescriptors() const {
       [](const auto& entry) -> bool { return entry.second->IsLive(); });
 }
 
+DbOidToHybridTimeMap TSManager::GetClusterYsqlDbOldestPinnedReadTimes() const {
+  DbOidToHybridTimeMap cluster_pins;
+  TSDescriptorVector descs;
+  GetAllLiveDescriptors(&descs);
+  for (const auto& desc : descs) {
+    for (const auto& [db_oid, pin] : desc->GetYsqlDbOldestPinnedReadTimes()) {
+      auto [it, inserted] = cluster_pins.emplace(db_oid, pin);
+      if (!inserted && pin < it->second) {
+        it->second = pin;
+      }
+    }
+  }
+  return cluster_pins;
+}
+
 Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
   auto current_time = MonoTime::Now();
   {
@@ -480,6 +497,9 @@ Status TSManager::RemoveTabletServer(
     for (const auto& table : tables) {
       for (const auto& tablet : VERIFY_RESULT(
                table->GetTabletsIncludeInactive())) {
+        if (tablet->LockForRead()->is_deleted()) {
+          continue;
+        }
         auto replicas_map = tablet->GetReplicaLocations();
         if (replicas_map->contains(desc->id())) {
           return STATUS_FORMAT(

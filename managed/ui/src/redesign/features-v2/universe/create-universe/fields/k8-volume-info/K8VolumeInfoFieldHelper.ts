@@ -17,9 +17,12 @@ const getK8VolumeInfo = (providerRuntimeConfigs: any) => {
 
 export const getK8DeviceInfo = (providerRuntimeConfigs: any): DeviceInfo => {
   const { volumeSize, volumeCount } = getK8VolumeInfo(providerRuntimeConfigs);
+  const resolvedVolumeSize = Number(volumeSize);
+  const resolvedVolumeCount = Number(volumeCount);
   return {
-    volumeSize: volumeSize,
-    numVolumes: volumeCount,
+    // runtime configs come back as strings
+    volumeSize: Number.isFinite(resolvedVolumeSize) ? resolvedVolumeSize : null,
+    numVolumes: Number.isFinite(resolvedVolumeCount) ? resolvedVolumeCount : null,
     storageClass: 'standard',
     storageType: null,
     mountPoints: null,

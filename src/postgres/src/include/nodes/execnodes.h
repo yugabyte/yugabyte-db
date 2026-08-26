@@ -775,6 +775,8 @@ typedef struct EState
 
 	/* YB: Indicates that execution state allows nodes to apply read ahead optimization (if any) */
 	bool yb_read_ahead_allowed;
+
+	bool		yb_dist_trace_has_node_spans;
 } EState;
 
 /*
@@ -1216,6 +1218,12 @@ typedef struct PlanState
 	bool		outeropsset;
 	bool		inneropsset;
 	bool		resultopsset;
+
+	/*
+	 * YB : handle to this node's live span; kept across calls so scope can be
+	 * pushed/popped per call - one span per node, not per tuple
+	 */
+	YbcOtelNodeSpan yb_dist_trace_node_span;
 } PlanState;
 
 /* ----------------
@@ -1430,8 +1438,14 @@ typedef struct ModifyTableState
 	double		mt_merge_deleted;
 
 	/* YB specific attributes. */
-	bool		yb_fetch_target_tuple;	/* Perform initial scan to populate
-										 * the ybctid. */
+
+	/*
+	 * YB: Skip the initial scan that fetches the target tuple and its
+	 * ybctid.  Set only for single-row UPDATE/DELETE plans on YB relations,
+	 * so false (the makeNode default) is the safe state.
+	 */
+	bool		yb_skip_fetch_target_tuple;
+
 	/*
 	 * YB: If enabled, execution seeks to optimize secondary index updates,
 	 * constraint checks etc. This field is set to false for single row txns.

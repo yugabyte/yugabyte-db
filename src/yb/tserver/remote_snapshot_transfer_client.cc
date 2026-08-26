@@ -54,8 +54,8 @@ namespace tserver {
 using tablet::RaftGroupMetadataPtr;
 
 RemoteSnapshotTransferClient::RemoteSnapshotTransferClient(
-    const TabletId& tablet_id, FsManager* fs_manager)
-    : RemoteClientBase(tablet_id, fs_manager) {}
+    const TabletId& tablet_id, FsManager* fs_manager, std::function<bool()> is_cancelled)
+    : RemoteClientBase(tablet_id, fs_manager, std::move(is_cancelled)) {}
 
 RemoteSnapshotTransferClient::~RemoteSnapshotTransferClient() {}
 

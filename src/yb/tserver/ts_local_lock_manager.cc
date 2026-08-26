@@ -35,6 +35,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 #include "yb/util/unique_lock.h"
 
@@ -175,24 +177,49 @@ TopoSortByBackgroundTxnDependency(const tserver::DdlLockEntriesPB& entries) {
 
   std::vector<const tserver::AcquireObjectLockRequestPB*> result;
   result.reserve(entries.lock_entries_size());
-  while (!queue.empty()) {
-    auto txn_id = std::move(queue.front());
-    queue.pop_front();
-    auto it = entries_by_txn.find(txn_id);
-    if (it != entries_by_txn.end()) {
-      for (const auto* req : it->second) {
-        result.push_back(req);
+  auto drain_queue = [&]() {
+    while (!queue.empty()) {
+      auto txn_id = std::move(queue.front());
+      queue.pop_front();
+      auto it = entries_by_txn.find(txn_id);
+      if (it != entries_by_txn.end()) {
+        for (const auto* req : it->second) {
+          result.push_back(req);
+        }
       }
-    }
-    auto dep_it = txn_dependents.find(txn_id);
-    if (dep_it != txn_dependents.end()) {
-      for (const auto& dep_txn_id : dep_it->second) {
-        if (--in_degree[dep_txn_id] == 0) {
-          queue.push_back(dep_txn_id);
+      auto dep_it = txn_dependents.find(txn_id);
+      if (dep_it != txn_dependents.end()) {
+        for (const auto& dep_txn_id : dep_it->second) {
+          if (--in_degree[dep_txn_id] == 0) {
+            queue.push_back(dep_txn_id);
+          }
         }
       }
     }
+  };
+  drain_queue();
+
+  // Handle 2-length cycles as either replay order is valid. Such edges are expected during
+  // CREATE INDEX, where the kPlain and kPgSession txns each declare the other as their bg txn.
+  for (auto& [txn_id, deg] : in_degree) {
+    if (deg != 1) {
+      continue;
+    }
+    auto bg_it = bg_txn_map.find(txn_id);
+    if (bg_it == bg_txn_map.end()) {
+      continue;
+    }
+    const auto& bg_txn_id = bg_it->second;
+    if (in_degree[bg_txn_id] != 1) {
+      continue;
+    }
+    auto peer_bg_it = bg_txn_map.find(bg_txn_id);
+    if (peer_bg_it != bg_txn_map.end() && peer_bg_it->second == txn_id) {
+      deg = 0;
+      queue.push_back(txn_id);
+    }
   }
+  drain_queue();
 
   SCHECK_EQ(
       result.size(), static_cast<size_t>(entries.lock_entries_size()), IllegalState,
@@ -493,7 +520,9 @@ class TSLocalLockManager::Impl {
             << " and subtxn: " << req.subtxn_id()
             << " with incoming rpc request: " << req.ShortDebugString();
 
-    UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
+    auto ignore_lease_epochs_before =
+        std::max(req.ignore_lease_epochs_before(), req.lease_epoch());
+    UpdateLeaseEpochIfNecessary(req.session_host_uuid(), ignore_lease_epochs_before);
     RETURN_NOT_OK(WaitToApplyIfNecessary(req, deadline));
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
     RETURN_NOT_OK(add_to_in_progress.status());
@@ -712,6 +741,30 @@ class TSLocalLockManager::Impl {
     // We need to load and track the fastpath object locks from shared memory first
     object_lock_manager_.ConsumePendingSharedLockRequests();
     lock_tracker_->PopulateObjectLocks(object_lock_infos);
+
+    // The tracker only knows granted/waiting state; overlay the blocker information (which the
+    // ObjectLockManager computes for deadlock detection) so that pg_locks can report which
+    // transactions are blocking a waiting object lock.
+    std::unordered_map<docdb::ObjectLockOwner, std::vector<TransactionId>> blockers_by_owner;
+    object_lock_manager_.PopulateObjectLockWaiterBlockers(blockers_by_owner);
+    if (blockers_by_owner.empty()) {
+      return;
+    }
+    for (auto& lock_info : *object_lock_infos) {
+      if (lock_info.lock_state() != ObjectLockState::WAITING) {
+        continue;
+      }
+      auto txn_id = FullyDecodeTransactionId(lock_info.transaction_id());
+      LOG_IF(DFATAL, !txn_id.ok()) <<  "Failed to decode txn id:" << txn_id.status();
+      auto it = blockers_by_owner.find(
+          docdb::ObjectLockOwner{*txn_id, lock_info.subtransaction_id()});
+      if (it == blockers_by_owner.end()) {
+        continue;
+      }
+      for (const auto& blocker_id : it->second) {
+        lock_info.add_blocking_txn_ids(blocker_id.data(), blocker_id.size());
+      }
+    }
   }
 
  private:

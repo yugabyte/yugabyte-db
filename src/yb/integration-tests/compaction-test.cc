@@ -199,6 +199,13 @@ class CompactionTest : public YBTest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 2;
 
+    // Pin the full compaction pool size so tests are independent of the CPU-count-derived
+    // default, unless a subclass already chose a value (ScheduledFullCompactionsTest sets 1
+    // before calling this SetUp).
+    if (ANNOTATE_UNPROTECTED_READ(FLAGS_full_compaction_pool_max_threads) < 0) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_full_compaction_pool_max_threads) = 2;
+    }
+
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
 
     // Disable scheduled compactions by default so we don't have surprise compactions.
@@ -1914,6 +1921,12 @@ TEST_F(CompactionTest, BackgroundCompactionDuringPostSplitCompaction) {
   // Additional RocksDB listener to guarantee compaction flow.
   struct DBListener : public rocksdb::EventListener {
     bool background_compaction_in_progress = false;
+    // The two child tablets produced by the split share this single listener and increment (and
+    // reset) num_post_split_iterations concurrently. A sibling's no-op reset can bring the counter
+    // back to kTrigger just as the other child's final post-split iteration starts, which would
+    // misidentify that iteration as the background compaction and block it forever (no further
+    // iteration follows the last file). Trigger the background episode at most once to avoid this.
+    bool background_compaction_triggered = false;
     size_t num_post_split_iterations = 0;
     std::mutex mutex;
     std::condition_variable_any compaction_started_cv;
@@ -1922,7 +1935,9 @@ TEST_F(CompactionTest, BackgroundCompactionDuringPostSplitCompaction) {
       UniqueLock lock(mutex);
 
       // Background compaction will be always
-      if (num_post_split_iterations == kTrigger && !background_compaction_in_progress) {
+      if (num_post_split_iterations == kTrigger && !background_compaction_in_progress &&
+          !background_compaction_triggered) {
+        background_compaction_triggered = true;
         LOG(INFO) << "Background compaction started";
         background_compaction_in_progress = true;
 
@@ -2301,8 +2316,11 @@ TEST_F(CompactionTest, RemoveCorruptDataBlocks) {
           CorruptRange{kCorruptionOffset, kCorruptionSize}}) {
       ASSERT_OK(yb::CorruptFile(
           data_file_path, corrupt_range.offset, corrupt_range.size, CorruptionType::kZero));
+      // Corrupt range boundaries are not aligned with on-disk data block boundaries, so the block
+      // holding the start of the range is destroyed on top of the fully covered ones.
       tablet_num_corrupt_data_blocks_estimate +=
-          RoundUpToBlockSize(corrupt_range.size * compression_ratio) / FLAGS_db_block_size_bytes;
+          RoundUpToBlockSize(corrupt_range.size * compression_ratio) / FLAGS_db_block_size_bytes +
+          1;
       // RocksDB record started before or ending after corrupt region is likely to be also corrupt.
       num_max_corrupt_keys_estimate += 2;
     }

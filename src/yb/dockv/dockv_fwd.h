@@ -104,4 +104,9 @@ YB_DEFINE_ENUM(IntentType,
 
 using IntentTypeSet = EnumBitSet<IntentType>;
 
+// Controls the ValueEntryType prefix byte used when encoding vector column values.
+//   kLegacy: uses kString ('S') - compatible with all existing data.
+//   kTyped:  uses kVector ('R') - used when owns_vector_reverse_mapping is true.
+YB_DEFINE_ENUM(VectorValueFormat, (kLegacy)(kTyped));
+
 }  // namespace yb::dockv

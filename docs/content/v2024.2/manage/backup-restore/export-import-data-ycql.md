@@ -11,20 +11,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../export-import-data/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="../export-import-data-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
+{{<api-tabs>}}
 
 You use the `ycqlsh` script to export and import YCQL data. For details on how to use the script to connect to a YugabyteDB cluster, as well as the full list of available options, see [ycqlsh reference](../../../api/ycqlsh/).
 

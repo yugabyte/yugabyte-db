@@ -32,29 +32,27 @@ SET yb_bnl_batch_size to 1;
 \set Q1 '/*+ IndexScan(t1) */'
 \set Q2 '/*+ IndexScan(t1 i_nulltest_ba) */'
 \set query ':explain :Q SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);'
-\i :iter_Q2
+\i :run_query
 
 \set query ':explain :Q SELECT a FROM nulltest t1 WHERE a IN (null, null);'
-\i :iter_Q2
+\i :run_query
 
 
 -- Should return 1s
 \set Q1 '/*+ IndexScan(t1) */'
 \set Q2 '/*+ IndexScan(t1 i_nulltest_ba) */'
 \set query ':P :Q SELECT a FROM nulltest t1 WHERE a IN (null, 1);'
-\set Pnext :iter_Q2
-\i :iter_P2
+\i :run_query
 
 /*+ IndexScan(t1) */
 \set query ':P :Q SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);'
-\i :iter_P2
+\i :run_query
 
 
 -- Should return nulls
 \set Q1 '/*+ IndexScan(t1) */'
 \set query ':P :Q1 SELECT a FROM nulltest t1 WHERE a IS NULL;'
-\set Pnext :iter_query
-\i :iter_P2
+\i :run_query
 
 RESET client_min_messages;
 \unset YB_DISABLE_ERROR_PREFIX

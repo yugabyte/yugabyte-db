@@ -11,20 +11,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../audit-logging-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="../audit-logging-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
+{{<api-tabs>}}
 
 YugabyteDB YSQL uses the PostgreSQL Audit Extension v1.7 ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.7.0/README.md)) to provide detailed session and/or object audit logging via YugabyteDB YB-TServer logging.
 

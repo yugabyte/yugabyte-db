@@ -11,8 +11,10 @@ https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
@@ -153,6 +155,88 @@ public class PACollectorControllerTest extends FakeDBApplication {
       assertThat(queriedPlatform.getPaUrl(), equalTo(platform.getPaUrl()));
       assertThat(queriedPlatform.getYbaUrl(), equalTo(platform.getYbaUrl()));
       assertThat(queriedPlatform.getMetricsUrl(), equalTo(platform.getMetricsUrl()));
+    }
+  }
+
+  @Test
+  public void testCreatePACollectorRejectsEmbeddedFlag() throws IOException {
+    // The embedded flag on PACollector marks the collector managed by
+    // EmbeddedCollectorInitializer. External API callers must not be able to set it -
+    // otherwise a client could impersonate the embedded collector and confuse
+    // EmbeddedCollectorInitializer's lookup after an HA restore.
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
+      PACollector platform =
+          PerfAdvisorServiceTest.createTestPlatform(
+              customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
+      platform.setEmbedded(true);
+      Result result =
+          assertPlatformException(
+              () ->
+                  doRequestWithAuthTokenAndBody(
+                      "POST",
+                      "/api/customers/" + customer.getUuid() + "/pa_collector",
+                      authToken,
+                      Json.toJson(platform)));
+      assertThat(result.status(), equalTo(BAD_REQUEST));
+    }
+  }
+
+  @Test
+  public void testEditPACollectorRejectsFlippingEmbeddedFlag() throws IOException {
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
+      PACollector platform =
+          PerfAdvisorServiceTest.createTestPlatform(
+              customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
+      server.enqueue(
+          new MockResponse().setBody(PerfAdvisorServiceTest.convertToCustomerMetadata(platform)));
+      perfAdvisorService.save(platform, false);
+
+      platform.setEmbedded(true);
+      Result result =
+          assertPlatformException(
+              () ->
+                  doRequestWithAuthTokenAndBody(
+                      "PUT",
+                      "/api/customers/"
+                          + customer.getUuid()
+                          + "/pa_collector/"
+                          + platform.getUuid(),
+                      authToken,
+                      Json.toJson(platform)));
+      assertThat(result.status(), equalTo(BAD_REQUEST));
+    }
+  }
+
+  @Test
+  public void testDeletePACollectorRejectsEmbedded() throws IOException {
+    // Embedded collector is fully owned by EmbeddedCollectorInitializer, so DELETE via the
+    // API is blocked (it would just get recreated on the next initializer tick).
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
+      PACollector platform =
+          PerfAdvisorServiceTest.createTestPlatform(
+              customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
+      platform.setEmbedded(true);
+      server.enqueue(
+          new MockResponse().setBody(PerfAdvisorServiceTest.convertToCustomerMetadata(platform)));
+      perfAdvisorService.save(platform, false);
+
+      Result result =
+          assertPlatformException(
+              () ->
+                  doRequestWithAuthToken(
+                      "DELETE",
+                      "/api/customers/"
+                          + customer.getUuid()
+                          + "/pa_collector/"
+                          + platform.getUuid(),
+                      authToken));
+      assertThat(result.status(), equalTo(BAD_REQUEST));
     }
   }
 

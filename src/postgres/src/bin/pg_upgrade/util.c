@@ -128,7 +128,15 @@ prep_status(const char *fmt,...)
 	va_end(args);
 
 	/* trim strings */
-	pg_log(PG_REPORT, "%-*s", MESSAGE_WIDTH, message);
+
+	/*
+	 * YB: keep at least two spaces between the message and the status that
+	 * report_status() appends, even when the message is too long to fit in
+	 * MESSAGE_WIDTH.  Without this a long message runs into its own status and
+	 * the line can no longer be split back into a check name and a result.
+	 */
+	pg_log(PG_REPORT, "%-*s%s", MESSAGE_WIDTH, message,
+		   (int) strlen(message) + 2 > MESSAGE_WIDTH ? "  " : "");
 }
 
 /*

@@ -75,7 +75,7 @@ import org.yb.client.IsSetupUniverseReplicationDoneResponse;
 import org.yb.client.ListCDCStreamsResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.SetUniverseReplicationEnabledResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
 import org.yb.master.MasterDdlOuterClass;
@@ -107,7 +107,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
   private String namespace1Id;
   private Set<String> exampleTables;
   private XClusterConfigCreateFormData createFormData;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   List<TaskType> RENAME_FAILURE_TASK_SEQUENCE =
       ImmutableList.of(
@@ -191,7 +191,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     createFormData.targetUniverseUUID = targetUniverseUUID;
     createFormData.tables = exampleTables;
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     initSourceUniverseActiveXClusterStreams();

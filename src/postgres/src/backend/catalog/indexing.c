@@ -25,7 +25,7 @@
 #include "utils/rel.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/yb_special_scans.h"
 #include "executor/ybModifyTable.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
@@ -533,6 +533,11 @@ YBCatalogTupleUpdate(Relation heapRel, HeapTuple tup,
 	if (has_indices)
 	{
 		YbFetchHeapTuple(heapRel, HEAPTUPLE_YBCTID(tup), &oldtup);
+		if (!HeapTupleIsValid(oldtup))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("catalog tuple with YBCTID %s does not exist",
+							YBDatumToString(HEAPTUPLE_YBCTID(tup), BYTEAOID))));
 		CatalogIndexDelete(indstate, oldtup);
 	}
 

@@ -375,11 +375,20 @@ public class TestUtils {
   public static void waitFor(Condition condition, long timeoutMs, int sleepTime) throws Exception {
     timeoutMs = BuildTypeUtil.adjustTimeout(timeoutMs);
     final long startTimeMs = System.currentTimeMillis();
-    while (System.currentTimeMillis() - startTimeMs < timeoutMs && !condition.get()) {
+    // Remember whether the condition was ever satisfied instead of re-evaluating it after the loop.
+    // The condition may be non-monotonic (e.g. it observes transient consensus/replication state
+    // that flaps between true and false), so a second evaluation could spuriously report a timeout
+    // even though the condition was already met while looping.
+    boolean satisfied = false;
+    while (System.currentTimeMillis() - startTimeMs < timeoutMs) {
+      if (condition.get()) {
+        satisfied = true;
+        break;
+      }
       Thread.sleep(sleepTime);
     }
 
-    if (!condition.get()) {
+    if (!satisfied) {
       throw new Exception(String.format("Operation timed out after %dms", timeoutMs));
     }
   }

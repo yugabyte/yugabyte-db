@@ -29,7 +29,7 @@ import {
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, Typography, styled } = mui;
 
@@ -97,7 +97,7 @@ const CERTComponent: FC<CertCompProps> = ({ toggleFieldPath, certFieldPath, cert
             dataTestId={`enable-encryption-in-transit-field`}
           />
         </Box>
-        <InfoIcon />
+        {/* <InfoIcon /> */}
       </Box>
 
       {isOptionEnabled && (
@@ -165,18 +165,37 @@ const CERTComponent: FC<CertCompProps> = ({ toggleFieldPath, certFieldPath, cert
 };
 
 export const EITField: FC<EARProps> = ({ disabled }) => {
-  const { control, setValue } = useFormContext<SecuritySettingsProps>();
+  const { control, setValue, getValues } = useFormContext<SecuritySettingsProps>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.securitySettings.eitField'
   });
 
   const useSameCertValue = useWatch({ name: USE_SAME_CERT_FIELD });
-  const enableBothValue = useWatch({ name: ENABLE_BOTH_ENCRYPTION });
+  const bothEncryptionValue = useWatch({ name: ENABLE_BOTH_ENCRYPTION });
   const nTonValue = useWatch({ name: ENABLE_NTON_FIELD });
   const cTonValue = useWatch({ name: ENABLE_CTON_FIELD });
 
   useUpdateEffect(() => {
-    if (nTonValue || cTonValue) setValue(ENABLE_BOTH_ENCRYPTION, true);
+    if (useSameCertValue) {
+      // Switching back to shared cert — keep both-encryption on if either side was enabled.
+      if (nTonValue || cTonValue) setValue(ENABLE_BOTH_ENCRYPTION, true);
+      setValue(COMMON_CERT_TYPE_FIELD, CertType.SELF_SIGNED);
+      return;
+    }
+
+    // Turning off "Use the same certificate": mirror the shared encryption toggle onto
+    // the separate N/C-to-N toggles (keep them off if the shared toggle was off).
+    setValue(ENABLE_NTON_FIELD, !!bothEncryptionValue);
+    setValue(ENABLE_CTON_FIELD, !!bothEncryptionValue);
+
+    if (bothEncryptionValue) {
+      if (!getValues(NTON_CERT_TYPE_FIELD)) {
+        setValue(NTON_CERT_TYPE_FIELD, CertType.SELF_SIGNED);
+      }
+      if (!getValues(CTON_CERT_TYPE_FIELD)) {
+        setValue(CTON_CERT_TYPE_FIELD, CertType.SELF_SIGNED);
+      }
+    }
   }, [useSameCertValue]);
 
   return (

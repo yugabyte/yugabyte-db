@@ -13,7 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class DisablePitrConfig extends UniverseTaskBase {
@@ -60,7 +60,7 @@ public class DisablePitrConfig extends UniverseTaskBase {
         pitrConfigs.size(),
         taskParams().getUniverseUUID());
 
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       ListSnapshotSchedulesResponse scheduleListResp = client.listSnapshotSchedules(null);
 
       for (PitrConfig pitrConfig : pitrConfigs) {

@@ -3,7 +3,7 @@ title: Install YugabyteDB Anywhere software - Kubernetes
 headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software in your Kubernetes environment.
-headContent: Install YBA software in a Kubernetes environment
+headContent: Install YugabyteDB Anywhere in a Kubernetes environment
 menu:
   v2025.1_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-For higher availability, you can install additional YugabyteDB Anywhere (YBA) instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+For higher availability, you can install additional YugabyteDB Anywhere instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -143,6 +143,12 @@ You can copy the preceding code block into a file called `yba-values.yaml` and t
 
 If you are looking for a customization which is not listed, you can view all the supported options and their default values by running the `helm show values yugabytedb/yugaware --version {{<yb-version version="v2025.1" format="short">}}` command and copying the specific section to your own values file.
 
+{{< warning title="Do not change useYugabyteDB" >}}
+
+When customizing the Helm chart, note that `useYugabyteDB` should always be set to `false`. _This is the chart default and must not be changed_.
+
+{{< /warning >}}
+
 ### Use YugabyteDB Kubernetes Operator to automate YBA deployments
 
 The [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
@@ -172,7 +178,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
       --set yugaware.defaultUser.password='Password#Test123'
     ```
 
-1. Verify that YBA is up, and the Kubernetes Operator is installed successfully using the following commands:
+1. Verify that YugabyteDB Anywhere is up, and the Kubernetes Operator is installed successfully using the following commands:
 
     ```sh
     kubectl get pods -n <yba_namespace>
@@ -229,7 +235,7 @@ For more details, see [YugabyteDB Kubernetes Operator](../../../anywhere-automat
 
 By default, the Helm chart will attempt to create a service account that has certain ClusterRoles listed [here](https://github.com/yugabyte/charts/blob/master/stable/yugaware/templates/rbac.yaml#L166). These roles are used to do the following:
 
-1. Enable YBA to collect resource metrics such as CPU and memory from the Kubernetes nodes.
+1. Enable YugabyteDB Anywhere to collect resource metrics such as CPU and memory from the Kubernetes nodes.
 1. Create YugabyteDB deployments in new namespaces.
 
 To customize this behavior (and potentially lose some functionality), you can set the `serviceAccount` value to a pre-existing service account that you've already created. It is recommended that you at least grant this service account the cluster roles listed in the "required to scrape" section of the [RBAC configuration file](https://github.com/yugabyte/charts/blob/master/stable/yugaware/templates/rbac.yaml#L166), along with a namespace admin role. To completely disable this behavior, set the `rbac.create` value to false. Note that without the ability to create new namespaces, YugabyteDB Anywhere must be [configured with a pre-created namespace](../../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones).
@@ -371,6 +377,60 @@ tls:
   certificate: "LS0tLS1CRUdJTiBDRVJUSUZJQ..."
   key: "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0t..."
 ```
+
+#### Use cert-manager
+
+You can use [cert-manager](https://cert-manager.io/) to issue and renew the TLS certificate for the YugabyteDB Anywhere UI. Before enabling this option, ensure that cert-manager is installed and running on your Kubernetes cluster. For more information, refer to [Install cert-manager](../../../prepare/server-nodes-software/software-kubernetes/#install-cert-manager).
+
+Set `tls.hostname` to the DNS name you use to access YugabyteDB Anywhere. The Helm chart uses this value as the certificate common name.
+
+To have the Helm chart create a self-signed Issuer and issue a certificate with cert-manager, add the following to your values file:
+
+```yaml
+# yba-values.yaml
+tls:
+  enabled: true
+  hostname: "yba.example.com"
+  certManager:
+    enabled: true
+    genSelfsigned: true
+```
+
+To use an existing ClusterIssuer, set `genSelfsigned` to `false`, enable `useClusterIssuer`, and provide the ClusterIssuer name:
+
+```yaml
+# yba-values.yaml
+tls:
+  enabled: true
+  hostname: "yba.example.com"
+  certManager:
+    enabled: true
+    genSelfsigned: false
+    useClusterIssuer: true
+    clusterIssuer: "cluster-ca"
+```
+
+To use an existing namespace-scoped Issuer, set `genSelfsigned` to `false`, leave `useClusterIssuer` as `false`, and provide the Issuer name:
+
+```yaml
+# yba-values.yaml
+tls:
+  enabled: true
+  hostname: "yba.example.com"
+  certManager:
+    enabled: true
+    genSelfsigned: false
+    useClusterIssuer: false
+    issuer: "yugaware-ca"
+```
+
+You can optionally customize certificate duration, renewal window, and key settings under `tls.certManager.configuration`.
+
+{{< note title="Note" >}}
+
+This configuration manages the TLS certificate for the YugabyteDB Anywhere UI. To use cert-manager for universe (node) certificates, refer to [Add cert-manager certificates](../../../security/enable-encryption-in-transit/add-certificate-kubernetes/).
+
+{{< /note >}}
 
 #### Change TLS versions
 
@@ -523,7 +583,7 @@ Before enabling GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](.
 To enable GCP IAM, provide the following additional Helm values during installation to a version which supports this feature (v2.18.4 or later):
 
 - serviceAccount: Provide the name of the Kubernetes service account you created. Note that this service account should be present in the namespace being used for the YugabyteDB pod resources.
-- [nodeSelector](#nodeselector): Pass a node selector override to make sure YBA pods are scheduled on the GKE cluster's worker nodes which have a metadata server running.
+- [nodeSelector](#nodeselector): Pass a node selector override to make sure YugabyteDB Anywhere pods are scheduled on the GKE cluster's worker nodes which have a metadata server running.
 
     ```yaml
     yugaware:

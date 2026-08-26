@@ -35,7 +35,6 @@ from yugabyte.common_util import (
     create_temp_dir,
     shlex_join,
 )
-from yugabyte.linuxbrew import set_build_root
 from yugabyte.optional_components import (
     OptionalComponents,
     add_optional_component_arguments,
@@ -379,7 +378,6 @@ def main() -> None:
     build_desc = read_build_descriptor(build_descriptor_path, build_root)
     build_root = cast(str, build_desc['build_root'])
     assert isinstance(build_root, str), f"Invalid build root: {build_root}"
-    set_build_root(build_root)
 
     thirdparty_dir = build_desc["thirdparty_dir"]
     validate_thirdparty_dir(thirdparty_dir)
@@ -417,7 +415,6 @@ def main() -> None:
         raise RuntimeError("Directory '{}' exists and is non-empty".format(build_target_dir))
     release_util.create_distribution(build_target_dir)
 
-    # This will set rpath for executables and libraries when using Linuxbrew.
     library_packager.postprocess_distribution(build_target_dir)
 
     # ---------------------------------------------------------------------------------------------

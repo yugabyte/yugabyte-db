@@ -24,6 +24,7 @@
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
 #include "yb/util/path_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/test/pggate_test.h"

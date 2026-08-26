@@ -22,6 +22,7 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/cast.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/strongly_typed_bool.h"
 

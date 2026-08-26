@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -93,14 +94,10 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
-import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.S3Config;
@@ -115,7 +112,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -699,17 +695,8 @@ public class NodeManager extends DevopsBase {
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
-
-              if (taskParam.rootAndClientRootCASame && taskParam.enableClientToNodeEncrypt) {
-                // These client certs are used for node to postgres communication
-                // These are separate from clientRoot certs which are used for server to client
-                // communication These are not required anymore as this is not mandatory now and
-                // can be removed. The code is still here to maintain backward compatibility
-                subcommandStrings.add("--client_cert_path");
-                subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
-                subcommandStrings.add("--client_key_path");
-                subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
-              }
+              // Do not deploy client certs to ~/.yugabytedb on DB nodes. Leftovers are cleaned
+              // only during ROTATE_CERTS via cleanup_client_certs.
             } catch (IOException e) {
               log.error(e.getMessage(), e);
               throw new RuntimeException(e);
@@ -723,22 +710,8 @@ public class NodeManager extends DevopsBase {
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
             certsLocation = CERT_LOCATION_NODE;
-            if (taskParam.rootAndClientRootCASame
-                && taskParam.enableClientToNodeEncrypt
-                && customCertInfo.clientCertPath != null
-                && !customCertInfo.clientCertPath.isEmpty()
-                && customCertInfo.clientKeyPath != null
-                && !customCertInfo.clientKeyPath.isEmpty()) {
-              // These client certs are used for node to postgres communication
-              // These are seprate from clientRoot certs which are used for server to client
-              // communication These are not required anymore as this is not mandatory now and
-              // can be removed
-              // The code is still here to mantain backward compatibility
-              subcommandStrings.add("--client_cert_path");
-              subcommandStrings.add(customCertInfo.clientCertPath);
-              subcommandStrings.add("--client_key_path");
-              subcommandStrings.add(customCertInfo.clientKeyPath);
-            }
+            // Do not deploy client certs to ~/.yugabytedb on DB nodes. Leftovers are cleaned
+            // only during ROTATE_CERTS via cleanup_client_certs.
             break;
           }
         case CustomServerCert:
@@ -1862,10 +1835,17 @@ public class NodeManager extends DevopsBase {
               bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
             }
 
-            // Instance template feature is currently only implemented for GCP.
+            // Instance template: GCP global template name, or OCI Instance Configuration OCID.
             if (Common.CloudType.gcp == provider.getCloudCode()) {
               GCPRegionCloudInfo g = CloudInfoInterface.get(taskParam.getRegion());
               String instanceTemplate = g.getInstanceTemplate();
+              if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
+                commandArgs.add("--instance_template");
+                commandArgs.add(instanceTemplate);
+              }
+            } else if (Common.CloudType.oci == provider.getCloudCode()) {
+              OCIRegionCloudInfo o = CloudInfoInterface.get(taskParam.getRegion());
+              String instanceTemplate = o.getInstanceTemplate();
               if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
                 commandArgs.add("--instance_template");
                 commandArgs.add(instanceTemplate);
@@ -2071,11 +2051,8 @@ public class NodeManager extends DevopsBase {
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
-              taskParam.auditLogConfig,
-              taskParam.queryLogConfig,
-              taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(
-                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              taskParam.telemetryConfig,
+              gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
               provider,
               userIntent);
 
@@ -2140,11 +2117,8 @@ public class NodeManager extends DevopsBase {
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
-              taskParam.auditLogConfig,
-              taskParam.queryLogConfig,
-              taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(
-                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              taskParam.telemetryConfig,
+              gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
               provider,
               userIntent);
           commandArgs.addAll(getInlineWaitForClockSyncCommandArgs(this.confGetter));
@@ -2521,11 +2495,8 @@ public class NodeManager extends DevopsBase {
               commandArgs,
               params,
               params.installOtelCollector,
-              params.auditLogConfig,
-              params.queryLogConfig,
-              params.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(
-                  params.queryLogConfig, params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              params.telemetryConfig,
+              params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
               provider,
               userIntent);
           if (params.useSudo) {
@@ -2631,8 +2602,7 @@ public class NodeManager extends DevopsBase {
   }
 
   private void appendCertPathsToCheck(List<String> commandArgs, UUID rootCA, boolean isClient) {
-    // We are not checking --client_cert_path here because it is not used in the current
-    // implementation. We are only checking root_certs and server_certs.
+    // Client certs are not deployed to ~/.yugabytedb; only root and server certs are checked.
     if (rootCA == null) {
       return;
     }
@@ -2876,28 +2846,21 @@ public class NodeManager extends DevopsBase {
       List<String> commandArgs,
       NodeTaskParams taskParams,
       boolean installOtelCollector,
-      AuditLogConfig auditLogConfig,
-      QueryLogConfig queryLogConfig,
-      MetricsExportConfig metricsExportConfig,
-      String logLinePrefix,
+      TelemetryConfig telemetryConfig,
+      String ysqlPgConfCsv,
       Provider provider,
       UserIntent userIntent) {
     if (installOtelCollector) {
       commandArgs.add("--install_otel_collector");
     }
-    if (auditLogConfig == null && queryLogConfig == null && metricsExportConfig == null) {
+    if (telemetryConfig == null || !telemetryConfig.hasAnyConfig()) {
       return;
     }
-    // Check if any config exists and is enabled. If none are enabled, return early.
-    boolean anyConfigEnabled =
-        (auditLogConfig != null && OtelCollectorUtil.isAuditLogEnabledInUniverse(auditLogConfig))
-            || (queryLogConfig != null
-                && OtelCollectorUtil.isQueryLogEnabledInUniverse(queryLogConfig))
-            || (metricsExportConfig != null
-                && OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig));
-    if (!anyConfigEnabled) {
+    // Return early if no telemetry section is enabled in the universe.
+    if (!OtelCollectorUtil.hasAnyTelemetryEnabledInUniverse(telemetryConfig)) {
       return;
     }
+    AuditLogConfig auditLogConfig = telemetryConfig.getAuditLogConfig();
     if (auditLogConfig != null && auditLogConfig.getYcqlAuditConfig() != null) {
       YCQLAuditConfig.YCQLAuditLogLevel logLevel =
           auditLogConfig.getYcqlAuditConfig().getLogLevel() != null
@@ -2906,9 +2869,7 @@ public class NodeManager extends DevopsBase {
       commandArgs.add("--ycql_audit_log_level");
       commandArgs.add(logLevel.name());
     }
-    if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)
-        || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
-        || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
+    if (OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
       // Get the node agent for the node if its present.
       Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
       NodeDetails nodeDetails = universe.getNode(taskParams.nodeName);
@@ -2918,6 +2879,9 @@ public class NodeManager extends DevopsBase {
         commandArgs.add("--otel_col_max_memory");
         commandArgs.add(Integer.toString(otelColMaxMemory));
       }
+      // Derive the log line prefix from telemetryConfig (single source of truth) + the gflag.
+      String logLinePrefix =
+          GFlagsUtil.getLogLinePrefix(telemetryConfig.getQueryLogConfig(), ysqlPgConfCsv);
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator
@@ -2925,36 +2889,14 @@ public class NodeManager extends DevopsBase {
                   taskParams,
                   provider,
                   userIntent,
-                  auditLogConfig,
-                  queryLogConfig,
-                  metricsExportConfig,
+                  telemetryConfig,
                   logLinePrefix,
                   getOtelColMetricsPort(taskParams),
                   NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip).orElse(null))
               .toAbsolutePath()
               .toString());
 
-      Set<UUID> exporterUUIDs = new HashSet<>();
-      if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)) {
-        for (UniverseLogsExporterConfig logsExporterConfig :
-            auditLogConfig.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-      if (OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)) {
-        for (UniverseQueryLogsExporterConfig logsExporterConfig :
-            queryLogConfig.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-      if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
-        for (UniverseMetricsExporterConfig exporterConfig :
-            metricsExportConfig.getUniverseMetricsExporterConfig()) {
-          exporterUUIDs.add(exporterConfig.getExporterUuid());
-        }
-      }
-
-      for (UUID exporterUUID : exporterUUIDs) {
+      for (UUID exporterUUID : OtelCollectorUtil.getActiveExporterUuids(telemetryConfig)) {
         addOtelColArgsForExporters(
             commandArgs, exporterUUID, taskParams.getUniverseUUID(), taskParams.nodeUuid);
       }

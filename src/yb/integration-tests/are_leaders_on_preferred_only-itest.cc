@@ -29,6 +29,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_log.h"
 
 DECLARE_bool(transaction_tables_use_preferred_zones);
 

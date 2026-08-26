@@ -14,6 +14,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -45,6 +46,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Abortable
 @Retryable
+@CanRollback
 public class EditUniverse extends EditUniverseTaskBase {
   private final AtomicBoolean dedicatedNodesChanged = new AtomicBoolean();
   private final AtomicBoolean primaryRFChanged = new AtomicBoolean();
@@ -76,10 +78,6 @@ public class EditUniverse extends EditUniverseTaskBase {
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       createTablespaceValidationOnRemoveTask(primaryCluster.uuid);
     }
-  }
-
-  protected void freezeUniverseInTxn(Universe universe) {
-    super.freezeUniverseInTxn(universe);
   }
 
   @Override

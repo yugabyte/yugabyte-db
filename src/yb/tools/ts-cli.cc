@@ -36,6 +36,7 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/schema.h"
@@ -72,6 +73,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using yb::cdc::CDCServiceProxy;
 using yb::cdc::UpdateCdcReplicatedIndexRequestPB;
@@ -164,6 +166,10 @@ TAG_FLAG(remove_corrupt_data_blocks_unsafe, unsafe);
 
 DEFINE_NON_RUNTIME_bool(exclude_vector_indexes, false,
     "If true, vector indexes are excluded from compaction operations.");
+
+DEFINE_NON_RUNTIME_uint32(read_time_wait_ms, kDumpTabletDataMaxReadTimeWaitMsDefault,
+    "dump_tablet_data: how long the server may wait for safe time to reach read_ht before failing. "
+    "0 fails immediately. Ignored when no read_ht is given.");
 
 PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 
@@ -298,7 +304,8 @@ class TsAdminClient {
       const std::string& txn_id_str, const std::string& subtxn_id);
 
   Status DumpTabletData(
-      const std::string& tablet_id, const std::string& dest_path, int64_t read_ht);
+      const std::string& tablet_id, const std::string& dest_path, int64_t read_ht,
+      uint32_t read_time_wait_ms);
 
   Status CdcReleaseBarriersOnTablet(const TabletId& tablet_id);
 
@@ -857,7 +864,8 @@ Status TsAdminClient::ReleaseAllLocksForTxn(
 }
 
 Status TsAdminClient::DumpTabletData(
-    const std::string& tablet_id, const std::string& dest_path, int64_t read_ht) {
+    const std::string& tablet_id, const std::string& dest_path, int64_t read_ht,
+    uint32_t read_time_wait_ms) {
   CHECK(initted_);
   tserver::DumpTabletDataRequestPB req;
   tserver::DumpTabletDataResponsePB resp;
@@ -870,6 +878,7 @@ Status TsAdminClient::DumpTabletData(
   if (read_ht > 0) {
     req.set_read_ht(read_ht);
   }
+  req.set_max_wait_ms(read_time_wait_ms);
   RETURN_NOT_OK(ts_proxy_->DumpTabletData(req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -952,7 +961,8 @@ void SetUsage(const char* argv0) {
       << "  " << kClearUniverseUuidOp << "\n"
       << "  " << kClearYCQLMetaDataCacheOnServerOp << "\n"
       << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n"
-      << "  " << kDumpTabletDataOp << " <tablet_id> (<dest_path> | HASH_ONLY) [read_ht]\n"
+      << "  " << kDumpTabletDataOp
+      << " <tablet_id> (<dest_path> | HASH_ONLY) [read_ht] [-read_time_wait_ms <ms>]\n"
       << "  " << kCdcReleaseBarriersOnTabletOp << " <tablet_id>\n";
   google::SetUsageMessage(str.str());
 }
@@ -1220,7 +1230,8 @@ static int TsCliMain(int argc, char** argv) {
       dest_path = "";
     }
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
-        client.DumpTabletData(argv[2], dest_path, read_ht), "Unable to dump tablet data");
+        client.DumpTabletData(argv[2], dest_path, read_ht, FLAGS_read_time_wait_ms),
+        "Unable to dump tablet data");
   } else if (op == kCdcReleaseBarriersOnTabletOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
 

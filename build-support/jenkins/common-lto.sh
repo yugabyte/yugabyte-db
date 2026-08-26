@@ -71,9 +71,6 @@ if [[ ${YB_DOWNLOAD_THIRDPARTY:-auto} == "auto" ]]; then
   export YB_DOWNLOAD_THIRDPARTY=1
 fi
 log "YB_DOWNLOAD_THIRDPARTY=$YB_DOWNLOAD_THIRDPARTY"
-# This is normally done in set_build_root, but we need to decide earlier because this is factored
-# into the decision of whether to use LTO.
-decide_whether_to_use_linuxbrew
 if [[ -z ${YB_LINKING_TYPE:-} ]]; then
   if ! is_mac && [[
         ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
@@ -85,9 +82,7 @@ if [[ -z ${YB_LINKING_TYPE:-} ]]; then
   fi
   log "Automatically decided to set YB_LINKING_TYPE to ${YB_LINKING_TYPE} based on:" \
       "YB_COMPILER_TYPE=${YB_COMPILER_TYPE}," \
-      "BUILD_TYPE=${BUILD_TYPE}," \
-      "YB_USE_LINUXBREW=${YB_USE_LINUXBREW}," \
-      "YB_LINUXBREW_DIR=${YB_LINUXBREW_DIR:-undefined}."
+      "BUILD_TYPE=${BUILD_TYPE}."
 else
   log "YB_LINKING_TYPE is already set to ${YB_LINKING_TYPE}"
 fi

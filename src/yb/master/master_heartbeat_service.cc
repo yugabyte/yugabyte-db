@@ -46,6 +46,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 #include "yb/rpc/rpc_context.h"
 
@@ -137,6 +138,7 @@ DECLARE_bool(enable_register_ts_from_raft);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_bool(skip_tserver_version_checks);
+DECLARE_bool(enable_db_history_retention_pins);
 
 namespace yb::master {
 
@@ -202,6 +204,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       ReportedTablets::iterator begin,
       ReportedTablets::iterator end,
       const LeaderEpoch& epoch,
+      CoarseTimePoint deadline,
       TabletReportUpdatesPB* full_report_update,
       std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs);
 
@@ -216,7 +219,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       bool is_incremental,
       const ReportedTabletPB& report,
       const LeaderEpoch& epoch,
-      std::map<TableId, TableInfo::WriteLock>* table_write_locks,
+      std::map<TableId, TableInfo::ReadLock>* table_read_locks,
       const TabletInfoPtr& tablet,
       const TabletInfo::WriteLock& tablet_lock,
       std::map<TableId, scoped_refptr<TableInfo>>* tables,
@@ -270,6 +273,12 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
   void PopulatePgCatalogVersionInfo(const TSHeartbeatRequestPB& req,
                                     TSHeartbeatResponsePB& resp);
+
+  // Populate global cluster-wide database pins in the tserver heartbeat response.
+  //
+  // Since there can be other ongoing sessions that involves DBs on a tserver but the tserver
+  // itself is unaware of, every global database pin need to be included in the response.
+  void PopulateYsqlDbOldestPinnedReadTimes(TSHeartbeatResponsePB& resp);
 };
 
 Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
@@ -397,6 +406,20 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     << resp.db_catalog_version_data().ShortDebugString()
     << ") db inval messages: "
     << tserver::CatalogInvalMessagesDataDebugString(resp);
+}
+
+// TODO: On master failover, the new master can temporarily return incomplete pins until every
+// tserver heartbeats master once. Need to add guard against master failover in follow-up.
+void MasterHeartbeatServiceImpl::PopulateYsqlDbOldestPinnedReadTimes(TSHeartbeatResponsePB& resp) {
+  if (!FLAGS_enable_db_history_retention_pins) {
+    return;
+  }
+  DbOidToHybridTimeMap cluster_pins =
+    server_->ts_manager()->GetClusterYsqlDbOldestPinnedReadTimes();
+  for (const auto& [db_oid, pin] : cluster_pins) {
+    (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
+      .set_db_level_oldest_read_time(pin.ToPB());
+  }
 }
 
 void MasterHeartbeatServiceImpl::TSHeartbeat(
@@ -559,6 +582,8 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
   }
 
+  PopulateYsqlDbOldestPinnedReadTimes(*resp);
+
   PopulatePgCatalogVersionInfo(*req, *resp);
 
   {
@@ -707,8 +732,9 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
   });
 
   // Calculate the deadline for this expensive loop coming up.
-  const auto safe_deadline = rpc->GetClientDeadline() -
-    (FLAGS_heartbeat_rpc_timeout_ms * 1ms * FLAGS_heartbeat_safe_deadline_ratio);
+  CoarseTimePoint safe_deadline = rpc->GetClientDeadline() -
+      static_cast<int64_t>(FLAGS_heartbeat_rpc_timeout_ms * FLAGS_heartbeat_safe_deadline_ratio) *
+          1ms;
 
   // Process tablets by batches.
   for (auto tablet_iter = reported_tablets.begin(); tablet_iter != reported_tablets.end();) {
@@ -719,7 +745,8 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     // Keeps track of all RPCs that should be sent when we're done with a single batch.
     std::vector<RetryingTSRpcTaskWithTablePtr> rpcs;
     auto status = ProcessTabletReportBatch(
-        ts_desc, ts_instance, report, batch_begin, tablet_iter, epoch, report_update, &rpcs);
+        ts_desc, ts_instance, report, batch_begin, tablet_iter, epoch, safe_deadline, report_update,
+        &rpcs);
     if (!status.ok()) {
       for (auto& rpc : rpcs) {
         rpc->AbortAndReturnPrevState(status);
@@ -857,6 +884,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     ReportedTablets::iterator begin,
     ReportedTablets::iterator end,
     const LeaderEpoch& epoch,
+    CoarseTimePoint deadline,
     TabletReportUpdatesPB* full_report_update,
     std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs) {
   // First Pass. Iterate in TabletId Order to discover all Table locks we'll need.
@@ -864,7 +892,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
   // Maps a table ID to its corresponding TableInfo.
   std::map<TableId, TableInfoPtr> table_info_map;
 
-  std::map<TableId, TableInfo::WriteLock> table_write_locks;
+  std::map<TableId, TableInfo::ReadLock> table_read_locks;
   for (auto reported_tablet = begin; reported_tablet != end; ++reported_tablet) {
     auto table = reported_tablet->info->table();
     table_info_map[table->id()] = table;
@@ -875,15 +903,17 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     }
   }
 
-  // Need to acquire locks in Id order to prevent deadlock.
+  // Need to acquire locks in Id order to prevent deadlock. Use timed acquisition bounded by the
+  // heartbeat's RPC deadline: rather than block (and risk deadlock or long contention) we give up
+  // and let the tserver retry the report on a later heartbeat.
   for (auto& [table_id, table] : table_info_map) {
-    table_write_locks[table_id] = table->LockForWrite();
+    table_read_locks[table_id] = VERIFY_RESULT(table->TryLockForRead(deadline));
   }
 
   // Check whether this is the most recent report from this tserver before performing any
   // mutations. If not, we need to stop processing here to avoid overwriting the contents of the
-  // more recent report. If a more recent report comes after this check, it cannot concurrently
-  // modify the tables / tablets in this batch because we hold write locks on the tables.
+  // more recent report. Concurrent reports for the same tablet are serialized by the per-tablet
+  // write locks taken below.
   RETURN_NOT_OK(ts_desc->IsReportCurrent(ts_instance, full_report));
 
   std::map<TabletId, TabletInfo::WriteLock> tablet_write_locks;
@@ -904,8 +934,10 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     update->set_tablet_id(tablet_id);
 
     // Get tablet lock on demand.  This works in the batch case because the loop is ordered.
-    tablet_write_locks[tablet_id] = tablet->LockForWrite();
-    auto& table_lock = table_write_locks[table->id()];
+    // Timed acquisition bounded by the RPC deadline: give up (and let the tserver retry) rather
+    // than block on a contended/deadlocking tablet write lock.
+    tablet_write_locks[tablet_id] = VERIFY_RESULT(tablet->TryLockForWrite(deadline));
+    auto& table_lock = table_read_locks[table->id()];
     auto& tablet_lock = tablet_write_locks[tablet_id];
 
     TRACE_EVENT1("master", "HandleReportedTablet", "tablet_id", report.tablet_id());
@@ -989,7 +1021,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     if (report.has_committed_consensus_state()) {
       const bool tablet_was_running = tablet_lock->is_running();
       if (ProcessCommittedConsensusState(
-              ts_desc, full_report.is_incremental(), report, epoch, &table_write_locks, tablet,
+              ts_desc, full_report.is_incremental(), report, epoch, &table_read_locks, tablet,
               tablet_lock, &it->tables, rpcs)) {
         // If the tablet was mutated, add it to the tablets to be re-persisted.
         //
@@ -1031,10 +1063,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
   tablet_write_locks.clear();
 
   // Unlock the tables; we no longer need to access their state.
-  for (auto& l : table_write_locks) {
-    l.second.Commit();
-  }
-  table_write_locks.clear();
+  table_read_locks.clear();
 
   // Update the table state if all its tablets are now running.
   for (auto& [table_id, tablets] : new_running_tablets) {
@@ -1070,7 +1099,7 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
     bool is_incremental,
     const ReportedTabletPB& report,
     const LeaderEpoch& epoch,
-    std::map<TableId, TableInfo::WriteLock>* table_write_locks,
+    std::map<TableId, TableInfo::ReadLock>* table_read_locks,
     const TabletInfoPtr& tablet,
     const TabletInfo::WriteLock& tablet_lock,
     std::map<TableId, scoped_refptr<TableInfo>>* tables,
@@ -1236,9 +1265,14 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
     catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
   }
 
+  if (tablet_lock->pb.split_tablet_ids_size() > 0 && tablet_lock->is_hidden()) {
+    VLOG(1) << "Skipping AlterTable for hidden already-split tablet " << tablet->ToString();
+    return tablet_was_mutated;
+  }
+
   // 7. Send an AlterSchema RPC if the tablet has an old schema version.
-  if (table_write_locks->count(tablet->table()->id())) {
-    const TableInfo::WriteLock& table_lock = (*table_write_locks)[tablet->table()->id()];
+  if (table_read_locks->count(tablet->table()->id())) {
+    const TableInfo::ReadLock& table_lock = (*table_read_locks)[tablet->table()->id()];
     if (report.has_schema_version() &&
         report.schema_version() != table_lock->pb.version()) {
       if (report.schema_version() > table_lock->pb.version()) {
@@ -1292,7 +1326,7 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
       continue;
     }
     if (tables->count(id_to_version.first)) {
-      const auto& table_lock = (*table_write_locks)[id_to_version.first];
+      const auto& table_lock = (*table_read_locks)[id_to_version.first];
       // Ignore if same version.
       if (table_lock->pb.version() == id_to_version.second) {
         continue;
@@ -1516,6 +1550,7 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     .may_have_orphaned_post_split_data = storage_metadata.may_have_orphaned_post_split_data(),
     .total_size = storage_metadata.total_size(),
     .vector_index_size = storage_metadata.vector_index_size(),
+    .has_active_vector_index_backfill = storage_metadata.has_active_vector_index_backfill(),
   };
   tablet->UpdateReplicaInfo(ts_uuid, drive_info, leader_lease_info);
 }

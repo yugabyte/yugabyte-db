@@ -24,23 +24,35 @@ The YugabyteDB gRPC Connector is based on the Debezium Connector, and captures r
 
 ## Connector compatibility
 
-The connector is compatible with the following versions of YugabyteDB.
-
-Starting with YugabyteDB v2024.1, the connector uses the following naming convention:
+Starting with YugabyteDB v2024.1, connector versions follow this scheme:
 
 ```output
-dz.<Debezium Release>.yb.grpc.<YugabyteDB Version>.<Patch>
+dz.<debezium-base>.yb.grpc.<yugabytedb-series>.<connector-patch>[.SNAPSHOT.<n>]
 ```
 
-* *Debezium Release* - Debezium release the connector is based on
-* *YugabyteDB Version* - version of YugabyteDB the connector works with
-* *Patch* - patch release version, if applicable
+| Component | Example | Description |
+| :---- | :------ | :------ |
+| `dz.<debezium-base>` | `dz.1.9.5` | Upstream Debezium release the connector is built on (the gRPC connector uses Debezium 1.9.5). |
+| `yb.grpc` | `yb.grpc` | Identifies the gRPC-protocol connector (distinct from the logical replication connector). |
+| `<yugabytedb-series>` | `2025.2` | YugabyteDB release series the build is aligned to. |
+| `<connector-patch>` | `.3` | Connector patch in that series. Higher is more recent. |
+| `.SNAPSHOT.<n>` | `.SNAPSHOT.1` | Pre-release. Don't use in production. |
+
+Release tags carry a leading `v`. For example, version `dz.1.9.5.yb.grpc.2025.2` is tagged `vdz.1.9.5.yb.grpc.2025.2`.
 
 The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not newer releases* (forward compatibility is not supported). For example, connector release `dz.1.9.5.yb.grpc.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
 
 Also, if a connector release for a particular version is not available, then it is recommended to use the latest released connector.
 
 In addition, the connector supports Kafka Connect v2.x and later.
+
+{{< warning title="YugabyteDB v2026.1.1.0 and later" >}}
+
+Starting with YugabyteDB v2026.1.1.0, every gRPC CDC stream carries a replication slot name and the `yb_grpc` plugin name in its metadata. Streams created before the upgrade are backfilled automatically with an auto-generated slot name of the form `grpc_<stream_id>`. Connector versions `dz.1.9.5.yb.grpc.2026.1` and earlier do not recognize this metadata and fail to start against such clusters, including for pre-existing streams.
+
+If your universe is on YugabyteDB v2026.1.1.0 or later, use connector version [dz.1.9.5.yb.grpc.2026.1.1](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.1) or later.
+
+{{< /warning >}}
 
 {{< note title="Connector Class Name" >}}
 
@@ -940,7 +952,9 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 Before using the connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
-* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command.
+* You have a change data stream created on the database you want to monitor the changes for. You can create the stream in the following ways:
+  * {{<tags/feature/ea idea="2762">}}Using the PostgreSQL replication slot syntax with the `yb_grpc` plugin (YugabyteDB v2026.1.1.0 or later). You then pass the slot name and a publication to the connector using the `slot.name` and `publication.name` properties. Refer to [Using a replication slot and publication](#using-a-replication-slot-and-publication).
+  * Using the [yb-admin create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command. You then pass the generated stream ID to the connector using the `database.streamid` property.
 * The table to be monitored should have a primary key. Only tables which have a primary key can be streamed.
 
 ### WAL disk space consumption
@@ -982,7 +996,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 1. The address of this YugabyteDB server.
 1. The port number of the YugabyteDB YSQL process.
 1. List of comma separated values of master nodes of the YugabyteDB server. Usually in the form `host`:`port`.
-1. The DB stream ID created using [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands).
+1. The DB stream ID created using the PostgreSQL replication slot interface (`yb_stream_id` from `pg_replication_slots`) or [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands). See [Create a gRPC CDC stream](../cdc-get-started/#create-a-grpc-cdc-stream).
 1. The name of the YugabyteDB user having the privileges to connect to the database.
 1. The password for the above specified YugabyteDB user.
 1. The name of the YugabyteDB database to connect to.
@@ -1005,6 +1019,73 @@ YugabyteDB uses a custom record extractor (`YBExtractNewRecordState`) so that th
 | `transforms.unwrap.type` | `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState` |
 
 See [Transformers](#transformers).
+
+### Using a replication slot and publication
+
+{{<tags/feature/ea idea="2762">}}Starting in YugabyteDB v2026.1.1.0, you can create a gRPC CDC stream using the PostgreSQL replication slot syntax with the `yb_grpc` plugin:
+
+```sql
+SELECT * FROM pg_create_logical_replication_slot('my_slot', 'yb_grpc');
+```
+
+Streams created this way appear in `pg_replication_slots` with `yb_grpc` as the plugin, and derive the before image behavior of each table from its [replica identity](../../using-logical-replication/key-concepts/#replica-identity), analogous to logical replication streams. (Streams created using yb-admin continue to rely on the `record_type` stream option.)
+
+You can consume these streams using connector version `dz.1.9.5.yb.grpc.2026.1.1` or later.
+
+Consume the stream in one of the following ways:
+
+* **Using the stream ID**: Obtain the stream ID from the `yb_stream_id` column of `pg_replication_slots` and set it as `database.streamid`, exactly as you would for a stream created using yb-admin.
+* **Using the slot name and a publication**: Set `slot.name`, `publication.name`, and `plugin.name` instead of `database.streamid`. Note that this option comes with the limitations described in this section.
+
+The following example shows a connector configuration using the slot name and a [publication](../../using-logical-replication/key-concepts/#publication):
+
+```output.json
+{
+  "name": "ybconnector",
+  "config": {
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
+    "database.hostname": "127.0.0.1",
+    "database.port": "5433",
+    "database.master.addresses": "127.0.0.1:7100",
+    "database.user": "yugabyte",
+    "database.password": "yugabyte",
+    "database.dbname": "yugabyte",
+    "database.server.name": "dbserver1",
+    "slot.name": "my_slot",
+    "publication.name": "my_publication",
+    "plugin.name": "yb_grpc"
+  }
+}
+```
+
+The slot and publication configuration has the following limitations:
+
+* `database.streamid` and `slot.name` are mutually exclusive. If both are set, the connector fails validation with an error asking you to use one or the other.
+* Set `plugin.name` to `yb_grpc`. If the replication slot does not exist, the connector creates it using the configured `plugin.name`, so any other value would not create a gRPC stream.
+* The publication must exist before the connector starts. When `plugin.name` is `yb_grpc`, the connector does not create the publication (`publication.autocreate.mode` is not honored), and the connector fails to start if the publication is missing or empty. Create it beforehand using `CREATE PUBLICATION ... FOR TABLE ...` or `FOR ALL TABLES`.
+* The set of tables to capture is derived from the publication (`pg_publication_tables`). You don't need to set `table.include.list`; if set, it is overridden by the list of tables in the publication.
+
+#### Dynamic table addition and ALTER PUBLICATION
+
+The set of tables the connector captures follows the publication as follows:
+
+* While the connector is running:
+
+  If `auto.add.new.tables` is true (the default), the connector polls `pg_publication_tables` every `new.table.poll.interval.ms` (default 5 minutes). When the membership of the publication changes (because of `ALTER PUBLICATION ... ADD/DROP TABLE`, or because a table was created or dropped and the publication is `FOR ALL TABLES`) the connector automatically restarts its tasks with the capture list re-derived from the publication, and starts streaming the newly added tables (and stops streaming removed ones). New tables therefore start streaming without a connector redeploy, within approximately `new.table.poll.interval.ms` plus the task restart time.
+
+  If `auto.add.new.tables` is false, publication changes are not detected until the connector is restarted.
+
+* While the connector is stopped:
+
+  The capture list is derived from the publication at every startup, so any `ALTER PUBLICATION` performed before the connector starts takes effect immediately on startup.
+
+{{< note title="Table replacement is not auto-detected" >}}
+
+While running, the connector detects a publication change by comparing the _number_ of tables in the publication. An `ALTER PUBLICATION ... SET TABLE` that replaces tables while keeping the same table count is not detected until the connector restarts.
+
+{{< /note >}}
+
+For the behavior when the publication or the replication slot itself is dropped, refer to [Publication or replication slot is dropped](#publication-or-replication-slot-is-dropped).
 
 ### Adding connector configuration
 
@@ -1030,8 +1111,8 @@ The connector has many configuration properties that you can use to achieve the 
 
 The following properties are _required_ unless a default value is available:
 
-| Property | Default value | Description |
-| :------- | :------------ | :---------- |
+| Property | Default | Description |
+| :------- | :------ | :---------- |
 | connector.class | N/A | Specifies the connector to use to connect Debezium to the database. For YugabyteDB, use `io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector`. |
 | database.hostname | N/A | The IP address of the database host machine. For a distributed cluster, use the leader node's IP address. Alternatively, you can specify a comma-separated list of multiple host addresses and corresponding ports (for example,`ip1:port1,ip2:port2,ip3:port3`). This is useful for connection fail-over. |
 | database.port | N/A | The port at which the YSQL process is running. |
@@ -1040,8 +1121,11 @@ The following properties are _required_ unless a default value is available:
 | database.password | N/A | Password for the given user. |
 | database.dbname | N/A | The database from which to stream. |
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, as it's also used to form the Kafka topic. |
-| database.streamid | N/A | Stream ID created using [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
-| table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
+| database.streamid | N/A | Stream ID created using [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. Do not also set the `slot.name` property. |
+| slot.name | debezium | Name of the replication slot of a gRPC stream created using the PostgreSQL replication slot syntax. Use in place of `database.streamid`; the two are mutually exclusive. If the slot does not exist, the connector creates it using `plugin.name`. See [Using a replication slot and publication](#using-a-replication-slot-and-publication). Connector version `dz.1.9.5.yb.grpc.2026.1.1` and later with YugabyteDB v2026.1.1.0 and later. |
+| publication.name | dbz_publication | Name of the publication from which the connector derives the set of tables to capture when `slot.name` is used. The publication must exist before the connector starts. Connector version `dz.1.9.5.yb.grpc.2026.1.1` and later with YugabyteDB v2026.1.1.0 and later. |
+| plugin.name | yboutput | Name of the logical decoding plugin of the replication slot. Set to `yb_grpc` when using `slot.name` so that a slot created by the connector is a gRPC stream. Connector version `dz.1.9.5.yb.grpc.2026.1.1` and later with YugabyteDB v2026.1.1.0 and later. |
+| table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. Ignored when `slot.name` and `publication.name` are used; in that case the list of tables is derived from the publication. |
 | table.max.num.tablets | 300 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<ul><li>`disable` uses an unencrypted connection</li><li>`require` uses an encrypted connection and fails if it can't be established</li><li>`verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found.</li></ul> |
 | database.sslrootcert | N/A | The path to the file which contains the root certificate against which the server is to be validated. |
@@ -1073,7 +1157,7 @@ If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root c
 
 {{< /note >}}
 
-Advanced connector configuration properties:
+#### Advanced connector configuration properties
 
 | Property | Default | Description |
 | :------- | :------ | :---------- |
@@ -1099,8 +1183,8 @@ Advanced connector configuration properties:
 | connector.retry.delay.ms | 60000 | Delay between subsequent retries at the connector level. |
 | ignore.exceptions | `false` | Determines whether the connector ignores exceptions, which should not cause any critical runtime issues. By default, if there is an exception the connector throws the exception and stops further execution. Specify `true` to have the connector log a warning for any exception and proceed. |
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
-| auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
-| new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |
+| auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID or publication. If a new table has been found in the stream ID and if it has been included in the `table.include.list` (or, when using `publication.name`, added to the publication), the connector will be restarted automatically. |
+| new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID or publication. |
 | transaction.ordering | `false` | Whether to order transactions by their commit time.<br/>{{< warning title="Deprecation Notice" >}} This configuration property has been deprecated. For more details, see [transaction ordering](#transaction-ordering). {{< /warning >}} |
 
 ### Transformers
@@ -1254,6 +1338,31 @@ This can happen in the following 2 scenarios:
 When the connector is running, the YugabyteDB server that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and stops. When the server is available again, restart the connector.
 
 The connector externally stores the last processed offset in the form of a checkpoint. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the stream ID remains intact. Never delete a stream ID without deleting all the associated connectors with it, otherwise you will lose data.
+
+### Stream is deleted
+
+Never delete a change data stream that a connector is still configured to use. The behavior of the connector depends on when the stream is deleted:
+
+* **While the connector is running**: The streaming calls to the server start failing because the stream no longer exists. The connector retries as per `max.connector.retries` and `connector.retry.delay.ms`, and then fails.
+* **Before the connector starts**: With `database.streamid`, the connector fails to start because it cannot fetch the stream's metadata from the server. The underlying cause is reported in the connector log as `Could not get Stream info for <stream ID>`.
+
+In either case, changes made after the stream was deleted are not recoverable through CDC; you need to create a new stream and deploy a new connector, and re-snapshot if you need the missed data.
+
+### Publication or replication slot is dropped
+
+When using [slot and publication configuration](#using-a-replication-slot-and-publication), the same guidance applies to the replication slot and the publication. Dropping the replication slot (`pg_drop_replication_slot`) deletes the underlying change data stream.
+
+If the **replication slot** is dropped:
+
+* **While the connector is running**: The streaming calls fail because the underlying stream was deleted along with the slot. The connector retries as per `max.connector.retries` and `connector.retry.delay.ms`, and then fails.
+* **Before the connector starts**: The connector silently re-creates the slot, a _new_ stream, and resumes from its start position.
+
+If the **publication** is dropped:
+
+* **While the connector is running**: The connector detects the change on the next poll of the publication (within `new.table.poll.interval.ms`) and attempts to reconfigure its tasks; because the list of tables to capture can no longer be derived, the connector fails. Note that if `auto.add.new.tables` is false, the drop goes undetected and the connector continues streaming the previously derived set of tables until it restarts.
+* **Before the connector starts**: The connector fails to start, as it cannot derive the list of tables to capture (with `plugin.name` set to `yb_grpc`, the connector does not re-create the publication).
+
+To recover, re-create the publication and restart the connector.
 
 ## Dropping a table part of the replication
 

@@ -17,6 +17,7 @@
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/signal_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #ifdef __linux__
 #include "yb/util/cgroups.h"

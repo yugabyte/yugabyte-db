@@ -166,6 +166,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             any(Universe.class), eq(UniverseConfKeys.healthCheckTHPSettings)))
         .thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableYnpVersionCheck))).thenReturn(true);
     when(mockFileHelperService.createTempFile(anyString(), anyString()))
         .thenAnswer(
             i -> {
@@ -519,7 +520,11 @@ public class HealthCheckerTest extends FakeDBApplication {
           univ.setUniverseDetails(details);
         });
     setupAlertingData(null, false, false);
-    validateNoDevopsCall();
+    healthChecker.checkCustomer(defaultCustomer);
+    // Even though the universe is busy (update in progress by a non-backup task), we still refresh
+    // the health/metrics scripts on the nodes (6 = 3 nodes x 2 scripts) so they never go stale, but
+    // we skip running the health check command itself.
+    verifyNodeUniverseManager(6, 0);
   }
 
   @Test
@@ -547,7 +552,10 @@ public class HealthCheckerTest extends FakeDBApplication {
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
             u, defaultCustomer, false, false, false, YB_ALERT_TEST_EMAIL));
-    verifyNodeUniverseManager(shouldCheck ? 6 : 0, shouldCheck ? 3 : 0);
+    // The health/metrics scripts (6 = 3 nodes x 2 scripts) are always refreshed on the nodes, even
+    // when the universe is busy with a task, so they never go stale. The health check command
+    // (3 = one per node) only runs when the universe is not busy.
+    verifyNodeUniverseManager(6, shouldCheck ? 3 : 0);
   }
 
   @Test

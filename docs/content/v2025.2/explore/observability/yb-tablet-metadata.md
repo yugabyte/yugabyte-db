@@ -2,7 +2,8 @@
 title: View cluster-wide tablet metadata and leadership
 linkTitle: Cluster tablet metadata
 description: View cluster-wide tablet distribution and leadership information for YSQL tables.
-headerTitle: View YSQL cluster-wide tablet metadata and leadership information
+headerTitle: Cluster tablet metadata
+headcontent: View YSQL cluster-wide tablet metadata and leadership information
 tags:
   feature: early-access
 menu:
@@ -17,7 +18,7 @@ The `yb_tablet_metadata` view provides a YSQL-accessible interface for fetching 
 
 While the [yb_local_tablets](../yb-local-tablets/) view provides information about tablets on the local node, `yb_tablet_metadata` exposes tablet placement and replica roles cluster-wide, serving as the YSQL equivalent of the YCQL `system.partitions` table.
 
-The `yb_tablet_metadata` view is useful for:
+Use the `yb_tablet_metadata` view for the following:
 
 - Identifying the location of all tablets for a specific table.
 - Determining the leader node for a specific tablet.

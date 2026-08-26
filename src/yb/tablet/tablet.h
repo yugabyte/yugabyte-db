@@ -74,6 +74,7 @@
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/status_fwd.h"
+#include "yb/util/abort_source.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_list.h"
@@ -89,6 +90,10 @@ DECLARE_bool(TEST_docdb_log_write_batches);
 namespace yb {
 
 class Cgroup;
+
+namespace rpc {
+class Scheduler;
+}
 class FsManager;
 class MetricEntity;
 
@@ -310,10 +315,19 @@ class Tablet : public AbstractTablet,
   // This transitions from kBootstrapping to kOpen state.
   void MarkFinishedBootstrapping();
 
+  // Starts tablet subsystems that must not run until the tablet is fully created and published by
+  // its TabletPeer (in particular vector index backfill, which resolves transaction statuses and
+  // therefore needs the TabletPeer to be able to serve safe time). Called from TabletPeer::Start.
+  void Start();
+
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
   // Returns true if it was the first call to StartShutdown.
-  bool StartShutdown();
+  // On the first call this also starts shutting the RocksDB instances down (StartShutdownStorages),
+  // so that writers parked in a RocksDB write stall are released before the peer strand is drained.
+  // See issue #32211. The resulting operation pauses are kept in shutdown_op_pauses_ until the
+  // RocksDB instances are destroyed in CompleteShutdownStorages.
+  bool StartShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
   bool IsShutdownRequested() const {
     return shutdown_requested_.load(std::memory_order::acquire);
   }
@@ -323,10 +337,9 @@ class Tablet : public AbstractTablet,
   // - transaction participant
   // - RocksDB instances
   // - etc.
-  // By default, RocksDB shutdown flushes the memtable. This behavior is overriden depending on the
-  // provided value of disable_flush_on_shutdown.
-  // If abort_ops is specified, aborts pending RocksDB operations that are abortable.
-  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
+  // StartShutdown (which controls flush-on-shutdown and pending-operation aborting) must have been
+  // called first; CompleteShutdown consumes the operation pauses it produced.
+  void CompleteShutdown();
 
   // Triggered by a corresponding tablet peer when it has been moved into RUNNING state.
   Status CompleteStartup();
@@ -366,6 +379,10 @@ class Tablet : public AbstractTablet,
       bool skip_opid_update = false);
 
   Status UpdateOpIdForOperation(WriteOperation* operation);
+
+  Status WriteTransactionMetadataUpdate(
+      OpId op_id, HybridTime write_hybrid_time, Slice transaction_id,
+      const LWTransactionMetadataPB& metadata_update) override;
 
   // `apply_to_storages`: see ApplyRowOperations.
   Status ApplyOperation(
@@ -506,7 +523,8 @@ class Tablet : public AbstractTablet,
 
   // Used to update the tablets on the index table that the index has been backfilled.
   // This means that full compactions can now garbage collect delete markers.
-  Status MarkBackfillDone(const OpId& op_id, const TableId& table_id = "");
+  Status MarkBackfillDone(
+      const OpId& op_id, const TableId& table_id = "", uint64_t birth_time = 0);
 
   // Change wal_retention_secs in the metadata.
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
@@ -681,7 +699,8 @@ class Tablet : public AbstractTablet,
         .intents = intents_db_.get(),
         .key_bounds = &key_bounds_,
         .retention_policy = retention_policy_.get(),
-        .metrics = metrics ? metrics : metrics_.get() };
+        .metrics = metrics ? metrics : metrics_.get(),
+        .abort_source = &abort_pending_op_source_ };
   }
 
   struct SplitKeysData {
@@ -798,7 +817,9 @@ class Tablet : public AbstractTablet,
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 
-  void SetCleanupPool(ThreadPool* thread_pool);
+  void SetCleanupPool(
+      ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler,
+      ThreadPool* intent_cleanup_pool);
 
   TabletSnapshots& snapshots() {
     return *snapshots_;
@@ -826,11 +847,13 @@ class Tablet : public AbstractTablet,
   Status SetAllCDCRetentionBarriersUnlocked(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
       HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
-      bool initial_retention_barrier, HybridTime min_start_ht_cdc_unstreamed_txns);
+      bool initial_retention_barrier, HybridTime min_start_ht_cdc_unstreamed_txns,
+      CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   Status SetAllInitialCDCRetentionBarriers(
       log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
-      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+      CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   Status SetAllInitialCDCSDKRetentionBarriers(
       log::Log* log, OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff,
@@ -839,7 +862,7 @@ class Tablet : public AbstractTablet,
   Result<bool> MoveForwardAllCDCRetentionBarriers(
       log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
       MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
-      bool require_history_cutoff);
+      bool require_history_cutoff, CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   HybridTime GetMinStartHTCDCUnstreamedTxns(log::Log* log) const;
 
@@ -1001,10 +1024,18 @@ class Tablet : public AbstractTablet,
   // `max_num_ranges` and adds to `keys_buffer` a list of these ranges boundary keys (depending on
   // is_forward).
   //
-  // It is guaranteed that returned keys are at most max_key_length bytes.
-  // Both lower_bound_key and upper_bound_key are exclusive. They are adjusted by this function
-  // to be within tablet boundaries (key_bounds_ if set or based on metadata()->partition() if
-  // key_bounds_ is not set) and to be no longer than max_key_length.
+  // It is guaranteed that returned keys are:
+  // - valid encoded DocKeys or encoded partition keys (see GetEncodedPartitionKey in
+  //   dockv/partition.h).
+  // - at most max_key_length bytes.
+  //
+  // Both lower_bound_key and upper_bound_key are exclusive and should be valid encoded DocKeys or
+  // encoded partition keys (see GetEncodedPartitionKey in dockv/partition.h).
+  // They are adjusted by this function to be within the following boundaries:
+  // - For a colocated table: the colocated_table_id key prefix
+  // - For non-colocated: tablet partition bounds.
+  // Note: the max_key_length cap above applies to the full encoded DocKeys retrieved from the data;
+  // the terminating tablet boundary key is returned as-is and is not length-capped.
   //
   // If `is_forward` is set, list will consist of:
   // - 1st_range_boundary_key \in (adjusted_lower_bound_key, adjusted_upper_bound_key)
@@ -1053,6 +1084,10 @@ class Tablet : public AbstractTablet,
 
   void TEST_SleepBeforeDeleteIntentsFile(MonoDelta value) {
     TEST_sleep_before_delete_intents_file_ = value;
+  }
+
+  void TEST_SetDisableFlushOnShutdown(bool value) {
+    TEST_disable_flush_on_shutdown_ = value;
   }
 
   // Reads the current value of FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and
@@ -1287,6 +1322,11 @@ class Tablet : public AbstractTablet,
   // operations.
   std::atomic_bool shutdown_requested_{false};
 
+  // Read/write operation pauses produced by StartShutdownStorages, populated by StartShutdown and
+  // consumed by CompleteShutdown. They keep operations paused while the RocksDB instances are being
+  // torn down, so they must stay alive across the gap between StartShutdown and CompleteShutdown.
+  TabletScopedRWOperationPauses shutdown_op_pauses_;
+
   // This is a special atomic counter per tablet that increases monotonically.
   // It is like timestamp, but doesn't need locks to read or update.
   // This is raft replicated as well. Each replicate message contains the current number.
@@ -1311,8 +1351,9 @@ class Tablet : public AbstractTablet,
   // RocksDB in-memory instance.
   mutable RWOperationCounter pending_op_counter_not_blocking_rocksdb_shutdown_start_;
 
-  // Used to abort pending operations that are not blocking RocksDB shutdown start.
-  StatusHolder abort_pending_op_status_holder_;
+  // Signals long-running operations (e.g. iterators, which poll it via docdb::DocDB) to abort
+  // while StartShutdownStorages drains pending operations for truncate, restore or shutdown.
+  AbortSource abort_pending_op_source_;
 
   // Used by Alter/Schema-change ops to pause new write ops from being submitted.
   RWOperationCounter write_ops_being_submitted_counter_;
@@ -1330,6 +1371,26 @@ class Tablet : public AbstractTablet,
   client::YBMetaDataCache* metadata_cache_;
 
   std::atomic<int64_t> last_committed_write_index_{0};
+
+  // Whether MayModifyIntentsDbFlushedOpId may force-advance the intents DB flushed frontier to the
+  // regular DB's.
+  //
+  // An external (xCluster target) batch is applied as two RocksDB writes: the regular DB first,
+  // which fills the intents write batch as a side effect, then the intents DB. A regular DB flush
+  // completing in between sees an empty intents memtable, so the force-advance would persist an
+  // intents frontier covering an op whose external intents are still only in memory. An ungraceful
+  // crash then drops them, tablet bootstrap skips the op, and the replicated rows are silently lost
+  // on this replica (GH#32694).
+  //
+  // NonTransactionalBatchWriter clears this at the end of Apply(), by then the intents write batch
+  // has been filled and the data has been written to regular db memtable. Apply() runs inside the
+  // regular DB's write thread and a memtable switch needs that same thread, so the clear always
+  // happens before any regular DB flush can cover the op.
+  //
+  // Nothing sets it back for now except restarting tserver. TODO: It may be safe to reset the
+  // variable to true right after the intents write -- by then those intents are in the intents
+  // memtable, so GetFlushAbility() reports kHasNewData and the force-advance is skipped.
+  std::atomic<bool> can_advance_intents_flush_op_id_{true};
 
   HybridTimeLeaseProvider ht_lease_provider_;
 
@@ -1437,6 +1498,10 @@ class Tablet : public AbstractTablet,
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
 
+  // Used to schedule retain_delete_markers validation when colocated indexes are added
+  // to an already-open tablet.
+  std::function<void(const RaftGroupMetadata&)> schedule_tablet_metadata_validation_;
+
   simple_spinlock operation_filters_mutex_;
 
   boost::intrusive::list<OperationFilter> operation_filters_ GUARDED_BY(operation_filters_mutex_);
@@ -1453,6 +1518,7 @@ class Tablet : public AbstractTablet,
 
   MonoDelta TEST_sleep_before_apply_intents_;
   MonoDelta TEST_sleep_before_delete_intents_file_;
+  std::atomic<bool> TEST_disable_flush_on_shutdown_{false};
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

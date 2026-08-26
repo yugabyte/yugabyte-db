@@ -8,7 +8,7 @@ block_indexing = true
 Run ycqlsh to connect to the service as follows:
 
 ```sh
-$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/ycqlsh yb-tserver-n1
+$ docker exec -it yugabyte bash -c '/home/yugabyte/bin/ycqlsh $(hostname)'
 ```
 
 ```output

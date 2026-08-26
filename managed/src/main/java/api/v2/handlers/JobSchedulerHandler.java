@@ -13,6 +13,7 @@ import api.v2.models.JobSchedulePagedResp;
 import api.v2.models.JobScheduleSnoozeSpec;
 import api.v2.models.JobScheduleUpdateSpec;
 import api.v2.utils.ApiControllerUtils;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.forms.JobScheduleUpdateForm;
 import com.yugabyte.yw.models.JobInstance;
 import com.yugabyte.yw.models.filters.JobInstanceFilter;
@@ -31,10 +32,11 @@ import javax.inject.Inject;
 
 public class JobSchedulerHandler extends ApiControllerUtils {
 
-  private JobScheduler jobScheduler;
+  private final JobScheduler jobScheduler;
 
   @Inject
-  public JobSchedulerHandler(JobScheduler jobScheduler) {
+  public JobSchedulerHandler(AuditService auditService, JobScheduler jobScheduler) {
+    super(auditService);
     this.jobScheduler = jobScheduler;
   }
 
@@ -63,7 +65,7 @@ public class JobSchedulerHandler extends ApiControllerUtils {
   }
 
   public JobSchedule updateJobSchedule(
-      UUID cUUID, UUID jUUID, JobScheduleUpdateSpec jobScheduleUpdateSpec) throws Exception {
+      UUID cUUID, UUID jUUID, JobScheduleUpdateSpec jobScheduleUpdateSpec) {
     JobScheduleUpdateForm updateForm =
         JobSchedulerMapper.INSTANCE.toJobScheduleUpdateForm(jobScheduleUpdateSpec);
     ScheduleConfig.ScheduleConfigBuilder builder =
@@ -78,14 +80,14 @@ public class JobSchedulerHandler extends ApiControllerUtils {
   }
 
   public JobSchedule snoozeJobSchedule(
-      UUID cUUID, UUID jUUID, JobScheduleSnoozeSpec jobScheduleSnoozeSpec) throws Exception {
+      UUID cUUID, UUID jUUID, JobScheduleSnoozeSpec jobScheduleSnoozeSpec) {
     com.yugabyte.yw.models.JobSchedule jobSchedule =
         com.yugabyte.yw.models.JobSchedule.getOrBadRequest(cUUID, jUUID);
     return JobSchedulerMapper.INSTANCE.toJobSchedule(
         jobScheduler.snooze(jobSchedule.getUuid(), jobScheduleSnoozeSpec.getSnoozeSecs()));
   }
 
-  public JobSchedule deleteJobSchedule(UUID cUUID, UUID jUUID) throws Exception {
+  public JobSchedule deleteJobSchedule(UUID cUUID, UUID jUUID) {
     Optional<com.yugabyte.yw.models.JobSchedule> optional =
         com.yugabyte.yw.models.JobSchedule.maybeGet(cUUID, jUUID);
     if (optional.isPresent()) {
@@ -96,8 +98,7 @@ public class JobSchedulerHandler extends ApiControllerUtils {
   }
 
   public JobInstancePagedResp pageListJobInstances(
-      UUID cUUID, UUID jUUID, JobInstancePagedQuerySpec jobInstancePagedQuerySpec)
-      throws Exception {
+      UUID cUUID, UUID jUUID, JobInstancePagedQuerySpec jobInstancePagedQuerySpec) {
     com.yugabyte.yw.models.JobSchedule.getOrBadRequest(cUUID, jUUID);
     JobInstancePagedQuery pagedQuery =
         JobSchedulerMapper.INSTANCE.toJobInstancePagedQuery(jobInstancePagedQuerySpec);

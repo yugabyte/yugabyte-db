@@ -127,7 +127,9 @@ static void update_relispartition(Oid relationId, bool newval);
 static inline void set_indexsafe_procflags(void);
 
 /* YB function declarations. */
-static void YbWaitForBackendsCatalogVersion();
+static void YbWaitForBackendsCatalogVersion(bool error_on_timeout);
+static void YbWaitForLockersOrBackendsCatalogVersion(LOCKTAG *heaplocktag,
+													 LOCKMODE lockmode);
 static void YbDefineIndexHelper(Oid relationId, Oid indexRelationId, Oid databaseId);
 
 /*
@@ -603,6 +605,8 @@ DefineIndex(Oid relationId,
 	Oid			colocation_id = InvalidOid;
 	bool		is_colocated = false;
 	bool		yb_skip_index_creation;
+	/* Use PG catalog snapshot for catalog reads */
+	const bool 	yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
 
 	root_save_nestlevel = NewGUCNestLevel();
 
@@ -1023,6 +1027,85 @@ DefineIndex(Oid relationId,
 		!YbIsConnectedToTemplateDb() &&
 		YbGetTableProperties(rel)->is_colocated;
 
+	/*
+	 * YB: the access method computation block has been moved up here so the implicit tablegroup
+	 * selection code can pivot on whether this index is copartitioned.
+	 *
+	 * look up the access method, verify it can handle the requested features
+	 */
+	accessMethodName = stmt->accessMethod; /* YB move access method computation */
+
+	/*
+	 * In Yugabyte mode, switch index method from "btree" or "hash" to "lsm" depending on whether
+	 * the table is stored in Yugabyte storage or not (such as temporary tables).
+	 */
+	if (IsYugaByteEnabled())
+	{
+		if (accessMethodName == NULL)
+		{
+			accessMethodName = IsYBRelation(rel) ? DEFAULT_YB_INDEX_TYPE : DEFAULT_INDEX_TYPE;
+		}
+		else if (IsYBRelation(rel))
+		{
+			char	   *new_name = NULL;
+
+			/* YB: Keeping the gin/hnsw index substitution message silent. */
+			if (strcmp(accessMethodName, "gin") == 0 ||
+				strcmp(accessMethodName, "hnsw") == 0)
+			{
+				new_name = psprintf("yb%s", accessMethodName);
+				ereport(LOG,
+						(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
+								new_name, accessMethodName)));
+				accessMethodName = new_name;
+			}
+			else
+			{
+				if (strcmp(accessMethodName, "btree") == 0 ||
+					strcmp(accessMethodName, "hash") == 0)
+					new_name = DEFAULT_YB_INDEX_TYPE;
+
+				else if (strcmp(accessMethodName, "hnsw") == 0)
+					new_name = "ybhnsw";
+
+				if (new_name != NULL)
+				{
+					ereport(NOTICE,
+							(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
+									new_name, accessMethodName)));
+					accessMethodName = new_name;
+				}
+			}
+
+		}
+	}
+
+	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethodName));
+	if (!HeapTupleIsValid(tuple))
+	{
+		/*
+		 * Hack to provide more-or-less-transparent updating of old RTREE
+		 * indexes to GiST: if RTREE is requested and not found, use GIST.
+		 */
+		if (strcmp(accessMethodName, "rtree") == 0)
+		{
+			ereport(NOTICE,
+					(errmsg("substituting access method \"gist\" for obsolete method \"rtree\"")));
+			accessMethodName = "gist";
+			tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethodName));
+		}
+
+		if (!HeapTupleIsValid(tuple))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("access method \"%s\" does not exist",
+							accessMethodName)));
+	}
+	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
+	accessMethodId = accessMethodForm->oid;
+	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
+	/* YB end of moved access method computation hunk */
+
 	if (IsYugaByteEnabled())
 	{
 		/* Use tablegroup of the indexed table, if any. */
@@ -1033,6 +1116,13 @@ DefineIndex(Oid relationId,
 		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
 		bool		is_colocated_tables_with_tablespace_enabled =
 			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+
+		/*
+		 * A copartitioned index (e.g. a ybhnsw vector index) stores its rows
+		 * co-located with the indexed table's own tablets, so it must live in
+		 * the indexed table's implicit tablegroup rather than the default one.
+		 */
+		bool		index_is_copartitioned = amRoutine->yb_amiscopartitioned;
 
 		/*
 		 * For colocated index tables in a colocation database, the implicit
@@ -1062,27 +1152,61 @@ DefineIndex(Oid relationId,
 			}
 			else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
 			{
+				Oid			preserved_tablegroup_oid = binary_upgrade_next_tablegroup_oid;
+				bool		is_default = binary_upgrade_next_tablegroup_default;
+
+				binary_upgrade_next_tablegroup_default = false;
+
 				/*
 				 * In yb_binary_restore if tablespaceId is not valid but
-				 * binary_upgrade_next_tablegroup_oid is valid, that implies either:
+				 * binary_upgrade_next_tablegroup_oid is valid, that implies
+				 * either:
 				 * 1. it is a default tablespace.
 				 * 2. we are restoring without tablespace information.
 				 * In this case all tables are restored to default tablespace,
-				 * while maintaining the colocation properties, and tablegroup's name
-				 * will be colocation_restore_tablegroupId, while default tablegroup's
-				 * name would still be default.
+				 * while maintaining the colocation properties, and tablegroup's
+				 * name will be colocation_restore_tablegroupId, while default
+				 * tablegroup's name would still be default.
+				 *
+				 * The implicit tablegroup may already exist from an earlier
+				 * restore step (e.g. the indexed table was restored with
+				 * --use_tablespaces using the colocation_<tablespace_oid>
+				 * name). Look up by OID before falling back to the restore
+				 * name.
 				 */
-				tablegroup_name = (binary_upgrade_next_tablegroup_default ?
-								   DEFAULT_TABLEGROUP_NAME :
-								   get_restore_tablegroup_name(binary_upgrade_next_tablegroup_oid));
-				binary_upgrade_next_tablegroup_default = false;
-				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+				tablegroup_name = get_tablegroup_name(preserved_tablegroup_oid);
+				if (tablegroup_name != NULL)
+				{
+					tablegroupId = preserved_tablegroup_oid;
+					binary_upgrade_next_tablegroup_oid = InvalidOid;
+				}
+				else
+				{
+					tablegroup_name = (is_default ?
+									   DEFAULT_TABLEGROUP_NAME :
+									   get_restore_tablegroup_name(preserved_tablegroup_oid));
+					tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+				}
 			}
 			else if (yb_binary_restore && OidIsValid(tablegroupId))
 			{
 				/*
 				 * This case handles Primary Key's tablegroup id. The variable
 				 * tablegroupId stores the tablegroupId of the parent table.
+				 */
+				tablegroup_name = get_tablegroup_name(tablegroupId);
+			}
+			else if (index_is_copartitioned && OidIsValid(tablegroupId))
+			{
+				/*
+				 * A copartitioned index (e.g. a ybhnsw vector index) has no
+				 * tablespace of its own and its rows are stored co-located
+				 * with the indexed table's tablets. It must therefore share
+				 * the indexed table's implicit tablegroup. Falling through to
+				 * the default tablegroup below would create a spurious empty
+				 * implicit tablegroup (an empty colocation parent) that holds
+				 * no data and cannot be reproduced on the restore/clone side,
+				 * breaking snapshot import.
 				 */
 				tablegroup_name = get_tablegroup_name(tablegroupId);
 			}
@@ -1200,82 +1324,6 @@ DefineIndex(Oid relationId,
 											stmt->primary,
 											stmt->isconstraint);
 
-	/*
-	 * look up the access method, verify it can handle the requested features
-	 */
-	accessMethodName = stmt->accessMethod;
-
-	/*
-	 * In Yugabyte mode, switch index method from "btree" or "hash" to "lsm" depending on whether
-	 * the table is stored in Yugabyte storage or not (such as temporary tables).
-	 */
-	if (IsYugaByteEnabled())
-	{
-		if (accessMethodName == NULL)
-		{
-			accessMethodName = IsYBRelation(rel) ? DEFAULT_YB_INDEX_TYPE : DEFAULT_INDEX_TYPE;
-		}
-		else if (IsYBRelation(rel))
-		{
-			char	   *new_name = NULL;
-
-			/* YB: Keeping the gin/hnsw index substitution message silent. */
-			if (strcmp(accessMethodName, "gin") == 0 ||
-				strcmp(accessMethodName, "hnsw") == 0)
-			{
-				new_name = psprintf("yb%s", accessMethodName);
-				ereport(LOG,
-						(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
-								new_name, accessMethodName)));
-				accessMethodName = new_name;
-			}
-			else
-			{
-				if (strcmp(accessMethodName, "btree") == 0 ||
-					strcmp(accessMethodName, "hash") == 0)
-					new_name = DEFAULT_YB_INDEX_TYPE;
-
-				else if (strcmp(accessMethodName, "hnsw") == 0)
-					new_name = "ybhnsw";
-
-				if (new_name != NULL)
-				{
-					ereport(NOTICE,
-							(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
-									new_name, accessMethodName)));
-					accessMethodName = new_name;
-				}
-			}
-
-		}
-	}
-
-	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethodName));
-	if (!HeapTupleIsValid(tuple))
-	{
-		/*
-		 * Hack to provide more-or-less-transparent updating of old RTREE
-		 * indexes to GiST: if RTREE is requested and not found, use GIST.
-		 */
-		if (strcmp(accessMethodName, "rtree") == 0)
-		{
-			ereport(NOTICE,
-					(errmsg("substituting access method \"gist\" for obsolete method \"rtree\"")));
-			accessMethodName = "gist";
-			tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethodName));
-		}
-
-		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("access method \"%s\" does not exist",
-							accessMethodName)));
-	}
-
-	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
-	accessMethodId = accessMethodForm->oid;
-	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
-
 	if (IsYBRelation(rel) && !amRoutine->yb_amisforybrelation)
 		ereport(ERROR,
 				(errmsg("index method \"%s\" not supported yet",
@@ -1321,6 +1369,29 @@ DefineIndex(Oid relationId,
 	if (IsYugaByteEnabled())
 	{
 		bool		index_is_copartitioned = amRoutine->yb_amiscopartitioned;
+
+		/*
+		 * YB: A copartitioned index (e.g. the ybhnsw vector index) is stored on
+		 * the indexed table's own tablets, so -- like a YB primary key index --
+		 * its placement always follows the indexed table.  For a non-colocated
+		 * indexed table, force the index's tablespace to match the indexed table
+		 * so that pg_class.reltablespace stays consistent with where the index
+		 * physically lives.  An explicit TABLESPACE clause is rejected outright,
+		 * consistent with ALTER INDEX ... SET TABLESPACE: the index cannot be
+		 * placed anywhere other than with its indexed table, so its tablespace
+		 * can only be chosen by choosing the indexed table's.  When the indexed
+		 * table is colocated the index instead follows the indexed table's
+		 * implicit tablegroup and keeps the colocated convention of
+		 * reltablespace = 0, so this does not apply.
+		 */
+		if (index_is_copartitioned && !is_colocated)
+		{
+			if (stmt->tableSpace)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set tablespace for a vector index")));
+			tablespaceId = rel->rd_rel->reltablespace;
+		}
 
 		if (OidIsValid(colocation_id))
 		{
@@ -1676,7 +1747,7 @@ DefineIndex(Oid relationId,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
 					 !concurrent, is_colocated, tablegroupId, colocation_id,
-					 yb_skip_index_creation);
+					 yb_skip_index_creation, stmt->yb_index_old_relfilenode);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
@@ -2031,8 +2102,7 @@ DefineIndex(Oid relationId,
 
 	/* save lockrelid and locktag for below, then close rel */
 	heaprelid = rel->rd_lockInfo.lockRelId;
-	if (!IsYBRelation(rel))
-		SET_LOCKTAG_RELATION(heaplocktag, heaprelid.dbId, heaprelid.relId);
+	SET_LOCKTAG_RELATION(heaplocktag, heaprelid.dbId, heaprelid.relId);
 	table_close(rel, NoLock);
 
 	/*
@@ -2241,6 +2311,66 @@ DefineIndex(Oid relationId,
 				yb_type_changed = true;
 			}
 			YbDefineIndexHelper(relationId, indexRelationId, databaseId);
+
+			/*
+			 * YB: With object locking on, execute a timed wait on backends
+			 * with older snapshots, similar to PG's WaitForOlderSnapshots
+			 * before marking the index as valid.
+			 *
+			 * If backends with older snapshots exist after the timed wait,
+			 * ignore them and continue with the index creation, as docdb has
+			 * logic to reject reads arriving at index with a read time earlier
+			 * than the index birth time.
+			 *
+			 * On xCluster automatic-mode target, WaitForLockers optimization
+			 * is disabled until GH #33155 is addressed, as a result of which
+			 * YbWaitForLockersOrBackendsCatalogVersion falls back to
+			 * WaitForBackendsCatalogVersion. Hence this additional phase
+			 * isn't necessary on the target.
+			 */
+			if (YBCIsObjectLockingEnabled() && !yb_xcluster_automatic_mode_target_ddl)
+			{
+				/*
+				 * YB: Invalidate the relcache for the parent table as backfill
+				 * does a schema version increment on the base table. Otherwise
+				 * existing sessions might face schema version mismatch.
+				 * TODO(#33037): Cache invalidation can be removed once we get
+				 * rid of schema version increments for the base table.
+				 */
+				CacheInvalidateRelcacheByRelid(relationId);
+				YbForceSendInvalMessages();
+
+				/*
+				 * YB: No need to break (abort) ongoing txns since this is an
+				 * online schema change.
+				 * TODO(jason): handle nested CREATE INDEX (this assumes we're
+				 * at nest level 1).
+				 */
+				if (yb_should_run_in_autonomous_transaction)
+					YBDecrementDdlNestingLevel();
+
+				/* YB: Commit this phase/txn so as to release all held object
+				 * locks before executing timed wait for backends in the next
+				 * phase/txn.
+				 */
+				CommitTransactionCommand();
+				StartTransactionCommand();
+
+				if (yb_should_run_in_autonomous_transaction)
+					YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+				else
+					YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+
+				/* YB: Short wait for backends on older catalog versions. */
+				YbWaitForBackendsCatalogVersion(false);
+
+				/*
+				 * YB: Acquire ShareUpdateExclusiveLock on the parent table to
+				 * further prevent concurrent schema changes until the end of
+				 * this txn, as the session object lock is released early.
+				 */
+				LockRelationOid(relationId, ShareUpdateExclusiveLock);
+			}
 		}
 		PG_FINALLY();
 		{
@@ -2255,6 +2385,10 @@ DefineIndex(Oid relationId,
 		PG_END_TRY();
 	}
 
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"indisvalid",
+									"index state change indisvalid=true");
 	/*
 	 * Index can now be marked valid -- update its pg_index entry
 	 */
@@ -2285,7 +2419,10 @@ YbDefineIndexHelper(Oid relationId,
 					Oid indexRelationId,
 					Oid databaseId)
 {
-	bool yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+	LOCKTAG		heaplocktag;
+	bool		yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+
+	SET_LOCKTAG_RELATION(heaplocktag, MyDatabaseId, relationId);
 
 	elog(LOG, "committing pg_index tuple with indislive=true");
 	if (yb_test_block_index_phase[0] != '\0')
@@ -2298,7 +2435,7 @@ YbDefineIndexHelper(Oid relationId,
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 	 * level 1).
 	 */
-	 if (yb_should_run_in_autonomous_transaction)
+	if (yb_should_run_in_autonomous_transaction)
 		YBDecrementDdlNestingLevel();
 
 	CommitTransactionCommand();
@@ -2323,8 +2460,7 @@ YbDefineIndexHelper(Oid relationId,
 	else
 		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
 
-	/* Wait for all backends to have up-to-date version. */
-	YbWaitForBackendsCatalogVersion();
+	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
 
 	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
 
@@ -2359,8 +2495,7 @@ YbDefineIndexHelper(Oid relationId,
 	else
 		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
 
-	/* Wait for all backends to have up-to-date version. */
-	YbWaitForBackendsCatalogVersion();
+	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
 
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 								 YB_PROGRESS_CREATEIDX_BACKFILLING);
@@ -5244,13 +5379,24 @@ set_indexsafe_procflags(void)
 	LWLockRelease(ProcArrayLock);
 }
 
+/*
+ * Wait for backends to catch up to the desired catalog version.
+ *
+ * When error_on_timeout is true, retry until all backends catch up or
+ * yb_wait_for_backends_catalog_version_timeout expires (then ERROR).
+ * When false (short wait), retry retryable errors until
+ * wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms expires,
+ * then return without ERROR.  Non-retryable failures after exhausting retries
+ * also free the status and return, a genuine issue surfaces on a subsequent
+ * commit.
+ */
 static void
-YbWaitForBackendsCatalogVersion()
+YbWaitForBackendsCatalogVersion(bool error_on_timeout)
 {
 	if (yb_disable_wait_for_backends_catalog_version)
 		return;
 
-	const bool enable_inval_messages = YbIsInvalidationMessageEnabled();
+	const bool	enable_inval_messages = YbIsInvalidationMessageEnabled();
 	uint64_t	new_catalog_version =
 		enable_inval_messages ? YbGetNewCatalogVersion() : YbGetMasterCatalogVersion();
 
@@ -5265,14 +5411,20 @@ YbWaitForBackendsCatalogVersion()
 	int			num_lagging_backends = -1;
 	int			retries_left = 10;
 	const TimestampTz start = GetCurrentTimestamp();
+	const int	timeout_ms = error_on_timeout
+		? yb_wait_for_backends_catalog_version_timeout
+		: (int) *YBCGetGFlags()->wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms;
 
 	while (num_lagging_backends != 0)
 	{
-		if (yb_wait_for_backends_catalog_version_timeout > 0 &&
+		if (timeout_ms > 0 &&
 			TimestampDifferenceExceeds(start,
 									   GetCurrentTimestamp(),
-									   yb_wait_for_backends_catalog_version_timeout))
+									   timeout_ms))
 		{
+			if (!error_on_timeout)
+				return;
+
 			if (num_lagging_backends > 0)
 				/*
 				 * Note: keep the errhint query in sync with the actual query
@@ -5344,6 +5496,28 @@ YbWaitForBackendsCatalogVersion()
 				continue;
 			}
 		}
+		if (!error_on_timeout)
+		{
+			YBCFreeStatus(s);
+			return;
+		}
 		HandleYBStatus(s);
 	}
+}
+
+static void
+YbWaitForLockersOrBackendsCatalogVersion(LOCKTAG *heaplocktag,
+										 LOCKMODE lockmode)
+{
+	if (yb_disable_wait_for_backends_catalog_version)
+		return;
+
+	/*
+	 * YB: Skip WaitForLockers optimization on xCluster automatic-mode target
+	 * until GH #33155 is addressed.
+	 */
+	if (YBCIsObjectLockingEnabled() && !yb_xcluster_automatic_mode_target_ddl)
+		WaitForLockers(*heaplocktag, lockmode, false);
+	else
+		YbWaitForBackendsCatalogVersion(true);	/* error on timeout */
 }

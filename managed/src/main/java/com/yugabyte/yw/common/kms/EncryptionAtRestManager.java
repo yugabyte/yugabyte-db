@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @Singleton
@@ -383,7 +383,7 @@ public class EncryptionAtRestManager {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     String dbKeyId =
         EncryptionAtRestUtil.getKeyRefConfig(universeUUID, kmsConfigUUID, keyRef).dbKeyId;
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       byte[] keyVal = getUniverseKey(universeUUID, kmsConfigUUID, keyRef, encryptionContext);
       List<HostAndPort> masterAddrs =
           Arrays.stream(universe.getMasterAddresses().split(","))

@@ -248,7 +248,8 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
   Status GetChangesWithRetries(
       cdc::CDCServiceProxy* cdc_proxy, const cdc::GetChangesRequestPB& change_req,
       cdc::GetChangesResponsePB* change_resp) {
-    // Retry on LeaderNotReadyToServe errors.
+    // Retry on LeaderNotReadyToServe errors, and on the NotFound errors that GetChanges returns
+    // when the tablet leader changes while it is serving the request.
     return WaitFor(
         [&]() -> Result<bool> {
           rpc::RpcController rpc;
@@ -258,7 +259,7 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
             status = StatusFromPB(change_resp->error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe()) {
+          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
             return false;
           }
 
@@ -396,7 +397,7 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   // tablet can't be found).
   // Either of these statuses is fine and means that this tablet no longer exists and was deleted.
   LOG(INFO) << "GetChanges status: " << status;
-  ASSERT_TRUE(status.IsNotFound() || status.IsTabletSplit());
+  ASSERT_TRUE(status.IsNotFound() || status.IsDeleted() || status.IsTabletSplit());
 }
 
 class CdcTabletSplitThreeMastersITest : public CdcTabletSplitITest {
@@ -827,8 +828,8 @@ TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
       auto res = client::kv_table_test::WriteRow(
           &producer_table, producer_session, key, key,
           client::WriteOpType::INSERT, client::Flush::kTrue);
-      if (!res.ok() && res.status().IsNotFound()) {
-        LOG(INFO) << "Encountered NotFound error on write : " << res;
+      if (!res.ok() && (res.status().IsNotFound() || res.status().IsDeleted())) {
+        LOG(INFO) << "Encountered NotFound or Deleted error on write : " << res;
       } else {
         ASSERT_OK(res);
         key++;

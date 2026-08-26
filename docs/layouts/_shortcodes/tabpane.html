@@ -63,6 +63,9 @@
 {{ $duplicateKey := "" -}}
 {{ $persistKeyList := slice -}}
 {{ $tabPaneOrdinal := .Ordinal -}}
+{{ with .Get "ordinal" -}}
+  {{ $tabPaneOrdinal = . | int -}}
+{{ end -}}
 
 {{/* Nav tabs */ -}}
 <ul class="nav nav-tabs{{ if $plainPane }} tabpane-plain{{ end }}{{ if $rightPane }} justify-content-end{{ end }}" id="tabs-{{- $tabPaneOrdinal -}}" role="tablist">

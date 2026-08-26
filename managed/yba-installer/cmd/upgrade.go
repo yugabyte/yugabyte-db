@@ -172,6 +172,9 @@ func upgradeCmd() *cobra.Command {
 				if s.Name() == "node-exporter" && !state.Services.NodeExporter {
 					continue
 				}
+				if s.Name() == "yb-perf-advisor" && !state.Services.PerfAdvisor {
+					continue
+				}
 				preUpgradeServices = append(preUpgradeServices, s)
 			}
 			checks.SetServicesRunningCheck(preUpgradeServices)
@@ -316,6 +319,27 @@ func upgradeCmd() *cobra.Command {
 				return service.Upgrade()
 			})
 
+			// If Perf Advisor is enabled now but was not installed in the prior
+			// install, run a full Install (which provisions the TLS keystore,
+			// extracts the package, etc.) instead of Upgrade, which assumes a
+			// previous install. After install we also need to flip state.Services
+			// so future upgrades see PA as installed.
+			paFreshInstall := !state.Services.PerfAdvisor && viper.GetBool("perfAdvisor.enabled")
+			serviceActionFnc("upgrade", func(service components.Service) error {
+				if paFreshInstall && service.Name() == "yb-perf-advisor" {
+					log.Info("Perf Advisor was not installed previously; running first-time install.")
+					if err := service.Install(); err != nil {
+						return err
+					}
+					if err := service.Initialize(); err != nil {
+						return err
+					}
+					state.Services.PerfAdvisor = true
+					return nil
+				}
+				return service.Upgrade()
+			})
+
 			// Permissions update to be safe
 			if err := common.SetAllPermissions(); err != nil {
 				log.Fatal("error updating permissions for data and software directories: " + err.Error())
@@ -347,6 +371,11 @@ func upgradeCmd() *cobra.Command {
 					log.Fatal("Failed to get status: " + err.Error())
 				}
 				statuses = append(statuses, status)
+				// byoc-api-proxy manages itself best effort and may validly not be
+				// running, so it never fails or rolls back an upgrade.
+				if service.Name() == ByocApiProxyServiceName {
+					continue
+				}
 				if !common.IsHappyStatus(status) {
 					if rollback {
 						rollbackUpgrade(backupDir, state)

@@ -39,27 +39,27 @@ INSERT INTO vectors (v) VALUES
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a') ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a & e') ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb | cc') ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb & !ccc') ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*') ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT count(*) FROM vectors WHERE v @@ to_tsquery('simple', 'a');
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 --
 -- array
@@ -77,23 +77,23 @@ INSERT INTO arrays (a) VALUES
 SELECT $$
 :P SELECT * FROM arrays WHERE a && '{1, 100, 3}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM arrays WHERE a @> '{5, 3}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM arrays WHERE a <@ '{5, 4, 3, 2}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM arrays WHERE a = '{3}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT count(*) FROM arrays WHERE a = '{3}';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 --
 -- jsonb
@@ -111,35 +111,35 @@ INSERT INTO jsonbs (j) VALUES
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @> '{"bbb":[4]}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT count(*) FROM jsonbs WHERE j ? 'aaa';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 --
 -- jsonb_path
@@ -154,15 +154,15 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 --
 -- Multicolumn
@@ -189,15 +189,15 @@ INSERT INTO expression VALUES
 SELECT $$
 :P SELECT count(*) FROM expression WHERE tsvector_to_array(v) && ARRAY['b'];
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT count(*) FROM expression WHERE array_to_tsvector(a) @@ 'e';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT count(*) FROM expression WHERE jsonb_to_tsvector('simple', j, '["string"]') @@ 'h';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 --
 -- Partial index
@@ -216,7 +216,7 @@ $$ AS query \gset
 SELECT $$
 :P SELECT count(*) FROM partial WHERE v @@ 'c';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :explain SELECT count(*) FROM partial WHERE a && ARRAY['e'];
 $$ AS query \gset
@@ -224,7 +224,7 @@ $$ AS query \gset
 SELECT $$
 :P SELECT count(*) FROM partial WHERE a && ARRAY['e'] and j @> '{"g":["i"]}';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :explain SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")';
 $$ AS query \gset
@@ -232,7 +232,7 @@ $$ AS query \gset
 SELECT $$
 :P SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f'];
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Don't clean up the tables as they'll be used in later tests.
 

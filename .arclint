@@ -164,6 +164,18 @@
         "(.*)": "error"
       }
     },
+    "pg_catalog_dat": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/src/include/catalog/[^/]+[.]dat$)"
+      ],
+      "exclude": [
+        "(^src/postgres/src/include/catalog/pg_yb_migration[.]dat$)"
+      ],
+      "script-and-regex.script": "src/lint/pg_catalog_dat.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d*):(?P<original>.*)/m"
+    },
     "postgres": {
       "type": "script-and-regex",
       "exclude": [
@@ -171,7 +183,9 @@
       ],
       "include": [
         "([.]c$)",
-        "([.]h$)"
+        "([.]cpp$)",
+        "([.]h$)",
+        "([.]hpp$)"
       ],
       "script-and-regex.script": "src/lint/postgres.sh",
       "script-and-regex.regex":
@@ -193,9 +207,10 @@
         "(^src/postgres/third-party-extensions/pg_partman/test/(.+/)*[^/]*$)"
       ],
       "exclude": [
-        "(^src/postgres/third-party-extensions/mage/sql/)",
         "(^src/postgres/third-party-extensions/documentdb/pg_documentdb/sql/.*$)",
         "(^src/postgres/third-party-extensions/documentdb/pg_documentdb_core/sql/.*$)",
+        "(^src/postgres/third-party-extensions/mage/sql/)",
+        "(^src/postgres/third-party-extensions/pg_duckdb/sql/.*$)",
         "(^src/postgres/third-party-extensions/pg_hint_plan/.*$)",
         "(^src/postgres/third-party-extensions/pgvector/sql/.*$)"
       ],
@@ -239,6 +254,15 @@
       "script-and-regex.script": "src/lint/yql_extern_c.sh",
       "script-and-regex.regex":
         "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "ysql_migration": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/yb/yql/pgwrapper/ysql_migrations/[^/]+[.]sql$)"
+      ],
+      "script-and-regex.script": "src/lint/ysql_migration.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d*):(?P<original>.*)/m"
     },
     "client-version-check": {
       "type": "script-and-regex",

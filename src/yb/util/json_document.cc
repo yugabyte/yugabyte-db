@@ -23,8 +23,10 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

@@ -31,6 +31,7 @@ extern "C" {
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 static constexpr auto kAutoConfigNumClockboundCtxs = 0;
 

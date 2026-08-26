@@ -54,12 +54,17 @@ export function getGuidedResilienceRequirementSummary(
 }
 
 /** Singular noun keys under guidedMode for use with `pluralize(t(key), count)`. */
-export type GuidedModeEntityWordKey = 'wordRegion' | 'wordAvailabilityZone' | 'wordNode';
+export type GuidedModeEntityWordKey =
+  | 'wordRegion'
+  | 'wordAvailabilityZone'
+  | 'wordNode'
+  | 'wordPod';
 
 /** Nodes-step card title; null → use selectedResilienceRequires. */
 export function getNodesStepRequirementCardTitleSpec(
   faultToleranceType: FaultToleranceType,
-  resilienceFactor: number
+  resilienceFactor: number,
+  isK8s = false
 ): { count: number; entityWordKey: GuidedModeEntityWordKey } | null {
   if (faultToleranceType === FaultToleranceType.NONE) {
     return null;
@@ -71,7 +76,7 @@ export function getNodesStepRequirementCardTitleSpec(
     return { count: resilienceFactor, entityWordKey: 'wordAvailabilityZone' };
   }
   if (faultToleranceType === FaultToleranceType.NODE_LEVEL) {
-    return { count: resilienceFactor, entityWordKey: 'wordNode' };
+    return { count: resilienceFactor, entityWordKey: isK8s ? 'wordPod' : 'wordNode' };
   }
   return null;
 }

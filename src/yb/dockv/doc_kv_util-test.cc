@@ -27,6 +27,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 

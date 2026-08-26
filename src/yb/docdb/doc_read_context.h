@@ -100,8 +100,20 @@ struct DocReadContext {
     return Slice(shared_key_prefix_buffer_.data(), table_key_prefix_len_);
   }
 
-  Result<bool> HaveEqualBloomFilterKey(Slice lhs, Slice rhs) const;
+  // Returns the user key whose bloom filter key is shared by every key a scan bounded by
+  // [lower, upper] can return, so data sources may be filtered out using it
+  // (BloomFilterMode::kFixed). Returns nullopt when there is no such key, in particular when a
+  // bound carries no components a bloom filter key could be derived from (e.g. the encoded empty
+  // DocKey used as the lower bound of an unbounded scan) - the bounds then constrain nothing, so
+  // the keys the scan returns have many different bloom filter keys. Note that such a bound still
+  // has a bloom filter key of its own, it is just not shared by what the scan returns.
+  //
+  // The result is a user key and not a bloom filter key: the bloom filter key is derived from it by
+  // the filter policy of each data source, which differs between filter policy versions.
+  Result<std::optional<Slice>> UserKeyForFixedBloomFilter(Slice lower, Slice upper) const;
   size_t NumColumnsUsedByBloomFilterKey() const;
+
+  dockv::VectorValueFormat vector_value_format() const;
 
   void TEST_SetDefaultTimeToLive(uint64_t ttl_msec) {
     schema_.SetDefaultTimeToLive(ttl_msec);

@@ -43,6 +43,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace tablet {
@@ -130,19 +131,24 @@ class MvccManager {
   // leader lease expiration, which limits the range of hybrid times that the current leader has
   // authority over, and thus imposes an upper bound on the safe time.
   //
-  // Returns invalid hybrid time in case it cannot satisfy provided requirements, for instance
-  // because of timeout.
-  HybridTime SafeTime(
+  // Returns a TimedOut error if it cannot satisfy the provided requirements before the deadline,
+  // and a ShutdownInProgress error once the tablet starts shutting down (see StartShutdown).
+  Result<HybridTime> SafeTime(
       HybridTime min_allowed, CoarseTimePoint deadline, const FixedHybridTimeLease& ht_lease) const
       EXCLUDES(mutex_);
 
-  HybridTime SafeTime(const FixedHybridTimeLease& ht_lease) const EXCLUDES(mutex_) {
+  Result<HybridTime> SafeTime(const FixedHybridTimeLease& ht_lease) const EXCLUDES(mutex_) {
     return SafeTime(HybridTime::kMin /* min_allowed */, CoarseTimePoint::max() /* deadline */,
                     ht_lease);
   }
 
-  HybridTime SafeTimeForFollower(HybridTime min_allowed, CoarseTimePoint deadline) const
+  Result<HybridTime> SafeTimeForFollower(HybridTime min_allowed, CoarseTimePoint deadline) const
       EXCLUDES(mutex_);
+
+  // Aborts any in-flight safe time waits and makes subsequent ones fail fast with a
+  // ShutdownInProgress error. Called when the tablet is shutting down so that waiters blocked until
+  // safe time advances -- which no longer happens once shutdown starts -- do not hang forever.
+  void StartShutdown() EXCLUDES(mutex_);
 
   // Returns time of last replicated operation.
   HybridTime LastReplicatedHybridTime() const EXCLUDES(mutex_);
@@ -152,7 +158,7 @@ class MvccManager {
   void TEST_DumpTrace(std::ostream* out);
 
  private:
-  HybridTime DoGetSafeTime(HybridTime min_allowed,
+  Result<HybridTime> DoGetSafeTime(HybridTime min_allowed,
                            CoarseTimePoint deadline,
                            const FixedHybridTimeLease& ht_lease,
                            std::unique_lock<std::mutex>* lock) const REQUIRES(mutex_);
@@ -207,6 +213,10 @@ class MvccManager {
   HybridTime propagated_safe_time_ = HybridTime::kMin;
   // Special flag for RF==1 mode when propagated_safe_time_ can be not up-to-date.
   bool leader_only_mode_ = false;
+
+  // Set once the tablet starts shutting down. Safe time waits check it and bail out with invalid
+  // hybrid time instead of blocking forever, since safe time no longer advances after shutdown.
+  bool closing_ = false;
 
   mutable SafeTimeWithSource max_safe_time_returned_with_lease_;
   mutable SafeTimeWithSource max_safe_time_returned_without_lease_;

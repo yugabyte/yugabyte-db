@@ -88,6 +88,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "commands/portalcmds.h"
 #include "commands/variable.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/spi.h"
 #include "libpq/auth.h"
 #include "libpq/yb_pqcomm_extensions.h"
@@ -103,6 +104,7 @@
 #include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb_dist_trace.h"
 #include "yb_tcmalloc_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <arpa/inet.h>
@@ -455,8 +457,7 @@ SocketBackend(StringInfo inBuf)
 			ignore_till_sync = false;
 			break;
 
-		case 'n':				/* YB: no-op but return ParseComplete */
-		case 'p':				/* YB: parse without ParseComplete */
+		case 'p':				/* YB: YbParse */
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -764,6 +765,7 @@ yb_skip_read_committed_internal_savepoint(CommandTag command_tag)
 
 	bool		skip = (command_tag == CMDTAG_SET ||
 						command_tag == CMDTAG_BEGIN ||
+						command_tag == CMDTAG_START_TRANSACTION ||
 						command_tag == CMDTAG_RELEASE ||
 						command_tag == CMDTAG_SAVEPOINT);
 
@@ -1709,10 +1711,21 @@ exec_simple_query(const char *query_string)
 	if (save_log_statement_stats)
 		ShowUsage("QUERY STATISTICS");
 
+	YbDistTraceEndOpenNodeSpans();
 	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_DONE(query_string);
 
 	debug_query_string = NULL;
+}
+
+static void
+yb_send_yb_parse_complete(const char *yb_echo, int yb_echo_len)
+{
+	StringInfoData buf;
+
+	pq_beginmessage(&buf, '6');
+	pq_sendbytes(&buf, yb_echo, yb_echo_len);
+	pq_endmessage(&buf);
 }
 
 /*
@@ -1726,7 +1739,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 				   Oid *paramTypes, /* parameter types */
 				   int numParams,	/* number of parameters */
 				   CommandDest yb_output_dest, /* where to send output */
-				   char yb_firstchar) /* 'p' or 'n' or 'P' */
+				   const char *yb_echo,
+				   int yb_echo_len)
 {
 	MemoryContext unnamed_stmt_context = NULL;
 	MemoryContext oldcontext;
@@ -1949,21 +1963,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	if (yb_output_dest == DestRemote)
 	{
 		if (YbIsClientYsqlConnMgr())
-		{
-			if (yb_firstchar == 'n')
-				pq_puttextmessage('6', stmt_name);
-			else if (yb_firstchar == 'p')
-				pq_putemptymessage('7');
-			else if (yb_firstchar == 'P')
-				pq_putemptymessage('1');
-			else
-			{
-				ereport(ERROR,
-					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					 errmsg("unexpected message type %c for Parse sent by Connection Manager",
-							yb_firstchar)));
-			}
-		}
+			yb_send_yb_parse_complete(yb_echo, yb_echo_len);
 		else
 			pq_putemptymessage('1');
 	}
@@ -2763,6 +2763,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	if (save_log_statement_stats)
 		ShowUsage("EXECUTE MESSAGE STATISTICS");
 
+	YbDistTraceEndOpenNodeSpans();
 	YB_DIST_TRACE_END_SPAN(); /* ext.execute */
 
 	debug_query_string = NULL;
@@ -5835,6 +5836,19 @@ yb_clear_portal_before_restart(Portal portal)
 	}
 
 	/*
+	 * Release child memory contexts (e.g. executor state) from the
+	 * previous execution attempt.  The portal's own portalContext is
+	 * preserved so that bound parameters survive the restart, but the
+	 * children hold executor state that will be recreated by PortalStart
+	 * during re-execution.  Without this, each transparent transaction
+	 * restart leaks the old EState and its YB-side objects (PgDml,
+	 * PgDocOp, DocResultStream, RefCntBuffers), causing multi-GB memory
+	 * bloat on large-table UPDATEs that hit repeated read-restart
+	 * conflicts.
+	 */
+	MemoryContextDeleteChildren(portal->portalContext);
+
+	/*
 	 * Fully detach portal from transaction to keep it alive in case of
 	 * transaction restart
 	 */
@@ -7099,9 +7113,7 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'n':			/* YB: Force Parse, return YBForceParseComplete */
-				yb_switch_fallthrough();
-			case 'p':			/* YB: parse without ParseComplete */
+			case 'p':			/* YB: YbParse */
 				if (!YbIsClientYsqlConnMgr())
 					ereport(FATAL,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -7115,27 +7127,45 @@ PostgresMain(const char *dbname, const char *username)
 					int			numParams;
 					Oid		   *paramTypes = NULL;
 
+					/* YB: Extra info passed in YbParse packet */
+					int			yb_parse_type = -1;
+					const char *yb_echo = NULL;
+					int			yb_echo_len = 0;
+
 					forbidden_in_wal_sender(firstchar);
 
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
 
-					/* YB: The stmt_name is read here for all of 'n'/'p'/'P'. */
+					/* YB: Get info from YbParse packet */
+					if (firstchar == 'p')
+					{
+						yb_parse_type = pq_getmsgbyte(&input_message);
+						yb_echo = input_message.data;
+						yb_echo_len = input_message.len;
+					}
+					else if (YbIsClientYsqlConnMgr())
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+								 errmsg("invalid frontend message type %d",
+										firstchar)));
+
+					/* YB: The stmt_name is read here for both 'p' and 'P'. */
 					stmt_name = pq_getmsgstring(&input_message);
 
-					if (firstchar == 'n')
+					if (yb_parse_type == YB_PARSE_FORCE)
 					{
 						/*
 						 * YB: If the prepared statement already exists on the backend,
-						 * parsing is a no-op: return YBForceParseComplete and skip re-parsing.
+						 * parsing is a no-op: return YbParseComplete and skip re-parsing.
 						 * Otherwise fall through to (re-)create it and return
-						 * YBForceParseComplete.
+						 * YbParseComplete.
 						 */
 						if (FetchPreparedStatement(stmt_name, false) != NULL)
 						{
 							if (whereToSendOutput == DestRemote)
 							{
-								pq_puttextmessage('6', stmt_name);
+								yb_send_yb_parse_complete(yb_echo, yb_echo_len);
 								pq_flush();
 							}
 							break;
@@ -7152,6 +7182,12 @@ PostgresMain(const char *dbname, const char *username)
 						for (int i = 0; i < numParams; i++)
 							paramTypes[i] = pq_getmsgint(&input_message, 4);
 					}
+					/*
+					 * YB: Discard orig_name sent by ConnMgr in YbParse packet.
+					 * This is echo'd back to ConnMgr through yb_echo
+					 */
+					if (firstchar == 'p')
+						(void) pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
 					MemoryContext yb_oldcontext = CurrentMemoryContext;
@@ -7161,8 +7197,7 @@ PostgresMain(const char *dbname, const char *username)
 						exec_parse_message(query_string, stmt_name,
 										   paramTypes, numParams,
 										   whereToSendOutput,
-										   firstchar); /* YB: from
-																 * yb_switch_fallthrough() */
+										   yb_echo, yb_echo_len);
 					}
 					PG_CATCH();
 					{
@@ -7316,7 +7351,8 @@ PostgresMain(const char *dbname, const char *username)
 												   NULL /* param_types */ ,
 												   0 /* num_params */ ,
 												   DestNone,
-												   'P');
+												   NULL /* yb_echo */ ,
+												   0 /* yb_echo_len */ );
 
 								/* 2. Redo the Bind step */
 								Portal		portal;
@@ -7477,19 +7513,10 @@ PostgresMain(const char *dbname, const char *username)
 											 errmsg("ForceClose of unnamed prep statement is not supported")));
 
 								/*
-								 * Since this is force close, we disable
-								 * selective deallocation
-								 */
-								bool		yb_conn_mgr_selective_deallocate_saved;
-
-								yb_conn_mgr_selective_deallocate_saved = yb_conn_mgr_selective_deallocate;
-								yb_conn_mgr_selective_deallocate = false;
-								/*
 								 * YB: Force Close does not access catalog cache and hence starting
 								 * a transaction is not required here.
 								 */
-								DropPreparedStatement(close_target, false, false);
-								yb_conn_mgr_selective_deallocate = yb_conn_mgr_selective_deallocate_saved;
+								YbForceDropPreparedStatement(FetchPreparedStatement(close_target, false));
 
 								yb_skip_close_complete = true;
 								break;
@@ -7707,6 +7734,7 @@ PostgresMain(const char *dbname, const char *username)
 					char	   *host = MyProcPort->remote_host;
 					const char *authn_id = MyProcPort->authn_id;
 					sa_family_t conn_type = MyProcPort->raddr.addr.ss_family;
+					int			conn_salen = MyProcPort->raddr.salen;
 					List	   *guc_options = MyProcPort->guc_options;
 					char	   *cmdline_options = MyProcPort->cmdline_options;
 
@@ -7726,9 +7754,12 @@ PostgresMain(const char *dbname, const char *username)
 					/*
 					 * HARD Code connection type between client and
 					 * ysql_conn_mgr to AF_INET (only supported) for
-					 * authentication
+					 * authentication. Also set salen: as physical
+					 * connection is a AF_UNIX, also salen is set for
+					 * ipv4 address.
 					 */
 					MyProcPort->raddr.addr.ss_family = AF_INET;
+					MyProcPort->raddr.salen = sizeof(struct sockaddr_in);
 
 					/* Update the `remote_host` */
 					struct sockaddr_in *ip_address_1;
@@ -7804,6 +7835,7 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;
 					MyProcPort->raddr.addr.ss_family = conn_type;
+					MyProcPort->raddr.salen = conn_salen;
 					MyProcPort->guc_options = guc_options;
 					MyProcPort->cmdline_options = cmdline_options;
 					inet_pton(AF_INET, MyProcPort->remote_host,

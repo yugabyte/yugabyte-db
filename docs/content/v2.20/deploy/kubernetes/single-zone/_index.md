@@ -24,13 +24,13 @@ type: indexpage
     title="Amazon Elastic Kubernetes Service (Amazon EKS)"
     body="Single-zone deployment on Amazon EKS."
     href="eks/helm-chart/"
-    icon="/images/section_icons/deploy/amazon-eks.png">}}
+    icon="fa-brands fa-aws">}}
 
   {{<index/item
     title="Google Kubernetes Engine (GKE)"
     body="Single-zone deployment on GKE."
     href="gke/helm-chart/"
-    icon="/images/section_icons/deploy/gke.png">}}
+    icon="fa-brands fa-google">}}
 
   {{<index/item
     title="Azure Kubernetes Service (AKS)"

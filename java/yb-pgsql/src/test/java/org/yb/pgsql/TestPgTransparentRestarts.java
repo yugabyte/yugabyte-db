@@ -132,6 +132,12 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
     // Exaggerate the clock skew to make read restarts more likely.
     flags.put("max_clock_skew_usec", "2000000");
+    // Scan tablets sequentially (see the NUM_TABLETS comment). With parallel reads a tablet that
+    // requires a query restart tends to respond first, before any rows are emitted, so the restart
+    // is resolved transparently and never surfaces as an error. Tests that expect restart errors
+    // then flakily observe zero of them. Reading one tablet at a time makes surfacing depend only
+    // on the first scanned tablet not being a recently-written one, which is far more reliable.
+    flags.put("ysql_select_parallelism", "1");
     return flags;
   }
 
@@ -1164,7 +1170,12 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         ConnectionBuilder cb,
         String valueToInsert,
         boolean expectRestartErrors) {
-      super(cb, valueToInsert, 50 /* numInserts */);
+      // A surfaced read restart requires an INSERT to commit while a SELECT is in flight, so the
+      // expected number of restarts per isolation level scales with the number of INSERTs, not with
+      // the speed of a single SELECT. Tests that require restarts to happen need a bigger INSERT
+      // budget to keep that expectation comfortably above zero; tests that require no restarts keep
+      // the smaller budget to avoid increasing test time.
+      super(cb, valueToInsert, expectRestartErrors ? 150 : 50 /* numInserts */);
       this.expectRestartErrors = expectRestartErrors;
     }
 
@@ -1211,8 +1222,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
 
       List<ThrowingRunnable> runnables = new ArrayList<>();
       //
-      // Singular SELECT statement (equal probability of being either serializable/repeatable read/
-      // /read committed isolation level)
+      // Singular SELECT statement (isolation level rotates over serializable/repeatable read/
+      // read committed, so each level gets the same number of attempts)
       //
       runnables.add(() -> {
         Map<IsolationLevel, Integer> selectsAttempted =
@@ -1256,9 +1267,12 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               setReadAfterCommitVisibility + getReadAfterCommitVisibility());
           }
 
-          for (/* No setup */; !isExecutionDone.getAsBoolean(); /* NOOP */) {
+          for (int attempt = 0; !isExecutionDone.getAsBoolean(); ++attempt) {
+            // Rotate over isolation levels rather than picking one at random: a random split gives
+            // one level noticeably fewer attempts than the others often enough that it ends up with
+            // no restart opportunity at all.
             IsolationLevel isolation =
-                RandomUtil.getRandomElement(isolationLevels);
+                isolationLevels.get(attempt % isolationLevels.size());
             Stmt stmt =
                 chooseForIsolation(isolation, serializableStmt, rrStmt, rcStmt);
 

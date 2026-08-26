@@ -350,7 +350,16 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
+      // This also flips universeDetails.creationSucceeded to true (see UniverseUpdateSucceeded)
+      // which is what gates health checks and alert definition creation for this universe.
       createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Alert definitions are created only after the universe is fully up and marked as
+      // successfully created. Running this earlier would either produce definitions for
+      // universes whose creation later fails, or need the creationSucceeded flag flipped too
+      // early. Any exception here still fails the task, but the universe itself is already up
+      // and the operator can retry to reconcile the missing definitions.
+      createUnivCreateAlertDefinitionsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       // Run all the tasks.
       getRunnableTask().runSubTasks();

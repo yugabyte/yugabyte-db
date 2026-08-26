@@ -708,7 +708,11 @@ TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLAutomaticTabletSplitRangeTable),
           YBBackupTestNumTablets) {
   constexpr int expected_num_tablets = 4;
-  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes", "2500"));
+  // Lowered from the 128 MB default so these tiny tablets can split at all. Large enough that
+  // GetMiddleKey finds a clean split point, small enough that the starting tablets exceed it.
+  constexpr int kSplitThresholdBytes = 30000;
+  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes",
+                                       IntToString(kSplitThresholdBytes)));
   // Enable automatic tablet splitting (overriden by YBBackupTestNumTablets).
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_automatic_tablet_splitting", "true"));
   ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_limit_per_table",
@@ -724,32 +728,46 @@ TEST_F_EX(YBBackupTest,
 
   // Create table.
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k TEXT, PRIMARY KEY(k ASC))"
-                                      " SPLIT AT VALUES (('4a'))", table_name)));
+                                      " SPLIT AT VALUES (('5.'))", table_name)));
 
   auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 2);
 
   // 'S' represents the KeyEntryType for String.
-  // "4a" is the split point value.
+  // "5." is the split point value.
   // two '\0' terminate a string value.
   // '!' indicates the end of the range group of a key.
-  ASSERT_TRUE(CheckPartitions(tablets, {"S4a\0\0!"s}));
+  ASSERT_TRUE(CheckPartitions(tablets, {"S5.\0\0!"s}));
 
-  // Insert data.
+  // Data is inserted on both sides of "5." so each starting tablet is split on its own. 1000..4999
+  // sort before "5.", and 5000..8999 after it (since '0' > '.').
   ASSERT_NO_FATALS(InsertRows(
-      Format("INSERT INTO $0 SELECT i||'a' FROM generate_series(101, 150) i", table_name), 50));
+      Format("INSERT INTO $0 SELECT i::text FROM generate_series(1000, 8999) i", table_name),
+      8000));
 
-  // Flush table so SST file size is accurate.
+  // The table is flushed first, otherwise the tablet's real on-disk size isn't visible to the
+  // split logic.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
   ASSERT_OK(client_->FlushTables({table_id}));
 
-  // Wait for automatic split to complete.
+  // Wait until splitting settles and at least expected_num_tablets exist before taking the backup.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
+        if (!VERIFY_RESULT(test_admin_client_->IsTabletSplittingComplete(
+                /* wait_for_parent_deletion = */ true))) {
+          return false;
+        }
         auto res = VERIFY_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
-        return res.size() == expected_num_tablets;
-      }, 30s * kTimeMultiplier, Format("Waiting for tablet count: $0", expected_num_tablets)));
+        return res.size() >= expected_num_tablets;
+      }, 90s * kTimeMultiplier, Format("Waiting for tablet count: $0", expected_num_tablets)));
+
+  // Capture the actual tablet count reached so the post-restore check compares against it rather
+  // than a fixed number, verifying the partitioning is preserved regardless of the exact count.
+  auto tablets_before_backup =
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
+  const auto num_tablets_before_backup = tablets_before_backup.size();
+  ASSERT_GE(num_tablets_before_backup, expected_num_tablets);
 
   // Backup.
   const string backup_dir = GetTempDir("backup");
@@ -763,7 +781,7 @@ TEST_F_EX(YBBackupTest,
 
   // Validate number of tablets after restore.
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
-  ASSERT_EQ(tablets.size(), expected_num_tablets);
+  ASSERT_EQ(tablets.size(), num_tablets_before_backup);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -1532,29 +1550,25 @@ ALTER TABLE employees_hash ADD CONSTRAINT employees_hash_unique_id UNIQUE (id, a
       "SELECT yb_index_check('t1_b_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t2_c_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t3_b_c_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   RunPsqlCommand(
       "SELECT yb_index_check('t4_b_key'::regclass);",
       "yb_index_check\n"
       "----------------\n"
-      "\n"
-      "(1 row)");
+      "(0 rows)");
 
   // Validate indexes by performing index-only scans
   RunPsqlCommand(
@@ -3020,6 +3034,9 @@ class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDd
     // Test enables TEST_pause_ddl_rollback which may block table locks for ddl from
     // being released. Hence blocking the following statements from failing to acquire locks.
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     pgwrapper::PgDdlAtomicityTestBase::UpdateMiniClusterOptions(options);
   }
 
@@ -4152,6 +4169,75 @@ INSTANTIATE_TEST_SUITE_P(
     [](const testing::TestParamInfo<VectorIndexColocationScenario>& info) {
       return VectorIndexColocationScenarioName(info.param);
     });
+
+TEST_F_EX(
+    YBBackupTest,
+    YB_DISABLE_TEST_IN_SANITIZERS(YBCBackupRestoreColocatedTablespaceVectorIndex),
+    YBBackupTestColocatedTablesWithTablespaces) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC.";
+  }
+
+  const std::string_view kBackupDbName{"backup_db"};
+  const std::string_view kRestoreDbName{"restore_db"};
+
+  const std::string placement_info_1 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack1",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
+
+  {
+    auto admin_conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(admin_conn.ExecuteFormat(
+        "CREATE TABLESPACE tsp1 WITH (replica_placement=$0)", placement_info_1));
+    ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION=TRUE", kBackupDbName));
+  }
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kBackupDbName));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT, embedding vector(3)) TABLESPACE tsp1"));
+  ASSERT_OK(conn.Execute(
+      "CREATE INDEX t1_vec_idx ON t1 USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT g, 'row' || g, "
+      "ARRAY[random(), random(), random()]::vector FROM generate_series(1, 50) g"));
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM pg_yb_tablegroup WHERE grpname LIKE 'colocation_%'")),
+      1);
+
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace",
+       Format("ysql.$0", kBackupDbName), "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace",
+       Format("ysql.$0", kRestoreDbName), "restore"}));
+
+  auto restore_conn = ASSERT_RESULT(cluster_->ConnectToDB(kRestoreDbName));
+  ASSERT_EQ(ASSERT_RESULT(restore_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t1")), 50);
+  ASSERT_EQ(
+      ASSERT_RESULT(restore_conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM pg_yb_tablegroup WHERE grpname LIKE 'colocation_%'")),
+      1);
+
+  auto nearest_id = ASSERT_RESULT(restore_conn.FetchRow<int32_t>(
+      "SELECT id FROM t1 ORDER BY embedding <-> '[0.1,0.2,0.3]' LIMIT 1"));
+  ASSERT_GE(nearest_id, 1);
+  ASSERT_LE(nearest_id, 50);
+}
 
 TEST_F(
     YBBackupTest,

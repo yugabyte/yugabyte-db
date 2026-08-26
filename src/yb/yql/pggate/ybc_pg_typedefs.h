@@ -69,6 +69,9 @@ YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
 // Handle to a distributed trace span context.
 YB_DEFINE_HANDLE_TYPE(OtelSpanContext);
 
+// Handle to a live distributed-trace span for a single executor plan node.
+YB_DEFINE_HANDLE_TYPE(OtelNodeSpan);
+
 // Represents STATUS_* definitions from src/postgres/src/include/c.h.
 #define YBC_STATUS_OK     (0)
 #define YBC_STATUS_ERROR  (-1)
@@ -210,7 +213,9 @@ typedef enum {
 typedef enum {
   kLowerPriorityRange,
   kHigherPriorityRange,
-  kHighestPriority
+  kHighestPriority,
+  // Pre-empted by any conflicting transaction, whichever priority range it belongs to.
+  kLowestPriority
 } YbcTxnPriorityRequirement;
 
 // Single key column value for YBCGetTabletForKey (used by yb_get_tablet_for_key).
@@ -303,6 +308,10 @@ typedef struct YbcPgExecOutParamValue {
 #endif
 } YbcPgExecOutParamValue;
 
+// Value of a rowmark field when no row mark is set.  A sentinel outside
+// RowMarkType is needed because 0 is a valid value (ROW_MARK_EXCLUSIVE).
+#define YBC_NO_ROW_MARK (-1)
+
 // Structure to hold the execution-control parameters.
 typedef struct YbcPgExecParameters {
   // TODO(neil) Move forward_scan flag here.
@@ -328,7 +337,7 @@ typedef struct YbcPgExecParameters {
   uint64_t limit_count = 0;
   uint64_t limit_offset = 0;
   bool limit_use_default = true;
-  int rowmark = -1;
+  int rowmark = YBC_NO_ROW_MARK;
   // Cast these *_wait_policy fields to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
   // Please see the WaitPolicy enum in common.proto for details.
@@ -1091,17 +1100,6 @@ typedef struct {
   void *sortstate;
 } YbcSortKey;
 
-typedef struct {
-  // We cannot use the PGresult symbol inside pggate because of circular dependency.
-  // So the response PB is stored in this uint8_t* and later converted to PGresult.
-  uint8_t* pgresult;
-  size_t pgresult_size;
-  // Human-readable error description when the remote query failed.
-  // NULL when the query succeeded. Owned by PgGlobalViewRead and valid
-  // until the next ExecScan call on the same handle.
-  const char* error_message;
-} YbcRemotePgExecResult;
-
 typedef struct YbcCloudInfo {
   const char *cloud;
   const char *region;
@@ -1121,6 +1119,12 @@ typedef struct YbcIsExplicitlyLockedRowSkippedCheckHandleOptional {
   bool has_value;
   YbcIsExplicitlyLockedRowSkippedCheckHandle value;
 } YbcIsExplicitlyLockedRowSkippedCheckHandleOptional;
+
+typedef struct {
+  int num_rows;
+  int num_cols;
+  bool reached_size_limit;
+} YbcPgGvScanResult;
 
 #ifdef __cplusplus
 }  // extern "C"

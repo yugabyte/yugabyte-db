@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -79,10 +80,11 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yaml.snakeyaml.Yaml;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.IsServerReadyResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -92,7 +94,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   private EditKubernetesUniverse editUniverse;
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   private static final String NODE_PREFIX = "demo-universe";
   private static final String YB_SOFTWARE_VERSION = "1.0.0";
@@ -118,7 +120,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
     } catch (Exception e) {
     }
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     try {
@@ -225,6 +227,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.WaitForServer,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.HandleKubernetesNamespacedServices,
           TaskType.KubernetesCommandExecutor,
@@ -245,6 +248,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -257,6 +261,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
           TaskType.HandleKubernetesNamespacedServices,
@@ -280,6 +285,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
         Json.toJson(ImmutableMap.of()),
@@ -296,6 +302,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.HandleKubernetesNamespacedServices,
           TaskType.CheckUnderReplicatedTablets,
@@ -329,6 +336,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedChangeInstaceTypeResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -415,6 +423,17 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     }
   }
 
+  // Reads the "partition" map from the helm override file that was passed to helmUpgrade(...).
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> readPartitionOverrides(String overrideFilePath) {
+    try (InputStream is = new FileInputStream(new File(overrideFilePath))) {
+      Map<String, Object> overrides = new Yaml().loadAs(is, Map.class);
+      return (Map<String, Object>) overrides.get("partition");
+    } catch (IOException e) {
+      throw new RuntimeException("Could not read helm override file: " + overrideFilePath, e);
+    }
+  }
+
   @Test
   public void testAddNode() {
     setupUniverseSingleAZ(/* Create Masters */ true);
@@ -486,7 +505,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -496,6 +516,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(NODE_PREFIX, expectedNodePrefix.getValue());
     assertEquals(NODE_PREFIX, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+
+    // Tserver scale-up (master count unchanged) is a non-rolling operation: it must not set
+    // partition to 0, otherwise a prior non-restart template change would roll all existing
+    // master/tserver pods at once. Partition must protect the existing pods.
+    Map<String, Object> partition = readPartitionOverrides(expectedOverrideFile.getValue());
+    assertEquals(1, partition.get("master"));
+    assertEquals(3, partition.get("tserver"));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -563,7 +590,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(2))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -573,6 +601,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(NODE_PREFIX, expectedNodePrefix.getValue());
     assertEquals(NODE_PREFIX, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+
+    // Tserver scale-down (keepDeployment) is a non-rolling operation: it must not set partition
+    // to 0, otherwise a prior non-restart template change would roll all surviving master/tserver
+    // pods at once. Partition must equal the post-scale-down pod counts.
+    Map<String, Object> partition = readPartitionOverrides(expectedOverrideFile.getValue());
+    assertEquals(1, partition.get("master"));
+    assertEquals(2, partition.get("tserver"));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -646,7 +681,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());

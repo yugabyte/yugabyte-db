@@ -46,6 +46,10 @@ public class YBALifeCycle {
 
   /** This is invoked before any migrations start and first thing after YBA module is loaded. */
   void onStart() {
+    // Publish the running YBA version into the static holder as early as possible. This must happen
+    // for every application (including tests) regardless of whether AppInit runs, because code
+    // paths that construct models (e.g. NodeAgent's default version) read Util.getYbaVersion().
+    Util.setYbaVersion(ConfigHelper.getCurrentVersion(environment));
     if (config.getBoolean(ENV_PROXY_SELECTOR_PARAM)) {
       log.info("Env proxy selector enabled");
       ProxySelector.setDefault(new EnvProxySelector());

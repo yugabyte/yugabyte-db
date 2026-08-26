@@ -340,8 +340,10 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
       if (FLAGS_max_stale_read_bound_time_ms > 0) {
         // TODO(hector): This safe time could be reused by the read operation.
         auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
-        auto safe_time = tablet->mvcc_manager()->SafeTimeForFollower(
+        auto safe_time_result = tablet->mvcc_manager()->SafeTimeForFollower(
             HybridTime::kMin, CoarseTimePoint::min());
+        auto safe_time =
+            safe_time_result.ok() ? *safe_time_result : HybridTime::kInvalid;
         auto now = tablet_peer->clock_ptr()->Now();
         auto follower_staleness = now.PhysicalDiff(safe_time);
         if (follower_staleness > MonoDelta::FromMilliseconds(FLAGS_max_stale_read_bound_time_ms)) {

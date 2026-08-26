@@ -446,6 +446,19 @@ Default: `true`
 
 Enable or disable the query planner's use of batched nested loop join.
 
+##### yb_enable_advanced_index_cond_fold
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Enables advanced folding of multiple conditions on the same index column when binding index scan conditions to DocDB. When enabled, YugabyteDB can fold more conditions on the same column at bind time. That reduces rows fetched from storage and PostgreSQL-side index rechecks.
+
+For example, when an IN array and an inequality both apply to the same column, the inequality can cull the array before the scan instead of fetching the full array and discarding rows after DocDB returns them.
+
+Available in v2026.1.0.0 and later. In v2026.1.1.0 and later, folding also applies to merge scan pinned IN-list conditions.
+
 ##### yb_enable_cbo
 
 {{% tags/wrap %}}
@@ -1244,7 +1257,7 @@ Number of seconds to retain log files. Log files older than this value will be d
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `102400`
+Default: `100`
 {{% /tags/wrap %}}
 
 Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
@@ -1377,21 +1390,45 @@ Determines the window in milliseconds in which if a client has consumed the chan
 Default: `false`
 {{% /tags/wrap %}}
 
-When true, the CDC service returns a null before-image if it is not able to find one.
+When true, the CDC service returns a null before-image if it is not able to find one. This applies, for example, when a row is updated or deleted in the same transaction in which it was inserted: no committed pre-transaction state exists, so the before-image is returned as null instead of causing an error.
+
+```sql
+BEGIN;
+  INSERT INTO t (id, v) VALUES (1, 10);
+  UPDATE t SET v = 20 WHERE id = 1;   -- before-image of v: null
+  UPDATE t SET v = 30 WHERE id = 1;   -- before-image of v: null
+  DELETE FROM t WHERE id = 1;         -- before-image of v: null
+COMMIT;
+```
+
+To instead populate the before-image with the actual intra-transactional value, use [--cdc_enable_intra_transactional_before_image](#cdc-enable-intra-transactional-before-image).
 
 ##### --cdc_enable_intra_transactional_before_image
 
 {{% tags/wrap %}}
-
-Default: `false`
 {{<tags/feature/ea idea="2470">}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
 {{% /tags/wrap %}}
 
-Available in v2024.2.9.1 and later, v2025.2.4.0 and later.
+Available in v2024.2.9.1 and later, and v2025.2.4.0 and later.
 
-When true, CDC populates before-image values for DML operations that occur within the same transaction. For example, if a row is inserted and then updated or deleted in one transaction, each UPDATE or DELETE change record includes the row values immediately before that operation within the transaction (not only the pre-transaction state).
+Controls how the before-image of a change record is computed when the same row is modified more than once in a single transaction.
 
-This flag requires a YB-TServer restart. Enable it on all YB-TServers in the universe when you need accurate before images for intra-transactional changes with logical replication or gRPC CDC.
+By default, the before-image reflects only the row's last *committed* state, that is, its value before the transaction began. Any changes made earlier in the same transaction are ignored. When this flag is true, CDC instead uses the row's effective value at the point just before each operation, including uncommitted changes made earlier in the same transaction. As a result, the before-image of the second and subsequent operations on a row reflects the change that immediately preceded it.
+
+For example:
+
+```sql
+BEGIN;
+  INSERT INTO t (id, v) VALUES (1, 10);
+  UPDATE t SET v = 20 WHERE id = 1;   -- before-image of v: 10
+  UPDATE t SET v = 30 WHERE id = 1;   -- before-image of v: 20
+  DELETE FROM t WHERE id = 1;         -- before-image of v: 30
+COMMIT;
+```
+
+The before-image is only emitted when before-image capture is enabled for the stream: use a replica identity of `FULL` or `DEFAULT` for logical replication, or a before-image record type for gRPC CDC. Set the flag consistently on every YB-TServer in the universe.
 
 
 ##### --cdcsdk_tablet_not_of_interest_timeout_secs
@@ -1748,7 +1785,7 @@ The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memo
 
 Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
 
-Each tablet replica generally requires 700 MiB of this memory.
+Each tablet replica generally requires 0.7 MiB of this tablet overhead memory.
 
 ### Raft and consistency/timing flags
 
@@ -2289,6 +2326,51 @@ Default: `false`
 
 Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
 
+### Explicit row locking flags
+
+To learn about explicit row locking, see [Row-level locks](../../../explore/transactions/explicit-locking/#row-level-locks) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
+
+##### --ysql_yb_explicit_row_locking_batch_size
+
+{{% tags/wrap %}}
+
+Default: `1024`
+{{% /tags/wrap %}}
+
+Controls the batch size of explicit row locking operations. When YugabyteDB processes SELECT FOR UPDATE/SHARE statements, it batches lock requests to optimize performance. Larger batches improve throughput by reducing server round-trips but consume more memory. Smaller batches reduce memory usage and latency for small result sets.
+
+This flag can be set dynamically:
+
+```sql
+SET yb_explicit_row_locking_batch_size = 512;
+```
+
+Works together with `yb_explicit_row_lock_skip_locked_max_read_ahead` for SKIP LOCKED query optimization. For tuning guidance, refer to [Row-level explicit locking clauses](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses).
+
+<!-- No ysql flag for this parameter
+##### yb_explicit_row_lock_skip_locked_max_read_ahead
+
+{{% tags/wrap %}}
+
+Default: `1` (disabled)
+{{% /tags/wrap %}}
+
+Controls the maximum number of rows that can be locked in parallel when the `SKIP LOCKED` clause is used. This parameter enables read-ahead optimization for SKIP LOCKED operations, allowing YugabyteDB to prefetch and attempt to lock multiple rows concurrently rather than processing them sequentially.
+
+- **Value `1` (default):** Disables read-ahead; rows are processed sequentially
+- **Values greater than 1:** Enables read-ahead; YugabyteDB attempts to lock up to this many rows in parallel
+
+Setting a value greater than 1 can significantly improve performance for SKIP LOCKED queries by reducing latency when multiple rows are available for locking.
+
+Example:
+
+```sql
+SET yb_explicit_row_lock_skip_locked_max_read_ahead = 10;
+```
+
+Available from YugabyteDB 2026.1.1.0 and later. For performance tuning guidance, refer to [Row-level explicit locking clauses](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses).
+-->
+
 ### Advisory lock flags
 
 To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
@@ -2378,6 +2460,53 @@ Default: `128`
 
 The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
 
+### Multitenancy (resource governor) flags
+
+These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. The feature relies on Linux cgroups and requires operating system setup before it can be enabled. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
+
+Set these flags on both YB-Master and YB-TServer.
+
+##### --enable_qos
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables per-database CPU limits and the maximum database count cap. When `false`, per-database cgroups are not created and none of the other `qos_*` flags have any effect.
+
+##### --qos_max_db_cpu_percent
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/t-server>}}
+Default: `100.0`
+{{% /tags/wrap %}}
+
+The maximum percentage (0.0–100.0) of the node's non-system-reserved CPU that work for any single database is allowed to use on a YB-TServer. Has no effect unless `enable_qos` is `true`.
+
+##### --qos_evaluation_window_us
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/t-server>}}
+Default: `100000`
+{{% /tags/wrap %}}
+
+Advanced flag that maps directly to the Linux `cfs_period_us` parameter: the period, in microseconds, that the scheduler uses when checking CPU limits and throttling cgroups. Accepts values from 1000 to 1000000. This should normally not be changed. Has no effect unless `enable_qos` is `true`.
+
+##### --qos_system_high_cpu_reserved_percent
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/t-server>}}
+Default: `0`
+{{% /tags/wrap %}}
+
+The percentage (0.0–100.0) of CPU reserved for high-priority system work.
+
 ### Other performance tuning options
 
 ##### --allowed_preview_flags_csv
@@ -2412,6 +2541,19 @@ Default: `false`
 Enables concurrent replication of multiple write operations in a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
 
 Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
+
+##### --use_cgroups_cpu
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Determines the number of available CPUs from the cgroup CPU limit rather than the total number of CPUs on the host. Set this to `true` in containerized environments where the container is allotted a fraction of the host's CPUs.
+
+The maximum number of databases is controlled by the [--qos_max_db_count](../yb-master/#qos-max-db-count) flag on the YB-Master.
 
 ## Security
 
@@ -2729,6 +2871,7 @@ When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL
 ##### --pg_client_use_shared_memory
 
 {{% tags/wrap %}}
+
 Default: `true`
 {{% /tags/wrap %}}
 

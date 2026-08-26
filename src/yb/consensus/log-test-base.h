@@ -176,7 +176,13 @@ class LogTestBase : public YBTest {
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
   }
 
-  void BuildLog(int64_t byte_limit = -1) {
+  // When create_new_segment is kFalse, the log is opened lazily and stays in kLogInitialized state
+  // (no active segment allocated) until the first append or an explicit EnsureSegmentInitialized()
+  // call. This mirrors how tablet bootstrap opens the log when skip_wal_rewrite is enabled (the
+  // default), and is required to exercise Log::CopyTo in the kLogInitialized state.
+  void BuildLog(
+      int64_t byte_limit = -1,
+      CreateNewSegment create_new_segment = CreateNewSegment::kTrue) {
     Schema schema_with_ids = SchemaBuilder(schema_).Build();
     read_wal_mem_tracker_ =
         MemTracker::FindOrCreateTracker(byte_limit, "Log Reader Memory");
@@ -192,7 +198,10 @@ class LogTestBase : public YBTest {
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
-                       &log_));
+                       &log_,
+                       /* pre_log_rollover_callback = */ {},
+                       /* callback = */ {},
+                       create_new_segment));
     LOG(INFO) << "Sucessfully opened the log at " << tablet_wal_path_;
   }
 

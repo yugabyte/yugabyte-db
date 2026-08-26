@@ -1,0 +1,119 @@
+--
+-- See yb_merge_scan_schedule for details about the test.  Tests that
+-- degenerate moduli (null, zero, negative including INT32_MIN) do not derive
+-- merge scan SAOPs (#32823), covering each modulus through both bucket
+-- shapes: a stored generated column and a raw index expression.
+--
+
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
+\i :filename
+
+SET yb_enable_derived_saops = true;
+
+-- These deliberately broken tables are of no use to other tests, so they are
+-- defined here rather than in yb.orig.merge_scan_setup.  mod_zero_tbl cannot
+-- hold data because computing its bucket raises division by zero on every
+-- insert.
+CREATE TABLE mod_null_tbl (
+    k int,
+    a int,
+    bkt int GENERATED ALWAYS AS (yb_hash_code(k) % NULL::int) STORED,
+    PRIMARY KEY (k ASC));
+INSERT INTO mod_null_tbl (k, a) VALUES (1, 1), (2, 2), (3, 3);
+CREATE TABLE mod_zero_tbl (
+    k int,
+    a int,
+    bkt int GENERATED ALWAYS AS (yb_hash_code(k) % 0) STORED,
+    PRIMARY KEY (k ASC));
+INSERT INTO mod_zero_tbl (k, a) VALUES (1, 1);
+CREATE TABLE mod_neg_tbl (
+    k int,
+    a int,
+    bkt int GENERATED ALWAYS AS (yb_hash_code(k) % -5) STORED,
+    PRIMARY KEY (k ASC));
+INSERT INTO mod_neg_tbl (k, a) VALUES (1, 1), (2, 2), (3, 3);
+CREATE TABLE mod_min_tbl (
+    k int,
+    a int,
+    bkt int GENERATED ALWAYS AS (yb_hash_code(k) % '-2147483648'::int4) STORED,
+    PRIMARY KEY (k ASC));
+INSERT INTO mod_min_tbl (k, a) VALUES (1, 1), (2, 2), (3, 3);
+ANALYZE mod_null_tbl, mod_zero_tbl, mod_neg_tbl, mod_min_tbl;
+
+-- Each table gets both bucket shapes as secondary indexes.
+CREATE INDEX NONCONCURRENTLY mod_null_tbl_bkt_a_idx ON mod_null_tbl (bkt ASC, a);
+CREATE INDEX NONCONCURRENTLY mod_null_tbl_expr_a_idx ON mod_null_tbl ((yb_hash_code(k) % NULL::int) ASC, a);
+CREATE INDEX NONCONCURRENTLY mod_zero_tbl_bkt_a_idx ON mod_zero_tbl (bkt ASC, a);
+CREATE INDEX NONCONCURRENTLY mod_zero_tbl_expr_a_idx ON mod_zero_tbl ((yb_hash_code(k) % 0) ASC, a);
+CREATE INDEX NONCONCURRENTLY mod_neg_tbl_bkt_a_idx ON mod_neg_tbl (bkt ASC, a);
+CREATE INDEX NONCONCURRENTLY mod_neg_tbl_expr_a_idx ON mod_neg_tbl ((yb_hash_code(k) % -5) ASC, a);
+CREATE INDEX NONCONCURRENTLY mod_min_tbl_bkt_a_idx ON mod_min_tbl (bkt ASC, a);
+CREATE INDEX NONCONCURRENTLY mod_min_tbl_expr_a_idx ON mod_min_tbl ((yb_hash_code(k) % '-2147483648'::int4) ASC, a);
+
+--
+-- Null modulus
+--
+-- The generation expression yields null for every row, so a derived
+-- IN (0 .. N-1) SAOP would wrongly filter out every row.  The expression
+-- index is immune: const folding turns the strict modulo of a null constant
+-- into a plain null constant, so there is no modulo expression to derive
+-- from in the first place.
+--
+
+-- Merge scan should not be used.
+-- Second hint is to encourage merge scan of the bkt index by disabling sort.
+-- Third hint is to encourage merge scan of the expression index by disabling
+-- sort.
+\set query ':explain :Q SELECT a FROM mod_null_tbl ORDER BY a LIMIT 5;'
+\set Q2 '/*+IndexOnlyScan(mod_null_tbl mod_null_tbl_bkt_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set Q3 '/*+IndexOnlyScan(mod_null_tbl mod_null_tbl_expr_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\i :run_query
+
+--
+-- Zero modulus
+--
+
+-- Merge scan should not be used.
+-- Second hint is to encourage merge scan of the bkt index by disabling sort.
+-- Third hint is to encourage merge scan of the expression index by disabling
+-- sort.
+\set query ':explain :Q SELECT a FROM mod_zero_tbl ORDER BY a LIMIT 5;'
+\set Q2 '/*+IndexOnlyScan(mod_zero_tbl mod_zero_tbl_bkt_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set Q3 '/*+IndexOnlyScan(mod_zero_tbl mod_zero_tbl_expr_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\i :run_query
+
+--
+-- Negative modulus
+--
+-- A negative modulus buckets the same as its absolute value since
+-- yb_hash_code is non-negative, but it does not derive a SAOP.
+--
+
+-- Merge scan should not be used.
+-- Second hint is to encourage merge scan of the bkt index by disabling sort.
+-- Third hint is to encourage merge scan of the expression index by disabling
+-- sort.
+\set query ':explain :Q SELECT a FROM mod_neg_tbl ORDER BY a LIMIT 5;'
+\set Q2 '/*+IndexOnlyScan(mod_neg_tbl mod_neg_tbl_bkt_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set Q3 '/*+IndexOnlyScan(mod_neg_tbl mod_neg_tbl_expr_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\i :run_query
+
+--
+-- INT32_MIN modulus
+--
+-- INT32_MIN is additionally the negative modulus whose absolute value is not
+-- representable in int32.
+--
+
+-- Merge scan should not be used.
+-- Second hint is to encourage merge scan of the bkt index by disabling sort.
+-- Third hint is to encourage merge scan of the expression index by disabling
+-- sort.
+\set query ':explain :Q SELECT a FROM mod_min_tbl ORDER BY a LIMIT 5;'
+\set Q2 '/*+IndexOnlyScan(mod_min_tbl mod_min_tbl_bkt_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set Q3 '/*+IndexOnlyScan(mod_min_tbl mod_min_tbl_expr_a_idx) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\i :run_query
+
+-- (Drop the tables)
+DROP TABLE mod_null_tbl, mod_zero_tbl, mod_neg_tbl, mod_min_tbl;

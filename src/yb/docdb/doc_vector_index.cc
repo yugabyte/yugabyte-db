@@ -16,6 +16,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
 
 #include "yb/dockv/doc_vector_id.h"
@@ -24,7 +25,10 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/read_operation_data.h"
 #include "yb/docdb/rocksdb_writer.h"
+
+#include "yb/hnsw/hnsw_block_cache.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -33,6 +37,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 #include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
@@ -104,46 +110,35 @@ vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& optio
   };
 }
 
-template <class LSM, template<class, class> class Factory>
-typename LSM::Options::VectorIndexFactory VectorLSMFactoryImpl(
+template<vector_index::IndexableVectorType Vector,
+         vector_index::ValidDistanceResultType DistanceResult>
+Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
     const MemTrackerPtr& mem_tracker) {
   auto hnsw_options = ConvertToHnswOptions(options);
-  using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
-  return [block_cache, hnsw_options,
-          backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
-    return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
-  };
-}
-
-template <class LSM>
-typename LSM::Options::VectorIndexFactory VectorLSMFactory(
-    const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
-    const MemTrackerPtr& mem_tracker) {
-  switch (options.hnsw().backend()) {
+  auto backend = options.hnsw().backend();
+  switch (backend) {
     case HnswBackend::USEARCH: [[fallthrough]];
     case HnswBackend::YB_HNSW_USEARCH:
-      return VectorLSMFactoryImpl<LSM, ann_methods::UsearchIndexFactory>(
-          block_cache, options, mem_tracker);
+      return ann_methods::CreateUsearchIndexTraits<Vector, DistanceResult>(
+          block_cache, hnsw_options, backend, mem_tracker);
     case HnswBackend::HNSWLIB: [[fallthrough]];
-    case HnswBackend::YB_HNSW_HNSWLIB: {
-      return VectorLSMFactoryImpl<LSM, ann_methods::HnswlibIndexFactory>(
-          block_cache, options, mem_tracker);
-    }
+    case HnswBackend::YB_HNSW_HNSWLIB:
+      return ann_methods::CreateHnswlibIndexTraits<Vector, DistanceResult>(
+          block_cache, hnsw_options, backend, mem_tracker);
   }
-  FATAL_INVALID_PB_ENUM_VALUE(HnswBackend, options.hnsw().backend());
+  FATAL_INVALID_PB_ENUM_VALUE(HnswBackend, backend);
 }
 
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
-auto GetVectorLSMFactory(
+auto GetVectorLSMTraits(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
     const MemTrackerPtr& mem_tracker)
-    -> Result<vector_index::VectorIndexFactory<Vector, DistanceResult>> {
-  using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
+    -> Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> {
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
-      return VectorLSMFactory<LSM>(block_cache, options, mem_tracker);
+      return HnswTraits<Vector, DistanceResult>(block_cache, options, mem_tracker);
     case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
@@ -212,6 +207,10 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
 
     // Let's not filter the vector in case of error.
     auto decision = rocksdb::FilterDecision::kKeep;
+
+    // Use Fetch (raw value), not FetchYbctid: we only care whether a reverse-mapping entry
+    // exists. Decoding is unnecessary, and FetchYbctid would treat tombstones as missing
+    // while this filter relies on regular compaction to clean those up.
     auto ybctid = reverse_mapping_reader_->Fetch(vector_id);
     if (!ybctid.ok()) {
       LOG_WITH_PREFIX(DFATAL) << "Failed to fetch ybctid, status: " << ybctid.status();
@@ -297,7 +296,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
     typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
       .storage_dir = storage_dir,
-      .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
+      .vector_index_traits = VERIFY_RESULT((GetVectorLSMTraits<Vector, DistanceResult>(
           block_cache_, options_, mem_tracker_))),
       .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = thread_pools.thread_pool,
@@ -307,6 +306,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .vector_merge_filter_factory = std::move(merge_filter_factory),
       .file_extension = GetVectorIndexChunkFileExtension(options_),
       .metric_entity = metric_entity_,
+      .block_cache_capacity = block_cache_ ? block_cache_->capacity() : 0,
     };
     return lsm_.Open(std::move(lsm_options));
   }
@@ -326,6 +326,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
     vector_index::VectorLSMInsertContext context {
       .frontiers = insert_options.frontiers,
       .chunk_size = insert_options.chunk_size,
+      .reservation_mode = insert_options.reservation_mode,
     };
     return lsm_.Insert(lsm_entries, context);
   }
@@ -336,16 +337,22 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
-      DocDBStatistics* statistics) override {
+      DocVectorIndexReverseMappingReader& reverse_mapping_reader) override {
     auto entries = VERIFY_RESULT(lsm_.Search(
         VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
 
     auto dump_stats = FLAGS_vector_index_dump_stats;
     auto start_time = MonoTime::Now();
 
-    auto reverse_mapping_reader = VERIFY_RESULT(
-        context_->CreateReverseMappingReader(ReadHybridTime::Max(), statistics));
+    // Let a test apply a DELETE's reverse-mapping tombstone between the filter's read and the
+    // resolution below, reproducing the "Vector not found" race.
+    TEST_SYNC_POINT("DocVectorIndexImpl::Search:AfterFilter");
+    TEST_SYNC_POINT("DocVectorIndexImpl::Search:BeforeResolve");
 
+    // Resolve ybctids with the caller's reader -- the same one the filter used -- so both see one
+    // snapshot. Otherwise a DELETE whose reverse-mapping tombstone lands between the two reads lets
+    // the filter accept an entry that resolves empty here; such a row is still dropped when its
+    // ybctid is fetched (the row delete is intent-tracked, unlike the physical-only reverse map).
     DocVectorIndexSearchResult result;
     VLOG_WITH_FUNC(4) << "could_have_missing_entries: " << could_have_missing_entries
                       << ", entries.size(): " << entries.size()
@@ -354,7 +361,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
         could_have_missing_entries && entries.size() >= options.max_num_results;
     result.entries.reserve(entries.size());
     for (auto& entry : entries) {
-      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->FetchYbctid(entry.vector_id));
+      auto ybctid = VERIFY_RESULT(reverse_mapping_reader.FetchYbctid(entry.vector_id));
       VLOG_WITH_FUNC(4)
           << "vector_id: " << entry.vector_id << ", ybctid: " << ybctid.ToDebugHexString();
       if (ybctid.empty()) {
@@ -415,8 +422,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.WaitForFlush();
   }
 
-  ConsensusFrontierPtr GetFlushedFrontier() override {
-    return down_cast<ConsensusFrontier>(lsm_.GetFlushedFrontier());
+  storage::FrontierInfo GetFrontiers(storage::FrontierKinds kinds) override {
+    return lsm_.GetFrontiers(kinds);
   }
 
   rocksdb::FlushAbility GetFlushAbility() override {
@@ -487,13 +494,32 @@ Result<Slice> DocVectorIndexReverseMappingReader::Fetch(
 Result<Slice> DocVectorIndexReverseMappingReader::FetchYbctid(
     const vector_index::VectorId& vector_id) {
   auto value = VERIFY_RESULT(Fetch(vector_id));
-
-  // All non-ybctid values should be excluded.
-  if (value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone)) {
+  if (value.empty()) {
     return Slice{};
   }
 
-  return value;
+  auto decoded = VERIFY_RESULT(dockv::EncodedDocVectorMetaValue::Decode(value));
+  return decoded.IsTombstone() ? Slice{} : decoded.ybctid;
+}
+
+ConsensusFrontierPtr DocVectorIndex::GetFlushedFrontier() {
+  return down_cast<ConsensusFrontier>(
+      GetFrontiers(storage::FrontierKinds{storage::FrontierKind::kFlushed}).flushed);
+}
+
+storage::UserFrontierRange DocVectorIndex::GetInMemoryFrontiers() {
+  return GetFrontiers(storage::FrontierKinds{
+      storage::FrontierKind::kInMemorySmallest,
+      storage::FrontierKind::kInMemoryLargest}).in_memory;
+}
+
+storage::UserFrontierPtr DocVectorIndex::GetInMemoryFrontier(storage::UpdateUserValueType type) {
+  if (type == storage::UpdateUserValueType::kSmallest) {
+    return GetFrontiers(storage::FrontierKinds{
+        storage::FrontierKind::kInMemorySmallest}).in_memory.smallest;
+  }
+  return GetFrontiers(storage::FrontierKinds{
+      storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
 }
 
 bool DocVectorIndex::BackfillDone() {
@@ -509,11 +535,21 @@ bool DocVectorIndex::BackfillDone() {
 }
 
 void DocVectorIndex::ApplyReverseEntry(
-    rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht) {
+    rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht,
+    ColumnId column_id, Slice table_key_prefix) {
   DocHybridTimeBuffer ht_buf;
   auto encoded_write_time = ht_buf.EncodeWithValueType(write_ht);
   auto vector_id = dockv::EncodedDocVectorValue::FromSlice(value).id;
-  handler.Put(dockv::DocVectorKeyAsParts(vector_id, encoded_write_time), { &ybctid, 1 });
+
+  // Legacy format.
+  if (column_id == kInvalidColumnId) {
+    handler.Put(dockv::DocVectorKeyAsParts(vector_id, encoded_write_time), { &ybctid, 1 });
+    return;
+  }
+
+  auto value_buffer = dockv::DocVectorMetaValue(table_key_prefix, ybctid, column_id);
+  auto value_slice = value_buffer.AsSlice();
+  handler.Put(dockv::DocVectorKeyAsParts(vector_id, encoded_write_time), { &value_slice, 1 });
 }
 
 Result<DocVectorIndexPtr> CreateDocVectorIndex(

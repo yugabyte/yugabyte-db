@@ -16,6 +16,7 @@
     "build-and-copy": "npm run build:ci && ncp build ../src/main/public",
     "analyze": "source-map-explorer 'build/static/js/*.js'",
     "start": "vite",
+    "start:remote": "vite --mode remote",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build -s public",
@@ -54,9 +55,6 @@
     "redux-form": {
       "react": "17.0.2",
       "react-dom": "17.0.2"
-    },
-    "@yugabytedb/perf-advisor-ui": {
-      "@yugabyte-ui-library/core": "2.0.27"
     }
   },
   "prettier": {
@@ -120,8 +118,8 @@
     "@types/react-select": "3.0.19",
     "@types/redux-form": "8.3.1",
     "@types/yup": "0.29.11",
-    "@yugabyte-ui-library/core": "2.0.27",
-    "@yugabytedb/perf-advisor-ui": "1.0.137",
+    "@yugabyte-ui-library/core": "2.0.34",
+    "@yugabytedb/perf-advisor-ui": "1.0.164",
     "ace-builds": "1.4.12",
     "axios": "0.21.3",
     "bootstrap": "3.4.1",

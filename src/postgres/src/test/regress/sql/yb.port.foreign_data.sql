@@ -865,6 +865,8 @@ DROP FOREIGN DATA WRAPPER dummy CASCADE;
 DROP ROLE regress_foreign_data_user;
 
 -- At this point we should have no wrappers, no servers, and no mappings.
-SELECT fdwname, fdwhandler, fdwvalidator, fdwoptions FROM pg_foreign_data_wrapper;
+-- YB: postgres_fdw is installed by default
+SELECT fdwname, fdwhandler, fdwvalidator, fdwoptions FROM pg_foreign_data_wrapper
+    WHERE fdwname <> 'postgres_fdw';
 SELECT srvname, srvoptions FROM pg_foreign_server;
 SELECT * FROM pg_user_mapping;

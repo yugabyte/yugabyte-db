@@ -25,11 +25,14 @@
 #include <regex>
 #include <string_view>
 
-#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/endian.h"
+
 #include "yb/util/debug-util.h"
+#include "yb/util/logging.h"
 #include "yb/util/malloc.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

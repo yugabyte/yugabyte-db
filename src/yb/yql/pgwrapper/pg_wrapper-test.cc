@@ -32,6 +32,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/tsan_util.h"
@@ -741,6 +742,16 @@ class PgWrapperFlagsTest : public PgWrapperTest {
   }
 };
 
+class PgWrapperConfValidationTest : public PgWrapperFlagsTest {};
+
+class PgWrapperConfValidationOverrideTest : public PgWrapperConfValidationTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgWrapperConfValidationTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back("--ysql_max_connections=150");
+  }
+};
+
 // Verify the gFlag defaults match the guc defaults for PG gFlags.
 TEST_F(PgWrapperFlagsTest, VerifyGFlagDefaults) {
   vector<CommandLineFlagInfo> flags;
@@ -883,6 +894,26 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_default_transaction_isolation", "read committed"));
 }
 
+// Special test for max_connections to test the case where we have
+// (a) initdb set value
+// (b) NO ysql_max_connections overriding it
+// (c) User gflag setting it via ysql_pg_conf_csv
+TEST_F_EX(PgWrapperFlagsTest, ValidateMaxConnectionsFromInitdb, PgWrapperConfValidationTest) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  auto running = ASSERT_RESULT(
+      conn.FetchRow<int32_t>("SELECT current_setting('max_connections')::int"));
+
+  // Changing an unrelated gflag regenerates the file and must validate.
+  auto resp = ASSERT_RESULT(
+      ValidateFlagOnTServer(0, {{"ysql_pg_conf_csv", "log_min_messages=warning"}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+
+  // Changing max_connections is accepted: the file is checked as a restart would apply it.
+  resp = ASSERT_RESULT(ValidateFlagOnTServer(
+      0, {{"ysql_pg_conf_csv", Format("max_connections=$0", running + 1)}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+}
+
 class PgWrapperAutoFlagsTest : public PgWrapperFlagsTest {
  public:
   void CheckAutoFlagValues(bool expect_target_value) {
@@ -991,16 +1022,24 @@ TEST_F_EX(PgWrapperFlagsTest, ValidateYsqlPgConfCsv, ValidateYsqlPgConfCsvTest) 
   ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, "a=1,b='String with a \n char'"));
 }
 
-TEST_F(PgWrapperTest, ValidateConfViaSql) {
+TEST_F_EX(PgWrapperTest, ValidateConfViaSql, PgWrapperConfValidationOverrideTest) {
   auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
   auto tmp_dir = GetTestDataDirectory();
   using OptStr = std::optional<std::string>;
+
+  // A GUC file is checked the way a reload would check it, so it has to be a complete
+  // configuration rather than a fragment: anything the server currently takes from its config
+  // file would otherwise look like it had been removed. Pull those in with an include.
+  auto running_conf = ASSERT_RESULT(conn.FetchRow<std::string>("SHOW config_file"));
 
   int file_counter = 0;
   auto write_tmp_file = [&](const string& content) {
     auto path = JoinPathSegments(tmp_dir, Format("test_conf_$0.conf", file_counter++));
     CHECK_OK(WriteStringToFile(Env::Default(), content + "\n", path));
     return path;
+  };
+  auto write_tmp_guc_file = [&](const string& content) {
+    return write_tmp_file(Format("include '$0'\n$1", running_conf, content));
   };
 
   auto check_error = [](const OptStr& actual, const string& expected, const string& label,
@@ -1019,7 +1058,7 @@ TEST_F(PgWrapperTest, ValidateConfViaSql) {
                     const string& hba_err_expected, const string& guc_err_expected,
                     const string& ident_err_expected) {
     auto hba_arg = hba.empty() ? "NULL" : Format("'$0'", write_tmp_file(hba));
-    auto guc_arg = guc.empty() ? "NULL" : Format("'$0'", write_tmp_file(guc));
+    auto guc_arg = guc.empty() ? "NULL" : Format("'$0'", write_tmp_guc_file(guc));
     auto ident_arg = ident.empty() ? "NULL" : Format("'$0'", write_tmp_file(ident));
 
     auto start = MonoTime::Now();
@@ -1039,9 +1078,21 @@ TEST_F(PgWrapperTest, ValidateConfViaSql) {
   verify(
       "host all all 1.2.3.4,5.6.7.8 trust", "", "",
       "multiple values specified for host address.*specify one address", "", "");
+
+  verify("", "= bad_syntax\n= also_bad", "", "", "syntax error[\\s\\S]*syntax error", "");
+
+  // conf includes a non existent file
+  verify("", "include '/nonexistent/nowhere.conf'", "", "", "could not open file", "");
+
+  // A parameter listed more than once takes its last value, so only that entry is validated.
+  // ysql_pg.conf is generated this way: gflag-derived settings are appended after everything
+  // initdb wrote, and supersede them.
+  verify("", "work_mem = '4MB'\nwork_mem = 'not_a_number'", "", "", "invalid value.*work_mem", "");
 }
 
-TEST_F(PgWrapperFlagsTest, ValidateConfViaGflagValidation) {
+TEST_F_EX(
+    PgWrapperFlagsTest, ValidateConfViaGflagValidation,
+    PgWrapperConfValidationOverrideTest) {
   auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
 
   auto check_flag_error = [](const server::ValidateFlagValueResponsePB& resp,
@@ -1079,6 +1130,33 @@ TEST_F(PgWrapperFlagsTest, ValidateConfViaGflagValidation) {
   };
 
   RunConfValidationCases(verify);
+
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_max_connections", "150"));
+  auto resp = ASSERT_RESULT(
+      ValidateFlagOnTServer(0, {{"ysql_pg_conf_csv", "log_min_messages=warning"}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+
+  // Writing max_connections changes nothing, because the gflag entry is appended after it
+  // but let's test it anyway.
+  resp = ASSERT_RESULT(ValidateFlagOnTServer(0, {{"ysql_pg_conf_csv", "max_connections=151"}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+
+  // shared_buffers is written by initdb and only takes effect at startup, like max_connections,
+  // but has no gflag, so a value written through ysql_pg_conf_csv is the one that survives and is
+  // really being changed. It validates because the file is checked as a restart would apply it.
+  auto blocks = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT setting::bigint FROM pg_settings WHERE name = 'shared_buffers'"));
+  resp = ASSERT_RESULT(ValidateFlagOnTServer(
+      0, {{"ysql_pg_conf_csv", Format("shared_buffers=$0", blocks * 2)}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
+
+  // superuser_reserved_connections also only takes effect at startup, but nothing writes it to
+  // the conf file, so the file introduces it instead of superseding an earlier entry.
+  auto reserved = ASSERT_RESULT(
+      conn.FetchRow<int32_t>("SELECT current_setting('superuser_reserved_connections')::int"));
+  resp = ASSERT_RESULT(ValidateFlagOnTServer(
+      0, {{"ysql_pg_conf_csv", Format("superuser_reserved_connections=$0", reserved + 1)}}));
+  ASSERT_EQ(resp.errors_size(), 0) << resp.ShortDebugString();
 
   // Legacy single-flag path: invalid value should produce an RPC-level failure,
   // not an entry in the response errors map (backward compatibility with YBA).

@@ -10,6 +10,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
@@ -38,55 +39,20 @@ var reconfigureCmd = &cobra.Command{
 			log.Fatal("invalid reconfigure: " + err.Error())
 		}
 
-		// Handle PerfAdvisor service installation/uninstallation if enabled flag changed
-		perfAdvisorWasEnabled := state.Services.PerfAdvisor
-		perfAdvisorNowEnabled := viper.GetBool("perfAdvisor.enabled")
-
-		if perfAdvisorWasEnabled != perfAdvisorNowEnabled {
-			perfAdvisorService := serviceManager.ServiceByName("yb-perf-advisor")
-			if perfAdvisorService == nil {
-				log.Warn("PerfAdvisor service not found in service manager")
-			} else if perfAdvisorNowEnabled {
-				// Changed from disabled to enabled - install
-				log.Info("PerfAdvisor enabled changed from false to true. Installing PerfAdvisor service.")
-				if err := perfAdvisorService.Install(); err != nil {
-					log.Fatal("Failed to install perf advisor: " + err.Error())
-				}
-				if err := perfAdvisorService.Initialize(); err != nil {
-					log.Fatal("Failed to initialize perf advisor: " + err.Error())
-				}
-			} else {
-				// Changed from enabled to disabled - uninstall
-				log.Info("PerfAdvisor enabled changed from true to false. Uninstalling PerfAdvisor service.")
-				if err := perfAdvisorService.Uninstall(false); err != nil {
-					log.Fatal("Failed to uninstall perf advisor: " + err.Error())
-				}
-			}
+		// Validate the edited config before anything is applied to the running install.
+		results := preflight.Run(preflight.ReconfigureChecks, skippedPreflightChecks...)
+		if preflight.ShouldFail(results) {
+			preflight.PrintPreflightResults(results)
+			log.Fatal("Preflight checks failed. To skip (not recommended), " +
+				"rerun the command with --skip_preflight <check name1>,<check name2>")
 		}
 
-		// Handle node-exporter service installation/uninstallation if enabled flag changed
-		nodeExporterWasEnabled := state.Services.NodeExporter
-		nodeExporterNowEnabled := viper.GetBool("nodeExporter.enabled")
-
-		if nodeExporterWasEnabled != nodeExporterNowEnabled {
-			nodeExporterService := serviceManager.ServiceByName("node-exporter")
-			if nodeExporterService == nil {
-				log.Warn("node-exporter service not found in service manager")
-			} else if nodeExporterNowEnabled {
-				log.Info("nodeExporter enabled changed from false to true. Installing node-exporter service.")
-				if err := nodeExporterService.Install(); err != nil {
-					log.Fatal("Failed to install node-exporter: " + err.Error())
-				}
-				if err := nodeExporterService.Initialize(); err != nil {
-					log.Fatal("Failed to initialize node-exporter: " + err.Error())
-				}
-			} else {
-				log.Info("nodeExporter enabled changed from true to false. Uninstalling node-exporter service.")
-				if err := nodeExporterService.Uninstall(false); err != nil {
-					log.Fatal("Failed to uninstall node-exporter: " + err.Error())
-				}
-			}
-		}
+		handleEnabledFlagChange(PerfAdvisorServiceName, state.Services.PerfAdvisor,
+			viper.GetBool("perfAdvisor.enabled"))
+		handleEnabledFlagChange("node-exporter", state.Services.NodeExporter,
+			viper.GetBool("nodeExporter.enabled"))
+		handleEnabledFlagChange(ByocApiProxyServiceName, state.Services.ByocApiProxy,
+			viper.GetBool("byocApiProxy.enabled"))
 
 		if err := handleCertReconfig(state); err != nil {
 			log.Fatal("failed to handle cert reconfig: " + err.Error())
@@ -105,11 +71,6 @@ var reconfigureCmd = &cobra.Command{
 		// Change into the dir we are in so that we can specify paths relative to ourselves
 		// TODO(minor): probably not a good idea in the long run
 		os.Chdir(common.GetBinaryDir())
-
-		// Set any necessary config values due to changes
-		if err := common.FixConfigValues(); err != nil {
-			log.Fatal(fmt.Sprintf("Error changing default config values: %s", err.Error()))
-		}
 
 		for service := range serviceManager.Services() {
 			if err := service.Reconfigure(); err != nil {
@@ -132,10 +93,36 @@ var reconfigureCmd = &cobra.Command{
 		// Update state to reflect current service configuration
 		state.Services.PerfAdvisor = viper.GetBool("perfAdvisor.enabled")
 		state.Services.NodeExporter = viper.GetBool("nodeExporter.enabled")
+		state.Services.ByocApiProxy = viper.GetBool("byocApiProxy.enabled")
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("failed to write state: " + err.Error())
 		}
 	},
+}
+
+func handleEnabledFlagChange(serviceName string, wasEnabled, nowEnabled bool) {
+	if wasEnabled == nowEnabled {
+		return
+	}
+	service := serviceManager.ServiceByName(serviceName)
+	if service == nil {
+		log.Warn(serviceName + " service not found in service manager")
+		return
+	}
+	if nowEnabled {
+		log.Info(serviceName + " enabled changed from false to true. Installing " + serviceName + ".")
+		if err := service.Install(); err != nil {
+			log.Fatal("Failed to install " + serviceName + ": " + err.Error())
+		}
+		if err := service.Initialize(); err != nil {
+			log.Fatal("Failed to initialize " + serviceName + ": " + err.Error())
+		}
+	} else {
+		log.Info(serviceName + " enabled changed from true to false. Uninstalling " + serviceName + ".")
+		if err := service.Uninstall(false); err != nil {
+			log.Fatal("Failed to uninstall " + serviceName + ": " + err.Error())
+		}
+	}
 }
 
 func handleCertReconfig(state *ybactlstate.State) error {
@@ -220,4 +207,6 @@ var configGenCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(reconfigureCmd, configGenCmd)
+	reconfigureCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
+		[]string{}, "Preflight checks to skip by name")
 }

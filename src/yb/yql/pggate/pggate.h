@@ -490,11 +490,7 @@ class PgApiImpl {
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
-  Status DmlApplyParallelRange(YbcPgStatement handle,
-                               Slice lower_bound,
-                               bool lower_bound_inclusive,
-                               Slice upper_bound,
-                               bool upper_bound_inclusive);
+  Status DmlApplyParallelRange(YbcPgStatement handle, Slice lower_bound, Slice upper_bound);
 
   Status DmlBindBounds(PgStatement* handle,
                        const Slice lower_bound,
@@ -905,13 +901,14 @@ class PgApiImpl {
   [[nodiscard]] YbcReadPointHandle GetMaxReadPoint() const;
   Status RestoreReadPoint(YbcReadPointHandle read_point);
   Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
+  void PublishOldestReadPointSerialNo(uint64_t serial_no);
 
   void DdlEnableForceCatalogModification();
 
   Status TriggerRelcacheInitConnection(const std::string& dbname);
 
   Status NewGlobalViewRead(PgGlobalViewRead** handle);
-  YbcRemotePgExecResult ExecGlobalViewScan(
+  YbcPgGvScanResult ExecGlobalViewScan(
       PgGlobalViewRead* handle, std::string_view database_name, std::string_view query,
       std::string_view tserver_uuid);
 

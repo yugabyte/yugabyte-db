@@ -20,7 +20,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.yb.client.CloneInfo;
 import org.yb.client.CloneNamespaceResponse;
 import org.yb.client.ListClonesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysCloneStatePB.State;
 
 @Slf4j
@@ -58,7 +58,7 @@ public class CloneNamespace extends UniverseTaskBase {
     log.info("Running {}", getName());
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       // Find the keyspace id of the keyspace name specified in the task params.
       Map<String, String> keyspaceNameKeyspaceIdMap =
           getKeyspaceNameKeyspaceIdMap(client, taskParams().tableType);

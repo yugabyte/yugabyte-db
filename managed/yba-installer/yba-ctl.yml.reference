@@ -13,7 +13,9 @@ installRoot: "/opt/yugabyte"
 host: ""
 
 # HTTPS server cert and key in PEM format.
-# The certificate SAN/CN must match the host setting above
+# The certificate must have a subject alternative name (SAN) matching the host setting above.
+# A cert that only matches through the deprecated Common Name (CN) field still installs, but is
+# rejected by browsers and other modern TLS clients.
 # OK to leave empty - a self-signed cert will be generated
 server_cert_path: ""
 server_key_path: ""
@@ -262,7 +264,7 @@ nodeExporter:
    authPassword: ""       # basic auth password
 
 perfAdvisor:
-   enabled: false
+   enabled: true
    port: 8443
    restartSeconds: 10
    # Ok to leave empty
@@ -276,3 +278,30 @@ perfAdvisor:
    callhome:
       enabled: true
       environment: dev
+
+# Config parameters for the BYOC API Proxy
+# Only used in specific BYOC (Bring Your Own Cloud) deployments. Its release
+# lifecycle is independent of YugabyteDB Anywhere: packages are downloaded from
+# downloadBaseUrl instead of shipping with YBA installer.
+# ================================
+
+byocApiProxy:
+   enabled: false
+   # "latest" tracks the newest published release or pin a specific semver (1.0.0)
+   version: latest
+   # if "latest" the URL must allow and return ListObjectsV2 XML
+   downloadBaseUrl: "https://downloads.yugabyte.com/byoc-api-proxy"
+   restartSeconds: 10
+   # Spring Boot properties for the proxy
+   # yba-ctl derives yba.base_url and the spring.ssl trust bundle (from the server
+   # cert configuration) automatically; values set here override those defaults.
+   # Example:
+   # appConfig:
+   #    yba:
+   #       uuid: "e55a0e4c-3987-4e1b-89f2-28839e32c5b7"
+   #    proxied_app:
+   #       base_url: "https://cloud.yugabyte.com/api"
+   #       auth:
+   #          type: api_key
+   #          api_key: "..."
+   appConfig: {}

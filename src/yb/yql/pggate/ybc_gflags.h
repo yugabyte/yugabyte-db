@@ -53,6 +53,7 @@ typedef struct {
   const char*     TEST_ysql_conn_mgr_dowarmup_all_pools_mode;
   const bool*     TEST_ysql_enable_db_logical_client_version_mode;
   const bool*     ysql_conn_mgr_superuser_sticky;
+  const bool*     ysql_conn_mgr_use_auth_backend;
   const bool*     TEST_ysql_log_perdb_allocated_new_objectid;
   const bool*     ysql_block_dangerous_roles;
   const char*     ysql_sequence_cache_method;
@@ -80,6 +81,7 @@ typedef struct {
   const int64_t*  TEST_delay_after_table_analyze_ms;
   const bool*     TEST_enable_obj_tuple_locks;
   const bool*     TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization;
+  const uint32_t* wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms;
 } YbcPgGFlagsAccessor;
 
 const YbcPgGFlagsAccessor* YBCGetGFlags();

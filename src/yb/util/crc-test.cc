@@ -33,10 +33,12 @@
 #include <zlib.h>
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rocksdb/util/xxhash.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"

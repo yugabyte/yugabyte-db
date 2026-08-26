@@ -475,9 +475,11 @@ void RpcServerBase::Shutdown() {
     stop_metrics_logging_latch_.CountDown();
     metrics_logging_thread_->Join();
   }
-  if (rpc_server_) {
-    rpc_server_->Shutdown();
-  }
+  // Messenger::Shutdown stops the thread pools, the acceptor and the registered services, so there
+  // is nothing left for the RPC server itself to tear down. Going through it is also the only way
+  // to mark the messenger as closing before its services stop accepting work, otherwise in-flight
+  // operations keep retrying RPCs that can no longer complete and block shutdown until their
+  // deadlines expire.
   if (messenger_) {
     messenger_->Shutdown();
   }
@@ -503,6 +505,7 @@ RpcAndWebServerBase::RpcAndWebServerBase(
   fs_opts.parent_mem_tracker = mem_tracker_;
   fs_opts.wal_paths = options.fs_opts.wal_paths;
   fs_opts.data_paths = options.fs_opts.data_paths;
+  fs_opts.tier_by_path = options.fs_opts.tier_by_path;
   fs_opts.server_type = options.server_type;
   fs_manager_.reset(new FsManager(options.env, fs_opts));
 

@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <limits>
+
 #include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
@@ -106,14 +108,26 @@ TEST_F(SerializableTxnTest, NonConflictingWrites) {
 TEST_F(SerializableTxnTest, ReadWriteConflict) {
   const auto kKeys = 20;
 
+  // The winner of a read-write conflict in fail-on-conflict mode is decided by transaction
+  // priority. Assign priorities explicitly, alternating each iteration, so that exactly half the
+  // iterations are won by the read and half by the write. This keeps the test deterministic
+  // instead of relying on random priorities, which occasionally skew the outcome below the
+  // expected bounds.
+  constexpr uint64_t kLowPriority = 1;
+  constexpr uint64_t kHighPriority = std::numeric_limits<uint64_t>::max();
+
   size_t reads_won = 0, writes_won = 0;
   for (int i = 0; i != kKeys; ++i) {
+    const bool read_should_win = (i % 2 == 0);
+
     auto read_txn = CreateTransaction();
+    read_txn->SetPriority(read_should_win ? kHighPriority : kLowPriority);
     auto read_session = CreateSession(read_txn);
     auto read = ReadRow(read_session, i);
     ASSERT_OK(read_session->TEST_Flush());
 
     auto write_txn = CreateTransaction();
+    write_txn->SetPriority(read_should_win ? kLowPriority : kHighPriority);
     auto write_session = CreateSession(write_txn);
     auto write_status = ResultToStatus(WriteRow(
         write_session, i, i, WriteOpType::INSERT, Flush::kTrue));

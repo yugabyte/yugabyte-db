@@ -24,7 +24,7 @@ class PgSession;
 using PgSessionPtr = std::shared_ptr<PgSession>;
 
 YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
-YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
+YB_STRONGLY_TYPED_BOOL(UseLegacyCatalogSession);
 YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
 
 YB_DEFINE_ENUM(PgSessionRunOperationMarker, (ExplicitRowLock));

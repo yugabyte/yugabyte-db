@@ -53,6 +53,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -69,9 +70,13 @@ DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(persist_tserver_registry);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_int32(data_size_metric_updater_interval_sec);
+DECLARE_double(heartbeat_safe_deadline_ratio);
+DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(tablet_report_limit);
 DECLARE_int32(replication_factor);
+
+METRIC_DECLARE_histogram(handler_latency_yb_master_MasterHeartbeat_TSHeartbeat);
 
 namespace yb::integration_tests {
 
@@ -322,6 +327,93 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
     // heartbeat.
     ASSERT_EQ(ts->num_live_replicas(), 1);
   }
+}
+
+// Verifies the timed-lock heartbeat path (ProcessTabletReportBatch, #10304). When the master cannot
+// acquire a tablet's write lock within the heartbeat's deadline, it returns TryAgain without
+// applying the report. The test verifies that the tserver retries this heartbeat and it is
+// eventually applied.
+TEST_F(MasterHeartbeatITest, TimedLockTimeoutRetriesAndConverges) {
+  // TSAN does not support TryLock as we don't use a timed_mutex there.
+  YB_SKIP_TEST_IN_TSAN();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  CreateTable();
+
+  // Set FLAGS_heartbeat_safe_deadline_ratio higher
+  // so that lock acquisition times out sooner.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_rpc_timeout_ms) =
+      static_cast<int32_t>(MonoDelta::FromSeconds(3 * kTimeMultiplier).ToMilliseconds());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_safe_deadline_ratio) = 0.8;
+  // A lock timeout routes through the normal (paced) retry, so poll frequently to keep the test
+  // brisk.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 100;
+
+  const auto kTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  auto table = table_name();
+  auto* mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  auto& catalog_mgr = mini_master->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
+
+  // Find the current tablet leader and pick a follower to promote, so the leader change is
+  // deterministic.
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(mini_cluster_.get()));
+  itest::TServerDetails* old_leader = nullptr;
+  ASSERT_OK(itest::FindTabletLeader(ts_map, tablet->id(), kTimeout, &old_leader));
+  itest::TServerDetails* new_leader = nullptr;
+  for (const auto& [uuid, ts] : ts_map) {
+    if (uuid != old_leader->uuid()) {
+      new_leader = ts.get();
+      break;
+    }
+  }
+  ASSERT_TRUE(new_leader != nullptr);
+
+  // Wait for all replicas to catch up so the graceful stepdown to new_leader below is accepted
+  // (a just-created follower may not yet be caught up enough to take over leadership).
+  std::vector<itest::TServerDetails*> replicas;
+  for (const auto& [uuid, ts] : ts_map) {
+    replicas.push_back(ts.get());
+  }
+  ASSERT_OK(itest::WaitForAllPeersToCatchup(tablet->id(), replicas, kTimeout));
+
+  // The master's view of the tablet leader, learned only via tablet reports (heartbeats).
+  auto master_leader_uuid = [&tablet]() -> Result<std::string> {
+    return VERIFY_RESULT(tablet->GetLeader())->permanent_uuid();
+  };
+  ASSERT_EQ(ASSERT_RESULT(master_leader_uuid()), old_leader->uuid());
+
+  auto heartbeats = METRIC_handler_latency_yb_master_MasterHeartbeat_TSHeartbeat.Instantiate(
+      mini_master->master()->metric_entity());
+
+  {
+    // Hold the tablet's write lock on the master (as a concurrent catalog operation would), so
+    // heartbeats reporting the leader change cannot be applied.
+    auto contending_lock = tablet->LockForWrite();
+
+    // Trigger a leader change
+    ASSERT_OK(itest::LeaderStepDown(old_leader, tablet->id(), new_leader, kTimeout));
+    ASSERT_OK(itest::WaitUntilLeader(new_leader, tablet->id(), kTimeout));
+
+    // The master keeps completing heartbeats (returning TimedOut) instead of blocking on the held
+    // lock: its heartbeat handler count keeps climbing even though it cannot apply the report.
+    const auto heartbeats_before = heartbeats->TotalCount();
+    ASSERT_OK(WaitFor(
+        [&]() { return heartbeats->TotalCount() >= heartbeats_before + 5; }, kTimeout,
+        "Master keeps processing (and rejecting) heartbeats under lock contention"));
+    // Because it cannot acquire the lock, the master has not applied the change.
+    ASSERT_EQ(ASSERT_RESULT(master_leader_uuid()), old_leader->uuid());
+  }
+
+  // With the contention gone, the tserver's retried heartbeat is applied and the master converges
+  // to the new leader.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto leader = tablet->GetLeader();
+        return leader.ok() && (*leader)->permanent_uuid() == new_leader->uuid();
+      },
+      kTimeout, "Master observes the new tablet leader"));
 }
 
 // This test verifies the master resets the tracked report sequence number when re-registering a

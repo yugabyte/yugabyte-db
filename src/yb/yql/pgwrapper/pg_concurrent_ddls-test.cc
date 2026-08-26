@@ -358,6 +358,15 @@ class PgConcurrentCreateIndexWithSlowRefreshMatViewTest :
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->replication_factor = 1;
     PgConcurrentCreateIndexWithSlowOtherDDLTest::UpdateMiniClusterOptions(options);
+    // TODO(#32565): remove this override once backfill pins history at its read time.  The test
+    // harness runs with timestamp_history_retention_interval_sec=0 to surface stale-read-point
+    // bugs.  Here that canary trips on a known, deferred limitation instead: the minutes-long
+    // CREATE UNIQUE INDEX backfill of slow_mv reads at a fixed read time, and a full compaction of
+    // slow_mv between two backfill reads advances the history cutoff past that read time, failing
+    // the backfill with "Snapshot too old".  Raise retention to at least the test's entire
+    // lifetime, even under a raised YB_TEST_TIMEOUT, so the cutoff can never reach a read time
+    // chosen during the test.
+    options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=3600");
   }
 };
 
@@ -371,13 +380,24 @@ TEST_P(PgConcurrentCreateIndexWithSlowRefreshMatViewTest,
   ASSERT_OK(conn.Execute("CREATE TABLE base_table(k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO base_table VALUES (1, 1)"));
 
-  // This query generates (2000 * 2000) rows internally.
-  ASSERT_OK(conn.Execute(
+  // The refresh only needs to run long enough to still be an in-flight "lagging" backend while the
+  // concurrent CREATE INDEX runs (which takes tens of seconds in the slowest build). In release the
+  // executor is fast enough that 2000*2000 = 4M rows fits within the test timeout, but in debug and
+  // fastdebug builds materializing 4M rows for both the initial CREATE and the later REFRESH cannot
+  // finish in time, so use a much smaller inner dimension there. Keeping the inner bound below
+  // 10000 preserves uniqueness of unique_key = s1 * 10000 + s2 (required by the concurrent index
+  // variant).
+#ifdef NDEBUG
+  constexpr int kInnerSeriesMax = 2000;
+#else
+  constexpr int kInnerSeriesMax = 250;
+#endif
+  ASSERT_OK(conn.ExecuteFormat(
       "CREATE MATERIALIZED VIEW slow_mv AS "
       "SELECT (s1 * 10000 + s2) AS unique_key, t1.v "
       "FROM base_table t1 "
       "CROSS JOIN generate_series(1, 2000) s1 "
-      "CROSS JOIN generate_series(1, 2000) s2"));
+      "CROSS JOIN generate_series(1, $0) s2", kInnerSeriesMax));
 
   LOG(INFO) << "Created slow_mv";
   if (is_concurrent_refresh) {
@@ -659,5 +679,98 @@ TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest,
   ASSERT_OK(conn2.Execute("ALTER TABLE tab2 ADD COLUMN new_col INT"));
   ASSERT_OK(conn1.Execute("COMMIT"));
   ASSERT_NOK_STR_CONTAINS(conn2.Execute("COMMIT"), "pgsql error 40001");
+}
+
+// Test that concurrent "CREATE OR REPLACE FUNCTION" and "DROP FUNCTION"
+// on the same function does not crash the backend process.
+// See issue: https://github.com/yugabyte/yugabyte-db/issues/31247
+
+class PgConcurrentCreateOrReplaceCrashTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    LibPqTestBase::UpdateMiniClusterOptions(opts);
+    // Object locking would serialize DDLs on the same object and close the
+    // stale-syscache race window, so it must be disabled to reproduce.
+    opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+  }
+
+  static bool IsBackendCrash(const Status& status) {
+    if (status.ok()) {
+      return false;
+    }
+    const auto msg = status.ToString();
+    return msg.find("server closed the connection unexpectedly") != std::string::npos ||
+           msg.find("terminating connection due to") != std::string::npos;
+  }
+};
+
+TEST_F(PgConcurrentCreateOrReplaceCrashTest, ConcurrentCreateOrReplaceWithDropCrash) {
+  constexpr int kNumReplacers = 4;
+  const int kNumIterations = NonTsanVsTsan(200, 80);
+  const std::string kCreateOrReplace =
+      "CREATE OR REPLACE FUNCTION add_fn(INTEGER, INTEGER) RETURNS INTEGER "
+      "LANGUAGE SQL AS 'SELECT $1 + $2;'";
+  const std::string kCreate =
+      "CREATE FUNCTION add_fn(INTEGER, INTEGER) RETURNS INTEGER "
+      "LANGUAGE SQL AS 'SELECT $1 + $2;'";
+  const std::string kDrop =
+      "DROP FUNCTION IF EXISTS add_fn(INTEGER, INTEGER)";
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute(kCreate));
+
+  std::atomic<bool> crashed{false};
+  std::string crash_msg;
+  std::mutex crash_mutex;
+  auto record_crash = [&](const Status& status) {
+    if (IsBackendCrash(status)) {
+      std::lock_guard<std::mutex> lock(crash_mutex);
+      crash_msg = status.ToString();
+      crashed.store(true, std::memory_order_release);
+      return true;
+    }
+    return false;
+  };
+
+  TestThreadHolder thread_holder;
+
+  // Replacer threads: hammer CREATE OR REPLACE on the same function so that they
+  // contend on the same pg_proc row and frequently run with a stale syscache.
+  for (int i = 0; i < kNumReplacers; ++i) {
+    thread_holder.AddThreadFunctor([&] {
+      auto conn = ASSERT_RESULT(Connect());
+      for (int j = 0; j < kNumIterations && !crashed.load(std::memory_order_acquire); ++j) {
+        // A stale-syscache replace can either crash (the bug) or fail benignly
+        // because the function was concurrently dropped. Only a crash fails the
+        // test; benign DDL errors are expected under this raciness.
+        record_crash(conn.Execute(kCreateOrReplace));
+      }
+    });
+  }
+
+  // Churn thread: keep dropping and recreating the function so its OID (and thus
+  // the pg_proc row's ybctid) changes underneath the replacers' stale caches.
+  thread_holder.AddThreadFunctor([&] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int j = 0; j < kNumIterations && !crashed.load(std::memory_order_acquire); ++j) {
+      if (record_crash(conn.Execute(kDrop))) {
+        return;
+      }
+      record_crash(conn.Execute(kCreate));
+    }
+  });
+
+  thread_holder.JoinAll();
+
+  ASSERT_FALSE(crashed.load(std::memory_order_acquire))
+      << "backend crashed during concurrent CREATE OR REPLACE. "
+      << "Status: " << crash_msg;
+
+  // Even when no backend crashes, we would like to further assert that
+  // pg_proc's secondary index (pg_proc_proname_args_nsp_index)
+  // is consistent with the base pg_proc table in the face of
+  // concurrent updates to pg_proc and its secondary index.
+  ASSERT_OK(
+      setup_conn.Fetch("SELECT yb_index_check('pg_proc_proname_args_nsp_index'::regclass)"));
 }
 }  // namespace yb::pgwrapper

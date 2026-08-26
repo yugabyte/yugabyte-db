@@ -194,6 +194,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  ThreadPool* snapshot_cleanup_pool() const { return snapshot_cleanup_pool_.get(); }
   rpc::ThreadPool* raft_notifications_pool() const {
     return raft_notifications_pool_.get();
   }
@@ -214,6 +215,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   //
   // If another tablet already exists with this ID, logs a DFATAL
   // and returns a bad Status.
+
+  // Tiered storage
+  // 'target_storage_tier', when non-empty, is a tiered-storage tier label (e.g. "ssd", "hdd")
+  // that this tablet's home directory (path_id 0) should be placed on. Derived
+  // from the storage_tier of the tablespace the tablet's table belongs to. If the requested
+  // tier has no disks configured on this node, we fall back to the node's default disk
+  // selection policy rather than failing tablet creation.
   Result<tablet::TabletPeerPtr> CreateNewTablet(
       const tablet::TableInfoPtr& table_info,
       const std::string& tablet_id,
@@ -221,7 +229,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       consensus::RaftConfigPB config,
       const bool colocated = false,
       const std::vector<SnapshotScheduleId>& snapshot_schedules = {},
-      const std::unordered_set<StatefulServiceKind>& hosted_services = {});
+      const std::unordered_set<StatefulServiceKind>& hosted_services = {},
+      const std::string& target_storage_tier = std::string());
 
   Status ApplyTabletSplit(
       tablet::SplitOperation* operation, log::Log* raft_log,
@@ -378,11 +387,39 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Creates and updates the map of table to the set of tablets assigned per table per disk
   // for both data and wal directories.
+  //
+  // 'target_tier', when non-empty, restricts data-directory candidates to disks tagged with
+  // that tier (see FsManager::GetDataRootDirsForTier), so the tablet's home dir lands on the
+  // requested tier (e.g. from a tablespace's storage_tier). WAL directory selection is always
+  // tier-agnostic, since WAL dirs are not part of tier_paths. If no disks are configured for
+  // the requested tier on this node, falls back to the default (all-disk) policy.
   void GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                    const std::string& table_id,
                                    const TabletId& tablet_id,
                                    std::string* data_root_dir,
-                                   std::string* wal_root_dir);
+                                   std::string* wal_root_dir,
+                                   const std::string& target_tier = std::string());
+
+  // Tiered Storage.
+  // Returns the path_id (index into RaftGroupMetadata::tier_paths() / RocksDB db_paths) of the
+  // least-loaded disk within target_tier for the given tablet. Uses the same per-table then
+  // per-drive min-count policy as GetAndRegisterDataAndWalDir, but restricts the candidate set
+  // to data roots tagged with target_tier in FsManager (from --fs_data_dirs parsing).
+  //
+  // This is the primitive that AlterTabletTier will call to resolve which path_id to pass to
+  // light_weight_compact when migrating SSTs to a different tier.
+  //
+  // This call is read-only: it only reads table_data_assignment_map_ / data_dirs_per_drive_
+  // (via PickMinLoadDataRootUnlocked) and does not write to them. Callers that actually
+  // place data on the returned path_id (e.g. after a successful light_weight_compact) are
+  // responsible for calling RegisterDataAndWalDir themselves to commit the assignment, so later
+  // calls to this function and to GetAndRegisterDataAndWalDir see accurate load counts.
+  //
+  // Returns NotFound if no data roots are configured for target_tier on this node.
+  Result<uint32_t> SelectPathIdForTier(
+      const tablet::RaftGroupMetadata& meta,
+      const std::string& table_id,
+      const std::string& target_tier) EXCLUDES(dir_assignment_mutex_);
   // Updates the map of table to the set of tablets assigned per table per disk
   // for both of the given data and wal directories.
   void RegisterDataAndWalDir(FsManager* fs_manager,
@@ -445,6 +482,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
+  friend class ComputeDbHistoryRetentionPinCutoffTest;
   friend class ::yb::XClusterSafeTimeTest;
 
   // Flag specified when registering a TabletPeer.
@@ -470,6 +508,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
     uint32_t change_seq;
   };
   typedef std::unordered_map<std::string, TabletReportState> DirtyMap;
+
+  // Bounds a per-database history cutoff derived from the cluster-global history retention pin.
+  // The returned cutoff is the timestamp below which history is compactable (history at or
+  // after it is retained). It is bounded so that:
+  //   * we never compact history newer than the minimum safety window (cutoff <= safety_window)
+  //   * we always allow compaction of history older than the hard cap (cutoff >= hard_cap), so a
+  //     single long-running transaction cannot block history retention forever.
+  // When there is no pin, only the safety window applies.
+  HybridTime ComputeDbHistoryRetentionPinCutoff(
+    HybridTime now, uint32_t db_oid, tablet::RaftGroupMetadata* metadata) const;
 
   // Returns Status::OK() iff state_ == MANAGER_RUNNING.
   Status CheckRunningUnlocked(std::optional<TabletServerErrorPB::Code>* error_code) const
@@ -674,11 +722,19 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   template <class RemoteClient>
   std::unique_ptr<RemoteClient> InitRemoteClient(
       const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
-      const std::string& source_addr, const std::string& debug_session_string);
+      const std::string& source_addr, const std::string& debug_session_string,
+      std::function<bool()> is_cancelled = {});
 
   void UpdateCompactFlushRateLimitBytesPerSec();
   void UpdateAllowCompactionFailures();
   void UpdateVectorIndexCompactionLimit();
+
+  // Returns the data root from candidate_dirs with the fewest tablets for table_id (tie-break:
+  // fewest tablets overall on that drive). candidate_dirs must be a subset of the dirs tracked in
+  // table_data_assignment_map_. Caller must hold dir_assignment_mutex_.
+  std::string PickMinLoadDataRootUnlocked(
+      const std::string& table_id,
+      const std::vector<std::string>& candidate_dirs) REQUIRES(dir_assignment_mutex_);
 
   rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
   PriorityThreadPoolTokenPtr VectorIndexCompactionToken();
@@ -761,6 +817,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Thread pool for Raft replication callback operations.
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
+
+  // Bounded process-wide pool for physical tablet snapshot directory cleanup.
+  std::unique_ptr<ThreadPool> snapshot_cleanup_pool_;
 
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;

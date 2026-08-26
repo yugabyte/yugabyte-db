@@ -248,6 +248,97 @@ TEST_F(PgDDLConcurrencyWithObjectLockingTest, AnalyzeWithConcurrentDDL) {
   thread_holder.Stop();
 }
 
+/*
+ * Concurrent clients invoke a plpgsql function that creates and mutates temp
+ * tables (CREATE / INSERT / ALTER / UPDATE / SELECT INTO pattern from GH #19242).
+ */
+TEST_F(PgDDLConcurrencyWithObjectLockingTest, TempTablePlpgsqlConcurrent) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE account(id int PRIMARY KEY, customer_id int, balance int)"));
+  ASSERT_OK(setup_conn.Execute(
+      "INSERT INTO account SELECT i, i % 10, i * 10 FROM generate_series(1, 100) i"));
+  ASSERT_OK(setup_conn.Execute(R"(
+      CREATE OR REPLACE FUNCTION test_proc(account_ids int[], in_customer_id int)
+      RETURNS TABLE(id int, customer_id int, balance int, adjusted int)
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        DROP TABLE IF EXISTS temp_t1, temp_t2, temp_t3;
+        CREATE TEMP TABLE temp_t1(id int, customer_id int, balance int);
+        CREATE TEMP TABLE temp_t2(id int, customer_id int, balance int, adjusted int);
+        CREATE TEMP TABLE temp_t3(id int, customer_id int, balance int, adjusted int);
+
+        IF account_ids IS NOT NULL THEN
+          INSERT INTO temp_t1
+          SELECT a.id, a.customer_id, a.balance
+          FROM account a
+          WHERE a.id = ANY (account_ids);
+        ELSE
+          INSERT INTO temp_t1
+          SELECT a.id, a.customer_id, a.balance
+          FROM account a
+          WHERE a.customer_id = in_customer_id;
+        END IF;
+
+        ALTER TABLE temp_t1 ADD COLUMN adjusted int;
+        -- Qualify columns: RETURNS TABLE creates OUT params with the same names.
+        UPDATE temp_t1 SET adjusted = temp_t1.balance + 1;
+
+        INSERT INTO temp_t2
+        SELECT t.id, t.customer_id, t.balance, t.adjusted FROM temp_t1 t;
+
+        INSERT INTO temp_t3
+        SELECT t2.id, t2.customer_id, t2.balance, t2.adjusted
+        FROM temp_t2 t2
+        JOIN account a ON a.id = t2.id;
+
+        RETURN QUERY SELECT t3.id, t3.customer_id, t3.balance, t3.adjusted
+                     FROM temp_t3 t3
+                     ORDER BY t3.id;
+      END;
+      $$)"));
+
+  TestThreadHolder thread_holder;
+  constexpr size_t kThreadsCount = 10;
+  CountDownLatch start_latch(kThreadsCount);
+
+  for (size_t i = 0; i < kThreadsCount; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), &start_latch, idx = i] {
+          auto conn = ASSERT_RESULT(Connect());
+          start_latch.CountDown();
+          start_latch.Wait();
+          while (!stop.load(std::memory_order_acquire)) {
+            // Alternate between the two branches of the function to exercise
+            // both fill paths under concurrency.
+            const std::string query = (idx % 2 == 0)
+                ? "SELECT * FROM test_proc(ARRAY[1, 2, 3, 4, 5], NULL)"
+                : Format("SELECT * FROM test_proc(NULL, $0)", idx % 10);
+            Status status;
+            // Retry transient transaction / catalog-version errors.
+            for (int attempt = 0; attempt < 10; ++attempt) {
+              auto rows = conn.FetchRows<int32_t, int32_t, int32_t, int32_t>(query);
+              if (rows.ok()) {
+                ASSERT_FALSE(rows->empty());
+                status = Status::OK();
+                break;
+              }
+              status = rows.status();
+              if (status.message().Contains("does not exist")) {
+                FAIL() << "Temp relation missing under concurrent plpgsql use: " << status;
+              }
+              if (!(HasTransactionError(status) || IsRetryable(status))) {
+                FAIL() << "Unexpected error calling test_proc: " << status;
+              }
+            }
+            ASSERT_OK(status);
+          }
+        });
+  }
+
+  thread_holder.WaitAndStop(20s * kTimeMultiplier);
+}
+
 class PgDDLConcurrencyWithObjectLockingTestRF1 : public PgDDLConcurrencyWithObjectLockingTest {
  public:
   int GetNumMasters() const override { return 1; }

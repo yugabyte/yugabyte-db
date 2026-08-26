@@ -2,12 +2,12 @@ import { FC, useMemo } from 'react';
 import { Controller, useFieldArray, useFormContext, useWatch } from 'react-hook-form';
 import _ from 'lodash';
 import { Trans, useTranslation } from 'react-i18next';
-import { YBButton, YBInput, YBSelect, YBTooltip, mui } from '@yugabyte-ui-library/core';
+import { YBButton, YBInput, YBSelect, YBTag, YBTooltip, mui } from '@yugabyte-ui-library/core';
 import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import Return from '@app/redesign/assets/tree.svg';
 import AddIcon from '@app/redesign/assets/add2.svg';
 import RemoveAzIcon from '@app/redesign/assets/close-large.svg';
-import TrashRegionIcon from '@app/redesign/assets/trashbin.svg';
+import DeleteOutlineIcon from '@app/redesign/assets/delete2.svg';
 import {
   DEFAULT_READ_REPLICA_NODE_COUNT,
   DEFAULT_READ_REPLICA_RF,
@@ -20,7 +20,9 @@ import BookIcon from '@app/redesign/assets/blue-book.svg';
 import { getFlagFromRegion } from '../../../../create-universe/helpers/RegionToFlagUtils';
 import InfoIcon from '@app/redesign/assets/info-message.svg';
 
-const { Box, MenuItem, Typography, styled, IconButton, Chip } = mui;
+const { Box, MenuItem, Typography, styled, IconButton } = mui;
+
+const REGION_LABEL_COL_WIDTH = 72;
 
 function zoneSnapshot(z: RRPlacementZoneForm | undefined) {
   if (!z) return null;
@@ -29,6 +31,14 @@ function zoneSnapshot(z: RRPlacementZoneForm | undefined) {
     nodeCount: z.nodeCount,
     dataCopies: z.dataCopies
   };
+}
+
+function firstUnusedZoneUuid(
+  zonesInRegion: { uuid: string }[],
+  usedUuids: Array<string | null | undefined>
+): string | null {
+  const used = new Set(usedUuids.filter((u): u is string => Boolean(u)));
+  return zonesInRegion.find((z) => !used.has(z.uuid))?.uuid ?? null;
 }
 
 const menuProps = {
@@ -61,19 +71,18 @@ const RegionSelectValue = ({ region }: { region: Region }) => {
 };
 
 const StyledInnerCard = styled('div')(({ theme }) => ({
-  background: theme.palette.grey[50] ?? '#FBFCFD',
+  background: '#FBFCFD',
   display: 'flex',
   flexDirection: 'column',
   gap: theme.spacing(3),
   border: `1px solid ${theme.palette.grey[300]}`,
   borderRadius: '8px',
   width: '100%',
-  maxWidth: '672px',
   paddingTop: theme.spacing(1)
 }));
 
 const StyledTooltipText = styled('div')(({ theme }) => ({
-  fontSize: '13px',
+  fontSize: '11.5px',
   lineHeight: '16px',
   fontWeight: 400,
   color: theme.palette.grey[700],
@@ -85,7 +94,8 @@ const StyledRegionHeader = styled('div')(({ theme }) => ({
   flexDirection: 'row',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: theme.spacing(1.25, 3)
+  padding: theme.spacing(1.25, 3),
+  gap: theme.spacing(2)
 }));
 
 type Props = {
@@ -97,6 +107,9 @@ type Props = {
   allowAzUndo?: boolean;
   showRemoveRegion?: boolean;
   onRemoveRegion?: () => void;
+  /** When primary uses dedicated nodes, AZ node inputs are labeled as T-Server counts. */
+  useDedicatedNodes?: boolean;
+  isK8s?: boolean;
 };
 
 export const RRRegionCard: FC<Props> = ({
@@ -105,7 +118,8 @@ export const RRRegionCard: FC<Props> = ({
   baselineRegion,
   allowAzUndo = false,
   showRemoveRegion,
-  onRemoveRegion
+  onRemoveRegion,
+  isK8s = false
 }) => {
   const { control, watch, setValue, getValues } = useFormContext<RRRegionsAndAZFormValues>();
   const { t } = useTranslation('translation', { keyPrefix: 'readReplica.addRR' });
@@ -120,8 +134,22 @@ export const RRRegionCard: FC<Props> = ({
     | RRPlacementRegionForm
     | undefined;
   const isNewRegion = Boolean(regionRow?.isNew);
+  const baselineZoneUuids = useMemo(() => {
+    const uuids = (baselineRegion?.zones ?? [])
+      .map((z) => z.zoneUuid)
+      .filter((u): u is string => Boolean(u));
+    return new Set(uuids);
+  }, [baselineRegion]);
+  // Only compare against a real loaded RR placement (edit flow). Add-RR defaults have null uuids.
+  const isNewAz = (zone: RRPlacementZoneForm | undefined) => {
+    if (isNewRegion || baselineZoneUuids.size === 0) return false;
+    if (!zone?.zoneUuid) return true;
+    return !baselineZoneUuids.has(zone.zoneUuid);
+  };
 
-  const allRegionRows = watch('regions') ?? [];
+  
+  const allRegionRows = useWatch({ control, name: 'regions' }) ?? [];
+  const selectedRegionUuidsKey = allRegionRows.map((row) => row?.regionUuid ?? '').join(',');
   const regionUuidsSelectedElsewhere = useMemo(() => {
     const s = new Set<string>();
     allRegionRows.forEach((row, idx) => {
@@ -130,7 +158,7 @@ export const RRRegionCard: FC<Props> = ({
       }
     });
     return s;
-  }, [allRegionRows, regionIndex]);
+  }, [allRegionRows, regionIndex, selectedRegionUuidsKey]);
 
   const regionUuid = watch(`regions.${regionIndex}.regionUuid`);
   const selectedRegion = useMemo(
@@ -143,13 +171,18 @@ export const RRRegionCard: FC<Props> = ({
 
   const onRegionUuidChange = (uuid: string | null) => {
     setValue(`regions.${regionIndex}.regionUuid`, uuid, { shouldValidate: true, shouldDirty: true });
+    const region = regionsList.find((r) => r.uuid === uuid);
+    const firstAzUuid = region?.zones?.[0]?.uuid ?? null;
     setValue(
       `regions.${regionIndex}.zones`,
       [
-        getEmptyRRPlacementZone({
-          nodeCount: DEFAULT_READ_REPLICA_NODE_COUNT,
-          dataCopies: DEFAULT_READ_REPLICA_RF
-        })
+        {
+          ...getEmptyRRPlacementZone({
+            nodeCount: DEFAULT_READ_REPLICA_NODE_COUNT,
+            dataCopies: DEFAULT_READ_REPLICA_RF
+          }),
+          zoneUuid: firstAzUuid
+        }
       ],
       { shouldValidate: true, shouldDirty: true }
     );
@@ -164,35 +197,45 @@ export const RRRegionCard: FC<Props> = ({
     });
   };
 
-  const canAddAnotherAz = selectedRegion && fields.length < zonesInRegion.length;
+  const canAddAnotherAz = Boolean(selectedRegion && fields.length < zonesInRegion.length);
+  const selectRegionFirstTooltip = !selectedRegion ? t('firstSelectARegion') : '';
 
   return (
     <StyledInnerCard>
       {isNewRegion ? (
-        <Box sx={{ px: 3, pt: 1.25, pb: 0, mb: -1 }}>
-          <Chip
-            label={t('newRegionBadge')}
-            size="small"
-            sx={{
-              height: 22,
-              borderRadius: '4px',
-              backgroundColor: '#CDEFE0',
-              color: '#13A768',
-              fontWeight: 600,
-              fontSize: '10px',
-              lineHeight: '16px',
-              '& .MuiChip-label': { px: 0.75, py: 0.25 }
-            }}
-            data-testid={`rr-region-new-badge-${regionIndex}`}
-          />
+        <Box
+          sx={{ px: 3, pt: 1.25, pb: 0, mb: -1 }}
+          data-testid={`rr-region-new-badge-${regionIndex}`}
+        >
+          <YBTag size="small" variant="light" color="gradient">
+            {t('newRegionBadge')}
+          </YBTag>
         </Box>
       ) : null}
       <StyledRegionHeader>
-        <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 3, flex: 1, minWidth: 0 }}>
-          <Typography color="textSecondary" variant="body1" sx={{ fontSize: '13px', fontWeight: 600 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 3,
+            flex: 1,
+            minWidth: 0
+          }}
+        >
+          <Typography
+            color="textSecondary"
+            variant="body1"
+            sx={{
+              fontSize: '13px',
+              fontWeight: 600,
+              width: REGION_LABEL_COL_WIDTH,
+              flexShrink: 0
+            }}
+          >
             {t('regionLabel', { index: regionIndex + 1 })}
           </Typography>
-          <Box sx={{ flex: 1, minWidth: 0, maxWidth: '312px' }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
             <Controller
               control={control}
               name={`regions.${regionIndex}.regionUuid`}
@@ -221,8 +264,7 @@ export const RRRegionCard: FC<Props> = ({
                       key={r.uuid}
                       value={r.uuid}
                       disabled={
-                        regionUuidsSelectedElsewhere.has(r.uuid) &&
-                        r.uuid !== (field.value ?? '')
+                        regionUuidsSelectedElsewhere.has(r.uuid) && r.uuid !== (field.value ?? '')
                       }
                     >
                       <RegionSelectValue region={r} />
@@ -237,9 +279,11 @@ export const RRRegionCard: FC<Props> = ({
           <IconButton
             size="small"
             onClick={onRemoveRegion}
+            aria-label={t('removeRegion')}
             data-testid={`rr-remove-region-${regionIndex}`}
+            sx={{ color: 'grey.600', flexShrink: 0 }}
           >
-            <TrashRegionIcon />
+            <DeleteOutlineIcon />
           </IconButton>
         ) : null}
       </StyledRegionHeader>
@@ -249,8 +293,7 @@ export const RRRegionCard: FC<Props> = ({
           display: 'flex',
           flexDirection: 'column',
           gap: '24px',
-          pl: '64px',
-          pr: 3,
+          px: 3,
           pb: 3
         }}
       >
@@ -268,67 +311,91 @@ export const RRRegionCard: FC<Props> = ({
 
           return (
             <Box key={fieldItem.id} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', width: '100%' }}>
-                <Box sx={{ pt: '32px', px: 1, flexShrink: 0 }}>
+              {isNewAz(fieldItem) ? (
+                <Box
+                  sx={{ pl: `${REGION_LABEL_COL_WIDTH + 24}px` }}
+                  data-testid={`rr-region-new-az-badge-${regionIndex}-${zoneIndex}`}
+                >
+                  <YBTag size="small" variant="light" color="gradient">
+                    {t('newRegionBadge')}
+                  </YBTag>
+                </Box>
+              ) : null}
+              <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start', width: '100%' }}>
+                <Box
+                  sx={{
+                    width: REGION_LABEL_COL_WIDTH,
+                    pt: '32px',
+                    flexShrink: 0,
+                    display: 'flex',
+                    justifyContent: 'flex-end'
+                  }}
+                >
                   <Return />
                 </Box>
-                <Box sx={{ display: 'flex', flex: 1, gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <Box
+                  sx={{ display: 'flex', flex: 1, gap: '8px', alignItems: 'flex-end', minWidth: 0 }}
+                >
                   <Box sx={{ flex: '1 1 200px', minWidth: 0 }}>
                     <Controller
                       control={control}
                       name={`regions.${regionIndex}.zones.${zoneIndex}.zoneUuid`}
                       render={({ field, fieldState }) => (
-                        <YBSelect
-                          label={t('availabilityZone')}
-                          error={Boolean(fieldState.error)}
-                          value={field.value ?? ''}
-                          renderValue={(v) => {
-                            const val = v as string;
-                            if (!val) return tc('select');
-                            const z = zonesInRegion.find((x) => x.uuid === val);
-                            return z?.name ?? tc('select');
-                          }}
-                          selectProps={{ displayEmpty: true } as any}
-                          disabled={!selectedRegion}
-                          onChange={(e) => {
-                            const v = e.target.value as string;
-                            field.onChange(v || null);
-                          }}
-                          menuProps={menuProps as any}
-                          dataTestId={`rr-az-select-${regionIndex}-${zoneIndex}`}
-                          sx={{
-                            width: '100%',
-                            '& .MuiOutlinedInput-root': {
-                              backgroundColor: !field.value ? 'action.hover' : undefined
-                            }
-                          }}
-                        >
-                          {zonesInRegion.map((z) => (
-                            <MenuItem
-                              key={z.uuid}
-                              value={z.uuid}
-                              disabled={watchedZones.some(
-                                (row, idx) =>
-                                  idx !== zoneIndex &&
-                                  Boolean(row?.zoneUuid) &&
-                                  row.zoneUuid === z.uuid
-                              )}
+                        <YBTooltip title={selectRegionFirstTooltip}>
+                          <span style={{ display: 'block', width: '100%' }}>
+                            <YBSelect
+                              label={t('availabilityZone')}
+                              error={Boolean(fieldState.error)}
+                              value={field.value ?? ''}
+                              renderValue={(v) => {
+                                const val = v as string;
+                                if (!val) return tc('select');
+                                const z = zonesInRegion.find((x) => x.uuid === val);
+                                return z?.name ?? tc('select');
+                              }}
+                              selectProps={{ displayEmpty: true } as any}
+                              disabled={!selectedRegion}
+                              onChange={(e) => {
+                                const v = e.target.value as string;
+                                field.onChange(v || null);
+                              }}
+                              menuProps={menuProps as any}
+                              dataTestId={`rr-az-select-${regionIndex}-${zoneIndex}`}
+                              sx={{
+                                width: '100%',
+                                '& .MuiOutlinedInput-root': {
+                                  backgroundColor: !field.value ? 'action.hover' : undefined
+                                }
+                              }}
                             >
-                              {z.name}
-                            </MenuItem>
-                          ))}
-                        </YBSelect>
+                              {zonesInRegion.map((z) => (
+                                <MenuItem
+                                  key={z.uuid}
+                                  value={z.uuid}
+                                  disabled={watchedZones.some(
+                                    (row, idx) =>
+                                      idx !== zoneIndex &&
+                                      Boolean(row?.zoneUuid) &&
+                                      row.zoneUuid === z.uuid
+                                  )}
+                                >
+                                  {z.name}
+                                </MenuItem>
+                              ))}
+                            </YBSelect>
+                          </span>
+                        </YBTooltip>
                       )}
                     />
                   </Box>
-                  <Box sx={{ width: '160px', flexShrink: 0 }}>
+                  <Box sx={{ width: '128px', flexShrink: 0 }}>
                     <Box
                       sx={{
                         display: 'flex',
                         alignItems: 'center',
                         gap: 0.5,
                         mb: '4px',
-                        minHeight: 20,
+                        minHeight: 20
                       }}
                     >
                       <Typography
@@ -339,58 +406,73 @@ export const RRRegionCard: FC<Props> = ({
                           fontWeight: 500,
                           color: 'grey.600',
                           lineHeight: '16px',
-                          minWidth: 0,
+                          minWidth: 0
                         }}
                       >
                         {t('replicationFactor')}
                       </Typography>
-                      {
-                        zoneIndex === 0 ? (
-                          <YBTooltip
-                            title={
-                              <StyledTooltipText>
-                                <Trans
-                                  t={t}
-                                  i18nKey="replicationFactorTooltip"
-                                  components={{
-                                    br: <br />,
-                                    a: (
-                                      <a
-                                        href="#"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        style={{ textDecoration: 'underline' }}
-                                      />
-                                    )
+                      {zoneIndex === 0 ? (
+                        <YBTooltip
+                          title={
+                            <StyledTooltipText>
+                              <Trans
+                                t={t}
+                                i18nKey="replicationFactorTooltip"
+                                components={{
+                                  br: <br />,
+                                  a: (
+                                    <a
+                                      href="#"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{
+                                        textDecoration: 'underline',
+                                        fontSize: '11.5px',
+                                        lineHeight: '16px'
+                                      }}
+                                    />
+                                  )
+                                }}
+                              />
+                              <Box
+                                sx={{
+                                  display: 'flex',
+                                  gap: '4px',
+                                  alignItems: 'center',
+                                  marginTop: '8px'
+                                }}
+                              >
+                                <BookIcon />
+                                <a
+                                  style={{
+                                    color: '#2B59C3',
+                                    textDecoration: 'underline',
+                                    fontSize: '11.5px',
+                                    lineHeight: '16px'
                                   }}
-                                />
-                                <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '8px' }}>
-                                  <BookIcon />
-                                  <a
-                                    style={{ color: '#2B59C3', textDecoration: 'underline' }}
-                                    href="#"
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    {t('learnMore', { keyPrefix: 'common' })}
-                                  </a>
-                                </Box>
-                              </StyledTooltipText>
-                            }
+                                  href="#"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {t('learnMore', { keyPrefix: 'common' })}
+                                </a>
+                              </Box>
+                            </StyledTooltipText>
+                          }
+                        >
+                          <Box
+                            component="span"
+                            data-testid={`rr-replication-factor-help-${regionIndex}-${zoneIndex}`}
+                            sx={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              flexShrink: 0
+                            }}
                           >
-                            <Box
-                              component="span"
-                              data-testid={`rr-replication-factor-help-${regionIndex}-${zoneIndex}`}
-                              sx={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                flexShrink: 0,
-                              }}
-                            >
-                              <InfoIcon fontSize="small" />
-                            </Box>
-                          </YBTooltip>
-                        ) : null}
+                            <InfoIcon fontSize="small" />
+                          </Box>
+                        </YBTooltip>
+                      ) : null}
                     </Box>
                     <Controller
                       control={control}
@@ -435,7 +517,7 @@ export const RRRegionCard: FC<Props> = ({
                         minHeight: 20
                       }}
                     >
-                      {t('nodes')}
+                      {t(isK8s ? 'pods' : 'nodes')}
                     </Typography>
                     <Controller
                       control={control}
@@ -498,24 +580,34 @@ export const RRRegionCard: FC<Props> = ({
           );
         })}
 
-        <Box sx={{ pl: '40px' }}>
-          <YBButton
-            variant="secondary"
-            size="large"
-            disabled={!canAddAnotherAz}
-            startIcon={<AddIcon />}
-            onClick={() =>
-              append(
-                getEmptyRRPlacementZone({
-                  nodeCount: DEFAULT_READ_REPLICA_NODE_COUNT,
-                  dataCopies: DEFAULT_READ_REPLICA_RF
-                })
-              )
-            }
-            dataTestId={`rr-add-az-${regionIndex}`}
-          >
-            {t('addAvailabilityZone')}
-          </YBButton>
+        <Box sx={{ display: 'flex', gap: 3 }}>
+          <Box sx={{ width: REGION_LABEL_COL_WIDTH, flexShrink: 0 }} />
+          <YBTooltip title={selectRegionFirstTooltip}>
+            <span style={{ width: 'fit-content' }}>
+              <YBButton
+                variant="secondary"
+                size="medium"
+                disabled={!canAddAnotherAz}
+                startIcon={<AddIcon />}
+                onClick={() => {
+                  const nextZoneUuid = firstUnusedZoneUuid(
+                    zonesInRegion,
+                    watchedZones.map((z) => z.zoneUuid)
+                  );
+                  append({
+                    ...getEmptyRRPlacementZone({
+                      nodeCount: DEFAULT_READ_REPLICA_NODE_COUNT,
+                      dataCopies: DEFAULT_READ_REPLICA_RF
+                    }),
+                    zoneUuid: nextZoneUuid
+                  });
+                }}
+                dataTestId={`rr-add-az-${regionIndex}`}
+              >
+                {t('addAvailabilityZone')}
+              </YBButton>
+            </span>
+          </YBTooltip>
         </Box>
       </Box>
     </StyledInnerCard>

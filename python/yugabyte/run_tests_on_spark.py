@@ -129,6 +129,12 @@ from yugabyte import artifact_upload  # noqa
 
 REPEAT_FAILURE_LIMIT = 50
 
+# The whole Spark application can be lost to autoscaled worker churn, e.g. while workers are
+# scaling in (symptom: "Master removed our application: FAILED"). Submit the job for the
+# not-yet-completed test attempts up to SPARK_JOB_MAX_SUBMITS times, re-creating the Spark context
+# if needed.
+SPARK_JOB_MAX_SUBMITS = 3
+
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
 # on Spark.
 JENKINS_ENV_VARS = [
@@ -183,6 +189,8 @@ HASH_COMMENT_RE = re.compile('#.*$')
 
 THREAD_JOIN_TIMEOUT_SEC = 10
 
+ARCHIVE_SHA_FILE_NAME = 'extracted_from_archive.sha256'
+
 UNTAR_SCRIPT_TEMPLATE = """#!{bash_shebang}
 set -euo pipefail
 (
@@ -190,7 +198,7 @@ set -euo pipefail
     flock -w 180 200 || exit 5
     # Check existing workspace.
     if [[ -d '{remote_yb_src_root}' ]]; then
-        previous_sha256_file_path='{remote_yb_src_root}/extracted_from_archive.sha256'
+        previous_sha256_file_path='{remote_yb_src_root}/{archive_sha_file_name}'
         if [[ ! -f $previous_sha256_file_path ]]; then
             echo "File $previous_sha256_file_path does not exist!" >&2
             previous_sha256sum="None-Found"
@@ -232,7 +240,7 @@ set -euo pipefail
             tar xzf '{archive_path}' -C "$yb_src_root_extract_tmp_dir"
         fi
         echo '{expected_archive_sha256sum}' \
-                >"$yb_src_root_extract_tmp_dir/extracted_from_archive.sha256"
+                >"$yb_src_root_extract_tmp_dir/{archive_sha_file_name}"
         mv "$yb_src_root_extract_tmp_dir" '{remote_yb_src_root}'
     fi
 )  200>'{lock_path}'
@@ -242,10 +250,15 @@ set -euo pipefail
 verbose = False
 g_spark_master_url_override = None
 propagated_env_vars: Dict[str, str] = {}
-global_conf_dict = None
 spark_context = None
+# Copy of the details list init_spark_context() was called with, so an equivalent context can be
+# re-created if the Spark application is lost mid-run (e.g. to Spark worker autoscaling).
+g_spark_context_details: List[str] = []
 archive_sha256sum = None
 g_max_num_test_failures = sys.maxsize
+# Whether the last Spark job submitted via run_spark_action was explicitly canceled (because the
+# number of test failures reached limit).
+g_spark_job_cancelled = False
 
 
 def configure_logging() -> None:
@@ -272,13 +285,17 @@ def log_heading(msg: str) -> None:
 
 # Initializes the spark context. The details list will be incorporated in the Spark application
 # name visible in the Spark web UI.
-def init_spark_context(details: List[str] = []) -> None:
+def init_spark_context(conf: yb_dist_tests.TestConfig,
+                       details: List[str] = []) -> None:
     global spark_context
+    global g_spark_context_details
     if spark_context:
         return
+    # Save a copy before this function appends to details, so restart_spark_context() can pass an
+    # equivalent list here again.
+    g_spark_context_details = list(details)
     log_heading("Initializing Spark context")
-    global_conf = yb_dist_tests.get_global_conf()
-    build_type = global_conf.build_type
+    build_type = conf.build_type
     from pyspark import SparkContext  # type: ignore
 
     spark_master_url = g_spark_master_url_override
@@ -316,19 +333,55 @@ def init_spark_context(details: List[str] = []) -> None:
         zip_cmd_args = [
             'zip', '--recurse-paths', '--quiet', yb_python_zip_path, module_name,
             '-x', '*.sw?', '-x', '*.pyc']
-        subprocess.check_call(zip_cmd_args, cwd=os.path.join(global_conf.yb_src_root, 'python'))
+        subprocess.check_call(zip_cmd_args, cwd=os.path.join(conf.yb_src_root, 'python'))
         spark_context.addPyFile(yb_python_zip_path)
-    if global_conf.archive_for_workers is not None:
+    if conf.archive_for_workers is not None:
         logging.info("Will send the archive %s to all Spark workers",
-                     global_conf.archive_for_workers)
-        spark_context.addFile(global_conf.archive_for_workers)
+                     conf.archive_for_workers)
+        spark_context.addFile(conf.archive_for_workers)
 
     log_heading("Initialized Spark context")
 
 
-def set_global_conf_for_spark_jobs() -> None:
-    global global_conf_dict
-    global_conf_dict = vars(yb_dist_tests.get_global_conf())
+def spark_context_is_stopped() -> bool:
+    if spark_context is None:
+        return True
+    # SparkContext.stop() clears _jsc, so a context that was stopped through this process is already
+    # known to be stopped.
+    if spark_context._jsc is None:
+        return True
+    try:
+        return cast(bool, spark_context._jsc.sc().isStopped())
+    except Exception:
+        logging.exception("Could not check if the Spark context is stopped, assuming it is")
+        return True
+
+
+# py4j is only importable once pyspark has been set up (pyspark puts it on sys.path), and it is
+# absent entirely in the unit-test environment, so we resolve it lazily and cache the result. When
+# py4j cannot be imported this is an empty tuple and unit-tests fall back to
+# spark_context_is_stopped().
+@functools.lru_cache(maxsize=1)
+def spark_bridge_error_types() -> Tuple[type, ...]:
+    try:
+        from py4j.protocol import Py4JError  # type: ignore
+        return (Py4JError,)
+    except ImportError:
+        return ()
+
+
+# Stop and re-create the Spark context after the application was lost, e.g. when the standalone
+# master removed it due to executor failures on autoscaled workers that were shutting down.
+def restart_spark_context(conf: yb_dist_tests.TestConfig) -> None:
+    global spark_context
+    log_heading("Re-creating the Spark context")
+    if spark_context is not None:
+        try:
+            spark_context.stop()
+        except Exception:
+            logging.exception("Error stopping the old Spark context, creating a new one anyway")
+        spark_context = None
+    init_spark_context(conf, list(g_spark_context_details))
 
 
 def get_bash_path() -> str:
@@ -366,13 +419,14 @@ def copy_to_host(artifact_paths: List[str], dest_host: str) -> artifact_upload.F
 
 
 def upload_spark_stderr(
+        conf: yb_dist_tests.TestConfig,
         test_descriptor_str: str,
         csi_id: str) -> None:
     from pyspark import SparkFiles  # type: ignore
     spark_stderr_src = os.path.join(os.path.abspath(SparkFiles.getRootDirectory()), 'stderr')
 
     test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
-    error_output_path = join_build_root_with(test_descriptor.rel_error_output_path)
+    error_output_path = join_build_root_with(conf, test_descriptor.rel_error_output_path)
     spark_stderr_dest = error_output_path.replace('__error.log', '__spark_stderr.log')
 
     error_log_dir_path = os.path.dirname(spark_stderr_dest)
@@ -384,6 +438,7 @@ def upload_spark_stderr(
 
 
 def copy_spark_stderr(
+        conf: yb_dist_tests.TestConfig,
         test_descriptor_str: str,
         csi_id: str,
         build_host: str) -> artifact_upload.FileTransferResult:
@@ -398,7 +453,7 @@ def copy_spark_stderr(
         spark_stderr_src = os.path.join(os.path.abspath(SparkFiles.getRootDirectory()), 'stderr')
 
         test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
-        error_output_path = join_build_root_with(test_descriptor.rel_error_output_path)
+        error_output_path = join_build_root_with(conf, test_descriptor.rel_error_output_path)
         spark_stderr_dest = error_output_path.replace('__error.log', '__spark_stderr.log')
 
         error_log_dir_path = os.path.dirname(spark_stderr_dest)
@@ -418,31 +473,30 @@ def copy_spark_stderr(
         return result
 
 
-def get_build_root() -> str:
-    assert yb_dist_tests.global_conf is not None
-    return yb_dist_tests.global_conf.build_root
+def join_build_root_with(conf: yb_dist_tests.TestConfig, rel_path: str) -> str:
+    return os.path.join(conf.build_root, rel_path)
 
 
-def join_build_root_with(rel_path: str) -> str:
-    return os.path.join(get_build_root(), rel_path)
-
-
+# This is executed on a Spark executor.
 def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: Any,
-                      rerun: bool) -> None:
+                      rerun: bool,
+                      conf: yb_dist_tests.TestConfig,
+                      env_vars: Dict[str, str]) -> None:
     """
-    This is invoked in parallel to actually run tests.
+    This is invoked in parallel to actually run tests. conf is the submitting job's build tree
+    config, unpickled from the task closure, so it is this task's own copy rather than module state
+    a previous task on this worker happened to leave behind. env_vars is the same job's environment
+    for the workers, passed the same way.
     """
     try:
-        global_conf = initialize_remote_task()
+        initialize_remote_task(conf, env_vars)
     except Exception as e:
         build_host = os.environ.get('YB_BUILD_HOST', None)
         if build_host:
-            copy_spark_stderr(test_descriptor_str, '', build_host)
+            copy_spark_stderr(conf, test_descriptor_str, '', build_host)
         raise e
 
-    from yugabyte import yb_dist_tests
-
-    wait_for_path_to_exist(global_conf.build_root)
+    wait_for_path_to_exist(conf.build_root)
 
     # Created files/directories will be writable by the group.
     old_umask = os.umask(2)
@@ -453,16 +507,16 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
     os.environ['YB_TEST_DESCRIPTOR_STR'] = test_descriptor_str
 
     os.environ['YB_TEST_ATTEMPT_INDEX'] = str(test_descriptor.attempt_index)
-    os.environ['build_type'] = global_conf.build_type
+    os.environ['build_type'] = conf.build_type
     os.environ['YB_RUNNING_TEST_ON_SPARK'] = '1'
-    os.environ['BUILD_ROOT'] = global_conf.build_root
+    os.environ['BUILD_ROOT'] = conf.build_root
 
     test_started_running_flag_file = yb_dist_tests.get_tmp_filename(
             prefix='yb_test_started_running_flag_file')
 
     os.environ['YB_TEST_STARTED_RUNNING_FLAG_FILE'] = test_started_running_flag_file
 
-    error_output_path = join_build_root_with(test_descriptor.rel_error_output_path)
+    error_output_path = join_build_root_with(conf, test_descriptor.rel_error_output_path)
     os.environ['YB_TEST_EXTRA_ERROR_LOG_PATH'] = error_output_path
 
     timestamp_str = datetime.now().strftime('%Y%m%d%H%M%S%f')
@@ -496,8 +550,8 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
         #    'set -o pipefail; cd %s; "%s" %s 2>&1 | tee "%s"; exit ${PIPESTATUS[0]}' % (
         runner_oneline = \
             'cd %s; "%s" %s > "%s" 2>&1' % (
-                shlex.quote(get_build_root()),
-                global_conf.get_run_test_script_path(),
+                shlex.quote(conf.build_root),
+                conf.get_run_test_script_path(),
                 test_descriptor.args_for_run_test,
                 error_output_path
             )
@@ -515,10 +569,10 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                 if csi_id:
                     csi_report.close_item(csi_id, final_time_sec, 'interrupted', [])
                     csi_report.upload_log(csi_id, final_time_sec, [error_output_path])
-                    upload_spark_stderr(test_descriptor_str, csi_id)
+                    upload_spark_stderr(conf, test_descriptor_str, csi_id)
                 else:
                     if build_host:
-                        copy_spark_stderr(test_descriptor_str, csi_id, build_host)
+                        copy_spark_stderr(conf, test_descriptor_str, csi_id, build_host)
                 process.kill()
 
         timer_thread = threading.Timer(
@@ -559,7 +613,7 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
         csi_tags = []
 
         rel_artifact_paths = None
-        if global_conf.archive_for_workers:
+        if conf.archive_for_workers:
             artifact_paths = [error_output_path]
             if os.path.exists(artifact_list_path):
                 with open(artifact_list_path) as artifact_list_file:
@@ -594,13 +648,13 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                 artifact_copy_result = copy_to_host(artifact_paths, build_host)
             if exit_code != 0:
                 if not csi_id:
-                    spark_error_copy_result = copy_spark_stderr(test_descriptor_str, csi_id,
+                    spark_error_copy_result = copy_spark_stderr(conf, test_descriptor_str, csi_id,
                                                                 build_host)
                 else:
-                    upload_spark_stderr(test_descriptor_str, csi_id)
+                    upload_spark_stderr(conf, test_descriptor_str, csi_id)
 
             rel_artifact_paths = [
-                os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)
+                os.path.relpath(os.path.abspath(artifact_path), conf.yb_src_root)
                 for artifact_path in artifact_paths]
 
         csi_report.close_item(csi_id, end_time_sec, csi_result, csi_tags)
@@ -632,18 +686,21 @@ def get_bash_shebang() -> str:
 
 
 # This is executed on a Spark executor as part of running a task.
-def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
+def initialize_remote_task(conf: yb_dist_tests.TestConfig,
+                           env_vars: Dict[str, str]) -> None:
     configure_logging()
 
-    assert global_conf_dict is not None
-    global_conf = yb_dist_tests.set_global_conf_from_dict(global_conf_dict)
-    global_conf.set_env_on_spark_worker(propagated_env_vars)
-    if not global_conf.archive_for_workers:
-        return global_conf
+    # Re-applied on every task, not once per process: Spark reuses python workers
+    # (spark.python.worker.reuse), so this process may still carry conf and env a previous task on
+    # this worker applied. Setting both here keeps a task's environment a function of what its job
+    # submitted rather than of worker history.
+    conf.set_env_on_spark_worker(env_vars)
+    if not conf.archive_for_workers:
+        return
 
     from pyspark import SparkFiles  # type: ignore
-    archive_name = os.path.basename(SparkFiles.get(global_conf.archive_for_workers))
-    expected_archive_sha256sum = global_conf.archive_sha256sum
+    archive_name = os.path.basename(SparkFiles.get(conf.archive_for_workers))
+    expected_archive_sha256sum = conf.archive_sha256sum
     assert expected_archive_sha256sum is not None
 
     worker_tmp_dir = os.path.abspath(SparkFiles.getRootDirectory())
@@ -653,7 +710,7 @@ def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
     # We install the code into the same path where it was installed on the main build node (Jenkins
     # worker or dev server), but put it in as separate variable to have flexibility to change it
     # later.
-    remote_yb_src_root = global_conf.yb_src_root
+    remote_yb_src_root = conf.yb_src_root
     remote_yb_src_job_dir = os.path.dirname(remote_yb_src_root)
 
     try:
@@ -668,7 +725,7 @@ def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
         untar_script_path_for_reference = os.path.join(
                 worker_tmp_dir, 'untar_archive_once.sh')
         lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
-                global_conf.yb_src_root.replace('/', '__'))
+                conf.yb_src_root.replace('/', '__'))
         bash_shebang = get_bash_shebang()
         with open(untar_script_path, 'w') as untar_script_file:
             # Do the locking using the flock command in Bash -- file locking in Python is painful.
@@ -676,6 +733,7 @@ def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
 
             untar_script_file.write(UNTAR_SCRIPT_TEMPLATE.format(
                 archive_path=archive_path,
+                archive_sha_file_name=ARCHIVE_SHA_FILE_NAME,
                 bash_shebang=bash_shebang,
                 expected_archive_sha256sum=expected_archive_sha256sum,
                 lock_path=lock_path,
@@ -696,22 +754,20 @@ def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
         if os.path.exists(untar_script_path):
             os.remove(untar_script_path)
 
-    return global_conf
 
-
-def list_test_descriptors(rel_test_path: str) -> List[str]:
+def list_test_descriptors(conf: yb_dist_tests.TestConfig,
+                          rel_test_path: str) -> List[str]:
     """
     This function lists all individual tests within a C++ test program.
     """
-    global_conf = yb_dist_tests.get_global_conf()
-    os.environ['BUILD_ROOT'] = global_conf.build_root
+    os.environ['BUILD_ROOT'] = conf.build_root
     if not os.path.isdir(os.environ['YB_THIRDPARTY_DIR']):
         find_or_download_thirdparty_script_path = os.path.join(
-            global_conf.yb_src_root, 'build-support', 'find_or_download_thirdparty.sh')
+            conf.yb_src_root, 'build-support', 'find_or_download_thirdparty.sh')
         subprocess.check_call(find_or_download_thirdparty_script_path)
 
     list_tests_cmd_line = [
-            os.path.join(global_conf.build_root, rel_test_path), '--gtest_list_tests']
+            os.path.join(conf.build_root, rel_test_path), '--gtest_list_tests']
 
     try:
         prog_result = command_util.run_program(list_tests_cmd_line)
@@ -801,20 +857,23 @@ def get_jenkins_job_name() -> Optional[str]:
 def get_jenkins_job_name_path_component() -> str:
     jenkins_job_name = get_jenkins_job_name()
     if jenkins_job_name:
-        return "job_" + jenkins_job_name
+        # JOB_NAME has '/' for folder-nested jobs (e.g. 'users/<job>'); replace it so this stays a
+        # single path component: it's used as a directory name and as part of a report filename.
+        # An embedded '/' splits it into an extra directory level that nothing creates, so writing
+        # the report fails with FileNotFoundError.
+        return "job_" + jenkins_job_name.replace('/', '_')
 
     return "unknown_jenkins_job"
 
 
-def get_report_parent_dir(report_base_dir: str) -> str:
+def get_report_parent_dir(conf: yb_dist_tests.TestConfig, report_base_dir: str) -> str:
     """
     @return a directory to store build report, relative to the given base directory. Path components
             are based on build type, Jenkins job name, etc.
     """
-    global_conf = yb_dist_tests.get_global_conf()
     return os.path.join(
         report_base_dir,
-        global_conf.build_type,
+        conf.build_type,
         get_jenkins_job_name_path_component())
 
 
@@ -846,16 +905,16 @@ def save_json_to_paths(
 
 
 def save_report(
+        conf: yb_dist_tests.TestConfig,
         report_base_dir: str,
         results: List[yb_dist_tests.TestResult],
         total_elapsed_time_sec: float,
         gzip_full_report: bool,
         save_to_build_dir: bool = False) -> None:
     historical_report_path = None
-    global_conf = yb_dist_tests.get_global_conf()
 
     if report_base_dir:
-        historical_report_parent_dir = get_report_parent_dir(report_base_dir)
+        historical_report_parent_dir = get_report_parent_dir(conf, report_base_dir)
 
         if not os.path.isdir(historical_report_parent_dir):
             try:
@@ -875,7 +934,7 @@ def save_report(
         historical_report_path = os.path.join(
                 historical_report_parent_dir,
                 '{}.json'.format('_'.join([
-                    global_conf.build_type,
+                    conf.build_type,
                     time.strftime('%Y-%m-%dT%H_%M_%S'),
                     username,
                     get_jenkins_job_name_path_component(),
@@ -894,7 +953,7 @@ def save_report(
         error_output_path = test_descriptor.rel_error_output_path
         if os.path.isfile(error_output_path):
             test_report_dict['error_output_path'] = os.path.relpath(
-                error_output_path, global_conf.yb_src_root)
+                error_output_path, conf.yb_src_root)
 
     jenkins_env_var_values = {}
     for jenkins_env_var_name in JENKINS_ENV_VARS:
@@ -905,7 +964,7 @@ def save_report(
                 jenkins_env_var_values[jenkins_env_var_name] = os.environ[jenkins_env_var_name]
 
     report = dict(
-        conf=vars(yb_dist_tests.global_conf),
+        conf=vars(conf),
         total_elapsed_time_sec=total_elapsed_time_sec,
         jenkins_env_vars=jenkins_env_var_values,
         tests=test_reports_by_descriptor)
@@ -914,13 +973,13 @@ def save_report(
     if historical_report_path:
         full_report_paths.append(historical_report_path)
     if save_to_build_dir:
-        full_report_paths.append(os.path.join(global_conf.build_root, 'full_build_report.json'))
+        full_report_paths.append(os.path.join(conf.build_root, 'full_build_report.json'))
 
     save_json_to_paths('full build report', report, full_report_paths, should_gzip=gzip_full_report)
 
     if save_to_build_dir:
         del report['tests']
-        short_report_path = os.path.join(global_conf.build_root, 'short_build_report.json')
+        short_report_path = os.path.join(conf.build_root, 'short_build_report.json')
         save_json_to_paths('short build report', report, [short_report_path], should_gzip=False)
 
 
@@ -934,6 +993,7 @@ def is_one_shot_test(rel_binary_path: str) -> bool:
 
 
 def collect_cpp_tests(
+        conf: yb_dist_tests.TestConfig,
         cpp_test_program_filter_list: List[str],
         test_descriptor_filter_list: List[str]) -> List[yb_dist_tests.TestDescriptor]:
     """
@@ -942,10 +1002,9 @@ def collect_cpp_tests(
     @param test_descriptor_filter_list: a list of individual test cases to be used as a filter
     """
 
-    global_conf = yb_dist_tests.get_global_conf()
     logging.info("Collecting the list of C++ test programs (locally; not a Spark job)")
     start_time_sec = time.time()
-    build_root_realpath = os.path.realpath(global_conf.build_root)
+    build_root_realpath = os.path.realpath(conf.build_root)
     ctest_cmd_result = command_util.run_program(
             ['/bin/bash',
              '-c',
@@ -1026,7 +1085,7 @@ def collect_cpp_tests(
 
     test_descriptor_strs = one_shot_test_programs
     for test_program in test_programs:
-        test_descriptor_strs.extend(list_test_descriptors(test_program))
+        test_descriptor_strs.extend(list_test_descriptors(conf, test_program))
 
     elapsed_time_sec = time.time() - start_time_sec
     logging.info(
@@ -1078,9 +1137,9 @@ def fatal_error(msg: str) -> None:
 
 
 def get_java_test_descriptors(
+        conf: yb_dist_tests.TestConfig,
         test_descriptor_filter_list: List[str]) -> List[yb_dist_tests.TestDescriptor]:
-    java_test_list_path = os.path.join(
-        yb_dist_tests.get_global_conf().build_root, 'java_test_list.txt')
+    java_test_list_path = os.path.join(conf.build_root, 'java_test_list.txt')
     if not os.path.exists(java_test_list_path):
         raise IOError(
             "Java test list not found at '%s'. Please run ./yb_build.sh --collect-java-tests to "
@@ -1112,7 +1171,8 @@ def get_java_test_descriptors(
     return java_test_descriptors
 
 
-def collect_tests(args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor]:
+def collect_tests(conf: yb_dist_tests.TestConfig,
+                  args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor]:
     test_conf = {}
     if args.test_conf:
         with open(args.test_conf) as test_conf_file:
@@ -1140,11 +1200,12 @@ def collect_tests(args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor
     cpp_test_descriptors = []
     if args.run_cpp_tests:
         cpp_test_programs = cast(List[str], test_conf.get('cpp_test_programs'))
-        cpp_test_descriptors = collect_cpp_tests(cpp_test_programs, test_descriptor_filter_list)
+        cpp_test_descriptors = collect_cpp_tests(conf, cpp_test_programs,
+                                                 test_descriptor_filter_list)
 
     java_test_descriptors = []
     if args.run_java_tests:
-        java_test_descriptors = get_java_test_descriptors(test_descriptor_filter_list)
+        java_test_descriptors = get_java_test_descriptors(conf, test_descriptor_filter_list)
 
     test_descriptors = sorted(java_test_descriptors) + sorted(cpp_test_descriptors)
 
@@ -1198,21 +1259,28 @@ def propagate_env_vars() -> None:
 # This action is a spark job, not individual task.
 def run_spark_action(action: Any) -> Any:
     import py4j  # type: ignore
+    global g_spark_job_cancelled
+    g_spark_job_cancelled = False
     results = None
     try:
         results = action()
     except py4j.protocol.Py4JJavaError as e:
         if "cancelled as part of cancellation of all jobs" in str(e):
+            g_spark_job_cancelled = True
             log_heading("Spark job was killed after hitting test failure threshold of {}".format(
                         g_max_num_test_failures))
         else:
-            logging.error("Spark job failed to run!.")
+            # Partial results are still collected from the accumulator by the caller, and any
+            # test attempts left without a result can be re-submitted
+            # (see run_tests_job_with_resubmits).
+            logging.exception("Spark job failed to run!")
     return results
 
 
 # Run the tests in parallel on Spark. This is executed on the main Spark driver.
-def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: bool) -> \
-        List[yb_dist_tests.TestResult]:
+def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: bool,
+                  conf: yb_dist_tests.TestConfig,
+                  env_vars: Dict[str, str]) -> List[yb_dist_tests.TestResult]:
     # Rather than collect results from RDD dataset, accumulate them in the spark_context.
     # That way we are not dependent on the entire test set to run successfully and can
     # capture partial results.
@@ -1254,9 +1322,12 @@ def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: b
     try:
         counter_thread.start()
         # We are not passing in fail_count or test_results values, just references to
-        # the accumulator objects.
+        # the accumulator objects. conf rides along in the closure: it is pickled with this
+        # lambda and unpickled in each task, so every task gets its own copy of this job's
+        # build tree config.
         run_spark_action(lambda: test_names_rdd.map(
-            lambda test_name: parallel_run_test(test_name, fail_count, test_results, rerun)
+            lambda test_name: parallel_run_test(test_name, fail_count, test_results, rerun,
+                                                conf, env_vars)
         ).collect())
 
     finally:
@@ -1268,6 +1339,95 @@ def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: b
     for rlist in test_results.value:
         results.extend(rlist)
     return results
+
+
+# Packs conf's tree for the workers, checksums the archive, and leaves that checksum beside the
+# tree: this host may run an executor too, and the sentinel is what tells a worker the tree
+# already in place is the one it needs, so it can skip re-extracting.
+def create_archive_and_record_checksum(
+        conf: yb_dist_tests.TestConfig, mvn_local_repo: str) -> None:
+    yb_dist_tests.create_archive_for_workers(conf=conf, mvn_local_repo=mvn_local_repo)
+    yb_dist_tests.compute_archive_sha256sum(conf=conf)
+    assert conf.archive_sha256sum is not None
+    with open(os.path.join(conf.yb_src_root, ARCHIVE_SHA_FILE_NAME), 'w') as archive_sha_file:
+        archive_sha_file.write(conf.archive_sha256sum)
+
+
+# Test-only fault injection, to exercise the re-submission / context-recovery path without waiting
+# for a real autoscaling accident. Applies to any job routed through run_tests_job_with_resubmits
+# (the initial test job as well as the failed-test re-run job). Both hooks are gated by
+# environment variables and default to off, so production runs are unaffected. On the FIRST
+# submission only:
+#   YB_TEST_SUBMIT_DROP_RESULTS=<n>  discard the last <n> results, so those attempts look lost and
+#                                    must be re-submitted (exercises the pending/re-submit path).
+#   YB_TEST_SUBMIT_STOP_CONTEXT=1    stop the Spark context afterwards, so the next iteration has
+#                                    to re-create it (exercises restart_spark_context end to end).
+# Combine both (drop some results AND stop the context) to drive a full lost-application recovery:
+# the dropped attempts are re-submitted on a freshly re-created context.
+def maybe_inject_submit_fault(
+        submit_index: int,
+        results: List[yb_dist_tests.TestResult]) -> List[yb_dist_tests.TestResult]:
+    if submit_index != 1:
+        return results
+    drop = int(os.environ.get('YB_TEST_SUBMIT_DROP_RESULTS', '0'))
+    if drop > 0 and results:
+        keep = max(0, len(results) - drop)
+        logging.warning("TEST FAULT (YB_TEST_SUBMIT_DROP_RESULTS): discarding %d of %d results "
+                        "from submission %d", len(results) - keep, len(results), submit_index)
+        results = results[:keep]
+    if os.environ.get('YB_TEST_SUBMIT_STOP_CONTEXT') == '1' and spark_context is not None:
+        logging.warning("TEST FAULT (YB_TEST_SUBMIT_STOP_CONTEXT): stopping the Spark context "
+                        "after submission %d to force a re-creation", submit_index)
+        try:
+            spark_context.stop()
+        except Exception:
+            logging.exception("TEST FAULT: error stopping the Spark context")
+    return results
+
+
+# Run tests on Spark, re-submitting the job for test attempts that did not produce a result,
+# e.g. because the Spark application was lost while autoscaled workers were shutting down.
+# This is executed on the main Spark driver.
+def run_tests_job_with_resubmits(test_descriptors: List[yb_dist_tests.TestDescriptor],
+                                 rerun: bool,
+                                 conf: yb_dist_tests.TestConfig,
+                                 env_vars: Dict[str, str]) -> List[yb_dist_tests.TestResult]:
+    all_results: List[yb_dist_tests.TestResult] = []
+    # descriptor_str includes the attempt index, so it uniquely identifies a test attempt.
+    pending = list(test_descriptors)
+    for submit_index in range(1, SPARK_JOB_MAX_SUBMITS + 1):
+        if submit_index > 1:
+            logging.info(
+                "Re-submitting the job for %d test attempts with missing results "
+                "(submission %d of at most %d)",
+                len(pending), submit_index, SPARK_JOB_MAX_SUBMITS)
+        try:
+            if spark_context_is_stopped():
+                restart_spark_context(conf)
+            results = run_tests_job(pending, rerun=rerun, conf=conf, env_vars=env_vars)
+        except Exception as e:
+            # Retry this submission only if it failed because the Spark application was lost or
+            # due to another transient Spark error. In case of a genuine bug don't retry and
+            # re-raise the exception.
+            if not (isinstance(e, spark_bridge_error_types()) or spark_context_is_stopped()):
+                raise
+            logging.exception("Submission %d could not run on Spark (%s), re-creating the "
+                              "context and re-submitting", submit_index,
+                              type(e).__name__)
+            results = []
+        results = maybe_inject_submit_fault(submit_index, results)
+        all_results.extend(results)
+        if g_spark_job_cancelled:
+            logging.info("Not re-submitting remaining test attempts: the Spark job was cancelled "
+                         "after reaching the test failure threshold")
+            break
+        completed = set(result.test_descriptor.descriptor_str for result in results)
+        pending = [td for td in pending if td.descriptor_str not in completed]
+        if not pending:
+            break
+        logging.warning("Spark job did not produce results for %d of %d test attempts",
+                        len(pending), len(test_descriptors))
+    return all_results
 
 
 def report_skipped_test(test_descriptor: yb_dist_tests.TestDescriptor) -> None:
@@ -1409,7 +1569,7 @@ def main() -> None:
     if not args.run_cpp_tests and not args.run_java_tests:
         fatal_error("At least one of --java or --cpp has to be specified")
 
-    yb_dist_tests.set_global_conf_from_args(args)
+    conf = yb_dist_tests.conf_from_args(args)
 
     report_base_dir = args.report_base_dir
     write_report = args.write_report
@@ -1450,12 +1610,11 @@ def main() -> None:
         fatal_error("File specified by --disable_list does not exist or is not a file: '{}'".format(
             disable_list_path))
 
-    global_conf = yb_dist_tests.get_global_conf()
     if ('YB_MVN_LOCAL_REPO' not in os.environ and
             args.run_java_tests and
             args.send_archive_to_workers):
         os.environ['YB_MVN_LOCAL_REPO'] = os.path.join(
-                global_conf.build_root, 'm2_repository')
+                conf.build_root, 'm2_repository')
         logging.info("Automatically setting YB_MVN_LOCAL_REPO to %s",
                      os.environ['YB_MVN_LOCAL_REPO'])
 
@@ -1492,7 +1651,7 @@ def main() -> None:
         test_descriptors = load_test_list(test_list_path)
     else:
         collect_tests_start_time_sec = time.time()
-        test_descriptors = collect_tests(args)
+        test_descriptors = collect_tests(conf, args)
         collect_tests_time_sec = time.time() - collect_tests_start_time_sec
 
     # Includes ignored tests, assuming they already ran/passed.
@@ -1508,7 +1667,7 @@ def main() -> None:
 
     if args.save_report_to_build_dir:
         planned_report_paths = []
-        planned_report_paths.append(os.path.join(global_conf.build_root, 'planned_tests.json'))
+        planned_report_paths.append(os.path.join(conf.build_root, 'planned_tests.json'))
         planned = []
         for td in test_descriptors:
             planned.append(td.descriptor_str)
@@ -1524,24 +1683,24 @@ def main() -> None:
     # And before the no-tests-to-run check, so that archive can be pre-built.
     if args.send_archive_to_workers:
         archive_exists = (
-            global_conf.archive_for_workers is not None and
-            os.path.exists(global_conf.archive_for_workers))
+            conf.archive_for_workers is not None and
+            os.path.exists(conf.archive_for_workers))
         if args.recreate_archive_for_workers or not archive_exists:
-            archive_sha_path = os.path.join(
-                global_conf.yb_src_root, 'extracted_from_archive.sha256')
+            archive_sha_path = os.path.join(conf.yb_src_root, ARCHIVE_SHA_FILE_NAME)
             if os.path.exists(archive_sha_path):
                 os.remove(archive_sha_path)
 
-            yb_dist_tests.create_archive_for_workers()
+            # Java tests run `mvn --offline` on the workers, so the repo has to be in the archive.
+            mvn_local_repo = os.environ.get('YB_MVN_LOCAL_REPO')
+            if not mvn_local_repo:
+                fatal_error(
+                    "YB_MVN_LOCAL_REPO is not set, cannot build the archive for workers. Expected "
+                    "it to point at the Maven repo inside %s." % conf.build_root)
+                return
 
-            yb_dist_tests.compute_archive_sha256sum()
-
-            # Local host may also be worker, so leave expected checksum here after archive created.
-            assert global_conf.archive_sha256sum is not None
-            with open(archive_sha_path, 'w') as archive_sha:
-                archive_sha.write(global_conf.archive_sha256sum)
+            create_archive_and_record_checksum(conf, mvn_local_repo)
         else:
-            yb_dist_tests.compute_archive_sha256sum()
+            yb_dist_tests.compute_archive_sha256sum(conf)
 
     if not test_descriptors and not args.allow_no_tests:
         logging.info("No tests to run")
@@ -1602,9 +1761,7 @@ def main() -> None:
     app_name_details = ['{} tests total'.format(total_num_tests)]
     if num_repetitions > 1:
         app_name_details += ['{} repetitions of {} tests'.format(num_repetitions, spark_test_cnt)]
-    init_spark_context(app_name_details)
-
-    set_global_conf_for_spark_jobs()
+    init_spark_context(conf, app_name_details)
 
     # By this point, test_descriptors have been duplicated the necessary number of times, with
     # attempt indexes attached to each test descriptor.
@@ -1614,7 +1771,8 @@ def main() -> None:
                 total_num_tests, len(test_descriptors))
 
     if test_descriptors:
-        results = run_tests_job(test_descriptors, rerun=False)
+        results = run_tests_job_with_resubmits(test_descriptors, rerun=False, conf=conf,
+                                               env_vars=propagated_env_vars)
     else:
         # Allow running zero tests, for testing the reporting logic.
         results = []
@@ -1687,6 +1845,7 @@ def main() -> None:
 
     if report_base_dir and write_report or args.save_report_to_build_dir:
         save_report(
+            conf=conf,
             report_base_dir=report_base_dir,
             results=results,
             total_elapsed_time_sec=total_test_run_time_sec,
@@ -1705,7 +1864,9 @@ def main() -> None:
                 for test_descriptor in failed_test_descriptors
                 for i in range(1, args.fail_repetitions + 1)
             ]
-            rerun_results = run_tests_job(test_descriptors_rerun, rerun=True)
+            rerun_results = run_tests_job_with_resubmits(test_descriptors_rerun, rerun=True,
+                                                         conf=conf,
+                                                         env_vars=propagated_env_vars)
             logging.info("Re-run results: %s  Expected: %s", len(rerun_results),
                          len(test_descriptors_rerun))
             rerun_failed = 0
@@ -1713,6 +1874,17 @@ def main() -> None:
                 if result.exit_code != 0:
                     rerun_failed += 1
             logging.info("Number of failures in re-run: %s", rerun_failed)
+            rerun_completed = set(
+                result.test_descriptor.descriptor_str for result in rerun_results)
+            rerun_missing_cnt = len([
+                td for td in test_descriptors_rerun if td.descriptor_str not in rerun_completed])
+            if rerun_missing_cnt > 0 and not g_spark_job_cancelled:
+                logging.error(
+                    "Re-run is incomplete even after re-submissions: no results for %d of %d "
+                    "test attempts. Returning a non-zero exit code so the lost re-runs are "
+                    "visible, instead of failed tests silently missing their retries.",
+                    rerun_missing_cnt, len(test_descriptors_rerun))
+                global_exit_code = 1
 
     for suite_name in csi_suites.keys():
         csi_report.close_item(csi_suites[suite_name], test_phase_end_time, '', [])

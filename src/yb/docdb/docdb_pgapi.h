@@ -42,8 +42,6 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/decimal.h"
 
-#include "ybgate/ybgate_api.h"
-
 namespace yb::docdb {
 
 //-----------------------------------------------------------------------------
@@ -60,41 +58,17 @@ struct DocPgParamDesc {
     {}
 };
 
-struct DocPgVarRef {
-  size_t var_col_idx;
-  const YbcPgTypeEntity* var_type;
-  YbcPgTypeAttrs var_type_attrs;
-};
-
-const YbcPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type);
-
 Status DocPgInit(const std::string& postgres_executable_path);
 
-//-----------------------------------------------------------------------------
-// Expressions/Values
-//-----------------------------------------------------------------------------
+// Resolve a PG type oid to the oid DocDB should record: the input oid for a type DocDB knows, or
+// its primitive type oid otherwise (e.g. a UDT).  Wraps the ybgate lookup so callers do not need
+// ybgate / yb_pgbackend themselves.
+Result<uint32_t> DocPgGetTypeOid(uint32_t pg_type_oid, char typtype, uint32_t typbasetype);
 
-Status DocPgPrepareExpr(const std::string& expr_str,
-                        YbgPreparedExpr *expr,
-                        DocPgVarRef *ret_type,
-                        const std::optional<int> version);
-
-Status DocPgAddVarRef(size_t column_idx,
-                      int32_t attno,
-                      int32_t typid,
-                      int32_t typmod,
-                      int32_t collid,
-                      std::map<int, const DocPgVarRef> *var_map);
-
-Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
-                          YbgExprContext *expr_ctx);
-
-Status DocPgPrepareExprCtx(const dockv::PgTableRow& table_row,
-                           const std::map<int, const DocPgVarRef>& var_map,
-                           YbgExprContext expr_ctx);
-
-Result<std::pair<uint64_t, bool>> DocPgEvalExpr(
-    YbgPreparedExpr expr, YbgExprContext expr_ctx);
+// The ybgate-typed half of this API (DocPgVarRef, DocPgGetTypeEntity, DocPgPrepareExpr, and the
+// other expression-evaluation entry points) lives in docdb_pgapi_private.h, kept out of this
+// header so it does not pull in ybgate; include that header (and depend on yb_pgbackend) to use
+// them.
 
 // Given a 'ql_value' with a binary value, interpret the binary value as a text
 // array, and store the individual elements in 'ql_value_vec';

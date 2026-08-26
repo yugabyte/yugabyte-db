@@ -66,6 +66,8 @@ DECLARE_uint32(pg_response_cache_size_percentage);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_bool(ysql_enable_relcache_init_optimization);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_int32(pg_client_extra_timeout_ms);
 
 using namespace std::literals;
@@ -173,6 +175,15 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(
         FLAGS_ysql_enable_read_request_cache_for_connection_auth) =
         config.enable_read_request_cache_for_connection_auth;
+
+    // Object locking and concurrent DDL require invalidation messages (see the gflag validator in
+    // common_flags.cc), so enable/ disable them based on whether invalidation messages are
+    // turned on/ off above.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) =
+        config.enable_invalidation_messages;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) =
+        config.enable_invalidation_messages;
+
     // Auto-Analyze runs ANALYZEs and increments catalog version, causing more response cache
     // queires. Disable auto-analyze for more stable test results.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
@@ -299,6 +310,19 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
     }));
     ASSERT_EQ(master_rpc_count_for_select, expected_master_rpc_count);
   }
+
+  // Test to verify the number of RPCs sent to the master during the first SELECT statement with
+  // aggregate functions after a cache refresh. Every distinct aggregate is looked up in
+  // `pg_aggregate` via the AGGFNOID cache.
+  void TestAfterCacheRefreshRPCCountOnSelectWithAggregates(size_t expected_master_rpc_count) {
+    auto aux_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    auto master_rpc_count_for_select = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+      VERIFY_RESULT(conn->Fetch("SELECT count(*), sum(v), max(v) FROM t"));
+      return static_cast<Status>(Status::OK());
+    }));
+    ASSERT_EQ(master_rpc_count_for_select, expected_master_rpc_count);
+  }
 };
 
 constexpr auto kResponseCacheSize5MB = 5 * 1024 * 1024;
@@ -308,6 +332,7 @@ constexpr auto kExtendedTableList =
     "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger,pg_statistic,pg_invalid"sv;
 constexpr auto kShortTableList = "pg_inherits"sv;
 constexpr auto kStatsTableList = "pg_statistic,pg_statistic_ext,pg_statistic_ext_data"sv;
+constexpr auto kAggregateTableList = "pg_aggregate"sv;
 
 constexpr Configuration kConfigDefault;
 
@@ -344,6 +369,9 @@ constexpr Configuration kConfigSmallPreload{
 constexpr Configuration kConfigStatsPreload{
     .preload_additional_catalog_list = kStatsTableList};
 
+constexpr Configuration kConfigAggregatePreload{
+    .preload_additional_catalog_list = kAggregateTableList};
+
 // Connection-auth cache (#32063). The connection-auth prefetch (pg_authid,
 // pg_database, ...) is served from the tserver response cache. Applies to
 // both connection manager auth backends and regular backends; the test runs
@@ -370,6 +398,7 @@ class ConfigurableTest : public Base {
 using PgCatalogPerfTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigDefault>;
 using PgCatalogMinPreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigMinPreload>;
 using PgStatsPreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigStatsPreload>;
+using PgAggregatePreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigAggregatePreload>;
 using PgCatalogWithUnlimitedCachePerfTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigWithUnlimitedCache>;
 using PgCatalogWithLimitedCachePerfTest =
@@ -405,11 +434,11 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
   }
 };
 
-constexpr uint64_t kFirstConnectionRPCCountDefault = 5;
+constexpr uint64_t kFirstConnectionRPCCountDefault = 6;
 constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 7;
-constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 5;
+constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 6;
 constexpr uint64_t kSubsequentConnectionRPCCount = 2;
-constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 6;
+constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 7;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
 
 // Helper class to fetch number of client connection via pgsql proxy webserver.
@@ -471,7 +500,7 @@ TEST_F(PgCatalogPerfTest, StartupRPCCount) {
 // Test checks number of RPC in case of cache refresh without partitioned tables.
 TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithoutPartitionTables) {
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 3);
+  ASSERT_EQ(cache_refresh_rpc_count, 4);
 }
 
 // Test checks number of RPC in case of cache refresh with partitioned tables.
@@ -495,7 +524,7 @@ TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithPartitionTables) {
       kTableWithCastInPartitioning));
 
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 7);
+  ASSERT_EQ(cache_refresh_rpc_count, 8);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnInsert) {
@@ -505,7 +534,7 @@ TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnInsert) {
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnInsertMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnInsert(/*expected_master_rpc_count=*/ 6);
+  TestAfterCacheRefreshRPCCountOnInsert(/*expected_master_rpc_count=*/ 7);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
@@ -515,7 +544,7 @@ TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/13);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/14);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithExtStats) {
@@ -526,6 +555,16 @@ TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectWithExtStatsPreload,
           PgStatsPreloadTest) {
   TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 3);
+}
+
+TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithAggregates) {
+  TestAfterCacheRefreshRPCCountOnSelectWithAggregates(/*expected_master_rpc_count=*/ 16);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          AfterCacheRefreshRPCCountOnSelectWithAggregatesPreload,
+          PgAggregatePreloadTest) {
+  TestAfterCacheRefreshRPCCountOnSelectWithAggregates(/*expected_master_rpc_count=*/ 12);
 }
 
 // The test checks number of hits in response cache in case of multiple connections and aggressive

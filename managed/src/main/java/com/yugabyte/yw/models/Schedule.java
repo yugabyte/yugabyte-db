@@ -839,7 +839,8 @@ public class Schedule extends Model {
             .runningState(schedule.runningState)
             .failureCount(schedule.failureCount)
             .backlogStatus(schedule.backlogStatus)
-            .incrementBacklogStatus(schedule.incrementBacklogStatus);
+            .incrementBacklogStatus(schedule.incrementBacklogStatus)
+            .kubernetesOperatorControlled(schedule.isKubernetesOperatorControlled());
 
     ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
     Date lastScheduledTime = null;

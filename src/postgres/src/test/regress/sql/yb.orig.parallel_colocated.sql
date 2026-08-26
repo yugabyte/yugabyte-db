@@ -113,6 +113,7 @@ SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 -- Joins
 -- Nest loop
 /*+
+  Set(yb_parallel_range_size 2048)
   Set(enable_mergejoin off) Set(enable_hashjoin off)
   Set(yb_bnl_batch_size 1) Set(enable_material off)
 */
@@ -120,6 +121,7 @@ EXPLAIN (costs off)
 SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
 /*+
+  Set(yb_parallel_range_size 2048)
   Set(enable_mergejoin off) Set(enable_hashjoin off)
   Set(yb_bnl_batch_size 1) Set(enable_material off)
 */
@@ -154,19 +156,26 @@ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
 reset enable_hashjoin;
 
 -- Subquery
-/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+/*+
+  HashJoin(pctest1 pctest2)
+  Set(yb_test_force_parallel force)
+*/
 EXPLAIN (costs off)
 SELECT x, d FROM
   (SELECT pctest1.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) ss RIGHT JOIN
   (values (15),(16),(17)) v(x) on ss.b = v.x ORDER BY x;
-/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+/*+
+  HashJoin(pctest1 pctest2)
+  Set(yb_test_force_parallel force)
+*/
 SELECT x, d FROM
   (SELECT pctest1.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) ss RIGHT JOIN
   (values (15),(16),(17)) v(x) on ss.b = v.x ORDER BY x;
 
 /*+
+  Set(yb_test_force_parallel force)
   Parallel(pctest1 2 hard) Parallel(pctest2 2 hard)
   Parallel(pctest3 2 hard) Parallel(pctest4 2 hard)
  */
@@ -177,6 +186,7 @@ SELECT * FROM
   (SELECT pctest4.* FROM pctest1 pctest3, pctest2 pctest4
      WHERE pctest3.k = pctest4.k AND pctest3.b = pctest4.b) s2 ON s1.b = s2.c;
 /*+
+  Set(yb_test_force_parallel force)
   Parallel(pctest1 2 hard) Parallel(pctest2 2 hard)
   Parallel(pctest3 2 hard) Parallel(pctest4 2 hard)
  */
@@ -370,9 +380,9 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
-/*+ Parallel(pctest3 3 hard) */
+/*+ IndexOnlyScan(pctest3) Parallel(pctest3 3 hard) */
 EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
-/*+ Parallel(pctest3 3 hard) */
+/*+ IndexOnlyScan(pctest3) Parallel(pctest3 3 hard) */
 SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
 
 DROP TABLE pctest1;

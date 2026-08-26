@@ -46,6 +46,13 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class CloudBootstrapTest extends CommissionerBaseTest {
 
+  // Verified safe to reuse the application across this class' methods (green strict-stubs + green
+  // assertions) despite the strict MockitoJUnitRunner. See reuseAppDespiteStrictMockito().
+  @Override
+  protected boolean reuseAppDespiteStrictMockito() {
+    return true;
+  }
+
   private static final String HOST_VPC_REGION = "host-vpc-region";
   private static final String HOST_VPC_ID = "host-vpc-id";
   private static final String DEST_VPC_ID = "dest-vpc-id";

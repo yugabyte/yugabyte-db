@@ -49,6 +49,7 @@ DECLARE_int32(num_cpus);
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/thread.h"
 #include "yb/util/tostring.h"

@@ -181,6 +181,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       const scoped_refptr<MetricEntity>& table_metric_entity,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
       ThreadPool* raft_pool,
+      ThreadPool* snapshot_cleanup_pool,
       rpc::ThreadPool* raft_notifications_pool,
       ThreadPool* tablet_prepare_pool,
       consensus::RetryableRequests* retryable_requests,
@@ -200,15 +201,26 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   // Starts shutdown process.
   // Returns true if shutdown was just initiated, false if shutdown was already running.
-  MUST_USE_RESULT bool StartShutdown();
+  // The tablet starts shutting its RocksDB instances down here (see Tablet::StartShutdown), so
+  // disable_flush_on_shutdown and abort_ops -- which control flush-on-shutdown and pending
+  // operation aborting -- are supplied to StartShutdown (CompleteShutdown takes no such options).
+  MUST_USE_RESULT bool StartShutdown(
+      DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
   // Completes shutdown process and waits for it's completeness.
-  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
+  // StartShutdown must have been called first (it carries the flush-on-shutdown / abort options).
+  void CompleteShutdown();
 
   // Abort active transactions on the tablet after shutdown is initiated.
   void AbortActiveTransactions(
       std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt) const;
 
-  Status Shutdown(
+  // Convenience helper that runs the full shutdown (StartShutdown, then CompleteShutdown if this
+  // call initiated the shutdown, otherwise WaitUntilShutdown). Tests only: production shutdown
+  // paths drive StartShutdown / CompleteShutdown explicitly. In particular, an RPC handler must not
+  // call this -- WaitUntilShutdown can block the RPC worker until another thread completes the
+  // shutdown, which deadlocks if that thread is in turn joining the RPC threadpool. See issue
+  // #32211.
+  Status TEST_Shutdown(
       ShouldAbortActiveTransactions should_abort_active_txns,
       DisableFlushOnShutdown disable_flush_on_shutdown,
       std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
@@ -338,10 +350,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // the earliest index needed by the tablet itself (in-memory / in-flight / durability) and the
   // index xrepl (CDCSDK/xCluster) still needs retained. Both the Log GC path and remote bootstrap
   // consume this.
-  // If details is specified then this function appends explanation of how the index was calculated
-  // to it.
+  // If retention_details is specified then this function appends explanation of how index was
+  // calculated to it.
   Result<log::MinRetainLogIndexInfo> GetEarliestNeededLogIndex(
-      std::string* details = nullptr) const;
+      std::string* retention_details = nullptr) const;
 
   Result<OpId> MaxPersistentOpId() const override;
 
@@ -437,7 +449,12 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   //------------------------------------------------------------------------------------------------
   // CDC Related
 
+  // Checks staleness of the WAL and intent retention barriers, tracked together via
+  // cdc_min_replicated_index_refresh_time_.
   bool is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh = nullptr) const;
+
+  // Checks staleness of the history retention barrier, tracked via cdc_sdk_safe_time_refresh_time_.
+  bool is_cdc_sdk_safe_time_stale(double* seconds_since_last_refresh = nullptr) const;
 
   Status set_cdc_min_replicated_index(int64_t cdc_min_replicated_index);
 
@@ -459,7 +476,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool is_under_cdc_sdk_replication();
 
-  Status reset_all_cdc_retention_barriers_if_stale();
+  // Releases the WAL/intent and/or history retention barrier groups that have gone stale, and
+  // returns which groups were released (all-false if none were stale).
+  Result<CDCRetentionBarrierMoveSelector> reset_cdc_retention_barriers_if_stale();
 
   HybridTime GetMinStartHTRunningTxnsOrLeaderSafeTime();
 
@@ -472,18 +491,19 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<bool> SetAllCDCRetentionBarriers(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
       HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
-      bool initial_retention_barrier);
+      bool initial_retention_barrier, CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   Result<bool> SetAllInitialCDCRetentionBarriers(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
-      bool require_history_cutoff);
+      bool require_history_cutoff, CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   Result<bool> SetAllInitialCDCSDKRetentionBarriers(
       OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
 
   Result<bool> MoveForwardAllCDCRetentionBarriers(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
-      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+      CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   std::string AllCDCRetentionBarriersToString() const;
   //------------------------------------------------------------------------------------------------
@@ -625,12 +645,19 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   OperationCounter preparing_operations_counter_;
 
-  // Serializes access to set_cdc_min_replicated_index and is_cdc_min_replicated_index_stale and
-  // protects cdc_min_replicated_index_refresh_time_ for reads and writes.
-  mutable simple_spinlock cdc_min_replicated_index_lock_;
+  // Protects the CDC retention-barriers refresh times (i.e cdc_min_replicated_index_refresh_time_
+  // and cdc_sdk_safe_time_refresh_time_).
+  mutable simple_spinlock cdc_resource_refresh_time_lock_;
+  // Last time the WAL and intent retention barriers were refreshed.
   MonoTime cdc_min_replicated_index_refresh_time_ = MonoTime::Min();
+  // Last time the history retention barrier was refreshed.
+  MonoTime cdc_sdk_safe_time_refresh_time_ = MonoTime::Min();
 
  private:
+  // Checks whether the barrier last refreshed at refresh_time is stale.
+  bool is_cdc_barrier_stale(const MonoTime& refresh_time, double* seconds_since_last_refresh_ptr)
+      const REQUIRES(cdc_resource_refresh_time_lock_);
+
   Result<HybridTime> ReportReadRestart() override;
 
   Result<FixedHybridTimeLease> HybridTimeLease(HybridTime min_allowed, CoarseTimePoint deadline);
@@ -677,6 +704,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // and other files in those directories. This can be stale as it is only updated every
   // FLAGS_data_size_metric_updater_interval_sec seconds.
   std::atomic<size_t> total_on_disk_size_{0};
+
+  // Earliest time at which the next WAL retention diagnostics log line may be emitted for this
+  // tablet, used to throttle that log per-tablet.
+  mutable std::atomic<CoarseTimePoint> next_wal_retention_diag_log_time_{CoarseTimePoint::min()};
 
   std::mutex async_write_queries_mutex_;
   std::atomic<OpId> last_known_committed_op_id_;

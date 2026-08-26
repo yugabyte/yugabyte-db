@@ -57,7 +57,6 @@
 #include "pg_yb_utils.h"
 #include "utils/acl.h"
 #include "utils/palloc.h"
-#include "yb/yql/pggate/util/ybc_pgresult_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "ybctid.h"
@@ -587,10 +586,23 @@ static YbPgFdwServerType yb_get_server_type(const char *server_type);
 static YbPgFdwServerType yb_get_server_type_from_ftrelid(Oid relid);
 static const char *yb_get_tuple_identifier_colname(YbPgFdwServerType server_type);
 static AttrNumber yb_get_min_attr_from_server_type(YbPgFdwServerType server_type);
-static PGresult *YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr,
-										  const char *database_name,
-										  const char *query,
-										  const char *tserver_uuid);
+static void yb_gv_fetch_more_data(ForeignScanState *node);
+static HeapTuple yb_make_tuple_from_values(const char **values,
+										   int num_values,
+										   Relation rel,
+										   AttInMetadata *attinmeta,
+										   List *retrieved_attrs,
+										   ForeignScanState *fsstate,
+										   MemoryContext temp_context);
+static HeapTuple yb_make_tuple_from_row(PGresult *res,
+										int row,
+										const char **yb_values,
+										int yb_num_values,
+										Relation rel,
+										AttInMetadata *attinmeta,
+										List *retrieved_attrs,
+										ForeignScanState *fsstate,
+										MemoryContext temp_context);
 
 static const char *
 yb_get_current_db_name(void)
@@ -1792,7 +1804,19 @@ postgresIterateForeignScan(ForeignScanState *node)
 			fetch_more_data(node);
 		/* If we didn't get any tuples, must be end of data. */
 		if (fsstate->next_tuple >= fsstate->num_tuples)
-			return ExecClearTuple(slot);
+		{
+			ExecClearTuple(slot);
+			/*
+			 * YB: a global-view child is fully drained here. Release its
+			 * buffer.
+			 */
+			if (fsstate->yb_gvr && fsstate->eof_reached)
+			{
+				fsstate->tuples = NULL;
+				MemoryContextReset(fsstate->batch_cxt);
+			}
+			return slot;
+		}
 	}
 
 	/*
@@ -4044,6 +4068,13 @@ fetch_more_data(ForeignScanState *node)
 	PGresult   *volatile res = NULL;
 	MemoryContext oldcontext;
 
+	/* YB: global view rows do not come through a PGresult. */
+	if (fsstate->yb_gvr)
+	{
+		yb_gv_fetch_more_data(node);
+		return;
+	}
+
 	/*
 	 * We'll store the tuples in the batch_cxt.  First, flush the previous
 	 * batch.
@@ -4075,11 +4106,6 @@ fetch_more_data(ForeignScanState *node)
 			/* Reset per-connection state */
 			fsstate->conn_state->pendingAreq = NULL;
 		}
-		else if (fsstate->yb_gvr)
-			res = YbGlobalViewReadExecScan(fsstate->yb_gvr,
-										   yb_get_current_db_name(),
-										   fsstate->query,
-										   fsstate->yb_tserver_uuid);
 		else
 		{
 			char		sql[64];
@@ -4089,14 +4115,10 @@ fetch_more_data(ForeignScanState *node)
 					 fsstate->fetch_size, fsstate->cursor_number);
 
 			res = pgfdw_exec_query(conn, sql, fsstate->conn_state);
+			/* On error, report the original query, not the FETCH. */
+			if (PQresultStatus(res) != PGRES_TUPLES_OK)
+				pgfdw_report_error(ERROR, res, conn, false, fsstate->query);
 		}
-
-		/*
-		 * On error, report the original query, not the FETCH.
-		 * YB: This code is common for all server types.
-		 */
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-			pgfdw_report_error(ERROR, res, conn, false, fsstate->query);
 
 		/* Convert the data into HeapTuples */
 		numrows = PQntuples(res);
@@ -4122,11 +4144,7 @@ fetch_more_data(ForeignScanState *node)
 			fsstate->fetch_ct_2++;
 
 		/* Must be EOF if we didn't get as many tuples as we asked for. */
-		if (fsstate->yb_gvr)
-			/* TODO(#30843): Update when pagination support is added. */
-			fsstate->eof_reached = true;
-		else
-			fsstate->eof_reached = (numrows < fsstate->fetch_size);
+		fsstate->eof_reached = (numrows < fsstate->fetch_size);
 	}
 	PG_FINALLY();
 	{
@@ -7560,6 +7578,45 @@ make_tuple_from_result_row(PGresult *res,
 						   ForeignScanState *fsstate,
 						   MemoryContext temp_context)
 {
+	Assert(row < PQntuples(res));
+
+	return yb_make_tuple_from_row(res, row, NULL /* yb_values */ , 0 /* yb_num_values */ ,
+								  rel, attinmeta, retrieved_attrs, fsstate, temp_context);
+}
+
+/*
+ * YB: make_tuple_from_result_row for global view scans, whose rows arrive as
+ * decoded text values instead of a PGresult. values holds num_values entries,
+ * one per retrieved attribute, NULL meaning SQL NULL.
+ */
+static HeapTuple
+yb_make_tuple_from_values(const char **values,
+						  int num_values,
+						  Relation rel,
+						  AttInMetadata *attinmeta,
+						  List *retrieved_attrs,
+						  ForeignScanState *fsstate,
+						  MemoryContext temp_context)
+{
+	return yb_make_tuple_from_row(NULL /* res */ , 0 /* row */ , values, num_values,
+								  rel, attinmeta, retrieved_attrs, fsstate, temp_context);
+}
+
+/*
+ * YB: shared body of the two functions above. Column values come from row
+ * `row` of `res`, or, when res is NULL, from yb_values.
+ */
+static HeapTuple
+yb_make_tuple_from_row(PGresult *res,
+					   int row,
+					   const char **yb_values,
+					   int yb_num_values,
+					   Relation rel,
+					   AttInMetadata *attinmeta,
+					   List *retrieved_attrs,
+					   ForeignScanState *fsstate,
+					   MemoryContext temp_context)
+{
 	HeapTuple	tuple;
 	TupleDesc	tupdesc;
 	Datum	   *values;
@@ -7571,8 +7628,6 @@ make_tuple_from_result_row(PGresult *res,
 	ListCell   *lc;
 	int			j;
 	bytea	   *ybctid = NULL;
-
-	Assert(row < PQntuples(res));
 
 	/*
 	 * Do the following work in a temp context that we reset after each tuple.
@@ -7618,8 +7673,13 @@ make_tuple_from_result_row(PGresult *res,
 		int			i = lfirst_int(lc);
 		char	   *valstr;
 
-		/* fetch next column's textual value */
-		if (PQgetisnull(res, row, j))
+		/*
+		 * fetch next column's textual value
+		 * YB: valstr points straight into the scan's row buffer.
+		 */
+		if (res == NULL)
+			valstr = unconstify(char *, yb_values[j]);
+		else if (PQgetisnull(res, row, j))
 			valstr = NULL;
 		else
 			valstr = PQgetvalue(res, row, j);
@@ -7673,8 +7733,9 @@ make_tuple_from_result_row(PGresult *res,
 	/*
 	 * Check we got the expected number of columns.  Note: j == 0 and
 	 * PQnfields == 1 is expected, since deparse emits a NULL if no columns.
+	 * YB: res is NULL for global view rows
 	 */
-	if (j > 0 && j != PQnfields(res))
+	if (j > 0 && j != (res ? PQnfields(res) : yb_num_values))
 		elog(ERROR, "remote query result does not match the foreign table");
 
 	/*
@@ -8066,20 +8127,107 @@ yb_get_tuple_identifier_colname(YbPgFdwServerType server_type)
 	return NULL;				/* keep compiler happy */
 }
 
-static PGresult *
-YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr, const char *database_name,
-						 const char *query, const char *tserver_uuid)
+/*
+ * fetch_more_data variant for global view scans: build tuples directly from
+ * the row buffer returned by the target tserver. A failed remote exec or a
+ * size-limited response only warns and yields whatever rows arrived, but
+ * malformed row data aborts the query: the rest of the buffer cannot be
+ * trusted once the encoding is off.
+ */
+static void
+yb_gv_fetch_more_data(ForeignScanState *node)
 {
-	YbcRemotePgExecResult yb_result =
-		YBCPgGlobalViewReadExecScan(yb_gvr, database_name, query, tserver_uuid);
-	PGresult *res = YBCPgResultFromPB(yb_result.pgresult, yb_result.pgresult_size);
-	if (!res)
+	PgFdwScanState *fsstate = (PgFdwScanState *) node->fdw_state;
+	MemoryContext oldcontext;
+	YbcPgGvScanResult res;
+	int			i;
+	const char **values = NULL;
+	int			num_cols = list_length(fsstate->retrieved_attrs);
+
+	/*
+	 * We'll store the tuples in the batch_cxt.  First, flush the previous
+	 * batch.
+	 */
+	fsstate->tuples = NULL;
+	MemoryContextReset(fsstate->batch_cxt);
+	oldcontext = MemoryContextSwitchTo(fsstate->batch_cxt);
+
+	PG_TRY();
 	{
-		if (yb_result.error_message)
+		res = YBCPgGlobalViewReadExecScan(fsstate->yb_gvr,
+										  yb_get_current_db_name(),
+										  fsstate->query,
+										  fsstate->yb_tserver_uuid);
+
+		if (res.num_rows == 0)
+		{
+			const char *error_message = YBCPgGlobalViewReadGetError(fsstate->yb_gvr);
+
+			if (error_message)
+				ereport(WARNING,
+						(errmsg("global view: skipping tserver %s: %s",
+								fsstate->yb_tserver_uuid, error_message)));
+		}
+
+		if (res.reached_size_limit)
 			ereport(WARNING,
-					(errmsg("global view: skipping tserver %s: %s",
-							tserver_uuid, yb_result.error_message)));
-		res = PQmakeEmptyPGresult(NULL, PGRES_TUPLES_OK);
+					(errmsg("global view: results from tserver %s are incomplete",
+							fsstate->yb_tserver_uuid),
+					 errdetail("The response exceeded the maximum RPC message size, "
+							   "so only %d rows were returned.", res.num_rows),
+					 errhint("Add a WHERE clause to reduce the result size, or raise "
+							 "the rpc_max_message_size flag.")));
+
+		/*
+		 * A successful scan returns exactly the deparsed target list's columns.
+		 * Exempt errors/empty results (num_rows == 0) and queries retrieving no
+		 * columns, e.g. SELECT count(*) FROM "gv$view", where deparse emits a NULL
+		 * (num_cols == 0, remote sends 1).
+		 */
+		if (res.num_rows > 0 && num_cols > 0 && res.num_cols != num_cols)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_ERROR),
+					 errmsg("global view: tserver %s returned %d columns, expected %d",
+							fsstate->yb_tserver_uuid, res.num_cols, num_cols)));
+
+		fsstate->tuples = (HeapTuple *) palloc0(res.num_rows * sizeof(HeapTuple));
+		fsstate->num_tuples = res.num_rows;
+		fsstate->next_tuple = 0;
+
+		if (res.num_cols > 0)
+			values = (const char **) palloc(res.num_cols * sizeof(const char *));
+
+		Assert(IsA(node->ss.ps.plan, ForeignScan));
+
+		for (i = 0; i < res.num_rows; i++)
+		{
+			if (!YBCPgGlobalViewReadNextRow(fsstate->yb_gvr, values))
+			{
+				const char *error_message = YBCPgGlobalViewReadGetError(fsstate->yb_gvr);
+
+				ereport(ERROR,
+						(errcode(ERRCODE_FDW_ERROR),
+						 errmsg("global view: failed to read row from tserver %s: %s",
+								fsstate->yb_tserver_uuid,
+								error_message ? error_message : "unexpected end of data")));
+			}
+
+			fsstate->tuples[i] =
+				yb_make_tuple_from_values(values, res.num_cols,
+										  fsstate->rel,
+										  fsstate->attinmeta,
+										  fsstate->retrieved_attrs,
+										  node,
+										  fsstate->temp_cxt);
+		}
+
+		/* TODO(#30843): Update when pagination support is added. */
+		fsstate->eof_reached = true;
 	}
-	return res;
+	PG_FINALLY();
+	{
+		YBCPgGlobalViewReadClearScanState(fsstate->yb_gvr);
+		MemoryContextSwitchTo(oldcontext);
+	}
+	PG_END_TRY();
 }

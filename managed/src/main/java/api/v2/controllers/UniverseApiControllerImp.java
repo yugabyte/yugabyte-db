@@ -42,10 +42,14 @@ import api.v2.models.UniverseSoftwareUpgradePrecheckResp;
 import api.v2.models.UniverseSoftwareUpgradeStart;
 import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
+import api.v2.models.UniverseUpdateProxyConfig;
 import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBATask;
 import api.v2.models.YBAValidationResponse;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.models.Audit;
 import java.io.InputStream;
 import java.util.UUID;
@@ -59,8 +63,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
 
   @Inject
   public UniverseApiControllerImp(
+      AuditService auditService,
+      Config config,
+      GFlagsAuditHandler gFlagsAuditHandler,
       UniverseManagementHandler universeHandler,
       UniverseUpgradesManagementHandler universeUpgradeHandler) {
+    super(auditService, config, gFlagsAuditHandler);
     this.universeHandler = universeHandler;
     this.universeUpgradeHandler = universeUpgradeHandler;
   }
@@ -366,5 +374,11 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
       throws Exception {
     return universeUpgradeHandler.resizeNodes(request, cUUID, uniUUID, spec);
+  }
+
+  @Override
+  public YBATask updateProxyConfig(
+      Request request, UUID cUUID, UUID uniUUID, UniverseUpdateProxyConfig spec) throws Exception {
+    return universeUpgradeHandler.updateProxyConfig(request, cUUID, uniUUID, spec);
   }
 }

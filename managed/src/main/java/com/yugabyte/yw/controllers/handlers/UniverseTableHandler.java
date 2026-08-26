@@ -62,7 +62,7 @@ import org.yb.CommonTypes;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes;
@@ -338,7 +338,7 @@ public class UniverseTableHandler {
     }
 
     GetTableSchemaResponse schemaResponse;
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       schemaResponse = client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
@@ -447,7 +447,7 @@ public class UniverseTableHandler {
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       GetTableSchemaResponse response =
           client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
       return createFromResponse(universe, tableUUID, response);
@@ -551,7 +551,7 @@ public class UniverseTableHandler {
 
   public ListTablesResponse listTablesOrBadRequest(Universe universe, boolean excludeSystemTables) {
     ListTablesResponse response;
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       checkLeaderMasterAvailability(client);
       response = client.getTablesList(null, excludeSystemTables, null);
     } catch (Exception e) {
@@ -563,7 +563,7 @@ public class UniverseTableHandler {
     return response;
   }
 
-  private void checkLeaderMasterAvailability(YBClient client) {
+  private void checkLeaderMasterAvailability(YBClientApi client) {
     long waitForLeaderTimeoutMs = config.getDuration(MASTER_LEADER_TIMEOUT_CONFIG_PATH).toMillis();
     try {
       client.waitForMasterLeader(waitForLeaderTimeoutMs);
@@ -574,7 +574,7 @@ public class UniverseTableHandler {
 
   public ListNamespacesResponse listNamespacesOrBadRequest(Universe universe) {
     ListNamespacesResponse response;
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       checkLeaderMasterAvailability(client);
       response = client.getNamespacesList();
     } catch (Exception e) {

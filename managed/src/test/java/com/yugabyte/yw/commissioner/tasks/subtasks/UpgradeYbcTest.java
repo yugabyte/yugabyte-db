@@ -22,14 +22,14 @@ import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 public class UpgradeYbcTest extends FakeDBApplication {
 
   private Customer defaultCustomer;
   private Universe defaultUniverse;
   private final String TARGET_YBC_VERSION = "1.0.0-b2";
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void Setup() {
@@ -43,7 +43,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
             null,
             null,
             true);
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     String host = "1.2.3.4";
     HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);

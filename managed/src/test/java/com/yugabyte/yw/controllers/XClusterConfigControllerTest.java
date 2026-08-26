@@ -86,7 +86,7 @@ import org.yb.cdc.CdcConsumer.StreamEntryPB;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
@@ -116,7 +116,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private UUID taskUUID;
   private String apiEndpoint;
   private XClusterConfigCreateFormData createFormData;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private Role role;
   private ResourceDefinition rd1;
   private ResourceDefinition rd2;
@@ -183,7 +183,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     taskUUID = buildTaskInfo(null, TaskType.XClusterConfigSync);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockService.getUniverseClient(any())).thenReturn(mockClient);
     when(mockService.getClient(any(), any())).thenReturn(mockClient);
 
@@ -265,7 +265,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     JsonNode fakeMetricResponse = Json.newObject().put("value", "0");
     doReturn(fakeMetricResponse)
         .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+        .query(any(), anyList(), anyMap(), anyMap());
   }
 
   public void setupMetricValues() {

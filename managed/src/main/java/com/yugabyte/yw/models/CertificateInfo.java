@@ -525,9 +525,8 @@ public class CertificateInfo extends Model {
       Set<Universe> universes =
           Universe.universeDetailsIfCertsExists(this.getUuid(), this.getCustomerUUID());
       return Util.getUniverseDetails(universes);
-    } else {
-      return universeDetailSubsets;
     }
+    return universeDetailSubsets;
   }
 
   @JsonIgnore

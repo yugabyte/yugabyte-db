@@ -15,12 +15,13 @@ import (
 
 // Service Names
 const (
-	YbPlatformServiceName  string = "yb-platform"
-	PostgresServiceName    string = "postgres"
-	PrometheusServiceName  string = "prometheus"
-	YbdbServiceName        string = "ybdb"
-	PerfAdvisorServiceName string = "yb-perf-advisor"
-	LogRotateServiceName   string = "yb-logrotate"
+	YbPlatformServiceName   string = "yb-platform"
+	PostgresServiceName     string = "postgres"
+	PrometheusServiceName   string = "prometheus"
+	YbdbServiceName         string = "ybdb"
+	PerfAdvisorServiceName  string = "yb-perf-advisor"
+	LogRotateServiceName    string = "yb-logrotate"
+	ByocApiProxyServiceName string = "byoc-api-proxy"
 )
 
 var (

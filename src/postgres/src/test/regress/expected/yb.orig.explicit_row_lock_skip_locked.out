@@ -3017,10 +3017,7 @@ SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, 
  locktype | relation |            mode            | hash_cols | range_cols 
 ----------+----------+----------------------------+-----------+------------
  row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
- row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
- row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
- row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
-(4 rows)
+(1 row)
 
 CLOSE cur;
 ROLLBACK;

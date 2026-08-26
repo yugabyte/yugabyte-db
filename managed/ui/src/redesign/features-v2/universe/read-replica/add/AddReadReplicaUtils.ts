@@ -22,16 +22,23 @@ import {
   readReplicaHardwareMatchesPrimary
 } from '../readReplicaUtils';
 
-export function getRRSteps(t: TFunction) {
+export function getRRSteps(t: TFunction, options?: { editPlacementOnly?: boolean }) {
+  const placementStep = {
+    groupTitle: t('placement'),
+    subSteps: [
+      {
+        title: t('regionsAndAZ')
+      }
+    ]
+  };
+
+  // Editing an existing read replica only changes placement; hide hardware/database/review.
+  if (options?.editPlacementOnly) {
+    return [placementStep];
+  }
+
   return [
-    {
-      groupTitle: t('placement'),
-      subSteps: [
-        {
-          title: t('regionsAndAZ')
-        }
-      ]
-    },
+    placementStep,
     {
       groupTitle: t('hardware'),
       subSteps: [
@@ -125,7 +132,7 @@ export function getRegionsAndAZFromReadReplicaCluster(
 }
 
 export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRContextProps> => {
-  const primaryClusterSpec = getClusterByType(data, ClusterSpecClusterType.ASYNC) as
+  const primaryClusterSpec = getClusterByType(data, ClusterSpecClusterType.PRIMARY) as
     | ClusterSpec
     | undefined;
   const primaryRf = getPrimaryReplicationFactor(data);
@@ -143,6 +150,7 @@ export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRConte
       : {
           inheritPrimaryInstance: true,
           arch,
+          imageBundleUUID: primaryClusterSpec?.provider_spec?.image_bundle_uuid ?? null,
           instanceType: primaryClusterSpec?.node_spec?.instance_type ?? null,
           useSpotInstance: primaryClusterSpec?.use_spot_instance ?? false,
           deviceInfo: null,
@@ -173,6 +181,7 @@ export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRConte
     regionsAndAZ,
     regionsAndAZBaseline: _.cloneDeep(regionsAndAZ),
     readReplicaPlacementFromUniverse: Boolean(fromReplica),
+    isEditPlacementOnly: Boolean(asyncCluster),
     ...(Boolean(arch) && {
       instanceSettings,
       instanceSettingsInitial: _.cloneDeep(instanceSettings)

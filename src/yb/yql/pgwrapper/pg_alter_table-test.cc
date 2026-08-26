@@ -177,6 +177,9 @@ class PgAlterTableConcurrencyTest : public PgAlterTableTest {
     // This test verifies behavior without table-level locking and transactional DDL.
     // Both features are disabled to concurrent inserts during ALTER TABLE.
     opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
   }
 };

@@ -42,14 +42,16 @@ bool YBCStatusIsTryAgain(YbcStatus s);
 bool YBCStatusIsTimedOut(YbcStatus s);
 bool YBCStatusIsAlreadyPresent(YbcStatus s);
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s);
-bool YBCStatusIsFatalError(YbcStatus s);
 uint32_t YBCStatusPgsqlError(YbcStatus s);
 void YBCFreeStatus(YbcStatus s);
 
-const char* YBCStatusFilename(YbcStatus s);
-int YBCStatusLineNumber(YbcStatus s);
-const char* YBCStatusFuncname(YbcStatus s);
-size_t YBCStatusMessageLen(YbcStatus s);
+typedef struct YbcStatusErrorLocationInfo {
+    const char *filename;
+    int lineno;
+    const char *funcname;
+} YbcStatusErrorLocationInfo;
+
+YbcStatusErrorLocationInfo YBCStatusErrorLocation(YbcStatus s);
 const char* YBCStatusMessageBegin(YbcStatus s);
 const char* YBCMessageAsCString(YbcStatus s);
 unsigned int YBCStatusRelationOid(YbcStatus s);

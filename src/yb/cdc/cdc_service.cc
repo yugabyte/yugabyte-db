@@ -202,6 +202,13 @@ DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_cleanup_of_expired_table_entries,
     "update these entries in cdc_state table and also move the corresponding table's entry to "
     "unqualified tables list in stream metadata.");
 
+DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_selective_retention_barrier_revision,
+    kLocalVolatile, false, true,
+    "When enabled, a retention barrier revision request may move only a subset of the WAL, intents "
+    "and history retention barriers, via the no_*_retention_barrier fields of "
+    "UpdateCdcReplicatedIndexRequestPB. Requires every peer to understand these fields, else "
+    "peer ignores them and moves all three barriers.");
+
 DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
     "When enabled, users will be able to create a CDC stream having IMPLICIT checkpointing.");
 
@@ -538,27 +545,22 @@ class CDCServiceImpl::Impl {
   std::optional<int64_t> GetLastActiveTime(const TabletStreamInfo& producer_tablet) {
     SharedLock<rw_spinlock> lock(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
-    if (it != tablet_checkpoints_.end()) {
-      // Use last_active_time from cache only if it is current.
-      if (it->cdc_state_checkpoint.last_active_time > 0) {
-        if (!it->cdc_state_checkpoint.ExpiredAt(
-                FLAGS_cdc_state_checkpoint_update_interval_ms * 1ms, CoarseMonoClock::Now())) {
-          VLOG(2) << "Found recent entry in cache with active time: "
-                  << it->cdc_state_checkpoint.last_active_time
-                  << ", for tablet: " << producer_tablet.tablet_id
-                  << ", and stream: " << producer_tablet.stream_id;
-          return it->cdc_state_checkpoint.last_active_time;
-        } else {
-          VLOG(2) << "Found stale entry in cache with active time: "
-                  << it->cdc_state_checkpoint.last_active_time
-                  << ", for tablet: " << producer_tablet.tablet_id
-                  << ", and stream: " << producer_tablet.stream_id
-                  << ". We will read from the cdc_state table";
-        }
-      }
-    } else {
+    if (it == tablet_checkpoints_.end()) {
       VLOG(1) << "Did not find entry in 'tablet_checkpoints_' cache for tablet: "
               << producer_tablet.tablet_id << ", stream: " << producer_tablet.stream_id;
+      return std::nullopt;
+    }
+
+    // Return whatever the cache holds, without a staleness check. Callers that need the latest
+    // value (e.g. before declaring a tablet expired or not-of-interest) re-read from the cdc_state
+    // table via GetLastActiveTime(..., ignore_cache=true). Rejecting a "stale" cached value here
+    // only forced redundant cdc_state reads.
+    if (it->cdc_state_checkpoint.last_active_time > 0) {
+      VLOG(2) << "Found entry in cache with active time: "
+              << it->cdc_state_checkpoint.last_active_time
+              << ", for tablet: " << producer_tablet.tablet_id
+              << ", and stream: " << producer_tablet.stream_id;
+      return it->cdc_state_checkpoint.last_active_time;
     }
 
     return std::nullopt;
@@ -1923,7 +1925,8 @@ void CDCServiceImpl::GetChanges(
         composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
         &commit_timestamp, &cached_schema_details, &schema_packing_storages, &last_streamed_op_id,
         req->safe_hybrid_time(), consistent_snapshot_time, req->wal_segment_index(),
-        &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
+        req->max_index_in_sort_window(), &last_readable_index,
+        tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
         get_changes_deadline, getchanges_resp_max_size_bytes, &throughput_metrics);
     // This specific error from the docdb_pgapi layer is used to identify enum cache entry is
     // out of date, hence we need to repopulate.
@@ -1959,7 +1962,8 @@ void CDCServiceImpl::GetChanges(
           enum_map, composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
           &commit_timestamp, &cached_schema_details, &schema_packing_storages, &last_streamed_op_id,
           req->safe_hybrid_time(), consistent_snapshot_time, req->wal_segment_index(),
-          &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
+          req->max_index_in_sort_window(), &last_readable_index,
+          tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
           get_changes_deadline, getchanges_resp_max_size_bytes, &throughput_metrics);
     }
     // This specific error indicates that a tablet split occured on the tablet.
@@ -2156,7 +2160,8 @@ void CDCServiceImpl::GetChanges(
 
 Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
     const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min,
-    bool ignore_failures, bool initial_retention_barrier) {
+    bool ignore_failures, bool initial_retention_barrier,
+    tablet::CDCRetentionBarrierMoveSelector barrier_move_selector) {
   std::vector<client::internal::RemoteTabletServer*> servers;
   RETURN_NOT_OK(GetTServers(tablet_id, &servers));
 
@@ -2177,6 +2182,12 @@ Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
     update_index_req.add_cdc_sdk_ops_expiration_ms(
         cdc_checkpoint_min.cdc_sdk_op_id_expiration.ToMilliseconds());
     update_index_req.set_initial_retention_barrier(initial_retention_barrier);
+    update_index_req.set_skip_moving_wal_retention_barrier(
+        !barrier_move_selector.move_cdc_min_replicated_index);
+    update_index_req.set_skip_moving_intents_retention_barrier(
+        !barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id);
+    update_index_req.set_skip_moving_history_retention_barrier(
+        !barrier_move_selector.move_cdc_sdk_safe_time);
 
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
@@ -2699,7 +2710,7 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
        tablet_peer->tablet_metadata()->IsSysCatalog())) {
     // For replication slot consumption we can set the cdc_sdk_safe_time to the minimum
     // acknowledged commit time among all the slots on the namespace.
-    if (IsReplicationSlotStream(stream_metadata) &&
+    if (stream_metadata.IsLogicalReplicationStream() &&
         FLAGS_ysql_yb_enable_replication_slot_consumption) {
       if (slot_entries_to_be_deleted && !slot_entries_to_be_deleted->contains(stream_id)) {
         // This is possible when Update Peers and Metrics thread comes into action before the slot
@@ -2852,7 +2863,10 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     const TabletId& tablet_id, const StreamMetadata& stream_metadata,
     const tablet::TabletPeerPtr& tablet_peer) {
   bool is_before_image_active = false;
-  if (FLAGS_ysql_yb_enable_replica_identity && IsReplicationSlotStream(stream_metadata)) {
+  // record_type is set only for gRPC streams without a replica_identity_map (legacy/backfilled/
+  // yb-admin). Logical and PG-syntax gRPC streams use replica_identity_map instead.
+  auto stream_record_type = stream_metadata.GetRecordType();
+  if (FLAGS_ysql_yb_enable_replica_identity && !stream_record_type.has_value()) {
     auto replica_identity_map = stream_metadata.GetReplicaIdentities();
     bool is_colocated_tablet = tablet_peer->tablet_metadata()->colocated();
     bool is_sys_catalog_tablet = tablet_peer->tablet_metadata()->IsSysCatalog();
@@ -2913,9 +2927,11 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     }
 
   } else {
-    auto stream_record_type = stream_metadata.GetRecordType();
-    is_before_image_active = stream_record_type != CDCRecordType::CHANGE &&
-                             stream_record_type != CDCRecordType::PG_NOTHING;
+    RSTATUS_DCHECK(
+        stream_record_type.has_value(), InternalError,
+        "record_type must be set for a stream that does not use replica identities");
+    is_before_image_active = *stream_record_type != CDCRecordType::CHANGE &&
+                             *stream_record_type != CDCRecordType::PG_NOTHING;
   }
 
   return is_before_image_active;
@@ -3238,7 +3254,8 @@ void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
 
 Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
     const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
-    bool enable_update_local_peer_min_index, bool ignore_rpc_failures) {
+    bool enable_update_local_peer_min_index, bool ignore_rpc_failures,
+    tablet::CDCRetentionBarrierMoveSelector barrier_move_selector) {
   auto tablet_peer_result = context_->GetTablet(tablet_id);
   if (!tablet_peer_result.ok()) {
     VLOG(2) << "Did not find tablet peer for tablet " << tablet_id << " : "
@@ -3286,7 +3303,7 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
       min_index, tablet_info->cdc_sdk_op_id, tablet_info->cdc_sdk_op_id_expiration,
       tablet_info->cdc_sdk_safe_time, /* require_history_cutoff */
       tablet_info->cdc_sdk_safe_time == HybridTime::kInitial ? false : true,
-      set_initial_retention_barriers));
+      set_initial_retention_barriers, barrier_move_selector));
 
   if (!ignore_rpc_failures && !barrier_revised) {
     return STATUS_FORMAT(TryAgain, "Revision of CDC retention barriers is currently blocked");
@@ -3300,7 +3317,8 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
             << " expiration: " << tablet_info->cdc_sdk_op_id_expiration.ToMilliseconds()
             << " cdc_sdk_safe_time: " << tablet_info->cdc_sdk_safe_time;
     auto status = UpdatePeersCdcMinReplicatedIndex(
-        tablet_id, *tablet_info, ignore_rpc_failures, set_initial_retention_barriers);
+        tablet_id, *tablet_info, ignore_rpc_failures, set_initial_retention_barriers,
+        barrier_move_selector);
     WARN_NOT_OK(status, "UpdatePeersCdcMinReplicatedIndex failed");
     if (!ignore_rpc_failures && !status.ok()) {
       return status;
@@ -3327,6 +3345,10 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
           .IncludeCDCSDKSafeTime(),
       &iteration_status));
 
+  // Materialize the stream's rows in a single scan. Iterating the range a second time would issue
+  // another full scan of cdc_state (CDCStateTableRange::begin() starts a fresh table scan), so we
+  // collect the rows once here and reuse them for the selection pass below.
+  std::vector<CDCStateTableEntry> stream_entries;
   for (auto entry_result : entries) {
     if (!entry_result) {
       LOG(WARNING) << "GetTabletIdsToPoll failed to parse row :" << entry_result.status();
@@ -3339,30 +3361,20 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
 
     auto& tablet_id = entry.key.tablet_id;
     auto is_cur_tablet_polled = entry.last_replication_time.has_value();
-    if (!is_cur_tablet_polled) {
-      continue;
+    if (is_cur_tablet_polled) {
+      polled_tablets.insert(tablet_id);
+
+      auto iter = child_to_parent_mapping.find(tablet_id);
+      if (iter != child_to_parent_mapping.end()) {
+        parent_to_polled_child_count[iter->second] += 1;
+      }
     }
 
-    polled_tablets.insert(tablet_id);
-
-    auto iter = child_to_parent_mapping.find(tablet_id);
-    if (iter != child_to_parent_mapping.end()) {
-      parent_to_polled_child_count[iter->second] += 1;
-    }
+    stream_entries.push_back(std::move(entry));
   }
   RETURN_NOT_OK(iteration_status);
 
-  for (const auto& entry_result : entries) {
-    if (!entry_result) {
-      LOG(WARNING) << "GetTabletIdsToPoll failed to parse row :" << entry_result.status();
-      continue;
-    }
-
-    auto& entry = *entry_result;
-    if (entry.key.stream_id != stream_id) {
-      continue;
-    }
-
+  for (const auto& entry : stream_entries) {
     auto& tablet_id = entry.key.tablet_id;
     auto is_active_or_hidden =
         (active_or_hidden_tablets.find(tablet_id) != active_or_hidden_tablets.end());
@@ -3623,9 +3635,38 @@ void CDCServiceImpl::CDCMasterBgTask() {
       LOG(WARNING) << "Failed to update gRPC slot entries: " << update_status;
     }
 
+    // We have 2 cases where sys_catalog_tablet-stream entry is not present or contains Invalid
+    // checkpoint:
+    // - System only contains old logical replication streams (which don't poll sys_catalog tablet)
+    // or gRPC streams. There's no sys_catalog_tablet-stream entry in cdc_state table for such
+    // streams.
+    // - A first logical replication stream (which polls the sys_catalog) creation is ongoing during
+    // which sys_catalog_tablet-stream entry is populated with Invalid checkpoint initially.
+    //
+    // In both such cases we advance only the history barrier, retaining the user tables' schema.
+    // Stream creation may set sys_catalog_tablet-stream entry to a valid checkpoint concurrently.
+    // Thus, it is not correct to release the WAL and intent barriers and anyways is not required.
+    tablet::CDCRetentionBarrierMoveSelector barrier_move_selector;
+    if (checkpoint_info.cdc_sdk_op_id == OpId::Max()) {
+      if (!FLAGS_cdcsdk_enable_selective_retention_barrier_revision) {
+        // Not every master necessarily understands the skip_moving_*_retention_barrier request
+        // fields yet, and one that ignores them would move all three barriers to the sentinel. Skip
+        // propagation altogether until the AutoFlag is promoted.
+        VLOG(2) << "CDCMasterBgTask: no sys_catalog checkpoint available yet and selective barrier "
+                   "revision is not enabled, skipping propagation";
+        continue;
+      }
+      VLOG(2) << "CDCMasterBgTask: no sys_catalog checkpoint available yet, advancing only the "
+                 "history retention barrier";
+      barrier_move_selector = {
+          .move_cdc_min_replicated_index = false,
+          .move_cdc_sdk_min_checkpoint_op_id = false,
+          .move_cdc_sdk_safe_time = true};
+    }
+
     auto propagate_status = UpdateTabletPeerWithCheckpoint(
         master::kSysCatalogTabletId, &checkpoint_info, context_->ShouldLocalPeerUpdateOwnBarriers(),
-        true /* ignore_rpc_failures */);
+        true /* ignore_rpc_failures */, barrier_move_selector);
     WARN_NOT_OK(propagate_status, "Failed to propagate sys_catalog retention barriers");
     if (propagate_status.ok()) {
       set_cdc_master_bg_task_ran_once();
@@ -3649,6 +3690,8 @@ void CDCServiceImpl::CDCMasterBgTask() {
 
 Result<std::optional<std::pair<TabletCDCCheckpointInfo, StreamIdHybridTimeMap>>>
 CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* expired_tables_map) {
+  std::unordered_set<xrepl::StreamId> refreshed_metadata_set;
+
   TabletCDCCheckpointInfo info;
   info.cdc_sdk_op_id = OpId::Max();
 
@@ -3695,13 +3738,21 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
     // We expect the stream metadata to be present in the master cache. If not, then it means that
     // the stream is deleted. We skip this entry from the calculation of sys_catalog retention
     // barriers.
-    auto stream_metadata_result = GetStream(stream_id);
+    RefreshStreamMapOption refresh_option = RefreshStreamMapOption::kNone;
+    if (!refreshed_metadata_set.contains(stream_id)) {
+      refresh_option = RefreshStreamMapOption::kIfInitiatedState;
+    }
+    auto stream_metadata_result = GetStream(stream_id, refresh_option);
     if (!stream_metadata_result.ok()) {
       VLOG(2) << "Failed to get stream metadata for stream " << stream_id << ": "
               << stream_metadata_result.status();
       continue;
     }
     auto& stream_metadata = **stream_metadata_result;
+    // Refresh metadata from master for a stream in INITIATED state only once per round.
+    if (stream_metadata.GetState() == master::SysCDCStreamEntryPB_State_INITIATED) {
+      refreshed_metadata_set.insert(stream_id);
+    }
     if (stream_metadata.GetSourceType() != CDCRequestSource::CDCSDK) {
       continue;
     }
@@ -3714,7 +3765,7 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
     // Streams of type 2 and 3 won't have stream_metadata.GetDetectPublicationChangesImplicitly()
     // set to true.
 
-    const bool is_logical_replication_stream = stream_metadata.GetReplicationSlotName().has_value();
+    const bool is_logical_replication_stream = stream_metadata.IsLogicalReplicationStream();
     // To update the restart time of a gRPC stream entry, we need to track min(cdc_sdk_safe_time)
     // from all the gRPC tablet-stream entries for each gRPC stream.
     if (!is_logical_replication_stream && entry.key.tablet_id != kCDCSDKSlotEntryTabletId &&
@@ -4272,6 +4323,11 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(
   auto initial_retention_barrier =
       req->has_initial_retention_barrier() && req->initial_retention_barrier();
 
+  tablet::CDCRetentionBarrierMoveSelector barrier_move_selector{
+      .move_cdc_min_replicated_index = !req->skip_moving_wal_retention_barrier(),
+      .move_cdc_sdk_min_checkpoint_op_id = !req->skip_moving_intents_retention_barrier(),
+      .move_cdc_sdk_safe_time = !req->skip_moving_history_retention_barrier()};
+
   rollback_tablet_id_vec.reserve(req->tablet_ids_size());
   for (int i = 0; i < req->tablet_ids_size(); i++) {
     const OpId& cdc_sdk_op = req->cdc_sdk_consumed_ops().empty()
@@ -4286,7 +4342,7 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(
         &rollback_tablet_id_map,
         req->cdc_sdk_safe_times().size() > i ? HybridTime::FromPB(req->cdc_sdk_safe_times(i))
                                              : HybridTime::kInvalid,
-        initial_retention_barrier);
+        initial_retention_barrier, barrier_move_selector);
     RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
   }
 
@@ -4298,7 +4354,7 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
     const string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
     const MonoDelta& cdc_sdk_op_id_expiration,
     RollBackTabletIdCheckpointMap* rollback_tablet_id_map, const HybridTime cdc_sdk_safe_time,
-    bool initial_retention_barrier) {
+    bool initial_retention_barrier, tablet::CDCRetentionBarrierMoveSelector barrier_move_selector) {
   auto tablet_peer = VERIFY_RESULT(GetServingTablet(tablet_id));
   if (!tablet_peer->log_available()) {
     return STATUS(TryAgain, "Tablet peer is not ready to set its log cdc index");
@@ -4316,7 +4372,7 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
   auto barrier_revised = VERIFY_RESULT(tablet_peer->SetAllCDCRetentionBarriers(
       replicated_index, cdc_sdk_replicated_op, cdc_sdk_op_id_expiration, cdc_sdk_safe_time,
       cdc_sdk_safe_time == HybridTime::kInitial ? false : true /* require_history_cutoff */,
-      initial_retention_barrier));
+      initial_retention_barrier, barrier_move_selector));
   // If initial_retention_barrier was passed as true to tablet_peer's
   // SetAllCDCRetentionBarriers(), it always returns true for an OK status since the tablet's
   // SetAllInitialCDCRetentionBarriers() gets called.

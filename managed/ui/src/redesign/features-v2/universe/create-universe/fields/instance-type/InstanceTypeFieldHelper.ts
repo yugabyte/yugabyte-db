@@ -7,7 +7,7 @@ import {
   RunTimeConfigEntry,
   Region
 } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from 'react-query';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import { ProviderType } from '../../steps/general-settings/dtos';
@@ -42,6 +42,19 @@ export const AZURE_INSTANCE_TYPE_GROUPS = {
   'M-Series': /^standard_m.+/i,
   'N-Series': /^standard_n.+/i,
   'P-Series': /^standard_p.+/i
+};
+
+/** OCI shape families — broader groups than per-shape prefixes to avoid single-item sections. */
+export const OCI_INSTANCE_TYPE_GROUPS = {
+  'VM - Standard': /^VM\.Standard/i,
+  'VM - Dense I/O': /^VM\.DenseIO/i,
+  'VM - GPU': /^VM\.GPU/i,
+  'VM - Optimized': /^VM\.Optimized/i,
+  'Bare metal - Standard': /^BM\.Standard/i,
+  'Bare metal - Dense I/O': /^BM\.DenseIO/i,
+  'Bare metal - GPU': /^BM\.GPU/i,
+  'Bare metal - HPC': /^BM\.HPC/i,
+  'Bare metal - Optimized': /^BM\.Optimized/i
 };
 
 export const getDefaultInstanceType = (providerCode: string, runtimeConfigs: any) => {
@@ -97,6 +110,11 @@ export const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): Instance
           if (regexp.test(instanceTypeCode)) return groupName;
         }
         return 'Other';
+      case CloudType.oci:
+        for (const [groupName, regexp] of Object.entries(OCI_INSTANCE_TYPE_GROUPS)) {
+          if (regexp.test(instanceTypeCode)) return groupName;
+        }
+        return 'Other';
       default:
         return '';
     }
@@ -116,20 +134,18 @@ export const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): Instance
 };
 
 export const useGetZones = (provider?: Partial<ProviderType>, regionList?: Region[]) => {
-  const [zones, setZones] = useState<Placement[]>([]);
-
   const { data: allRegions, isLoading: isLoadingZones } = useQuery(
     [QUERY_KEY.getRegionsList, provider?.uuid],
     () => api.getRegionsList(provider?.uuid),
     { enabled: !!provider?.uuid } // make sure query won't run when there's no provider defined
   );
-  useEffect(() => {
+
+  const zones = useMemo(() => {
     const selectedRegionUUIDs = new Set((regionList ?? []).map((r: Region) => r.uuid ?? r));
 
-    const zones = (allRegions || [])
+    const next = (allRegions || [])
       .filter((region) => selectedRegionUUIDs.has(region.uuid))
       .flatMap<Placement>((region: any) => {
-        // add extra fields with parent region data
         return region.zones.map((zone: any) => ({
           ...zone,
           parentRegionId: region.uuid,
@@ -138,7 +154,7 @@ export const useGetZones = (provider?: Partial<ProviderType>, regionList?: Regio
         }));
       });
 
-    setZones(_.sortBy(zones, 'name'));
+    return _.sortBy(next, 'name');
   }, [allRegions, regionList]);
 
   return { zones, isLoadingZones };

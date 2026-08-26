@@ -12,6 +12,7 @@ import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import AwsStorageConfiguration from './AwsStorageConfiguration';
 import GcsStorageConfiguration from './GcsStorageConfiguration';
 import AzureStorageConfiguration from './AzureStorageConfiguration';
+import OciStorageConfiguration from './OciStorageConfiguration';
 import { BackupList } from './BackupList';
 import { BackupConfigField } from './BackupConfigField';
 import { storageConfigTypes } from './ConfigType';
@@ -20,6 +21,7 @@ import awss3Logo from './images/aws-s3.png';
 import AzureLogo from './images/azure_logo.svg?img';
 import gcsLogo from './images/gcs-logo.png';
 import NfsIcon from './images/nfs.svg?img';
+import OciLogo from '../../../redesign/assets/approved/provider-logo-oci.svg?img';
 import { Formik } from 'formik';
 import {
   DEFAULT_RUNTIME_GLOBAL_SCOPE,
@@ -73,6 +75,12 @@ const getTabTitle = (configName) => {
           <img src={AzureLogo} alt="Azure" className="azure-logo" /> Azure Storage
         </span>
       );
+    case 'OCI':
+      return (
+        <span>
+          <img src={OciLogo} alt="Oracle Cloud" className="oci-logo" /> Oracle Cloud
+        </span>
+      );
     default:
       return (
         <span>
@@ -90,16 +98,19 @@ class StorageConfiguration extends Component {
         s3: false,
         nfs: false,
         gcs: false,
-        az: false
+        az: false,
+        oci: false
       },
       iamRoleEnabled: false,
       useGcpIam: false,
       useAzureIam: false,
+      useOciIam: false,
       listView: {
         s3: true,
         nfs: true,
         gcs: true,
-        az: true
+        az: true,
+        oci: true
       }
     };
   }
@@ -183,11 +194,40 @@ class StorageConfiguration extends Component {
           configName = dataPayload['AZ_CONFIGURATION_NAME'];
           dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
           dataPayload['USE_AZURE_IAM'] = dataPayload['USE_AZURE_IAM'].toString();
-          FIELDS = ['BACKUP_LOCATION', 'USE_AZURE_IAM'];
+          FIELDS = ['BACKUP_LOCATION', 'USE_AZURE_IAM', 'IMMUTABLE_STORAGE'];
+          if (values['AZURE_CLIENT_ID']) {
+            FIELDS.push('AZURE_CLIENT_ID');
+          }
         } else {
           configName = dataPayload['AZ_CONFIGURATION_NAME'];
           dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
-          FIELDS = ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN'];
+          FIELDS = ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN', 'IMMUTABLE_STORAGE'];
+        }
+        dataPayload = _.pick(dataPayload, FIELDS);
+        break;
+      }
+
+      case 'oci': {
+        let FIELDS;
+        configName = dataPayload['OCI_CONFIGURATION_NAME'];
+        dataPayload['BACKUP_LOCATION'] = dataPayload['OCI_BACKUP_LOCATION'];
+        if (values['USE_OCI_IAM']) {
+          dataPayload['USE_OCI_IAM'] = dataPayload['USE_OCI_IAM'].toString();
+          FIELDS = ['BACKUP_LOCATION', 'OCI_REGION', 'OCI_NAMESPACE', 'USE_OCI_IAM'];
+        } else {
+          dataPayload['USE_OCI_IAM'] = 'false';
+          FIELDS = [
+            'BACKUP_LOCATION',
+            'OCI_REGION',
+            'OCI_S3_ACCESS_KEY_ID',
+            'OCI_S3_SECRET_ACCESS_KEY',
+            'OCI_S3_HOST_BASE',
+            'USE_OCI_IAM'
+          ];
+          // OCI_NAMESPACE is optional for S3-compatible mode. Omit the field when blank.
+          if (dataPayload['OCI_NAMESPACE']) {
+            FIELDS.push('OCI_NAMESPACE');
+          }
         }
         dataPayload = _.pick(dataPayload, FIELDS);
         break;
@@ -337,7 +377,28 @@ class StorageConfiguration extends Component {
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
           USE_AZURE_IAM: row.data?.USE_AZURE_IAM,
-          AZURE_STORAGE_SAS_TOKEN: row.data?.AZURE_STORAGE_SAS_TOKEN
+          AZURE_CLIENT_ID: row.data?.AZURE_CLIENT_ID,
+          AZURE_STORAGE_SAS_TOKEN: row.data?.AZURE_STORAGE_SAS_TOKEN,
+          IMMUTABLE_STORAGE: initialS3StorageBooleanFromRowData(
+            row?.data,
+            'IMMUTABLE_STORAGE',
+            false /* defaultWhenMissing */
+          )
+        };
+        break;
+
+      case 'oci':
+        initialVal = {
+          type: 'update',
+          configUUID: row?.configUUID,
+          [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
+          [`${tab}_CONFIGURATION_NAME`]: row?.configName,
+          OCI_REGION: row.data?.OCI_REGION,
+          OCI_NAMESPACE: row.data?.OCI_NAMESPACE,
+          USE_OCI_IAM: row.data?.USE_OCI_IAM,
+          OCI_S3_ACCESS_KEY_ID: row.data?.OCI_S3_ACCESS_KEY_ID || '',
+          OCI_S3_SECRET_ACCESS_KEY: row.data?.OCI_S3_SECRET_ACCESS_KEY || '',
+          OCI_S3_HOST_BASE: row.data?.OCI_S3_HOST_BASE
         };
         break;
 
@@ -376,6 +437,7 @@ class StorageConfiguration extends Component {
       iamRoleEnabled: row.data['IAM_INSTANCE_PROFILE'] || false,
       useGcpIam: row.data['USE_GCP_IAM'] || false,
       useAzureIam: row.data['USE_AZURE_IAM'] || false,
+      useOciIam: row.data['USE_OCI_IAM'] === 'true' || row.data['USE_OCI_IAM'] === true || false,
       listView: {
         ...this.state.listView,
         [activeTab]: false
@@ -422,6 +484,7 @@ class StorageConfiguration extends Component {
       iamRoleEnabled: false,
       useGcpIam: false,
       useAzureIam: false,
+      useOciIam: false,
       listView: {
         ...this.state.listView,
         [activeTab]: true
@@ -447,6 +510,10 @@ class StorageConfiguration extends Component {
     this.setState({ useAzureIam: event.target.checked });
   };
 
+  ociIamToggle = (event) => {
+    this.setState({ useOciIam: event.target.checked });
+  };
+
   render() {
     const {
       handleSubmit,
@@ -457,7 +524,7 @@ class StorageConfiguration extends Component {
       enableSigningRegion,
       enableS3BackupProxy
     } = this.props;
-    const { iamRoleEnabled, useGcpIam, useAzureIam, editView, listView } = this.state;
+    const { iamRoleEnabled, useGcpIam, useAzureIam, useOciIam, editView, listView } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
 
     if (getPromiseState(customerConfigs).isLoading()) {
@@ -509,6 +576,15 @@ class StorageConfiguration extends Component {
               azureIamToggle={this.azureIamToggle}
               isEdited={editView[activeTab]}
               customerConfigs={customerConfigs}
+            />
+          )}
+        </Tab>,
+        <Tab eventKey={'oci'} title={getTabTitle('OCI')} key={'oci-tab'} unmountOnExit={true}>
+          {!listView.oci && (
+            <OciStorageConfiguration
+              useOciIam={useOciIam}
+              ociIamToggle={this.ociIamToggle}
+              isEdited={editView[activeTab]}
             />
           )}
         </Tab>
@@ -582,7 +658,9 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 function mapStateToProps(state) {
-  const { customer: { runtimeConfigs } } = state;
+  const {
+    customer: { runtimeConfigs }
+  } = state;
   const enablePathStyleAccess = isPathStyleAccess(runtimeConfigs?.data);
   const enableChunkedEncoding = isChunkedEncodingEnabled(runtimeConfigs?.data);
   const enableSigningRegion = isSigningRegionEnabled(runtimeConfigs?.data);

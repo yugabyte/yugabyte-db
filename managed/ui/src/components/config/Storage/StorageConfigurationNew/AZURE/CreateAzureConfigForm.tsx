@@ -45,6 +45,8 @@ type configs = {
 interface InitialValuesTypes {
   AZ_CONFIGURATION_NAME: string;
   USE_AZURE_IAM: boolean;
+  AZURE_CLIENT_ID: string;
+  IMMUTABLE_STORAGE: boolean;
   multi_regions: configs[];
   MULTI_REGION_AZ_ENABLED: boolean;
   default_bucket: string;
@@ -151,7 +153,10 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
           values.multi_regions[0].folder ?? ''
         }`,
         USE_AZURE_IAM: values.USE_AZURE_IAM ? values.USE_AZURE_IAM.toString() : undefined,
-        AZURE_STORAGE_SAS_TOKEN: values.USE_AZURE_IAM ? undefined : values.multi_regions[0].sas_token
+        AZURE_CLIENT_ID:
+          values.USE_AZURE_IAM && values.AZURE_CLIENT_ID ? values.AZURE_CLIENT_ID : undefined,
+        AZURE_STORAGE_SAS_TOKEN: values.USE_AZURE_IAM ? undefined : values.multi_regions[0].sas_token,
+        IMMUTABLE_STORAGE: values.IMMUTABLE_STORAGE
       }
     };
 
@@ -161,9 +166,8 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
           REGION: r.region.value,
           LOCATION: `${r.container}/${r.folder}`
         };
-        if (values.USE_AZURE_IAM) {
-          regionLocation.USE_AZURE_IAM = values.USE_AZURE_IAM.toString();
-        } else {
+        // SAS token is region-scoped; IAM / client ID stay top-level only.
+        if (!values.USE_AZURE_IAM) {
           regionLocation.AZURE_STORAGE_SAS_TOKEN = r.sas_token;
         }
         return regionLocation;
@@ -188,6 +192,8 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
   const initialValues: InitialValuesTypes = {
     AZ_CONFIGURATION_NAME: '',
     USE_AZURE_IAM: false,
+    AZURE_CLIENT_ID: '',
+    IMMUTABLE_STORAGE: false,
     MULTI_REGION_AZ_ENABLED: false,
     multi_regions: [MUTLI_REGION_DEFAULT_VALUES],
     default_bucket: '0'
@@ -197,6 +203,10 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
   if (isEditMode) {
     initialValues.AZ_CONFIGURATION_NAME = editInitialValues['configName'];
     initialValues.USE_AZURE_IAM = editInitialValues.data['USE_AZURE_IAM'] === 'true' || editInitialValues.data['USE_AZURE_IAM'] === true;
+    initialValues.AZURE_CLIENT_ID = editInitialValues.data['AZURE_CLIENT_ID'] ?? '';
+    initialValues.IMMUTABLE_STORAGE =
+      editInitialValues.data['IMMUTABLE_STORAGE'] === 'true' ||
+      editInitialValues.data['IMMUTABLE_STORAGE'] === true;
 
     initialValues.MULTI_REGION_AZ_ENABLED = editInitialValues.data['REGION_LOCATIONS']?.length > 0;
 
@@ -237,6 +247,8 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
     return Yup.object().shape({
       AZ_CONFIGURATION_NAME: Yup.string().required('Configuration name is required'),
       USE_AZURE_IAM: Yup.boolean(),
+      AZURE_CLIENT_ID: Yup.string(),
+      IMMUTABLE_STORAGE: Yup.boolean(),
       multi_regions: Yup.array()
         .when('MULTI_REGION_AZ_ENABLED', {
           is: (enabled) => enabled,
@@ -316,7 +328,42 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
                     onChange={(_: any, e: React.ChangeEvent<HTMLInputElement>) => {
                       setUseAzureIam(e.target.checked);
                       setFieldValue('USE_AZURE_IAM', e.target.checked);
+                      if (!e.target.checked) {
+                        setFieldValue('AZURE_CLIENT_ID', '');
+                      }
                     }}
+                  />
+                </Col>
+              </Row>
+              {(useAzureIam ||
+                values?.USE_AZURE_IAM === true ||
+                values?.USE_AZURE_IAM === 'true') && (
+                <>
+                  <div className="form-divider" />
+                  <Row className="config-provider-row">
+                    <Col lg={2} className="form-item-custom-label">
+                      <div>Client ID</div>
+                    </Col>
+                    <Col lg={9}>
+                      <Field
+                        name="AZURE_CLIENT_ID"
+                        placeHolder="Client ID (optional)"
+                        component={YBFormInput}
+                      />
+                    </Col>
+                  </Row>
+                </>
+              )}
+              <div className="form-divider" />
+              <Row className="config-provider-row">
+                <Col lg={2} className="form-item-custom-label">
+                  <div>Immutable Storage</div>
+                </Col>
+                <Col lg={9}>
+                  <Field
+                    name="IMMUTABLE_STORAGE"
+                    component={YBFormToggle}
+                    subLabel="If enabled, backup deletion only removes YBA metadata and does not delete files from cloud storage."
                   />
                 </Col>
               </Row>

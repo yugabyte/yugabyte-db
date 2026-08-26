@@ -184,6 +184,23 @@ func (m *InstallNodeAgent) generateInstanceTypePayload(
 	mountPoints = strings.Trim(mountPoints, "[]")
 	mountPoints = strings.ReplaceAll(mountPoints, "'", "")
 	mps := strings.Split(mountPoints, ", ")
+	j := 0
+	for i := range mps {
+		if len(mps[i]) == 0 {
+			// Skip empty mount points.
+			continue
+		}
+		filePath := filepath.Clean(mps[i])
+		if filePath == "/" {
+			return nil, errors.New("Root mount point '/' is not allowed")
+		}
+		mps[j] = filePath
+		j++
+	}
+	mps = mps[:j]
+	if len(mps) == 0 {
+		return nil, errors.New("No mount points provided")
+	}
 	volumeDetails := []model.VolumeDetails{}
 	for _, mp := range mps {
 		volumeDetails = append(volumeDetails, model.VolumeDetails{

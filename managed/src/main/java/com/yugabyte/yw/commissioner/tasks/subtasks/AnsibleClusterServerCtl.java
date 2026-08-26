@@ -30,7 +30,7 @@ import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class AnsibleClusterServerCtl extends NodeTaskBase {
@@ -188,7 +188,7 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     config.setOperationTimeout(flushTimeout);
     config.setAdminOperationTimeout(flushTimeout);
     Stopwatch flushStopwatch = Stopwatch.createStarted();
-    try (YBClient ybClient = ybService.getClientWithConfig(config)) {
+    try (YBClientApi ybClient = ybService.getClientWithConfig(config)) {
       ybClient.flushTablets(
           tserverNode.cloudInfo.private_ip, tserverNode.tserverRpcPort, Collections.emptyList());
     } catch (Exception e) {

@@ -33,6 +33,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"

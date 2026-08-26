@@ -43,7 +43,7 @@ struct XClusterStatus;
 
 class XClusterManagerIf {
  public:
-  virtual Result<std::optional<HybridTime>> TryGetXClusterSafeTimeForBackfill(
+  virtual Result<XClusterBackfillDecision> TryGetXClusterInfoForIndexBackfill(
       const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
       const LeaderEpoch& epoch) const = 0;
   virtual Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) = 0;

@@ -48,7 +48,7 @@ public class ImageBundleUtil {
     ImageBundle bundle = ImageBundle.getOrBadRequest(imageBundleUUID);
     ProviderDetails providerDetails = bundle.getProvider().getDetails();
     ImageBundleDetails bundleDetails = bundle.getDetails();
-    if (Common.CloudType.aws.toString().equals(cloudCode)) {
+    if (Common.CloudType.valueOf(cloudCode).usesPerRegionImages()) {
       Map<String, ImageBundleDetails.BundleInfo> regionsBundleInfo =
           bundle.getDetails().getRegions();
 
@@ -71,8 +71,8 @@ public class ImageBundleUtil {
         if (properties.getMachineImage() == null) {
           if (bundle.getMetadata().getType() != ImageBundleType.CUSTOM) {
             Region r = Region.getByCode(bundle.getProvider(), region);
-            // In case, AMI id is not present in the bundle - we will extract the AMI
-            // from YBA's metadata for YBA managed bundles else we will fail.
+            // In case the per-region image is not present in the bundle - we will extract
+            // the image from YBA's metadata for YBA managed bundles else we will fail.
             if (properties.getMachineImage() == null) {
               // In case it is still null, we will try to fetch from the regionMetadata.
               Architecture arch = r.getArchitecture();
@@ -85,7 +85,7 @@ public class ImageBundleUtil {
             throw new PlatformServiceException(
                 INTERNAL_SERVER_ERROR,
                 String.format(
-                    "AMI information is missing from bundle %s for region %s",
+                    "Image information is missing from bundle %s for region %s",
                     bundle.getName(), region));
           }
         }
@@ -123,7 +123,7 @@ public class ImageBundleUtil {
     if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.disableImageBundleValidation)) {
       // in case this is disabled, that means we still allow imageAMI edit on the region
       // level itself. Need to ensure, that region AMI ID is in sync with imageBundle.
-      if (provider.getCloudCode() == CloudType.aws) {
+      if (provider.getCloudCode().usesPerRegionImages()) {
         Map<String, ImageBundleDetails.BundleInfo> bundleInfo = bundle.getDetails().getRegions();
         regionsImageMap.forEach(
             (code, region) -> {

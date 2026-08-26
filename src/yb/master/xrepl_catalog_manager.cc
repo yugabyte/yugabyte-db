@@ -24,6 +24,7 @@
 #include "yb/common/common_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/constants.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/xcluster_util.h"
 
@@ -59,6 +60,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
@@ -97,11 +100,7 @@ DEFINE_test_flag(bool, hang_wait_replication_drain, false,
 DEFINE_RUNTIME_AUTO_bool(cdc_enable_postgres_replica_identity, kLocalPersisted, false, true,
     "Enable new record types in CDC streams");
 
-DEFINE_RUNTIME_bool(enable_backfilling_cdc_stream_with_replication_slot, false,
-    "When enabled, allows adding a replication slot name to an existing CDC stream via the yb-admin"
-    " ysql_backfill_change_data_stream_with_replication_slot command."
-    "Intended to be used for making CDC streams created before replication slot support work with"
-    " the replication slot commands.");
+DEPRECATE_FLAG(bool, enable_backfilling_cdc_stream_with_replication_slot, "08_2026");
 
 DEFINE_test_flag(bool, xcluster_fail_setup_stream_update, false, "Fail UpdateCDCStream RPC call");
 
@@ -131,6 +130,10 @@ DEFINE_test_flag(bool, cdcsdk_disable_drop_table_cleanup, false,
 DEFINE_RUNTIME_AUTO_bool(cdcsdk_use_dropped_table_list_for_cleanup, kLocalPersisted, false, true,
     "When enabled, dropped tables are tracked via the dropped_table_id list in stream metadata "
     "instead of using the DELETING_METADATA stream state.");
+
+DEFINE_RUNTIME_AUTO_bool(cdc_pg_create_grpc_stream, kLocalPersisted, false, true,
+    "Allow creation of gRPC CDC streams via the YSQL replication slot interface using the yb_grpc "
+    "plugin name. Also gates the post-upgrade backfill of legacy gRPC streams.");
 
 DEFINE_test_flag(bool, cdcsdk_disable_deleted_stream_cleanup, false,
                  "When enabled, cleanup of deleted CDCSDK streams will be skipped.");
@@ -440,7 +443,7 @@ Status CatalogManager::LoadXReplStream() {
     }
 
     if (FLAGS_enable_table_rewrite_for_cdcsdk_table &&
-        IsTablePartOfCDCSDK(table->id(), true /* require_replication_slot */) &&
+        IsTablePartOfCDCSDK(table->id(), true /* require_logical_replication */) &&
         table->IsHiddenButNotDeleting()) {
       auto tablets = VERIFY_RESULT(table->GetTablets());
       RSTATUS_DCHECK(tablets.size() == 1, IllegalState, "Expected 1 tablet for colocated table");
@@ -635,7 +638,6 @@ Status CatalogManager::LoadUniverseReplicationBootstrap() {
   return Status::OK();
 }
 
-// Helper class to print a vector of CDCStreamInfo pointers.
 namespace {
 
 template <class CDCStreamInfoPointer>
@@ -650,6 +652,56 @@ std::string CDCStreamInfosAsString(const std::vector<CDCStreamInfoPointer>& cdc_
 bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
   return table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid ||
          table_oid == kPgReplicationOriginOid || table_oid == kPgPublicationOid;
+}
+
+ReplicationSlotName MakeGrpcSlotName(const xrepl::StreamId& stream_id) {
+  return ReplicationSlotName("grpc_" + stream_id.ToString());
+}
+
+// Add a new entry in cdc_state table representing the replication slot for the associated stream.
+// This entry holds metadata for two main usages:
+// 1. Represent the slot's consistent point i.e. first record sent in the streaming phase will
+// have LSN & txnID set to 2.
+// 2. Initialize components (LSN & txnID generators) of the CDCSDK Virtual WAL on restarts in case
+// of logical replication stream.
+//
+// The consistent point set below must stay in sync with the slot creation path in walsender.c and
+// slotfuncs.c.
+cdc::CDCStateTableEntry MakeSlotEntry(const xrepl::StreamId& stream_id, uint64_t commit_time_ht) {
+  cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
+  std::ostringstream oss;
+  oss << commit_time_ht << 'F';
+  entry.confirmed_flush_lsn = 2;
+  entry.restart_lsn = 1;
+  entry.xmin = 1;
+  entry.record_id_commit_time = commit_time_ht;
+  entry.cdc_sdk_safe_time = commit_time_ht;
+  entry.last_pub_refresh_time = commit_time_ht;
+  entry.pub_refresh_times = "";
+  entry.last_decided_pub_refresh_time = oss.str();
+  return entry;
+}
+
+// Whether a CDCSDK stream creation request is for the internal LISTEN/NOTIFY notifications slot: it
+// targets the yb_system database and its replication slot name has the reserved prefix.
+bool IsNotificationSlotCreationRequest(
+    const CreateCDCStreamRequestPB& req, const std::string& namespace_name) {
+  return namespace_name == kYbSystemDbName && req.has_cdcsdk_ysql_replication_slot_name() &&
+         StringStartsWithOrEquals(
+             req.cdcsdk_ysql_replication_slot_name(), kYbNotificationsSlotPrefix);
+}
+
+// Whether a CDCSDK stream creation request is for a logical replication stream (as opposed to a
+// gRPC stream). Notifications streams are logical replication streams; otherwise the request must
+// carry a real output plugin (present, non-empty, and not the yb_grpc sentinel).
+bool IsLogicalReplicationStreamCreationRequest(
+    const CreateCDCStreamRequestPB& req, const std::string& namespace_name) {
+  if (IsNotificationSlotCreationRequest(req, namespace_name)) {
+    return true;
+  }
+  return req.has_cdcsdk_ysql_replication_slot_plugin_name() &&
+         !req.cdcsdk_ysql_replication_slot_plugin_name().empty() &&
+         req.cdcsdk_ysql_replication_slot_plugin_name() != kYbGrpcStreamIndicator;
 }
 
 }  // namespace
@@ -939,14 +991,11 @@ Status CatalogManager::BackfillMetadataForXRepl(
           set_column_pg_type->set_name(entry.first);
           uint32_t pg_type_oid = entry.second;
 
-          const YbcPgTypeEntity* type_entity =
-              docdb::DocPgGetTypeEntity({.type_id = (int32_t)pg_type_oid, .type_mod = -1});
-
-          if (type_entity == nullptr && type_oid_info_map.contains(pg_type_oid)) {
+          if (type_oid_info_map.contains(pg_type_oid)) {
             VLOG(1) << "Looking up primitive type for: " << pg_type_oid;
             PgTypeInfo pg_type_info = type_oid_info_map.at(pg_type_oid);
-            YbgGetPrimitiveTypeOid(
-                pg_type_oid, pg_type_info.typtype, pg_type_info.typbasetype, &pg_type_oid);
+            pg_type_oid = VERIFY_RESULT(docdb::DocPgGetTypeOid(
+                pg_type_oid, pg_type_info.typtype, pg_type_info.typbasetype));
             VLOG(1) << "Found primitive type oid: " << pg_type_oid;
           }
           set_column_pg_type->set_pg_type_oid(pg_type_oid);
@@ -1066,11 +1115,8 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     namespace_id = req.table_id();
   }
 
-  // We support streaming of tables without primary key only for logical replication streams
-  // (controlled via flag ysql_yb_cdcsdk_stream_tables_without_primary_key).
-  const bool allow_tables_without_primary_key =
-      req.has_cdcsdk_ysql_replication_slot_name() &&
-      FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key;
+  bool is_logical_replication_stream_req;
+  bool allow_tables_without_primary_key;
 
   const bool has_bound_table_ids =
       req.has_cdcsdk_stream_create_options() &&
@@ -1096,6 +1142,13 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
       return STATUS(
           InvalidArgument, "CDC streams are not supported for yb_system database");
     }
+
+    is_logical_replication_stream_req = IsLogicalReplicationStreamCreationRequest(req, ns->name());
+
+    // We support streaming of tables without primary key only for logical replication streams
+    // (controlled via flag ysql_yb_cdcsdk_stream_tables_without_primary_key).
+    allow_tables_without_primary_key =
+        FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key && is_logical_replication_stream_req;
 
     if (has_bound_table_ids) {
       const auto& bound_ids = req.cdcsdk_stream_create_options().bound_table_ids().table_ids();
@@ -1147,7 +1200,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   // tables to the stream metadata as we will poll them to figure out changes to the publications
   // and replication origins. This will not be done for gRPC streams.
   if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
-      FLAGS_cdc_enable_dynamic_schema_changes && req.has_cdcsdk_ysql_replication_slot_name()) {
+      FLAGS_cdc_enable_dynamic_schema_changes && is_logical_replication_stream_req) {
     auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
@@ -1210,13 +1263,18 @@ Status CatalogManager::CreateNewCdcsdkStream(
             stream_id, cdcsdk_stream_creation_state));
   });
 
+  bool is_logical_replication_stream_req;
   ReplicationSlotName slot_name;
-  auto has_replication_slot_name = req.has_cdcsdk_ysql_replication_slot_name();
   {
     LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
-    if (has_replication_slot_name) {
+    std::string namespace_name;
+    namespace_name = VERIFY_RESULT(FindNamespaceByIdUnlocked(*namespace_id))->name();
+    is_logical_replication_stream_req =
+        IsLogicalReplicationStreamCreationRequest(req, namespace_name);
+
+    if (req.has_cdcsdk_ysql_replication_slot_name()) {
       slot_name = ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name());
 
       // Duplicate detection.
@@ -1246,23 +1304,18 @@ Status CatalogManager::CreateNewCdcsdkStream(
       }
     }
 
-    // On a given namespace we allow either new model (replicaion slot) streams or old model
-    // (yb-admin) streams. Streams of both types cannot be present on the same namespace.
+    // A namespace hosts either logical-replication or gRPC streams, never both. Reject a create
+    // whose model conflicts with the model already on the namespace.
     for (const auto& entry : cdc_stream_map_) {
       const auto& stream = entry.second;
+      const bool is_existing_logical_replication_stream = IsCdcLogicalReplicationStream(*stream);
       if (stream->namespace_id() == namespace_id) {
-        if (has_replication_slot_name && stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
+        if (is_logical_replication_stream_req ^ is_existing_logical_replication_stream) {
           return STATUS(
               IllegalState,
-              "Cannot create a replication slot on the same namespace which already has a yb-admin "
-              "stream on it. ",
-              MasterError(MasterErrorPB::INVALID_REQUEST));
-        } else if (
-            !has_replication_slot_name && !stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
-          return STATUS(
-              IllegalState,
-              "Cannot create a stream on the same namespace which already has replication slot on "
-              "it. ",
+              Format(
+                  "namespace $0 already has a $1 stream on it", *namespace_id,
+                  (is_existing_logical_replication_stream ? "logical_replication" : "gRPC")),
               MasterError(MasterErrorPB::INVALID_REQUEST));
         }
       }
@@ -1290,6 +1343,30 @@ Status CatalogManager::CreateNewCdcsdkStream(
   auto se_recover_stream_id = CancelableScopeExit(
       [&stream_id, this] { RecoverXreplStreamId(stream_id); });
 
+  // We need to populate the slot name and plugin name (irrespective of logical replication and grpc
+  // stream) if auto flag FLAGS_cdc_pg_create_grpc_stream is promoted.
+  // Thus, for the grpc stream creation request (initiated via yb-admin once the auto flag is
+  // promoted) which doesn't have a slot name and plugin name, we will auto-fill them.
+  const bool require_slot_name =
+      FLAGS_cdc_pg_create_grpc_stream || req.has_cdcsdk_ysql_replication_slot_name();
+  if (FLAGS_cdc_pg_create_grpc_stream && !req.has_cdcsdk_ysql_replication_slot_name()) {
+    slot_name = MakeGrpcSlotName(stream_id);
+  }
+
+  const bool require_plugin_name =
+      FLAGS_cdc_pg_create_grpc_stream || req.has_cdcsdk_ysql_replication_slot_plugin_name();
+
+  // The slot entry is created only for:
+  // - logical replication streams which have the consistent snapshot option, or
+  // - the gRPC streams being created after the promotion of auto flag
+  // FLAGS_cdc_pg_create_grpc_stream.
+  bool require_slot_entry = (is_logical_replication_stream_req && has_consistent_snapshot_option) ||
+                            (!is_logical_replication_stream_req && FLAGS_cdc_pg_create_grpc_stream);
+
+  // We need to populate the replica identity map if the stream creation is initiated by PG syntax.
+  // Request of such stream creation will have the replication slot plugin name set.
+  bool require_replica_identity_map = req.has_cdcsdk_ysql_replication_slot_plugin_name();
+
   stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
   stream->mutable_metadata()->StartMutation();
   auto* metadata = &stream->mutable_metadata()->mutable_dirty()->pb;
@@ -1297,7 +1374,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   metadata->set_namespace_id(*namespace_id);
   for (const auto& table_id : table_ids) {
     metadata->add_table_id(table_id);
-    if (FLAGS_ysql_yb_enable_replica_identity && has_replication_slot_name) {
+    if (FLAGS_ysql_yb_enable_replica_identity && require_replica_identity_map) {
       auto table = VERIFY_RESULT(FindTableById(table_id));
       auto schema = VERIFY_RESULT(table->GetSchema());
       // For catalog tables we will use replica identity CHANGE.
@@ -1323,7 +1400,17 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   metadata->set_transactional(req.transactional());
 
-  metadata->mutable_options()->CopyFrom(req.options());
+  // Streams created via the PG syntax (identified by require_replica_identity_map) rely on the
+  // per-table replica identity map instead of the legacy record_type option. Do not persist the
+  // record_type option for such streams.
+  const bool skip_record_type_option =
+      FLAGS_ysql_yb_enable_replica_identity && require_replica_identity_map;
+  for (const auto& option : req.options()) {
+    if (skip_record_type_option && option.key() == cdc::kRecordType) {
+      continue;
+    }
+    *metadata->add_options() = option;
+  }
 
   SysCDCStreamEntryPB::State state = SysCDCStreamEntryPB::ACTIVE;
   if (req.has_initial_state()) {
@@ -1334,8 +1421,18 @@ Status CatalogManager::CreateNewCdcsdkStream(
   }
   metadata->set_state(state);
 
-  if (has_replication_slot_name) {
-    metadata->set_cdcsdk_ysql_replication_slot_name(req.cdcsdk_ysql_replication_slot_name());
+  if (require_slot_name) {
+    metadata->set_cdcsdk_ysql_replication_slot_name(slot_name.ToString());
+  }
+
+  if (require_plugin_name) {
+    metadata->set_cdcsdk_ysql_replication_slot_plugin_name(
+        req.has_cdcsdk_ysql_replication_slot_plugin_name()
+            ? req.cdcsdk_ysql_replication_slot_plugin_name()
+            : kYbGrpcStreamIndicator);
+  }
+
+  if (is_logical_replication_stream_req) {
     metadata->set_allow_tables_without_primary_key(
         FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key);
     metadata->set_detect_publication_changes_implicitly(
@@ -1349,11 +1446,6 @@ Status CatalogManager::CreateNewCdcsdkStream(
     disable_dynamic_tables = true;
   }
   metadata->set_cdcsdk_disable_dynamic_table_addition(disable_dynamic_tables);
-
-  if (req.has_cdcsdk_ysql_replication_slot_plugin_name()) {
-    metadata->set_cdcsdk_ysql_replication_slot_plugin_name(
-        req.cdcsdk_ysql_replication_slot_plugin_name());
-  }
 
   if (FLAGS_ysql_yb_allow_replication_slot_lsn_types &&
       req.has_cdcsdk_ysql_replication_slot_name() && req.has_cdcsdk_stream_create_options()) {
@@ -1401,7 +1493,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
     TRACE("Acquired catalog manager lock");
     LockGuard lock(mutex_);
     // Check again before inserting to handle concurrent creates.
-    if (has_replication_slot_name && cdcsdk_replication_slots_to_stream_map_.contains(slot_name)) {
+    if (require_slot_name && cdcsdk_replication_slots_to_stream_map_.contains(slot_name)) {
       return STATUS(
           AlreadyPresent, "CDC stream with the given replication slot name already exists",
           MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
@@ -1413,7 +1505,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
     for (const auto& table_id : table_ids) {
       cdcsdk_tables_to_stream_map_[table_id].insert(stream->StreamId());
     }
-    if (has_replication_slot_name) {
+    if (require_slot_name) {
       InsertOrDie(&cdcsdk_replication_slots_to_stream_map_, slot_name, stream->StreamId());
     }
   }
@@ -1443,7 +1535,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   uint64 consistent_snapshot_time = 0;
   bool is_history_required_for_record_type = false;
-  if (!FLAGS_ysql_yb_enable_replica_identity || !has_replication_slot_name) {
+  if (!FLAGS_ysql_yb_enable_replica_identity || !require_replica_identity_map) {
     for (auto option : req.options()) {
       if (option.key() == cdc::kRecordType) {
         is_history_required_for_record_type =
@@ -1461,7 +1553,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   RETURN_NOT_OK(PopulateCDCStateTable(
       stream->StreamId(), table_ids, false /* has_consistent_snapshot_option */,
       false /* consistent_snapshot_option_use */, 0 /* ignored */, 0 /* ignored */,
-      has_replication_slot_name));
+      false /* create_slot_entry */));
 
   RETURN_NOT_OK(
       TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kAfterDummyCDCStateEntries"));
@@ -1505,7 +1597,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   }
   RETURN_NOT_OK(PopulateCDCStateTable(
       stream->StreamId(), table_ids, has_consistent_snapshot_option, consistent_snapshot_option_use,
-      consistent_snapshot_time, stream_creation_time, has_replication_slot_name));
+      consistent_snapshot_time, stream_creation_time, require_slot_entry));
 
   RETURN_NOT_OK(TEST_CDCSDKFailCreateStreamRequestIfNeeded(
       "CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails"));
@@ -1551,13 +1643,10 @@ Status CatalogManager::RollbackFailedCreateCDCSDKStream(
   FATAL_INVALID_ENUM_VALUE(CDCSDKStreamCreationState, cdcsdk_stream_creation_state);
 }
 
-Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
-                                             const std::vector<TableId>& table_ids,
-                                             bool has_consistent_snapshot_option,
-                                             bool consistent_snapshot_option_use,
-                                             uint64_t consistent_snapshot_time,
-                                             uint64_t stream_creation_time,
-                                             bool has_replication_slot_name) {
+Status CatalogManager::PopulateCDCStateTable(
+    const xrepl::StreamId& stream_id, const std::vector<TableId>& table_ids,
+    bool has_consistent_snapshot_option, bool consistent_snapshot_option_use,
+    uint64_t consistent_snapshot_time, uint64_t stream_creation_time, bool create_slot_entry) {
   // Validate that the AlterTable callback has populated the checkpoint i.e. it is no longer
   // OpId::Invalid().
   std::unordered_set<TabletId> seen_tablet_ids;
@@ -1626,28 +1715,13 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
     }
   }
 
-  // Add a new entry in cdc_state table representing the replication slot for the associated stream.
-  // This entry holds metadata for two main usages:
-  // 1. Represent the slot's consistent point i.e. first record sent in the streaming phase will
-  // have LSN & txnID set to 2.
-  // 2. Initialize components (LSN & txnID generators) of the CDCSDK Virtual WAL on restarts.
-  //
-  // If these values are changed here, also update the consistent point sent as part of the
-  // creation of logical replication slot in walsender.c and slotfuncs.c.
-  if (FLAGS_ysql_yb_enable_replication_slot_consumption && has_consistent_snapshot_option &&
-      has_replication_slot_name) {
-    cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
-    std::ostringstream oss;
-    oss << consistent_snapshot_time << 'F';
-    entry.confirmed_flush_lsn = 2;
-    entry.restart_lsn = 1;
-    entry.xmin = 1;
-    entry.record_id_commit_time = consistent_snapshot_time;
-    entry.cdc_sdk_safe_time = consistent_snapshot_time;
-    entry.last_pub_refresh_time = consistent_snapshot_time;
-    entry.pub_refresh_times = "";
-    entry.last_decided_pub_refresh_time = oss.str();
-    entries.push_back(entry);
+  if (FLAGS_ysql_yb_enable_replication_slot_consumption && create_slot_entry) {
+    // For consistent snapshot streams: streaming starts from consistent_snapshot_time.
+    // For non-consistent snapshot streams: streaming starts from now (because of no snapshot).
+    const uint64_t commit_time_ht = has_consistent_snapshot_option
+        ? consistent_snapshot_time
+        : Clock()->MaxGlobalNow().ToUint64();
+    entries.push_back(MakeSlotEntry(stream_id, commit_time_ht));
     VLOG(1) << "Added entry in cdc_state for the replication slot with tablet_id: "
             << kCDCSDKSlotEntryTabletId << " stream_id: " << stream_id;
   }
@@ -2616,6 +2690,15 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
         "because the flag ysql_yb_allow_replication_slot_ordering_modes is disabled");
   }
 
+  // The kYbGrpcStreamIndicator plugin name is supported only after the promotion of auto flag
+  // FLAGS_cdc_pg_create_grpc_stream.
+  if (!FLAGS_cdc_pg_create_grpc_stream && req.has_cdcsdk_ysql_replication_slot_plugin_name() &&
+      req.cdcsdk_ysql_replication_slot_plugin_name() == kYbGrpcStreamIndicator) {
+    RETURN_INVALID_REQUEST_STATUS(
+        "Upgrade is not yet finalised on a build that supports the yb_grpc plugin; complete "
+        "upgrade finalization and retry");
+  }
+
   // TODO: Validate that the replication slot output plugin name is provided if
   // ysql_yb_enable_replication_slot_consumption is true. This can only be done after we have
   // fully deprecated the yb-admin commands for CDC stream creation.
@@ -2737,14 +2820,45 @@ bool CatalogManager::IsInternalTableToBeExcludedFromCDCSDKStream(
   return lock->IsXClusterDDLReplicationTable();
 }
 
+bool CatalogManager::IsNotificationSlotStream(const CDCStreamInfo& stream) const {
+  auto l = stream.LockForRead();
+  auto ns_result = FindNamespaceByIdUnlocked(l->pb.namespace_id());
+  return ns_result.ok() && (*ns_result)->name() == kYbSystemDbName &&
+         StringStartsWithOrEquals(
+             l->pb.cdcsdk_ysql_replication_slot_name(), kYbNotificationsSlotPrefix);
+}
+
+bool CatalogManager::IsCdcLogicalReplicationStream(const CDCStreamInfo& stream) const {
+  if (stream.namespace_id().empty()) {
+    return false;
+  }
+  // Internal LISTEN/NOTIFY notifications streams are logical replication streams (they may carry an
+  // empty plugin name before backfill, so they can't be distinguished by plugin alone).
+  if (IsNotificationSlotStream(stream)) {
+    return true;
+  }
+  auto l = stream.LockForRead();
+  return l->pb.has_cdcsdk_ysql_replication_slot_plugin_name() &&
+         !l->pb.cdcsdk_ysql_replication_slot_plugin_name().empty() &&
+         l->pb.cdcsdk_ysql_replication_slot_plugin_name() != kYbGrpcStreamIndicator;
+}
+
+bool CatalogManager::StreamRequiresReplicaIdentityMap(const CDCStreamInfo& stream) const {
+  if (IsCdcLogicalReplicationStream(stream)) {
+    return true;
+  }
+  auto l = stream.LockForRead();
+  return l->pb.cdcsdk_ysql_replication_slot_plugin_name() == kYbGrpcStreamIndicator;
+}
+
 /*
  * Processing for relevant tables that have been added after the creation of a stream
  * This involves
  *   1) Enabling the WAL retention for the tablets of the table
  *   2) INSERTING records for the tablets of this table and each stream for which
- *      this table is relevant into the cdc_state table. This is not requirred for replication slot
- *      consumption since setting up of retention barriers and inserting state table entries is done
- *      at the time of table creation.
+ *      this table is relevant into the cdc_state table. This is not required for logical
+ *      replication streams since setting up of retention barriers and inserting state table entries
+ *      is done at the time of table creation.
  *   3) Storing the replica identity of the table in the stream metadata
  */
 Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
@@ -2794,14 +2908,22 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
     // will have atleast one corresponding stream.
     DCHECK(!streams.empty());
 
-    // Since for a given namespace all the streams on it can either belong to the replication slot
-    // consumption model or the older (YB connector) consumption model, we check the first stream
-    // for each table in table_to_unprocessed_streams_map to determine which replication model is
-    // active on namespace to which the table belongs.
-    bool has_replication_slot_consumption =
-        !streams.front()->GetCdcsdkYsqlReplicationSlotName().empty();
-
-    if (!FLAGS_ysql_yb_enable_replication_slot_consumption || !has_replication_slot_consumption) {
+    // A namespace hosts either logical-replication or gRPC streams, never both, so the first stream
+    // tells us which model applies to the whole namespace.
+    bool is_logical_replication;
+    // Whether each stream resolves record types through the replica identity map. Evaluated per
+    // stream, since gRPC streams that need the map can coexist with ones that don't.
+    std::vector<bool> stream_requires_replica_identity_map;
+    stream_requires_replica_identity_map.reserve(streams.size());
+    {
+      SharedLock lock(mutex_);
+      is_logical_replication = IsCdcLogicalReplicationStream(*streams.front());
+      for (const auto& stream : streams) {
+        stream_requires_replica_identity_map.push_back(
+            PREDICT_TRUE(stream != nullptr) && StreamRequiresReplicaIdentityMap(*stream));
+      }
+    }
+    if (!FLAGS_ysql_yb_enable_replication_slot_consumption || !is_logical_replication) {
       // Set the WAL retention for this new table
       // Make asynchronous ALTER TABLE requests to do this, just as was done during stream creation
       AlterTableRequestPB alter_table_req;
@@ -2818,17 +2940,17 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
     NamespaceId namespace_id;
     bool stream_pending = false;
     Status status;
+    size_t stream_idx = 0;
     for (const auto& stream : streams) {
+      const bool requires_replica_identity_map = stream_requires_replica_identity_map[stream_idx++];
       if PREDICT_FALSE (stream == nullptr) {
         LOG(WARNING) << "Could not find CDC stream: " << stream->id();
         continue;
       }
 
-      // INSERT the required cdc_state table entries. This is not requirred for replication slot
-      // consumption since setting up of retention barriers and inserting state table entries is
-      // done at the time of table creation.
-      if (!FLAGS_ysql_yb_enable_replication_slot_consumption ||
-          !has_replication_slot_consumption) {
+      // INSERT the required cdc_state table entries. Not needed for logical replication streams,
+      // where retention barriers and state entries are set at table creation time.
+      if (!FLAGS_ysql_yb_enable_replication_slot_consumption || !is_logical_replication) {
         const auto& tablets = resp.tablet_locations();
         std::vector<cdc::CDCStateTableEntry> entries;
         entries.reserve(tablets.size());
@@ -2869,9 +2991,7 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
 
       stream_lock.mutable_data()->pb.add_table_id(table_id);
 
-      // Store the replica identity information of the table in the stream metadata for replication
-      // slot consumption.
-      if (FLAGS_ysql_yb_enable_replica_identity && has_replication_slot_consumption) {
+      if (FLAGS_ysql_yb_enable_replica_identity && requires_replica_identity_map) {
         auto table = VERIFY_RESULT(FindTableById(table_id));
         auto schema = VERIFY_RESULT(table->GetSchema());
         PgReplicaIdentity replica_identity = schema.table_properties().replica_identity();
@@ -3426,8 +3546,16 @@ Status CatalogManager::CleanupCDCSDKDroppedTablesFromStreamInfo(
 }
 
 Result<std::vector<CDCStreamInfoPtr>> CatalogManager::GetCDCSDKStreamsToCleanMetadata() {
+  struct StreamWithDeletingMetadataState {
+    CDCStreamInfoPtr stream_info;
+    std::unordered_set<TableId> qualified_table_ids;
+    std::unordered_set<TableId> unqualified_table_ids;
+    std::set<TableId> dropped_table_ids;
+  };
+
   std::vector<CDCStreamInfoPtr> streams_to_clean;
-  std::vector<CDCStreamInfoPtr> streams_with_deleting_metadata_state;
+  std::vector<StreamWithDeletingMetadataState> streams_with_deleting_metadata_state;
+
   {
     SharedLock lock(mutex_);
     for (const auto& [_, stream_info] : cdc_stream_map_) {
@@ -3439,7 +3567,12 @@ Result<std::vector<CDCStreamInfoPtr>> CatalogManager::GetCDCSDKStreamsToCleanMet
       if (ltm->is_deleting_metadata()) {
         VLOG_WITH_FUNC(2) << "Stream " << stream_info->StreamId()
                           << " is in DELETING_METADATA state";
-        streams_with_deleting_metadata_state.push_back(stream_info);
+        StreamWithDeletingMetadataState entry;
+        entry.stream_info = stream_info;
+        entry.qualified_table_ids.insert(ltm->table_id().begin(), ltm->table_id().end());
+        entry.unqualified_table_ids.insert(
+            ltm->unqualified_table_id().begin(), ltm->unqualified_table_id().end());
+        streams_with_deleting_metadata_state.push_back(std::move(entry));
       }
     }
   }
@@ -3448,7 +3581,12 @@ Result<std::vector<CDCStreamInfoPtr>> CatalogManager::GetCDCSDKStreamsToCleanMet
   // relies on stream state being DELETING_METADATA. So only need to return streams with
   // DELETING_METADATA state.
   if (!FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
-    return streams_with_deleting_metadata_state;
+    std::vector<CDCStreamInfoPtr> streams;
+    streams.reserve(streams_with_deleting_metadata_state.size());
+    for (auto& entry : streams_with_deleting_metadata_state) {
+      streams.push_back(std::move(entry.stream_info));
+    }
+    return streams;
   }
 
   // If we reach here, we are using the new mechanism of streams' metadata cleanup which relies on
@@ -3471,7 +3609,15 @@ Result<std::vector<CDCStreamInfoPtr>> CatalogManager::GetCDCSDKStreamsToCleanMet
   locks.reserve(streams_with_deleting_metadata_state.size());
   streams_to_update.reserve(streams_with_deleting_metadata_state.size());
 
-  for (const auto& stream_info : streams_with_deleting_metadata_state) {
+  for (auto& entry : streams_with_deleting_metadata_state) {
+    RETURN_NOT_OK(GetDroppedTablesFromCDCSDKStream(
+        entry.qualified_table_ids, nullptr /* tablets_with_streams */, &entry.dropped_table_ids));
+    RETURN_NOT_OK(GetDroppedTablesFromCDCSDKStream(
+        entry.unqualified_table_ids, nullptr /* tablets_with_streams */, &entry.dropped_table_ids));
+  }
+
+  for (auto& entry : streams_with_deleting_metadata_state) {
+    const auto& stream_info = entry.stream_info;
     auto ltm = stream_info->LockForWrite();
     // If the stream is not in DELETING_METADATA state now, then it means that meanwhile some other
     // workflow ran which changed the stream state. In such case, we won't process this stream
@@ -3483,35 +3629,21 @@ Result<std::vector<CDCStreamInfoPtr>> CatalogManager::GetCDCSDKStreamsToCleanMet
       continue;
     }
 
-    std::set<TableId> dropped_tables;
-    int64_t initial_dropped_table_id_count = ltm->pb.dropped_table_id_size();
-    if (initial_dropped_table_id_count > 0) {
-      dropped_tables.insert(ltm->dropped_table_id().begin(), ltm->dropped_table_id().end());
-    }
-
-    // Find dropped tables from both qualified and unqualified lists.
-    RETURN_NOT_OK(GetDroppedTablesFromCDCSDKStream(
-        std::unordered_set<TableId>(ltm->table_id().begin(), ltm->table_id().end()),
-        nullptr /* tablets_with_streams */, &dropped_tables));
-    RETURN_NOT_OK(GetDroppedTablesFromCDCSDKStream(
-        std::unordered_set<TableId>(
-            ltm->unqualified_table_id().begin(), ltm->unqualified_table_id().end()),
-        nullptr /* tablets_with_streams */, &dropped_tables));
-
-    // Replace the dropped_table_id list with the complete set.
-    ltm.mutable_data()->pb.clear_dropped_table_id();
-    for (const auto& table_id : dropped_tables) {
-      ltm.mutable_data()->pb.add_dropped_table_id(table_id);
-      VLOG_WITH_FUNC(3) << "Table " << table_id << " added in dropped_table_id list of stream "
-                        << stream_info->StreamId() << " with DELETING_METADATA state";
+    std::set<TableId> existing_dropped_table_ids(
+        ltm->dropped_table_id().begin(), ltm->dropped_table_id().end());
+    for (const auto& table_id : entry.dropped_table_ids) {
+      if (existing_dropped_table_ids.insert(table_id).second) {
+        ltm.mutable_data()->pb.add_dropped_table_id(table_id);
+        VLOG_WITH_FUNC(3) << "Table " << table_id << " added in dropped_table_id list of stream "
+                          << stream_info->StreamId() << " with DELETING_METADATA state";
+      }
     }
 
     // Transition from DELETING_METADATA to ACTIVE since we will now be using dropped_table_id
     // list to track dropped tables instead of the stream state.
     ltm.mutable_data()->pb.set_state(SysCDCStreamEntryPB::ACTIVE);
 
-    int64_t final_dropped_table_id_count = ltm->pb.dropped_table_id_size();
-    if (final_dropped_table_id_count > initial_dropped_table_id_count) {
+    if (!ltm->pb.dropped_table_id().empty()) {
       streams_to_clean.push_back(stream_info);
     }
 
@@ -3775,6 +3907,11 @@ Status CatalogManager::GetCDCStream(
   }
 
   CDCStreamInfoPtr stream;
+  // An internal LISTEN/NOTIFY notifications stream lives on the yb_system database and its slot
+  // name has the reserved kYbNotificationsSlotPrefix. Resolve this while mutex_ is held so the
+  // namespace lookup (FindNamespaceByIdUnlocked) is safe and we keep the canonical mutex_ -> cow
+  // lock order.
+  bool is_notification_slot = false;
   {
     SharedLock lock(mutex_);
     xrepl::StreamId stream_id = xrepl::StreamId::Nil();
@@ -3793,6 +3930,16 @@ Status CatalogManager::GetCDCStream(
     }
 
     stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+
+    if (stream != nullptr) {
+      auto l = stream->LockForRead();
+      if (l->pb.has_cdcsdk_ysql_replication_slot_name() &&
+          StringStartsWithOrEquals(
+              l->pb.cdcsdk_ysql_replication_slot_name(), kYbNotificationsSlotPrefix)) {
+        auto ns_result = FindNamespaceByIdUnlocked(l->namespace_id());
+        is_notification_slot = ns_result.ok() && (*ns_result)->name() == kYbSystemDbName;
+      }
+    }
   }
 
   if (stream == nullptr || stream->LockForRead()->is_deleting()) {
@@ -3913,6 +4060,11 @@ Status CatalogManager::GetCDCStream(
   stream_info->set_detect_publication_changes_implicitly(
       stream_lock->pb.has_detect_publication_changes_implicitly() &&
       stream_lock->pb.detect_publication_changes_implicitly());
+
+  stream_info->set_is_notification_slot(is_notification_slot);
+
+  stream_info->set_xcluster_use_target_applied_filter(
+      stream_lock->pb.xcluster_use_target_applied_filter());
 
   return Status::OK();
 }
@@ -4094,6 +4246,8 @@ Status CatalogManager::ListCDCStreams(
     stream->set_detect_publication_changes_implicitly(
         ltm->pb.has_detect_publication_changes_implicitly() &&
         ltm->pb.detect_publication_changes_implicitly());
+
+    stream->set_xcluster_use_target_applied_filter(ltm->pb.xcluster_use_target_applied_filter());
   }
   return Status::OK();
 }
@@ -4173,7 +4327,9 @@ Status CatalogManager::UpdateCDCStreams(
           MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
     auto& pb = stream_lock.mutable_data()->pb;
+    const bool preserve_use_target_applied_filter = pb.xcluster_use_target_applied_filter();
     pb.CopyFrom(entry);
+    pb.set_xcluster_use_target_applied_filter(preserve_use_target_applied_filter);
 
     for (auto it = pb.mutable_options()->begin(); it != pb.mutable_options()->end(); ++it) {
       if (it->key() == cdc::kStreamState) {
@@ -4424,6 +4580,12 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         }
       }
 
+      bool is_logical_replication_stream;
+      {
+        SharedLock lock(mutex_);
+        is_logical_replication_stream = IsCdcLogicalReplicationStream(*stream);
+      }
+
       // Insert children entries into cdc_state now. In case of logical replication set the opid to
       // parent entry's opid. The split will be detected in the immediate next GetChanges call on
       // this tablet and we will transition to the children tablets. In other cases, set the opid to
@@ -4435,11 +4597,13 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
       // DoProcessXClusterParentTabletDeletion.
       for (const auto& child_tablet_id : split_tablet_ids.children) {
         cdc::CDCStateTableEntry entry(child_tablet_id, stream->StreamId());
-        if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
-            DCHECK(parent_entry_opt->checkpoint);
-            entry.checkpoint = *parent_entry_opt->checkpoint;
+        // Only a logical-replication stream (CDCSDK, not gRPC) inherits the parent's checkpoint;
+        // gRPC CDCSDK and xCluster streams get OpId().Min().
+        if (stream->IsCDCSDKStream() && is_logical_replication_stream) {
+          DCHECK(parent_entry_opt->checkpoint);
+          entry.checkpoint = *parent_entry_opt->checkpoint;
         } else {
-            entry.checkpoint = OpId().Min();
+          entry.checkpoint = OpId().Min();
         }
 
         if (stream_type == cdc::CDCSDK) {
@@ -5125,113 +5289,140 @@ Status CatalogManager::WaitForReplicationDrain(
   return Status::OK();
 }
 
-PgReplicaIdentity GetReplicaIdentityFromRecordType(std::string record_type_name) {
-  cdc::CDCRecordType record_type = cdc::CDCRecordType::CHANGE;
-  CDCRecordType_Parse(record_type_name, &record_type);
-  switch (record_type) {
-    case cdc::CDCRecordType::ALL: FALLTHROUGH_INTENDED;
-    case cdc::CDCRecordType::PG_FULL: return PgReplicaIdentity::FULL;
-    case cdc::CDCRecordType::PG_DEFAULT: return PgReplicaIdentity::DEFAULT;
-    case cdc::CDCRecordType::PG_NOTHING: return PgReplicaIdentity::NOTHING;
-    case cdc::CDCRecordType::PG_CHANGE_OLD_NEW: FALLTHROUGH_INTENDED;
-    case cdc::CDCRecordType::FULL_ROW_NEW_IMAGE: FALLTHROUGH_INTENDED;
-    case cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES:
-      LOG(WARNING) << "The record type of the older stream does not have a corresponding replica "
-                      "identity. Going forward with replica identity CHANGE.";
-      FALLTHROUGH_INTENDED;
-    case cdc::CDCRecordType::CHANGE: return PgReplicaIdentity::CHANGE;
-    // This case should never be reached.
-    default: return PgReplicaIdentity::CHANGE;
-  }
-}
-
-Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
-    const YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB* req,
-    YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  LOG(INFO) << "Servicing YsqlBackfillReplicationSlotNameToCDCSDKStream request from "
-            << RequestorString(rpc) << ": " << req->ShortDebugString();
-
-  if (!FLAGS_ysql_yb_enable_replication_commands ||
-      !FLAGS_ysql_yb_enable_replica_identity ||
-      !FLAGS_enable_backfilling_cdc_stream_with_replication_slot) {
-    RETURN_INVALID_REQUEST_STATUS("Backfilling replication slot name is disabled");
+Status CatalogManager::BackfillLegacyGrpcStreams(const LeaderEpoch& epoch) {
+  if (!FLAGS_cdc_pg_create_grpc_stream) {
+    return Status::OK();
   }
 
-  if (!req->has_stream_id() || !req->has_cdcsdk_ysql_replication_slot_name()) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "Both CDC Stream ID and Replication slot name must be provided");
-  }
-
-  RETURN_NOT_OK(ReplicationSlotValidateName(req->cdcsdk_ysql_replication_slot_name()));
-
-  auto replication_slot_name = ReplicationSlotName(req->cdcsdk_ysql_replication_slot_name());
-  auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req->stream_id()));
-
-  CDCStreamInfoPtr stream;
+  std::vector<scoped_refptr<CDCStreamInfo>> legacy_grpc_streams;
   {
     SharedLock lock(mutex_);
-    stream = FindPtrOrNull(cdc_stream_map_, stream_id);
-  }
-
-  if (stream == nullptr || stream->LockForRead()->is_deleting()) {
-    return STATUS(
-        NotFound, "Could not find CDC stream", MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-
-  auto namespace_id = stream->LockForRead()->namespace_id();
-  auto ns = VERIFY_RESULT(FindNamespaceById(namespace_id));
-
-  if (ns->database_type() != YQLDatabase::YQL_DATABASE_PGSQL) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "Only CDCSDK streams created on PGSQL namespaces can have a replication slot name");
-  }
-
-  if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "Cannot update the replication slot name of a CDCSDK stream");
-  }
-
-  LOG_WITH_FUNC(INFO) << "Valid request. Updating the replication slot name";
-  {
-    LockGuard lock(mutex_);
-
-    if (cdcsdk_replication_slots_to_stream_map_.contains(replication_slot_name)) {
-      return STATUS(
-          AlreadyPresent, "A CDC stream with the replication slot name already exists",
-          MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+    for (const auto& [id, stream] : cdc_stream_map_) {
+      if (!stream->IsCDCSDKStream() || IsCdcLogicalReplicationStream(*stream)) {
+        continue;
+      }
+      auto l = stream->LockForRead();
+      if (l->started_deleting()) {
+        continue;
+      }
+      if ((!l->pb.has_cdcsdk_ysql_replication_slot_name() ||
+           l->pb.cdcsdk_ysql_replication_slot_name().empty()) &&
+          (!l->pb.has_cdcsdk_ysql_replication_slot_plugin_name() ||
+           l->pb.cdcsdk_ysql_replication_slot_plugin_name().empty())) {
+        auto generated_slot = MakeGrpcSlotName(stream->StreamId());
+        if (cdcsdk_replication_slots_to_stream_map_.contains(generated_slot)) {
+          LOG(WARNING) << "Skipping gRPC backfill for stream " << id << ": generated slot name "
+                       << generated_slot << " unexpectedly already exists";
+          continue;
+        }
+        legacy_grpc_streams.push_back(stream);
+      }
     }
+  }
+
+  if (legacy_grpc_streams.empty()) {
+    return Status::OK();
+  }
+
+  // Build the cdc_state slot entry and update the slot and plugin name in the metadata of each
+  // legacy gRPC stream. The slot entry's record_id_commit_time is set as kInitial. The master CDC's
+  // bg task then advances it to the real time.
+  std::vector<cdc::CDCStateTableEntry> entries;
+  entries.reserve(legacy_grpc_streams.size());
+  std::vector<CDCStreamInfo::WriteLock> locks;
+  locks.reserve(legacy_grpc_streams.size());
+  for (const auto& stream : legacy_grpc_streams) {
+    entries.push_back(MakeSlotEntry(stream->StreamId(), HybridTime::kInitial.ToUint64()));
 
     auto stream_lock = stream->LockForWrite();
     auto& pb = stream_lock.mutable_data()->pb;
-
-    pb.set_cdcsdk_ysql_replication_slot_name(req->cdcsdk_ysql_replication_slot_name());
-    cdcsdk_replication_slots_to_stream_map_.insert_or_assign(replication_slot_name, stream_id);
-
-    PgReplicaIdentity replica_identity;
-    bool has_record_type =  false;
-    for (const auto& option : pb.options()) {
-      if (option.key() == cdc::kRecordType) {
-        // Check if record type is a valid replica identity, if not assign replica
-        // identity CHANGE.
-        replica_identity = GetReplicaIdentityFromRecordType(option.value());
-        has_record_type = true;
-        break;
-      }
-    }
-    // This should never happen.
-    RSTATUS_DCHECK(
-        has_record_type, NotFound, Format("Option record_type not present in stream $0"),
-        stream_id);
-    for(auto table_id : pb.table_id()) {
-       pb.mutable_replica_identity_map()->insert({table_id, replica_identity});
-    }
-
-    // TODO(#22249): Set the plugin name for streams upgraded from older clusters.
-
-    stream_lock.Commit();
+    pb.set_cdcsdk_ysql_replication_slot_name(MakeGrpcSlotName(stream->StreamId()).ToString());
+    pb.set_cdcsdk_ysql_replication_slot_plugin_name(kYbGrpcStreamIndicator);
+    locks.push_back(std::move(stream_lock));
   }
 
+  RETURN_NOT_OK_PREPEND(
+      cdc_state_table_->UpsertEntries(entries),
+      "Failed to create cdc_state slot entries for backfilled gRPC streams");
+
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Upsert(epoch, legacy_grpc_streams),
+      "Failed to persist backfilled gRPC streams");
+  for (auto& lock : locks) {
+    lock.Commit();
+  }
+
+  // Populating cdcsdk_replication_slots_to_stream_map_. Note that after committing streams' COW
+  // mutation above and before mutex_ is held below, this window will miss the lookup of slot_name
+  // -> stream id mapping from cdcsdk_replication_slots_to_stream_map_. We shouldn't widen this
+  // window.
+  {
+    LockGuard lock(mutex_);
+    for (const auto& stream : legacy_grpc_streams) {
+      auto slot_name = MakeGrpcSlotName(stream->StreamId());
+      auto [it, inserted] =
+          cdcsdk_replication_slots_to_stream_map_.try_emplace(slot_name, stream->StreamId());
+      LOG_IF(WARNING, !inserted && it->second != stream->StreamId())
+          << "gRPC slot name " << slot_name << " generated for stream " << stream->StreamId()
+          << " already maps to stream " << it->second;
+    }
+  }
+
+  std::vector<xrepl::StreamId> backfilled_stream_ids;
+  backfilled_stream_ids.reserve(legacy_grpc_streams.size());
+  for (const auto& stream : legacy_grpc_streams) {
+    backfilled_stream_ids.push_back(stream->StreamId());
+  }
+  LOG(INFO) << "Backfilled legacy gRPC streams: " << AsString(backfilled_stream_ids);
+  return Status::OK();
+}
+
+Status CatalogManager::BackfillNotificationsStreamsPluginName(const LeaderEpoch& epoch) {
+  std::vector<scoped_refptr<CDCStreamInfo>> notification_streams;
+  {
+    SharedLock lock(mutex_);
+    for (const auto& [id, stream] : cdc_stream_map_) {
+      if (!stream->IsCDCSDKStream() || !IsNotificationSlotStream(*stream)) {
+        continue;
+      }
+      auto l = stream->LockForRead();
+      if (l->started_deleting()) {
+        continue;
+      }
+      if (l->pb.has_cdcsdk_ysql_replication_slot_plugin_name() &&
+          l->pb.cdcsdk_ysql_replication_slot_plugin_name().empty()) {
+        notification_streams.push_back(stream);
+      }
+    }
+  }
+
+  if (notification_streams.empty()) {
+    return Status::OK();
+  }
+
+  std::vector<CDCStreamInfo::WriteLock> locks;
+  locks.reserve(notification_streams.size());
+  for (const auto& stream : notification_streams) {
+    auto stream_lock = stream->LockForWrite();
+    stream_lock.mutable_data()->pb.set_cdcsdk_ysql_replication_slot_plugin_name(
+        kYbOutputPluginName);
+    locks.push_back(std::move(stream_lock));
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Upsert(epoch, notification_streams),
+      "Failed to persist backfilled notifications streams");
+  for (auto& lock : locks) {
+    lock.Commit();
+  }
+
+  std::vector<xrepl::StreamId> backfilled_stream_ids;
+  backfilled_stream_ids.reserve(notification_streams.size());
+  for (const auto& stream : notification_streams) {
+    backfilled_stream_ids.push_back(stream->StreamId());
+  }
+  VLOG(1) << "Backfilled plugin name for notifications streams: "
+          << AsString(backfilled_stream_ids);
   return Status::OK();
 }
 
@@ -5469,30 +5660,6 @@ CatalogManager::GetAllXClusterUniverseReplicationInfos() {
   return result;
 }
 
-// Validate that the given replication slot name is valid.
-// This function is a duplicate of the ReplicationSlotValidateName function from
-// src/postgres/src/backend/replication/slot.c
-Status CatalogManager::ReplicationSlotValidateName(const std::string& replication_slot_name) {
-  if (replication_slot_name.empty()) {
-    RETURN_INVALID_REQUEST_STATUS("Replication slot name cannot be empty");
-  }
-
-  // The 64 comes from the NAMEDATALEN constant in YSQL.
-  if (replication_slot_name.size() >= 64) {
-    RETURN_INVALID_REQUEST_STATUS("Replication slot name length must be < 64");
-  }
-
-  for (auto c : replication_slot_name) {
-    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c == '_'))) {
-      RETURN_INVALID_REQUEST_STATUS(
-          "Replication slot names may only contain lower case letters, numbers, and the underscore "
-          "character.");
-    }
-  }
-
-  return Status::OK();
-}
-
 Status CatalogManager::TEST_CDCSDKFailCreateStreamRequestIfNeeded(const std::string& sync_point) {
   bool fail_create_cdc_stream_request = false;
   TEST_SYNC_POINT_CALLBACK(sync_point, &fail_create_cdc_stream_request);
@@ -5507,7 +5674,7 @@ bool CatalogManager::IsTablePartOfXRepl(const TableId& table_id) const {
 }
 
 bool CatalogManager::IsTablePartOfCDCSDK(
-    const TableId& table_id, bool require_replication_slot) const {
+    const TableId& table_id, bool require_logical_replication) const {
   DCHECK(xrepl_maps_loaded_);
   auto* stream_ids = FindOrNull(cdcsdk_tables_to_stream_map_, table_id);
   if (stream_ids) {
@@ -5516,9 +5683,11 @@ bool CatalogManager::IsTablePartOfCDCSDK(
       if (stream_info) {
         auto s = stream_info->LockForRead();
         if (!s->is_deleting() &&
-            (!require_replication_slot || s->pb.has_cdcsdk_ysql_replication_slot_name())) {
+            (!require_logical_replication ||
+             (!s->pb.cdcsdk_ysql_replication_slot_plugin_name().empty() &&
+              s->pb.cdcsdk_ysql_replication_slot_plugin_name() != kYbGrpcStreamIndicator))) {
           VLOG(1) << "Found an active CDCSDK stream: " << stream_id << " for table: " << table_id
-                  << (require_replication_slot
+                  << (require_logical_replication
                           ? " with replication slot: " + s->pb.cdcsdk_ysql_replication_slot_name()
                           : "");
           return true;
@@ -5583,13 +5752,12 @@ Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
     return HybridTime::kInvalid;
   }
 
-  // All these streams are on the same tablet (hence same DB). We can only have either logical
-  // replication or gRPC replication on any DB. If the first stream present in cdc_stream_map_
-  // among the ones passed, does't contain replication slot name it means that this DB has gRPC
-  // streams.
+  // stream_ids are CDCSDK-only (from GetCDCSDKStreamsForTable), so no xCluster check is needed. A
+  // DB has either logical-replication or gRPC streams, never both; if the first one is gRPC, the
+  // whole DB is gRPC.
   for (const auto stream_id : stream_ids) {
     if (cdc_stream_map_.contains(stream_id)) {
-      if (cdc_stream_map_[stream_id]->GetCdcsdkYsqlReplicationSlotName().empty()) {
+      if (!IsCdcLogicalReplicationStream(*cdc_stream_map_[stream_id])) {
         return HybridTime::kInvalid;
       }
       break;
@@ -6197,7 +6365,7 @@ bool CatalogManager::CDCSDKShouldRetainHiddenColocatedTable(const TableId& table
 
 void CatalogManager::UpdateHideTimeInHiddenColocatedTableToCDCSDKMap(const TableInfo& table) {
   if (!FLAGS_enable_table_rewrite_for_cdcsdk_table || !table.colocated() ||
-      !IsTablePartOfCDCSDK(table.id(), true /* require_replication_slot */)) {
+      !IsTablePartOfCDCSDK(table.id(), true /* require_logical_replication */)) {
     return;
   }
 
@@ -6294,7 +6462,7 @@ void CatalogManager::ReleaseAbandonedXReplStream(const xrepl::StreamId& stream_i
 
 void CatalogManager::CDCSDKPopulateDeleteRetainerInfoForTableDrop(
     const TableInfo& table_info, TabletDeleteRetainerInfo& delete_retainer) const {
-  if (IsTablePartOfCDCSDK(table_info.id(), true /* require_replication_slot */)) {
+  if (IsTablePartOfCDCSDK(table_info.id(), true /* require_logical_replication */)) {
     LOG(INFO) << "Retaining dropped table " << table_info.id()
               << " since it has active CDCSDK logical replication streams";
     delete_retainer.active_cdcsdk = true;
@@ -6551,7 +6719,7 @@ Status CatalogManager::CDCSDKAllowTableRewrite(
     return Status::OK();
   }
 
-  if (IsTablePartOfCDCSDK(table_id, /*require_replication_slot=*/true)) {
+  if (IsTablePartOfCDCSDK(table_id, /*require_logical_replication=*/true)) {
     if (IsTablePartOfCDCStreamUsingPubRefresh(table_id)) {
       return STATUS_FORMAT(
           NotSupported,

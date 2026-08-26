@@ -25,6 +25,7 @@
 
 DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 DECLARE_bool(yb_enable_read_committed_isolation);

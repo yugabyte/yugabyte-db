@@ -30,6 +30,7 @@
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/utilities/table_properties_collectors.h"
 
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"

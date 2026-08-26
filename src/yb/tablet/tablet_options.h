@@ -119,6 +119,7 @@ struct TabletInitData {
   VectorIndexThreadPoolProvider vector_index_thread_pool_provider = {};
   VectorIndexCompactionTokenProvider vector_index_compaction_token_provider = {};
   hnsw::BlockCachePtr vector_index_block_cache = {};
+  std::function<void(const RaftGroupMetadata&)> schedule_tablet_metadata_validation = nullptr;
 };
 
 } // namespace tablet

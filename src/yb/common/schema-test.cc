@@ -40,6 +40,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/format.h"
 #include "yb/util/test_macros.h"
 
 namespace yb {

@@ -70,17 +70,32 @@ Use the following steps to run change data capture (CDC) with Debezium on a loca
 
 ### Create a database stream ID
 
-[yb-admin](../../../admin/yb-admin#change-data-capture-cdc-commands) is equipped with commands to manage stream IDs for CDC. Use it to create a stream ID:
+{{<tags/feature/ea idea="2762">}}Create the stream using PostgreSQL replication slot commands and the `yb_grpc` plugin (v2026.1.1.0 and later):
+
+```sql
+SELECT * FROM pg_create_logical_replication_slot('my_grpc_slot', 'yb_grpc');
+SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = 'my_grpc_slot';
+```
+
+Alternatively, use [yb-admin](../../../admin/yb-admin#change-data-capture-cdc-commands) to create a stream ID:
 
 ```sh
 ./bin/yb-admin --master_addresses ${IP}:7100 create_change_data_stream ysql.yugabyte
 ```
+
+{{< note title="Note" >}}
+
+For v2026.1.1.0 and later, PostgreSQL replication slot syntax is recommended.
+
+{{< /note >}}
 
 You should see output similar to the following:
 
 ```output
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
+
+For details, see [Create a gRPC CDC stream](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#create-a-grpc-cdc-stream).
 
 ### Start Debezium
 

@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class CheckLeaderlessTablets extends ServerSubTaskBase {
@@ -58,7 +58,7 @@ public class CheckLeaderlessTablets extends ServerSubTaskBase {
       timeout = Duration.ofMillis(1);
     }
 
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       AtomicInteger errorCnt = new AtomicInteger();
       AtomicReference<List<String>> tablets = new AtomicReference<>();
       boolean result =
@@ -103,12 +103,12 @@ public class CheckLeaderlessTablets extends ServerSubTaskBase {
   }
 
   // TODO Remove this to use the similar method in UniverseTaskBase.
-  private List<String> doGetLeaderlessTablets(YBClient client, int httpPort) {
+  private List<String> doGetLeaderlessTablets(YBClientApi client, int httpPort) {
     return doGetLeaderlessTablets(taskParams().getUniverseUUID(), client, apiHelper, httpPort);
   }
 
   public static List<String> doGetLeaderlessTablets(
-      UUID universeUUID, YBClient client, ApiHelper apiHelper, int httpPort) {
+      UUID universeUUID, YBClientApi client, ApiHelper apiHelper, int httpPort) {
     HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
 
     if (leaderMasterHostAndPort == null) {

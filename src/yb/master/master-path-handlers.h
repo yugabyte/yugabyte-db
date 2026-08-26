@@ -312,9 +312,6 @@ class MasterPathHandlers {
 
   Result<std::vector<std::pair<TabletInfoPtr, std::string>>> GetLeaderlessTablets();
 
-  Result<std::vector<std::pair<TabletInfoPtr, std::vector<std::string>>>>
-      GetUnderReplicatedTablets();
-
   // Calculates the YSQL OID of a tablegroup / colocated database parent table
   std::string GetParentTableOid(scoped_refptr<TableInfo> parent_table);
 

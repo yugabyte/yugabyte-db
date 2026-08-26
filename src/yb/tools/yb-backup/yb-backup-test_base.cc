@@ -31,6 +31,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"

@@ -73,7 +73,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.crypto.CryptoServicesRegistrar;
@@ -93,8 +92,6 @@ public class AppInit {
           .name("yba_init_time_seconds")
           .help("Last YBA startup time in seconds.")
           .register(PrometheusRegistry.defaultRegistry);
-
-  private static final AtomicBoolean IS_H2_DB = new AtomicBoolean(false);
 
   @Inject
   public AppInit(
@@ -158,13 +155,7 @@ public class AppInit {
         displayVersion = displayVersion + " (FIPS)";
       }
       log.info("YBA version: {}", displayVersion);
-      if (environment.isTest()) {
-        String dbDriverKey = "db.default.driver";
-        if (config.hasPath(dbDriverKey)) {
-          String driver = config.getString(dbDriverKey);
-          IS_H2_DB.set(driver.contains("org.h2.Driver"));
-        }
-      } else {
+      if (!environment.isTest()) {
         // only start thread dump collection for YBM at this time
         if (config.getBoolean("yb.cloud.enabled")) {
           threadDumpPublisher.start();
@@ -189,7 +180,7 @@ public class AppInit {
           for (Users user : Users.find.all()) {
             Principal principal = Principal.get(user.getUuid());
             if (principal == null) {
-              log.info("Adding Principal entry for user with email: " + user.getEmail());
+              log.info("Adding Principal entry for user with uuid: " + user.getUuid());
               new Principal(user).save();
             }
             ResourceGroup resourceGroup =
@@ -207,7 +198,7 @@ public class AppInit {
                 "Created system role binding for user '{}' (email '{}') of customer '{}', "
                     + "with role '{}' (name '{}'), and default role binding '{}'.",
                 user.getUuid(),
-                user.getEmail(),
+                RedactingService.SECRET_REPLACEMENT,
                 customer.getUuid(),
                 newRbacRole.getRoleUUID(),
                 newRbacRole.getName(),
@@ -419,11 +410,6 @@ public class AppInit {
       log.error("caught error during app init ", t);
       throw t;
     }
-  }
-
-  // Workaround for some tests with H2 database.
-  public static boolean isH2Db() {
-    return IS_H2_DB.get();
   }
 
   private void updateSensitiveGflagsforRedaction(GFlagsValidation gFlagsValidation) {

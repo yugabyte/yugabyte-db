@@ -5,8 +5,12 @@ package com.yugabyte.yw.common.audit.otel;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
@@ -20,6 +24,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -39,6 +44,14 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterC
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ControllerLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.NodeAgentLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ServerLogLevel;
+import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.UniverseServerLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YnpLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YsqlConnMgrLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.*;
 import com.yugabyte.yw.models.helpers.telemetry.AuthCredentials.AuthType;
 import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
@@ -48,6 +61,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
@@ -226,6 +240,332 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     return metricsExportConfig;
   }
 
+  // Helper method to create MasterLogConfig with a single exporter.
+  private MasterLogConfig createMasterLogConfig(
+      UUID exporterUuid, Map<String, String> additionalTags) {
+    MasterLogConfig masterLogConfig = new MasterLogConfig();
+    UniverseServerLogsExporterConfig exporter = new UniverseServerLogsExporterConfig();
+    exporter.setExporterUuid(exporterUuid);
+    exporter.setAdditionalTags(additionalTags);
+    masterLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(exporter));
+    return masterLogConfig;
+  }
+
+  // Asserts master-log routing: the filelog/master receiver is generated, feeds only the master
+  // pipeline, and never leaks into the audit pipeline (the bucketing the registry refactor fixed).
+  @Test
+  public void masterLogReceiverRoutedToOwnPipelineNotAudit() throws IOException {
+    AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
+    awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setEndpoint("endpoint");
+    awsConfig.setAccessKey("access_key");
+    awsConfig.setSecretKey("secret_key");
+    awsConfig.setLogGroup("logGroup");
+    awsConfig.setLogStream("logStream");
+    awsConfig.setRegion("us-west2");
+
+    // Distinct exporters so audit and master get distinct pipeline keys.
+    UUID auditExporterUuid = new UUID(0, 1);
+    UUID masterExporterUuid = new UUID(0, 2);
+    createTelemetryProvider(auditExporterUuid, "audit-dest", ImmutableMap.of(), awsConfig);
+    createTelemetryProvider(masterExporterUuid, "master-dest", ImmutableMap.of(), awsConfig);
+
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(auditExporterUuid, ImmutableMap.of());
+    MasterLogConfig masterLogConfig = createMasterLogConfig(masterExporterUuid, ImmutableMap.of());
+
+    File file = new File(OTEL_COL_TMP_PATH + "config.yml");
+    file.createNewFile();
+    generator.generateConfigFile(
+        nodeTaskParams,
+        provider,
+        null,
+        TelemetryConfig.builder()
+            .auditLogConfig(auditLogConfig)
+            .masterLogConfig(masterLogConfig)
+            .build(),
+        "%t | %u%d : ",
+        file.toPath(),
+        NodeManager.getOtelColMetricsPort(nodeTaskParams),
+        null);
+
+    // The generator dumps typed beans, so SnakeYAML emits "!!<ClassName>" tags. Strip them to
+    // parse the structure as a plain map (a default Yaml().load rejects global tags).
+    String contents =
+        FileUtils.readFileToString(file, Charset.defaultCharset()).replaceAll("!!\\S+", "");
+    Map<String, Object> root = new Yaml().load(contents);
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> receivers = (Map<String, Object>) root.get("receivers");
+    assertTrue("filelog/master receiver missing", receivers.containsKey("filelog/master"));
+    assertTrue("filelog/ysql receiver missing", receivers.containsKey("filelog/ysql"));
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> pipelines =
+        (Map<String, Object>) ((Map<String, Object>) root.get("service")).get("pipelines");
+
+    // Audit pipeline is keyed by the bare exporter UUID; master by master_logs_<uuid>.
+    @SuppressWarnings("unchecked")
+    List<String> auditReceivers =
+        (List<String>)
+            ((Map<String, Object>) pipelines.get("logs/" + auditExporterUuid)).get("receivers");
+    assertThat(auditReceivers, hasItem("filelog/ysql"));
+    assertThat(auditReceivers, not(hasItem("filelog/master")));
+
+    @SuppressWarnings("unchecked")
+    List<String> masterReceivers =
+        (List<String>)
+            ((Map<String, Object>) pipelines.get("logs/master_logs_" + masterExporterUuid))
+                .get("receivers");
+    assertThat(masterReceivers, hasItem("filelog/master"));
+    assertThat(masterReceivers, not(hasItem("filelog/ysql")));
+  }
+
+  // Asserts the customer-configurable knobs on MasterLogConfig translate into filelog/master
+  // operators: the noise-sampling drop_ratio is honored (and the noise filter is dropped entirely
+  // at 0.0), and minLevel injects a drop-below-severity filter (INFO = keep all = no such filter).
+  @Test
+  public void masterLogConfigurableFiltersApplied() throws IOException {
+    UUID masterExporterUuid = new UUID(0, 2);
+    createTelemetryProvider(masterExporterUuid, "master-dest", ImmutableMap.of(), awsCloudWatch());
+
+    // Defaults: minLevel INFO -> no min-level filter; noise drop_ratio 0.99.
+    List<Map<String, Object>> defaults =
+        masterReceiverOperators(createMasterLogConfig(masterExporterUuid, ImmutableMap.of()));
+    assertNull(
+        "INFO minLevel must not add a severity filter",
+        findFilterByExprContains(defaults, "attributes.log_level =="));
+    assertEquals(
+        0.99, dropRatio(findFilterByExprContains(defaults, "Found uninitialized path")), 0.0);
+
+    // minLevel ERROR + noise 0.5: noise filter uses 0.5, min-level filter drops I and W (not E/F).
+    MasterLogConfig tuned = createMasterLogConfig(masterExporterUuid, ImmutableMap.of());
+    tuned.setMinLevel(ServerLogLevel.ERROR);
+    tuned.setNoiseSampleDropRatio(0.5);
+    List<Map<String, Object>> tunedOps = masterReceiverOperators(tuned);
+    assertEquals(
+        0.5, dropRatio(findFilterByExprContains(tunedOps, "Found uninitialized path")), 0.0);
+    Map<String, Object> minLevelFilter =
+        findFilterByExprContains(tunedOps, "attributes.log_level ==");
+    assertNotNull("ERROR minLevel must add a severity filter", minLevelFilter);
+    String expr = (String) minLevelFilter.get("expr");
+    assertThat(expr, containsString("attributes.log_level == \"I\""));
+    assertThat(expr, containsString("attributes.log_level == \"W\""));
+    assertThat(expr, not(containsString("attributes.log_level == \"E\"")));
+    assertThat(expr, not(containsString("attributes.log_level == \"F\"")));
+    assertEquals("severity filter must drop all matches", 1.0, dropRatio(minLevelFilter), 0.0);
+
+    // noise 0.0: the noise filter is omitted entirely; redaction filter still present.
+    MasterLogConfig noNoise = createMasterLogConfig(masterExporterUuid, ImmutableMap.of());
+    noNoise.setNoiseSampleDropRatio(0.0);
+    List<Map<String, Object>> noNoiseOps = masterReceiverOperators(noNoise);
+    assertNull(
+        "noiseSampleDropRatio 0.0 must omit the noise filter",
+        findFilterByExprContains(noNoiseOps, "Found uninitialized path"));
+    assertNotNull(
+        "redaction filter must always be present",
+        findFilterByExprContains(noNoiseOps, "Writing version edit"));
+  }
+
+  private AWSCloudWatchConfig awsCloudWatch() {
+    AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
+    awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setEndpoint("endpoint");
+    awsConfig.setAccessKey("access_key");
+    awsConfig.setSecretKey("secret_key");
+    awsConfig.setLogGroup("logGroup");
+    awsConfig.setLogStream("logStream");
+    awsConfig.setRegion("us-west2");
+    return awsConfig;
+  }
+
+  // Generate a config for a master-only TelemetryConfig and return the filelog/master operators.
+  @SuppressWarnings("unchecked")
+  private List<Map<String, Object>> masterReceiverOperators(MasterLogConfig masterLogConfig)
+      throws IOException {
+    File file = new File(OTEL_COL_TMP_PATH + "config.yml");
+    file.createNewFile();
+    generator.generateConfigFile(
+        nodeTaskParams,
+        provider,
+        null,
+        TelemetryConfig.builder().masterLogConfig(masterLogConfig).build(),
+        "%t | %u%d : ",
+        file.toPath(),
+        NodeManager.getOtelColMetricsPort(nodeTaskParams),
+        null);
+    String contents =
+        FileUtils.readFileToString(file, Charset.defaultCharset()).replaceAll("!!\\S+", "");
+    Map<String, Object> root = new Yaml().load(contents);
+    Map<String, Object> receivers = (Map<String, Object>) root.get("receivers");
+    Map<String, Object> masterReceiver = (Map<String, Object>) receivers.get("filelog/master");
+    return (List<Map<String, Object>>) masterReceiver.get("operators");
+  }
+
+  // Helper method to create TServerLogConfig with a single exporter.
+  private TServerLogConfig createTserverLogConfig(
+      UUID exporterUuid, Map<String, String> additionalTags) {
+    TServerLogConfig tserverLogConfig = new TServerLogConfig();
+    UniverseServerLogsExporterConfig exporter = new UniverseServerLogsExporterConfig();
+    exporter.setExporterUuid(exporterUuid);
+    exporter.setAdditionalTags(additionalTags);
+    tserverLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(exporter));
+    return tserverLogConfig;
+  }
+
+  // Generate a config for a tserver-only TelemetryConfig and return the filelog/tserver operators.
+  @SuppressWarnings("unchecked")
+  private List<Map<String, Object>> tserverReceiverOperators(TServerLogConfig tserverLogConfig)
+      throws IOException {
+    File file = new File(OTEL_COL_TMP_PATH + "config.yml");
+    file.createNewFile();
+    generator.generateConfigFile(
+        nodeTaskParams,
+        provider,
+        null,
+        TelemetryConfig.builder().tserverLogConfig(tserverLogConfig).build(),
+        "%t | %u%d : ",
+        file.toPath(),
+        NodeManager.getOtelColMetricsPort(nodeTaskParams),
+        null);
+    String contents =
+        FileUtils.readFileToString(file, Charset.defaultCharset()).replaceAll("!!\\S+", "");
+    Map<String, Object> root = new Yaml().load(contents);
+    Map<String, Object> receivers = (Map<String, Object>) root.get("receivers");
+    Map<String, Object> tserverReceiver = (Map<String, Object>) receivers.get("filelog/tserver");
+    return (List<Map<String, Object>>) tserverReceiver.get("operators");
+  }
+
+  // Asserts tserver-log routing: the filelog/tserver receiver feeds only the tserver pipeline and
+  // never leaks into the audit pipeline.
+  @Test
+  public void tserverLogReceiverRoutedToOwnPipelineNotAudit() throws IOException {
+    UUID auditExporterUuid = new UUID(0, 1);
+    UUID tserverExporterUuid = new UUID(0, 2);
+    createTelemetryProvider(auditExporterUuid, "audit-dest", ImmutableMap.of(), awsCloudWatch());
+    createTelemetryProvider(
+        tserverExporterUuid, "tserver-dest", ImmutableMap.of(), awsCloudWatch());
+
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(auditExporterUuid, ImmutableMap.of());
+    TServerLogConfig tserverLogConfig =
+        createTserverLogConfig(tserverExporterUuid, ImmutableMap.of());
+
+    File file = new File(OTEL_COL_TMP_PATH + "config.yml");
+    file.createNewFile();
+    generator.generateConfigFile(
+        nodeTaskParams,
+        provider,
+        null,
+        TelemetryConfig.builder()
+            .auditLogConfig(auditLogConfig)
+            .tserverLogConfig(tserverLogConfig)
+            .build(),
+        "%t | %u%d : ",
+        file.toPath(),
+        NodeManager.getOtelColMetricsPort(nodeTaskParams),
+        null);
+
+    String contents =
+        FileUtils.readFileToString(file, Charset.defaultCharset()).replaceAll("!!\\S+", "");
+    Map<String, Object> root = new Yaml().load(contents);
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> receivers = (Map<String, Object>) root.get("receivers");
+    assertTrue("filelog/tserver receiver missing", receivers.containsKey("filelog/tserver"));
+    assertTrue("filelog/ysql receiver missing", receivers.containsKey("filelog/ysql"));
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> pipelines =
+        (Map<String, Object>) ((Map<String, Object>) root.get("service")).get("pipelines");
+
+    @SuppressWarnings("unchecked")
+    List<String> auditReceivers =
+        (List<String>)
+            ((Map<String, Object>) pipelines.get("logs/" + auditExporterUuid)).get("receivers");
+    assertThat(auditReceivers, hasItem("filelog/ysql"));
+    assertThat(auditReceivers, not(hasItem("filelog/tserver")));
+
+    @SuppressWarnings("unchecked")
+    List<String> tserverReceivers =
+        (List<String>)
+            ((Map<String, Object>) pipelines.get("logs/tserver_logs_" + tserverExporterUuid))
+                .get("receivers");
+    assertThat(tserverReceivers, hasItem("filelog/tserver"));
+    assertThat(tserverReceivers, not(hasItem("filelog/ysql")));
+  }
+
+  // Asserts the tserver knobs: default minLevel WARNING drops INFO; INFO keeps all (no severity
+  // filter); both hardcoded noise tiers (0.999, 0.75) are present; redaction includes DETAIL.
+  @Test
+  public void tserverLogConfigurableFiltersApplied() throws IOException {
+    UUID tserverExporterUuid = new UUID(0, 2);
+    createTelemetryProvider(
+        tserverExporterUuid, "tserver-dest", ImmutableMap.of(), awsCloudWatch());
+
+    // Defaults: minLevel WARNING -> severity filter drops "I" only. Both noise tiers present.
+    List<Map<String, Object>> defaults =
+        tserverReceiverOperators(createTserverLogConfig(tserverExporterUuid, ImmutableMap.of()));
+    Map<String, Object> defaultMinLevel =
+        findFilterByExprContains(defaults, "attributes.log_level ==");
+    assertNotNull("WARNING minLevel must add a severity filter", defaultMinLevel);
+    String defaultExpr = (String) defaultMinLevel.get("expr");
+    assertThat(defaultExpr, containsString("attributes.log_level == \"I\""));
+    assertThat(defaultExpr, not(containsString("attributes.log_level == \"W\"")));
+    assertEquals(1.0, dropRatio(defaultMinLevel), 0.0);
+    assertEquals(
+        0.999,
+        dropRatio(findFilterByExprContains(defaults, "Time spent Fsync log took a long time")),
+        0.0);
+    assertEquals(
+        0.75,
+        dropRatio(
+            findFilterByExprContains(defaults, "Increasing compaction threads because we have")),
+        0.0);
+    assertNotNull(
+        "tserver redaction must include DETAIL:", findFilterByExprContains(defaults, "DETAIL:"));
+
+    // minLevel INFO -> keep all, no severity filter (noise tiers still present).
+    TServerLogConfig keepAll = createTserverLogConfig(tserverExporterUuid, ImmutableMap.of());
+    keepAll.setMinLevel(ServerLogLevel.INFO);
+    List<Map<String, Object>> keepAllOps = tserverReceiverOperators(keepAll);
+    assertNull(
+        "INFO minLevel must not add a severity filter",
+        findFilterByExprContains(keepAllOps, "attributes.log_level =="));
+    assertNotNull(
+        "noise tiers must remain when INFO is kept",
+        findFilterByExprContains(keepAllOps, "Time spent Fsync log took a long time"));
+
+    // minLevel ERROR -> severity filter drops I and W (not E/F).
+    TServerLogConfig errorOnly = createTserverLogConfig(tserverExporterUuid, ImmutableMap.of());
+    errorOnly.setMinLevel(ServerLogLevel.ERROR);
+    Map<String, Object> errorFilter =
+        findFilterByExprContains(tserverReceiverOperators(errorOnly), "attributes.log_level ==");
+    assertNotNull(errorFilter);
+    String errorExpr = (String) errorFilter.get("expr");
+    assertThat(errorExpr, containsString("attributes.log_level == \"I\""));
+    assertThat(errorExpr, containsString("attributes.log_level == \"W\""));
+    assertThat(errorExpr, not(containsString("attributes.log_level == \"E\"")));
+  }
+
+  // First filter operator whose expr contains the needle, or null if none.
+  private Map<String, Object> findFilterByExprContains(
+      List<Map<String, Object>> operators, String needle) {
+    for (Map<String, Object> op : operators) {
+      if ("filter".equals(op.get("type"))) {
+        Object expr = op.get("expr");
+        if (expr != null && expr.toString().contains(needle)) {
+          return op;
+        }
+      }
+    }
+    return null;
+  }
+
+  private double dropRatio(Map<String, Object> filterOperator) {
+    return ((Number) filterOperator.get("drop_ratio")).doubleValue();
+  }
+
   // Helper method to generate config file and assert result
   private void generateAndAssertConfig(
       AuditLogConfig auditLogConfig,
@@ -239,9 +579,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
           nodeTaskParams,
           provider,
           null,
-          auditLogConfig,
-          queryLogConfig,
-          metricsExportConfig,
+          TelemetryConfig.of(auditLogConfig, queryLogConfig, metricsExportConfig),
           "%t | %u%d : ",
           file.toPath(),
           NodeManager.getOtelColMetricsPort(nodeTaskParams),
@@ -253,6 +591,195 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  // Golden-file assertion for an arbitrary TelemetryConfig (e.g. master logs, which the of(...)
+  // helper above does not cover).
+  private void generateAndAssertConfig(TelemetryConfig telemetryConfig, String expectedResource) {
+    try {
+      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
+      file.createNewFile();
+      generator.generateConfigFile(
+          nodeTaskParams,
+          provider,
+          null,
+          telemetryConfig,
+          "%t | %u%d : ",
+          file.toPath(),
+          NodeManager.getOtelColMetricsPort(nodeTaskParams),
+          null);
+
+      String result = FileUtils.readFileToString(file, Charset.defaultCharset());
+      String expected = TestUtils.readResource(expectedResource);
+      assertThat(result, equalTo(expected));
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @Test
+  public void generateOtelColConfigMasterLogsPlusDatadog() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DD", ImmutableMap.of("tag", "value"), config);
+
+    MasterLogConfig masterLogConfig =
+        createMasterLogConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "otherValue"));
+
+    generateAndAssertConfig(
+        TelemetryConfig.builder().masterLogConfig(masterLogConfig).build(),
+        "audit/dd_master_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigTserverLogsPlusDatadog() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DD", ImmutableMap.of("tag", "value"), config);
+
+    TServerLogConfig tserverLogConfig =
+        createTserverLogConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "otherValue"));
+
+    generateAndAssertConfig(
+        TelemetryConfig.builder().tserverLogConfig(tserverLogConfig).build(),
+        "audit/dd_tserver_log_config.yml");
+  }
+
+  // --- Internal-only diagnostic log sources (conn-mgr, node-agent, YNP, YB-Controller). ---
+
+  private UniverseServerLogsExporterConfig singleServerExporter(
+      UUID exporterUuid, Map<String, String> additionalTags) {
+    UniverseServerLogsExporterConfig exporter = new UniverseServerLogsExporterConfig();
+    exporter.setExporterUuid(exporterUuid);
+    exporter.setAdditionalTags(additionalTags);
+    return exporter;
+  }
+
+  private TelemetryProvider datadogProvider() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    return createTelemetryProvider(new UUID(0, 0), "DD", ImmutableMap.of("tag", "value"), config);
+  }
+
+  @Test
+  public void generateOtelColConfigYsqlConnMgrLogsPlusDatadog() {
+    TelemetryProvider tp = datadogProvider();
+    YsqlConnMgrLogConfig cfg = new YsqlConnMgrLogConfig();
+    cfg.setUniverseLogsExporterConfig(
+        ImmutableList.of(
+            singleServerExporter(tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"))));
+    generateAndAssertConfig(
+        TelemetryConfig.builder().ysqlConnMgrLogConfig(cfg).build(),
+        "audit/dd_ysql_conn_mgr_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigNodeAgentLogsPlusDatadog() {
+    TelemetryProvider tp = datadogProvider();
+    NodeAgentLogConfig cfg = new NodeAgentLogConfig();
+    cfg.setUniverseLogsExporterConfig(
+        ImmutableList.of(
+            singleServerExporter(tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"))));
+    generateAndAssertConfig(
+        TelemetryConfig.builder().nodeAgentLogConfig(cfg).build(),
+        "audit/dd_node_agent_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigYnpLogsPlusDatadog() {
+    TelemetryProvider tp = datadogProvider();
+    YnpLogConfig cfg = new YnpLogConfig();
+    cfg.setUniverseLogsExporterConfig(
+        ImmutableList.of(
+            singleServerExporter(tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"))));
+    generateAndAssertConfig(
+        TelemetryConfig.builder().ynpLogConfig(cfg).build(), "audit/dd_ynp_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigControllerLogsPlusDatadog() {
+    TelemetryProvider tp = datadogProvider();
+    ControllerLogConfig cfg = new ControllerLogConfig();
+    cfg.setUniverseLogsExporterConfig(
+        ImmutableList.of(
+            singleServerExporter(tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"))));
+    generateAndAssertConfig(
+        TelemetryConfig.builder().controllerLogConfig(cfg).build(),
+        "audit/dd_controller_log_config.yml");
+  }
+
+  // conn-mgr + YB-Controller are pod-local on K8s (yb-tserver pod); assert they render receivers on
+  // the K8s mount paths with their own pipelines.
+  @Test
+  public void getOtelColConfigK8sYsqlConnMgrAndController() {
+    TelemetryProvider tp = datadogProvider();
+    YsqlConnMgrLogConfig connMgr = new YsqlConnMgrLogConfig();
+    connMgr.setUniverseLogsExporterConfig(
+        ImmutableList.of(singleServerExporter(tp.getUuid(), ImmutableMap.of())));
+    ControllerLogConfig controller = new ControllerLogConfig();
+    controller.setUniverseLogsExporterConfig(
+        ImmutableList.of(singleServerExporter(tp.getUuid(), ImmutableMap.of())));
+
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder()
+                .ysqlConnMgrLogConfig(connMgr)
+                .controllerLogConfig(controller)
+                .build(),
+            null,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    String config = result.getConfig();
+    // Receivers rendered on the K8s pod mount paths.
+    assertThat(config, containsString("filelog/ysql_conn_mgr"));
+    assertThat(config, containsString("/mnt/disk0/yb-data/tserver/logs/ysql-conn-mgr-*"));
+    assertThat(config, containsString("filelog/controller"));
+    assertThat(
+        config, containsString("/mnt/disk0/ybc-data/controller/logs/yb-controller-server.INFO"));
+    // Each gets its own pipeline keyed by export-type prefix + exporter UUID.
+    assertThat(config, containsString("logs/ysql_conn_mgr_logs_" + tp.getUuid()));
+    assertThat(config, containsString("logs/controller_logs_" + tp.getUuid()));
+    assertThat(config, not(containsString("!!com.yugabyte")));
+  }
+
+  // node-agent and YNP are node-only: getOtelColConfigK8s must not render them even if configured.
+  @Test
+  public void getOtelColConfigK8sSkipsNodeAgentAndYnp() {
+    TelemetryProvider tp = datadogProvider();
+    NodeAgentLogConfig nodeAgent = new NodeAgentLogConfig();
+    nodeAgent.setUniverseLogsExporterConfig(
+        ImmutableList.of(singleServerExporter(tp.getUuid(), ImmutableMap.of())));
+    YnpLogConfig ynp = new YnpLogConfig();
+    ynp.setUniverseLogsExporterConfig(
+        ImmutableList.of(singleServerExporter(tp.getUuid(), ImmutableMap.of())));
+
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().nodeAgentLogConfig(nodeAgent).ynpLogConfig(ynp).build(),
+            null,
+            "%m [%p] ");
+
+    // No pod-local source enabled -> nothing to render on K8s.
+    assertFalse("node-agent/YNP must not enable a K8s collector", result.isEnabled());
+    assertThat(result.getConfig(), not(containsString("filelog/node_agent")));
+    assertThat(result.getConfig(), not(containsString("filelog/ynp")));
   }
 
   @Test
@@ -688,7 +1215,15 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
             500);
 
     OtelCollectorConfigGenerator.K8sOtelConfig result =
-        generator.getOtelColConfigK8s(provider, auditLogConfig, queryLogConfig, "%m [%p] ");
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder()
+                .auditLogConfig(auditLogConfig)
+                .queryLogConfig(queryLogConfig)
+                .build(),
+            null,
+            "%m [%p] ");
 
     assertTrue("config should be enabled", result.isEnabled());
     String config = result.getConfig();
@@ -726,16 +1261,244 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     assertThat(config, containsString("create_directory: true"));
     // Clean YAML: no SnakeYAML Java class tags leaking into the collector config.
     assertThat(config, not(containsString("!!com.yugabyte")));
-    // AWS credentials surfaced as secretEnv for the chart to wire into the sidecar env.
-    assertFalse("secretEnv should carry AWS creds", result.getSecretEnv().isEmpty());
+    // AWS credentials surfaced as secretEnv for the chart to wire into the sidecar env. The same
+    // provider backs both the audit and query pipelines, so the entries must be deduplicated:
+    // exactly one AWS_ACCESS_KEY_ID and one AWS_SECRET_ACCESS_KEY.
+    assertEquals(
+        "secretEnv must carry each env var exactly once, got: " + result.getSecretEnv(),
+        2,
+        result.getSecretEnv().size());
+  }
+
+  @Test
+  public void getOtelColConfigK8sGoldenFile() {
+    // Golden file for the K8s collector config. The K8s and VM paths share one generator but pin
+    // their collector versions independently - a Java constant here, a Helm image tag in the charts
+    // repo - so a change valid on one side can silently be rejected by the other. Only the VM
+    // output was golden-tested, which is how the awss3 s3_partition -> s3_partition_format rename
+    // reached the K8s path unnoticed. S3 and metrics export are covered here specifically because
+    // they carry the keys that moved: s3_partition_format and service::telemetry::metrics::readers.
+    S3Config s3Config = new S3Config();
+    s3Config.setType(ProviderType.S3);
+    s3Config.setBucket("bucket");
+    s3Config.setAccessKey("access_key");
+    s3Config.setSecretKey("secret_key");
+    s3Config.setRegion("us-west2");
+
+    TelemetryProvider s3Tp =
+        createTelemetryProvider(new UUID(0, 0), "S3", ImmutableMap.of("tag", "value"), s3Config);
+    when(mockTelemetryProviderService.getOrBadRequest(s3Tp.getUuid())).thenReturn(s3Tp);
+
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            s3Tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"));
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            s3Tp.getUuid(), ImmutableMap.of("env", "prod"), 15, 10, MetricCollectionLevel.NORMAL);
+
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder()
+                .auditLogConfig(auditLogConfig)
+                .metricsExportConfig(metricsExportConfig)
+                .build(),
+            null,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    assertThat(result.getConfig(), equalTo(TestUtils.readResource("audit/k8s_otel_config.yml")));
+  }
+
+  @Test
+  public void getOtelColConfigK8sTserverLogs() {
+    TelemetryProvider awsTp =
+        createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of(), awsCloudWatch());
+    TServerLogConfig tserverLogConfig =
+        createTserverLogConfig(awsTp.getUuid(), ImmutableMap.of("tTag", "tVal"));
+
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().tserverLogConfig(tserverLogConfig).build(),
+            null,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    String config = result.getConfig();
+    // Receiver on the K8s mount path, its own pipeline, batch/memory processors (server logs are
+    // batched), and no audit/query receivers when only tserver is enabled.
+    assertThat(config, containsString("filelog/tserver"));
+    assertThat(config, containsString("/mnt/disk0/yb-data/tserver/logs/yb-tserver.*.INFO.*"));
+    assertThat(config, containsString("logs/tserver_logs_" + awsTp.getUuid()));
+    // K8s keys the batch processor off the full exporter name, which carries the provider prefix.
+    assertThat(config, containsString("batch/awscloudwatchlogs/tserver_logs_" + awsTp.getUuid()));
+    assertThat(config, not(containsString("filelog/ysql")));
+    assertThat(config, containsString("tTag"));
+    assertThat(config, not(containsString("!!com.yugabyte")));
+  }
+
+  @Test
+  public void getOtelColConfigK8sMasterLogs() {
+    TelemetryProvider awsTp =
+        createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of(), awsCloudWatch());
+    MasterLogConfig masterLogConfig =
+        createMasterLogConfig(awsTp.getUuid(), ImmutableMap.of("mTag", "mVal"));
+
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().masterLogConfig(masterLogConfig).build(),
+            null,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    String config = result.getConfig();
+    // Receiver on the yb-master pod mount path, its own pipeline, batch/memory processors (server
+    // logs are batched), and no audit/query/tserver receivers when only master is enabled.
+    assertThat(config, containsString("filelog/master"));
+    assertThat(config, containsString("/mnt/disk0/yb-data/master/logs/yb-master.*.INFO.*"));
+    assertThat(config, containsString("logs/master_logs_" + awsTp.getUuid()));
+    // K8s keys the batch processor off the full exporter name, which carries the provider prefix.
+    assertThat(config, containsString("batch/awscloudwatchlogs/master_logs_" + awsTp.getUuid()));
+    assertThat(config, not(containsString("filelog/ysql")));
+    assertThat(config, not(containsString("filelog/tserver")));
+    assertThat(config, containsString("mTag"));
+    assertThat(config, not(containsString("!!com.yugabyte")));
+  }
+
+  // K8s log pipelines must carry the same node identity / placement / purpose attributes as the
+  // metrics pipelines - downstream consumers filter log records on universe_uuid and purpose.
+  @Test
+  public void getOtelColConfigK8sLogsCarryCommonRequiredAttributes() {
+    TelemetryProvider awsTp =
+        createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of(), awsCloudWatch());
+    TServerLogConfig tserverLogConfig =
+        createTserverLogConfig(awsTp.getUuid(), ImmutableMap.of("tTag", "tVal"));
+
+    OtelCollectorConfigGenerator.K8sPodPlacement podPlacement =
+        new OtelCollectorConfigGenerator.K8sPodPlacement(
+            "kubernetes",
+            "us-west1",
+            "us-west1-a",
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().tserverLogConfig(tserverLogConfig).build(),
+            podPlacement,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    String config = result.getConfig();
+    assertThat(config, containsString("{key: host, value: '${POD_NAME}', action: upsert}"));
+    assertThat(
+        config, containsString("{key: yugabyte.node_name, value: '${POD_NAME}', action: upsert}"));
+    assertThat(
+        config,
+        containsString(
+            "{key: yugabyte.universe_uuid, value: "
+                + universe.getUniverseUUID()
+                + ", action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.cloud, value: kubernetes, action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.region, value: us-west1, action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.zone, value: us-west1-a, action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.node_type, value: PRIMARY, action: upsert}"));
+    assertThat(
+        config,
+        containsString(
+            "{key: yugabyte.purpose, value: AWS_CLOUDWATCH_TSERVER_LOG_EXPORT, action: upsert}"));
+    // Backward compat: host keeps its pre-existing position after the tag actions, so a tag keyed
+    // "host" still loses to ${POD_NAME}.
+    assertThat(
+        config,
+        containsString(
+            "- {key: tTag, value: tVal, action: upsert}\n"
+                + "    - {key: host, value: '${POD_NAME}', action: upsert}"));
   }
 
   @Test
   public void getOtelColConfigK8sDisabledWhenNoActiveExport() {
     OtelCollectorConfigGenerator.K8sOtelConfig result =
-        generator.getOtelColConfigK8s(provider, null, null, "%m [%p] ");
+        generator.getOtelColConfigK8s(provider, universe, null, null, "%m [%p] ");
     assertFalse("no active export -> disabled", result.isEnabled());
     assertTrue("no secretEnv when disabled", result.getSecretEnv().isEmpty());
+  }
+
+  @Test
+  public void getOtelColConfigK8sMetricsPlusDatadog() {
+    DataDogConfig dataDogConfig = new DataDogConfig();
+    dataDogConfig.setType(ProviderType.DATA_DOG);
+    dataDogConfig.setSite("datadoghq.com");
+    dataDogConfig.setApiKey("apiKey");
+
+    TelemetryProvider ddTp =
+        createTelemetryProvider(
+            new UUID(0, 0), "Datadog", ImmutableMap.of("provTag", "provVal"), dataDogConfig);
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            ddTp.getUuid(),
+            ImmutableMap.of("metricsTag", "metricsVal"),
+            30,
+            20,
+            MetricCollectionLevel.NORMAL);
+    // The K8s-servable target set, as guaranteed by ExportTelemetryConfigParams.verifyParams
+    // (node-exporter/node-agent targets are rejected at submission for K8s universes).
+    metricsExportConfig.setScrapeConfigTargets(OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS);
+
+    OtelCollectorConfigGenerator.K8sPodPlacement podPlacement =
+        new OtelCollectorConfigGenerator.K8sPodPlacement(
+            "kubernetes",
+            "us-west1",
+            "us-west1-a",
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().metricsExportConfig(metricsExportConfig).build(),
+            podPlacement,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    String config = result.getConfig();
+
+    // Shared pod-local prometheus receiver with all yugabyte targets plus the collector itself.
+    assertThat(config, containsString("prometheus/yugabyte"));
+    assertThat(config, containsString("127.0.0.1:7000"));
+    assertThat(config, containsString("127.0.0.1:9000"));
+    assertThat(config, containsString("127.0.0.1:13000"));
+    assertThat(config, containsString("127.0.0.1:12000"));
+    assertThat(config, containsString("127.0.0.1:8889"));
+    // No node-exporter / node-agent scrape jobs in K8s pods.
+    assertThat(config, not(containsString("node-exporter")));
+    assertThat(config, not(containsString("node-agent")));
+    // Metrics pipeline + processors per exporter.
+    assertThat(config, containsString("metrics/metrics_" + ddTp.getUuid()));
+    assertThat(config, containsString("attributes/metrics_" + ddTp.getUuid()));
+    assertThat(config, containsString("memory_limiter/metrics_" + ddTp.getUuid()));
+    assertThat(config, containsString("batch/metrics_" + ddTp.getUuid()));
+    assertThat(config, containsString("datadog/metrics_" + ddTp.getUuid()));
+    // Pod identity + placement + purpose attributes.
+    assertThat(config, containsString("${POD_NAME}"));
+    assertThat(config, containsString(universe.getUniverseUUID().toString()));
+    assertThat(config, containsString("us-west1-a"));
+    assertThat(config, containsString("DATA_DOG_METRICS_EXPORT"));
+    // Provider tags and per-exporter additionalTags merged into attributes.
+    assertThat(config, containsString("provTag"));
+    assertThat(config, containsString("metricsTag"));
+    // Log-only components must not leak into a metrics-only config: the body transform and the
+    // on-disk queue extension are only referenced by log pipelines. The health check stays (the
+    // operator uses it as the sidecar readiness probe).
+    assertThat(config, not(containsString("transform/replace")));
+    assertThat(config, not(containsString("file_storage/queue")));
+    assertThat(config, containsString("health_check"));
+    // Clean YAML: no SnakeYAML Java class tags leaking into the collector config.
+    assertThat(config, not(containsString("!!com.yugabyte")));
   }
 
   @Test
@@ -808,6 +1571,10 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     config.setType(ProviderType.OTLP);
     config.setEndpoint("http://otlp:3100");
     config.setAuthType(AuthType.NoAuth);
+    // Per-signal endpoints are HTTP-only - the gRPC exporter has no logs_endpoint/metrics_endpoint
+    // fields and rejects a config carrying them. OTLPConfig#validateConfigFields enforces this, so
+    // leaving the default gRPC protocol here would build a combination the API cannot produce.
+    config.setProtocol(OTLPConfig.Protocol.HTTP);
     config.setLogsEndpoint("http://otlp:3000/logs");
     config.setMetricsEndpoint("http://otlp:3000/metrics");
 

@@ -83,6 +83,13 @@ Result<std::string> DocDBKeyToDebugStr(
     case KeyType::kPostApplyTransactionMetadata:
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
       return Format("TXN POST META $0", VERIFY_RESULT(DecodeTransactionId(&key_slice)));
+    case KeyType::kTransactionMetadataUpdate: {
+      RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
+      auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
+      dockv::KeyEntryValue time;
+      RETURN_NOT_OK(time.DecodeFromKey(&key_slice));
+      return Format("TXN META UPDATE $0 $1", transaction_id, time.GetHybridTime());
+    }
     case KeyType::kEmpty:
       FALLTHROUGH_INTENDED;
     case KeyType::kPlainSubDocKey:
@@ -251,6 +258,13 @@ Result<std::string> DocDBValueToDebugStr(
       }
       return ToString(VERIFY_RESULT(TransactionMetadata::FromPB(metadata_pb)));
     }
+    case KeyType::kTransactionMetadataUpdate: {
+      TransactionMetadataPB metadata_pb;
+      if (!metadata_pb.ParseFromArray(value.cdata(), narrow_cast<int>(value.size()))) {
+        return STATUS_FORMAT(Corruption, "Bad metadata: $0", value.ToDebugHexString());
+      }
+      return ToString(metadata_pb);
+    }
     case KeyType::kPostApplyTransactionMetadata: {
       PostApplyTransactionMetadataPB metadata_pb;
       if (!metadata_pb.ParseFromArray(value.cdata(), narrow_cast<int>(value.size()))) {
@@ -277,18 +291,8 @@ Result<std::string> DocDBValueToDebugStr(
       return ApplyStateWithCommitInfo::FromPB(pb).ToString();
     }
 
-    case KeyType::kVectorIndexMetadata: {
-      // There are only two possible type of values: tombstone or ybctid.
-      if (value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone)) {
-        SCHECK_EQ(value.size(), 1, Corruption, "kTombstone should have no extra data");
-        return dockv::PrimitiveValue::kTombstone.ToString();
-      }
-
-      // The value must be a valid ybctid.
-      dockv::DocKey ybctid;
-      RETURN_NOT_OK(ybctid.DecodeFrom(value));
-      return ybctid.ToString(dockv::AutoDecodeKeys::kTrue);
-    }
+    case KeyType::kVectorIndexMetadata:
+      return dockv::DocVectorMetaValueToString(value);
 
     case KeyType::kExternalIntents: {
       std::vector<std::string> intents;

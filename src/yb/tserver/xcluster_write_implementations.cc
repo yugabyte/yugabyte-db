@@ -36,6 +36,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/flags.h"
+#include "yb/util/status_format.h"
 
 #include "yb/common/hybrid_time.h"
 
@@ -278,8 +279,9 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
       auto write_request = rpc::SharedMessage<LWWriteRequestPB>();
       write_request->dup_tablet_id(tablet_id);
       write_request->set_external_hybrid_time(record.time());
+      // Set on all consumer writes, but only used for producer filters on automatic mode.
+      write_request->set_xcluster_target_applied(true);
       write_batch = write_request->mutable_write_batch();
-
       records_.emplace(tablet_id, std::move(write_request));
     } else {
       write_batch = it->second->mutable_write_batch();

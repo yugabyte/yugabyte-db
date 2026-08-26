@@ -1,0 +1,46 @@
+title: RestoreKeyspaceInfo
+description: System-generated metadata for a single keyspace within a restore.
+type: object
+properties:
+  uuid:
+    description: Restore keyspace UUID.
+    type: string
+    format: uuid
+    readOnly: true
+  restore_uuid:
+    description: Parent (universe-level) restore UUID.
+    type: string
+    format: uuid
+    readOnly: true
+  source_keyspace:
+    description: Source keyspace name.
+    type: string
+    readOnly: true
+  target_keyspace:
+    description: Target keyspace name.
+    type: string
+    readOnly: true
+  storage_location:
+    description: Storage location for the keyspace backup that was restored.
+    type: string
+    readOnly: true
+  table_name_list:
+    description: Tables restored into the keyspace.
+    type: array
+    items:
+      type: string
+    readOnly: true
+  state:
+    description: Current state of the keyspace restore.
+    $ref: "./RestoreState.yaml"
+    readOnly: true
+  create_time:
+    description: Time when the keyspace restore was created.
+    type: string
+    format: date-time
+    readOnly: true
+  complete_time:
+    description: Time when the keyspace restore completed.
+    type: string
+    format: date-time
+    readOnly: true

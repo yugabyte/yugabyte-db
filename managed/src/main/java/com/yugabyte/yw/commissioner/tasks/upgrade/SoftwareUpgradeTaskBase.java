@@ -36,7 +36,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
@@ -418,7 +418,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     if (!Util.isYbVersionFormatValid(requiredVersion)) {
       return new HashSet<>();
     }
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       return nodeDetails.stream()
           .filter(node -> isDBVersionSameOnNode(client, node, serverType, requiredVersion))
           .collect(Collectors.toSet());
@@ -429,7 +429,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
   }
 
   private boolean isDBVersionSameOnNode(
-      YBClient client, NodeDetails node, ServerType serverType, String softwareVersion) {
+      YBClientApi client, NodeDetails node, ServerType serverType, String softwareVersion) {
     int port = serverType.equals(ServerType.MASTER) ? node.masterRpcPort : node.tserverRpcPort;
     try {
 

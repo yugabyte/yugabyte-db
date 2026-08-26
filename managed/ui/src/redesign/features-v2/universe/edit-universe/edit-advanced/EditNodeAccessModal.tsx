@@ -1,14 +1,17 @@
+import { useEffect, useMemo } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
+import { yupResolver } from '@hookform/resolvers/yup';
 import { mui, yba } from '@yugabyte-ui-library/core';
 import { InstanceARNField } from '../../create-universe/fields';
-// import { useEditUniverse } from '../../../../../v2/api/universe/universe';
-// import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
+import { awsArnFormSchema } from '../../create-universe/fields/arn-field/awsArnValidation';
+import { useEditUniverse } from '../../../../../v2/api/universe/universe';
+import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
-// import { createErrorMessage } from '../../../../../utils/ObjectUtils';
+import { createErrorMessage } from '../../../../../utils/ObjectUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-// import { CloudType } from '@app/redesign/helpers/dtos';
+import { FullMoveWarning } from '../components';
 
 const { YBModal } = yba;
 const { styled, Box, boxClasses } = mui;
@@ -31,48 +34,66 @@ interface NodeAcessFormProps {
 export const EditNodeAcessModal = ({ open, onClose }: EditNodeAcessModalProps) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.advanced' });
   const { universeData } = useEditUniverseContext();
-  // const editUniverse = useEditUniverse();
+  const editUniverse = useEditUniverse();
   const universeUUID = universeData?.info?.universe_uuid;
-  // const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
+  const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
-  //   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
+  const providerSpec = primaryCluster?.provider_spec;
   const awsArnString = primaryCluster?.provider_spec?.aws_instance_profile;
 
   const defaultValues = {
     awsArnString
   };
-  const methods = useForm<NodeAcessFormProps>({ defaultValues });
+  const validationSchema = useMemo(() => awsArnFormSchema(t), [t]);
+  const methods = useForm<NodeAcessFormProps>({
+    defaultValues,
+    resolver: yupResolver(validationSchema),
+    mode: 'onSubmit',
+    reValidateMode: 'onChange'
+  });
+  const {
+    handleSubmit,
+    reset,
+    formState: { isDirty }
+  } = methods;
 
-  const { handleSubmit } = methods;
+  useEffect(() => {
+    if (open) reset(defaultValues);
+  }, [open]);
 
   const handleFormSubmit = handleSubmit(async (values) => {
-    //TODO: Complete this once API is ready
     if (!universeUUID || !primaryCluster?.uuid) {
       toast.error(t('unableToApplyChanges'));
       return;
     }
-    // editUniverse.mutate(
-    //   {
-    //     uniUUID: universeUUID,
-    //     data: {
-    //       expected_universe_version: -1,
-    //       clusters: [
-    //         {
-    //           uuid: primaryCluster.uuid
-    //         }
-    //       ]
-    //     }
-    //   },
-    //   {
-    //     onSuccess: (response) => {
-    //       handleEditUniverseSuccess(response.task_uuid);
-    //       onClose();
-    //     },
-    //     onError: (error: unknown) => {
-    //       toast.error(createErrorMessage(error));
-    //     }
-    //   }
-    // );
+    editUniverse.mutate(
+      {
+        uniUUID: universeUUID,
+        data: {
+          expected_universe_version: -1,
+          clusters: [
+            {
+              uuid: primaryCluster.uuid,
+              provider_spec: {
+                region_list: providerSpec?.region_list ?? [],
+                aws_instance_profile: values.awsArnString,
+                image_bundle_uuid: providerSpec?.image_bundle_uuid
+              }
+            }
+          ]
+        }
+      },
+      {
+        onSuccess: (response) => {
+          reset(values);
+          handleEditUniverseSuccess(response.task_uuid);
+          onClose();
+        },
+        onError: (error: unknown) => {
+          toast.error(createErrorMessage(error));
+        }
+      }
+    );
   });
 
   return (
@@ -91,6 +112,7 @@ export const EditNodeAcessModal = ({ open, onClose }: EditNodeAcessModalProps) =
       <FormProvider {...methods}>
         <ModalContent>
           <InstanceARNField disabled={false} />
+          {isDirty && <FullMoveWarning setting="instanceProfileArn" />}
         </ModalContent>
       </FormProvider>
     </YBModal>

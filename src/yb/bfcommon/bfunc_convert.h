@@ -38,6 +38,7 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/uuid.h"

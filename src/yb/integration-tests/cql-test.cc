@@ -444,10 +444,10 @@ TEST_F(CqlTest, TestTruncateTableWithIndexes) {
   // trigger, and pass a matching per-statement timeout for the TRUNCATE so
   // the CQL driver's default 20 s deadline doesn't fire before the server
   // finishes. Linux apply stays under 3 s, so no override is needed there.
-  FLAGS_consensus_rpc_timeout_ms = 60'000;
-  FLAGS_master_ts_rpc_timeout_ms = 60'000;
-  FLAGS_transaction_rpc_timeout_ms = 60'000;
-  FLAGS_leader_failure_max_missed_heartbeat_periods = 12.0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_rpc_timeout_ms) = 60'000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 60'000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_rpc_timeout_ms) = 60'000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 12.0;
   constexpr uint32_t kTruncateTimeoutMs = 120'000;
 #else
   // Use driver default.

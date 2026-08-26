@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
@@ -47,11 +48,8 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.S3Config;
@@ -73,18 +71,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
@@ -173,6 +168,13 @@ public class NodeAgentRpcPayload {
     return null;
   }
 
+  /**
+   * Name of the otel collector archive as it lands in the third-party package directory. The
+   * dependency list is fetched with {@code wget -i}, which saves each file under its URL basename,
+   * so this must track the archive names published to ybm-package-store. The executable inside is
+   * named {@code otelcol-unified}; node-agent renames it to {@code otelcol-contrib} on extract to
+   * keep the running process name stable.
+   */
   private String getOtelCollectorPackagePath(Architecture arch) {
     String architecture = "";
     if (arch.equals(Architecture.x86_64)) {
@@ -181,7 +183,7 @@ public class NodeAgentRpcPayload {
       architecture = "arm64";
     }
     return String.format(
-        "otelcol-contrib_%s_%s_%s.tar.gz",
+        "otelcol-unified_%s_%s_%s.tar.gz",
         ManageOtelCollector.OtelCollectorVersion,
         ManageOtelCollector.OtelCollectorPlatform,
         architecture);
@@ -479,28 +481,37 @@ public class NodeAgentRpcPayload {
     Map<String, String> gflags = new HashMap<>();
     AuditLogConfig config = null;
     QueryLogConfig queryLogConfig = null;
-    MetricsExportConfig metricsExportConfig = null;
+    TelemetryConfig telemetryConfig = null;
+    // Refresh-only mode: node-agent should just rewrite log_cleanup_env +
+    // refresh the on-node zip_purge_yb_logs.sh script, without going through
+    // the (expensive) otel-collector install steps. Triggered when the caller
+    // isn't actually installing/keeping otel-collector on the universe but we
+    // still want audit-log setting changes to reach the node.
+    boolean refreshScriptOnly = false;
     if (taskParams instanceof ManageOtelCollector.Params) {
       ManageOtelCollector.Params params = (ManageOtelCollector.Params) taskParams;
-      config = params.auditLogConfig;
-      queryLogConfig = params.queryLogConfig;
-      metricsExportConfig = params.metricsExportConfig;
+      telemetryConfig = params.telemetryConfig;
+      config = params.getAuditLogConfig();
+      queryLogConfig = params.getQueryLogConfig();
       gflags = params.gflags;
+      refreshScriptOnly = !params.otelCollectorEnabled;
     } else if (taskParams instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
-      config = params.auditLogConfig;
-      queryLogConfig = params.queryLogConfig;
-      metricsExportConfig = params.metricsExportConfig;
+      telemetryConfig = params.telemetryConfig;
+      config = params.getAuditLogConfig();
+      queryLogConfig = params.getQueryLogConfig();
       gflags =
           GFlagsUtil.getGFlagsForAZ(
               taskParams.azUuid,
               UniverseTaskBase.ServerType.TSERVER,
               cluster,
               universe.getUniverseDetails().clusters);
+      refreshScriptOnly = !params.otelCollectorEnabled;
     }
 
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
+    installOtelCollectorInputBuilder.setRefreshScriptOnly(refreshScriptOnly);
 
     // Set memory limit for OTel collector
     int otelColMaxMemory =
@@ -509,19 +520,26 @@ public class NodeAgentRpcPayload {
       installOtelCollectorInputBuilder.setOtelColMaxMemory(otelColMaxMemory);
     }
 
-    String otelCollectorPackagePath =
-        getThirdpartyPackagePath()
-            + "/"
-            + getOtelCollectorPackagePath(universe.getUniverseDetails().arch);
-    nodeAgentClient.uploadFile(
-        nodeAgent,
-        otelCollectorPackagePath,
-        customTmpDirectory + "/" + getOtelCollectorPackagePath(universe.getUniverseDetails().arch),
-        DEFAULT_CONFIGURE_USER,
-        0,
-        null);
-    installOtelCollectorInputBuilder.setOtelColPackagePath(
-        getOtelCollectorPackagePath(universe.getUniverseDetails().arch));
+    // Skip the (expensive) otel-collector package upload/extract in
+    // refresh-only mode - node-agent's InstallOtelCollector.Handle takes an
+    // early-return path that doesn't touch these bits.
+    if (!refreshScriptOnly) {
+      String otelCollectorPackagePath =
+          getThirdpartyPackagePath()
+              + "/"
+              + getOtelCollectorPackagePath(universe.getUniverseDetails().arch);
+      nodeAgentClient.uploadFile(
+          nodeAgent,
+          otelCollectorPackagePath,
+          customTmpDirectory
+              + "/"
+              + getOtelCollectorPackagePath(universe.getUniverseDetails().arch),
+          DEFAULT_CONFIGURE_USER,
+          0,
+          null);
+      installOtelCollectorInputBuilder.setOtelColPackagePath(
+          getOtelCollectorPackagePath(universe.getUniverseDetails().arch));
+    }
     String ycqlAuditLogLevel = "NONE";
     if (config != null && config.getYcqlAuditConfig() != null) {
       YCQLAuditConfig.YCQLAuditLogLevel logLevel =
@@ -547,22 +565,14 @@ public class NodeAgentRpcPayload {
     }
     installOtelCollectorInputBuilder.addAllMountPoints(getMountPoints(taskParams));
 
-    boolean auditLogsExportActive = OtelCollectorUtil.isAuditLogExportEnabledInUniverse(config);
-    boolean queryLogsExportActive =
-        OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig);
-    boolean metricsExportActive =
-        OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig);
-
-    if (auditLogsExportActive || queryLogsExportActive || metricsExportActive) {
+    if (!refreshScriptOnly && OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
       String otelCollectorConfigFile =
           otelCollectorConfigGenerator
               .generateConfigFile(
                   taskParams,
                   provider,
                   universe.getUniverseDetails().getPrimaryCluster().userIntent,
-                  config,
-                  queryLogConfig,
-                  metricsExportConfig,
+                  telemetryConfig,
                   GFlagsUtil.getLogLinePrefix(
                       queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
                   NodeManager.getOtelColMetricsPort(taskParams),
@@ -579,22 +589,9 @@ public class NodeAgentRpcPayload {
       installOtelCollectorInputBuilder.setOtelColConfigFile(
           customTmpDirectory + "/" + Paths.get(otelCollectorConfigFile).getFileName().toString());
 
-      Set<UUID> exporterUUIDs = new HashSet<>();
-      if (config != null && CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
-        for (UniverseLogsExporterConfig logsExporterConfig :
-            config.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-      if (queryLogConfig != null
-          && CollectionUtils.isNotEmpty(queryLogConfig.getUniverseLogsExporterConfig())) {
-        for (UniverseQueryLogsExporterConfig logsExporterConfig :
-            queryLogConfig.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-
-      for (UUID exporterUUID : exporterUUIDs) {
+      // Same helper the legacy NodeManager path uses, so every export section contributes its
+      // credential-bearing exporters rather than only audit and query logs.
+      for (UUID exporterUUID : OtelCollectorUtil.getActiveExporterUuids(telemetryConfig)) {
         installOtelCollectorInputBuilder =
             setupInstallOtelCollectorBitsEnv(
                 installOtelCollectorInputBuilder,

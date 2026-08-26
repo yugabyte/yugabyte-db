@@ -29,6 +29,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/shmem/annotations.h"
 #include "yb/util/shmem/robust_intrusive_list.h"
+#include "yb/util/status_format.h"
 #include "yb/util/types.h"
 
 namespace yb {
