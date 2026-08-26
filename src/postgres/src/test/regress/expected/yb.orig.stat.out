@@ -32,26 +32,26 @@ SELECT pg_sleep(1);
  query_end_time     | timestamp with time zone |           |          | 
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
- databasename |                termination_reason                 |                   query_text                   
---------------+---------------------------------------------------+------------------------------------------------
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
+ databasename |                 termination_reason                  |                   query_text                   
+--------------+-----------------------------------------------------+------------------------------------------------
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT * FROM generate_series(0, 1000000);
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
 (2 rows)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries WHERE databasename = 'yugabyte';
- databasename |                termination_reason                 |                   query_text                   
---------------+---------------------------------------------------+------------------------------------------------
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
+ databasename |                 termination_reason                  |                   query_text                   
+--------------+-----------------------------------------------------+------------------------------------------------
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT * FROM generate_series(0, 1000000);
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
 (2 rows)
 
 CREATE DATABASE db2;
 \c db2
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
- databasename |                termination_reason                 |                   query_text                   
---------------+---------------------------------------------------+------------------------------------------------
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
+ databasename |                 termination_reason                  |                   query_text                   
+--------------+-----------------------------------------------------+------------------------------------------------
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT * FROM generate_series(0, 1000000);
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
 (2 rows)
 
 SET work_mem TO 64;
@@ -65,11 +65,11 @@ SELECT pg_sleep(1);
 (1 row)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
- databasename |                termination_reason                 |                   query_text                   
---------------+---------------------------------------------------+------------------------------------------------
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
- db2          | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000001);
+ databasename |                 termination_reason                  |                   query_text                   
+--------------+-----------------------------------------------------+------------------------------------------------
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT * FROM generate_series(0, 1000000);
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
+ db2          | temporary file size exceeds "temp_file_limit" (0kB) | SELECT * FROM generate_series(0, 1000001);
 (3 rows)
 
 SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'
@@ -84,30 +84,30 @@ SELECT pg_sleep(1);
 (1 row)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
- databasename |                termination_reason                 |                                                         query_text                                                         
---------------+---------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
- db2          | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000001);
- db2          | temporary file size exceeds temp_file_limit (0kB) | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
-              |                                                   | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
-              |                                                   | 'We need to stand back
+ databasename |                 termination_reason                  |                                                         query_text                                                         
+--------------+-----------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT * FROM generate_series(0, 1000000);
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
+ db2          | temporary file size exceeds "temp_file_limit" (0kB) | SELECT * FROM generate_series(0, 1000001);
+ db2          | temporary file size exceeds "temp_file_limit" (0kB) | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
+              |                                                     | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
+              |                                                     | 'We need to stand back
 (4 rows)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries WHERE databasename = 'yugabyte';
- databasename |                termination_reason                 |                   query_text                   
---------------+---------------------------------------------------+------------------------------------------------
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
+ databasename |                 termination_reason                  |                   query_text                   
+--------------+-----------------------------------------------------+------------------------------------------------
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT * FROM generate_series(0, 1000000);
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
 (2 rows)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries WHERE databasename = 'db2';
- databasename |                termination_reason                 |                                                         query_text                                                         
---------------+---------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
- db2          | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000001);
- db2          | temporary file size exceeds temp_file_limit (0kB) | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
-              |                                                   | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
-              |                                                   | 'We need to stand back
+ databasename |                 termination_reason                  |                                                         query_text                                                         
+--------------+-----------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
+ db2          | temporary file size exceeds "temp_file_limit" (0kB) | SELECT * FROM generate_series(0, 1000001);
+ db2          | temporary file size exceeds "temp_file_limit" (0kB) | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
+              |                                                     | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
+              |                                                     | 'We need to stand back
 (2 rows)
 
 SELECT query_text, length(query_text) AS query_length FROM yb_terminated_queries;
@@ -124,14 +124,14 @@ SELECT query_text, length(query_text) AS query_length FROM yb_terminated_queries
 -- Test permissions for different roles
 \c yugabyte
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
- databasename |                termination_reason                 |                                                         query_text                                                         
---------------+---------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000000);
- yugabyte     | temporary file size exceeds temp_file_limit (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
- db2          | temporary file size exceeds temp_file_limit (0kB) | SELECT * FROM generate_series(0, 1000001);
- db2          | temporary file size exceeds temp_file_limit (0kB) | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
-              |                                                   | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
-              |                                                   | 'We need to stand back
+ databasename |                 termination_reason                  |                                                         query_text                                                         
+--------------+-----------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT * FROM generate_series(0, 1000000);
+ yugabyte     | temporary file size exceeds "temp_file_limit" (0kB) | SELECT 'bob' FROM generate_series(0, 1000000);
+ db2          | temporary file size exceeds "temp_file_limit" (0kB) | SELECT * FROM generate_series(0, 1000001);
+ db2          | temporary file size exceeds "temp_file_limit" (0kB) | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
+              |                                                     | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
+              |                                                     | 'We need to stand back
 (4 rows)
 
 CREATE ROLE test_user WITH login;
@@ -213,16 +213,16 @@ show temp_file_limit;
 SELECT * FROM generate_series(0, 1234567);
 ERROR:  temporary file size exceeds "temp_file_limit" (0kB)
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries ORDER BY databasename;
-    databasename    |                   termination_reason                    |                                                         query_text                                                         
---------------------+---------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
- db2                | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1000001);
- db2                | temporary file size exceeds temp_file_limit (0kB)       | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
-                    |                                                         | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
-                    |                                                         | 'We need to stand back
- test_user_database | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1234567);
- yugabyte           | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1000000);
- yugabyte           | temporary file size exceeds temp_file_limit (0kB)       | SELECT 'bob' FROM generate_series(0, 1000000);
- yugabyte           | temporary file size exceeds temp_file_limit (1048576kB) | SELECT * FROM generate_series(0, 100000002);
+    databasename    |                    termination_reason                     |                                                         query_text                                                         
+--------------------+-----------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
+ db2                | temporary file size exceeds "temp_file_limit" (0kB)       | SELECT * FROM generate_series(0, 1000001);
+ db2                | temporary file size exceeds "temp_file_limit" (0kB)       | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
+                    |                                                           | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
+                    |                                                           | 'We need to stand back
+ test_user_database | temporary file size exceeds "temp_file_limit" (0kB)       | SELECT * FROM generate_series(0, 1234567);
+ yugabyte           | temporary file size exceeds "temp_file_limit" (0kB)       | SELECT * FROM generate_series(0, 1000000);
+ yugabyte           | temporary file size exceeds "temp_file_limit" (0kB)       | SELECT 'bob' FROM generate_series(0, 1000000);
+ yugabyte           | temporary file size exceeds "temp_file_limit" (1048576kB) | SELECT * FROM generate_series(0, 100000002);
 (6 rows)
 
 -- Drop the superuser privilege as we want to see if we would only see the terminated query
@@ -235,9 +235,9 @@ SELECT pg_sleep(1);
 (1 row)
 
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
-    databasename    |                   termination_reason                    |                  query_text                  
---------------------+---------------------------------------------------------+----------------------------------------------
- yugabyte           | temporary file size exceeds temp_file_limit (1048576kB) | SELECT * FROM generate_series(0, 100000002);
- test_user_database | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1234567);
+    databasename    |                    termination_reason                     |                  query_text                  
+--------------------+-----------------------------------------------------------+----------------------------------------------
+ yugabyte           | temporary file size exceeds "temp_file_limit" (1048576kB) | SELECT * FROM generate_series(0, 100000002);
+ test_user_database | temporary file size exceeds "temp_file_limit" (0kB)       | SELECT * FROM generate_series(0, 1234567);
 (2 rows)
 

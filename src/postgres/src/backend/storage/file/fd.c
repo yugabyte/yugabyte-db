@@ -2275,7 +2275,7 @@ FileWriteV(File file, const struct iovec *iov, int iovcnt, pgoff_t offset,
 				char		query_termination_message[256];
 
 				snprintf(query_termination_message, sizeof(query_termination_message),
-						 "temporary file size exceeds temp_file_limit (%dkB)", temp_file_limit);
+						 "temporary file size exceeds \"temp_file_limit\" (%dkB)", temp_file_limit);
 
 				yb_report_query_termination(query_termination_message, MyProcPid);
 

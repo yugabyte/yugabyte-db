@@ -59,7 +59,7 @@ public class TestPgYbStat extends BasePgSQLTest {
     try (Statement statement = inputConnection.createStatement()) {
       statement.executeQuery(query);
     } catch (PSQLException exception) {
-      assertEquals("ERROR: temporary file size exceeds temp_file_limit (0kB)",
+      assertEquals("ERROR: temporary file size exceeds \"temp_file_limit\" (0kB)",
                    exception.getMessage());
     }
   }
@@ -205,7 +205,7 @@ public class TestPgYbStat extends BasePgSQLTest {
           if (!resultSet.next()
            || !oversized_query.equals(resultSet.getString("query_text"))
            || !resultSet.getString("termination_reason")
-                        .startsWith("temporary file size exceeds temp_file_limit"))
+                        .startsWith("temporary file size exceeds \"temp_file_limit\""))
             return false;
 
           assertFalse("Expected only 3 queries in this test", resultSet.next());
