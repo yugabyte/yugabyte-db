@@ -869,6 +869,8 @@ public enum TaskType {
   RegisterUniverseWithPaCollector(
       com.yugabyte.yw.commissioner.tasks.subtasks.RegisterUniverseWithPaCollector.class),
 
+  PushPaExportConfig(com.yugabyte.yw.commissioner.tasks.subtasks.PushPaExportConfig.class),
+
   UnregisterUniverseFromPaCollector(
       com.yugabyte.yw.commissioner.tasks.subtasks.UnregisterUniverseFromPaCollector.class),
 

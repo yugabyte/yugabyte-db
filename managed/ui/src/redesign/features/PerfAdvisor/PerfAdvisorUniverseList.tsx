@@ -5,7 +5,7 @@ import { RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-tab
 import { Box, Button, Typography } from '@material-ui/core';
 import { YBErrorIndicator, YBLoading } from '../../../components/common/indicators';
 import { YBTable } from '../../../components/common/YBTable/YBTable';
-import { QUERY_KEY, PerfAdvisorAPI } from './api';
+import { PaRegistrationMode, QUERY_KEY, PerfAdvisorAPI } from './api';
 import { toast } from 'react-toastify';
 
 interface PerfAdvisorUniverseListProps {
@@ -19,7 +19,16 @@ interface PaUniverseInfo {
   dataMountPoints: string[];
   otherMountPoints: string[];
   advancedObservability: boolean;
+  mode: PaRegistrationMode;
+  paEndpointUuid: string | null;
+  paEndpointName: string | null;
 }
+
+const MODE_LABEL: Record<PaRegistrationMode, string> = {
+  [PaRegistrationMode.BASIC]: 'Basic',
+  [PaRegistrationMode.ADVANCED]: 'Advanced observability',
+  [PaRegistrationMode.ONLINE]: 'Online'
+};
 
 interface PagedResponse {
   entities: PaUniverseInfo[];
@@ -32,7 +41,10 @@ const DEFAULT_LIMIT = 10;
 const DEFAULT_SORT_COLUMN = 'universeName';
 const DEFAULT_SORT_DIRECTION = 'ASC';
 
-export const PerfAdvisorUniverseList = ({ paUuid, isEmbeddedPAEnabled }: PerfAdvisorUniverseListProps) => {
+export const PerfAdvisorUniverseList = ({
+  paUuid,
+  isEmbeddedPAEnabled
+}: PerfAdvisorUniverseListProps) => {
   const [page, setPage] = useState(1);
   const [sizePerPage, setSizePerPage] = useState(DEFAULT_LIMIT);
   const [sortColumn] = useState(DEFAULT_SORT_COLUMN);
@@ -85,8 +97,11 @@ export const PerfAdvisorUniverseList = ({ paUuid, isEmbeddedPAEnabled }: PerfAdv
     return points?.join(', ') ?? '';
   };
 
-  const formatAdvancedObservability = (_cell: any, row: PaUniverseInfo) => {
-    return row.advancedObservability ? 'Enabled' : 'Disabled';
+  const formatMode = (_cell: any, row: PaUniverseInfo) => {
+    const label = MODE_LABEL[row.mode] ?? row.mode;
+    return row.mode === PaRegistrationMode.ONLINE && row.paEndpointName
+      ? `${label} (${row.paEndpointName})`
+      : label;
   };
 
   const formatActions = (_cell: any, row: PaUniverseInfo) => {
@@ -111,9 +126,12 @@ export const PerfAdvisorUniverseList = ({ paUuid, isEmbeddedPAEnabled }: PerfAdv
     if (!row.universeName) {
       return displayName;
     }
-    const path = row.advancedObservability && isEmbeddedPAEnabled
-      ? `/universes/${row.universeUuid}/perfAdvisor`
-      : `/universes/${row.universeUuid}`;
+    // Online-mode universes have no local data behind the Perf Advisor view, so they link to the
+    // universe itself rather than a dashboard that would come up empty.
+    const path =
+      row.advancedObservability && isEmbeddedPAEnabled && row.mode !== PaRegistrationMode.ONLINE
+        ? `/universes/${row.universeUuid}/perfAdvisor`
+        : `/universes/${row.universeUuid}`;
     return <Link to={path}>{displayName}</Link>;
   };
 
@@ -136,8 +154,7 @@ export const PerfAdvisorUniverseList = ({ paUuid, isEmbeddedPAEnabled }: PerfAdv
             onPageChange: (newPage: number) => setPage(newPage),
             defaultSortOrder: DEFAULT_SORT_DIRECTION.toLowerCase() as SortOrder,
             defaultSortName: DEFAULT_SORT_COLUMN,
-            onSortChange: (_: any, order: SortOrder) =>
-              setSortDirection(order.toUpperCase())
+            onSortChange: (_: any, order: SortOrder) => setSortDirection(order.toUpperCase())
           }}
         >
           <TableHeaderColumn dataField="universeUuid" isKey={true} width="20%">
@@ -169,12 +186,8 @@ export const PerfAdvisorUniverseList = ({ paUuid, isEmbeddedPAEnabled }: PerfAdv
           >
             Other Mount Points
           </TableHeaderColumn>
-          <TableHeaderColumn
-            dataField="advancedObservability"
-            dataFormat={formatAdvancedObservability}
-            width="13%"
-          >
-            {'Advanced Observability'}
+          <TableHeaderColumn dataField="mode" dataFormat={formatMode} width="13%">
+            {'Mode'}
           </TableHeaderColumn>
           <TableHeaderColumn dataField="actions" dataFormat={formatActions} width="10%">
             {'Actions'}

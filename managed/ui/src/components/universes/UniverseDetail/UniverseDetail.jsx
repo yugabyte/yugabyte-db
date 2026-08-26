@@ -583,6 +583,15 @@ class UniverseDetail extends Component {
         (c) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
       )?.value === 'true';
 
+    // Online mode is gated by its own flag. enable_new_perf_advisor_ui covers advanced
+    // observability and the Performance tab, which online mode is neither part of - a universe
+    // forwarding everything to an external Perf Advisor has no local data behind that tab.
+    const isPaOnlineModeEnabled =
+      isPACollectorEnabled &&
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.ENABLE_PA_ONLINE_MODE
+      )?.value === 'true';
+
     // Performance Tab should be shown only if Perf Advisor is enabled for the universe with advanced observability
     const isPATabEnabled =
       isEmbeddedPAEnabled &&
@@ -2198,6 +2207,7 @@ class UniverseDetail extends Component {
             }
           }}
           isEmbeddedPAEnabled={isEmbeddedPAEnabled}
+          isPaOnlineModeEnabled={isPaOnlineModeEnabled}
           paUuid={ybaToPaServiceDetails?.data?.[0]?.uuid}
           universeData={currentUniverse.data}
           perfAdvisorStatus={universePaRegistrationStatus}

@@ -2079,6 +2079,9 @@
             "DeletePACollectorConfig",
             "PACollectorRegister",
             "PACollectorUnregister",
+            "CreatePerfAdvisorEndpoint",
+            "EditPerfAdvisorEndpoint",
+            "DeletePerfAdvisorEndpoint",
             "UpgradeKubernetesOverrides",
             "UpgradeCerts",
             "UpgradeTLS",
@@ -2265,6 +2268,7 @@
             "SupportBundle",
             "TelemetryProvider",
             "PACollector",
+            "PerfAdvisorEndpoint",
             "GFlags",
             "Hook",
             "HookScope",
@@ -2785,6 +2789,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -5781,6 +5786,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -8984,6 +8990,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -9821,6 +9828,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -11365,6 +11373,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -12115,6 +12124,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -14772,7 +14782,7 @@
           "type" : "string"
         },
         "embedded" : {
-          "description" : "True when this collector is the embedded PA managed by EmbeddedCollectorInitializer",
+          "description" : "True when this collector is the embedded PA managed by PACollectorSync",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -14845,12 +14855,30 @@
           },
           "type" : "array"
         },
+        "mode" : {
+          "description" : "How the universe is registered with the collector",
+          "enum" : [
+            "BASIC",
+            "ADVANCED",
+            "ONLINE"
+          ],
+          "type" : "string"
+        },
         "otherMountPoints" : {
           "description" : "Other mount points",
           "items" : {
             "type" : "string"
           },
           "type" : "array"
+        },
+        "paEndpointName" : {
+          "description" : "Perf Advisor Endpoint name, set for ONLINE mode only",
+          "type" : "string"
+        },
+        "paEndpointUuid" : {
+          "description" : "Perf Advisor Endpoint UUID, set for ONLINE mode only",
+          "format" : "uuid",
+          "type" : "string"
         },
         "universeName" : {
           "description" : "Universe name (from YBA, or null if universe was deleted)",
@@ -14869,6 +14897,24 @@
         "advancedObservability" : {
           "description" : "Whether advanced observability (metrics export to Prometheus) is enabled",
           "type" : "boolean"
+        },
+        "mode" : {
+          "description" : "How the universe is registered with the collector",
+          "enum" : [
+            "BASIC",
+            "ADVANCED",
+            "ONLINE"
+          ],
+          "type" : "string"
+        },
+        "paEndpointName" : {
+          "description" : "Perf Advisor Endpoint name, set for ONLINE mode only",
+          "type" : "string"
+        },
+        "paEndpointUuid" : {
+          "description" : "Perf Advisor Endpoint UUID, set for ONLINE mode only",
+          "format" : "uuid",
+          "type" : "string"
         },
         "success" : {
           "description" : "Whether the universe is registered with PA Collector",
@@ -14891,7 +14937,7 @@
           "type" : "string"
         },
         "embedded" : {
-          "description" : "True when this collector is the embedded PA managed by EmbeddedCollectorInitializer",
+          "description" : "True when this collector is the embedded PA managed by PACollectorSync",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -16927,6 +16973,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -17631,6 +17678,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -18720,6 +18768,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -19580,6 +19629,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -21138,6 +21188,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -21834,6 +21885,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -22268,6 +22320,7 @@
               "SwamperTargetsFileUpdate",
               "UniverseUpdateSucceeded",
               "RegisterUniverseWithPaCollector",
+              "PushPaExportConfig",
               "UnregisterUniverseFromPaCollector",
               "UpdateAndPersistGFlags",
               "UpdateAndPersistKubernetesOverrides",
@@ -22856,6 +22909,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -23652,6 +23706,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -24834,6 +24889,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -26187,6 +26243,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -26890,6 +26947,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -27734,6 +27792,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -28402,6 +28461,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -29070,6 +29130,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -30254,6 +30315,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -31419,6 +31481,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",

@@ -30,12 +30,14 @@ import com.yugabyte.yw.forms.paging.PaUniversePagedApiResponse;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.PACollector;
+import com.yugabyte.yw.models.PerfAdvisorEndpoint;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.PACollectorFilter;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.ExpressionList;
 import io.ebean.annotation.Transactional;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -177,6 +179,12 @@ public class PerfAdvisorService {
   public PaUniversePagedApiResponse pagedListRegisteredUniverses(
       PACollector collector, PaUniversePagedApiQuery apiQuery) {
     List<PerfAdvisorClient.UniverseMetadata> allMetadata = listRegisteredUniverses(collector);
+    Map<UUID, String> endpointNames =
+        PerfAdvisorEndpoint.createQuery()
+            .eq("customerUUID", collector.getCustomerUUID())
+            .findList()
+            .stream()
+            .collect(Collectors.toMap(PerfAdvisorEndpoint::getUuid, PerfAdvisorEndpoint::getName));
 
     Stream<PaUniverseInfo> infoStream =
         allMetadata.stream()
@@ -189,6 +197,16 @@ public class PerfAdvisorService {
                   info.setDataMountPoints(meta.getDataMountPoints());
                   info.setOtherMountPoints(meta.getOtherMountPoints());
                   info.setAdvancedObservability(meta.isMetricsExportToPrometheusEnabled());
+                  info.setMode(PaRegistrationMode.of(meta));
+                  // The collector's export config ids are Perf Advisor Endpoint uuids by
+                  // construction, so the name comes from the local record.
+                  UUID endpointUuid =
+                      CollectionUtils.isEmpty(meta.getExportConfigIds())
+                          ? null
+                          : meta.getExportConfigIds().get(0);
+                  info.setPaEndpointUuid(endpointUuid);
+                  info.setPaEndpointName(
+                      endpointUuid == null ? null : endpointNames.get(endpointUuid));
                   return info;
                 });
 
@@ -242,6 +260,23 @@ public class PerfAdvisorService {
     COLLECTOR_ONLY,
     /** PA collector enabled with advanced observability. */
     ADVANCED,
+    /**
+     * PA collector enabled with the data forwarded to an external Perf Advisor. The collector still
+     * scrapes in the yugaware container, so it costs the same there as COLLECTOR_ONLY; nothing is
+     * stored locally or remote-written, so it costs nothing in prometheus. Charging the full
+     * collector budget over-estimates - the local PA database stays empty - but erring high on a
+     * memory precheck is the safe direction.
+     */
+    ONLINE,
+  }
+
+  /** The memory mode a registration mode consumes. */
+  public static PaMemoryMode toMemoryMode(PaRegistrationMode mode) {
+    return switch (mode) {
+      case BASIC -> PaMemoryMode.COLLECTOR_ONLY;
+      case ADVANCED -> PaMemoryMode.ADVANCED;
+      case ONLINE -> PaMemoryMode.ONLINE;
+    };
   }
 
   /**
@@ -353,6 +388,7 @@ public class PerfAdvisorService {
         return 0;
       case COLLECTOR_ONLY:
       case ADVANCED:
+      case ONLINE:
         return confGetter.getGlobalConf(GlobalConfKeys.paMemoryPerNodePaCollectorMb);
     }
     throw new IllegalArgumentException("Unknown PaMemoryMode: " + mode);
@@ -367,6 +403,7 @@ public class PerfAdvisorService {
     switch (mode) {
       case NONE:
       case COLLECTOR_ONLY:
+      case ONLINE:
         return 0;
       case ADVANCED:
         int totalMb =
@@ -456,7 +493,10 @@ public class PerfAdvisorService {
   }
 
   public void putUniverse(
-      PACollector paCollector, Universe universe, boolean advancedObservability) {
+      PACollector paCollector,
+      Universe universe,
+      PaRegistrationMode mode,
+      List<UUID> exportConfigIds) {
     RuntimeConfig<Universe> runtimeConfig = configFactory.forUniverse(universe);
 
     boolean dbQueryApiEnabled =
@@ -476,8 +516,32 @@ public class PerfAdvisorService {
             .setDataMountPoints(splitMountPoints(MetricQueryHelper.getDataMountPoints(universe)))
             .setOtherMountPoints(
                 splitMountPoints(MetricQueryHelper.getOtherMountPoints(confGetter, universe)))
-            .setMetricsExportToPrometheusEnabled(advancedObservability);
+            .setMetricsExportToPrometheusEnabled(mode.isMetricsExportToPrometheusEnabled())
+            .setCollectionMode(mode.getCollectionMode())
+            .setExportConfigIds(mode.requiresExportConfig() ? exportConfigIds : null);
     client.putUniverseMetadata(paCollector, universeMetadata);
+  }
+
+  public List<PerfAdvisorClient.ExportConfig> listExportConfigs(PACollector collector) {
+    return client.listExportConfigs(collector);
+  }
+
+  public PerfAdvisorClient.ExportConfig getExportConfig(PACollector collector, UUID configUuid) {
+    return client.getExportConfig(collector, configUuid);
+  }
+
+  public PerfAdvisorClient.ExportConfig createExportConfig(
+      PACollector collector, PerfAdvisorClient.ExportConfig config) {
+    return client.createExportConfig(collector, config);
+  }
+
+  public PerfAdvisorClient.ExportConfig updateExportConfig(
+      PACollector collector, PerfAdvisorClient.ExportConfig config) {
+    return client.updateExportConfig(collector, config);
+  }
+
+  public void deleteExportConfig(PACollector collector, UUID configUuid) {
+    client.deleteExportConfig(collector, configUuid);
   }
 
   public void deleteUniverse(PACollector paCollector, Universe universe) {

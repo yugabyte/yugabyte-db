@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.common.pa.PaRegistrationMode;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.swagger.annotations.ApiModel;
@@ -29,6 +30,15 @@ public class PaUniverseInfo {
 
   @ApiModelProperty(value = "Whether advanced observability (metrics export) is enabled")
   private boolean advancedObservability;
+
+  @ApiModelProperty(value = "How the universe is registered with the collector")
+  private PaRegistrationMode mode;
+
+  @ApiModelProperty(value = "Perf Advisor Endpoint UUID, set for ONLINE mode only")
+  private UUID paEndpointUuid;
+
+  @ApiModelProperty(value = "Perf Advisor Endpoint name, set for ONLINE mode only")
+  private String paEndpointName;
 
   @Getter
   public enum SortBy implements PagedQuery.SortByIF {
