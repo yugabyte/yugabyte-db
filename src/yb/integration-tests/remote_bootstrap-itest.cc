@@ -2371,14 +2371,22 @@ RemoteBootstrapITest::FindTablet(
 }
 
 TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
+  // Tombstoning the tablet and shutting the tserver down races with the load balancer's leader
+  // balancing, whose stepdown to that peer then fails. Both the master and the Raft leader suppress
+  // further stepdowns to that peer for min_leader_stepdown_retry_interval_ms, which by default
+  // outlasts the wait for the bootstrapped peer to become leader below.
+  const string kFastStepdownRetry = "--min_leader_stepdown_retry_interval_ms=1000";
+
   vector<string> master_flags;
   master_flags.push_back("--TEST_system_table_num_tablets=3");
+  master_flags.push_back(kFastStepdownRetry);
 
   vector<string> ts_flags = GetTserverFlagsForFasterWalGc();
   // Enable lazy superblock flush.
   ts_flags.push_back("--lazily_flush_superblock=true");
   // Skip flushing superblock on table flush.
   ts_flags.push_back("--TEST_skip_force_superblock_flush=true");
+  ts_flags.push_back(kFastStepdownRetry);
 
   ASSERT_NO_FATALS(StartCluster(
       ts_flags, master_flags, /* num_tablet_servers = */ 3, /* enable_ysql = */ true));
