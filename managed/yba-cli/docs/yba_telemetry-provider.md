@@ -40,8 +40,12 @@ yba telemetry-provider [flags]
 * [yba telemetry-provider datadog](yba_telemetry-provider_datadog.md)	 - Manage a YugabyteDB Anywhere DataDog telemetry provider
 * [yba telemetry-provider delete](yba_telemetry-provider_delete.md)	 - Delete a YugabyteDB Anywhere telemetry provider
 * [yba telemetry-provider describe](yba_telemetry-provider_describe.md)	 - Describe a YugabyteDB Anywhere telemetry provider
+* [yba telemetry-provider dynatrace](yba_telemetry-provider_dynatrace.md)	 - Manage a YugabyteDB Anywhere Dynatrace telemetry provider
 * [yba telemetry-provider gcpcloudmonitoring](yba_telemetry-provider_gcpcloudmonitoring.md)	 - Manage a YugabyteDB Anywhere GCP Cloud Monitoring telemetry provider
 * [yba telemetry-provider list](yba_telemetry-provider_list.md)	 - List YugabyteDB Anywhere telemetry providers
 * [yba telemetry-provider loki](yba_telemetry-provider_loki.md)	 - Manage a YugabyteDB Anywhere Loki telemetry provider
+* [yba telemetry-provider otlp](yba_telemetry-provider_otlp.md)	 - Manage a YugabyteDB Anywhere OTLP telemetry provider
+* [yba telemetry-provider s3](yba_telemetry-provider_s3.md)	 - Manage a YugabyteDB Anywhere S3 telemetry provider
 * [yba telemetry-provider splunk](yba_telemetry-provider_splunk.md)	 - Manage a YugabyteDB Anywhere Splunk telemetry provider
+* [yba telemetry-provider types](yba_telemetry-provider_types.md)	 - List available YugabyteDB Anywhere telemetry provider types
 
