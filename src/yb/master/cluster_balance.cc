@@ -275,11 +275,6 @@ Status ClusterLoadBalancer::PopulateReplicationInfo(
   if (state_->placement_.num_replicas() == 0 && has_read_replicas) {
     state_->placement_.set_num_replicas(FLAGS_replication_factor);
   }
-  if (std::ranges::any_of(
-          state_->placement_.placement_blocks(),
-          [](const auto& block) { return block.has_max_num_replicas(); })) {
-    RETURN_NOT_OK(CatalogManagerUtil::IsPlacementInfoValid(state_->placement_));
-  }
   if (state_->placement_.placement_blocks().empty()) {
     // Wildcard placement matches all tservers.
     state_->placement_.add_placement_blocks()->CopyFrom(PlacementBlockPB());
@@ -955,7 +950,10 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
       //
       // Do the placement check for both the cases.
       // If we have missing placements then this check is a tautology otherwise it matters.
-      bool can_choose_ts = VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid));
+      // There is no source tserver for this add, so pass an empty from_ts: placement maximums
+      // are enforced strictly, with no same-block move exemption.
+      bool can_choose_ts = VERIFY_RESULT(
+          state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, "" /* from_ts */));
       // If we've passed the checks, then we can choose this TS to add the replica to.
       if (can_choose_ts) {
         *out_to_ts = ts_uuid;
@@ -979,7 +977,7 @@ Result<bool> ClusterLoadBalancer::HandleAddIfOverMaxPlacement(
     if (tablet_meta.is_over_replicated) {
       continue;
     }
-    for (const auto& from_ts : tablet_meta.over_max_replicated_tablet_servers) {
+    for (const auto& from_ts : tablet_meta.over_max_placement_tablet_servers) {
       const auto from_placement = state_->GetValidPlacement(from_ts);
       for (const auto& to_ts : state_->sorted_load_) {
         const auto to_placement = state_->GetValidPlacement(to_ts);
@@ -1079,14 +1077,17 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
 
   // Missing placements / under-replicated tablets are handled in ProcessUnderReplicatedTablets.
 
-  if (VERIFY_RESULT(
-          HandleAddIfOverMaxPlacement(out_tablet_id, out_from_ts, out_to_ts))) {
-    return true;
-  }
-
   // Handle wrong placements as next priority, as these could be servers we're moving off of, so
   // we can decommission ASAP.
   if (VERIFY_RESULT(HandleAddIfWrongPlacement(out_tablet_id, out_from_ts, out_to_ts))) {
+    return true;
+  }
+
+  // Then handle placement blocks with more replicas than their configured maximum. This is lower
+  // priority than draining blacklisted or wrongly-placed servers, which block node
+  // decommissioning, but takes precedence over normal load balancing.
+  if (VERIFY_RESULT(
+          HandleAddIfOverMaxPlacement(out_tablet_id, out_from_ts, out_to_ts))) {
     return true;
   }
 

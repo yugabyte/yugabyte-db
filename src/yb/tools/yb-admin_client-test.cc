@@ -12,7 +12,6 @@
 
 #include <gmock/gmock.h>
 
-#include "yb/common/common_flags.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_ddl.pb.h"
@@ -434,15 +433,21 @@ TEST(CatalogManagerUtilTest, MaxNumReplicasValidation) {
   ASSERT_NOK_STR_CONTAINS(
       master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, 1)),
       "total maximum replica count (2)");
-  {
-    google::FlagSaver flag_saver;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_placement_block_max_num_replicas) = false;
-    ASSERT_NOK_STR_CONTAINS(
-        master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, 1)),
-        "total maximum replica count (2)");
-  }
   ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, -1)));
   ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(2, 3, 3)));
+
+  // Explicit maxima are only supported on fully-specified (non-wildcard) placement blocks.
+  {
+    auto placement_info = make_placement(2, 2, -1);
+    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->clear_placement_zone();
+    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->set_placement_region("r2");
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::IsPlacementInfoValid(placement_info),
+        "max_num_replicas is not supported for wildcard placement blocks");
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
+        "max_num_replicas is not supported for wildcard placement blocks");
+  }
 }
 
 }  // namespace tools

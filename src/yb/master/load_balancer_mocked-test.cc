@@ -933,6 +933,9 @@ TEST_F(LoadBalancerRF5MaxReplicasMockedTest, RepairPlacementAboveMaximum) {
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
   std::string tablet_id, from_ts, to_ts;
+  // The tablet is at its target replication factor, so nothing is over-replicated. The maximum
+  // violation must be repaired add-before-remove: a bare remove would under-replicate the tablet.
+  ASSERT_FALSE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
   ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a003")));
   ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
   ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
@@ -958,19 +961,150 @@ TEST_F(LoadBalancerRF5MaxReplicasMockedTest, RepairPlacementAboveMaximum) {
       CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a003", remaining_source)));
 }
 
-TEST_F(LoadBalancerRF5MaxReplicasMockedTest, RejectInvalidMaximumsOnActivation) {
-  google::FlagSaver flag_saver;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_placement_block_max_num_replicas) = false;
-  PrepareTestStateMultiAz();
+TEST_F(LoadBalancerRF5MaxReplicasMockedTest, UnderReplicationPrioritizedOverMaxPlacement) {
+  // A tablet that is both under-replicated (a placement is missing replicas) and above a
+  // placement maximum must have its under-replication fixed first.
+  TSDescriptorVector tservers = {
+      SetupTS("a000", "a"), SetupTS("a001", "a"), SetupTS("a002", "a"),
+      SetupTS("b000", "b"),
+      SetupTS("c000", "c"), SetupTS("c001", "c")};
+  PrepareTestState(tservers);
   SetupClusterConfig({"a", "b", "c"}, &replication_info_, /* num_replicas */ 5);
+  for (auto& block : *replication_info_.mutable_live_replicas()->mutable_placement_blocks()) {
+    block.set_max_num_replicas(2);
+  }
+
+  // Shape the tablet to a(3), b(1), c(0): 4 replicas, under-replicated in c and above the
+  // maximum in a.
+  RemoveReplica(tablets_[0].get(), tservers[4]);
+  RemoveReplica(tablets_[0].get(), tservers[5]);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  // The first action must be an add into the under-replicated placement c, not the over-max
+  // move out of a.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleOneAddIfMissingPlacement(tablet_id, to_ts)));
+  ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
+  ASSERT_TRUE(to_ts == "c000" || to_ts == "c001");
+
+  auto find_tserver = [&tservers](const TabletServerId& uuid) {
+    return *std::find_if(tservers.begin(), tservers.end(), [&uuid](const auto& ts) {
+      return ts->permanent_uuid() == uuid;
+    });
+  };
+
+  // Once the under-replication is repaired, the balancer moves a replica out of the over-max
+  // placement a (add first, to the remaining tserver in c).
+  AddRunningReplica(tablets_[0].get(), find_tserver(to_ts));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  const auto remaining_c_ts = to_ts == "c000" ? "c001" : "c000";
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
+  ASSERT_TRUE(from_ts == "a000" || from_ts == "a001" || from_ts == "a002");
+  ASSERT_EQ(to_ts, remaining_c_ts);
+
+  // And once that add completes, the now over-replicated tablet drops a replica from a.
+  AddRunningReplica(tablets_[0].get(), find_tserver(to_ts));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
+  ASSERT_TRUE(from_ts == "a000" || from_ts == "a001" || from_ts == "a002");
+}
+
+class LoadBalancerMaxReplicasBlacklistMockedTest : public LoadBalancerMockedTest {
+  int NumTablets() const override { return 1; }
+};
+
+TEST_F(LoadBalancerMaxReplicasBlacklistMockedTest, BlacklistedMoveAllowedAtMaxPlacement) {
+  // Draining a blacklisted tserver must not be blocked by max_num_replicas: a same-block move
+  // temporarily exceeds the maximum (add-before-remove) and completes.
+  TSDescriptorVector tservers = {
+      SetupTS("a000", "a"), SetupTS("a001", "a"),
+      SetupTS("b000", "b"),
+      SetupTS("c000", "c")};
+  PrepareTestState(tservers);
+  SetupClusterConfig({"a", "b", "c"}, &replication_info_, /* num_replicas */ 3);
   for (auto& block : *replication_info_.mutable_live_replicas()->mutable_placement_blocks()) {
     block.set_max_num_replicas(1);
   }
-  ASSERT_NOK_STR_CONTAINS(
-      ResetLoadBalancerAndAnalyzeTablets(), "total maximum replica count (3)");
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_placement_block_max_num_replicas) = true;
-  ASSERT_NOK_STR_CONTAINS(
-      ResetLoadBalancerAndAnalyzeTablets(), "total maximum replica count (3)");
+  // Shape the tablet to a000, b000, c000 and blacklist a000.
+  RemoveReplica(tablets_[0].get(), tservers[1]);
+  blacklist_.add_hosts()->set_host(tservers[0]->permanent_uuid());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  // A regular add to a001 is rejected: placement a is at its maximum.
+  ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a001")));
+  // But the blacklist-driven move from a000 is allowed through, because the remove that follows
+  // restores the placement to its maximum.
+  ASSERT_TRUE(ASSERT_RESULT(
+      CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a001", "a000")));
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
+  ASSERT_EQ(from_ts, "a000");
+  ASSERT_EQ(to_ts, "a001");
+
+  // Once the add completes, the blacklisted replica is removed.
+  AddRunningReplica(tablets_[0].get(), tservers[1]);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
+  ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
+  ASSERT_EQ(from_ts, "a000");
+}
+
+class LoadBalancerRF5MaxReplicasManyTabletsMockedTest : public LoadBalancerRF5MockedTest {
+  int NumTablets() const override { return 4; }
+};
+
+TEST_F(LoadBalancerRF5MaxReplicasManyTabletsMockedTest, BalancedLoadStillRepairsOverMaxPlacement) {
+  // Construct a layout where every tserver hosts exactly two replicas of this table (so plain
+  // load balancing sees nothing to do), yet every tablet individually has three replicas in
+  // zone a, above the maximum of two. Only max_num_replicas enforcement can repair this.
+  TSDescriptorVector tservers = {
+      SetupTS("a000", "a"), SetupTS("a001", "a"), SetupTS("a002", "a"),
+      SetupTS("a003", "a"), SetupTS("a004", "a"), SetupTS("a005", "a"),
+      SetupTS("b000", "b"), SetupTS("b001", "b"),
+      SetupTS("c000", "c"), SetupTS("c001", "c")};
+  PrepareTestState(tservers);
+  SetupClusterConfig({"a", "b", "c"}, &replication_info_, /* num_replicas */ 5);
+
+  // Tablet layouts (each keeps 3 replicas in a, 1 in b, 1 in c; every tserver ends up with
+  // exactly 2 replicas of this table):
+  //   t0: a000, a001, a002, b000, c000
+  //   t1: a003, a004, a005, b000, c000
+  //   t2: a000, a001, a002, b001, c001
+  //   t3: a003, a004, a005, b001, c001
+  const std::vector<std::vector<size_t>> keep_indexes = {
+      {0, 1, 2, 6, 8}, {3, 4, 5, 6, 8}, {0, 1, 2, 7, 9}, {3, 4, 5, 7, 9}};
+  for (size_t i = 0; i < tablets_.size(); ++i) {
+    for (size_t j = 0; j < tservers.size(); ++j) {
+      if (std::find(keep_indexes[i].begin(), keep_indexes[i].end(), j) ==
+          keep_indexes[i].end()) {
+        RemoveReplica(tablets_[i].get(), tservers[j]);
+      }
+    }
+  }
+
+  // Without explicit maximums the load balancer considers this layout final: per-tserver load is
+  // perfectly balanced and every placement has its minimum.
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_FALSE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
+
+  // With maximums of two per block, the balancer starts moving replicas out of zone a for every
+  // tablet, even though the load looks balanced.
+  for (auto& block : *replication_info_.mutable_live_replicas()->mutable_placement_blocks()) {
+    block.set_max_num_replicas(2);
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
+  for (size_t i = 0; i < tablets_.size(); ++i) {
+    ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+    ASSERT_EQ(from_ts[0], 'a');
+    ASSERT_TRUE(to_ts[0] == 'b' || to_ts[0] == 'c');
+  }
+  // Each tablet can only be handled once per run.
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
 }
 
 TEST_F(LoadBalancerRF5MockedTest, TestUnderReplicatedPriority) {

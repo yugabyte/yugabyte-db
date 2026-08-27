@@ -19,8 +19,6 @@
 #include <string>
 #include <utility>
 
-#include "yb/common/common_flags.h"
-
 #include "yb/util/logging.h"
 
 namespace yb {
@@ -42,7 +40,7 @@ CloudInfoPB MakeCloudInfoPB(std::string&& cloud, std::string&& region, std::stri
 
 int32_t GetEffectiveMaxNumReplicas(
     const PlacementBlockPB& placement_block, int32_t resolved_placement_rf) {
-  return FLAGS_enable_placement_block_max_num_replicas && placement_block.has_max_num_replicas()
+  return placement_block.has_max_num_replicas()
       ? placement_block.max_num_replicas()
       : resolved_placement_rf;
 }
@@ -177,25 +175,56 @@ bool PlacementInfoContainsPlacementInfo(const PlacementInfoPB& lhs, const Placem
         [](const auto& block) { return block.has_max_num_replicas(); });
   };
   if (has_explicit_max(lhs) || has_explicit_max(rhs)) {
-    if (lhs.num_replicas() != rhs.num_replicas() ||
-        lhs.placement_blocks_size() != rhs.placement_blocks_size()) {
+    // Explicit maxima are only supported on fully-specified (non-wildcard) placement blocks.
+    // Conservatively treat any combination of explicit maxima and wildcard blocks as not
+    // contained; the prefix-matching logic below cannot attribute per-block caps to wildcard
+    // blocks.
+    const auto has_wildcard_block = [](const PlacementInfoPB& placement) {
+      return std::ranges::any_of(placement.placement_blocks(), [](const auto& block) {
+        const auto& ci = block.cloud_info();
+        return !ci.has_placement_cloud() || !ci.has_placement_region() ||
+               !ci.has_placement_zone();
+      });
+    };
+    if (has_wildcard_block(lhs) || has_wildcard_block(rhs)) {
       return false;
     }
-    for (const auto& lhs_block : lhs.placement_blocks()) {
-      const auto rhs_block = std::ranges::find_if(
-          rhs.placement_blocks(), [&lhs_block](const auto& block) {
-            return IsCloudInfoEqual(lhs_block.cloud_info(), block.cloud_info());
+    // With fully-specified, non-overlapping blocks, blocks match by exact equality. Verify that
+    // every replica rhs may legally place is accepted by lhs:
+    // 1. rhs's minimum in a block must fit under lhs's cap for the same block. A block missing
+    //    from lhs has an effective lhs cap of 0.
+    // 2. The maximum number of replicas rhs can actually put in a block (bounded by its own cap
+    //    and by the other blocks' minimums) must fit under lhs's cap for the block. Otherwise a
+    //    placement that is valid under rhs would violate lhs.
+    // 3. The total capacity lhs grants across rhs's blocks must cover all rhs replicas.
+    int64_t rhs_min_sum = 0;
+    for (const auto& rhs_block : rhs.placement_blocks()) {
+      rhs_min_sum += rhs_block.min_num_replicas();
+    }
+    int64_t total_common_capacity = 0;
+    for (const auto& rhs_block : rhs.placement_blocks()) {
+      const auto lhs_block = std::ranges::find_if(
+          lhs.placement_blocks(), [&rhs_block](const auto& block) {
+            return IsCloudInfoEqual(block.cloud_info(), rhs_block.cloud_info());
           });
-      if (rhs_block == rhs.placement_blocks().end() ||
-          lhs_block.min_num_replicas() != rhs_block->min_num_replicas() ||
-          (lhs_block.has_max_num_replicas() ? lhs_block.max_num_replicas()
-                                            : lhs.num_replicas()) !=
-              (rhs_block->has_max_num_replicas() ? rhs_block->max_num_replicas()
-                                                 : rhs.num_replicas())) {
+      const int64_t lhs_cap = lhs_block == lhs.placement_blocks().end()
+          ? 0
+          : GetEffectiveMaxNumReplicas(*lhs_block, lhs.num_replicas());
+      if (rhs_block.min_num_replicas() > lhs_cap) {
         return false;
       }
+      const int64_t rhs_cap = GetEffectiveMaxNumReplicas(rhs_block, rhs.num_replicas());
+      const int64_t rhs_achievable_max = std::min<int64_t>(
+          rhs_cap, rhs.num_replicas() - (rhs_min_sum - rhs_block.min_num_replicas()));
+      if (rhs_achievable_max > lhs_cap) {
+        return false;
+      }
+      total_common_capacity += std::min(lhs_cap, rhs_cap);
     }
-    return true;
+    if (total_common_capacity < rhs.num_replicas()) {
+      return false;
+    }
+    // Fall through to the generic minimum-replica matching below.
   }
 
   // Basic idea is to try to match replicas of RHS to as specific as possible replicas of LHS.
