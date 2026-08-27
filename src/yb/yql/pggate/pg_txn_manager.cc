@@ -256,14 +256,13 @@ PgTxnManager::PgTxnManager(
       pg_callbacks_(pg_callbacks),
       enable_table_locking_(enable_table_locking) {}
 
-bool PgTxnManager::ShouldEnableTableLocking() const {
-  VLOG_WITH_FUNC(1) << "enable_table_locking_: " << enable_table_locking_
-                    << " enable_object_locking_infra: " << enable_object_locking_infra;
-  return enable_table_locking_ && enable_object_locking_infra;
-}
-
 bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
-  return using_table_locks_;
+  // Computed rather than latched: enable_table_locking_ is fixed for the session and
+  // YBCIsObjectLockingInfraEnabled() is a snapshot PG takes once per transaction, so the result
+  // cannot change under an open transaction.
+  VLOG_WITH_FUNC(1) << "enable_table_locking_: " << enable_table_locking_
+                    << " object locking infra: " << YBCIsObjectLockingInfraEnabled();
+  return enable_table_locking_ && YBCIsObjectLockingInfraEnabled();
 }
 
 PgTxnManager::~PgTxnManager() = default;
@@ -287,9 +286,6 @@ Status PgTxnManager::BeginTransaction(int64_t start_time) {
   }
 
   pg_txn_start_us_ = start_time;
-  // Table Locking auto flag can only go from off -> on. Not the other way around.
-  using_table_locks_ = using_table_locks_ || ShouldEnableTableLocking();
-  VLOG_WITH_FUNC(1) << "using_table_locks_: " << using_table_locks_;
   // NOTE: Do not reset in_txn_blk_ when restarting txns internally
   // (i.e., via PgTxnManager::RecreateTransaction).
   in_txn_blk_ = false;
@@ -936,7 +932,7 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_active_sub_transaction_id(active_sub_transaction_id_);
   options.set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
   options.set_pg_txn_start_us(pg_txn_start_us_);
-  options.set_is_using_table_locks(using_table_locks_);
+  options.set_is_using_table_locks(IsTableLockingEnabledForCurrentTxn());
   // Follower reads are applicable on user tables and as such catalog ops bypass it.
   options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);
 

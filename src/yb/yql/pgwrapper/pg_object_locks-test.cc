@@ -914,6 +914,11 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     // Start off with the flag disabled.
     opts->extra_tserver_flags.emplace_back("--ysql_enable_object_locking_infra=false");
+    // ysql_enable_concurrent_ddl defaults to kEnableDdlTransactionBlocks, which is only true in
+    // release builds. YBCIsLegacyModeForCatalogOps() is pinned to legacy without it, which would
+    // leave the promotion unobservable in the catalog op mode, so pin it on for every build type.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 };
 
@@ -1002,6 +1007,60 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestConcurrentTxnsMayNotTakeTabl
 
   // The DML should NOT fail because it can get the table lock.
   ASSERT_OK(conn2.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
+}
+
+// The object locking infra auto flag is latched once per transaction. A transaction that began
+// before the promotion must not switch to the object locking catalog op mode partway through:
+// catalog reads would move from the legacy catalog session to the transactional session with a
+// catalog snapshot read time, changing catalog visibility under an open transaction.
+//
+// The switch is observed through the read point that PgSession::UpdateReadPointForCatalogOps()
+// logs under yb_debug_log_snapshot_mgmt, which runs only on the non-legacy path.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestCatalogOpModeStableAcrossPromotion) {
+  const std::string kCatalogSnapshotLogLine = "Using catalog snapshot read time serial number";
+  {
+    auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+    ASSERT_OK(conn.Execute("CREATE DATABASE testdb;"));
+    conn = ASSERT_RESULT(ConnectToDB("testdb"));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  }
+
+  auto* ts1 = cluster_->tablet_server(0);
+  auto admin = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "testdb"));
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "testdb"));
+  ASSERT_OK(conn.Execute("SET yb_debug_log_snapshot_mgmt = true"));
+
+  {
+    LogWaiter log_waiter(ts1, kCatalogSnapshotLogLine);
+
+    // This transaction latches the pre-promotion value of the auto flag.
+    ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+    ASSERT_OK(conn.FetchAllAsString("SELECT * FROM test"));
+
+    ASSERT_OK(cluster_->SetFlag(ts1, "ysql_enable_object_locking_infra", "true"));
+
+    // Catalog work after the promotion, including a relation this backend has never seen, so the
+    // lookup cannot be served from its caches and has to issue a catalog read.
+    ASSERT_OK(admin.Execute("CREATE TABLE cold(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.FetchAllAsString("SELECT * FROM cold"));
+    ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
+    ASSERT_OK(conn.Execute("COMMIT"));
+
+    ASSERT_FALSE(log_waiter.IsEventOccurred())
+        << "Transaction switched to the object locking catalog op mode after it had already "
+        << "started: " << log_waiter.matched_log_line();
+  }
+
+  // The next transaction latches the promoted value and does use the new catalog op mode. It needs
+  // a catalog read of its own, so read another relation this backend has not seen before.
+  {
+    ASSERT_OK(admin.Execute("CREATE TABLE cold2(k INT PRIMARY KEY, v INT)"));
+    LogWaiter log_waiter(ts1, kCatalogSnapshotLogLine);
+    ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+    ASSERT_OK(conn.FetchAllAsString("SELECT * FROM cold2"));
+    ASSERT_OK(conn.Execute("COMMIT"));
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+  }
 }
 
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {

@@ -943,8 +943,23 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
   return YBCPAllocStdString(ToString(doc_key.range_group()));
 }
 
+// False until PG makes the first YBCSetObjectLockingInfraForCurrTxn() call of the backend from
+// StartTransaction. PgTxnManager only reads it from BeginTransaction onwards, so the
+// is_using_table_locks it sends to the tserver never comes from the unset value. The PG side does
+// read it earlier, at least from YBCIsLegacyModeForCatalogOps during sys table prefetching, where
+// YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
+static bool object_locking_infra_for_curr_txn = false;
+
+void YBCSetObjectLockingInfraForCurrTxn() {
+  object_locking_infra_for_curr_txn = enable_object_locking_infra;
+}
+
+bool YBCIsObjectLockingInfraEnabled() {
+  return object_locking_infra_for_curr_txn;
+}
+
 bool YBCIsObjectLockingEnabled() {
-  return FLAGS_enable_object_locking_for_table_locks && enable_object_locking_infra;
+  return FLAGS_enable_object_locking_for_table_locks && YBCIsObjectLockingInfraEnabled();
 }
 
 bool YBCIsAutoAnalyzeEnabled() {
