@@ -103,6 +103,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
 
 Status ScopedLeaderSharedLock::Lock() NO_THREAD_SAFETY_ANALYSIS {
   auto uuid = catalog_->master_->fs_manager()->uuid();
+  VLOG(4) << "Locking leader shared lock";
   if (PREDICT_FALSE(catalog_->master_->IsShellMode())) {
     // Consensus and other internal fields should not be checked when in shell mode as they may be
     // in transition.
@@ -148,6 +149,7 @@ ScopedLeaderSharedLock::~ScopedLeaderSharedLock() {
 
 void ScopedLeaderSharedLock::Unlock() {
   if (leader_shared_lock_.owns_lock()) {
+    VLOG(4) << "Unlocking leader shared lock";
     {
       decltype(leader_shared_lock_) lock;
       lock.swap(leader_shared_lock_);

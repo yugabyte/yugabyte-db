@@ -185,15 +185,6 @@ void MasterTabletServer::get_ysql_db_catalog_version(
       *last_breaking_version = UINT64_MAX;
     }
   };
-  // Ensure that we are currently the Leader before handling catalog version.
-  {
-    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-    if (!l.IsInitializedAndIsLeader()) {
-      LOG(WARNING) << l.failed_status_string();
-      fill_vers();
-      return;
-    }
-  }
 
   Status s = db_oid == kPgInvalidOid
                  ? master_->catalog_manager()->GetYsqlCatalogVersion(

@@ -13,8 +13,11 @@
 package org.yb.pgsql;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,21 +44,49 @@ public class BasePgRegressTest extends BasePgSQLTest {
     return flagMap;
   }
 
+  private String getYbHostPortList() {
+    // Collect host:port for all tservers
+    List<String> hostPortList = new ArrayList<>();
+    for (int i = 0; i < miniCluster.getNumTServers(); i++) {
+      String host = getPgHost(i);
+      int port = isTestRunningWithConnectionManager() ?
+          getYsqlConnMgrPort(i) : getPgPort(i);
+      hostPortList.add(host + ":" + port);
+    }
+    return String.join(",", hostPortList);
+  }
+
   public void runPgRegressTest(
-      File inputDir, String schedule, long maxRuntimeMillis, File executable) throws Exception {
+      File inputDir, String schedule, long maxRuntimeMillis, File executable,
+      Boolean use_all_hosts) throws Exception {
     final int tserverIndex = 0;
     PgRegressRunner pgRegress = new PgRegressRunner(inputDir, schedule, maxRuntimeMillis);
-    ProcessBuilder procBuilder = new PgRegressBuilder(executable)
+    PgRegressBuilder pgRegressBuilder = new PgRegressBuilder(executable)
         .setDirs(inputDir, pgRegress.outputDir())
         .setSchedule(schedule)
-        .setHost(getPgHost(tserverIndex))
-        .setPort(ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR ?
-            getYsqlConnMgrPort(tserverIndex) : getPgPort(tserverIndex))
         .setUser(DEFAULT_PG_USER)
         .setDatabase("yugabyte")
-        .setEnvVars(getPgRegressEnvVars())
-        .getProcessBuilder();
+        .setEnvVars(getPgRegressEnvVars());
+    if (use_all_hosts) {
+      LOG.info("Running pg_regress by connecting to PG backends on all tservers: " +
+          getYbHostPortList());
+      pgRegressBuilder.setYbHostPortList(getYbHostPortList());
+    } else {
+      LOG.info("Running pg_regress by connecting to just one tserver: " + getPgHost(tserverIndex));
+      pgRegressBuilder
+        .setHost(getPgHost(tserverIndex))
+        .setPort(ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR ?
+            getYsqlConnMgrPort(tserverIndex) : getPgPort(tserverIndex));
+    }
+    ProcessBuilder procBuilder = pgRegressBuilder.getProcessBuilder();
     pgRegress.run(procBuilder);
+  }
+
+  public void runPgRegressTest(
+      File inputDir, String schedule, long maxRuntimeMillis,
+      File executable) throws Exception {
+    runPgRegressTest(
+        inputDir, schedule, maxRuntimeMillis, executable, false /* use_all_hosts */);
   }
 
   public void runPgRegressTest(File inputDir, String schedule) throws Exception {
@@ -67,7 +98,7 @@ public class BasePgRegressTest extends BasePgSQLTest {
   public void runPgRegressTest(String schedule, long maxRuntimeMillis) throws Exception {
     runPgRegressTest(
         PgRegressBuilder.PG_REGRESS_DIR /* inputDir */, schedule, maxRuntimeMillis,
-        PgRegressBuilder.PG_REGRESS_EXECUTABLE);
+        PgRegressBuilder.PG_REGRESS_EXECUTABLE, false /* use_all_hosts */);
   }
 
   public void runPgRegressTest(String schedule) throws Exception {

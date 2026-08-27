@@ -166,6 +166,15 @@ DEPRECATE_FLAG(int32, max_wait_for_safe_time_ms, "02_2024");
 DEFINE_RUNTIME_int32(num_concurrent_backfills_allowed, -1,
     "Maximum number of concurrent backfill jobs that is allowed to run.");
 
+DEFINE_RUNTIME_bool(yb_fail_catalog_write_on_catalog_version_mismatch, false,
+    "If true, a write to the system catalog (e.g. as part of a DDL) is failed with a catalog "
+    "version mismatch error when the issuing PG backend's catalog version does not match the "
+    "latest catalog version on the master. This guards against catalog corruption caused by DDLs "
+    "issued on related objects within heartbeat delay which leads to execution on possibly stale "
+    "catalog cache. Disabled by default: enabling it can cause "
+    "an unrelated, otherwise-legitimate DDL to fail whenever a concurrent auto-ANALYZE (or any "
+    "other catalog write) bumps the catalog version, even on a completely different table.");
+
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
 
 DEFINE_RUNTIME_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000,
@@ -2707,11 +2716,27 @@ Status TabletServiceImpl::PerformWrite(
         tablet.peer->tablet_metadata()->fs_manager()->uuid());
   }
 
-  // For postgres requests check that the syscatalog version matches.
-  if (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE) {
-    CatalogVersionChecker catalog_version_checker(*server_);
+  // For postgres requests:
+  // 1. For non-system catalog tablets: check that the request has a catalog version higher
+  //    than the breaking version.
+  // 2. For system catalog writes: check the the request has the latest catalog version.
+  const bool is_pgsql_user_table_write =
+      (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE);
+  // Postgres write requests to the system catalog tablet have the type YQL_TABLE_TYPE instead of
+  // PGSQL_TABLE_TYPE, so we detect them via is_sys_catalog() instead.
+  const bool is_sys_catalog_write = !is_pgsql_user_table_write && tablet.tablet->is_sys_catalog();
+
+  const bool perform_catalog_version_check =
+      is_pgsql_user_table_write ||
+      (is_sys_catalog_write && FLAGS_yb_fail_catalog_write_on_catalog_version_mismatch);
+  if (perform_catalog_version_check) {
+    // We want to ensure that a DDL doesn't perform writes to the system catalog based off a stale
+    // catalog cache to avoid issues such as #27597. So for system catalog writes we read the
+    // authoritative catalog version (use_cache=false).
+    CatalogVersionChecker catalog_version_checker(*server_, !is_sys_catalog_write /* use_cache */);
     for (const auto& pg_req : req->pgsql_write_batch()) {
-      RETURN_NOT_OK(catalog_version_checker(pg_req));
+      RETURN_NOT_OK(catalog_version_checker(
+          pg_req, is_sys_catalog_write /* fail_for_non_breaking_version_change */));
     }
   }
 

@@ -153,6 +153,7 @@ DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_object_locking_infra);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(TEST_hide_details_for_pg_regress);
 
 DECLARE_string(ysql_sequence_cache_method);
 
@@ -239,7 +240,8 @@ std::ostream& operator<<(std::ostream& str, const PrefixLogger& logger) {
 std::string GetStatusStringSet(const client::CollectedErrors& errors) {
   std::set<std::string> status_strings;
   for (const auto& error : errors) {
-    status_strings.insert(error->status().ToString());
+    status_strings.insert(error->status().ToString(
+        !FLAGS_TEST_hide_details_for_pg_regress /* include_file_and_line */));
   }
   return RangeToString(status_strings.begin(), status_strings.end());
 }

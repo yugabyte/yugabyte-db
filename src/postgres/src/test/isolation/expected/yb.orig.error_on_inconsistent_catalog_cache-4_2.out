@@ -1,0 +1,22 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_create_table s2_select_table s1_create_default_partition s2_create_another_default_partition s3_select_table
+step s1_create_table: create table part1(id int) partition by range(id);
+step s2_select_table: select * from part1;
+id
+--
+(0 rows)
+
+step s1_create_default_partition: create table part1def partition of part1 default;
+step s2_create_another_default_partition: create table part2def partition of part1 default;
+ERROR:  type "part2def" already exists
+step s3_select_table: SELECT * from part1;
+id
+--
+(0 rows)
+
+pg_sleep
+--------
+        
+(1 row)
+

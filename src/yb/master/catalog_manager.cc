@@ -14652,12 +14652,14 @@ Result<TSDescriptorPtr> CatalogManager::LookupTSByUUID(const TabletServerId& tse
 }
 
 bool CatalogManager::SkipCatalogVersionChecks() {
-  // Only skip if we are leader and the major catalog upgrade is in progress.
-  SCOPED_LEADER_SHARED_LOCK(l, this);
-  if (l.IsInitializedAndIsLeader()) {
-    return ysql_manager_->IsMajorUpgradeInProgress();
+  auto skip = ysql_manager_->IsMajorUpgradeInProgress() || !ysql_manager_->IsInitDbDone();
+  if (skip) {
+    VLOG(1) << "Skipping catalog version checks. Major upgrade in progress: "
+        << ysql_manager_->IsMajorUpgradeInProgress() << ", Init db done: "
+        << ysql_manager_->IsInitDbDone();
   }
-  return false;
+
+  return skip;
 }
 
 void CatalogManager::RemoveNamespaceFromMaps(
