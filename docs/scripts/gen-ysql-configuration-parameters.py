@@ -64,9 +64,8 @@ AREAS = OrderedDict([
     ]),
 ])
 
-# Areas that pg_settings categories don't distinguish. Matched on the parameter name and
-# checked before the category, because these parameters are spread across categories that
-# would otherwise scatter them into the catch-all area.
+# Areas keyed on the parameter name, checked before the category. Extension parameters
+# share the catch-all "Customized Options" category, so only the name separates them.
 NAME_AREAS = OrderedDict([
     # Extension parameters are namespaced as <extension>.<parameter>.
     ("Extension parameters", re.compile(r"\.")),
