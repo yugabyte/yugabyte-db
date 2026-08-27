@@ -40,6 +40,8 @@
 
 #include "yb/client/client.h"
 
+#include "yb/common/transaction_error.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
@@ -1942,9 +1944,11 @@ void TabletPeer::NotifyCommitedAsyncWrites(const OpId& committed_op_id) {
     while (it != in_flight_async_write_queries_.end()) {
       Status status;
       if (it->first.term != committed_op_id.term) {
-        // Stale callback from previous term.
-        status = STATUS_FORMAT(
-            IllegalState, "Unexpected tablet $0 term change. New term: $1, expected term: $2",
+        // Stale callback from previous term. Return NOT_THE_LEADER so the client can retry on
+        // the new leader.
+        status = STATUS_EC_FORMAT(
+            IllegalState, tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER),
+            "Unexpected tablet $0 term change. New term: $1, expected term: $2",
             tablet_id(), committed_op_id.term, it->first.term);
       } else if (it->first.index > committed_op_id.index) {
         break;
@@ -2026,17 +2030,18 @@ Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
     if (op_id.index < first_index) {
       return Status::OK();
     }
-    // Write was lost/overwritten.
-    return STATUS_FORMAT(
-        NotFound,
+    // Write was lost/overwritten. Tag as a transaction abort so that the query layer can
+    // transparently retry the transaction instead of surfacing an internal error.
+    return STATUS_EC_FORMAT(
+        NotFound, TransactionError(TransactionErrorCode::kAborted),
         "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
         "term $2 is $3). Retry the transaction.",
         tablet_id(), op_id, leader_state.term, first_index);
   }
 
   // Two or more terms ago - we can't verify presence without a log lookup.
-  return STATUS_FORMAT(
-      NotFound,
+  return STATUS_EC_FORMAT(
+      NotFound, TransactionError(TransactionErrorCode::kAborted),
       "Tablet $0: tablet leader moved more than once since async write $1 was issued "
       "(write from term $2, current term is $3). Retry the transaction.",
       tablet_id(), op_id, op_id.term, leader_state.term);
