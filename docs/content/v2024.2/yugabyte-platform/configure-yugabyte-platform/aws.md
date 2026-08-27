@@ -137,7 +137,7 @@ To add your own machine images to the catalog:
 
 1. Enter the Amazon Machine Image (AMI) ID to use for each [provider region](#regions).
 
-1. Provide the SSH user and port to use to access the machine image OS. Leave this empty to use the [default SSH user](#ssh-key-pairs).
+1. Provide the SSH user and port to use to access the machine image OS. The SSH user is required; it must have passwordless sudo access and must not be named `yugabyte`. For standard cloud images, use the image's default login user (the user the cloud injects the SSH key into), for example `ec2-user`, `centos`, or `ubuntu`.
 
 1. To configure instances so that the [Instance Metadata Service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html) _requires_ IMDSv2, select the **Use IMDSv2** option (recommended). If **Use IMDSv2** is not selected, the service accepts both IMDSv1 and IMDSv2 requests.
 
@@ -145,20 +145,24 @@ To add your own machine images to the catalog:
 
 To edit custom Linux versions, remove Linux versions, and set a version as the default to use when creating universes, click **...** for the version you want to modify.
 
+If you plan to use the `us-gov-east-1` and `us-gov-west-1` regions, add your own Linux version using a [supported OS](../../../reference/configuration/operating-systems/). Do not use YBA-managed Linux versions for those regions.
+
 ### SSH Key Pairs
 
 To be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YBA requires SSH access.
 
-Enter the SSH user and port to use by default for machine images. You can override these values for custom Linux versions that you add to the Linux Version Catalog.
+{{< note title="SSH User and Port" >}}
+You cannot enter SSH user or port in this section; those fields are disabled. Specify them for each Linux version in the [Linux version catalog](#linux-version-catalog). The key pair you configure here is used to authenticate as that SSH user.
+{{< /note >}}
+
+YBA-managed Linux versions use `ec2-user`.
 
 You can manage SSH key pairs in the following ways:
 
 - Enable YBA to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, YBA creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future EC2 instances.
-- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content, and the corresponding SSH user. This information must be the same across all the regions you provision.
+- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content. This information must be the same across all the regions you provision.
 
 If you use YBA to manage SSH Key Pairs for you and you deploy multiple YBA instances across your environment, then the AWS provider name should be unique for each instance of YBA integrating with a given AWS account.
-
-If you are using a YBA-managed AMI and plan to use the `us-gov-east-1` and `us-gov-west-1` regions, you must set the SSH user to `centos` as these regions use CentOS 7 (as opposed to the default Alma 8 used for other regions). If you don't set the SSH user accordingly, universe deployment to these regions will fail.
 
 ### Advanced
 
