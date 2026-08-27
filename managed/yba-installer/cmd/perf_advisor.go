@@ -294,8 +294,10 @@ func (perf PerfAdvisor) MigrateFromReplicated() error   { return nil }
 func (perf PerfAdvisor) FinishReplicatedMigrate() error { return nil }
 func (perf PerfAdvisor) PreUpgrade() error              { return nil }
 
-// Upgrade will upgrade the perf advisor and install it into the alt install directory.
-// Upgrade will NOT restart the service, the old version is expected to still be running
+// Upgrade installs the bundled perf advisor into the new software directory and generates its
+// config. It also serves as the first install when perfAdvisor.enabled was turned on since the
+// previous upgrade, so it must not depend on a prior install. It does not restart a running old
+// version; the caller does.
 func (perf PerfAdvisor) Upgrade() error {
 	log.Info("Starting Perf Advisor upgrade")
 	perf.perfAdvisorDirectories = newPerfAdvisorDirectories(perf.version)
@@ -316,6 +318,9 @@ func (perf PerfAdvisor) Upgrade() error {
 			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
 			return err
 		}
+	}
+	if err := ensurePerfAdvisorTLSKeystore(); err != nil {
+		return fmt.Errorf("ensure Perf Advisor TLS keystore: %w", err)
 	}
 	err := perf.Start()
 	log.Info("Finished Perf Advisor upgrade")
