@@ -2217,6 +2217,24 @@ Status validate_and_sync_cdc_state_table_entries_on_change_data_stream_action(
   return Status::OK();
 }
 
+const auto cleanup_stale_cdc_streams_args = "[dry_run] (default false)";
+Status cleanup_stale_cdc_streams_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  bool dry_run = false;
+  if (args.size() > 0) {
+    if (IsEqCaseInsensitive(args[0], "dry_run")) {
+      dry_run = true;
+    } else {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      client->CleanupStaleCDCStreams(dry_run),
+      "Failed to cleanup stale CDC streams");
+  return Status::OK();
+}
+
 const auto setup_universe_replication_args =
     "<producer_universe_uuid> <producer_master_addresses> "
     "<comma_separated_list_of_table_ids> [<comma_separated_list_of_producer_bootstrap_ids>] "
@@ -3160,6 +3178,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
   REGISTER_COMMAND(remove_user_table_from_change_data_stream);
   REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
+  REGISTER_COMMAND(cleanup_stale_cdc_streams);
   // xCluster Source commands
   REGISTER_COMMAND(bootstrap_cdc_producer);
   REGISTER_COMMAND(list_cdc_streams);
