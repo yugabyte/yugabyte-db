@@ -7,10 +7,11 @@ receivers:
     multiline: {line_start_pattern: '([A-Z]\d{4})|((?P<timestamp_with_ms>\d{4}-\d{2}-\d{2}
         \d{2}:\d{2}:\d{2}[.]\d{3} \w{3})[ ][[](?P<process_id>\d+)[]][ ])'}
     operators:
-    - {type: filter, expr: 'body not matches "^.*\\w+:  AUDIT:(.|\\n|\\r|\\s)*$"'}
+    - {type: filter, expr: 'body not matches "^.*\\w+:  (?:[0-9A-Z]{5}: )?AUDIT:(.|\\n|\\r|\\s)*$"'}
     - type: regex_parser
       regex: '(?P<timestamp_with_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[.]\d{3} \w{3})[
-        ][[](?P<process_id>\d+)[]][ ](?P<log_level>\w+):  AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\n|\r|\s)*)'
+        ][[](?P<process_id>\d+)[]][ ](?P<log_level>\w+):  (?:[0-9A-Z]{5}: )?AUDIT:
+        (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\n|\r|\s)*)'
       on_error: drop
       timestamp: {parse_from: attributes.timestamp_with_ms, layout: '%Y-%m-%d %H:%M:%S.%L
           %Z'}
