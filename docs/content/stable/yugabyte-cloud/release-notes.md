@@ -25,7 +25,7 @@ rightNav:
 
 ##### New feature
 
-- {{<tags/feature/ea>}}Use [Resource Governance](./cloud-clusters/resource-governance/) to safely consolidate many independent YSQL databases on a single YugabyteDB cluster. Resource Governance provides multitenancy for YSQL databases, with predictable CPU allocation during periods of contention, allowing you to increase infrastructure density without introducing noisy-neighbor problems. To try this feature, contact {{% support-cloud %}}.
+- {{<tags/feature/ea>}}Support for multitenancy. Safely consolidate many independent YSQL databases on a single YugabyteDB cluster using [Resource Governance](../cloud-clusters/resource-governance/). Resource Governance provides multitenancy for YSQL databases, with predictable CPU allocation during periods of contention, allowing you to increase infrastructure density without introducing noisy-neighbor problems. To try this feature, contact {{% support-cloud %}}.
 
 ##### Improvements
 
