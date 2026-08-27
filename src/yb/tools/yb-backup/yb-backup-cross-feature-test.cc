@@ -1360,8 +1360,8 @@ TEST_F(
   --------------------------+-------------+------+-------+----------
    colocation_restore_16387 | postgres    | t1   | table | yugabyte
    colocation_restore_16387 | postgres    | t5   | table | yugabyte
-   colocation_restore_16393 | postgres    | t2   | table | yugabyte
-   colocation_restore_16399 | postgres    | t3   | table | yugabyte
+   colocation_restore_16394 | postgres    | t2   | table | yugabyte
+   colocation_restore_16401 | postgres    | t3   | table | yugabyte
    default                  | postgres    | t4   | table | yugabyte
   (5 rows)
   )#");
@@ -1909,12 +1909,12 @@ TEST_F(
                              List of tablegroup tables
             Group Name        | Group Owner |    Name    | Type  |  Owner
     --------------------------+-------------+------------+-------+----------
-     colocation_restore_16393 | postgres    | t1_1       | table | yugabyte
-     colocation_restore_16393 | postgres    | t2_1       | table | yugabyte
-     colocation_restore_16399 | postgres    | t2_2       | table | yugabyte
-     colocation_restore_16399 | postgres    | t1_2       | table | yugabyte
-     colocation_restore_16405 | postgres    | t2_3       | table | yugabyte
-     colocation_restore_16405 | postgres    | t1_3       | table | yugabyte
+     colocation_restore_16395 | postgres    | t1_1       | table | yugabyte
+     colocation_restore_16395 | postgres    | t2_1       | table | yugabyte
+     colocation_restore_16403 | postgres    | t2_2       | table | yugabyte
+     colocation_restore_16403 | postgres    | t1_2       | table | yugabyte
+     colocation_restore_16411 | postgres    | t2_3       | table | yugabyte
+     colocation_restore_16411 | postgres    | t1_3       | table | yugabyte
      default                  | postgres    | t2         | table | yugabyte
      default                  | postgres    | t1_default | table | yugabyte
      default                  | postgres    | t1         | table | yugabyte
@@ -1929,9 +1929,9 @@ TEST_F(
         oid  |         grpname          | grpowner | grptablespace | grpacl | grpoptions
       -------+--------------------------+----------+---------------+--------+------------
        16387 | default                  |       10 |             0 |        |
-       16393 | colocation_restore_16393 |       10 |             0 |        |
-       16399 | colocation_restore_16399 |       10 |             0 |        |
-       16405 | colocation_restore_16405 |       10 |             0 |        |
+       16395 | colocation_restore_16395 |       10 |             0 |        |
+       16403 | colocation_restore_16403 |       10 |             0 |        |
+       16411 | colocation_restore_16411 |       10 |             0 |        |
       (4 rows)
     )#");
 }
@@ -2218,8 +2218,8 @@ TEST_F(
                              List of tablegroup tables
             Group Name        | Group Owner | Name | Type  |  Owner
     --------------------------+-------------+------+-------+----------
-     colocation_restore_16398 | postgres    | t1_2 | table | yugabyte
-     colocation_restore_16404 | postgres    | t1_3 | table | yugabyte
+     colocation_restore_16402 | postgres    | t1_2 | table | yugabyte
+     colocation_restore_16410 | postgres    | t1_3 | table | yugabyte
      default                  | postgres    | t1   | table | yugabyte
      default                  | postgres    | t2   | table | yugabyte
     (4 rows)
@@ -2232,8 +2232,8 @@ TEST_F(
         oid  |         grpname          | grpowner | grptablespace | grpacl | grpoptions
       -------+--------------------------+----------+---------------+--------+------------
        16387 | default                  |       10 |             0 |        |
-       16398 | colocation_restore_16398 |       10 |             0 |        |
-       16404 | colocation_restore_16404 |       10 |             0 |        |
+       16402 | colocation_restore_16402 |       10 |             0 |        |
+       16410 | colocation_restore_16410 |       10 |             0 |        |
       (3 rows)
     )#");
 }

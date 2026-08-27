@@ -205,7 +205,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
   ASSERT_NO_FATALS(RunPsqlCommand(
       "\\dt",
       R"#(
-                  List of relations
+                   List of tables
         Schema |   Name    | Type  |  Owner
        --------+-----------+-------+----------
         public | hashtbl   | table | yugabyte
