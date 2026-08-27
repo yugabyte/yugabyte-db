@@ -6,7 +6,7 @@ VERSION := $(strip $(shell ../../build-support/get_version.sh))
 
 # go compile options
 GOOS ?= $(shell uname -s | tr A-Z a-z)
-GOARCH := $(shell [[ $$(uname -m) == "x86_64" ]] && echo -n 'amd64' || echo -n 'arm64')
+GOARCH := $(shell [[ $$(uname -m) == "x86_64" ]] && echo 'amd64' || echo 'arm64')
 
 # Build Tags
 BUILD_TYPE ?= $(shell cat $(CURDIR)/version_metadata.json | jq '.build_type')
