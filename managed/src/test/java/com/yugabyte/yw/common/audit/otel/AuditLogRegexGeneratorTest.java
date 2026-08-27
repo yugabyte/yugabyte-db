@@ -5,8 +5,11 @@ package com.yugabyte.yw.common.audit.otel;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.FakeDBApplication;
+import java.util.regex.Pattern;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -49,7 +52,8 @@ public class AuditLogRegexGeneratorTest extends FakeDBApplication {
                 + " ][%][C][=](?P<cloud_name>[^ ]+)[ ][|][ ][%][R][=](?P<region>[^ ]+)[ ][|]["
                 + " ][%][Z][=](?P<availability_zone>[^ ]+)[ ][|][ ][%][U][=](?P<cluster_uuid>[^"
                 + " ]+)[ ][|][ ][%][N][=](?P<node_cluster_name>[^ ]+)[ ][|]["
-                + " ][%][H][=](?P<current_hostname>[^ ]+)[ ][:][ ](?P<log_level>\\w+):  AUDIT:"
+                + " ][%][H][=](?P<current_hostname>[^ ]+)[ ][:][ ](?P<log_level>\\w+):"
+                + "  (?:[0-9A-Z]{5}: )?AUDIT:"
                 + " (?P<audit_type>\\w+),(?P<statement_id>\\d+),"
                 + "(?P<substatement_id>\\d+),(?P<class>\\w+),(?P<command>[^,]+),"
                 + "(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\\n|\\r|\\s)*)"));
@@ -89,11 +93,49 @@ public class AuditLogRegexGeneratorTest extends FakeDBApplication {
         result.getRegex(),
         equalTo(
             "(?P<timestamp_without_ms>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}"
-                + " \\w{3})[ ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\\w+):  AUDIT:"
+                + " \\w{3})[ ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\\w+):  (?:[0-9A-Z]{5}: )?AUDIT:"
                 + " (?P<audit_type>\\w+),(?P<statement_id>\\d+),(?P<substatement_id>\\d+),"
                 + "(?P<class>\\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),"
                 + "(?P<object_name>[^,]*),(?P<statement>(.|\\n|\\r|\\s)*)"));
     assertThat(
         result.getTokens(), contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITHOUT_MS));
+  }
+
+  // PLAT-22206: VERBOSE verbosity reads "LOG:  00000: AUDIT: ..."; both forms must parse as audit,
+  // otherwise they leak into the query log receiver unparsed.
+  @Test
+  public void testMatchesBothDefaultAndVerboseErrorVerbosity() {
+    Pattern pattern = compile("%m %p ");
+    String tail = "AUDIT: SESSION,1,1,DDL,CREATE TABLE,TABLE,public.t,create table t(i int);";
+    String prefix = "2026-04-19 15:26:08.973 UTC 10011 LOG:  ";
+
+    assertTrue("default verbosity audit line must match", matches(pattern, prefix + tail));
+    assertTrue("VERBOSE audit line must match", matches(pattern, prefix + "00000: " + tail));
+    assertTrue(
+        "multi-line VERBOSE audit line must match",
+        matches(pattern, prefix + "00000: " + tail + "\n  and a second line;"));
+  }
+
+  @Test
+  public void testDoesNotMatchNonAuditLines() {
+    Pattern pattern = compile("%m %p ");
+    String prefix = "2026-04-19 15:26:08.973 UTC 10011 ";
+
+    assertFalse(matches(pattern, prefix + "LOG:  statement: select 1;"));
+    assertFalse(matches(pattern, prefix + "LOG:  00000: statement: select 1;"));
+    assertFalse(matches(pattern, prefix + "LOCATION:  log_audit_event, pgaudit.c:713"));
+  }
+
+  // The collector runs Go RE2; java.util.regex rejects the underscores in these group names, hence
+  // the flattening. The log prefix stays bracket-free for the same reason - RE2 reads the generated
+  // "[[]" / "[]]" as literal brackets, Java does not.
+  private Pattern compile(String logPrefix) {
+    String regex =
+        auditLogRegexGenerator.generateAuditLogRegex(logPrefix, /*onlyPrefix*/ false).getRegex();
+    return Pattern.compile(regex.replaceAll("\\(\\?P<\\w+>", "("));
+  }
+
+  private boolean matches(Pattern pattern, String logLine) {
+    return pattern.matcher(logLine).matches();
   }
 }

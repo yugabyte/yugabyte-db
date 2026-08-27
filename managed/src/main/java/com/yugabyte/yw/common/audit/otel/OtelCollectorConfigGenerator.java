@@ -1385,7 +1385,10 @@ public class OtelCollectorConfigGenerator {
     OtelCollectorConfigFormat.FilterOperator filterOperator =
         new OtelCollectorConfigFormat.FilterOperator();
     filterOperator.setType("filter");
-    filterOperator.setExpr("body not matches \"^.*\\\\w+:  AUDIT:(.|\\\\n|\\\\r|\\\\s)*$\"");
+    filterOperator.setExpr(
+        "body not matches \"^.*\\\\w+"
+            + AuditLogRegexGenerator.AUDIT_MARKER_REGEX
+            + "(.|\\\\n|\\\\r|\\\\s)*$\"");
 
     // Parse attributes from audit logs
     OtelCollectorConfigFormat.RegexOperator regexOperator =
@@ -1418,7 +1421,10 @@ public class OtelCollectorConfigGenerator {
         new OtelCollectorConfigFormat.FilterOperator();
     // filtering out the audit logs
     filterOperator1.setType("filter");
-    filterOperator1.setExpr("body matches \"^.*\\\\w+:  AUDIT:(.|\\\\n|\\\\r|\\\\s)*$\"");
+    filterOperator1.setExpr(
+        "body matches \"^.*\\\\w+"
+            + AuditLogRegexGenerator.AUDIT_MARKER_REGEX
+            + "(.|\\\\n|\\\\r|\\\\s)*$\"");
 
     OtelCollectorConfigFormat.FilterOperator filterOperator2 =
         new OtelCollectorConfigFormat.FilterOperator();
