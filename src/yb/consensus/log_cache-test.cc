@@ -51,6 +51,7 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/logging_test_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -233,18 +234,29 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = true;
 
+  // Clear the flags on any exit, or a paused Appender hangs teardown.
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
+  });
+
+  constexpr auto kPauseMessage = "Pausing due to flag TEST_pause_before_wal_sync";
+  const auto kPauseWaitTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+
+  StringWaiterLogSink first_pause(kPauseMessage);
   // Append (1.2).
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 1, /* index = */ 2));
+  // Wait for the pause before appending (2.1), so (2.1) doesn't join (1.2)'s sync batch.
+  ASSERT_OK(first_pause.WaitFor(kPauseWaitTimeout));
+
   // Append (2.1) and (1.2) should be erased from log cache.
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 2, /* index = */ 1));
   ASSERT_EQ(cache_->num_cached_ops(), 1);
 
-  // Wait several seconds for actaully pausing at Log::Sync().
-  SleepFor(MonoDelta::FromSeconds(3 * kTimeMultiplier));
-
-  // Resume Log::Sync and set FLAGS_TEST_pause_before_wal_sync to true again.
+  // Resume Log::Sync and wait for the re-armed pause: (1.2) synced, (2.1) written but unsynced.
+  StringWaiterLogSink second_pause(kPauseMessage);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
-  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  ASSERT_OK(second_pause.WaitFor(kPauseWaitTimeout));
 
   // Shouldn't evict (2.1).
   cache_->EvictThroughOp(1);
@@ -257,16 +269,14 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
 
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 3, /* index = */ 1));
   ASSERT_EQ(cache_->num_cached_ops(), 1);
+
+  StringWaiterLogSink third_pause(kPauseMessage);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
-  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  ASSERT_OK(third_pause.WaitFor(kPauseWaitTimeout));
 
   // Shouldn't evict (3.1).
   cache_->EvictThroughOp(1);
   ASSERT_EQ(cache_->num_cached_ops(), 1);
-
-  // Let Appender continue doing Log::Sync and normally exit.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
 }
 
 // Ensure that the cache always yields at least one message,
