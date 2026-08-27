@@ -120,7 +120,7 @@ If you are deploying a universe to Kubernetes, use a Kubernetes provider.
 
 ## New experience
 
-{{<tags/feature/ea idea="????">}}Starting in v2026.1.2.0, YugabyteDB Anywhere features a new and improved experience, with many usability enhancements.
+{{<tags/feature/ea idea="285">}}Starting in v2026.1.2.0, YugabyteDB Anywhere features a new and improved experience, with many usability enhancements.
 
 Throughout the documentation, steps that differ between the two UIs are marked as follows:
 
