@@ -28,7 +28,7 @@ import json
 import os
 import re
 import sys
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 
 QUERY = (
     "select coalesce(json_agg(row_to_json(s)),'[]'::json)::text from ("
@@ -68,15 +68,16 @@ AREAS = OrderedDict([
 # checked before the category, because these parameters are spread across categories that
 # would otherwise scatter them into the catch-all area.
 NAME_AREAS = OrderedDict([
-    ("YSQL major version upgrade", re.compile(
-        r"^yb_(extension_upgrade|major_version_upgrade_|mixed_mode_|upgrade_to_pg)")),
     # Extension parameters are namespaced as <extension>.<parameter>.
     ("Extension parameters", re.compile(r"\.")),
 ])
 
-# A parameter is treated as internal when it says so itself. Keeping this a description
-# match rather than a name list means the classification follows the source: if a
-# parameter's description stops disclaiming user use, it moves to the main tables.
+# The page lists only parameters a user would tune on a working cluster. Everything the
+# following rules match is left off it.
+#
+# Internal parameters, identified by what their own description says. Keeping this a
+# description match rather than a name list means the rule follows the source: if a
+# parameter stops disclaiming user use, it appears on the page.
 INTERNAL_DESC = re.compile(
     r"not to be touched by users|internal use|internal only|autoflag|"
     r"for testing|test only|do not use|do not modify",
@@ -85,6 +86,13 @@ INTERNAL_DESC = re.compile(
 TEST_NAME = re.compile(r"(^|\.)(yb_test_|TEST_)")
 
 DEVELOPER_CATEGORY = "Developer Options"
+
+# Parameters kept only so that existing configurations keep working.
+DEPRECATED_DESC = re.compile(r"deprecated", re.I)
+
+# Upgrade plumbing, set by the YSQL major version upgrade process rather than by a user.
+UPGRADE_NAME = re.compile(
+    r"^yb_(extension_upgrade|major_version_upgrade_|mixed_mode_|upgrade_to_pg)")
 
 # Corrections applied to the text pg_settings reports. Both maps exist so that the page
 # doesn't publish a known-wrong description, and both are meant to shrink: fix the string
@@ -110,13 +118,17 @@ DESCRIPTION_OVERRIDES = {
 SPELLING_RE = re.compile(r"\b(%s)\b" % "|".join(SPELLING))
 
 
-def classify(param):
-    """Return "developer", "internal", or "user" for a parameter."""
+def excluded(param):
+    """Reason this parameter is left off the page, or None to list it."""
     if param["category"] == DEVELOPER_CATEGORY or TEST_NAME.search(param["name"]):
-        return "developer"
+        return "developer/test"
     if INTERNAL_DESC.search(param["short_desc"] or "") or param["context"] == "internal":
         return "internal"
-    return "user"
+    if DEPRECATED_DESC.search(param["short_desc"] or ""):
+        return "deprecated"
+    if UPGRADE_NAME.search(param["name"]):
+        return "upgrade plumbing"
+    return None
 
 
 def area_of(param):
@@ -215,7 +227,7 @@ type: docs
 showRightNav: true
 ---
 
-YSQL supports the PostgreSQL [server configuration parameters](https://www.postgresql.org/docs/15/runtime-config.html), plus the YugabyteDB-specific parameters listed on this page. This page covers every `yb_` parameter that {version} exposes. Parameters that need more than a one-line description also have an entry under [YSQL configuration parameters](../yb-tserver/#ysql-configuration-parameters) on the YB-TServer reference page; the parameter names below link to that entry where one exists.
+YSQL supports the PostgreSQL [server configuration parameters](https://www.postgresql.org/docs/15/runtime-config.html), plus the YugabyteDB-specific parameters listed on this page. Frequently used parameters are documented in detail under [YSQL configuration parameters](../yb-tserver/#ysql-configuration-parameters) on the YB-TServer reference page; the parameter names below link to that entry where one exists.
 
 To see the parameters and their current values on a running cluster, query `pg_settings`:
 
@@ -249,38 +261,31 @@ To set a parameter for the whole cluster, use the yb-tserver [--ysql_pg_conf_csv
 
 The context determines who can change a parameter and whether a restart is needed.
 
-| Context | Who can set it | Takes effect |
-| :--- | :--- | :--- |
-| `user` | Any user, for their own session | Immediately |
-| `superuser` | Superusers only | Immediately |
-| `backend` | Set when the connection is established | At connection start |
-| `sighup` | Cluster configuration only (yb-tserver flag) | On configuration reload; no restart needed |
-| `postmaster` | Cluster configuration only (yb-tserver flag) | Requires a restart of the YSQL process |
-| `internal` | Read-only | Cannot be changed |
-
-Parameters whose description begins with DEPRECATED are kept so that existing configurations keep working. Don't use them in new deployments.
 """
 
-FOOTER_INTERNAL = """
-## Internal parameters
+# Only the contexts that the listed parameters actually use are described on the page.
+CONTEXT_HELP = OrderedDict([
+    ("user", ("Any user, for their own session", "Immediately")),
+    ("superuser", ("Superusers only", "Immediately")),
+    ("backend", ("Set when the connection is established", "At connection start")),
+    ("sighup", ("Cluster configuration only (yb-tserver flag)",
+                "On configuration reload; no restart needed")),
+    ("postmaster", ("Cluster configuration only (yb-tserver flag)",
+                    "Requires a restart of the YSQL process")),
+    ("internal", ("Read-only", "Cannot be changed")),
+])
 
-{{{{< warning title="Not for production use" >}}}}
-YugabyteDB sets these parameters itself, or reserves them for internal and upgrade workflows. Their descriptions state that they are not intended to be set by users. Set them only when Yugabyte Support asks you to.
-{{{{< /warning >}}}}
 
-{table}
-"""
-
-FOOTER_DEVELOPER = """
-## Developer and test parameters
-
-{{{{< warning title="Not for production use" >}}}}
-These parameters change internal behavior, exist to support testing and debugging, and can change or be removed in any release. Set them only when Yugabyte Support asks you to.
-{{{{< /warning >}}}}
-
-{table}
-"""
-
+def context_table(params):
+    used = {p["context"] for p in params}
+    rows = [
+        "| Context | Who can set it | Takes effect |",
+        "| :--- | :--- | :--- |",
+    ]
+    for context, (who, when) in CONTEXT_HELP.items():
+        if context in used:
+            rows.append("| `%s` | %s | %s |" % (context, who, when))
+    return "\n".join(rows)
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -309,18 +314,24 @@ def main():
 
     anchors = find_anchors(args.tserver_page)
 
-    buckets = {"user": [], "developer": [], "internal": []}
+    listed = []
+    dropped = Counter()
     for param in params:
-        buckets[classify(param)].append(param)
+        reason = excluded(param)
+        if reason:
+            dropped[reason] += 1
+        else:
+            listed.append(param)
 
     areas = OrderedDict((area, []) for area in AREAS)
     for area in NAME_AREAS:
         areas[area] = []
     areas["Other parameters"] = []
-    for param in buckets["user"]:
+    for param in listed:
         areas[area_of(param)].append(param)
 
-    out = [HEADER.format(version="v" + args.version, docs_version=args.docs_version)]
+    out = [HEADER.format(docs_version=args.docs_version).rstrip(), "",
+           context_table(listed), ""]
     for area, members in areas.items():
         if not members:
             continue
@@ -328,17 +339,13 @@ def main():
         out.append(table(members, anchors))
         out.append("")
 
-    if buckets["internal"]:
-        out.append(FOOTER_INTERNAL.format(table=table(buckets["internal"], anchors)))
-    if buckets["developer"]:
-        out.append(FOOTER_DEVELOPER.format(table=table(buckets["developer"], anchors)))
-
     with open(args.output, "w") as handle:
         handle.write("\n".join(out).rstrip() + "\n")
 
-    print("Wrote %s: %d parameters (%d documented, %d internal, %d developer/test)" % (
-        args.output, len(params), len(buckets["user"]),
-        len(buckets["internal"]), len(buckets["developer"])), file=sys.stderr)
+    print("Wrote %s from v%s: %d of %d parameters listed" % (
+        args.output, args.version, len(listed), len(params)), file=sys.stderr)
+    for reason, count in sorted(dropped.items()):
+        print("  excluded %-16s %d" % (reason, count), file=sys.stderr)
     return 0
 
 

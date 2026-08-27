@@ -12,7 +12,7 @@ type: docs
 showRightNav: true
 ---
 
-YSQL supports the PostgreSQL [server configuration parameters](https://www.postgresql.org/docs/15/runtime-config.html), plus the YugabyteDB-specific parameters listed on this page. This page covers every `yb_` parameter that v2026.1.1.1 exposes. Parameters that need more than a one-line description also have an entry under [YSQL configuration parameters](../yb-tserver/#ysql-configuration-parameters) on the YB-TServer reference page; the parameter names below link to that entry where one exists.
+YSQL supports the PostgreSQL [server configuration parameters](https://www.postgresql.org/docs/15/runtime-config.html), plus the YugabyteDB-specific parameters listed on this page. Frequently used parameters are documented in detail under [YSQL configuration parameters](../yb-tserver/#ysql-configuration-parameters) on the YB-TServer reference page; the parameter names below link to that entry where one exists.
 
 To see the parameters and their current values on a running cluster, query `pg_settings`:
 
@@ -53,9 +53,6 @@ The context determines who can change a parameter and whether a restart is neede
 | `backend` | Set when the connection is established | At connection start |
 | `sighup` | Cluster configuration only (yb-tserver flag) | On configuration reload; no restart needed |
 | `postmaster` | Cluster configuration only (yb-tserver flag) | Requires a restart of the YSQL process |
-| `internal` | Read-only | Cannot be changed |
-
-Parameters whose description begins with DEPRECATED are kept so that existing configurations keep working. Don't use them in new deployments.
 
 
 ## Query tuning and the optimizer
@@ -65,10 +62,8 @@ Parameters whose description begins with DEPRECATED are kept so that existing co
 | [yb_bnl_batch_size](../yb-tserver/#yb-bnl-batch-size) | Batch size of nested loop joins. Set to 1 to always use simple nested loop joins. | integer | `1024` | n/a | user |
 | yb_bnl_enable_hashing | Enables batched nested loop joins to use hashing to process its matches. | bool | `on` | n/a | user |
 | yb_bnl_optimize_first_batch | Enables batched nested loop joins to predict the size of its first batch and optimize if it's smaller than yb_bnl_batch_size. | bool | `on` | n/a | user |
-| yb_bypass_cond_recheck | DEPRECATED: no-op. | bool | `on` | n/a | user |
 | yb_disable_parallel_query_in_ddl | Disables parallel query for the SELECT planned by DDLs such as CREATE TABLE AS, SELECT INTO, CREATE/REFRESH MATERIALIZED VIEW, COPY (query) TO, and EXPLAIN [ANALYZE] CREATE TABLE AS. Enabled by default because parallel query in these DDLs has not been QA tested in YugabyteDB. Set to off as an escape hatch to restore upstream PostgreSQL behavior for workloads that rely on it. | bool | `on` | n/a | user |
 | [yb_enable_advanced_index_cond_fold](../yb-tserver/#yb-enable-advanced-index-cond-fold) | Enable advanced folding of same-column index conditions, including tightening inequality bounds across scan keys, intersecting IN arrays, and detecting additional contradictions at bind time. | bool | `on` | n/a | user |
-| [yb_enable_base_scans_cost_model](../yb-tserver/#yb-enable-base-scans-cost-model) | Enables YB cost model for Sequential and Index scans. DEPRECATED: This setting is deprecated and will be removed in a future release. Use "yb_enable_cbo" instead. | bool | `off` | n/a | user |
 | [yb_enable_batchednl](../yb-tserver/#yb-enable-batchednl) | Enables the planner's use of batched nested-loop join plans. | bool | `on` | n/a | user |
 | [yb_enable_bitmapscan](../yb-tserver/#yb-enable-bitmapscan) | Enables the planner's use of YB bitmap-scan plans. To use YB Bitmap Scans, both yb_enable_bitmapscan and enable_bitmapscan must be true. | bool | `off` | n/a | user |
 | [yb_enable_cbo](../yb-tserver/#yb-enable-cbo) | Enable YB cost model. Values: `off`, `on`, `legacy_mode`, `legacy_stats_mode`, `legacy_bnl_mode`, `legacy_stats_bnl_mode`, `legacy_ignore_stats_bnl_mode`. | enum | `legacy_mode` | n/a | user |
@@ -81,7 +76,6 @@ Parameters whose description begins with DEPRECATED are kept so that existing co
 | yb_enable_index_aggregate_pushdown | Push supported index aggregate operations to DocDB. This affects IndexScan, not IndexOnlyScan. | bool | `on` | n/a | user |
 | yb_enable_index_backfill_scan_optimization | Enables index backfill scan optimizations. If true, index build/backfill reads only the columns needed for the index and pushes partial index predicates down to the base table scan. | bool | `off` | n/a | user |
 | yb_enable_inplace_index_update | Enables the in-place update of non-key columns of secondary indexes when key columns of the index are not updated. This is useful when updating the included columns in a covering index among others. | bool | `on` | n/a | user |
-| [yb_enable_optimizer_statistics](../yb-tserver/#yb-enable-optimizer-statistics) | Enables use of the PostgreSQL selectivity estimation which utilizes table statistics collected with ANALYZE. When disabled, a simpler heuristics based selectivity estimation is used. DEPRECATED: This settting is deprecated and will be removed in a future release. Use "yb_enable_cbo" instead. | bool | `off` | n/a | user |
 | yb_enable_parallel_scan_colocated | When set, allows parallel scan of the colocated relations. | bool | `on` | n/a | user |
 | yb_enable_parallel_scan_hash_sharded | When set, allows parallel scan of the hash sharded relations. | bool | `off` | n/a | user |
 | yb_enable_parallel_scan_range_sharded | When set, allows parallel scan of the range sharded relations. | bool | `off` | n/a | user |
@@ -147,14 +141,12 @@ Parameters whose description begins with DEPRECATED are kept so that existing co
 
 | Parameter | Description | Type | Default | Unit | Context |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| yb_enable_advisory_locks | DEPRECATED - Enable advisory lock feature. | bool | `on` | n/a | sighup |
 | yb_enable_ddl_savepoint_infra | Allow enabling ddl savepoint support. | bool | `on` | n/a | sighup |
 | yb_enable_pg_locks | Enable the pg_locks view. This view provides information about the locks held by active postgres sessions. | bool | `on` | n/a | superuser |
 | [yb_locks_max_transactions](../yb-tserver/#yb-locks-max-transactions) | Sets the maximum number of transactions for which to return rows in pg_locks. | integer | `16` | n/a | user |
 | [yb_locks_min_txn_age](../yb-tserver/#yb-locks-min-txn-age) | Sets the minimum transaction age for results from pg_locks. | integer | `1000` | `ms` | user |
 | [yb_locks_txn_locks_per_tablet](../yb-tserver/#yb-locks-txn-locks-per-tablet) | Sets the maximum number of rows per transaction per tablet to return in pg_locks. | integer | `200` | n/a | user |
 | yb_pg_locks_integrate_advisory_locks | Enables pg_locks to integrate and display advisory locks details correctly. | bool | `on` | n/a | sighup |
-| yb_silence_advisory_locks_not_supported_error | Deprecated. This is no-op. | bool | `off` | n/a | user |
 
 
 ## Observability and statistics
@@ -196,16 +188,6 @@ Parameters whose description begins with DEPRECATED are kept so that existing co
 | yb_neg_catcache_ids | Comma separated list of additional sys cache ids that are allowed to be negatively cached. | string | empty | n/a | superuser |
 
 
-## YSQL major version upgrade
-
-| Parameter | Description | Type | Default | Unit | Context |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| yb_extension_upgrade | Set to true when upgrading extensions during a YSQL major version upgrade. | bool | `off` | n/a | superuser |
-| yb_major_version_upgrade_compatibility | The compatibility level to use during a YSQL Major version upgrade. Allowed values are 0 and 11. | integer | `0` | n/a | sighup |
-| yb_mixed_mode_expression_pushdown | Enables expression pushdown for queries in mixed mode of a YSQL Major version upgrade. | bool | `on` | n/a | user |
-| yb_mixed_mode_saop_pushdown | Enable pushdown of scalar array operation expressions in mixed mode of a YSQL Major version upgrade. For example, IN, ANY, ALL. | bool | `off` | n/a | user |
-
-
 ## Extension parameters
 
 | Parameter | Description | Type | Default | Unit | Context |
@@ -224,7 +206,6 @@ Parameters whose description begins with DEPRECATED are kept so that existing co
 | yb_conn_mgr_selective_deallocate | Enables connection-manager-aware DEALLOCATE behavior. | bool | `on` | n/a | sighup |
 | yb_disable_auto_analyze | Run 'ALTER DATABASE <name> SET yb_disable_auto_analyze=on' to disable auto analyze on that database. Set it to off to resume auto analyze. Setting this GUC via any other method will throw a WARNING message. | bool | `off` | n/a | user |
 | yb_disable_catalog_version_check | Disable checking that read requests from this pg backend have the latest catalog version. User should set this variable with caution. It is under active development and is not recommended for production clusters. Currently, it is used by ysql_dump to read pg catalog as of time. | bool | `off` | n/a | superuser |
-| yb_disable_pg_snapshot_mgmt_in_repeatable_read | [Deprecated - This GUC is valid only in older releases. It is present here just to avoid a failure in case you forgot to remove it from your configuration.]. | bool | `off` | n/a | user |
 | yb_enable_add_column_missing_default | Enable using the default value for existing rows after an ADD COLUMN ... DEFAULT operation. | bool | `on` | n/a | user |
 | yb_enable_alter_table_rewrite | Enable ALTER TABLE rewrite operations. | bool | `on` | n/a | user |
 | yb_enable_create_with_table_oid | Enables the ability to set table oids when creating tables or indexes. | bool | `off` | n/a | user |
@@ -238,10 +219,7 @@ Parameters whose description begins with DEPRECATED are kept so that existing co
 | yb_ignore_read_time_in_walsender | When set, walsender will fetch the publication as of current time if it encounters any failures while reading the catalog tables as of yb_read_time. This GUC should be set carefully and only till the time the process of upgrading logical replication streams is complete (i.e till the yb_restart_time of all the streams crosses the time of upgrade completion). Moreover this GUC should be set only after ensuring that no more DDLs (including ALTER PUBLICATION) will be encountered by the walsender. | bool | `off` | n/a | user |
 | yb_is_client_ysqlconnmgr | Identifies that connection is created by Ysql Connection Manager. | bool | `off` | n/a | backend |
 | yb_make_next_ddl_statement_nonbreaking | When set, the next ddl statement will not cause running transactions to abort. This only affects the next ddl statement and resets automatically. | bool | `off` | n/a | superuser |
-| yb_make_next_ddl_statement_nonincrementing | DEPRECATED - When set, the next ddl statement will not cause catalog version to increment. This only affects the next ddl statement and resets automatically. | bool | `off` | n/a | superuser |
 | yb_non_ddl_txn_for_sys_tables_allowed | Enables the use of regular transactions for operating on system catalog tables in case a DDL transaction has not been started. | bool | `off` | n/a | user |
-| yb_pushdown_is_not_null | DEPRECATED: no-op. | bool | `on` | n/a | user |
-| yb_pushdown_strict_inequality | DEPRECATED: no-op. | bool | `on` | n/a | user |
 | yb_read_after_commit_visibility | Control read-after-commit-visibility guarantee. This GUC is intended as a crutch for users migrating from PostgreSQL and new to read restart errors. Users can now largely avoid these errors when read-after-commit-visibility guarantee is not a strong requirement. This option cannot be set from within a transaction block. Configure one of the following options: (a) strict: Default Behavior. The read-after-commit-visibility guarantee is maintained by the database. However, users may see read restart errors that show "ERROR: Query error: Restart read required at: ...". The database attempts to retry on such errors internally but that is not always possible. (b) relaxed: With this option, the read-after-commit-visibility guarantee is relaxed. Do not see read restart errors but may miss recent updates with staleness bounded by clock skew. This mode does not apply to serializable isolation level and fast path writes. (c) deferred: Defers read point. Higher latency but read-after-commit-visibility guarantee is maintained. Values: `strict`, `relaxed`, `deferred`. | enum | `strict` | n/a | user |
 | yb_refresh_matview_in_place | Refresh materialized views in place. | bool | `off` | n/a | user |
 | yb_speculatively_execute_pl_statements | If enabled, procedural language statements may be speculatively executed when it is safe to do so without waiting for the successful completion of previous statements. This allows any writes produced by triggers to be batched alongside their parent data-modifying writes such that the number of storages flushes may be minimized. | bool | `off` | n/a | superuser |
@@ -250,105 +228,3 @@ Parameters whose description begins with DEPRECATED are kept so that existing co
 | yb_update_num_cols_to_compare | Maximum number of columns whose data is to be compared while seeking to optimize updates. If set to 0, all applicable columns in the table will be compared. | integer | `50` | n/a | user |
 | yb_use_tserver_key_auth | If set, the client connection will be authenticated via 'yb-tserver-key' auth. | bool | `off` | n/a | backend |
 | yb_whitelist_extra_statements_for_pl_speculative_execution | If enabled, additional procedural language constructs are whitelisted for use in speculative execution. | bool | `off` | n/a | superuser |
-
-
-## Internal parameters
-
-{{< warning title="Not for production use" >}}
-YugabyteDB sets these parameters itself, or reserves them for internal and upgrade workflows. Their descriptions state that they are not intended to be set by users. Set them only when Yugabyte Support asks you to.
-{{< /warning >}}
-
-| Parameter | Description | Type | Default | Unit | Context |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| yb_allow_block_based_sampling_algorithm | Autoflag to allow YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING. Not to be touched by users. | bool | `on` | n/a | superuser |
-| yb_allow_separate_requests_for_sampling_stages | Autoflag to allow using separate requests for block-based sampling stages. Not to be touched by users. | bool | `on` | n/a | superuser |
-| yb_effective_transaction_isolation_level | [DEPRECATED - instead use the yb_get_effective_transaction_isolation_level() function]. Shows the effective YugabyteDB transaction isolation level used by the current active transaction in the session. | string | `default` | n/a | internal |
-| yb_enable_docdb_vector_type | Autoflag to enable using the DocDB Vector type. Not to be touched by users. | bool | `on` | n/a | superuser |
-| yb_transaction_priority | [DEPRECATED - instead use the yb_get_current_transaction_priority() function]. Gets the transaction priority used by the current active distributed transaction in the session. If no distributed transaction is active, return 0. | real | `0` | n/a | internal |
-| yb_upgrade_to_pg15_completed | Indicates the state of YSQL major upgrade to PostgreSQL version 15. Do not modify this manually. | bool | `on` | n/a | sighup |
-| yb_use_internal_auto_analyze_service_conn | [Internal Only GUC] - Help a backend identify that this is a connection from the internal Auto-Analyze service. | bool | `off` | n/a | user |
-| yb_xcluster_ddl_replication.ddl_queue_primary_key_ddl_end_time | Internal use only: Used by HandleTargetDDLEnd function. | string | empty | n/a | superuser |
-| yb_xcluster_ddl_replication.ddl_queue_primary_key_query_id | Internal use only: Used by HandleTargetDDLEnd function. | string | empty | n/a | superuser |
-
-
-## Developer and test parameters
-
-{{< warning title="Not for production use" >}}
-These parameters change internal behavior, exist to support testing and debugging, and can change or be removed in any release. Set them only when Yugabyte Support asks you to.
-{{< /warning >}}
-
-| Parameter | Description | Type | Default | Unit | Context |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| yb_allow_replication_slot_lsn_types | Allow specifying LSN type while creating replication slot. | bool | `on` | n/a | superuser |
-| yb_allow_replication_slot_ordering_modes | Allow specifying ordering mode while creating replication slot. | bool | `off` | n/a | superuser |
-| yb_always_increment_catalog_version_on_ddl | When set, all DDL statements will cause the catalog version to increment. Unlike yb_test_make_all_ddl_statements_incrementing, this only controls the version incrementing behavior. | bool | `on` | n/a | sighup |
-| yb_binary_restore | Enter a special mode designed specifically for YSQL binary restore. | bool | `off` | n/a | superuser |
-| yb_catcache_list_from_preloaded_limit | Max tuples in a preloaded catalog cache for local list building. 0 disables. | integer | `100000` | n/a | user |
-| yb_cdcsdk_stream_tables_without_primary_key | Enable streaming of tables without primary key in CDC logical replication streams. | bool | `on` | n/a | superuser |
-| yb_ddl_rollback_enabled | If set, any DDL that involves DocDB schema changes will have those changes rolled back upon failure. | bool | `on` | n/a | superuser |
-| yb_ddl_transaction_block_enabled | If true, DDL operations in YSQL will execute within the active transaction block instead of their separate transactions. | bool | `off` | n/a | postmaster |
-| yb_debug_log_catcache_events | Log details for every catalog cache event such as a cache miss or cache invalidation/refresh. | bool | `off` | n/a | user |
-| yb_debug_log_docdb_error_backtrace | Append stacktrace information to errors received from DocDB. | bool | `off` | n/a | user |
-| yb_debug_log_docdb_requests | Log the contents of all internal (protobuf) requests to DocDB. | bool | `off` | n/a | user |
-| yb_debug_log_internal_restarts | Log details for internal restarts such as read-restarts, cache-invalidation restarts, or txn restarts. | bool | `off` | n/a | user |
-| yb_debug_log_snapshot_mgmt | Log details about snapshot management such as pushing/popping a snapshot and picking a new snapshot. | bool | `off` | n/a | user |
-| yb_debug_log_snapshot_mgmt_stack_trace | Log stack traces as well for lines logged by yb_debug_log_snapshot_mgmt. | bool | `off` | n/a | user |
-| yb_debug_original_backtrace_format | Use original Postgres functions to create and format the stacktrace. | bool | `off` | n/a | user |
-| yb_disable_ddl_transaction_block_for_read_committed | If true, DDL operations in READ COMMITTED mode will be executed in a separate DDL transaction instead of the as part of the enclosing transaction block even if ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back to the mode when ysql_yb_ddl_transaction_block_enabled is false. | bool | `off` | n/a | postmaster |
-| yb_disable_wait_for_backends_catalog_version | Disable waiting for backends to have up-to-date pg_catalog. This could cause correctness issues. | bool | `off` | n/a | superuser |
-| yb_dist_tracecontext | Sets the W3C trace context (traceparent) for distributed tracing. | string | n/a | n/a | user |
-| yb_enable_consistent_replication_from_hash_range | Enable replication slot consumption of consistent changes from a hash range of table. | bool | `off` | n/a | superuser |
-| yb_enable_ddl_atomicity_infra | Used along side with yb_ddl_rollback_enabled to control whether DDL atomicity is enabled. | bool | `on` | n/a | superuser |
-| yb_enable_fkey_batched_docdb_lookup_when_types_mismatch | Enable batched DocDB lookup for foreign key constraint check when types mismatch. | bool | `off` | n/a | backend |
-| yb_enable_fkey_catcache | Enable preloading of foreign key information into the relation cache. | bool | `on` | n/a | user |
-| yb_enable_invalidate_table_cache_entry | Enable invalidation of individual table cache entry on catalog cache refresh. | bool | `on` | n/a | superuser |
-| yb_enable_invalidation_messages | Enable invalidation messages. | bool | `on` | n/a | superuser |
-| yb_enable_listen_notify | Enables LISTEN/NOTIFY. | bool | `off` | n/a | sighup |
-| yb_enable_memory_tracking | Enables tracking of memory consumption of the PostgreSQL process. This enhances garbage collection behaviour and memory usage observability. | bool | `on` | n/a | user |
-| yb_enable_negative_catcache_entries | When set, negative catcache entries are enabled. | bool | `on` | n/a | sighup |
-| yb_enable_pg_export_snapshot | Enable pg_export_snapshot and SET TRANSACTION SNAPSHOT for synchronizing snapshots across transactions. | bool | `on` | n/a | sighup |
-| yb_enable_replication_commands | Enable the replication commands for Publication and Replication Slots. | bool | `on` | n/a | superuser |
-| yb_enable_replication_origin_shared | Enable shared replication origin write tagging. | bool | `on` | n/a | postmaster |
-| yb_enable_replication_slot_consumption | Enable consumption of changes via replication slots. This feature is currently in active development and should not be enabled. | bool | `on` | n/a | user |
-| yb_enable_spi_dist_tracing | Enables distributed tracing for SPI (Server Programming Interface) calls. | bool | `on` | n/a | user |
-| yb_force_catalog_update_on_next_ddl | Make the next DDL update the catalog in force mode which allows it to operate even during ysql major catalog upgrades. WARNING: This is a dangerous option and should be used only for DDLs on temp tables, and other transient objects. | bool | `off` | n/a | user |
-| yb_ignore_pg_class_oids | Ignores requests to set pg_class OIDs in yb_binary_restore mode. | bool | `on` | n/a | superuser |
-| yb_ignore_relfilenode_ids | Ignores requests to set relfilenode IDs in yb_binary_restore mode. | bool | `on` | n/a | superuser |
-| yb_invalidation_message_expiration_secs | Invalidation messages expiration time in catalog table pg_yb_invalidation_messages. The effective expiration is automatically raised to at least 10 * --heartbeat_interval_ms so that messages survive long enough for every TServer to receive them via heartbeats. | integer | `10` | n/a | superuser |
-| yb_log_heap_snapshot_on_exit_threshold | When a process exits, log a peak heap snapshot showing the approximate memory usage of each malloc call stack if its peak RSS is greater than or equal to this threshold in KB. Set to -1 to disable. | integer | `-1` | `kB` | user |
-| yb_max_num_invalidation_messages | Max number of invalidation messages supported for incremental catalog cache refresh. | integer | `8192` | n/a | superuser |
-| yb_notifications_poll_sleep_duration_empty_ms | Time in milliseconds for which the notifications poller process waits before polling again in case the last poll returned no notifications. | integer | `100` | `ms` | sighup |
-| yb_notifications_poll_sleep_duration_nonempty_ms | Time in milliseconds for which the notifications poller process waits before polling again in case the last poll returned notifications. | integer | `1` | `ms` | sighup |
-| yb_reorderbuffer_max_changes_in_memory | Maximum number of changes kept in memory per transaction in reorder buffer, which is used in streaming changes via logical replication. After that, changes are spooled to disk. | integer | `4096` | n/a | user |
-| yb_test_analyze_dont_reset_mutations | [Test Only GUC] - When set, a manual ANALYZE does not reset the auto-analyze mutation counters, reverting to the pre-reset behavior. | bool | `off` | n/a | user |
-| yb_test_block_index_phase | Block the given index creation phase. Valid values are "indislive", "indisready", "backfill", and "postbackfill". Any other value is ignored. | string | empty | n/a | sighup |
-| yb_test_collation | When set, inject code to make psql output stable across linux and mac. | bool | `off` | n/a | user |
-| yb_test_delay_after_applying_inval_message_ms | When > 0, add a delay after applying invalidation messages. | integer | `0` | n/a | user |
-| yb_test_delay_next_ddl | When set, the next DDL will be delayed by this many ms prior to commit. | real | `0` | `ms` | user |
-| yb_test_delay_set_local_tserver_inval_message_ms | When > 0, add a delay before calling YBCPgSetTserverCatalogMessageList. | integer | `0` | n/a | user |
-| yb_test_fail_all_drops | When set, all drops will fail. | bool | `off` | n/a | superuser |
-| yb_test_fail_drop_after_heap_drop | Test fault injection: fail drop after heap_drop_with_catalog. | bool | `off` | n/a | superuser |
-| yb_test_fail_index_state_change | Fails index backfill at given stage. Valid values are "indisready" and "postbackfill".Any other value is ignored. | string | empty | n/a | user |
-| yb_test_fail_next_ddl | When set to non-zero, the next DDL will fail: 1=ERROR, 2=FATAL, 3=PANIC, 4=crash, 5=conflict. | integer | `0` | n/a | superuser |
-| yb_test_fail_next_inc_catalog_version | When set, the next increment catalog version will fail right before it's done. This only works when catalog version is stored in pg_yb_catalog_version. | bool | `off` | n/a | user |
-| yb_test_fail_table_rewrite_after_creation | When set, DDLs that rewrite tables/indexes will fail after the new table is created. | bool | `off` | n/a | user |
-| yb_test_fatal_after_notifs_queue_write | When true, the notifications poller exits with FATAL after writing to the async queue but before the CDC ack. | bool | `off` | n/a | sighup |
-| yb_test_index_check_num_batches_per_snapshot | Used to test yb_index_check(). If set to > 0, number of index rows processed per snapshot is equal to yb_test_index_check_num_batches_per_snapshot*yb_bnl_batch_size If set to 0, yb_index_check() will execute in single snapshot mode. | integer | `-1` | n/a | user |
-| yb_test_inval_message_portability | When set, fill padding bytes with zeros when creating a shared invalidation message. | bool | `off` | n/a | user |
-| yb_test_invalidate_relcache_in_planner | When set, the relcache entries for every base relation and its indexes will be invalidated after add_base_rels_to_query() in query_planner(). | bool | `off` | n/a | superuser |
-| yb_test_make_all_ddl_statements_incrementing | When set, all DDL statements will cause the catalog version to increment. This mainly affects CREATE commands such as CREATE TABLE, CREATE VIEW, and CREATE SEQUENCE. This also enables negative catcache entries. | bool | `on` | n/a | sighup |
-| yb_test_notify_queue_max_pages | When set to a positive value, artificially limits the NOTIFY queue to this many pages for testing. | integer | `0` | n/a | sighup |
-| yb_test_planner_custom_plan_threshold | The number of times to force custom plan generation for prepared statements before considering a generic plan. | integer | `5` | n/a | user |
-| yb_test_preload_catalog_tables | When set, force a full catalog cache refresh before executing the next top level statement. | bool | `off` | n/a | user |
-| yb_test_reset_retry_counts | Restricts the number of retries for transaction conflicts. For testing purposes. | integer | `-1` | n/a | user |
-| yb_test_skip_binding_scan_keys | For YB scans, skip binding scan keys to pggate. ybgin and internal scans are not affected. | bool | `off` | n/a | user |
-| yb_test_sleep_before_executor_start_ms | Sleep before executing a statement. Can be used to simulate race conditions where catalog is updated between planning and execution. | integer | `0` | n/a | user |
-| yb_test_slowdown_index_check | Slows down yb_index_check() by sleeping for 1s after processing every row. Used in tests to simulate long running yb_index_check(). | bool | `off` | n/a | superuser |
-| yb_test_system_catalogs_creation | Relaxes some internal sanity checks for system catalogs to allow creating them. | bool | `off` | n/a | superuser |
-| yb_test_table_rewrite_keep_old_table | When set, DDLs that rewrite tables/indexes will not drop the old relfilenode/DocDB table. | bool | `off` | n/a | superuser |
-| yb_test_ybgin_disable_cost_factor | The multiplier to disable_cost to add when costing ybgin index scans that may not be supported. | real | `2` | n/a | user |
-| yb_user_ddls_preempt_auto_analyze | If object locking is off (i.e., enable_object_locking_for_table_locks=false), concurrent DDLs might face a conflict error on the catalog version increment at the end after doing all the work. Setting this flag enables a fail-fast strategy by locking the catalog version at the start of DDLs, causing conflict errors to occur before useful work is done. This flag is only applicable without object locking. If object locking is enabled, it ensures that concurrent DDLs block on each other for serialization. Also, this flag is valid only if yb_enable_invalidation_messages is enabled. | bool | `on` | n/a | user |
-| yb_walsender_poll_sleep_duration_empty_ms | Time in milliseconds for which Walsender waits before fetching the next batch of changes from the CDC service in case the last received response was empty. | integer | `10` | `ms` | user |
-| yb_walsender_poll_sleep_duration_nonempty_ms | Time in milliseconds for which Walsender waits before fetching the next batch of changes from the CDC service in case the last received response was non-empty. | integer | `1` | `ms` | user |
-| yb_xcluster_automatic_mode_target_ddl | Used to identify DDLs executed in Automatic xCluster mode target universe. For example, DDL operations will skip the data loading phase, including table rewrites and nonconcurrent indexes. Sequence restarts via TRUNCATE TABLE are also skipped.WARNING: Incorrect usage will result in data loss. | bool | `off` | n/a | superuser |
-| yb_xcluster_ddl_replication.TEST_replication_role_override | Test override for replication role. Values: ``, `NONE`, `SOURCE`, `TARGET`. | enum | empty | n/a | superuser |
