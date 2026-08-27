@@ -813,6 +813,12 @@ Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool gracefu
       graceful ? std::string() : peer.permanent_uuid(), MonoDelta());
 }
 
+bool RaftConsensus::ProtegeSynchronizedUnlocked() const {
+  DCHECK(state_->IsLocked());
+  return queue_->PeerLastReceivedOpId(delayed_step_down_.protege) >=
+         state_->GetLastReceivedOpIdUnlocked();
+}
+
 void RaftConsensus::CheckDelayedStepDown(const Status& status) {
   if (!status.ok()) {
     return;  // Scheduled task was aborted.
@@ -1505,9 +1511,9 @@ void RaftConsensus::UpdateMajorityReplicated(
 
   majority_num_sst_files_.store(majority_replicated_data.num_sst_files, std::memory_order_release);
 
-  if (!majority_replicated_data.peer_got_all_ops.empty() &&
-      delayed_step_down_.term == state_->GetCurrentTermUnlocked() &&
-      majority_replicated_data.peer_got_all_ops == delayed_step_down_.protege) {
+  // Complete a pending step down once the protege has received every op in our log.
+  if (delayed_step_down_.term == state_->GetCurrentTermUnlocked() &&
+      ProtegeSynchronizedUnlocked()) {
     LOG_WITH_PREFIX(INFO) << "Protege synchronized: " << delayed_step_down_.ToString();
     const auto* peer = FindPeer(state_->GetActiveConfigUnlocked(), delayed_step_down_.protege);
     if (peer) {
