@@ -1338,8 +1338,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // abort the transaction.
     auto min_op = *write_query->op_ids.begin();
     auto max_op = *write_query->op_ids.rbegin();
-    SCHECK_FORMAT(
+    SCHECK_EC_FORMAT(
         max_op.term - min_op.term <= 1, IllegalState,
+        TransactionError(TransactionErrorCode::kAborted),
         "Tablet $0: tablet leader moved more than once before async writes completed "
         "(min_op: $1, max_op: $2)",
         tablet_id, min_op, max_op);
