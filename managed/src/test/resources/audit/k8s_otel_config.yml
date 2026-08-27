@@ -71,8 +71,12 @@ processors:
   attributes/awss3/00000000-0000-0000-0000-000000000000:
     actions:
     - {key: host, value: '${POD_NAME}', action: upsert}
-    - {key: yugabyte.node_name, value: '${POD_NAME}', action: upsert}
+    - {key: universe_uuid, value: 00000000-0000-0000-0000-000000000000, action: upsert}
+    - {key: node_name, value: '${POD_NAME}', action: upsert}
+    - {key: node_prefix, value: yb-tc-test-universe, action: upsert}
+    - {key: export_purpose, value: S3_LOG_EXPORT, action: upsert}
     - {key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000, action: upsert}
+    - {key: yugabyte.node_name, value: '${POD_NAME}', action: upsert}
     - {key: yugabyte.purpose, value: S3_LOG_EXPORT, action: upsert}
     - {key: tag, value: value, action: upsert}
     - {key: additionalTag, value: otherValue, action: upsert}
@@ -80,8 +84,12 @@ processors:
   attributes/metrics_00000000-0000-0000-0000-000000000000:
     actions:
     - {key: host, value: '${POD_NAME}', action: upsert}
-    - {key: yugabyte.node_name, value: '${POD_NAME}', action: upsert}
+    - {key: universe_uuid, value: 00000000-0000-0000-0000-000000000000, action: upsert}
+    - {key: node_name, value: '${POD_NAME}', action: upsert}
+    - {key: node_prefix, value: yb-tc-test-universe, action: upsert}
+    - {key: export_purpose, value: S3_METRICS_EXPORT, action: upsert}
     - {key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000, action: upsert}
+    - {key: yugabyte.node_name, value: '${POD_NAME}', action: upsert}
     - {key: yugabyte.purpose, value: S3_METRICS_EXPORT, action: upsert}
     - {key: tag, value: value, action: upsert}
     - {key: env, value: prod, action: upsert}

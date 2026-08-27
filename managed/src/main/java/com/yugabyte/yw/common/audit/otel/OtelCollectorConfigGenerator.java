@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
@@ -1340,43 +1341,27 @@ public class OtelCollectorConfigGenerator {
       String purposeSuffix) {
     attributeActions.add(
         new OtelCollectorConfigFormat.AttributeAction("host", "${POD_NAME}", "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.node_name", "${POD_NAME}", "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.universe_uuid", universe.getUniverseUUID().toString(), "upsert", null));
+
+    Map<ExportLabel, String> values = new LinkedHashMap<>();
+    values.put(ExportLabel.UNIVERSE_UUID, universe.getUniverseUUID().toString());
+    values.put(ExportLabel.NODE_NAME, "${POD_NAME}");
+    // No NODE_ADDRESS/NODE_IDENTIFIER: this config is per helm release, and POD_IP is not injected.
+    values.put(
+        ExportLabel.NODE_PREFIX,
+        StringUtils.defaultString(universe.getUniverseDetails().nodePrefix, ""));
     if (podPlacement != null) {
-      attributeActions.add(
-          new OtelCollectorConfigFormat.AttributeAction(
-              "yugabyte.cloud",
-              StringUtils.defaultString(podPlacement.getCloud(), ""),
-              "upsert",
-              null));
-      attributeActions.add(
-          new OtelCollectorConfigFormat.AttributeAction(
-              "yugabyte.region",
-              StringUtils.defaultString(podPlacement.getRegion(), ""),
-              "upsert",
-              null));
-      attributeActions.add(
-          new OtelCollectorConfigFormat.AttributeAction(
-              "yugabyte.zone",
-              StringUtils.defaultString(podPlacement.getZone(), ""),
-              "upsert",
-              null));
+      values.put(ExportLabel.NODE_REGION, StringUtils.defaultString(podPlacement.getRegion(), ""));
+      values.put(ExportLabel.NODE_AZ, StringUtils.defaultString(podPlacement.getZone(), ""));
       if (podPlacement.getClusterType() != null) {
-        attributeActions.add(
-            new OtelCollectorConfigFormat.AttributeAction(
-                "yugabyte.node_type", podPlacement.getClusterType().toString(), "upsert", null));
+        values.put(ExportLabel.NODE_CLUSTER_TYPE, podPlacement.getClusterType().toString());
       }
+      values.put(ExportLabel.NODE_CLOUD, StringUtils.defaultString(podPlacement.getCloud(), ""));
     }
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.purpose",
-            telemetryProvider.getConfig().getType().toString() + purposeSuffix,
-            "upsert",
-            null));
+    values.put(
+        ExportLabel.EXPORT_PURPOSE,
+        telemetryProvider.getConfig().getType().toString() + purposeSuffix);
+
+    addIdentityAttributes(attributeActions, values, universe);
   }
 
   private OtelCollectorConfigFormat.Receiver createYsqlReceiver(
@@ -2711,45 +2696,60 @@ public class OtelCollectorConfigGenerator {
       Universe universe,
       TelemetryProvider telemetryProvider,
       String purposeSuffix) {
-    // Add some common collector labels.
+    // "host" is a vendor convention (Datadog, Splunk key off it), not a swamper label.
     attributeActions.add(
         new OtelCollectorConfigFormat.AttributeAction("host", nodeName, "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.node_name", nodeName, "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.cloud",
-            StringUtils.defaultString(nodeDetails.cloudInfo.cloud, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.universe_uuid", universe.getUniverseUUID().toString(), "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.node_type",
-            universe.getCluster(nodeDetails.placementUuid).clusterType.toString(),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.region",
-            StringUtils.defaultString(nodeDetails.cloudInfo.region, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.zone",
-            StringUtils.defaultString(nodeDetails.cloudInfo.az, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.purpose",
-            telemetryProvider.getConfig().getType().toString() + purposeSuffix,
-            "upsert",
-            null));
+
+    Map<ExportLabel, String> values = new LinkedHashMap<>();
+    values.put(ExportLabel.UNIVERSE_UUID, universe.getUniverseUUID().toString());
+    values.put(ExportLabel.NODE_NAME, nodeName);
+    values.put(
+        ExportLabel.NODE_ADDRESS, StringUtils.defaultString(nodeDetails.cloudInfo.private_ip, ""));
+    if (Common.CloudType.onprem.name().equals(nodeDetails.cloudInfo.cloud)) {
+      NodeInstance.maybeGet(nodeDetails.nodeUuid)
+          .map(nodeInstance -> nodeInstance.getDetails().instanceName)
+          .filter(StringUtils::isNotEmpty)
+          .ifPresent(name -> values.put(ExportLabel.NODE_IDENTIFIER, name));
+    }
+    values.put(
+        ExportLabel.NODE_PREFIX,
+        StringUtils.defaultString(universe.getUniverseDetails().nodePrefix, ""));
+    values.put(
+        ExportLabel.NODE_REGION, StringUtils.defaultString(nodeDetails.cloudInfo.region, ""));
+    values.put(ExportLabel.NODE_AZ, StringUtils.defaultString(nodeDetails.cloudInfo.az, ""));
+    values.put(
+        ExportLabel.NODE_CLUSTER_TYPE,
+        universe.getCluster(nodeDetails.placementUuid).clusterType.toString());
+    values.put(ExportLabel.NODE_CLOUD, StringUtils.defaultString(nodeDetails.cloudInfo.cloud, ""));
+    values.put(
+        ExportLabel.EXPORT_PURPOSE,
+        telemetryProvider.getConfig().getType().toString() + purposeSuffix);
+
+    addIdentityAttributes(attributeActions, values, universe);
+  }
+
+  // Canonical names first, then the legacy duplicates. Log payload attributes keep their
+  // "yugabyte." prefix unconditionally and do not come through here.
+  private void addIdentityAttributes(
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
+      Map<ExportLabel, String> values,
+      Universe universe) {
+    values.forEach(
+        (label, value) ->
+            attributeActions.add(
+                new OtelCollectorConfigFormat.AttributeAction(
+                    label.getAttributeName(), value, "upsert", null)));
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.emitLegacyExportAttributes)) {
+      return;
+    }
+    values.forEach(
+        (label, value) -> {
+          if (label.getLegacyAttributeName() != null) {
+            attributeActions.add(
+                new OtelCollectorConfigFormat.AttributeAction(
+                    label.getLegacyAttributeName(), value, "upsert", null));
+          }
+        });
   }
 
   private void addCommonAdditionalAttributes(

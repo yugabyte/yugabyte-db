@@ -1626,6 +1626,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " top of the hardcoded redaction list.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> emitLegacyExportAttributes =
+      new ConfKeyInfo<>(
+          "yb.universe.telemetry.emit_legacy_export_attributes",
+          ScopeType.UNIVERSE,
+          "Emit legacy export attributes",
+          "If true, the OpenTelemetry collector also emits the legacy yugabyte.-prefixed"
+              + " node identity attributes (yugabyte.node_name, .universe_uuid, .region,"
+              + " .zone, .node_type, .cloud, .purpose) alongside the canonical"
+              + " swamper-aligned names (node_name, universe_uuid, node_region, node_az,"
+              + " node_cluster_type, node_cloud, export_purpose). Log payload attributes"
+              + " such as yugabyte.log_level and yugabyte.audit_type keep their prefix"
+              + " regardless of this flag. Takes effect when the collector config is next"
+              + " regenerated, not at flag-change time.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> tserverLogsAdditionalDropPatterns =
       new ConfKeyInfo<>(
           "yb.universe.telemetry.tserver_logs_additional_drop_patterns",
