@@ -2812,10 +2812,11 @@ INSTANTIATE_TEST_CASE_P(, PgIndexBackfillBackendsManager, ::testing::Bool());
 //   CREATE INDEX
 //   - indislive
 //   - indisready
+//   - backfill
+//     - get safe time for read (paused)
 //                                                BEGIN
 //                                                UPDATE a row of the indexed table
-//   - backfill
-//     - get safe time for read
+//     - get safe time for read (picked)
 //                                                COMMIT
 //     - do the actual backfill
 //   - indisvalid
@@ -2824,7 +2825,12 @@ TEST_P(PgIndexBackfillBackendsManager, YB_DISABLE_TEST_IN_TSAN(NoAbortTxn)) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY, j int) SPLIT INTO 1 TABLETS",
                                  kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 2), (3, 4)", kTableName));
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+
+  // Arm the pause before CREATE INDEX starts: the pause message is logged only once.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_compute_safe_time_for_backfill_read", "true"));
+  LogWaiter pause_log_waiter(
+      cluster_->GetLeaderMaster(),
+      "Pausing due to flag TEST_pause_compute_safe_time_for_backfill_read");
 
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin create thread";
@@ -2836,10 +2842,14 @@ TEST_P(PgIndexBackfillBackendsManager, YB_DISABLE_TEST_IN_TSAN(NoAbortTxn)) {
   // Reset connection to eliminate cache/heartbeat-delay issues of indislive=t, indisready=t.
   conn_->Reset();
 
+  // With object locking, CREATE INDEX waits for existing lockers before requesting the backfill,
+  // so open the transaction only after that wait, paused just before the read time is picked.
+  ASSERT_OK(pause_log_waiter.WaitFor(30s * kTimeMultiplier));
+
   LOG(INFO) << "Begin txn";
   ASSERT_OK(conn_->Execute("BEGIN"));
   ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = 5 WHERE i = 3", kTableName));
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_compute_safe_time_for_backfill_read", "false"));
   ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
   ASSERT_OK(conn_->Execute("COMMIT"));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
