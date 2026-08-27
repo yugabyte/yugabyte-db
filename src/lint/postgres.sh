@@ -287,10 +287,11 @@ else
   diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1" \
                 --ignore-space-change)
   exit_code=$?
-  if [ $exit_code -ne 0 ]; then
-    if [ $exit_code -eq 2 ]; then
-      echo "Unexpected exit code 2"
-    fi
+  if [ $exit_code -eq 2 ]; then
+    # There is no upstream counterpart, which the first diff above already
+    # reported as bad_filename_for_yb_file, so there is nothing to compare.
+    diff_result=
+  elif [ $exit_code -ne 0 ]; then
     # The following messages are not emitted to stderr because those messages
     # may be buried under a large python stacktrace also emitted to stderr.
     if [ -z "$diff_result" ]; then
