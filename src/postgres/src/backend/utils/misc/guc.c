@@ -2913,8 +2913,8 @@ ReportChangedGUCOptions(void)
 		struct config_generic *conf = slist_container(struct config_generic,
 													  report_link, iter.cur);
 
-		/* YB_TODO_PG19MERGE: re-port YbIsClientYsqlConnMgr override */
-		Assert((conf->flags & GUC_REPORT) && (conf->status & GUC_NEEDS_REPORT));
+		Assert(((conf->flags & GUC_REPORT) || YbIsClientYsqlConnMgr()) &&
+			   (conf->status & GUC_NEEDS_REPORT));
 		ReportGUCOption(conf);
 		conf->status &= ~GUC_NEEDS_REPORT;
 		slist_delete_current(&iter);

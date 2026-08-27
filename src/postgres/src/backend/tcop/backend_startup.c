@@ -1034,7 +1034,13 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	if (strlen(port->user_name) >= NAMEDATALEN)
 		port->user_name[NAMEDATALEN - 1] = '\0';
 
-	Assert(MyBackendType == B_BACKEND || MyBackendType == B_DEAD_END_BACKEND);
+	/*
+	 * YB: auth passthrough runs this a second time on a control backend, which
+	 * the first pass typed YB_YSQL_CONN_MGR_CTRL below.
+	 */
+	Assert(MyBackendType == B_BACKEND ||
+		   MyBackendType == B_DEAD_END_BACKEND ||
+		   MyBackendType == YB_YSQL_CONN_MGR_CTRL);
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
 	else if (yb_internal_conn_kind != YB_INTERNAL_CONN_KIND_NONE)
