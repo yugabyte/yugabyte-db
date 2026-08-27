@@ -211,6 +211,11 @@ class CDCSDKVirtualWAL {
 
   Status CheckHashRangeConstraints(const CDCStateTableEntry& slot_entry);
 
+  // Validates that the tablets in the response jointly cover every partition key the slot is
+  // responsible for (either the whole key space or slot_hash_range_).
+  Status ValidateTabletListCoverage(
+      const TableId& table_id, const GetTabletListToPollForCDCResponsePB& resp) const;
+
   Status ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordID& popped_record);
 
   Status UpdateRestartTimeIfRequired();
