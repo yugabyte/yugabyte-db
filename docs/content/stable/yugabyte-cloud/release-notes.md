@@ -21,6 +21,21 @@ rightNav:
 
 ### 2026
 
+#### August 25, 2026
+
+##### New feature
+
+- {{<tags/feature/ea>}}Use [Resource Governance](./cloud-clusters/resource-governance/) to safely consolidate many independent YSQL databases on a single YugabyteDB cluster. Resource Governance provides multitenancy for YSQL databases, with predictable CPU allocation during periods of contention, allowing you to increase infrastructure density without introducing noisy-neighbor problems. To try this feature, contact {{% support-cloud %}}.
+
+##### Improvements
+
+- Improved reliability during periods of cloud provider capacity constraints, reducing the likelihood of task failures.
+
+##### Database
+
+- Extended track updated to v2025.2.5.2.
+- Rapid track updated to v2026.1.1.0.
+
 #### July 24, 2026
 
 ##### Improvements
