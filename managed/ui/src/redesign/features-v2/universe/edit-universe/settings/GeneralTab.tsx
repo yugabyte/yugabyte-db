@@ -11,7 +11,6 @@ import {
   extractRegionsAndNodeDataFromUniverse
 } from '../../geo-partition/add/AddGeoPartitionUtils';
 import {
-  StyledInfoRow,
   StyledInfoRowNew
 } from '../../create-universe/components/DefaultComponents';
 import { ClusterType } from '@app/redesign/helpers/dtos';
@@ -24,7 +23,7 @@ import {
   getClusterByType,
   getProviderIcon,
   getResilientType,
-  hasDedicatedNodes,
+  hasDedicatedNodesForCluster,
   isKubernetesUniverse,
   useEditUniverseContext
 } from '../EditUniverseUtils';
@@ -110,7 +109,7 @@ export const GeneralTab = () => {
 
   let totalNodesCount = 0;
 
-  if (!hasDedicatedNodes(universeData!)) {
+  if (!hasDedicatedNodesForCluster(universeData!, primaryCluster)) {
     const primaryRegionStats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
     const readReplicaRegionStats = countRegionsAzsAndNodes(readReplicaCluster?.placement_spec);
     totalNodesCount = primaryRegionStats.totalNodes + readReplicaRegionStats.totalNodes;
