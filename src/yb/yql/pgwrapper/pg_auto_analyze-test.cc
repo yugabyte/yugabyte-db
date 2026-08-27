@@ -2080,6 +2080,8 @@ TEST_F(PgAnalyzeReadBufferLimitTest, AnalyzeWithBigResponse) {
       .port = ts1->ysql_port(),
     }).Connect());
     ASSERT_OK(conn1.Execute("CREATE TABLE test (k INT PRIMARY KEY, v TEXT)"));
+    // Keep setup INSERT batches well under the 4MB read buffer limit this test sets.
+    ASSERT_OK(conn1.Execute("SET ysql_session_max_batch_size = 512"));
     ASSERT_OK(conn1.Execute("INSERT INTO test SELECT s, repeat('abcdefg', 100) || '-' || s::TEXT "
                             "FROM generate_series(1, 10000) AS s"));
     ASSERT_OK(conn1.Execute("ANALYZE test"));
