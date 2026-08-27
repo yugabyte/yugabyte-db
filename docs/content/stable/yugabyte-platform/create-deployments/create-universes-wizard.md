@@ -157,7 +157,7 @@ YugabyteDB supports ARM instances, which are specified using Helm overrides. Ref
 
 ### Database
 
-**Interface**
+#### Interface
 
 Enable the YSQL and YCQL endpoints and database authentication.
 
@@ -165,7 +165,7 @@ Enter the password to use for the default database admin superuser (for YSQL the
 
 By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [customize these ports](#deployment-port-override).
 
-**Features**
+#### Features
 
 Enable Connection Pooling
 : If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
@@ -181,7 +181,7 @@ Enhanced Postgres Compatibility
 - [YugabyteDB bitmap scan](../../../reference/configuration/postgresql-compatibility/#yugabytedb-bitmap-scan)
 - [Parallel append](../../../additional-features/parallel-query/)
 
-**Advanced Flags**
+#### Advanced Flags
 
 Optionally, add configuration flags for your YB-Master and YB-TServer nodes. You can also set flags after universe creation. Refer to [Edit configuration flags](../../scale-deployments/edit-config-flags/).
 
@@ -189,13 +189,13 @@ Optionally, add configuration flags for your YB-Master and YB-TServer nodes. You
 
 For security planning, refer to [Security](../create-universes-overview/#security).
 
-**Network Access**
+#### Network Access
 
 To enable IPv6 for the universe, select the **Enable IPv6** option. (Kubernetes only.)
 
 To enable public access to the universe, select the **Assign Public IP** option. (AWS, GCP, or Azure only.)
 
-**Encryption in Transit Settings**
+#### Encryption in Transit Settings
 
 Enable encryption in transit to encrypt universe traffic. You can enable the following:
 
@@ -214,7 +214,7 @@ To use a certificate you added or a previously generated certificate, set **Cert
 
 For more information on using and managing certificates, refer to [Encryption in transit](../../security/enable-encryption-in-transit/).
 
-**Encryption at Rest Settings**
+#### Encryption at Rest Settings
 
 To encrypt the universe data, select the **Enable Encryption at Rest** option and select the [KMS configuration](../../security/create-kms-config/aws-kms/) to use for encryption.
 
@@ -222,7 +222,7 @@ For more information, refer to [Encryption at rest](../../security/enable-encryp
 
 ### Advanced
 
-**Proxy Configuration**
+#### Proxy Configuration
 
 If you require a proxy for network access from nodes, enable the **Enable Proxy Server** option.
 
@@ -230,7 +230,7 @@ You can specify a **Secure Web Proxy** and a **Web Proxy**. Provide the proxy en
 
 To allow specific IP addresses to bypass the proxy, enable the **Bypass Proxy List** option and enter a list of addresses with port numbers.
 
-**Node Access**
+#### Node Access
 
 SSH Access Key
 : The access key is the SSH key that is created in the provider. Usually, each provider has its own access key, but if you are reusing keys across providers, they are listed here.
@@ -238,15 +238,15 @@ SSH Access Key
 Instance Profile ARN
 : For AWS providers, you can assign an ARN to the nodes in the universe; this allows them to be seamlessly backed up without explicit credentials.
 
-**User Tags**
+#### User Tags
 
 The instances created on a cloud provider can be assigned special metadata to help manage, bill, or audit the resources. You can define these tags when you create a new universe, as well as modify or delete tags of an existing universe. Refer to [Create and edit instance tags](../../scale-deployments/instance-tags/). (AWS, GCP, or Azure only.)
 
-**Deployment Port Override**
+#### Deployment Port Override
 
 To customize the [ports used for the universe](../../prepare/networking/), enter the custom port numbers for the services you want to change. Any value from `1024` to `65535` is valid, as long as it doesn't conflict with anything else running on nodes to be provisioned.
 
-**Kubernetes overrides**
+#### Kubernetes overrides
 
 For Kubernetes universes, you can optionally set Helm chart overrides when creating the universe. Refer to [Configure Kubernetes overrides](../../scale-deployments/edit-helm-overrides/).
 

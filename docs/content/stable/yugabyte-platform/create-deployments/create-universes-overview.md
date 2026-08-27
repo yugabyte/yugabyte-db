@@ -201,6 +201,8 @@ When no region is preferred, YugabyteDB distributes requests equally across regi
 
 Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure the fault tolerance you configured.
 
+By ranking preferred regions, you can determine which region will take up reads and writes in the event your first ranked region fails. For example, suppose you have a primary cluster with nodes in us-east, us-central, and us-west, and your application resides in us-east. You can rank preferred regions as follows: 1. us-east (for lowest latencies, as this is where the application is located) 2. us-central; 3. us-west. If us-east fails, the followers in us-central (as the second-ranked preferred region) will automatically be elected to be the leaders, and the application will start communicating with us-central.
+
 You can enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
 
 In cases where the cluster has [read replicas](#multiple-region) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
