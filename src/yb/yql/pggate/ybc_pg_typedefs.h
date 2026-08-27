@@ -496,7 +496,9 @@ typedef struct {
   uint64_t read_ops;
   uint64_t writes;
   uint64_t read_wait;
+  // Rows the storage layer read (see PgsqlRequestMetricsPB).
   uint64_t rows_scanned;
+  // Rows the storage layer returned.
   uint64_t rows_received;
 } YbcPgExecReadWriteStats;
 

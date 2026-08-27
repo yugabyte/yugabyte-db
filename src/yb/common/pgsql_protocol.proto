@@ -645,9 +645,13 @@ message PgsqlRequestMetricsPB {
   repeated PgsqlRequestCounterMetricPB counter_metrics = 2;
   // Event stats metrics changes as a result of processing the request.
   repeated PgsqlRequestEventMetricPB event_metrics = 3;
-  // Count of table rows scanned as a result of processing the request.
+  // Rows read from the table while processing this request.  A row that a pushed down filter
+  // rejected was read, so it counts, and so does a row that an aggregate folded into its result.
+  // A row excluded by a bound was not read, so it does not count.  Each row of a scan is counted
+  // by exactly one of its requests, so the last row of a response that reached the size limit,
+  // which is dropped from it, is counted by the request that reads it again.  See GH #33551.
   optional int64 scanned_table_rows = 4;
-  // Count of secondary index rows scanned as a result of processing the request.
+  // The same for the rows read from a secondary index that drives the scan.
   optional int64 scanned_index_rows = 5;
 }
 
