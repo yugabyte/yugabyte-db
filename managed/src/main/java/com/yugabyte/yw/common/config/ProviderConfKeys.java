@@ -627,4 +627,14 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
               + " purposes",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> nodeAgentUseUniverseCertificatesOnInstall =
+      new ConfKeyInfo<>(
+          "yb.node_agent.use_universe_certificates_on_install",
+          ScopeType.PROVIDER,
+          "Use Universe Certificates in Node Agent Installation",
+          "Use universe certificates in new node agent installation instead of the default"
+              + " certificates. Existing node agents will not be affected until they are"
+              + " reinstalled during tasks like OS Image Upgrade, Reprovisioning node etc",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

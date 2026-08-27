@@ -90,6 +90,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -124,6 +125,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -2422,7 +2424,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createInstallNodeAgentTasks(
       Universe universe, Collection<NodeDetails> nodes) {
-    return createInstallNodeAgentTasks(universe, nodes, false);
+    return createInstallNodeAgentTasks(universe, nodes, false /* reinstall */);
   }
 
   public SubTaskGroup createInstallNodeAgentTasks(
@@ -2438,12 +2440,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     getInstanceOf(NodeAgentEnabler.class).cancelForUniverse(universe.getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
+    AtomicReference<CertificateInfo> certificateInfoRef = new AtomicReference<>();
     Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     filterNodesForInstallNodeAgent(universe, nodes, reinstall /* includeOnPremManual */)
         .forEach(
             n -> {
               InstallNodeAgent.Params params = new InstallNodeAgent.Params();
               Provider provider = providerGetter.apply(n);
+              CertificateInfo certificateInfo = null;
+              if (confGetter.getConfForScope(
+                  provider, ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall)) {
+                certificateInfo =
+                    certificateInfoRef.updateAndGet(
+                        info -> info == null ? universe.getCertificateInfoNodeToNode() : info);
+              }
+              params.certificateUuid = certificateInfo == null ? null : certificateInfo.getUuid();
               params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
               params.airgap = provider.getAirGapInstall();
               params.nodeName = n.nodeName;
