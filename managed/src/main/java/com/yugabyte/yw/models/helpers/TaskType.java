@@ -1086,6 +1086,9 @@ public enum TaskType {
   BackupPreflightValidate(
       com.yugabyte.yw.commissioner.tasks.subtasks.BackupPreflightValidate.class),
 
+  BackupStorageConfigValidate(
+      com.yugabyte.yw.commissioner.tasks.subtasks.BackupStorageConfigValidate.class),
+
   WaitForLeadersOnPreferredOnly(
       com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly.class),
 

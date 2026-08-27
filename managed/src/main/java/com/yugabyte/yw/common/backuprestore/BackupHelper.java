@@ -298,10 +298,6 @@ public class BackupHelper {
           BAD_REQUEST, "Point-In-Time-Restorable backup not allowed for non-YBC universes");
     }
 
-    if (!isSkipConfigBasedPreflightValidation(universe)) {
-      validateStorageConfig(customerConfig);
-    }
-
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     log.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
     CustomerTask.create(
