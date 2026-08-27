@@ -96,22 +96,18 @@ public class CreateBackup extends UniverseTaskBase {
   }
 
   @Override
-  public void validateParams(boolean isFirstTry) {
-    super.validateParams(isFirstTry);
-    Universe universe = Universe.getOrBadRequest(params().getUniverseUUID());
+  protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
     boolean ybcBackup =
         !BackupCategory.YB_BACKUP_SCRIPT.equals(params().backupCategory)
             && universe.isYbcEnabled()
             && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
-    // Validate the storage config against the universe here, in the pre-check, so that an unusable
-    // config fails the task before run() creates the Backup row. The BackupPreflightValidate
-    // subtask runs only after the row is persisted, so relying on it would leave behind an orphaned
-    // Backup row that the garbage collector cannot delete (it re-validates the same invalid config
-    // and skips deletion), leaking Backup entries over time. See PLAT-20585.
-    if (ybcBackup) {
-      backupHelper.validateStorageConfigForBackupOnUniverse(
-          params().storageConfigUUID, params().customerUUID, universe);
-    }
+    createBackupStorageConfigValidateTask(
+            params().storageConfigUUID,
+            params().customerUUID,
+            params().getUniverseUUID(),
+            ybcBackup)
+        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
   }
 
   @Override
@@ -137,15 +133,19 @@ public class CreateBackup extends UniverseTaskBase {
       lockUniverse(-1 /* expectedUniverseVersion */);
       isUniverseLocked = true;
       try {
-        // Check if the storage config is in active state or not.
+        // Clear any previous subtasks if any.
+        getRunnableTask().reset();
+
+        // Run storage-config network checks before Backup.create() (PLAT-20585).
+        createPrecheckTasks(universe);
+        getRunnableTask().runSubTasks();
+
         CustomerConfig customerConfig =
             customerConfigService.getOrBadRequest(
                 params().customerUUID, params().storageConfigUUID);
         if (!customerConfig.getState().equals(ConfigState.Active)) {
           throw new RuntimeException("Storage config cannot be used as it is not in Active state");
         }
-        // Clear any previous subtasks if any.
-        getRunnableTask().reset();
 
         if (isFirstTry()
             && !universe
