@@ -1546,11 +1546,26 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *placement-info*: Comma-delimited list of placements in the form *cloud*.*region*.*zone*`[:min[:max]]`. The minimum defaults to 1. The optional maximum limits how many replicas of one tablet can be placed in the block; when omitted, it defaults to the replication factor. It is not recommended to repeat the same placement multiple times. Repeated placements sum their explicit minimums and maximums; if any occurrence omits the maximum, the aggregate maximum is omitted.
-* *replication-factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of replica counts specified in *placement-info*.
+* *placement-info*: Comma-delimited list of placements in the form *cloud*.*region*.*zone*`[:min[:max]]`. The optional minimum indicates how many replicas of each tablet must be placed in the block; it defaults to 1. The optional maximum limits how many replicas of one tablet can be placed in the block; when omitted, the number of replicas in the block is only limited by the replication factor. A maximum can only be specified for fully-qualified placement blocks; it is not supported in combination with the wildcard (`*`) placements described below. It is not recommended to repeat the same placement multiple times, but instead to specify the total counts after the colons. However, if you repeat a placement, its minimums are summed, and its maximums are summed if every occurrence specifies one (if any occurrence omits the maximum, the block has no maximum). For example, `aws.us-west.us-west-2a:1:2,aws.us-west.us-west-2a:1:2` is equivalent to `aws.us-west.us-west-2a:2:4`, whereas `aws.us-west.us-west-2a:1:2,aws.us-west.us-west-2a:1` is equivalent to `aws.us-west.us-west-2a:2`.
+* *replication-factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of minimum replica counts specified in *placement-info*, and less than or equal to the total of maximum replica counts.
 * *placement-id*: The identifier of the primary cluster, which can be any unique string. Optional; if not set, a randomly-generated ID is used.
 
 **Example**
+
+```sh
+./bin/yb-admin \
+    --master_addresses $MASTER_RPC_ADDRS \
+    modify_placement_info  \
+    aws.us-west.us-west-2a:2,aws.us-west.us-west-2b:2,aws.us-west.us-west-2c 5
+```
+
+This will place a minimum of:
+
+1. 2 replicas in aws.us-west.us-west-2a
+2. 2 replicas in aws.us-west.us-west-2b
+3. 1 replica in aws.us-west.us-west-2c
+
+To additionally limit how many replicas of each tablet can be placed in a zone, specify a maximum after the minimum:
 
 ```sh
 ./bin/yb-admin \
@@ -1564,6 +1579,8 @@ This permits:
 1. Between 1 and 2 replicas in aws.us-west.us-west-2a
 2. Between 1 and 2 replicas in aws.us-west.us-west-2b
 3. Between 1 and 2 replicas in aws.us-west.us-west-2c
+
+The maximum is a hard cap: replicas are never placed above a block's maximum, even if that means a tablet is temporarily under-replicated while other placement blocks lack tablet servers.
 
 You can verify the new placement information by running the following `curl` command:
 

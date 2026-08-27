@@ -122,17 +122,12 @@ Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
         return STATUS_FORMAT(
             Corruption, "min_num_replicas ($0) must be > 0", i->min_num_replicas());
       }
-      if (i->has_max_num_replicas()) {
-        if (i->max_num_replicas() <= 0) {
-          return STATUS_FORMAT(
-              Corruption, "max_num_replicas ($0) must be > 0", i->max_num_replicas());
-        }
-        if (i->max_num_replicas() < i->min_num_replicas()) {
-          return STATUS_FORMAT(
-              Corruption,
-              "max_num_replicas ($0) must be greater than or equal to min_num_replicas ($1)",
-              i->max_num_replicas(), i->min_num_replicas());
-        }
+      // min_num_replicas > 0 is enforced above, so this also rejects non-positive maxima.
+      if (i->has_max_num_replicas() && i->max_num_replicas() < i->min_num_replicas()) {
+        return STATUS_FORMAT(
+            Corruption,
+            "max_num_replicas ($0) must be greater than or equal to min_num_replicas ($1)",
+            i->max_num_replicas(), i->min_num_replicas());
       }
       total_min_replicas += i->min_num_replicas();
       total_max_replicas += i->has_max_num_replicas()

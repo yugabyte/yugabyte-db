@@ -34,7 +34,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/common_net.h"
-#include "yb/common/common_flags.h"
 #include "yb/common/tablespace_parser.h"
 
 #include "yb/gutil/strings/substitute.h"
@@ -629,7 +628,7 @@ TEST(TablespaceParserTest, MaxNumReplicasValidation) {
       {R"({"num_replicas":1,"placement_blocks":[
          {"cloud":"c","region":"r","zone":"z","min_num_replicas":1,
           "max_num_replicas":0}]})",
-       "max_num_replicas (0) must be > 0"},
+       "max_num_replicas (0) must be greater than or equal to min_num_replicas (1)"},
       {R"({"num_replicas":2,"placement_blocks":[
          {"cloud":"c","region":"r","zone":"z","min_num_replicas":2,
           "max_num_replicas":1}]})",
@@ -651,35 +650,6 @@ TEST(TablespaceParserTest, MaxNumReplicasValidation) {
         {"cloud":"c","region":"r","zone":"z","min_num_replicas":1,
          "max_num_replicas":2}]})",
       ""));
-}
-
-TEST(TablespaceParserTest, MaxNumReplicasDisabledBeforeAutoFlagPromotion) {
-  google::FlagSaver flag_saver;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_placement_block_max_num_replicas) = false;
-
-  // Explicit maxima are parsed and preserved in the metadata before the AutoFlag is promoted,
-  // but the effective maximum used by placement decisions stays at the placement replication
-  // factor until promotion.
-  const auto replication_info = ASSERT_RESULT(TablespaceParser::FromString(
-      R"({"num_replicas":3,"placement_blocks":[
-        {"cloud":"c","region":"r","zone":"z1","min_num_replicas":1,
-         "max_num_replicas":1},
-        {"cloud":"c","region":"r","zone":"z2","min_num_replicas":1}]})",
-      ""));
-  const auto& block = replication_info.live_replicas().placement_blocks(0);
-  ASSERT_EQ(block.max_num_replicas(), 1);
-  ASSERT_EQ(GetEffectiveMaxNumReplicas(block, 3), 3);
-
-  // Validation of explicit maxima is not gated on the AutoFlag: a placement whose maxima cannot
-  // accommodate the replication factor is rejected even before promotion, matching
-  // CatalogManagerUtil::IsPlacementInfoValid.
-  ASSERT_NOK_STR_CONTAINS(
-      TablespaceParser::FromString(
-          R"({"num_replicas":3,"placement_blocks":[
-            {"cloud":"c","region":"r","zone":"z","min_num_replicas":1,
-             "max_num_replicas":1}]})",
-          ""),
-      "Sum of effective max_num_replicas fields (1) is less than the total replication factor");
 }
 
 // Test the tablespace preferred zone info parsing.

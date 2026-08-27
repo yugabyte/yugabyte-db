@@ -322,9 +322,13 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithNondefaultMinNumReplicas)
 }
 
 TEST_F(LoadBalancerPlacementPolicyTest, CreateTableRespectsMaxNumReplicas) {
+  // Give z0 three tservers so that, without the maximum, initial placement could put three
+  // replicas of a tablet in z0 (with only two tservers per zone the two-replica bound would hold
+  // structurally and the test would be vacuous).
   AddNewTserverToZone("z0", 4);
-  AddNewTserverToZone("z1", 5);
-  AddNewTserverToZone("z2", 6);
+  AddNewTserverToZone("z0", 5);
+  AddNewTserverToZone("z1", 6);
+  AddNewTserverToZone("z2", 7);
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
       "c.r.z0:1:2,c.r.z1:1:2,c.r.z2:1:2", 5, ""));
 
@@ -337,13 +341,53 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableRespectsMaxNumReplicas) {
   ASSERT_OK(builder.Build(&schema));
   ASSERT_OK(NewTableCreator()->table_name(placement_table).schema(&schema).Create());
 
+  // Tserver indexes per zone: z0: {0, 3, 4}, z1: {1, 5}, z2: {2, 6}.
   vector<int> counts_per_ts;
-  GetLoadOnTservers(table_name, 6, &counts_per_ts);
+  GetLoadOnTservers(table_name, 7, &counts_per_ts);
   ASSERT_EQ(std::accumulate(counts_per_ts.begin(), counts_per_ts.end(), 0), 5 * num_tablets());
-  for (const auto& [first, second] :
-       {std::pair(0, 3), std::pair(1, 4), std::pair(2, 5)}) {
-    ASSERT_LE(counts_per_ts[first] + counts_per_ts[second], 2 * num_tablets());
-  }
+  ASSERT_LE(counts_per_ts[0] + counts_per_ts[3] + counts_per_ts[4], 2 * num_tablets());
+  ASSERT_LE(counts_per_ts[1] + counts_per_ts[5], 2 * num_tablets());
+  ASSERT_LE(counts_per_ts[2] + counts_per_ts[6], 2 * num_tablets());
+}
+
+TEST_F(LoadBalancerPlacementPolicyTest, MaxNumReplicasIsAHardCap) {
+  // Policy over z0 (populated) and z3/z4 (empty). z0 alone has enough tservers for a quorum of
+  // three, but its maximum of two makes a quorum infeasible, so table creation must fail: the
+  // maximum is a hard cap even when other placements have no tservers.
+  AddNewTserverToZone("z0", 4);
+  AddNewTserverToZone("z0", 5);
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0:1:2,c.r.z3:1:2,c.r.z4:1:2", 5, ""));
+
+  const string table_name = "max-replicas-hard-cap-test";
+  const yb::client::YBTableName placement_table(
+      YQL_DATABASE_CQL, this->table_name().namespace_name(), table_name);
+  yb::client::YBSchemaBuilder builder;
+  yb::client::YBSchema schema;
+  builder.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+  ASSERT_OK(builder.Build(&schema));
+  ASSERT_NOK(NewTableCreator()->table_name(placement_table).schema(&schema).Create());
+
+  // With one tserver in z3, a quorum (two in z0 plus one in z3) becomes feasible and creation
+  // succeeds, initially under-replicated.
+  AddNewTserverToZone("z3", 6);
+  ASSERT_OK(NewTableCreator()->table_name(placement_table).schema(&schema).Create());
+
+  // Once z3 and z4 are fully populated, the load balancer heals the table to the full
+  // replication factor without exceeding any maximum.
+  AddNewTserverToZone("z3", 7);
+  AddNewTserverToZone("z4", 8);
+  WaitForLoadBalancer();
+
+  // Tserver indexes per zone: z0: {0, 3, 4}, z1: {1}, z2: {2}, z3: {5, 6}, z4: {7}.
+  vector<int> counts_per_ts;
+  GetLoadOnTservers(table_name, 8, &counts_per_ts);
+  ASSERT_EQ(std::accumulate(counts_per_ts.begin(), counts_per_ts.end(), 0), 5 * num_tablets());
+  ASSERT_LE(counts_per_ts[0] + counts_per_ts[3] + counts_per_ts[4], 2 * num_tablets());
+  ASSERT_LE(counts_per_ts[5] + counts_per_ts[6], 2 * num_tablets());
+  ASSERT_EQ(counts_per_ts[7], num_tablets());
+  ASSERT_EQ(counts_per_ts[1], 0);  // z1 is not in the placement policy.
+  ASSERT_EQ(counts_per_ts[2], 0);  // z2 is not in the placement policy.
 }
 
 TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {

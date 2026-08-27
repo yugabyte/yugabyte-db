@@ -78,8 +78,13 @@ struct CBTabletMetadata {
   // Current running and starting replica counts per placement block.
   std::unordered_map<CloudInfoPB, size_t, cloud_hash, cloud_equal_to> placement_replica_counts;
 
+  // If any placement block hosts more replicas of this tablet than its configured maximum. This
+  // is independent of over-replication: a tablet with exactly num_replicas replicas can still
+  // have a placement block above its maximum (e.g. after the placement policy is changed).
+  bool is_over_max_placements = false;
+
   // Replicas in placement blocks that exceed their configured maximum.
-  std::set<TabletServerId> over_max_replicated_tablet_servers;
+  std::set<TabletServerId> over_max_placement_tablet_servers;
 
   // If this tablet has more replicas than the configured number in the PlacementInfoPB.
   bool is_over_replicated;
@@ -406,9 +411,14 @@ class PerTableLoadState {
     initialized_ = true;
   }
 
+  // Checks whether a replica of tablet_id can be added to to_ts. from_ts is the tserver the
+  // replica is moving from, or empty if this add has no source. Placement block maximums are
+  // enforced here, with one exemption: if from_ts is in the same placement block as to_ts, the
+  // move is allowed even if the block is at its maximum, since the remove that follows restores
+  // the block to its cap (this keeps e.g. blacklist-driven same-block moves from deadlocking).
+  // Callers must pass from_ts explicitly (empty if none) to make that decision conscious.
   Result<bool> CanAddTabletToTabletServer(
-      const TabletId& tablet_id, const TabletServerId& to_ts,
-      const TabletServerId& from_ts = "");
+      const TabletId& tablet_id, const TabletServerId& to_ts, const TabletServerId& from_ts);
 
   // For a TS specified by ts_uuid, this function checks if there is a placement
   // block in placement_info where this TS can be placed. If there doesn't exist

@@ -13,6 +13,8 @@
 
 #include "yb/master/catalog_manager_util.h"
 
+#include <algorithm>
+
 #include "yb/common/common_net.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
@@ -385,6 +387,27 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
   }
 
   int64_t total_min_replica_count = 0;
+  for (const auto& placement_block : placement_info.placement_blocks()) {
+    total_min_replica_count += placement_block.min_num_replicas();
+  }
+  if (total_min_replica_count > placement_info.num_replicas()) {
+    return STATUS_FORMAT(IllegalState, "num_replicas ($0) should be greater than or equal to the "
+        "total of replica counts specified in placement_info ($1).", placement_info.num_replicas(),
+        total_min_replica_count);
+  }
+
+  RETURN_NOT_OK(ValidateMaxNumReplicasFields(placement_info));
+
+  return Status::OK();
+}
+
+Status CatalogManagerUtil::ValidateMaxNumReplicasFields(const PlacementInfoPB& placement_info) {
+  if (std::none_of(
+          placement_info.placement_blocks().begin(), placement_info.placement_blocks().end(),
+          [](const auto& block) { return block.has_max_num_replicas(); })) {
+    return Status::OK();
+  }
+
   int64_t total_max_replica_count = 0;
   for (const auto& placement_block : placement_info.placement_blocks()) {
     if (placement_block.has_max_num_replicas()) {
@@ -399,19 +422,20 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
             "max_num_replicas ($0) must be greater than or equal to min_num_replicas ($1)",
             placement_block.max_num_replicas(), placement_block.min_num_replicas());
       }
+      const auto& cloud_info = placement_block.cloud_info();
+      if (!cloud_info.has_placement_cloud() || !cloud_info.has_placement_region() ||
+          !cloud_info.has_placement_zone()) {
+        return STATUS_FORMAT(
+            IllegalState,
+            "max_num_replicas is not supported for wildcard placement blocks: $0",
+            placement_block.ShortDebugString());
+      }
     }
-    total_min_replica_count += placement_block.min_num_replicas();
     total_max_replica_count += placement_block.has_max_num_replicas()
         ? placement_block.max_num_replicas()
         : placement_info.num_replicas();
   }
-  if (total_min_replica_count > placement_info.num_replicas()) {
-    return STATUS_FORMAT(IllegalState, "num_replicas ($0) should be greater than or equal to the "
-        "total of replica counts specified in placement_info ($1).", placement_info.num_replicas(),
-        total_min_replica_count);
-  }
-  if (placement_info.placement_blocks_size() > 0 &&
-      total_max_replica_count < placement_info.num_replicas()) {
+  if (total_max_replica_count < placement_info.num_replicas()) {
     return STATUS_FORMAT(
         IllegalState,
         "num_replicas ($0) should be less than or equal to the total maximum replica count ($1).",

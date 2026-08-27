@@ -2554,19 +2554,15 @@ Status CatalogManager::ValidateTableReplicationInfo(
     return STATUS(InvalidArgument, "No replication info set.");
   }
 
-  auto validate_explicit_max = [](const PlacementInfoPB& placement_info) -> Status {
-    if (std::ranges::any_of(
-            placement_info.placement_blocks(),
-            [](const auto& block) { return block.has_max_num_replicas(); })) {
-      return CatalogManagerUtil::IsPlacementInfoValid(placement_info);
-    }
-    return Status::OK();
-  };
+  // Note: this intentionally does not run the full CatalogManagerUtil::IsPlacementInfoValid
+  // checks, which are stricter than what historic table-level placements were held to. Only the
+  // constraints on explicit per-block maximums are validated here.
   if (replication_info.has_live_replicas()) {
-    RETURN_NOT_OK(validate_explicit_max(replication_info.live_replicas()));
+    RETURN_NOT_OK(
+        CatalogManagerUtil::ValidateMaxNumReplicasFields(replication_info.live_replicas()));
   }
   for (const auto& read_replicas : replication_info.read_replicas()) {
-    RETURN_NOT_OK(validate_explicit_max(read_replicas));
+    RETURN_NOT_OK(CatalogManagerUtil::ValidateMaxNumReplicasFields(read_replicas));
   }
 
   auto l = ClusterConfig()->LockForRead();
@@ -5290,6 +5286,20 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
 
+    // The sum of the effective per-block maximums must cover the total number of replicas,
+    // otherwise no valid assignment of replicas to placement blocks exists.
+    size_t maximum_sum = 0;
+    for (const auto& pb : placement_info.placement_blocks()) {
+      maximum_sum += GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
+    }
+    if (maximum_sum < num_replicas) {
+      msg = Substitute("Sum of maximum replicas per placement ($0) is less than num_replicas "
+                       "($1)", maximum_sum, num_replicas);
+      s = STATUS(InvalidArgument, msg);
+      LOG(WARNING) << msg;
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    }
+
     // Verify that there are enough TServers in the requested placements
     // to match the total required replication factor.
     auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
@@ -5310,8 +5320,8 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
     // Essentially, the logic is:
     // 1. We satisfy whatever we can from the minimums.
     // 2. We then satisfy whatever we can from the slack.
-    //    Here it doesn't whether where we put the slack replicas as long as
-    //    the tservers are chosen from any of the valid placement blocks.
+    //    Slack replicas can go into any of the valid placement blocks, as long as the block
+    //    stays within its effective maximum number of replicas.
     // Overall, if in this process we are able to place n/2 + 1 replicas
     // then we succeed otherwise we fail.
     size_t total_extra_replicas = num_replicas - minimum_sum;
@@ -12411,34 +12421,50 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       selected_per_block.push_back(num_replicas);
     }
 
+    // Distribute the remaining replicas across the tservers left, walking them from least to
+    // most loaded (the same order SelectReplica would use) and skipping any tserver whose
+    // placement block has already reached its effective maximum. Each tserver hosts at most one
+    // replica of a tablet, so per-block counts increase by at most one per selected tserver and
+    // the maximums are hard caps: if the caps prevent placing every remaining replica, the
+    // tablet starts under-replicated rather than violating a maximum.
     size_t replicas_left = nreplicas - min_replica_count_sum;
-    while (replicas_left > 0) {
-      TSDescriptorVector candidates;
+    // Copy the sorted load order, as selecting a replica below re-sorts it. Selections only
+    // change the load of tservers that cannot be selected again for this tablet, so the copied
+    // order remains correct.
+    const auto sorted_load_order = per_table_state->sorted_replica_load_;
+    for (const auto& ts_uuid : sorted_load_order) {
+      if (replicas_left == 0) {
+        break;
+      }
+      if (already_selected_ts.contains(ts_uuid)) {
+        continue;
+      }
+      const auto ts_it = std::find_if(
+          ts_descs.begin(), ts_descs.end(),
+          [&ts_uuid](const auto& ts) { return ts->permanent_uuid() == ts_uuid; });
+      if (ts_it == ts_descs.end()) {
+        continue;
+      }
+      // Find the (unique) placement block this tserver belongs to; placement blocks cannot
+      // overlap.
       size_t block_idx = 0;
       for (const auto& pb : placement_info.placement_blocks()) {
-        if (selected_per_block[block_idx] <
-            implicit_cast<size_t>(
-                GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(nreplicas)))) {
-          auto block_tservers = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
-          candidates.insert(candidates.end(), block_tservers.begin(), block_tservers.end());
+        if ((*ts_it)->MatchesCloudInfo(pb.cloud_info())) {
+          break;
         }
         ++block_idx;
       }
-
-      auto selected = SelectReplica(
-          candidates, &already_selected_ts, per_table_state, global_state);
-      if (!selected) {
-        break;
+      if (block_idx == implicit_cast<size_t>(placement_info.placement_blocks_size())) {
+        continue;
+      }
+      const auto& pb = placement_info.placement_blocks(narrow_cast<int>(block_idx));
+      if (selected_per_block[block_idx] >=
+          implicit_cast<size_t>(GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(nreplicas)))) {
+        continue;
       }
       SelectReplicas(
-          {selected}, 1, config, &already_selected_ts, member_type, per_table_state, global_state);
-      for (size_t i = 0; i != implicit_cast<size_t>(placement_info.placement_blocks_size()); ++i) {
-        if (selected->MatchesCloudInfo(
-                placement_info.placement_blocks(narrow_cast<int>(i)).cloud_info())) {
-          ++selected_per_block[i];
-          break;
-        }
-      }
+          {*ts_it}, 1, config, &already_selected_ts, member_type, per_table_state, global_state);
+      ++selected_per_block[block_idx];
       --replicas_left;
     }
   }
@@ -13286,17 +13312,13 @@ Result<int32_t> CatalogManager::GetClusterConfigVersion() {
 Status CatalogManager::ValidateReplicationInfo(
     const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
   const auto& replication_info = req->replication_info();
-  auto validate_explicit_max = [](const PlacementInfoPB& placement_info) -> Status {
-    if (std::ranges::any_of(
-            placement_info.placement_blocks(),
-            [](const auto& block) { return block.has_max_num_replicas(); })) {
-      return CatalogManagerUtil::IsPlacementInfoValid(placement_info);
-    }
-    return Status::OK();
-  };
-  RETURN_NOT_OK(validate_explicit_max(replication_info.live_replicas()));
+  // Note: this intentionally does not run the full CatalogManagerUtil::IsPlacementInfoValid
+  // checks, which are stricter than what historic table-level placements were held to. Only the
+  // constraints on explicit per-block maximums are validated here.
+  RETURN_NOT_OK(
+      CatalogManagerUtil::ValidateMaxNumReplicasFields(replication_info.live_replicas()));
   for (const auto& read_replicas : replication_info.read_replicas()) {
-    RETURN_NOT_OK(validate_explicit_max(read_replicas));
+    RETURN_NOT_OK(CatalogManagerUtil::ValidateMaxNumReplicasFields(read_replicas));
   }
 
   TSDescriptorVector all_ts_descs;
