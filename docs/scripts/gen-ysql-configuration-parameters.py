@@ -145,10 +145,10 @@ def clean(text):
 
 
 def description(param):
-    """Description cell for a parameter.
+    """Description text for a parameter.
 
-    Corrections are display-only: classify() still reads the raw source text, so fixing a
-    typo here can't silently move a parameter between the page's sections.
+    Corrections are display-only: excluded() still reads the raw source text, so fixing a
+    typo here can't silently pull an excluded parameter onto the page.
     """
     if param["name"] in DESCRIPTION_OVERRIDES:
         text = DESCRIPTION_OVERRIDES[param["name"]]
@@ -169,38 +169,55 @@ def description(param):
 def default_of(param):
     value = param["boot_val"]
     if value is None:
-        return "n/a"
+        return "none"
     if value == "":
         return "empty"
     return "`%s`" % value
 
 
-def unit_of(param):
-    return "`%s`" % param["unit"] if param["unit"] else "n/a"
-
-
-def linked_name(name, anchors):
+def detail_link(name, anchors):
     anchor = name.replace("_", "-").replace(".", "")
     if anchor in anchors:
-        return "[%s](../yb-tserver/#%s)" % (name, anchor)
-    return name
+        return "For more detail, see [%s](../yb-tserver/#%s)." % (name, anchor)
+    return None
 
 
-def table(params, anchors):
-    rows = [
-        "| Parameter | Description | Type | Default | Unit | Context |",
-        "| :--- | :--- | :--- | :--- | :--- | :--- |",
-    ]
+def entries(params, anchors):
+    """Render parameters as one section each.
+
+    A six-column table is wider than the content area once parameter names and
+    descriptions are in it, so each parameter gets a heading plus a tags row instead. The
+    tags row is a wrapping flex container, so each metadata paragraph becomes a chip that
+    reflows on narrow screens.
+    """
+    out = []
     for p in sorted(params, key=lambda x: x["name"]):
-        rows.append("| %s | %s | %s | %s | %s | %s |" % (
-            linked_name(p["name"], anchors),
-            description(p),
-            p["vartype"],
-            default_of(p),
-            unit_of(p),
-            p["context"],
-        ))
-    return "\n".join(rows)
+        out.append("### %s\n" % p["name"])
+        out.append("{{% tags/wrap %}}")
+        # Hugo only parses the shortcode's inner content as markdown when it starts on its
+        # own block, so the blank line here is load-bearing: without it the first metadata
+        # line renders as literal text.
+        out.append("")
+        if p["context"] == "postmaster":
+            out.append("{{<tags/feature/restart-needed>}}")
+            out.append("")
+        out.append("Default: %s" % default_of(p))
+        out.append("")
+        out.append("Type: `%s`" % p["vartype"])
+        if p["unit"]:
+            out.append("")
+            out.append("Unit: `%s`" % p["unit"])
+        out.append("")
+        out.append("Context: `%s`" % p["context"])
+        out.append("{{% /tags/wrap %}}")
+        out.append("")
+        out.append(description(p))
+        link = detail_link(p["name"], anchors)
+        if link:
+            out.append("")
+            out.append(link)
+        out.append("")
+    return "\n".join(out)
 
 
 def find_anchors(tserver_page):
@@ -224,9 +241,11 @@ menu:
     weight: 2460
 type: docs
 showRightNav: true
+rightNav:
+  hideH3: true
 ---
 
-YSQL supports the PostgreSQL [server configuration parameters](https://www.postgresql.org/docs/15/runtime-config.html), plus the YugabyteDB-specific parameters listed on this page. Frequently used parameters are documented in detail under [YSQL configuration parameters](../yb-tserver/#ysql-configuration-parameters) on the YB-TServer reference page; the parameter names below link to that entry where one exists.
+YSQL supports the PostgreSQL [server configuration parameters](https://www.postgresql.org/docs/15/runtime-config.html), plus the YugabyteDB-specific parameters listed on this page. Frequently used parameters are documented in detail under [YSQL configuration parameters](../yb-tserver/#ysql-configuration-parameters) on the YB-TServer reference page; entries below link to that page where such an entry exists.
 
 To see the parameters and their current values on a running cluster, query `pg_settings`:
 
@@ -247,16 +266,15 @@ SET LOCAL yb_fetch_row_limit = 2048;                  -- current transaction
 
 To set a parameter for the whole cluster, use the yb-tserver [--ysql_pg_conf_csv](../yb-tserver/#ysql-pg-conf-csv) flag, for example `--ysql_pg_conf_csv=yb_fetch_row_limit=2048`.
 
-## Reading the tables
+## Reading the entries
 
-| Column | Meaning |
-| :--- | :--- |
-| Parameter | Parameter name, as it appears in `pg_settings`. |
-| Description | Description reported by `pg_settings.short_desc` and `extra_desc`. |
-| Type | `bool`, `integer`, `real`, `string`, or `enum`. |
-| Default | Built-in default (`pg_settings.boot_val`). A deployment can start with a different value if it is set using a flag, so check `pg_settings.reset_val` on your cluster. |
-| Unit | Unit the value is interpreted in, where the parameter has one. |
-| Context | When the parameter can be set. See the following table. |
+Each parameter below lists the following:
+
+- **Default** - the built-in default (`pg_settings.boot_val`). A deployment can start with a different value if it is set using a flag, so check `pg_settings.reset_val` on your cluster.
+- **Type** - `bool`, `integer`, `real`, `string`, or `enum`.
+- **Unit** - the unit the value is interpreted in, where the parameter has one.
+- **Context** - when the parameter can be set, as described in the following table.
+- {{{{% tags/feature/restart-needed %}}}} - the parameter can only be set in the cluster configuration, and the YSQL process must be restarted for a change to take effect.
 
 The context determines who can change a parameter and whether a restart is needed.
 
@@ -335,7 +353,7 @@ def main():
         if not members:
             continue
         out.append("\n## %s\n" % area)
-        out.append(table(members, anchors))
+        out.append(entries(members, anchors))
         out.append("")
 
     with open(args.output, "w") as handle:
