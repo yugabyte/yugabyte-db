@@ -288,6 +288,7 @@ Status TabletSplitManager::ValidatePartitioningVersion(const TableInfo& table) {
 
 Status TabletSplitManager::ValidateSplitCandidateTable(
     const TableInfoPtr& table,
+    const TableInfoPtr& indexed_table,
     const IgnoreDisabledList ignore_disabled_lists,
     const IgnoreVectorIndexesValidation ignore_vector_indexes_validation) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
@@ -405,6 +406,37 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   if (table->IsBackfilling()) {
     return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
                             "Backfill operation in progress, table: $0", *table);
+  }
+
+  // A unique index built in SKIP_ALL mode must not split from the start of its deferred
+  // verification until the ordering generation is released: the verification scan runs over a
+  // tablet set resolved once (and persisted) after draining in-flight splits. Splits during the
+  // build itself are fine -- children inherit the generation -- so the fence keys on the job's
+  // persisted verification state, not on the job's existence. The in-memory disabled list
+  // above is lost on failover; this check reads durable sys-catalog state, so the fence holds
+  // across master failover until the funnel clears the job after release.
+  // The indexed table is caller-resolved (see the header): taking catalog locks here would
+  // recurse on the catalog mutex when entered through ValidateSplitCandidateUnlocked.
+  if (table->is_index() && indexed_table) {
+    auto indexed_lock = indexed_table->LockForRead();
+    for (const auto& backfill_job : indexed_lock->pb.backfill_jobs()) {
+      if (backfill_job.unique_index_backfill_mode() !=
+              UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL ||
+          backfill_job.backfill_state().count(table->id()) == 0 ||
+          !backfill_job.has_unique_index_verification() ||
+          backfill_job.unique_index_verification().state() ==
+              UniqueIndexVerificationStatePB::VERIFY_NONE) {
+        continue;
+      }
+      auto status = STATUS_EC_FORMAT(
+          IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
+          "Unique-index verification in progress; splitting is fenced until the ordering "
+          "generation is released, index table: $0", *table);
+      YB_LOG_EVERY_N_SECS(INFO, 30)
+          << "Skipping tablet splitting for index table " << table->ToString() << ": "
+          << status;
+      return status;
+    }
   }
 
   // Check if this table hosts stateful services. Only sys_catalog and ysql tables are currently
@@ -1137,7 +1169,12 @@ void TabletSplitManager::DoSplitting(
 
   std::vector<TableInfoPtr> valid_tables;
   for (const auto& table : tables) {
-    Status status = ValidateSplitCandidateTable(table);
+    // Background path: no catalog mutex held, so the locking lookup is safe here.
+    TableInfoPtr indexed_table;
+    if (table->is_index()) {
+      indexed_table = catalog_manager_.GetTableInfo(table->indexed_table_id());
+    }
+    Status status = ValidateSplitCandidateTable(table, indexed_table);
     if (!status.ok()) {
       VLOG(3) << "Skipping table for splitting. " << status;
       state.MaybeRecordRejectedTable(table->id(), status);
