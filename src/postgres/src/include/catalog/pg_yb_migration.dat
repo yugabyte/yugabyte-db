@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V109__33481__ycql_stat_statements_latency_histogram.sql
-{ major => '109', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V108__30566__yb_index_check_log_num_errors.sql
+{ major => '108', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

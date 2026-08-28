@@ -161,9 +161,9 @@ public class TestPgViewYCQLStats extends BasePgSQLTest {
       // number of calls, and should be consumable by yb_get_percentile (same format as
       // pg_stat_statements.yb_latency_histogram).
       Row histRow = getSingleRow(statement,
-          "SELECT calls, yb_latency_histogram, " +
+          "SELECT calls, yb_latency_histogram::text, " +
           "       yb_get_percentile(yb_latency_histogram, 99), " +
-          "       (SELECT COALESCE(SUM((value)::bigint), 0) " +
+          "       (SELECT COALESCE(SUM((value)::bigint), 0)::bigint " +
           "        FROM jsonb_array_elements(yb_latency_histogram) elem, " +
           "             jsonb_each_text(elem)) " +
           "FROM ycql_stat_statements " +

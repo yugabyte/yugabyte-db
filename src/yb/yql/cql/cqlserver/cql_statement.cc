@@ -25,6 +25,7 @@
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
+#include "yb/util/logging.h"
 
 DEFINE_RUNTIME_bool(cql_use_metadata_cache_for_schema_version_check, true,
                     "Use the internal Table Metadata Cache in TS to check the Table "
@@ -103,7 +104,13 @@ StmtLatencyHistogram::~StmtLatencyHistogram() = default;
 
 void StmtLatencyHistogram::Allocate() {
   const auto& config = GetHdrConfig();
-  hist_.reset(static_cast<hdr_histogram*>(calloc(1, config.alloc_size)));
+  auto* raw = static_cast<hdr_histogram*>(calloc(1, config.alloc_size));
+  if (PREDICT_FALSE(raw == nullptr)) {
+    LOG(ERROR) << "Failed to allocate " << config.alloc_size
+               << " bytes for YCQL statement latency histogram";
+    return;
+  }
+  hist_.reset(raw);
   auto cfg = config.cfg;
   hdr_init_preallocated(hist_.get(), &cfg);
 }
@@ -114,6 +121,7 @@ void StmtLatencyHistogram::SnapshotFrom(const StmtLatencyHistogram& other) {
     return;
   }
 
+  snapshot_.reserve(static_cast<size_t>(GetHdrConfig().cfg.counts_len));
   hdr_iter iter;
   hdr_iter_init(&iter, other.hist_.get());
   while (hdr_iter_next(&iter)) {
@@ -128,7 +136,9 @@ void StmtLatencyHistogram::SnapshotFrom(const StmtLatencyHistogram& other) {
 }
 
 void StmtLatencyHistogram::Record(double time_in_msec) {
-  DCHECK(hist_);
+  if (!hist_) {
+    return;
+  }
   if (time_in_msec < 0) {
     time_in_msec = 0;
   }
@@ -142,8 +152,11 @@ void StmtLatencyHistogram::Record(double time_in_msec) {
 }
 
 void StmtLatencyHistogram::Reset() {
-  DCHECK(hist_);
-  hdr_reset(hist_.get());
+  if (hist_) {
+    hdr_reset(hist_.get());
+  } else {
+    snapshot_.clear();
+  }
   slow_executions_ = 0;
 }
 

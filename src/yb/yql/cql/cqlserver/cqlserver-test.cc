@@ -739,6 +739,14 @@ TEST(TestStmtLatencyHistogram, TestJsonFormat) {
   assigned = copy;
   ASSERT_EQ(copy.ToJsonArrayString(), assigned.ToJsonArrayString());
 
+  // Copies are snapshots: Record/Reset must not dereference a null live buffer, and must not
+  // change the original.
+  const std::string original = hist.ToJsonArrayString();
+  copy.Record(1.0);
+  copy.Reset();
+  ASSERT_EQ("[]", copy.ToJsonArrayString());
+  ASSERT_EQ(original, hist.ToJsonArrayString());
+
   // Reset clears all recorded samples.
   hist.Reset();
   ASSERT_EQ("[]", hist.ToJsonArrayString());

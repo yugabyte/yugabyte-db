@@ -44,6 +44,8 @@ class CQLStatement;
 class StmtLatencyHistogram {
  public:
   StmtLatencyHistogram();
+  // Copies are compact snapshots for dump paths and have no live histogram buffer. Record is a
+  // no-op; Reset only clears the snapshot. The same holds when Allocate fails.
   StmtLatencyHistogram(const StmtLatencyHistogram& other);
   StmtLatencyHistogram& operator=(const StmtLatencyHistogram& other);
   ~StmtLatencyHistogram();
@@ -99,13 +101,6 @@ struct StmtCounters{
   explicit StmtCounters(
       const std::string& text, const std::string& keyspace_, bool is_prepared_ = false)
       : query(text), keyspace(keyspace_), is_prepared(is_prepared_) {}
-
-  explicit StmtCounters(const std::shared_ptr<StmtCounters>& other) :
-      num_calls(other->num_calls), total_time_in_msec(other->total_time_in_msec),
-      min_time_in_msec(other->min_time_in_msec), max_time_in_msec(other->max_time_in_msec),
-      sum_var_time_in_msec(other->sum_var_time_in_msec), query(other->query),
-      keyspace(other->keyspace), is_prepared(other->is_prepared),
-      latency_histogram(other->latency_histogram) {}
 
   void WriteAsJson(JsonWriter* jw, const ql::CQLMessage::QueryId& query_id) const;
 

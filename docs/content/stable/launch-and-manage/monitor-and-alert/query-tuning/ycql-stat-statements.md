@@ -22,7 +22,7 @@ Databases can be resource-intensive, consuming a lot of memory, CPU, IO, and net
 
 This view is accessible only via YSQL and provides YCQL statement metrics (similar to pg_stat_statements) that are also present on `<yb-tserver-ip>:12000/statements`. The view can be joined with YCQL wait events in the [yb_active_session_history](../../active-session-history-monitor/#yb-active-session-history) view on the query ID.
 
-This view is added in a YSQL extension `yb_ycql_utils`, which is not enabled by default.
+This view is added in a YSQL extension `yb_ycql_utils`, which is not enabled by default. `CREATE EXTENSION yb_ycql_utils` on this release installs version 1.2, which includes `yb_latency_histogram`. Clusters that already have the extension from an earlier release keep their current version until you run `ALTER EXTENSION yb_ycql_utils UPDATE`.
 
 The columns of the `ycql_stat_statements` view are described in the following table.
 
