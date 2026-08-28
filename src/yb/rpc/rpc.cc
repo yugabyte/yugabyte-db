@@ -228,7 +228,7 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
   if (new_status.ok()) {
     controller_.Reset();
     VTRACE_TO(1, rpc->trace(), "Sending Rpc");
-    auto parent_scope = trace_parent_.Activate();
+    dist_trace::ScopedAdoptSpan parent_scope(trace_parent_);
     rpc->SendRpc();
   } else {
     // Service unavailable here means that we failed to schedule delayed task, i.e. reactor

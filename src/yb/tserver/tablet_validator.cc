@@ -524,10 +524,11 @@ Result<master::GetBackfillStatusResponsePB> TabletMetadataValidator::Impl::SyncW
 
   // First entry wins: one RPC batches many index tables (possibly from different DDLs), but a span
   // has a single parent. Nest the RPC under the first batched index's captured trace context.
-  dist_trace::SpanWithScopePtr otel_scope;
+  std::optional<opentelemetry::trace::SpanContext> otel_parent;
   if (!index_tablets_to_sync_.empty()) {
-    otel_scope = index_tablets_to_sync_.begin()->trace_parent.Activate();
+    otel_parent = index_tablets_to_sync_.begin()->trace_parent.context();
   }
+  dist_trace::ScopedAdoptSpan otel_scope(otel_parent);
 
   // Only backfilling status is being synced with the master at the moment.
   VLOG_WITH_PREFIX(1) << "Requesting backfill status for " << yb::ToString(to_sync);

@@ -688,8 +688,8 @@ TEST_F(ThreadPoolTraceTest, TraceContextCarriedToWorker) {
   CountDownLatch latch(1);
   ContextObservingTask task(&latch);
   {
-    auto scope = dist_trace::ActivateParentScope(expected);
-    ASSERT_TRUE(scope != nullptr);
+    dist_trace::ScopedAdoptSpan scope(expected);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
     ASSERT_TRUE(pool.Enqueue(&task));
     ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));
   }
@@ -726,8 +726,8 @@ TEST_F(ThreadPoolTraceTest, TraceContextCarriedToStrand) {
   CountDownLatch latch(1);
   ContextObservingStrandTask task(&latch);
   {
-    auto scope = dist_trace::ActivateParentScope(expected);
-    ASSERT_TRUE(scope != nullptr);
+    dist_trace::ScopedAdoptSpan scope(expected);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
     ASSERT_TRUE(strand.Enqueue(&task));
     ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));
   }
@@ -779,8 +779,8 @@ TEST_F(ThreadPoolTraceTest, StrandDoesNotLeakContextToUntracedTask) {
   ContextObservingStrandTask second_task(&done);
 
   {
-    auto scope = dist_trace::ActivateParentScope(first_context);
-    ASSERT_TRUE(scope != nullptr);
+    dist_trace::ScopedAdoptSpan scope(first_context);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
     ASSERT_TRUE(strand.Enqueue(&first_task));
   }
 
@@ -812,11 +812,11 @@ TEST_F(ThreadPoolTraceTest, TraceContextIsPerTask) {
   ContextObservingTask first_task(&latch);
   ContextObservingTask second_task(&latch);
   {
-    auto scope = dist_trace::ActivateParentScope(first_context);
+    dist_trace::ScopedAdoptSpan scope(first_context);
     ASSERT_TRUE(pool.Enqueue(&first_task));
   }
   {
-    auto scope = dist_trace::ActivateParentScope(second_context);
+    dist_trace::ScopedAdoptSpan scope(second_context);
     ASSERT_TRUE(pool.Enqueue(&second_task));
   }
   ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));

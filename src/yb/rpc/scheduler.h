@@ -54,7 +54,7 @@ class ScheduledTask : public ScheduledTaskBase {
       : ScheduledTaskBase(id, time), f_(f) {}
 
   void Run(const Status& status) override {
-    auto scope = trace_parent().Activate();
+    dist_trace::ScopedAdoptSpan scope(trace_parent());
     f_(status);
   }
  private:
@@ -68,7 +68,7 @@ class ScheduledTaskWithId : public ScheduledTaskBase {
       : ScheduledTaskBase(id, time), f_(f) {}
 
   void Run(const Status& status) override {
-    auto scope = trace_parent().Activate();
+    dist_trace::ScopedAdoptSpan scope(trace_parent());
     f_(id(), status);
   }
 

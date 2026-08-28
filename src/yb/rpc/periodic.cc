@@ -195,7 +195,7 @@ void PeriodicTimer::Callback(int64_t my_callback_generation) {
 
   if (run_task) {
     // Re-activate the context captured at construction so the task's RPCs nest under it.
-    auto parent_scope = trace_parent_.Activate();
+    dist_trace::ScopedAdoptSpan parent_scope(trace_parent_);
     functor_();
 
     if (options_.one_shot) {
