@@ -348,6 +348,14 @@ if [[ "$1" =~ /[^/]*Yb[^/]+\.[ch]$ &&
 fi
 check_ctags || exit 1
 yb_typedefs=$(cat "$yb_typedefs_list")
+upstream_types=
+pg_typedefs=
+have_upstream=false
+if [ -f "${upstream_copy:-}" ]; then
+  upstream_types=$(echo "$upstream_copy" | ctags_types | cut -f1)
+  pg_typedefs=$(cat src/postgres/src/tools/pgindent/typedefs.list)
+  have_upstream=true
+fi
 echo "$1" \
   | ctags_types \
   | while read -r line; do
@@ -361,11 +369,22 @@ echo "$1" \
 "$lineno:$(sed -n "$lineno"p "$1")"
       fi
 
-      # Ideally, we want to catch all YB-added types to make sure they have
-      # "yb", but it is not possible to determine which are YB-added or not.
-      # So as a best effort, at least we know YB files contain only YB code, so
-      # whatever types they produce should have "yb".
-      if is_yb_file "$1" && ! has_yb_marker "$symbol"; then
+      # YB files contain only YB code, so whatever types they produce are
+      # YB-added.  For upstream-owned files, compare against the upstream
+      # counterpart.
+      #
+      # TODO(#33608): This also checks upstream's typedefs.list to exempt
+      # types whose definition moves to another file, such as
+      # Int8TransTypeData.  Such outlier cases should be stamped out.
+      symbol_is_yb_added=false
+      if is_yb_file "$1"; then
+        symbol_is_yb_added=true
+      elif "$have_upstream" &&
+           [[ $'\n'"$upstream_types"$'\n' != *$'\n'"$symbol"$'\n'* ]] &&
+           [[ $'\n'"$pg_typedefs"$'\n' != *$'\n'"$symbol"$'\n'* ]]; then
+        symbol_is_yb_added=true
+      fi
+      if "$symbol_is_yb_added" && ! has_yb_marker "$symbol"; then
         echo 'error:missing_yb_prefix:This type should have "yb" prefix:'\
 "$lineno:$(sed -n "$lineno"p "$1")"
       fi
