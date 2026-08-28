@@ -187,8 +187,8 @@ bool		yb_conn_mgr_sighup_had_backend_guc_change = false;
  * Written by Odyssey on every client attach via the 'G' packet; read back
  * by pg_stat_activity through the PgBackendStatus shared memory entry.
  */
-char	   *yb_conn_mgr_client_addr;
-int			yb_conn_mgr_client_port;
+char	   *yb_ycm_internal_client_addr;
+int			yb_ycm_internal_client_port;
 char	   *yb_conn_mgr_client_hostname;
 
 static int	GUC_check_errcode_value;
@@ -3360,7 +3360,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		/* YB: Not for general use */
-		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, UNGROUPED,
+		{YB_YCM_IS_CLIENT_YSQLCONNMGR, PGC_BACKEND, UNGROUPED,
 			gettext_noop("Identifies that connection is created by "
 						 "Ysql Connection Manager."),
 			NULL
@@ -3523,7 +3523,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		/* YB: Not for general use */
-		{"yb_use_tserver_key_auth", PGC_BACKEND, UNGROUPED,
+		{YB_YCM_USE_TSERVER_KEY_AUTH, PGC_BACKEND, UNGROUPED,
 			gettext_noop("If set, the client connection will be authenticated via "
 						 "'yb-tserver-key' auth"),
 			NULL,
@@ -6354,13 +6354,13 @@ static struct config_int ConfigureNamesInt[] =
 	 * client attach.
 	 */
 	{
-		{"yb_conn_mgr_client_port", PGC_USERSET, UNGROUPED,
+		{YB_YCM_CLIENT_PORT, PGC_USERSET, UNGROUPED,
 			gettext_noop("TCP port of the logical client connected through "
 						 "YSQL Connection Manager."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
-		&yb_conn_mgr_client_port,
+		&yb_ycm_internal_client_port,
 		-1, -1, 65535,
 		check_yb_conn_mgr_client_port, assign_yb_conn_mgr_client_port, NULL
 	},
@@ -7542,13 +7542,13 @@ static struct config_string ConfigureNamesString[] =
 	 * client attach.
 	 */
 	{
-		{"yb_conn_mgr_client_addr", PGC_USERSET, UNGROUPED,
+		{YB_YCM_CLIENT_ADDR, PGC_USERSET, UNGROUPED,
 			gettext_noop("IP address of the logical client connected through "
 						 "YSQL Connection Manager."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
-		&yb_conn_mgr_client_addr,
+		&yb_ycm_internal_client_addr,
 		"",
 		check_yb_conn_mgr_client_addr, assign_yb_conn_mgr_client_addr, NULL
 	},
@@ -8327,6 +8327,8 @@ static const char *const map_old_guc_names[] = {
 	"vacuum_mem", "maintenance_work_mem",
 	"yb_enable_parallel_append", "enable_parallel_append",
 	"yb_max_saop_merge_streams", "yb_max_merge_scan_streams",
+	"yb_is_client_ysqlconnmgr", YB_YCM_IS_CLIENT_YSQLCONNMGR,
+	"yb_use_tserver_key_auth", YB_YCM_USE_TSERVER_KEY_AUTH,
 	NULL
 };
 
@@ -16931,12 +16933,12 @@ check_yb_conn_mgr_client_addr(char **newval, void **extra, GucSource source)
 	/*
 	 * Parallel workers are background processes and don't have any client_addr.
 	 * Postgres keeps it NULL so does connection manager too.
-	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_addr,
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_addr,
 	 * therefore explicitly check for parallel workers.
 	 */
 	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
 	{
-		GUC_check_errmsg("yb_conn_mgr_client_addr can only be set by "
+		GUC_check_errmsg("yb_ycm_internal_client_addr can only be set by "
 						 "YSQL Connection Manager");
 		return false;
 	}
@@ -17006,7 +17008,7 @@ check_yb_conn_mgr_client_hostname(char **newval, void **extra, GucSource source)
 	/*
 	 * Parallel workers are background processes and don't have any client_port.
 	 * Postgres keeps it NULL so does connection manager too.
-	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_port,
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_port,
 	 * therefore explicitly check for parallel workers.
 	 */
 	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
@@ -17046,7 +17048,7 @@ check_yb_conn_mgr_client_port(int *newval, void **extra, GucSource source)
 	 */
 	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
 	{
-		GUC_check_errmsg("yb_conn_mgr_client_port can only be set by "
+		GUC_check_errmsg("yb_ycm_internal_client_port can only be set by "
 						 "YSQL Connection Manager");
 		return false;
 	}
