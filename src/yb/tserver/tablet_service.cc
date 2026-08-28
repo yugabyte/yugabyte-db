@@ -221,6 +221,10 @@ DEFINE_RUNTIME_int32(unique_index_verify_deadline_grace_margin_ms, 2000,
     "until the retry budget fails the tablet INCONCLUSIVE. Clamped to half the remaining "
     "budget when configured larger.");
 
+DEFINE_test_flag(bool, pause_verify_unique_index_tablet_rpc, false,
+    "Reject VerifyUniqueIndexTablet RPCs with a retryable error, holding the shadow "
+    "verification phase open for tests (e.g. master failover mid-phase).");
+
 DEFINE_RUNTIME_int32(index_backfill_wait_for_old_txns_ms, 0,
     "Index backfill needs to wait for transactions that started before the "
     "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
@@ -741,6 +745,15 @@ void TabletServiceAdminImpl::VerifyUniqueIndexTablet(
     return;
   }
   DVLOG(3) << "Received VerifyUniqueIndexTablet RPC: " << req->DebugString();
+
+  if (PREDICT_FALSE(FLAGS_TEST_pause_verify_unique_index_tablet_rpc)) {
+    // Retryable rejection: keeps the coordinator's task alive while a test arranges a master
+    // failover (or similar) around an in-flight verification phase.
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(TryAgain, "TEST: verification paused"), &context);
+    return;
+  }
 
   server::UpdateClock(*req, server_->Clock());
 

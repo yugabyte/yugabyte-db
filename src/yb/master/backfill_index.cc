@@ -121,6 +121,26 @@ DEFINE_test_flag(bool, block_index_backfill_ordering_generation_release, false,
     "Skip releasing index-backfill ordering generations in the terminal funnel, keeping them "
     "active so tests can run the verification scan against a completed build.");
 
+DEFINE_RUNTIME_bool(ysql_index_backfill_shadow_verification, false,
+    "Run the deferred uniqueness verification scan after a SKIP_ALL unique-index backfill "
+    "completes. The scan itself runs on the publication critical path (CREATE INDEX waits "
+    "for it), but its outcome is only persisted and logged -- it never gates publication "
+    "(the fail-closed gate is a separate, later capability).");
+
+DEFINE_RUNTIME_uint32(index_backfill_shadow_verification_max_concurrent_tablets, 4,
+    "Bound on concurrently verified tablets per index during shadow verification.");
+
+DEFINE_RUNTIME_uint64(index_backfill_shadow_verification_dockey_groups_per_rpc, 0,
+    "DocKey-group budget per verification RPC (0 = bounded only by the RPC deadline); the "
+    "coordinator resumes a paginated tablet from the returned resume key.");
+
+DEFINE_RUNTIME_int32(index_backfill_verify_rpc_timeout_ms, 60000,
+    "Deadline for one unique-index verification RPC, i.e. one deadline-bounded page of the "
+    "verification scan (the tserver stops a grace margin early and returns a resume key). "
+    "A dedicated budget like the backfill chunks' ysql_index_backfill_rpc_timeout_ms rather "
+    "than the generic master_ts_rpc_timeout_ms: every page re-establishes iterators, so "
+    "sizing pages independently of unrelated master RPCs matters on large tablets.");
+
 DEFINE_test_flag(bool, skip_index_backfill, false,
     "Skips backfilling the data on tservers and leaves the index in inconsistent state.");
 
@@ -1093,6 +1113,20 @@ Status BackfillTable::DoBackfill() {
 }
 
 Status BackfillTable::LaunchBackfillTablets() {
+  if (indexes_to_build().empty()) {
+    // Post-success resume: a master failover after every index reached SUCCESS but before the
+    // terminal funnel (e.g. during the shadow verification phase) re-drives the persisted job
+    // with nothing left to backfill. Chunks would carry empty index sets and spin; jump to
+    // the completion path instead, which re-enters shadow verification (resuming its
+    // persisted window) and the funnel.
+    LOG_WITH_PREFIX(INFO)
+        << "All job indexes already backfilled; resuming the completion phase";
+    State expected = State::kRunning;
+    state_.compare_exchange_strong(expected, State::kSuccess, std::memory_order_acq_rel);
+    RETURN_NOT_OK_PREPEND(
+        MarkAllIndexesAsSuccess(), "Failed to mark indexes as successfully backfilled.");
+    return LaunchShadowVerificationOrFinish();
+  }
   auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
@@ -1223,6 +1257,329 @@ Status BackfillTable::SendRpcToReleaseOrderingGenerations() {
   return Status::OK();
 }
 
+Status BackfillTable::LaunchShadowVerificationOrFinish() {
+  if (!FLAGS_ysql_index_backfill_shadow_verification ||
+      unique_index_backfill_mode() != UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL ||
+      indexed_table_->GetTableType() != TableType::PGSQL_TABLE_TYPE) {
+    return FinishShadowVerification();
+  }
+  // Not restricted to indexes_to_build(): that filters to IN_PROGRESS backfill states, and
+  // this phase runs after MarkAllIndexesAsSuccess. Verification targets the job's unique
+  // indexes as built.
+  //
+  // Ordering note the tserver metadata validator depends on: index *permissions* stay at
+  // DO_BACKFILL until FinishShadowVerification runs the terminal funnel, and the validator's
+  // generation-release backstop triggers off GetBackfillStatus, which maps from permissions
+  // -- so the backstop cannot release generations while this phase is scanning.
+  auto index_tables_result = GetUniqueIndexTables(RestrictToIndexesToBuild::kFalse);
+  if (!index_tables_result.ok()) {
+    ShadowVerificationPhaseFailed(index_tables_result.status(), "resolve index tables");
+    return Status::OK();
+  }
+  auto index_tables = std::move(*index_tables_result);
+  if (index_tables.empty()) {
+    return FinishShadowVerification();
+  }
+  {
+    std::lock_guard l(mutex_);
+    shadow_verification_.remaining_indexes = std::move(index_tables);
+  }
+  auto status = StartShadowVerificationForNextIndex();
+  if (!status.ok()) {
+    ShadowVerificationPhaseFailed(status, "start verification");
+  }
+  return Status::OK();
+}
+
+Status BackfillTable::StartShadowVerificationForNextIndex() {
+  scoped_refptr<TableInfo> index_table;
+  {
+    std::lock_guard l(mutex_);
+    auto& sv = shadow_verification_;
+    if (sv.remaining_indexes.empty()) {
+      sv.current_index = nullptr;
+      index_table = nullptr;
+    } else {
+      index_table = sv.remaining_indexes.back();
+      sv.remaining_indexes.pop_back();
+      sv.current_index = index_table;
+      sv.pending_tablets.clear();
+      sv.in_flight = 0;
+      sv.terminal = false;
+    }
+  }
+  if (!index_table) {
+    return FinishShadowVerification();
+  }
+
+  // The window's upper bound is chosen ONCE, from cluster hybrid time (never wall clock),
+  // and persisted: retries and failover resume verify the same window. Tablets already
+  // confirmed clean by a previous incarnation are not re-scanned.
+  HybridTime verify_upper_ht;
+  std::unordered_set<TabletId> clean_tablets;
+  bool resumed = false;
+  const auto now = master_->clock()->Now();
+  RETURN_NOT_OK(MutateVerificationState(
+      index_table->id(),
+      [now, &verify_upper_ht, &clean_tablets, &resumed](UniqueIndexVerificationStatePB* state) {
+        if (state->state() == UniqueIndexVerificationStatePB::VERIFY_NONE) {
+          state->set_state(UniqueIndexVerificationStatePB::VERIFY_IN_PROGRESS);
+          state->set_verify_upper_ht(now.ToUint64());
+        } else {
+          resumed = true;
+        }
+        verify_upper_ht = HybridTime(state->verify_upper_ht());
+        for (const auto& tablet_id : state->clean_tablet_ids()) {
+          clean_tablets.insert(tablet_id);
+        }
+      }));
+  LOG_WITH_PREFIX(INFO) << (resumed ? "Resuming" : "Starting") << " shadow verification for "
+                        << "unique index " << index_table->id() << ", window upper "
+                        << verify_upper_ht << ", " << clean_tablets.size()
+                        << " tablet(s) already clean";
+
+  auto tablets = VERIFY_RESULT(index_table->GetTablets());
+  if (tablets.empty()) {
+    // An empty tablet *set* is not evidence of uniqueness -- there was nothing to scan.
+    RETURN_NOT_OK(RecordShadowVerificationOutcome(
+        UniqueIndexVerificationStatePB::VERIFY_INCONCLUSIVE, "index has no tablets to verify"));
+    return StartShadowVerificationForNextIndex();
+  }
+
+  std::vector<TabletInfoPtr> to_launch;
+  {
+    std::lock_guard l(mutex_);
+    auto& sv = shadow_verification_;
+    sv.verify_upper_ht = verify_upper_ht;
+    for (auto& tablet : tablets) {
+      if (clean_tablets.count(tablet->tablet_id()) == 0) {
+        sv.pending_tablets.push_back(tablet);
+      }
+    }
+    const size_t bound = std::max<size_t>(
+        1, FLAGS_index_backfill_shadow_verification_max_concurrent_tablets);
+    while (!sv.pending_tablets.empty() && sv.in_flight < bound) {
+      to_launch.push_back(sv.pending_tablets.front());
+      sv.pending_tablets.pop_front();
+      ++sv.in_flight;
+    }
+    if (to_launch.empty()) {
+      sv.terminal = true;  // Everything was already clean.
+    }
+  }
+  if (to_launch.empty()) {
+    RETURN_NOT_OK(RecordShadowVerificationOutcome(
+        UniqueIndexVerificationStatePB::VERIFY_CLEAN, std::string()));
+    return StartShadowVerificationForNextIndex();
+  }
+  for (const auto& tablet : to_launch) {
+    RETURN_NOT_OK(LaunchShadowVerificationTablet(tablet, std::string()));
+  }
+  return Status::OK();
+}
+
+Status BackfillTable::LaunchShadowVerificationTablet(
+    const TabletInfoPtr& tablet, const std::string& start_key) {
+  TableId index_table_id;
+  HybridTime verify_upper_ht;
+  {
+    std::lock_guard l(mutex_);
+    index_table_id = shadow_verification_.current_index->id();
+    verify_upper_ht = shadow_verification_.verify_upper_ht;
+  }
+  auto task = std::make_shared<VerifyUniqueIndexForTablet>(
+      shared_from_this(), tablet, index_table_id, read_time_for_backfill(), verify_upper_ht,
+      start_key, epoch_);
+  return task->Launch();
+}
+
+void BackfillTable::ShadowVerificationTabletDone(
+    const TabletInfoPtr& tablet, const Status& status,
+    const tserver::VerifyUniqueIndexTabletResponsePB& resp) {
+  // The shadow phase runs entirely in the kSuccess state (Done() transitions before
+  // launching verification), so done() would swallow every callback; only a failed/aborted
+  // job stops the phase.
+  if (state_.load(std::memory_order_acquire) != State::kSuccess) {
+    return;
+  }
+
+  const bool clean = status.ok() &&
+                     resp.outcome() == tserver::VerifyUniqueIndexTabletResponsePB::CLEAN;
+
+  // Single-winner protocol: the terminal check and the launch-next / index-done decision are
+  // one critical section, so a CLEAN callback racing a short-circuiting VIOLATION can neither
+  // overwrite the recorded outcome nor double-advance to the next index. Exactly one callback
+  // per index performs a kIndexClean or kTerminalOutcome action.
+  enum class Action { kIgnore, kResume, kLaunchNext, kIndexClean, kTerminalOutcome };
+  Action action = Action::kIgnore;
+  TabletInfoPtr next;
+  TableId index_table_id;
+  {
+    std::lock_guard l(mutex_);
+    auto& sv = shadow_verification_;
+    if (sv.terminal || !sv.current_index) {
+      return;  // A winner already recorded this index's outcome; late responses are ignored.
+    }
+    index_table_id = sv.current_index->id();
+    if (clean && resp.has_resume_key()) {
+      action = Action::kResume;  // Pagination: same tablet continues; join counts untouched.
+    } else if (clean) {
+      --sv.in_flight;
+      if (!sv.pending_tablets.empty()) {
+        next = sv.pending_tablets.front();
+        sv.pending_tablets.pop_front();
+        ++sv.in_flight;
+        action = Action::kLaunchNext;
+      } else if (sv.in_flight == 0) {
+        sv.terminal = true;
+        action = Action::kIndexClean;
+      }  // else: other tablets still in flight; this callback only contributes its clean id.
+    } else {
+      sv.terminal = true;
+      sv.pending_tablets.clear();
+      action = Action::kTerminalOutcome;
+    }
+  }
+
+  switch (action) {
+    case Action::kResume: {
+      auto s = LaunchShadowVerificationTablet(tablet, resp.resume_key());
+      if (!s.ok()) {
+        ShadowVerificationPhaseFailed(s, "resume paginated verification");
+      }
+      return;
+    }
+    case Action::kIgnore:  [[fallthrough]];
+    case Action::kLaunchNext: [[fallthrough]];
+    case Action::kIndexClean: {
+      // Persist the clean tablet after the join decision: the sys-catalog write is slow, and
+      // holding the decision open across it is what created the false-clean race. Losing a
+      // clean id on a failure here only costs an idempotent re-scan on resume.
+      WARN_NOT_OK(MutateVerificationState(
+          index_table_id,
+          [&tablet](UniqueIndexVerificationStatePB* state) {
+            state->add_clean_tablet_ids(tablet->tablet_id());
+          }), "Failed to persist clean tablet");
+      if (action == Action::kLaunchNext) {
+        auto s = LaunchShadowVerificationTablet(next, std::string());
+        if (!s.ok()) {
+          ShadowVerificationPhaseFailed(s, "launch next tablet");
+        }
+      } else if (action == Action::kIndexClean) {
+        auto s = RecordShadowVerificationOutcome(
+            UniqueIndexVerificationStatePB::VERIFY_CLEAN, std::string());
+        if (s.ok()) {
+          s = StartShadowVerificationForNextIndex();
+        }
+        if (!s.ok()) {
+          ShadowVerificationPhaseFailed(s, "advance after clean index");
+        }
+      }
+      return;
+    }
+    case Action::kTerminalOutcome: {
+      UniqueIndexVerificationStatePB::State outcome;
+      std::string reason;
+      if (!status.ok()) {
+        // Exhausted retries on a tablet: the window was not fully verified. Value-free by
+        // construction -- every status on this path carries encoding classes and counts only.
+        outcome = UniqueIndexVerificationStatePB::VERIFY_INCONCLUSIVE;
+        reason = status.message().ToBuffer();
+      } else if (resp.outcome() == tserver::VerifyUniqueIndexTabletResponsePB::VIOLATION) {
+        outcome = UniqueIndexVerificationStatePB::VERIFY_VIOLATION;
+        reason = resp.reason();
+      } else if (resp.outcome() == tserver::VerifyUniqueIndexTabletResponsePB::INCONCLUSIVE) {
+        outcome = UniqueIndexVerificationStatePB::VERIFY_INCONCLUSIVE;
+        reason = resp.reason();
+      } else {
+        outcome = UniqueIndexVerificationStatePB::VERIFY_INCONCLUSIVE;
+        reason = "response without an outcome";
+      }
+      auto s = RecordShadowVerificationOutcome(outcome, reason);
+      if (s.ok()) {
+        s = StartShadowVerificationForNextIndex();
+      }
+      if (!s.ok()) {
+        ShadowVerificationPhaseFailed(s, "advance after terminal outcome");
+      }
+      return;
+    }
+  }
+  FATAL_INVALID_ENUM_VALUE(Action, action);
+}
+
+// The shadow phase is on the publication critical path (CREATE INDEX waits for it), so no
+// coordinator failure may strand the job short of the terminal funnel. Best-effort-record
+// INCONCLUSIVE, then always continue into publication.
+void BackfillTable::ShadowVerificationPhaseFailed(
+    const Status& status, const char* while_doing) {
+  LOG_WITH_PREFIX(WARNING) << "Shadow verification phase failed (" << while_doing
+                           << "): " << status << "; degrading to INCONCLUSIVE and publishing";
+  {
+    std::lock_guard l(mutex_);
+    shadow_verification_.terminal = true;
+    shadow_verification_.pending_tablets.clear();
+    shadow_verification_.remaining_indexes.clear();
+  }
+  WARN_NOT_OK(
+      RecordShadowVerificationOutcome(
+          UniqueIndexVerificationStatePB::VERIFY_INCONCLUSIVE, "coordinator error"),
+      "Failed to record shadow verification outcome");
+  WARN_NOT_OK(FinishShadowVerification(), "Failed to finish backfill after shadow phase");
+}
+
+Status BackfillTable::RecordShadowVerificationOutcome(
+    UniqueIndexVerificationStatePB::State state, const std::string& reason) {
+  TableId index_table_id;
+  {
+    std::lock_guard l(mutex_);
+    if (!shadow_verification_.current_index) {
+      // Phase failure before any index was selected (e.g. index-table resolution failed):
+      // there is nothing to record per index.
+      return Status::OK();
+    }
+    index_table_id = shadow_verification_.current_index->id();
+  }
+  RETURN_NOT_OK(MutateVerificationState(
+      index_table_id, [state, &reason](UniqueIndexVerificationStatePB* state_pb) {
+        state_pb->set_state(state);
+        if (!reason.empty()) {
+          state_pb->set_reason(reason);
+        }
+      }));
+  // SHADOW: the outcome is recorded and logged, never enforced. The fail-closed
+  // verify-before-publication gate is a separate, later capability.
+  const auto severity_prefix =
+      state == UniqueIndexVerificationStatePB::VERIFY_CLEAN ? "" : "NOT CLEAN: ";
+  LOG_WITH_PREFIX(INFO) << "Shadow verification outcome for unique index " << index_table_id
+                        << ": " << severity_prefix
+                        << UniqueIndexVerificationStatePB::State_Name(state)
+                        << (reason.empty() ? "" : Format(" ($0)", reason));
+  return Status::OK();
+}
+
+Status BackfillTable::FinishShadowVerification() {
+  return UpdateIndexPermissionsForIndexes();
+}
+
+Status BackfillTable::MutateVerificationState(
+    const TableId& index_table_id,
+    const std::function<void(UniqueIndexVerificationStatePB*)>& mutator) {
+  auto l = indexed_table_->LockForWrite();
+  auto& indexed_table_pb = l.mutable_data()->pb;
+  if (indexed_table_pb.backfill_jobs_size() == 0) {
+    return STATUS(IllegalState, "Backfill job is gone; cannot record verification state");
+  }
+  auto* verification_map =
+      indexed_table_pb.mutable_backfill_jobs(0)->mutable_unique_index_verification();
+  mutator(&(*verification_map)[index_table_id]);
+  RETURN_NOT_OK_PREPEND(
+      master_->catalog_manager_impl()->sys_catalog_->Upsert(epoch_, indexed_table_),
+      "Failed to persist verification state");
+  l.Commit();
+  return Status::OK();
+}
+
 Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& failed_indexes) {
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "failed to backfill the index: " << AsString(failed_indexes)
@@ -1244,7 +1601,8 @@ Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& f
     StopLivenessMonitor();
     RETURN_NOT_OK_PREPEND(
         MarkAllIndexesAsSuccess(), "Failed to mark indexes as successfully backfilled.");
-    RETURN_NOT_OK_PREPEND(UpdateIndexPermissionsForIndexes(), "Failed to complete backfill.");
+    RETURN_NOT_OK_PREPEND(
+        LaunchShadowVerificationOrFinish(), "Failed to complete backfill.");
   } else {
     VLOG_WITH_PREFIX(1) << "Still backfilling " << tablets_pending_ << " more tablets.";
   }
@@ -1918,6 +2276,122 @@ void UpdateOrderingGenerationForTablet::UnregisterAsyncTaskCallback() {
     status = STATUS_FORMAT(InternalError, "$0 in state $1", description(), state());
   }
   backfill_table_->OrderingGenerationUpdateDone(status, tablet_->tablet_id());
+}
+
+VerifyUniqueIndexForTablet::VerifyUniqueIndexForTablet(
+    std::shared_ptr<BackfillTable> backfill_table,
+    const TabletInfoPtr& tablet,
+    const TableId& index_table_id,
+    HybridTime backfill_read_ht,
+    HybridTime verify_upper_ht,
+    std::string start_key,
+    LeaderEpoch epoch)
+    : RetryingTSRpcTaskWithTable(
+          backfill_table->master(), backfill_table->threadpool(),
+          std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table(),
+          std::move(epoch),
+          /* async_task_throttler */ nullptr),
+      backfill_table_(backfill_table),
+      tablet_(tablet),
+      index_table_id_(index_table_id),
+      backfill_read_ht_(backfill_read_ht),
+      verify_upper_ht_(verify_upper_ht),
+      start_key_(std::move(start_key)) {
+  deadline_ = MonoTime::Max();  // Single-attempt deadline comes from ComputeDeadline().
+}
+
+Status VerifyUniqueIndexForTablet::Launch() {
+  tablet_->table()->AddTask(shared_from_this());
+  RETURN_NOT_OK_PREPEND(
+      Run(),
+      Substitute("Failed to send VerifyUniqueIndex request for $0. ", tablet_->ToString()));
+  VLOG(3) << "Started VerifyUniqueIndexForTablet : " << this->description();
+  return Status::OK();
+}
+
+std::string VerifyUniqueIndexForTablet::description() const {
+  return Format("Verify unique index $0 tablet $1", index_table_id_, tablet_id());
+}
+
+MonoTime VerifyUniqueIndexForTablet::ComputeDeadline() const {
+  // One deadline-bounded page per attempt (BackfillChunk::ComputeDeadline is the pattern):
+  // the tserver stops a grace margin early and returns a resume key, so the deadline sizes
+  // the page, not the whole tablet scan.
+  MonoTime timeout = MonoTime::Now();
+  timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_index_backfill_verify_rpc_timeout_ms));
+  return MonoTime::Earliest(timeout, deadline_);
+}
+
+TabletId VerifyUniqueIndexForTablet::tablet_id() const { return tablet_->id(); }
+
+bool VerifyUniqueIndexForTablet::SendRequest(int attempt) {
+  ADOPT_WAIT_STATE(backfill_table_->wait_state());
+  tserver::VerifyUniqueIndexTabletRequestPB req;
+  req.set_dest_uuid(permanent_uuid());
+  req.set_tablet_id(tablet_->tablet_id());
+  req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  req.set_backfill_read_ht(backfill_read_ht_.ToUint64());
+  req.set_verify_upper_ht(verify_upper_ht_.ToUint64());
+  req.set_index_table_id(index_table_id_);
+  // No generation_base_op_index on purpose: the base is per-tablet (the activation op's own
+  // Raft index) and a re-activated generation's higher base is still the generation this
+  // job's marked writes live under. The active + index-table check is the semantic guard.
+  if (!start_key_.empty()) {
+    req.set_start_key(start_key_);
+  }
+  if (FLAGS_index_backfill_shadow_verification_dockey_groups_per_rpc > 0) {
+    req.set_max_dockey_groups(FLAGS_index_backfill_shadow_verification_dockey_groups_per_rpc);
+  }
+
+  ts_admin_proxy_->VerifyUniqueIndexTabletAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG(1) << "Send " << description() << " to " << permanent_uuid()
+          << " (attempt " << attempt << "):\n" << req.DebugString();
+  return true;
+}
+
+void VerifyUniqueIndexForTablet::HandleResponse(int attempt) {
+  ADOPT_WAIT_STATE(backfill_table_->wait_state());
+  Status status = Status::OK();
+  if (resp_.has_error()) {
+    status = StatusFromPB(resp_.error().status());
+    switch (resp_.error().code()) {
+      case TabletServerErrorPB::TABLET_NOT_FOUND:
+      case TabletServerErrorPB::OPERATION_NOT_SUPPORTED:
+      case TabletServerErrorPB::INVALID_SCHEMA:
+        LOG(WARNING) << "TS " << permanent_uuid() << ": " << description()
+                     << " failed, no further retry: " << status;
+        TransitionToFailedState(MonitoredTaskState::kRunning, status);
+        break;
+      default:
+        LOG(WARNING) << "TS " << permanent_uuid() << ": " << description() << " failed: "
+                     << status << " code " << resp_.error().code();
+        break;
+    }
+  } else {
+    TransitionToCompleteState();
+    VLOG(1) << "TS " << permanent_uuid() << ": " << description() << " complete";
+  }
+
+  server::UpdateClock(resp_, master_->clock());
+}
+
+void VerifyUniqueIndexForTablet::UnregisterAsyncTaskCallback() {
+  ADOPT_WAIT_STATE(backfill_table_->wait_state());
+  if (state() == MonitoredTaskState::kAborted) {
+    // Deliberately no join notification (same shape as GetSafeTimeForTablet): external task
+    // aborts accompany leadership loss or table teardown, where the job object is dying with
+    // us; notifying could double-drive a job that is already unwinding.
+    VLOG(1) << " was aborted";
+    return;
+  }
+
+  Status status;
+  if (resp_.has_error()) {
+    status = StatusFromPB(resp_.error().status());
+  } else if (state() != MonitoredTaskState::kComplete) {
+    status = STATUS_FORMAT(InternalError, "$0 in state $1", description(), state());
+  }
+  backfill_table_->ShadowVerificationTabletDone(tablet_, status, resp_);
 }
 
 BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
