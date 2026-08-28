@@ -49,6 +49,7 @@
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/unique_index_verifier.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/shared_lock_manager.h"
@@ -73,6 +74,7 @@
 #include "yb/tablet/transaction_intent_applier.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
+#include "yb/tserver/tserver_admin.fwd.h"
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/status_fwd.h"
@@ -654,6 +656,21 @@ class Tablet : public AbstractTablet,
   Status UpdateIndexBackfillOrderingGeneration(
       const OpId& op_id, const TableId& table_id, ActivateGeneration activate,
       HybridTime retention_barrier_ht, uint32_t write_id_floor_version);
+
+  // The cheap, deterministic checks of a verification request: active ordering generation
+  // matching the request, valid window, non-colocated tablet. Failures are IllegalState /
+  // InvalidArgument and cannot succeed on retry; callers run them before the expensive
+  // safe-time and intent-resolution preamble.
+  Status ValidateUniqueIndexVerificationRequest(
+      const tserver::VerifyUniqueIndexTabletRequestPB& req) const;
+
+  // Runs the deferred uniqueness verification scan (docdb::VerifyUniqueIndexTablet) with
+  // options resolved from this tablet: the index table's ybidxbasectid column, the tablet
+  // metadata as the schema-packing provider, and the regular DB within the tablet's key
+  // bounds. Validates the request, then holds a reader registration just below the window for
+  // the scan so the history cutoff stays strictly below it; read-only.
+  Result<docdb::UniqueIndexVerificationResult> VerifyUniqueIndex(
+      const tserver::VerifyUniqueIndexTabletRequestPB& req, CoarseTimePoint deadline);
 
   // Change wal_retention_secs in the metadata.
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);

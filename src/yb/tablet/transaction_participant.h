@@ -285,7 +285,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   // Resolve all transactions that were committed or aborted at resolve_at.
   // After this function returns with success:
-  // - All intents of committed transactions will have been applied.
+  // - All intents of committed transactions will have been applied, including the batched
+  //   applies of large transactions, so the regular DB holds every committed record.
   // - No transactions can be committed with commit time <= resolve_at from that point on..
   Status ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
 

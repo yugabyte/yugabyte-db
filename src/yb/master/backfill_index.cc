@@ -129,6 +129,10 @@ DEFINE_test_flag(int32, slowdown_backfill_alter_table_rpcs_ms, 0,
 DEFINE_test_flag(int32, slowdown_backfill_job_deletion_ms, 0,
     "Slows down backfill job deletion so that backfill job can be read by test.");
 
+DEFINE_test_flag(bool, block_index_backfill_ordering_generation_release, false,
+    "Skip releasing index-backfill ordering generations in the terminal funnel, keeping them "
+    "active so tests can run the verification scan against a completed build.");
+
 DEFINE_test_flag(bool, skip_index_backfill, false,
     "Skips backfilling the data on tservers and leaves the index in inconsistent state.");
 
@@ -1783,6 +1787,11 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
     VLOG(1) << "Sending alter table requests to the Indexed table";
     RETURN_NOT_OK(master_->catalog_manager_impl()->SendAlterTableRequest(indexed_table_, epoch_));
     VLOG(1) << "DONE Sending alter table requests to the Indexed table";
+    if (FLAGS_TEST_block_index_backfill_ordering_generation_release) {
+      // Test hook: leave the generations held (verifier and barrier fixtures) and finish.
+      LOG_WITH_PREFIX(INFO) << "TEST: skipping the ordering-generation release";
+      return FinishIndexPermissionUpdate();
+    }
     TEST_PAUSE_IF_FLAG_WITH_LOG_PREFIX(TEST_pause_index_backfill_ordering_generation_release);
     size_t activations_in_flight = 0;
     {
