@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"node-agent/model"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -343,7 +345,6 @@ func TestCheckIfNodeInstanceAlreadyExists(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// This mocks getProviderNodeInstances.
 			server := httptest.NewServer(
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if err := json.NewEncoder(w).Encode(tt.instances); err != nil {
@@ -381,6 +382,118 @@ func TestCheckIfNodeInstanceAlreadyExists(t *testing.T) {
 			}
 			if exists != tt.wantExist {
 				t.Fatalf("checkIfNodeInstanceAlreadyExists() = %v, want %v", exists, tt.wantExist)
+			}
+		})
+	}
+}
+
+func TestCreateInstanceIfNotExists(t *testing.T) {
+	tests := []struct {
+		name         string
+		instanceType *model.NodeInstanceType
+		mountPoints  string
+		wantCreate   bool
+		wantErr      string
+	}{
+		{
+			name: "existing instance type matching mounts",
+			instanceType: &model.NodeInstanceType{
+				InstanceTypeCode: "c5.large",
+				Details: model.NodeInstanceTypeDetails{
+					VolumeDetailsList: []model.VolumeDetails{
+						{MountPath: "/mnt/d0"},
+						{MountPath: "/mnt/d1"},
+					},
+				},
+			},
+			mountPoints: "['/mnt/d0', '/mnt/d1']",
+		},
+		{
+			name: "existing instance type mismatched mounts",
+			instanceType: &model.NodeInstanceType{
+				InstanceTypeCode: "c5.large",
+				Details: model.NodeInstanceTypeDetails{
+					VolumeDetailsList: []model.VolumeDetails{
+						{MountPath: "/mnt/d0"},
+					},
+				},
+			},
+			mountPoints: "['/mnt/d0', '/mnt/d1']",
+			wantErr:     "mount paths",
+		},
+		{
+			name: "existing instance type mounts different order",
+			instanceType: &model.NodeInstanceType{
+				InstanceTypeCode: "c5.large",
+				Details: model.NodeInstanceTypeDetails{
+					VolumeDetailsList: []model.VolumeDetails{
+						{MountPath: "/mnt/d0"},
+						{MountPath: "/mnt/d1"},
+					},
+				},
+			},
+			mountPoints: "['/mnt/d1', '/mnt/d0']",
+			wantErr:     "mount paths",
+		},
+		{
+			name:        "instance type missing creates payload",
+			mountPoints: "['/mnt/d0']",
+			wantCreate:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if tt.instanceType == nil {
+						http.NotFound(w, r)
+						return
+					}
+					if err := json.NewEncoder(w).Encode(tt.instanceType); err != nil {
+						t.Errorf("failed to encode instance type: %v", err)
+					}
+				}),
+			)
+			defer server.Close()
+
+			tmpDir := t.TempDir()
+			m := &InstallNodeAgent{}
+			values := map[string]any{
+				"url":                        server.URL,
+				"api_key":                    "test-api-key",
+				"customer_uuid":              "customer-123",
+				"instance_type_name":         "c5.large",
+				"instance_type_cores":        8.0,
+				"instance_type_memory_size":  32.0,
+				"instance_type_volume_size":  250.0,
+				"instance_type_mount_points": tt.mountPoints,
+				"tmp_directory":              tmpDir,
+			}
+			provider := &model.Provider{BasicInfo: model.BasicInfo{Uuid: "provider-123"}}
+
+			err := m.createInstanceIfNotExists(context.Background(), values, provider)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf(
+						"createInstanceIfNotExists() error = %v, want error containing %q",
+						err,
+						tt.wantErr,
+					)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("createInstanceIfNotExists() error = %v", err)
+			}
+			payloadPath := filepath.Join(tmpDir, "create_instance.json")
+			_, statErr := os.Stat(payloadPath)
+			if tt.wantCreate {
+				if statErr != nil {
+					t.Fatalf("expected create_instance.json, stat error = %v", statErr)
+				}
+			} else if statErr == nil {
+				t.Fatalf("create_instance.json was created, want none")
 			}
 		})
 	}
