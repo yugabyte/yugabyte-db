@@ -84,6 +84,19 @@
       "script-and-regex.regex":
         "/(?P<message>.*)/is"
     },
+    "eslint-ui": {
+      "type": "script-and-regex",
+      "include": "(^managed/ui/src/.*[.](js|jsx|ts|tsx)$)",
+      "exclude": [
+        "(^managed/ui/src/redesign/.*[.]tsx?$)",
+        "(^managed/ui/src/redesign/types/)",
+        "(^managed/ui/src/v2/api/)"
+      ],
+      "script-and-regex.script":
+      "managed/lint/lint-ui.sh",
+      "script-and-regex.regex":
+        "/^ +(?<line>[0-9]+):(?<number>[0-9]+) +(?<message>.*) +(?<name>[a-zA-Z_-]+)$/m"
+    },
     "text": {
       "type": "text",
       "text.max-line-length": 100,
