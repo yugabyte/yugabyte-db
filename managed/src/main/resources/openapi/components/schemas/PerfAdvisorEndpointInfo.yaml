@@ -1,0 +1,42 @@
+title: PerfAdvisorEndpointInfo
+description: |
+  PerfAdvisorEndpointInfo
+
+  System generated, read-only properties of a Perf Advisor Endpoint. Returned as part of the Perf
+  Advisor Endpoint resource.
+type: object
+required:
+  - uuid
+properties:
+  uuid:
+    description: |
+      UUID of the endpoint. Also the id the configuration carries on every collector it is pushed
+      to, so it is stable and meaningful on both sides.
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    readOnly: true
+  customer_uuid:
+    description: UUID of the customer that owns the endpoint.
+    type: string
+    format: uuid
+    readOnly: true
+  universe_uuids:
+    description: Universes currently registered in online mode against this endpoint.
+    type: array
+    items:
+      type: string
+      format: uuid
+    readOnly: true
+  create_time:
+    description: Creation time.
+    type: string
+    format: date-time
+    example: '2026-08-25T13:07:18Z'
+    readOnly: true
+  update_time:
+    description: Time of the last edit.
+    type: string
+    format: date-time
+    example: '2026-08-25T13:07:18Z'
+    readOnly: true

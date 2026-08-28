@@ -1,0 +1,26 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_setup s2_load_chld1_inherits_cache s1_move_chld1_to_prnt2 s2_stale_detach_chld1_from_prnt1 s3_select_prnt2
+step s1_setup: 
+  CREATE TABLE prnt1 (k int, v int) PARTITION BY RANGE (k);
+  CREATE TABLE prnt2 (k int, v int) PARTITION BY RANGE (k);
+  CREATE TABLE chld1 PARTITION OF prnt1 FOR VALUES FROM (1) TO (100);
+
+step s2_load_chld1_inherits_cache: INSERT INTO chld1 VALUES (5, 5);
+step s1_move_chld1_to_prnt2: 
+  ALTER TABLE prnt1 DETACH PARTITION chld1;
+  ALTER TABLE prnt2 ATTACH PARTITION chld1 FOR VALUES FROM (1) TO (100);
+
+step s2_stale_detach_chld1_from_prnt1: ALTER TABLE prnt1 DETACH PARTITION chld1;
+ERROR:  relation "chld1" is not a partition of relation "prnt1"
+step s3_select_prnt2: SELECT * from prnt2;
+k|v
+-+-
+5|5
+(1 row)
+
+pg_sleep
+--------
+        
+(1 row)
+

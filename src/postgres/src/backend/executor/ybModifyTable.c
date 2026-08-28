@@ -1395,7 +1395,7 @@ YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 				 errmsg("missing column ybctid in DELETE request to Yugabyte database")));
 
 	/* For a catalog table, we should never allow skip intents write */
-	Assert(!YbCanSkipIntentsWrite(rel));
+	Assert(!YbGetSkipIntentsOptimizationInfoWrite(rel).skip_intents);
 	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_TRANSACTIONAL);
 
 	/* Bind ybctid to identify the current row. */
@@ -1429,7 +1429,7 @@ YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple,
 							  HeapTuple tuple)
 {
 	/* For a catalog table, we should never allow skip intents write */
-	Assert(!YbCanSkipIntentsWrite(rel));
+	Assert(!YbGetSkipIntentsOptimizationInfoWrite(rel).skip_intents);
 
 	TupleDesc	tupleDesc = RelationGetDescr(rel);
 	int			natts = RelationGetNumberOfAttributes(rel);

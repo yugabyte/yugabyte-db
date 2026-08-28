@@ -51,7 +51,6 @@ DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_bool(ysql_yb_skip_redundant_update_ops);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
-DECLARE_bool(enable_backfilling_cdc_stream_with_replication_slot);
 DECLARE_bool(cdc_pg_create_grpc_stream);
 DECLARE_bool(ysql_yb_enable_listen_notify);
 
@@ -9842,6 +9841,51 @@ TEST_F(
       /* use_consistent_snapshot_stream */ true);
 }
 
+TEST_F(CDCSDKYsqlTest, TestCleanupStaleCDCStreamsWithYBAdminDryRunAndDelete) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = false;
+  ASSERT_OK(SetUpWithParams(3, 3, false));
+
+  const int kNumTables = 1;
+  vector<YBTableName> table(kNumTables);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
+  std::unordered_set<TableId> expected_tables;
+  std::unordered_set<TabletId> expected_tablets;
+  ASSERT_OK(CreateTables(kNumTables, &table, &tablets, &expected_tables, &expected_tablets));
+
+  const auto stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::EXPLICIT));
+  expected_tablets.insert(kCDCSDKSlotEntryTabletId);
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id, expected_tablets.size(), expected_tables.size(),
+      /* unqualified_table_ids_count */ 0, 60,
+      "Timed out waiting to verify stream metadata & cdc_state table after stream creation"));
+
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  const auto& tablet_id = tablets[0].Get(0).tablet_id();
+  const auto missing_stream_id = xrepl::StreamId::GenerateRandom();
+  const CDCStateTableKey missing_tablet_key("missing_tablet_id", stream_id);
+  const CDCStateTableKey missing_stream_key(tablet_id, missing_stream_id);
+  ASSERT_OK(cdc_state_table.InsertEntries({
+      CDCStateTableEntry(missing_tablet_key),
+      CDCStateTableEntry(missing_stream_key)}));
+
+  const auto dry_run_output = ASSERT_RESULT(CleanupStaleCDCStreams(/*dry_run=*/true));
+  ASSERT_STR_CONTAINS(dry_run_output, "Found 2 stale cdc_state entries (dry run)");
+  ASSERT_STR_CONTAINS(dry_run_output, "reason: stream not found");
+  ASSERT_STR_CONTAINS(dry_run_output, "reason: tablet not found");
+  ASSERT_STR_CONTAINS(dry_run_output, table[0].table_id());
+  ASSERT_TRUE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_tablet_key)));
+  ASSERT_TRUE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_stream_key)));
+
+  const auto cleanup_output = ASSERT_RESULT(CleanupStaleCDCStreams(/*dry_run=*/false));
+  ASSERT_STR_CONTAINS(cleanup_output, "Found 2 stale cdc_state entries");
+  ASSERT_STR_CONTAINS(cleanup_output, "Deleted 2 stale cdc_state entries");
+  ASSERT_FALSE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_tablet_key)));
+  ASSERT_FALSE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_stream_key)));
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id);
+
+  ASSERT_TRUE(DeleteCDCStream(stream_id));
+}
+
 // This test performs the following:
 // 1. Create a table t1
 // 2. Create a CDC stream
@@ -14771,90 +14815,6 @@ TEST_F(CDCSDKYsqlTest, TestCreateStreamWithBatchedAlterTables) {
       << "Unexpected 'TSHeartbeat took a long time' warning(s) during multi-stream creation";
 }
 
-// Test to ensure no lock-order inversion between the background CDCSDK metadata cleanup and a
-// concurrent YsqlBackfillReplicationSlotNameToCDCSDKStream, forced via sync points.
-TEST_F(CDCSDKYsqlTest, TestCleanUpCDCSDKMetadataDeadlockWithConcurrentSlotBackfill) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_backfilling_cdc_stream_with_replication_slot) = true;
-  // The backfill RPC below adds a slot name to a slot-less stream. With cdc_pg_create_grpc_stream
-  // promoted, the stream would be auto-assigned a slot name at creation, so disable it to keep the
-  // stream slot-less (mirrors TestBackfillOfLegacyGrpcStream).
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_pg_create_grpc_stream) = false;
-
-  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */));
-
-  auto table_to_drop = ASSERT_RESULT(
-      CreateTable(&test_cluster_, test_namespace_name, "test_table_to_drop", 1 /* num_tablets */));
-  auto non_dropped_table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, test_namespace_name, "test_table_keep", 1 /* num_tablets */));
-
-  // A slot-less stream so that the backfill RPC can later add a slot name to it.
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
-
-  DropTable(&test_cluster_, "test_table_to_drop");
-  VerifyTablesAndStateInStreamMetadata(
-      stream_id,
-      std::unordered_set<std::string>{table_to_drop.table_id(), non_dropped_table.table_id()},
-      std::nullopt /* expected_unqualified_table_ids */,
-      std::nullopt /* expected_dropped_table_ids */, master::SysCDCStreamEntryPB::DELETING_METADATA,
-      false /* include_catalog_tables */,
-      "Timed out waiting for stream to be in DELETING_METADATA state" /* timeout_msg */);
-
-  auto* sync_point = SyncPoint::GetInstance();
-  sync_point->LoadDependency(
-      {{"GetDroppedTablesFromCDCSDKStream::Entered",
-        "YsqlBackfillReplicationSlotNameToCDCSDKStream::BeforeAcquireMutex"},
-       {"YsqlBackfillReplicationSlotNameToCDCSDKStream::AcquiredMutex",
-        "GetDroppedTablesFromCDCSDKStream::BeforeFindTableById"}});
-  sync_point->EnableProcessing();
-
-  auto& leader_master = *ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
-  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-      &test_cluster_.client_->proxy_cache(), leader_master.bound_rpc_addr());
-
-  std::atomic<bool> backfill_done{false};
-  Status backfill_status;
-  std::thread backfill_thread([&]() {
-    master::YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
-    master::YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
-    req.set_stream_id(stream_id.ToString());
-    req.set_cdcsdk_ysql_replication_slot_name("test_deadlock_backfill_slot");
-    rpc::RpcController rpc;
-    // Larger than the WaitFor below, so a deadlock surfaces as a WaitFor timeout (not an RPC one).
-    rpc.set_timeout(MonoDelta::FromSeconds(120));
-    auto s = master_proxy->YsqlBackfillReplicationSlotNameToCDCSDKStream(req, &resp, &rpc);
-    if (s.ok() && resp.has_error()) {
-      s = StatusFromPB(resp.error().status());
-    }
-    backfill_status = s;
-    backfill_done.store(true, std::memory_order_release);
-  });
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = false;
-
-  auto wait_status = WaitFor(
-      [&backfill_done]() { return backfill_done.load(std::memory_order_acquire); },
-      MonoDelta::FromSeconds(60), "concurrent slot-name backfill to complete");
-
-  if (!wait_status.ok()) {
-    // The master is wedged by the real deadlock; the thread will never finish. Detach it so the
-    // test can report the failure (the process is torn down afterwards).
-    backfill_thread.detach();
-    FAIL()
-        << "Deadlock reproduced: the slot-name backfill did not complete within 60s. The "
-           "background CDCSDK metadata cleanup holds the stream's CowObject write lock and waits "
-           "on mutex_ (via FindTableById), while the backfill holds mutex_ and waits on the same "
-           "stream's CowObject write lock.";
-  }
-
-  backfill_thread.join();
-  ASSERT_OK(backfill_status);
-  sync_point->DisableProcessing();
-}
-
 TEST_F(CDCSDKYsqlTest, TestBackfillOfLegacyGrpcStream) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
@@ -14947,6 +14907,58 @@ TEST_F(CDCSDKYsqlTest, TestRecordTypeOptionPresenceForStreams) {
   auto yb_admin_grpc_resp = ASSERT_RESULT(GetCDCStream(yb_admin_grpc_stream));
   ASSERT_TRUE(has_record_type_option(yb_admin_grpc_resp))
       << "yb-admin gRPC stream should have a record_type option";
+}
+
+TEST_F(CDCSDKYsqlTest, TestGrpcStreamGetsReplicaIdentityForDynamicTable) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto table1 = ASSERT_RESULT(
+      CreateTable(&test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "pg_grpc_slot", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
+      /* verify_snapshot_name */ false, test_namespace_name, kYbGrpcStreamIndicator));
+
+  // The table existing at stream creation gets a replica identity entry.
+  auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
+  ASSERT_TRUE(resp.stream().replica_identity_map().contains(table1.table_id()))
+      << "table present at stream creation is missing from replica_identity_map";
+
+  // Dynamically create a second table and wait for the master to add it to the stream.
+  const std::string kDynamicTableName = "test_table_1";
+  auto table2 = ASSERT_RESULT(
+      CreateTable(&test_cluster_, test_namespace_name, kDynamicTableName, 1 /* num_tablets */));
+  VerifyTablesInStreamMetadata(
+      stream_id, {table1.table_id(), table2.table_id()},
+      "Waiting for the dynamically created table to get added to the stream.");
+
+  // The dynamically added table must also get a replica identity entry.
+  resp = ASSERT_RESULT(GetCDCStream(stream_id));
+  ASSERT_TRUE(resp.stream().replica_identity_map().contains(table2.table_id()))
+      << "dynamically added table has no replica identity entry in the stream metadata";
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets2;
+  ASSERT_OK(test_client()->GetTablets(table2, 0, &tablets2, /* partition_list_version =*/nullptr));
+
+  // The dynamically added tablet's cdc_state entry starts dormant (checkpoint Invalid,
+  // active_time 0), so GetChanges is rejected by CheckStreamActive until the consumer activates
+  // the tablet with an explicit checkpoint, as the connector does when it bootstraps a newly
+  // discovered tablet.
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets2));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(0 /* start */, 10 /* end */, &test_cluster_, 2, kDynamicTableName));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto change_resp = VERIFY_RESULT(GetChangesFromCDC(stream_id, tablets2));
+        LOG(INFO) << "GetChanges returned " << change_resp.cdc_sdk_proto_records_size()
+                  << " records";
+
+        // 1 DDL + 10 x (BEGIN + INSERT + COMMIT) = 31 records
+        return change_resp.cdc_sdk_proto_records_size() == 31;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Waiting to stream all records of the dynamically added table"));
 }
 
 TEST_F(CDCSDKYsqlTest, TestBackfillOfNotificationsStreamPluginName) {

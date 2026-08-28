@@ -18,6 +18,9 @@
 #include "pg_getopt.h"
 #include "pqexpbuffer.h"
 
+/* YB includes */
+#include <stdio.h>
+
 #define PREP_WAITING "isolationtester_waiting"
 
 /*
@@ -167,6 +170,23 @@ main(int argc, char **argv)
 	conns = (IsoConnInfo *) pg_malloc0(nconns * sizeof(IsoConnInfo));
 	atexit(disconnect_atexit);
 
+	/* YB: Get the list of host-ports from the comma separated env YBHOSTPORTLIST. */
+	char *host_port_list[256];
+	int num_hosts = 0;
+
+	char *yb_host_port_list = getenv("YBHOSTPORTLIST");
+	if (yb_host_port_list)
+	{
+		char *list_copy = strdup(yb_host_port_list);
+		char *token = strtok(list_copy, ",");
+		while (token && num_hosts < 256)
+		{
+			host_port_list[num_hosts++] = strdup(token);
+			token = strtok(NULL, ",");
+		}
+		free(list_copy);
+	}
+
 	for (i = 0; i < nconns; i++)
 	{
 		const char *sessionname;
@@ -177,6 +197,19 @@ main(int argc, char **argv)
 			sessionname = testspec->sessions[i - 1]->name;
 
 		conns[i].sessionname = sessionname;
+
+		/* YB: Split the host and port from host_port_list[i % num_hosts] */
+		if (num_hosts > 0)
+		{
+			char *host_port = host_port_list[i % num_hosts];
+			char *colon = strchr(host_port, ':');
+			char *host = strndup(host_port, colon - host_port);
+			char *port = strdup(colon + 1);
+			setenv("PGHOST", host, 1);
+			setenv("PGPORT", port, 1);
+			free(host);
+			free(port);
+		}
 
 		conns[i].conn = PQconnectdb(conninfo);
 		if (PQstatus(conns[i].conn) != CONNECTION_OK)
@@ -228,6 +261,10 @@ main(int argc, char **argv)
 		conns[i].backend_pid = PQbackendPID(conns[i].conn);
 		conns[i].backend_pid_str = psprintf("%d", conns[i].backend_pid);
 	}
+
+	/* YB: free host port list */
+	for (i = 0; i < num_hosts; i++)
+		free(host_port_list[i]);
 
 	/*
 	 * Build the query we'll use to detect lock contention among sessions in

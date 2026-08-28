@@ -3598,11 +3598,12 @@ class PgClientSession::Impl {
       txn = transaction_provider_.Take<kSessionKind>(deadline);
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
       txn->InitPgSessionRequestVersion();
-      // Set the start time before initializing the transaction to allow start time to be
-      // propagated to txn coordinator.
+      // Set the start time (epoch microseconds, like pg_txn_start_us) before initializing the
+      // transaction to allow start time to be propagated to txn coordinator.
       // Session level txns is only used for advisory locks. These would not touch regular tables.
-      RETURN_NOT_OK(
-          txn->SetPgTxnStart(MonoTime::Now().ToUint64(), IsTxnUsingTableLocks::kFalse));
+      RETURN_NOT_OK(txn->SetPgTxnStart(
+          static_cast<int64_t>(clock()->Now().GetPhysicalValueMicros()),
+          IsTxnUsingTableLocks::kFalse));
       // Isolation level doesn't matter but we need to set it for conflict resolution to not treat
       // it as a single shard/fast-path transaction.
       RETURN_NOT_OK(txn->Init(IsolationLevel::READ_COMMITTED));
@@ -3989,7 +3990,8 @@ class PgClientSession::Impl {
           ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
       txn = transaction_provider_.Take<PgClientSessionKind::kAutonomousDdl>(deadline);
       RETURN_NOT_OK(txn->SetPgTxnStart(
-          pg_txn_start_us ? pg_txn_start_us : MonoTime::Now().ToUint64(),
+          pg_txn_start_us ? pg_txn_start_us
+                          : static_cast<int64_t>(clock()->Now().GetPhysicalValueMicros()),
           is_txn_using_table_locks));
       RETURN_NOT_OK(txn->Init(isolation));
       txn->SetPriority(priority);

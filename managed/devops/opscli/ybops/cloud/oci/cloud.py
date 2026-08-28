@@ -220,7 +220,7 @@ class OciCloud(AbstractCloud):
         return ["sd{}".format(chr(ord('b') + i))
                 for i in range(args.num_volumes)]
 
-    def start_instance(self, host_info, server_ports):
+    def start_instance(self, host_info, server_ports, capacity_reservation=None):
         instance_id = host_info['id']
         instance = self.get_admin().get_instance(instance_id)
 

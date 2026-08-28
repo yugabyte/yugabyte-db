@@ -13,6 +13,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Queue;
@@ -42,14 +43,34 @@ public class TestPgCatalogConsistency extends BasePgSQLTest {
 
   }
 
+  private Map<String, String> legacyCatalogModeFlags() {
+    Map<String, String> flags = new HashMap<>(getTServerFlags());
+    flags.put("enable_object_locking_for_table_locks", "false");
+    flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    flags.put("ysql_enable_concurrent_ddl", "false");
+    flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
+        (existing, added) -> existing + "," + added);
+    return flags;
+  }
+
   /**
    * Test continuously runs the 'ALTER TABLE' query to add/remove column with default value
    * in a dedicated thread. At same time other threads read multiple catalog tables
    * ('pg_attribute' and 'pg_attrdef' both are changed by the 'ALTER TABLE' query) and check
    * that read state is consistent.
+   *
+   * TODO(#33456): Disable object locking for this test. The test does not
+   * replicate the original motivation of 7ec7c761755d accurately. Instead of
+   * testing RelationBuildTupleDesc (the original offender), the test explicitly
+   * issues catalog reads. This is not correct since user issued catalog
+   * reads have potentially different semantics than internally issued
+   * catalog reads. Internal reads access the catalog potentially under an
+   * object lock as well as read using the catalog snapshot.
    */
   @Test
   public void testAlterTable() throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(), legacyCatalogModeFlags());
+    markClusterNeedsRecreation();
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(
         "CREATE TABLE unstable_table(k INT PRIMARY KEY, v1 INT DEFAULT 10, v2 INT DEFAULT 20)");

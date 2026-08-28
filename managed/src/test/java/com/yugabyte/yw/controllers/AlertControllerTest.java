@@ -226,6 +226,16 @@ public class AlertControllerTest extends FakeDBApplication {
                   + " will expire in 29 days."
                   + "\nAffected nodes: node1 node2 node3")
           .put(
+              NODE_AGENT_SERVER_CERT_EXPIRY,
+              "Node agent server certificate for universe 'Test Universe'"
+                  + " will expire in 29 days."
+                  + "\nAffected nodes: node1 node2 node3")
+          .put(
+              NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE,
+              "Node agent server certificate on node agent(s) not associated with a universe"
+                  + " will expire in 29 days."
+                  + "\nAffected node agents: 1.2.3.1:9070 1.2.3.2:9070")
+          .put(
               YSQL_OP_AVG_LATENCY,
               "Average YSQL operations latency for universe 'Test Universe'"
                   + " is above 10000 ms. Current value is 10001 ms."

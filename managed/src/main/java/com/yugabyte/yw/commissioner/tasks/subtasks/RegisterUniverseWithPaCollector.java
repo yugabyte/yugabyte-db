@@ -13,12 +13,14 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.pa.PaRegistrationMode;
 import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.PACollectorFilter;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -38,9 +40,12 @@ public class RegisterUniverseWithPaCollector extends UniverseTaskBase {
   }
 
   public static class Params extends UniverseTaskParams {
-    // When set, use explicit collector/observability values instead of auto-registration config.
+    // When set, use explicit collector/mode values instead of auto-registration config.
     public UUID paCollectorUuid;
-    public Boolean advancedObservability;
+    public PaRegistrationMode mode;
+
+    /** The destination, for ONLINE only. Already pushed to the collector by PushPaExportConfig. */
+    public UUID paEndpointUuid;
   }
 
   protected Params taskParams() {
@@ -56,12 +61,13 @@ public class RegisterUniverseWithPaCollector extends UniverseTaskBase {
       Customer customer = Customer.get(universe.getCustomerId());
 
       PACollector collector;
-      boolean advancedObservability;
+      PaRegistrationMode mode;
+      UUID paEndpointUuid = taskParams().paEndpointUuid;
 
       if (taskParams().paCollectorUuid != null) {
         collector =
             perfAdvisorService.getOrBadRequest(customer.getUuid(), taskParams().paCollectorUuid);
-        advancedObservability = Boolean.TRUE.equals(taskParams().advancedObservability);
+        mode = taskParams().mode != null ? taskParams().mode : PaRegistrationMode.BASIC;
       } else {
         if (!confGetter.getConfForScope(customer, CustomerConfKeys.paAutoRegistrationEnabled)) {
           log.info("PA auto-registration is disabled, skipping");
@@ -79,21 +85,32 @@ public class RegisterUniverseWithPaCollector extends UniverseTaskBase {
         }
 
         collector = collectors.get(0);
-        advancedObservability =
-            confGetter.getConfForScope(
-                customer, CustomerConfKeys.paAutoRegistrationAdvancedObservability);
+        // Auto-registration deliberately stays on the local modes: a misconfigured destination
+        // should not be able to divert a whole fleet's data off-box on universe create.
+        mode =
+            PaRegistrationMode.of(
+                confGetter.getConfForScope(
+                    customer, CustomerConfKeys.paAutoRegistrationAdvancedObservability));
+        paEndpointUuid = null;
       }
 
       log.info(
-          "Registering universe {} with PA Collector {} (advancedObservability={})",
+          "Registering universe {} with PA Collector {} (mode={}, paEndpointUuid={})",
           universe.getUniverseUUID(),
           collector.getUuid(),
-          advancedObservability);
+          mode,
+          paEndpointUuid);
 
-      perfAdvisorService.putUniverse(collector, universe, advancedObservability);
+      List<UUID> exportConfigIds =
+          paEndpointUuid == null ? null : Collections.singletonList(paEndpointUuid);
+      perfAdvisorService.putUniverse(collector, universe, mode, exportConfigIds);
+      UUID endpointUuidToStore = mode.requiresExportConfig() ? paEndpointUuid : null;
       Universe.saveDetails(
           taskParams().getUniverseUUID(),
-          u -> u.getUniverseDetails().setPaCollectorUuid(collector.getUuid()));
+          u -> {
+            u.getUniverseDetails().setPaCollectorUuid(collector.getUuid());
+            u.getUniverseDetails().setPaEndpointUuid(endpointUuidToStore);
+          });
 
       log.info("Successfully registered universe {} with PA Collector", universe.getUniverseUUID());
     } catch (Exception e) {

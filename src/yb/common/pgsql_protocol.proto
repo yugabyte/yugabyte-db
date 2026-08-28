@@ -325,6 +325,17 @@ message PgsqlWriteRequestPB {
   // Optimization to skip intents write and directly writes to regular db.
   optional bool skip_intents_write = 30;
 
+  // Read this operation at the statement's in_txn_limit instead of at the transaction read time.
+  // Set for a relation the skip intents optimization can apply to: one created, or with its
+  // storage swapped, in the current transaction, while yb_enable_new_relation_fastpath_write is
+  // on. Rows an earlier skip intents write put in the regular db sit above the transaction read
+  // time, so only a read at the in_txn_limit still sees them. Unlike skip_intents_write this
+  // stays set after the optimization is disabled mid-transaction, which is what keeps those rows
+  // visible from then on.
+  //
+  // Like skip_intents_write this is a client-side signal; docdb does not read it.
+  optional bool read_at_in_txn_limit = 31;
+
   // Fences the write against a caller-held lease: the leader rejects the op if this hybrid time has
   // already passed when the op is about to be assigned its own. An RPC deadline cannot express
   // this -- nothing cancels an operation once it is handed to Raft, so a write the caller saw time
@@ -334,7 +345,7 @@ message PgsqlWriteRequestPB {
   // applied when it straddles the boundary; non-transactional single-shard writes have no
   // all-or-nothing to fall back on. Like any hybrid time comparison it is only as tight as
   // max_clock_skew_usec.
-  optional fixed64 ignore_after_hybrid_time = 31;
+  optional fixed64 ignore_after_hybrid_time = 32;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -613,6 +624,9 @@ message PgsqlReadRequestPB {
   optional uint32 tablespace_oid = 45;
 
   optional bool skip_intents_read = 46;
+
+  // See PgsqlWriteRequestPB::read_at_in_txn_limit.
+  optional bool read_at_in_txn_limit = 47;
 }
 
 //--------------------------------------------------------------------------------------------------

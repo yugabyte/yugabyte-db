@@ -664,6 +664,9 @@ class PgObjectLocksTest : public LibPqTestBase {
     }
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", EnableTransactionalDdl()));
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    opts->extra_tserver_flags.emplace_back(
+        yb::Format("--ysql_yb_enable_ddl_savepoint_support=$0", EnableTransactionalDdl()));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
@@ -1287,6 +1290,44 @@ TEST_F(PgObjectLocksTest, CreateIndexWaitsForInProgressWriteTxn) {
   ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test WHERE v=1")), 1);
   ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test WHERE v=0")), 1);
   ASSERT_TRUE(create_index_waits_for_in_progress_txn);
+}
+
+TEST_F(PgObjectLocksTest, WaitForLockersSeesFastpathDmlLocks) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test VALUES (0, 0)"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+  LogWaiter log_waiter_block(ts2, "blocking concurrent index backfill");
+  auto create_index_future = std::async(std::launch::async, [&]() {
+    auto conn2 = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    return conn2.Execute("CREATE INDEX idx ON test(v)");
+  });
+  CancelableScopeExit cleanup([&]() {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"),
+        "Failed to unblock CREATE INDEX");
+  });
+  ASSERT_OK(log_waiter_block.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_OK(conn1.Execute("UPDATE test SET v = 1 WHERE k = 0"));
+
+  ASSERT_OK(cluster_->SetFlag(ts1, "vmodule", "object_lock_manager*=1"));
+  LogWaiter log_waiter_conflict(ts1, "to wait-for-lockers tracker");
+  cleanup.Cancel();
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_OK(log_waiter_conflict.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+  ASSERT_EQ(create_index_future.wait_for(3s * kTimeMultiplier), std::future_status::timeout)
+      << "CREATE INDEX did not wait for the in-progress UPDATE";
+
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  ASSERT_OK(create_index_future.get());
 }
 
 TEST_F(PgObjectLocksTest, RetryExclusiveLockOnTserverLeaseRefresh) {

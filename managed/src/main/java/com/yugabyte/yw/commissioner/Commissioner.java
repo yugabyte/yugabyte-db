@@ -362,6 +362,16 @@ public class Commissioner {
     }
     responseJson.put("userEmail", task.getUserEmail());
 
+    // Root of the retry/rollback chain when stored on task params (no previousTaskUUID fallback:
+    // that would surface the immediate predecessor and contradict root semantics).
+    JsonNode taskParams = taskInfo.getTaskParams();
+    if (taskParams != null) {
+      JsonNode originalNode = taskParams.get("originalTaskUUID");
+      if (originalNode != null && !originalNode.isNull() && !originalNode.asText().isEmpty()) {
+        responseJson.put("originalTaskUUID", originalNode.asText());
+      }
+    }
+
     // Get subtask groups and add other details to it if applicable.
     UserTaskDetails userTaskDetails;
     Optional<RunnableTask> optional = taskExecutor.maybeGetRunnableTask(taskInfo.getUuid());

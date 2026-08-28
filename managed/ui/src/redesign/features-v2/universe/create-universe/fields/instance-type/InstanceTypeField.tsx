@@ -1,4 +1,4 @@
-import { ChangeEvent, ReactElement, useLayoutEffect, useMemo } from 'react';
+import { ChangeEvent, ReactElement, useEffect, useMemo } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -95,7 +95,7 @@ export const InstanceTypeField = ({
     }
   );
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!data?.length || !provider?.code) return;
 
     const instanceExists = (code: string | null | undefined) =>

@@ -1579,11 +1579,11 @@ YbcStatus YBCPgDecodePKColumnsFromBasectid(
 
 YbcStatus YBCPgNewSample(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid,
-    YbcPgTableLocalityInfo locality_info, bool skip_intents_read,
+    YbcPgTableLocalityInfo locality_info, YbcPgSkipIntentsOptimizationInfo skip_intents_info,
     int targrows, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1,
     YbcPgStatement *handle) {
   return ToYBCStatus(pgapi->NewSample(
-      {database_oid, table_relfilenode_oid}, locality_info, skip_intents_read,
+      {database_oid, table_relfilenode_oid}, locality_info, skip_intents_info,
       targrows, {.w = rstate_w, .s0 = rand_state_s0, .s1 = rand_state_s1},
       handle));
 }
@@ -1613,10 +1613,10 @@ YbcStatus YBCPgNewInsertBlock(
     YbcPgOid table_oid,
     YbcPgTableLocalityInfo locality_info,
     YbcPgTransactionSetting transaction_setting,
-    bool skip_intents_write,
+    YbcPgSkipIntentsOptimizationInfo skip_intents_info,
     YbcPgStatement *handle) {
   auto result = pgapi->NewInsertBlock(
-      PgObjectId(database_oid, table_oid), locality_info, transaction_setting, skip_intents_write);
+      PgObjectId(database_oid, table_oid), locality_info, transaction_setting, skip_intents_info);
   if (result.ok()) {
     *handle = *result;
     return nullptr;
@@ -1628,11 +1628,11 @@ YbcStatus YBCPgNewInsert(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewInsert(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle) {
@@ -1662,11 +1662,11 @@ YbcStatus YBCPgNewUpdate(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewUpdate(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle) {
@@ -1678,11 +1678,11 @@ YbcStatus YBCPgNewDelete(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewDelete(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle) {
@@ -1711,11 +1711,12 @@ YbcStatus YBCPgExecTruncateColocated(YbcPgStatement handle) {
 // SELECT Operations -------------------------------------------------------------------------------
 YbcStatus YBCPgNewSelect(
     YbcPgOid database_oid, YbcPgOid table_relfilenode_oid, const YbcPgPrepareParameters* params,
-    YbcPgTableLocalityInfo locality_info, bool skip_intents_read, YbcPgStatement* handle) {
+    YbcPgTableLocalityInfo locality_info,
+    YbcPgSkipIntentsOptimizationInfo skip_intents_info, YbcPgStatement* handle) {
   return ToYBCStatus(pgapi->NewSelect(
       PgObjectId{database_oid, table_relfilenode_oid},
       PgObjectId{database_oid, params ? params->index_relfilenode_oid : kInvalidOid},
-      params, locality_info, skip_intents_read, handle));
+      params, locality_info, skip_intents_info, handle));
 }
 
 YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan) {
@@ -2347,22 +2348,9 @@ void YBCClearTimeout() {
   pgapi->ClearTimeout();
 }
 
-void YBCCheckForInterrupts() {
-  // CHECK_FOR_INTERRUPTS may longjmp, so it is only safe on the backend main thread. Extensions
-  // such as pg_duckdb run pggate calls on their own worker threads; there the interrupt is left
-  // for the main thread. Logged so that an unintended off-main-thread caller stays observable.
-  if (!is_main_thread()) {
-    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 60, 1)
-        << __PRETTY_FUNCTION__ << " invoked off the main thread, skipping the interrupt check";
-    return;
-  }
-
-  // If we're in the midst of shutting down, do not bother checking for interrupts.
-  if (!pgapi) {
-    return;
-  }
-
-  pgapi->pg_callbacks()->CheckForInterrupts();
+bool YBCHasProcessableAbortInterrupt() {
+  return PREDICT_FALSE(!pgapi)
+      ? false : pgapi->pg_callbacks()->HasProcessableAbortInterrupt();
 }
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle) {

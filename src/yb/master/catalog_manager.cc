@@ -12054,7 +12054,9 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
   // Verify if it's the last tablet report, and the alter completed.
   {
     auto l = table->LockForRead();
-    if (l->pb.state() != SysTablesEntryPB::ALTERING) {
+    // A recorded backfill job with no backfill running means the backfill was lost.
+    const bool resume_backfill = l->pb.backfill_jobs_size() > 0 && !table->IsBackfilling();
+    if (l->pb.state() != SysTablesEntryPB::ALTERING && !resume_backfill) {
       VLOG_WITH_PREFIX_AND_FUNC(2) << "Table " << table->ToString() << " is not altering";
       return Status::OK();
     }
@@ -14052,6 +14054,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
       "Failed to backfill plugin name for notifications CDC streams");
 
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
+  EnqueuePendingBackfillsAfterLoad();
   restoring_sys_catalog_ = false;
 
   if (FLAGS_enable_ysql) {
@@ -14275,6 +14278,25 @@ void CatalogManager::SchedulePostTabletCreationTasksForPendingTables(const Leade
       continue;
     }
     SchedulePostTabletCreationTasks(*table_info_result, epoch);
+  }
+}
+
+void CatalogManager::EnqueuePendingBackfillsAfterLoad() {
+  std::vector<TableInfoPtr> tables;
+  {
+    SharedLock lock(mutex_);
+    tables.reserve(tables_->Size());
+    for (const auto& table_info : tables_->GetAllTables()) {
+      tables.push_back(table_info);
+    }
+  }
+
+  for (const auto& table_info : tables) {
+    if (table_info->LockForRead()->pb.backfill_jobs_size() == 0 || table_info->IsBackfilling()) {
+      continue;
+    }
+    LOG(INFO) << "Queueing " << table_info->ToString() << " for backfill resumption";
+    AddPendingBackFill(table_info->id());
   }
 }
 
@@ -14715,12 +14737,14 @@ Result<TSDescriptorPtr> CatalogManager::LookupTSByUUID(const TabletServerId& tse
 }
 
 bool CatalogManager::SkipCatalogVersionChecks() {
-  // Only skip if we are leader and the major catalog upgrade is in progress.
-  SCOPED_LEADER_SHARED_LOCK(l, this);
-  if (l.IsInitializedAndIsLeader()) {
-    return ysql_manager_->IsMajorUpgradeInProgress();
+  auto skip = ysql_manager_->IsMajorUpgradeInProgress() || !ysql_manager_->IsInitDbDone();
+  if (skip) {
+    VLOG(1) << "Skipping catalog version checks. Major upgrade in progress: "
+        << ysql_manager_->IsMajorUpgradeInProgress() << ", Init db done: "
+        << ysql_manager_->IsInitDbDone();
   }
-  return false;
+
+  return skip;
 }
 
 void CatalogManager::RemoveNamespaceFromMaps(

@@ -11,6 +11,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentClient.NodeAgentUpgradeParam;
 import com.yugabyte.yw.common.NodeAgentManager;
+import com.yugabyte.yw.common.NodeAgentManager.CopyType;
 import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeAgent.DeployContext;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -29,9 +31,9 @@ import com.yugabyte.yw.nodeagent.PingResponse;
 import com.yugabyte.yw.nodeagent.ServerInfo;
 import io.prometheus.metrics.core.metrics.Gauge;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
-import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -46,6 +48,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -71,6 +74,7 @@ public class NodeAgentPoller {
           .name(NODE_AGENT_VERSION_MISMATCH_NAME)
           .help("Has Node Agent version mismatched")
           .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
               KnownAlertLabels.NODE_AGENT_UUID.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
           .register(PrometheusRegistry.defaultRegistry);
@@ -80,8 +84,9 @@ public class NodeAgentPoller {
   private static final Gauge NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE =
       Gauge.builder()
           .name(NODE_AGENT_SERVER_CERT_EXPIRING_NAME)
-          .help("Is Node Agent server cert expiring")
+          .help("Node Agent server cert expiry time in unix seconds (0 if unknown)")
           .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
               KnownAlertLabels.NODE_AGENT_UUID.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
           .register(PrometheusRegistry.defaultRegistry);
@@ -92,6 +97,7 @@ public class NodeAgentPoller {
           .name(NODE_AGENT_CONNECTION_NAME)
           .help("Is Node Agent connection successful")
           .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
               KnownAlertLabels.NODE_AGENT_UUID.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
           .register(PrometheusRegistry.defaultRegistry);
@@ -138,7 +144,6 @@ public class NodeAgentPoller {
   @Getter
   static class PollerTaskParam {
     @NonNull private UUID nodeAgentUuid;
-    @NonNull private String softwareVersion;
     @NonNull private Duration lifetime;
   }
 
@@ -188,39 +193,6 @@ public class NodeAgentPoller {
 
     private boolean isNodeAgentAlive() {
       return lastFailedCount < MAX_FAILED_CONN_COUNT;
-    }
-
-    private boolean versionMatched(NodeAgent nodeAgent) {
-      String ybaVersion = param.getSoftwareVersion();
-      boolean versionMatched = Util.areYbVersionsEqual(ybaVersion, nodeAgent.getVersion(), true);
-      publishMetric(nodeAgent, NODE_AGENT_VERSION_MISMATCH_GAUGE, versionMatched ? 0 : 1);
-      if (!versionMatched) {
-        log.debug("YBA version is {}. Version mismatched for node agent {}", ybaVersion, nodeAgent);
-      }
-      return versionMatched;
-    }
-
-    private boolean needsUpgrade(NodeAgent nodeAgent) {
-      if (!versionMatched(nodeAgent)) {
-        return true;
-      }
-      // This handles the rare case where YBA has never been upgraded close to a year.
-      // There is a chance that while an ongoing API call is made, upgrade starts kicking in, but
-      // it is very rare because this happens if YBA has not been upgraded for almost a year and
-      // every API call first checks if node agent needs an upgrade and waits if an upgrade is
-      // currently running.
-      boolean expiring = false;
-      long expiresAt = nodeAgent.getServerCertExpirySecs();
-      if (expiresAt > 0) {
-        Duration duration =
-            confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerCertExpiryNotice);
-        expiring = expiresAt < Instant.now().plus(duration).getEpochSecond();
-        publishMetric(nodeAgent, NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE, expiring ? 0 : 1);
-        if (expiring) {
-          log.debug("Node agent server cert is expiring soon on {}", expiresAt);
-        }
-      }
-      return expiring;
     }
 
     @VisibleForTesting
@@ -379,8 +351,17 @@ public class NodeAgentPoller {
                       try {
                         Util.doWithCorrelationId(
                             id -> {
+                              if (!needsUpgrade(nodeAgent)) {
+                                log.trace("Node agent {} does not need an upgrade", nodeAgent);
+                                return null;
+                              }
                               log.info("Upgrading node agent {} via poller", nodeAgent);
-                              upgradeNodeAgent(nodeAgent);
+                              upgradeNodeAgentLocked(
+                                  nodeAgent,
+                                  DeployContext.builder()
+                                      .certificateUuid(nodeAgent.getCertificateUuid())
+                                      .certsOnly(versionMatched(nodeAgent))
+                                      .build());
                               return null;
                             });
                       } finally {
@@ -400,8 +381,9 @@ public class NodeAgentPoller {
       }
     }
 
-    // This handles upgrade for the given node agent.
-    private void upgradeNodeAgent(NodeAgent nodeAgent) {
+    // This handles upgrade for the given node agent with exclusive access to prevent double
+    // upgrade.
+    private void upgradeNodeAgentLocked(NodeAgent nodeAgent, DeployContext deployConext) {
       if (HighAvailabilityConfig.isFollower()) {
         // Task may have already been submitted. This check ensures that submitted tasks are not
         // run.
@@ -411,17 +393,12 @@ public class NodeAgentPoller {
       nodeAgent.refresh();
       checkState(nodeAgent.isActive(), "Invalid state for node agent " + nodeAgent);
       if (nodeAgent.getState() == State.READY) {
-        if (!needsUpgrade(nodeAgent)) {
-          log.debug("Node agent {} does not need an upgrade", nodeAgent);
-          return;
-        }
         nodeAgent.saveState(State.UPGRADE);
       }
+      log.debug("Deploying node agent with context {} for node agent {}", deployConext, nodeAgent);
       if (nodeAgent.getState() == State.UPGRADE) {
         log.info("Uploading upgrade files for node agent {}", nodeAgent);
-        InstallerFiles installerFiles =
-            nodeAgentManager.getInstallerFiles(
-                nodeAgent, Paths.get(nodeAgent.getHome()), versionMatched(nodeAgent));
+        InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, deployConext);
         // Upload the installer files including new cert and key to the remote node agent.
         uploadInstallerFiles(nodeAgent, installerFiles);
         log.info("Uploaded upgrade files for node agent {}", nodeAgent);
@@ -453,7 +430,8 @@ public class NodeAgentPoller {
           // If the node has restarted and loaded the new cert and key,
           // delete the local merged certs.
           nodeAgentManager.postUpgrade(nodeAgent);
-          nodeAgent.finalizeUpgrade(nodeAgentHome, serverInfo.getVersion());
+          nodeAgent.finalizeUpgrade(
+              nodeAgentHome, serverInfo.getVersion(), deployConext.getCertificateUuid());
           log.info("Node agent {} has been upgraded successfully", nodeAgent);
         }
       }
@@ -498,6 +476,7 @@ public class NodeAgentPoller {
   private static void publishMetric(NodeAgent nodeAgent, Gauge guage, double value) {
     guage
         .labelValues(
+            nodeAgent.getCustomerUuid().toString(),
             nodeAgent.getUuid().toString(),
             String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()))
         .set(value);
@@ -523,11 +502,6 @@ public class NodeAgentPoller {
       installerFiles.getCopyFileInfos().stream()
           .forEach(
               f -> {
-                log.info(
-                    "Uploading {} to {} on node agent {}",
-                    f.getSourcePath(),
-                    f.getTargetPath(),
-                    nodeAgent);
                 int perm = 0;
                 if (StringUtils.isNotBlank(f.getPermission())) {
                   try {
@@ -540,13 +514,50 @@ public class NodeAgentPoller {
                         e.getMessage());
                   }
                 }
-                nodeAgentClient.uploadFile(
-                    nodeAgent,
-                    f.getSourcePath().toString(),
-                    f.getTargetPath().toString(),
-                    null /*user*/,
-                    perm,
-                    null /*timeout*/);
+                if (f.getCopyType() == CopyType.UPLOAD) {
+                  log.info(
+                      "Uploading file {} to {} on node agent {}",
+                      f.getSourcePath(),
+                      f.getTargetPath(),
+                      nodeAgent);
+                  nodeAgentClient.uploadFile(
+                      nodeAgent,
+                      f.getSourcePath().toString(),
+                      f.getTargetPath().toString(),
+                      null /*user*/,
+                      perm,
+                      null /*timeout*/);
+                } else if (f.getCopyType() == CopyType.REMOTE_COPY) {
+                  log.info(
+                      "Remote copying file {} to {} on node agent {}",
+                      f.getSourcePath(),
+                      f.getTargetPath(),
+                      nodeAgent);
+                  // Copy on the same remote node.
+                  List<String> cmd =
+                      ImmutableList.of(
+                          "cp", "-f", f.getSourcePath().toString(), f.getTargetPath().toString());
+                  nodeAgentClient
+                      .executeCommand(nodeAgent, cmd)
+                      .processErrors(
+                          () ->
+                              String.format(
+                                  "Failed to remote copy file %s to %s on node agent %s",
+                                  f.getSourcePath(), f.getTargetPath(), nodeAgent));
+                  cmd =
+                      ImmutableList.of(
+                          "chmod", String.format("%o", perm), f.getTargetPath().toString());
+                  nodeAgentClient
+                      .executeCommand(nodeAgent, cmd)
+                      .processErrors(
+                          () ->
+                              String.format(
+                                  "Failed to set permission for file %s on node agent %s",
+                                  f.getTargetPath(), nodeAgent));
+                } else {
+                  throw new IllegalArgumentException(
+                      "Unknown copy type " + f.getCopyType() + " for file " + f.getSourcePath());
+                }
               });
     } finally {
       installerFiles.cleanupCopiedFiles();
@@ -561,17 +572,12 @@ public class NodeAgentPoller {
         .forEach(uuid -> swamperHelper.removeNodeAgentTargetJson(uuid));
   }
 
-  private PollerTask getOrCreatePollerTask(
-      UUID nodeAgentUuid, Duration lifetime, String softwareVersion) {
+  private PollerTask getOrCreatePollerTask(UUID nodeAgentUuid, Duration lifetime) {
     return pollerTasks.computeIfAbsent(
         nodeAgentUuid,
         k ->
             createPollerTask(
-                PollerTaskParam.builder()
-                    .nodeAgentUuid(nodeAgentUuid)
-                    .softwareVersion(softwareVersion)
-                    .lifetime(lifetime)
-                    .build()));
+                PollerTaskParam.builder().nodeAgentUuid(nodeAgentUuid).lifetime(lifetime).build()));
   }
 
   /**
@@ -583,12 +589,11 @@ public class NodeAgentPoller {
   void pollerService() {
     try {
       Duration lifetime = confGetter.getGlobalConf(GlobalConfKeys.deadNodeAgentRetention);
-      String softwareVersion = nodeAgentManager.getSoftwareVersion();
       Set<UUID> nodeUuids = new HashSet<>();
       NodeAgent.getAll().stream()
           .filter(n -> n.isActive())
           .peek(n -> nodeUuids.add(n.getUuid()))
-          .map(n -> getOrCreatePollerTask(n.getUuid(), lifetime, softwareVersion))
+          .map(n -> getOrCreatePollerTask(n.getUuid(), lifetime))
           .filter(PollerTask::isSchedulable)
           .forEach(p -> p.schedule(p.isNodeAgentAlive() ? livePollerExecutor : deadPollerExecutor));
       Iterator<Entry<UUID, PollerTask>> iter = pollerTasks.entrySet().iterator();
@@ -606,20 +611,50 @@ public class NodeAgentPoller {
     }
   }
 
+  public boolean versionMatched(NodeAgent nodeAgent) {
+    String ybaVersion = Util.getYbaVersion();
+    boolean versionMatched = Util.areYbVersionsEqual(ybaVersion, nodeAgent.getVersion(), true);
+    publishMetric(nodeAgent, NODE_AGENT_VERSION_MISMATCH_GAUGE, versionMatched ? 0 : 1);
+    if (!versionMatched) {
+      log.debug("YBA version is {}. Version mismatched for node agent {}", ybaVersion, nodeAgent);
+    }
+    return versionMatched;
+  }
+
+  private boolean needsUpgrade(NodeAgent nodeAgent) {
+    boolean upgradeNeeded = false;
+    if (!versionMatched(nodeAgent)) {
+      upgradeNeeded = true;
+    }
+    // This handles the rare case where YBA has never been upgraded close to a year.
+    // There is a chance that while an ongoing API call is made, upgrade starts kicking in, but
+    // it is very rare because this happens if YBA has not been upgraded for almost a year and
+    // every API call first checks if node agent needs an upgrade and waits if an upgrade is
+    // currently running.
+    long expiresAt = nodeAgent.getServerCertExpirySecs();
+    if (expiresAt > 0) {
+      publishMetric(nodeAgent, NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE, expiresAt);
+      Duration duration = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerCertExpiryNotice);
+      if (expiresAt < Instant.now().plus(duration).getEpochSecond()) {
+        log.debug(
+            "Node agent server cert is expiring soon on {}",
+            Instant.ofEpochSecond(expiresAt).atZone(ZoneId.systemDefault()));
+        upgradeNeeded = true;
+      }
+    }
+    return upgradeNeeded;
+  }
+
   /**
-   * Upgrades the given node agent forcefully if there is no running scheduled upgrade. If a
-   * scheduled upgrade is running, it waits for the upgrade to finish.
+   * Upgrades the given node agent if it needs an upgrade. This is invoked by tasks or other
+   * consumers like health-checks.
    *
    * @param nodeAgentUuid the given node agent UUID.
-   * @param skipOnUnreachable skip upgrade if server is unreachable.
    * @return true if there was an upgrade else false.
    */
-  public boolean upgradeNodeAgent(UUID nodeAgentUuid, boolean skipOnUnreachable) {
+  public boolean upgradeNodeAgent(UUID nodeAgentUuid) {
     NodeAgent nodeAgent = NodeAgent.getOrBadRequest(nodeAgentUuid);
-    Duration lifetime = confGetter.getGlobalConf(GlobalConfKeys.deadNodeAgentRetention);
-    String softwareVersion = nodeAgentManager.getSoftwareVersion();
-    PollerTask pollerTask = getOrCreatePollerTask(nodeAgentUuid, lifetime, softwareVersion);
-    if (!pollerTask.needsUpgrade(nodeAgent)) {
+    if (!needsUpgrade(nodeAgent)) {
       log.trace("Node agent {} does not need an upgrade", nodeAgent);
       return false;
     }
@@ -627,18 +662,45 @@ public class NodeAgentPoller {
     try {
       nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
     } catch (RuntimeException e) {
-      if (skipOnUnreachable) {
-        return false;
-      }
-      throw e;
+      return false;
     }
+    return upgradeNodeAgent(
+        nodeAgentUuid,
+        true /* waitForInFlightUpgrade */,
+        n -> {
+          return DeployContext.builder().certificateUuid(n.getCertificateUuid()).build();
+        });
+  }
+
+  /**
+   * Upgrades the node agent on request. This can be invoked directly via API or by tasks. If an
+   * upgrade is already running, it waits for the upgrade to finish.
+   *
+   * @param nodeAgentUuid the given node agent UUID.
+   * @param waitForInFlightUpgrade if true, waits for the in-flight upgrade to finish else throws
+   * @param deployContextFn the function to create the deploy context for the node agent after the
+   *     upgrade lock is held.
+   * @return true if there was an upgrade else false.
+   */
+  public boolean upgradeNodeAgent(
+      UUID nodeAgentUuid,
+      boolean waitForInFlightUpgrade,
+      Function<NodeAgent, DeployContext> deployContextFn) {
+    NodeAgent nodeAgent = NodeAgent.getOrBadRequest(nodeAgentUuid);
+    Duration lifetime = confGetter.getGlobalConf(GlobalConfKeys.deadNodeAgentRetention);
+    PollerTask pollerTask = getOrCreatePollerTask(nodeAgentUuid, lifetime);
     if (!pollerTask.isUpgrading.compareAndSet(false, true)) {
-      log.info("Upgrade is already running for node agent {}", nodeAgent);
-      pollerTask.waitForUpgrade();
+      if (waitForInFlightUpgrade) {
+        log.info("Upgrade is already running for node agent {}", nodeAgent);
+        pollerTask.waitForUpgrade();
+      } else {
+        throw new IllegalStateException("Upgrade is already running for node agent " + nodeAgent);
+      }
     } else {
       try {
+        nodeAgent.refresh();
         log.info("Starting explicit upgrade on node agent {}", nodeAgent);
-        pollerTask.upgradeNodeAgent(nodeAgent);
+        pollerTask.upgradeNodeAgentLocked(nodeAgent, deployContextFn.apply(nodeAgent));
       } catch (RuntimeException e) {
         log.error("Explicit upgrade failed for node agent {}", nodeAgent);
         throw e;
@@ -647,7 +709,7 @@ public class NodeAgentPoller {
       }
     }
     nodeAgent.refresh();
-    if (pollerTask.needsUpgrade(nodeAgent)) {
+    if (needsUpgrade(nodeAgent)) {
       throw new RuntimeException(
           String.format("Node agent %s still needs upgrade after an upgrade", nodeAgent));
     }

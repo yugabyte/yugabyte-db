@@ -413,8 +413,7 @@ typedef struct {
   YbcReadPointHandle (*GetCatalogSnapshotReadPoint)(YbcPgOid table_oid, bool create_if_not_exists);
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
-  /* CHECK_FOR_INTERRUPTS */
-  void (*CheckForInterrupts)();
+  bool (*HasProcessableAbortInterrupt)();
   /* xact.h */
   bool (*IsInParallelMode)();
 } YbcPgCallbacks;
@@ -1089,6 +1088,35 @@ typedef struct {
   bool is_region_local;
   YbcPgOid tablespace_oid;
 } YbcPgTableLocalityInfo;
+
+// Decisions about the skip intents optimization for one operation on a relation. The optimization
+// applies only to a relation created, or with its storage swapped, in the current transaction, and
+// only while yb_enable_new_relation_fastpath_write is on. The two fields answer different
+// questions and must not be collapsed into one:
+//
+// - skip_intents: this operation bypasses the intents db. For a write that means the row goes
+//   straight to the regular db; for a read it means the intents db is not consulted, which is
+//   sound only because every write to the relation so far went to the regular db too. It depends
+//   on transaction state (nesting level, savepoints, whether the optimization was already
+//   disabled), so it can turn off partway through a transaction.
+//
+// - read_at_in_txn_limit: this operation must read at the statement's in_txn_limit rather than at
+//   the transaction read time. It depends only on the relation, so it holds for the whole
+//   transaction and stays set after skip_intents turns off. That is the point of keeping it
+//   separate: rows an earlier skip intents write put in the regular db sit above the transaction
+//   read time, and only a read at the in_txn_limit still sees them.
+//
+// Both are false for a relation the optimization can never apply to -- a colocated, temp or system
+// relation stays false even when it was created in the current transaction.
+//
+// skip_intents implies read_at_in_txn_limit.
+typedef struct {
+  bool skip_intents;
+  bool read_at_in_txn_limit;
+} YbcPgSkipIntentsOptimizationInfo;
+
+// For relations the optimization can never apply to, such as system catalogs.
+#define YB_SKIP_INTENTS_OPTIMIZATION_INFO_NONE ((YbcPgSkipIntentsOptimizationInfo){false, false})
 
 // Merge sort key information
 typedef struct {

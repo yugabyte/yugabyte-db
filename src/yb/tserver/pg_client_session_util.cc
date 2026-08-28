@@ -38,6 +38,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/yb_pg_errcodes.h"
 
+DECLARE_bool(TEST_hide_details_for_pg_regress);
+
 namespace yb::tserver {
 
 namespace {
@@ -45,7 +47,8 @@ namespace {
 std::string GetStatusStringSet(const client::CollectedErrors& errors) {
   std::set<std::string> status_strings;
   for (const auto& error : errors) {
-    status_strings.insert(error->status().ToString());
+    status_strings.insert(error->status().ToString(
+        !FLAGS_TEST_hide_details_for_pg_regress /* include_file_and_line */));
   }
   return RangeToString(status_strings.begin(), status_strings.end());
 }

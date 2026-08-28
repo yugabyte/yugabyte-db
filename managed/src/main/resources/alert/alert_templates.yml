@@ -2043,6 +2043,55 @@ templates:
 
         Affected nodes: {{ $labels.affected_node_names }}
 
+  NODE_AGENT_SERVER_CERT_EXPIRY:
+    name: Node agent server cert expiry
+    description: Node agent server certificate expires soon or has already expired on a universe node
+    queryTemplate: min by (universe_uuid) (((((label_replace(max_over_time(ybp_nodeagent_server_cert_expiring{customer_uuid="__customerUuid__"}[1m]), "node_address", "$1", "node_address", "(.+):([0-9]+)") > 0) - time()) / 86400)
+      {{ query_condition }} {{ query_threshold }})
+      and on (node_address) (min_over_time(ybp_universe_node_function{universe_uuid="__universeUuid__"}[1m])))
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 30.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: DAY
+    thresholdUnitName: day(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (node_name) (min_over_time(ybp_universe_node_function{universe_uuid='{{ $labels.universe_uuid }}'}[1m])
+        and on (node_address) ((((label_replace(max_over_time(ybp_nodeagent_server_cert_expiring{customer_uuid='{{ $labels.customer_uuid }}'}[1m]), 'node_address', '$1', 'node_address', '(.+):([0-9]+)') > 0) - time()) / 86400) {{ query_condition }} {{ query_threshold }}))" }} {{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Node agent server certificate for universe '{{ $labels.source_name }}'
+        will expire in {{ $value | printf "%.0f" }} days.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE:
+    name: Non-universe node agent server cert expiry
+    description: Node agent server certificate expires soon or has already expired on a node agent not associated with a universe
+    queryTemplate: min by (node_address) (((((label_replace(max_over_time(ybp_nodeagent_server_cert_expiring{customer_uuid="__customerUuid__"}[1m]), "node_ip", "$1", "node_address", "(.+):([0-9]+)") > 0) - time()) / 86400)
+      {{ query_condition }} {{ query_threshold }})
+      unless on (node_ip) (label_replace(min_over_time(ybp_universe_node_function{customer_uuid="__customerUuid__"}[1m]), "node_ip", "$1", "node_address", "(.*)")))
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 30.0
+    targetType: PLATFORM
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: DAY
+    thresholdUnitName: day(s)
+    labels:
+      affected_node_addresses: >-
+        {{ range $index, $element := query "min by (node_address) (((((label_replace(max_over_time(ybp_nodeagent_server_cert_expiring{customer_uuid='{{ $labels.customer_uuid }}'}[1m]), 'node_ip', '$1', 'node_address', '(.+):([0-9]+)') > 0) - time()) / 86400) {{ query_condition }} {{ query_threshold }}) unless on (node_ip) (label_replace(min_over_time(ybp_universe_node_function{customer_uuid='{{ $labels.customer_uuid }}'}[1m]), 'node_ip', '$1', 'node_address', '(.*)')))" }}{{if $index}},{{end}}{{ $element.Labels.node_address }}{{ end }}
+    annotations:
+      summary: >-
+        Node agent server certificate on node agent(s) not associated with a universe
+        will expire in {{ $value | printf "%.0f" }} days.
+
+        Affected node agents: {{ $labels.affected_node_addresses }}
+
   TABLET_PEERS_GUARDRAIL:
     name: Percentage of tablet peers is high
     description: It represents the percentage of number of live tablet peers compared to number of tablet peers that can be supported based on available RAM, cores, etc.

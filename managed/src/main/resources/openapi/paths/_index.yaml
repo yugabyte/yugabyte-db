@@ -1153,6 +1153,233 @@
       noAuthz: true
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: internal
+'/customers/{cUUID}/perf-advisor-endpoints':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: listPerfAdvisorEndpoints
+    summary: List Perf Advisor Endpoints
+    description: List the external Perf Advisor destinations configured for this customer
+    tags:
+      - Perf Advisor Endpoint
+    responses:
+      '200':
+        $ref: "../components/responses/PerfAdvisorEndpointListResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
+  post:
+    operationId: createPerfAdvisorEndpoint
+    summary: Create Perf Advisor Endpoint
+    description: |
+      Create an external Perf Advisor destination. Both of its endpoints are probed from a
+      collector before the endpoint is stored, so a destination that cannot be reached or that
+      rejects these credentials is an error here rather than a registration that can only fail.
+    tags:
+      - Perf Advisor Endpoint
+    requestBody:
+      $ref: "../components/requestBodies/PerfAdvisorEndpointReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/PerfAdvisorEndpointResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: PerfAdvisorEndpoint
+      auditTargetId: 'null'
+      auditActionType: CreatePerfAdvisorEndpoint
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/perf-advisor-endpoints/validate':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: validatePerfAdvisorEndpoint
+    summary: Validate a Perf Advisor Endpoint
+    description: |
+      Probe a destination's metrics and collection endpoints from a collector without storing
+      anything. Returns a result per endpoint so a caller can show each problem against the input
+      that caused it.
+    tags:
+      - Perf Advisor Endpoint
+    requestBody:
+      $ref: "../components/requestBodies/PerfAdvisorEndpointReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/PerfAdvisorEndpointValidationResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/perf-advisor-endpoints/{peUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: peUUID
+      in: path
+      description: Perf Advisor Endpoint UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getPerfAdvisorEndpoint
+    summary: Get a Perf Advisor Endpoint
+    description: Get one external Perf Advisor destination
+    tags:
+      - Perf Advisor Endpoint
+    responses:
+      '200':
+        $ref: "../components/responses/PerfAdvisorEndpointResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
+  put:
+    operationId: editPerfAdvisorEndpoint
+    summary: Edit a Perf Advisor Endpoint
+    description: |
+      Edit an external Perf Advisor destination. The new settings are probed before they are
+      stored, and then pushed to every collector already holding this endpoint, so a universe
+      already sending here picks them up without waiting for the next sync.
+    tags:
+      - Perf Advisor Endpoint
+    requestBody:
+      $ref: "../components/requestBodies/PerfAdvisorEndpointReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/PerfAdvisorEndpointResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: PerfAdvisorEndpoint
+      auditTargetId: peUUID.toString()
+      auditActionType: EditPerfAdvisorEndpoint
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: update
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: deletePerfAdvisorEndpoint
+    summary: Delete a Perf Advisor Endpoint
+    description: |
+      Delete an external Perf Advisor destination. Refused while any universe is still registered
+      against it, and the universes are named in the error.
+    tags:
+      - Perf Advisor Endpoint
+    responses:
+      '200':
+        description: successful operation
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: PerfAdvisorEndpoint
+      auditTargetId: peUUID.toString()
+      auditActionType: DeletePerfAdvisorEndpoint
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: delete
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/pitr-configs/page':
   parameters:
     - name: cUUID

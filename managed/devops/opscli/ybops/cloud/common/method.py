@@ -406,6 +406,8 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
         self.parser.add_argument("--replacement_disk",
                                  required=True,
                                  help="The new boot disk to attach to the instance")
+        self.parser.add_argument("--capacity_reservation", default=None,
+                                 help="Capacity reservation to use when starting the instance.")
 
     def _is_disk_mounted(self, host_info, volume_id, args):
         disk = self.cloud.get_disk(host_info, volume_id, args)
@@ -517,7 +519,8 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
             if args.boot_script is not None:
                 self.cloud.update_user_data(args)
             server_ports = self.get_server_ports_to_check(args)
-            self.cloud.start_instance(host_info, server_ports)
+            self.cloud.start_instance(
+                host_info, server_ports, getattr(args, "capacity_reservation", None))
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)

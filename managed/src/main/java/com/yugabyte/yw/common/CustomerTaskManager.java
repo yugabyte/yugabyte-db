@@ -734,6 +734,30 @@ public class CustomerTaskManager {
     return commissioner.canTaskRollbackDetailed(taskInfo);
   }
 
+  /**
+   * Sets {@code originalTaskUUID} to the root of the retry/rollback chain (first task on a clean
+   * universe state). Prefer an existing root on {@code taskParams} (fromJson of the failed task),
+   * then a root stored only on {@code oldTaskParams} JSON; otherwise the failed task itself is the
+   * root.
+   *
+   * <p>Retry A (first failure has no original): set to {@code failedTaskUUID}. Retry B (failed
+   * retry already carries the root): copy that root; do not overwrite with the failed retry's UUID.
+   */
+  private static void setRootOriginalTaskUUID(
+      AbstractTaskParams taskParams, UUID failedTaskUUID, @Nullable JsonNode oldTaskParams) {
+    UUID root = taskParams.getOriginalTaskUUID();
+    if (root == null && oldTaskParams != null) {
+      JsonNode originalNode = oldTaskParams.get("originalTaskUUID");
+      if (originalNode != null && !originalNode.isNull() && !originalNode.asText().isEmpty()) {
+        root = UUID.fromString(originalNode.asText());
+      }
+    }
+    if (root == null) {
+      root = failedTaskUUID;
+    }
+    taskParams.setOriginalTaskUUID(root);
+  }
+
   // This performs actual retryability check on the task parameters.
   private String verifyTaskRetryability(CustomerTask customerTask, AbstractTaskParams taskParams) {
     UUID retriedTaskUuid = customerTask.getTaskUUID();
@@ -829,10 +853,16 @@ public class CustomerTaskManager {
 
     // Reset the error string.
     taskParams.setErrorString(null);
+    // Carry the chain root (first clean-state task); do not overwrite with this failed UUID.
+    setRootOriginalTaskUUID(taskParams, taskUUID, oldTaskParams);
     if (submission.isSetPreviousTaskUUID()) {
       // Set previousTaskUUID only when rollback continues the same failed task (inherit
       // runtimeInfo / retry semantics). Leave unset for a fresh rollback TaskType.
       taskParams.setPreviousTaskUUID(taskUUID);
+    } else {
+      // fromJson of a retried failed task may have copied previousTaskUUID; clear it so a
+      // fresh rollback TaskType does not inherit runtimeInfo.
+      taskParams.setPreviousTaskUUID(null);
     }
     UUID newTaskUUID = commissioner.submit(submission.getRollbackTaskType(), taskParams);
     log.info(
@@ -1182,6 +1212,9 @@ public class CustomerTaskManager {
     // Reset the error string.
     taskParams.setErrorString(null);
     taskParams.setPreviousTaskUUID(taskUUID);
+    // Retry A: original unset -> failedTaskUUID is the root. Retry B: original already set on the
+    // failed retry -> carry that root; do not use taskUUID (the failed retry's id).
+    setRootOriginalTaskUUID(taskParams, taskUUID, oldTaskParams);
     String errMsg = verifyTaskRetryability(customerTask, taskParams);
     if (errMsg != null) {
       log.error("Task {} cannot be retried - {}", taskUUID, errMsg);

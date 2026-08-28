@@ -2173,25 +2173,6 @@ Status get_change_data_stream_info_action(
   return Status::OK();
 }
 
-const auto ysql_backfill_change_data_stream_with_replication_slot_args =
-    "<stream_id> <replication_slot_name>";
-Status ysql_backfill_change_data_stream_with_replication_slot_action(
-    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() != 2) {
-    return ClusterAdminCli::kInvalidArguments;
-  }
-
-  const string stream_id = args[0];
-  const string replication_slot_name = args[1];
-
-  RETURN_NOT_OK_PREPEND(
-      client->YsqlBackfillReplicationSlotNameToCDCSDKStream(stream_id, replication_slot_name),
-      Format(
-          "Unable to backfill CDC stream $0 with replication slot $1", stream_id,
-          replication_slot_name));
-  return Status::OK();
-}
-
 const auto disable_dynamic_table_addition_on_change_data_stream_args = "<stream_id>";
 Status disable_dynamic_table_addition_on_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -2233,6 +2214,24 @@ Status validate_and_sync_cdc_state_table_entries_on_change_data_stream_action(
       Format("Failed to validate and sync cdc state table entries for CDC stream $0", stream_id);
 
   RETURN_NOT_OK_PREPEND(client->ValidateAndSyncCDCStateEntriesForCDCSDKStream(stream_id), msg);
+  return Status::OK();
+}
+
+const auto cleanup_stale_cdc_streams_args = "[dry_run] (default false)";
+Status cleanup_stale_cdc_streams_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  bool dry_run = false;
+  if (args.size() > 0) {
+    if (IsEqCaseInsensitive(args[0], "dry_run")) {
+      dry_run = true;
+    } else {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      client->CleanupStaleCDCStreams(dry_run),
+      "Failed to cleanup stale CDC streams");
   return Status::OK();
 }
 
@@ -3176,10 +3175,10 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(delete_change_data_stream);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
-  REGISTER_COMMAND(ysql_backfill_change_data_stream_with_replication_slot);
   REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
   REGISTER_COMMAND(remove_user_table_from_change_data_stream);
   REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
+  REGISTER_COMMAND(cleanup_stale_cdc_streams);
   // xCluster Source commands
   REGISTER_COMMAND(bootstrap_cdc_producer);
   REGISTER_COMMAND(list_cdc_streams);

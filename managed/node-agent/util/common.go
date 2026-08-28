@@ -470,13 +470,15 @@ func ScanDir(dir string, callback func(os.FileInfo) (bool, error)) error {
 	return nil
 }
 
-// IsPexEnvAvailable returns true if pexEnv directory exists or there is no error.
-func IsPexEnvAvailable() bool {
-	fInfo, err := os.Stat(PexEnvDir())
-	if err != nil {
-		return false
-	}
-	return fInfo.IsDir()
+// RemoveSubfolders deletes all immediate subdirectories under dir.
+// Non-directory entries in dir are left untouched.
+func RemoveSubfolders(dir string) error {
+	return ScanDir(dir, func(fInfo os.FileInfo) (bool, error) {
+		if !fInfo.IsDir() {
+			return true, nil
+		}
+		return true, os.RemoveAll(path.Join(dir, fInfo.Name()))
+	})
 }
 
 // Indexable refers to indexable type.

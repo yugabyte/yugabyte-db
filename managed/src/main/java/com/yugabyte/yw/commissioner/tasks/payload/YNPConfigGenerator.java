@@ -66,10 +66,15 @@ public class YNPConfigGenerator {
     private Universe universe;
     private boolean isYbPrebuiltImage;
     private UserIntent userIntent;
-    // True when re-provisioning a node of an existing universe (vs. provisioning a brand-new
-    // node). Controls whether the cgroup decision honors the persisted flag or falls back to the
-    // provider default. See configure_cgroup handling in populateFromNodeDetails.
-    private boolean isReprovision;
+    // True if DB software is already present on the node.
+    private boolean isSoftwarePresent;
+    // True if DB data is already present on the node.
+    private boolean isDataPresent;
+
+    // Returns true if the node is a blank node (new node - no software and no data present).
+    private boolean isBlankNode() {
+      return !isSoftwarePresent && !isDataPresent;
+    }
   }
 
   @Inject
@@ -131,22 +136,35 @@ public class YNPConfigGenerator {
       ynpNode.put("use_system_level_systemd", true);
     }
     ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
-    ynpNode.put("check_available_ports", provider.isManualOnprem());
-    ynpNode.put("check_clean_dirs", provider.isManualOnprem());
+    // Skip available_ports checks for CSPs because it sometimes fails.
+    ynpNode.put("check_available_ports", params.isBlankNode() && provider.isManualOnprem());
+    // Skip clean_dirs checks for CSPs because it sometimes fails.
+    ynpNode.put("check_clean_dirs", params.isBlankNode() && provider.isManualOnprem());
+
     ynpNode.put(
         "min_home_dir_space_gb",
-        String.valueOf(confGetter.getConfForScope(provider, ProviderConfKeys.minHomeDirSpaceGb)));
+        params.isSoftwarePresent
+            ? "0"
+            : String.valueOf(
+                confGetter.getConfForScope(provider, ProviderConfKeys.minHomeDirSpaceGb)));
     ynpNode.put(
         "min_mount_point_dir_space_gb",
         String.valueOf(
-            confGetter.getConfForScope(provider, ProviderConfKeys.minMountPointDirSpaceGb)));
+            params.isDataPresent
+                ? "0"
+                : confGetter.getConfForScope(provider, ProviderConfKeys.minMountPointDirSpaceGb)));
     ynpNode.put(
         "min_tmp_dir_space_gb",
-        String.valueOf(confGetter.getConfForScope(provider, ProviderConfKeys.minTempDirSpaceGb)));
+        params.isSoftwarePresent
+            ? "0"
+            : String.valueOf(
+                confGetter.getConfForScope(provider, ProviderConfKeys.minTempDirSpaceGb)));
     ynpNode.put(
         "min_prometheus_space_gb",
-        String.valueOf(
-            confGetter.getConfForScope(provider, ProviderConfKeys.minPrometheusSpaceGb)));
+        params.isSoftwarePresent
+            ? "0"
+            : String.valueOf(
+                confGetter.getConfForScope(provider, ProviderConfKeys.minPrometheusSpaceGb)));
     extraNode.put("is_cloud", !provider.isManualOnprem());
     extraNode.put("cloud_type", provider.getCode());
     ynpNode.put("configure_cgroup", Util.configureCgroup(provider, true, confGetter));
@@ -199,10 +217,10 @@ public class YNPConfigGenerator {
     // TODO(vivek): revisit this flag. isCpuCgroupConfigured lives in UserIntent (the user spec) but
     // records what was configured; it should be a separate persisted universe attribute.
     UserIntent persistedUserIntent = universe.getCluster(node.placementUuid).userIntent;
-    boolean isForProvision = !params.isReprovision();
+    // No software and no data means this is a brand-new node.
     ynpNode.put(
         "configure_cgroup",
-        Util.configureCgroup(persistedUserIntent, provider, isForProvision, confGetter));
+        Util.configureCgroup(persistedUserIntent, provider, params.isBlankNode(), confGetter));
     DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
     if (deviceInfo.mountPoints != null) {
       extraNode.put("mount_paths", deviceInfo.mountPoints);

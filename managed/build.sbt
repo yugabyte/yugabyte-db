@@ -44,6 +44,23 @@ def ybLog(s: String): Unit = {
   println("[Yugabyte sbt log] " + s)
 }
 
+// Buffer the child output so a failure can quote the actual error, not just the exit code.
+def runCapturingOutput(command: String, cwd: java.io.File): (Int, Seq[String]) = {
+  val output = scala.collection.mutable.ListBuffer.empty[String]
+  def record(line: String): Unit = output.synchronized {
+    println(line)
+    output += line
+  }
+  val status = Process(command, cwd).!(ProcessLogger(record, record))
+  (status, output.toList)
+}
+
+def buildError(what: String, status: Int, output: Seq[String]): String = {
+  val tail = output.takeRight(30)
+  s"$what failed with exit code $status." +
+    (if (tail.isEmpty) "" else s" Last ${tail.size} line(s) of output:\n" + tail.mkString("\n"))
+}
+
 def getEnvVar(envVarName: String): String = {
   val envVarValue = System.getenv(envVarName)
   val strValue = normalizeEnvVarValue(envVarValue)
@@ -741,35 +758,39 @@ lazy val javaGenV2Client = project.in(file("client/java"))
   )
 
 // Compile generated java v1 and v2 clients
-lazy val compileJavaGenV1Client = taskKey[Int]("Compile generated v1 Java client code")
+lazy val compileJavaGenV1Client =
+  taskKey[(Int, Seq[String])]("Compile generated v1 Java client code")
 compileJavaGenV1Client / fileInputs += baseDirectory.value.toGlob /
   "client/java/v1/" / ** / "*"
 compileJavaGenV1Client := {
   if (compileJavaGenV1Client.inputFileChanges.hasChanges) {
     val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
     val cmdOpt = if (isDefined(localMavenRepo)) "-Dmaven.repo.local=" + localMavenRepo else ""
-    val status = Process("mvn clean install -pl v1 -am " + cmdOpt, new File(baseDirectory.value + "/client/java")).!
-    status
+    runCapturingOutput(
+      "mvn clean install -pl v1 -am " + cmdOpt,
+      new File(baseDirectory.value + "/client/java"))
   } else {
     ybLog("OpenApi java client stubs for v1 are already generated." +
       " Run 'cleanClients' to force regeneration.")
-    0
+    (0, Seq.empty[String])
   }
 }
 
-lazy val compileJavaGenV2Client = taskKey[Int]("Compile generated v2 Java client code")
+lazy val compileJavaGenV2Client =
+  taskKey[(Int, Seq[String])]("Compile generated v2 Java client code")
 compileJavaGenV2Client / fileInputs += baseDirectory.value.toGlob /
   "client/java/v2/" / ** / "*"
 compileJavaGenV2Client := {
   if (compileJavaGenV2Client.inputFileChanges.hasChanges) {
     val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
     val cmdOpt = if (isDefined(localMavenRepo)) "-Dmaven.repo.local=" + localMavenRepo else ""
-    val status = Process("mvn clean install -pl v2 -am " + cmdOpt, new File(baseDirectory.value + "/client/java")).!
-    status
+    runCapturingOutput(
+      "mvn clean install -pl v2 -am " + cmdOpt,
+      new File(baseDirectory.value + "/client/java"))
   } else {
     ybLog("OpenApi java client stubs for v2 are already generated." +
       " Run 'cleanClients' to force regeneration.")
-    0
+    (0, Seq.empty[String])
   }
 }
 
@@ -829,61 +850,45 @@ lazy val goGenV2Client = project.in(file("client/go"))
   )
 
 // Compile generated go v1 and v2 clients
-lazy val compileGoGenV1Client = taskKey[Int]("Compile generated v1 Go clients")
+lazy val compileGoGenV1Client = taskKey[(Int, Seq[String])]("Compile generated v1 Go clients")
 compileGoGenV1Client := {
-  val status = Process("make testv1", new File(baseDirectory.value + "/client/go/")).!
-  status
+  runCapturingOutput("make testv1", new File(baseDirectory.value + "/client/go/"))
 }
-lazy val compileGoGenV2Client = taskKey[Int]("Compile generated v2 Go clients")
+lazy val compileGoGenV2Client = taskKey[(Int, Seq[String])]("Compile generated v2 Go clients")
 compileGoGenV2Client := {
-  val status = Process("make testv2", new File(baseDirectory.value + "/client/go/")).!
-  status
+  runCapturingOutput("make testv2", new File(baseDirectory.value + "/client/go/"))
 }
 
 // Compile the YBA CLI binary
-lazy val compileYbaCliBinary = taskKey[(Int, Seq[String])]("Compile YBA CLI Binary")
+lazy val compileYbaCliBinary = taskKey[Seq[String]]("Compile YBA CLI Binary")
 compileYbaCliBinary := {
-  var status = 0
-  var completeFileList = Seq.empty[String]
-  var fileList = Seq.empty[String]
-
   ybLog("Generating YBA CLI go binary.")
-
-  val (status1, fileList1) = makeYbaCliPackage("linux", baseDirectory.value)
-  completeFileList = fileList1
-  status = status1
-
-  val (status2, fileList2) = makeYbaCliPackage("darwin", baseDirectory.value)
-  completeFileList = completeFileList ++ fileList2
-  status = status max status2
-
-
-  (status, completeFileList)
+  makeYbaCliPackage("linux", baseDirectory.value) ++
+    makeYbaCliPackage("darwin", baseDirectory.value)
 }
 
 compileYbaCliBinary := ((compileYbaCliBinary) dependsOn versionGenerate).value
 
-def makeYbaCliPackage(goos: String, directory: java.io.File): (Int, Seq[String]) = {
-
-  var status = 0
-  var output = Seq.empty[String]
-  var fileList = Seq.empty[String]
-
-  val processLogger = ProcessLogger(
-    line => output :+= line,
-    line => println(s"Error: $line")
-  )
-  val env = Seq("GOOS" -> goos)
-  val process = Process("make package", new File(directory + "/yba-cli/"), env: _*)
-  status = process.!(processLogger)
-  if (status == 0) {
-    val fileListIndex = output.indexWhere(_.startsWith("Folder path for"))
-    fileList = if (fileListIndex != -1) output.drop(fileListIndex + 1) else Seq.empty[String]
-  } else {
-    fileList = Seq.empty[String]
+def makeYbaCliPackage(goos: String, directory: java.io.File): Seq[String] = {
+  val output = scala.collection.mutable.ListBuffer.empty[String]
+  def record(line: String, isError: Boolean): Unit = output.synchronized {
+    if (isError) {
+      println(s"Error: $line")
+    }
+    output += line
   }
 
-  (status, fileList)
+  val processLogger = ProcessLogger(record(_, false), record(_, true))
+  val env = Seq("GOOS" -> goos)
+  val process = Process("make package", new File(directory + "/yba-cli/"), env: _*)
+  val status = process.!(processLogger)
+  if (status != 0) {
+    throw new RuntimeException(
+      buildError(s"YBA CLI binary build for $goos", status, output.toList))
+  }
+
+  val fileListIndex = output.indexWhere(_.startsWith("Folder path for"))
+  if (fileListIndex != -1) output.drop(fileListIndex + 1).toList else Seq.empty[String]
 }
 
 // Clean the YBA CLI binary
@@ -933,8 +938,15 @@ openApiGenClients := openApiGenClients.dependsOn(Compile/openApiProcessServer).v
 
 lazy val openApiCompileClients = taskKey[Unit]("Compiling openapi v2 clients")
 openApiCompileClients := {
-  compileJavaGenV2Client.value
-  compileGoGenV2Client.value
+  val (javaStatus, javaOutput) = compileJavaGenV2Client.value
+  if (javaStatus != 0) {
+    throw new RuntimeException(
+      buildError("Java v2 client compilation", javaStatus, javaOutput))
+  }
+  val (goStatus, goOutput) = compileGoGenV2Client.value
+  if (goStatus != 0) {
+    throw new RuntimeException(buildError("Go v2 client compilation", goStatus, goOutput))
+  }
   // no compilation or running tests for python client
 }
 
@@ -947,8 +959,15 @@ swaggerGenClients := {
 
 lazy val swaggerCompileClients = taskKey[Unit]("Compiling swagger v1 clients")
 swaggerCompileClients := {
-  compileJavaGenV1Client.value
-  compileGoGenV1Client.value
+  val (javaStatus, javaOutput) = compileJavaGenV1Client.value
+  if (javaStatus != 0) {
+    throw new RuntimeException(
+      buildError("Java v1 client compilation", javaStatus, javaOutput))
+  }
+  val (goStatus, goOutput) = compileGoGenV1Client.value
+  if (goStatus != 0) {
+    throw new RuntimeException(buildError("Go v1 client compilation", goStatus, goOutput))
+  }
   // no compilation or running tests for python client
 }
 
@@ -999,22 +1018,16 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
 Universal / mappings ++= {
-  val (status, cliFolders) = compileYbaCliBinary.value
-  if (status == 0) {
-    cliFolders.flatMap { folderPath =>
-      val folder = file(folderPath)
-      if (folder.isDirectory) {
-        val targetPath = s"yba-cli/${folder.getName}"
-        val folderMappings = (folder ** "*") pair Path.rebase(folder, targetPath)
-        folderMappings
-      } else {
-        println(s"Warning: $folderPath is not a directory and will not be included in the package.")
-        Nil
-      }
+  compileYbaCliBinary.value.flatMap { folderPath =>
+    val folder = file(folderPath)
+    if (folder.isDirectory) {
+      val targetPath = s"yba-cli/${folder.getName}"
+      val folderMappings = (folder ** "*") pair Path.rebase(folder, targetPath)
+      folderMappings
+    } else {
+      println(s"Warning: $folderPath is not a directory and will not be included in the package.")
+      Nil
     }
-  } else {
-    ybLog("Error generating YBA CLI binary.")
-    Seq.empty
   }
 }
 

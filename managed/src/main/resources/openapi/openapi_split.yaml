@@ -46,6 +46,8 @@ tags:
     description: Node agent operations
   - name: PITR
     description: Point-in-time recovery configuration management
+  - name: Perf Advisor Endpoint
+    description: CRUD operations for external Perf Advisor destinations
   - name: Support Bundle
     description: Support bundle management for universes
   - name: Task

@@ -19,6 +19,7 @@ import {
   AZURE_CLOUD_OPTION,
   GCP_CLOUD_OPTION,
   K8S_CLOUD_OPTION,
+  OCI_CLOUD_OPTION,
   ON_PREM_CLOUD_OPTION
 } from '@yugabyte-ui-library/core';
 import { EditUniverseContext } from './EditUniverseContext';
@@ -53,6 +54,8 @@ export const getProviderIcon = (providerCode?: string) => {
       return ON_PREM_CLOUD_OPTION.icon;
     case CloudType.kubernetes:
       return K8S_CLOUD_OPTION.icon;
+    case CloudType.oci:
+      return OCI_CLOUD_OPTION.icon;
     default:
       return null;
   }
@@ -372,8 +375,19 @@ export const convertProxySettingsToFormValues = (
   };
 };
 
-export const hasDedicatedNodes = (universeData: Universe): boolean => {
-  return some(universeData?.info?.node_details_set, (node) => node.dedicated_to);
+/** Whether a cluster uses dedicated master/t-server nodes (spec flag or live node details). */
+export const hasDedicatedNodesForCluster = (
+  universeData: Universe,
+  cluster?: ClusterSpec
+): boolean => {
+  if (!cluster) return false;
+  if (cluster.node_spec?.dedicated_nodes) return true;
+  return some(universeData?.info?.node_details_set, (node) => {
+    if (!node.dedicated_to) return false;
+    if (node.placement_uuid) return node.placement_uuid === cluster.uuid;
+    // Legacy universes may omit placement_uuid on primary-cluster nodes.
+    return cluster.cluster_type === ClusterSpecClusterType.PRIMARY;
+  });
 };
 
 export const countMasterAndTServerNodesByPlacementRegion = (

@@ -4230,27 +4230,6 @@ Status ClusterAdminClient::GetCDCDBStreamInfo(const std::string& db_stream_id) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::YsqlBackfillReplicationSlotNameToCDCSDKStream(
-    const std::string& stream_id, const std::string& replication_slot_name) {
-  master::YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
-  master::YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
-  req.set_stream_id(stream_id);
-  req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name);
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(
-      master_replication_proxy_->YsqlBackfillReplicationSlotNameToCDCSDKStream(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    cout << "Error CDC stream with replication slot: " << resp.error().status().message()
-          << endl;
-    return StatusFromPB(resp.error().status());
-  }
-
-  return Status::OK();
-}
-
 Status ClusterAdminClient::DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id) {
   master::DisableDynamicTableAdditionOnCDCSDKStreamRequestPB req;
   master::DisableDynamicTableAdditionOnCDCSDKStreamResponsePB resp;
@@ -4326,6 +4305,48 @@ Status ClusterAdminClient::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
          << AsString(resp.deleted_tablet_entries()) << "\n";
   } else {
     cout << "No additional entries found in cdc state table that requires deletion. \n";
+  }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::CleanupStaleCDCStreams(bool dry_run) {
+  master::CleanupStaleCDCStreamsRequestPB req;
+  master::CleanupStaleCDCStreamsResponsePB resp;
+
+  req.set_dry_run(dry_run);
+
+  RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(std::max(timeout_.ToSeconds(), 120.0)));
+  RETURN_NOT_OK(master_replication_proxy_->CleanupStaleCDCStreams(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error cleaning up stale CDC streams: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Found " << resp.stale_entries_size() << " stale cdc_state entries";
+  if (dry_run) {
+    cout << " (dry run)";
+  }
+  cout << ".\n";
+  for (const auto& entry : resp.stale_entries()) {
+    cout << "  tablet_id: " << entry.tablet_id()
+         << ", stream_id: " << entry.stream_id();
+    if (entry.has_colocated_table_id()) {
+      cout << ", colocated_table_id: " << entry.colocated_table_id();
+    }
+    for (const auto& table : entry.tables()) {
+      cout << ", table_id: " << table.table_id();
+      if (table.has_table_name()) {
+        cout << ", table_name: " << table.table_name();
+      }
+    }
+    cout << ", reason: " << entry.reason() << "\n";
+  }
+
+  if (!dry_run) {
+    cout << "Deleted " << resp.deleted_entries_size() << " stale cdc_state entries.\n";
   }
 
   return Status::OK();

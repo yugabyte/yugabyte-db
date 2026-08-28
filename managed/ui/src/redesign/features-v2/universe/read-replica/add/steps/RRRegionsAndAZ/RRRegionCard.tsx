@@ -134,6 +134,18 @@ export const RRRegionCard: FC<Props> = ({
     | RRPlacementRegionForm
     | undefined;
   const isNewRegion = Boolean(regionRow?.isNew);
+  const baselineZoneUuids = useMemo(() => {
+    const uuids = (baselineRegion?.zones ?? [])
+      .map((z) => z.zoneUuid)
+      .filter((u): u is string => Boolean(u));
+    return new Set(uuids);
+  }, [baselineRegion]);
+  // Only compare against a real loaded RR placement (edit flow). Add-RR defaults have null uuids.
+  const isNewAz = (zone: RRPlacementZoneForm | undefined) => {
+    if (isNewRegion || baselineZoneUuids.size === 0) return false;
+    if (!zone?.zoneUuid) return true;
+    return !baselineZoneUuids.has(zone.zoneUuid);
+  };
 
   
   const allRegionRows = useWatch({ control, name: 'regions' }) ?? [];
@@ -195,7 +207,7 @@ export const RRRegionCard: FC<Props> = ({
           sx={{ px: 3, pt: 1.25, pb: 0, mb: -1 }}
           data-testid={`rr-region-new-badge-${regionIndex}`}
         >
-          <YBTag size="small" variant="light" color="success" customSx={{ color: '#13A768' }}>
+          <YBTag size="small" variant="light" color="gradient">
             {t('newRegionBadge')}
           </YBTag>
         </Box>
@@ -299,6 +311,16 @@ export const RRRegionCard: FC<Props> = ({
 
           return (
             <Box key={fieldItem.id} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {isNewAz(fieldItem) ? (
+                <Box
+                  sx={{ pl: `${REGION_LABEL_COL_WIDTH + 24}px` }}
+                  data-testid={`rr-region-new-az-badge-${regionIndex}-${zoneIndex}`}
+                >
+                  <YBTag size="small" variant="light" color="gradient">
+                    {t('newRegionBadge')}
+                  </YBTag>
+                </Box>
+              ) : null}
               <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start', width: '100%' }}>
                 <Box
                   sx={{

@@ -1145,28 +1145,26 @@ SELECT * FROM
   (SELECT pctest_h4.* FROM pctest_h1 pctest_h3, pctest_h2 pctest_h4
      WHERE pctest_h3.k = pctest_h4.k AND pctest_h3.b = pctest_h4.b) s2 ON s1.b = s2.c
 ORDER BY s1.k;
-                                          QUERY PLAN                                          
-----------------------------------------------------------------------------------------------
- Nested Loop
-   Join Filter: (pctest_h1.b = pctest_h4.c)
-   ->  Gather Merge
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: pctest_h1.k
+   ->  Gather
          Workers Planned: 2
-         ->  Sort
-               Sort Key: pctest_h1.k
-               ->  Hash Join
-                     Hash Cond: ((pctest_h2.k = pctest_h1.k) AND (pctest_h2.c = pctest_h1.c))
-                     ->  Parallel Seq Scan on pctest_h2
-                     ->  Hash
-                           ->  Seq Scan on pctest_h1
-   ->  Materialize
-         ->  Gather
-               Workers Planned: 2
-               ->  Parallel Hash Join
-                     Hash Cond: ((pctest_h3.k = pctest_h4.k) AND (pctest_h3.b = pctest_h4.b))
-                     ->  Parallel Seq Scan on pctest_h1 pctest_h3
-                     ->  Parallel Hash
-                           ->  Parallel Seq Scan on pctest_h2 pctest_h4
-(19 rows)
+         ->  Parallel Hash Join
+               Hash Cond: ((pctest_h2.k = pctest_h1.k) AND (pctest_h2.c = pctest_h1.c))
+               ->  Parallel Seq Scan on pctest_h2
+               ->  Parallel Hash
+                     ->  Hash Join
+                           Hash Cond: (pctest_h4.c = pctest_h1.b)
+                           ->  Hash Join
+                                 Hash Cond: ((pctest_h4.k = pctest_h3.k) AND (pctest_h4.b = pctest_h3.b))
+                                 ->  Parallel Seq Scan on pctest_h2 pctest_h4
+                                 ->  Hash
+                                       ->  Seq Scan on pctest_h1 pctest_h3
+                           ->  Hash
+                                 ->  Seq Scan on pctest_h1
+(17 rows)
 
 SELECT * FROM
   (SELECT pctest_h1.* FROM pctest_h1, pctest_h2

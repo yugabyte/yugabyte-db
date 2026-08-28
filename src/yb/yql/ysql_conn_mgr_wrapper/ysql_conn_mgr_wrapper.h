@@ -57,7 +57,6 @@ class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
 
   uint num_resolver_threads_ = 1;
   bool log_debug_ = false;
-  bool log_config_ = false;
   bool log_session_ = false;
   bool log_query_ = false;
   bool log_stats_ = false;

@@ -165,7 +165,7 @@ export const ReviewAndSummaryComponent: FC<ReviewAndSummaryComponentProps> = ({
   const resolvedMarkers: ReviewMapMarker[] = useMemo(() => {
     if (mapMarkers) return mapMarkers;
     return (regions ?? [])
-      .filter((region) => region.latitude != null && region.longitude != null)
+      .filter((region) => region.latitude !== null && region.longitude !== null)
       .map((region) => ({
         key: region.uuid || region.code,
         lat: region.latitude as number,
@@ -213,7 +213,7 @@ export const ReviewAndSummaryComponent: FC<ReviewAndSummaryComponentProps> = ({
                           tabIndex={item.onNameClick ? 0 : undefined}
                           onKeyDown={
                             item.onNameClick
-                              ? (e) => {
+                              ? (e: React.KeyboardEvent<HTMLSpanElement>) => {
                                   if (e.key === 'Enter' || e.key === ' ') {
                                     e.preventDefault();
                                     item.onNameClick?.();
@@ -274,6 +274,7 @@ export const ReviewAndSummaryComponent: FC<ReviewAndSummaryComponentProps> = ({
           zoom: 1,
           center: [0, 0]
         }}
+        showBoundaries={false}
       >
         {
           resolvedMarkers.map((marker) => (

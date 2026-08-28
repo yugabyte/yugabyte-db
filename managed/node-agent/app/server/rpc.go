@@ -246,7 +246,6 @@ func (server *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.Ping
 		ServerInfo: &pb.ServerInfo{
 			Version:        config.String(util.PlatformVersionKey),
 			RestartNeeded:  config.Bool(util.NodeAgentRestartKey),
-			Offloadable:    util.IsPexEnvAvailable(),
 			Compressor:     gzip.Name,
 			CertExpirySecs: loadedCertExpirySecs,
 		},

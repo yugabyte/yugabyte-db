@@ -28,7 +28,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
-import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
+import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.Customer;
@@ -103,7 +103,7 @@ public class PlatformReplicationManager {
 
   private final OperatorResourceRestorer operatorResourceRestorer;
 
-  private final EmbeddedCollectorInitializer embeddedCollectorInitializer;
+  private final PACollectorSync paCollectorSync;
 
   public static final Gauge HA_LAST_BACKUP_TIME =
       Gauge.builder()
@@ -127,7 +127,7 @@ public class PlatformReplicationManager {
       ConfigHelper configHelper,
       RuntimeConfGetter confGetter,
       OperatorResourceRestorer operatorResourceRestorer,
-      EmbeddedCollectorInitializer embeddedCollectorInitializer) {
+      PACollectorSync paCollectorSync) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.fileDataService = fileDataService;
@@ -135,7 +135,7 @@ public class PlatformReplicationManager {
     this.configHelper = configHelper;
     this.confGetter = confGetter;
     this.operatorResourceRestorer = operatorResourceRestorer;
-    this.embeddedCollectorInitializer = embeddedCollectorInitializer;
+    this.paCollectorSync = paCollectorSync;
     this.schedule = new AtomicReference<>();
   }
 
@@ -414,10 +414,10 @@ public class PlatformReplicationManager {
     oneOffSync();
     // Refresh the embedded PA collector state right after promotion so the local PA gets
     // pointed at the local YBA URL and its customer_metadata.collection_enabled is flipped
-    // back to true before the recurring EmbeddedCollectorInitializer schedule fires (~1 min).
+    // back to true before the recurring PACollectorSync schedule fires (~1 min).
     try {
       for (Customer customer : Customer.getAll()) {
-        embeddedCollectorInitializer.initialize(customer);
+        paCollectorSync.initialize(customer);
       }
     } catch (Exception e) {
       log.warn("Failed to eagerly refresh embedded PA collector after promotion", e);
