@@ -14187,9 +14187,17 @@ void CatalogManager::ResetCachedCatalogVersions() {
   if (heartbeat_pg_catalog_versions_cache_) {
     heartbeat_pg_catalog_versions_cache_->clear();
   }
+  // Must be reset together with the cache: the next RefreshPgCatalogVersionCache decides whether
+  // to re-read pg_yb_invalidation_messages by comparing against this fingerprint. Leaving it
+  // stale makes a refresh that reads back the same catalog versions (e.g. after a leader
+  // stepdown and reacquisition with no intervening DDL) conclude nothing changed and leave
+  // heartbeat_pg_inval_messages_cache_ empty.
+  heartbeat_pg_catalog_versions_cache_fingerprint_ = 0;
   // Reset to empty map to distinguish it from std::nullopt which means last periodic reading
   // of pg_yb_invalidation_messages has failed.
   heartbeat_pg_inval_messages_cache_ = DbOidVersionToMessageListMap();
+  LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
+      << "ResetCachedCatalogVersions: cache reset";
 }
 
 void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {

@@ -14,6 +14,7 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
@@ -4164,6 +4165,115 @@ TEST_F(
   ASSERT_OK(hit_watcher_b.WaitFor(10s * kTimeMultiplier));
   ASSERT_FALSE(miss_watcher_b.IsEventOccurred())
       << "Cache miss after recovery: cache should be warm after failure injection was cleared";
+}
+
+// A master leader stepdown resets the leader's cached catalog versions and invalidation messages,
+// and must reset the cached fingerprint with them: it is what the next refresh compares the
+// catalog versions read from disk against to decide whether to re-read
+// pg_yb_invalidation_messages. Left stale, a refresh that runs after the master regains
+// leadership with no DDL in between concludes nothing changed and keeps serving heartbeats out of
+// an empty invalidation messages cache, so a tserver that missed the last catalog version bump
+// gets that version with no messages and its backends fall back to a full catalog cache refresh.
+class PgCatalogVersionMasterFailoverTest : public PgCatalogVersionTest {
+ protected:
+  // The node the DDL runs on updates its own tserver directly at commit time, so the catalog
+  // cache refresh under test has to be observed from a different node.
+  static constexpr size_t kDdlTs = 0;
+  static constexpr size_t kObserverTs = 1;
+
+  int GetNumMasters() const override { return 3; }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    // Not the default on every branch, and the bug under test only exists when the master
+    // caches catalog versions for heartbeat responses.
+    options->extra_master_flags.push_back("--enable_heartbeat_pg_catalog_versions_cache=true");
+    options->extra_master_flags.push_back("--TEST_log_catalog_version_cache_events=true");
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      flags->push_back("--ysql_yb_enable_invalidation_messages=true");
+      flags->push_back("--log_ysql_catalog_versions=true");
+      // With object locking, releasing the DDL's exclusive lock pushes catalog versions and
+      // invalidation messages from the master to every tserver, bypassing the heartbeat. This
+      // test needs the heartbeat to be the only path that carries them to the observer node.
+      flags->push_back("--enable_object_locking_for_table_locks=false");
+      // Concurrent DDL requires object locking, so keep the two flags consistent (and allow-list
+      // the preview flag so its non-default value is permitted).
+      flags->push_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+    }
+  }
+};
+
+TEST_F(PgCatalogVersionMasterFailoverTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(InvalMessagesAfterMasterLeaderFailover)) {
+  auto conn_ddl = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(kDdlTs)));
+  auto conn_observer = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(kObserverTs)));
+  ASSERT_OK(conn_ddl.Execute("CREATE TABLE foo(id INT PRIMARY KEY)"));
+  ASSERT_OK(conn_ddl.Execute("INSERT INTO foo VALUES(1)"));
+  WaitForCatalogVersionToPropagate();
+
+  // Bring conn_observer up to date with the CREATE TABLE so that the only catalog cache refresh
+  // it does from here on is the one caused by the ALTER TABLE below.
+  ASSERT_EQ(ASSERT_RESULT(conn_observer.FetchAllAsString("SELECT * FROM foo")), "1");
+  const auto full_refreshes_before = GetInt64MetricsHelper("CatCacheRefresh", kObserverTs);
+  const auto delta_refreshes_before = GetInt64MetricsHelper("CatCacheDeltaRefresh", kObserverTs);
+
+  // Cut the observer node off from the master leader, so that it can only learn about the DDL
+  // below after the failover has completed.
+  auto* const observer_ts = cluster_->tablet_server(kObserverTs);
+  ASSERT_OK(cluster_->SetFlag(observer_ts, "TEST_tserver_disable_heartbeat", "true"));
+
+  auto* const old_leader = cluster_->GetLeaderMaster();
+  ASSERT_OK(conn_ddl.Execute("ALTER TABLE foo ADD COLUMN value TEXT"));
+
+  // The leader has to cache the DDL's catalog versions before it steps down: its stale
+  // fingerprint only matches what the post-failover refresh reads back from disk if it was
+  // computed after the DDL.
+  WaitForCatalogVersionToPropagate();
+
+  // Fail over away from the leader and back. The first stepdown makes it reset its caches, the
+  // second one puts it back in charge of serving heartbeats with catalog versions that have not
+  // changed since the reset.
+  // Note that a daemon only holds one log listener at a time, so the two waiters must not
+  // overlap. The refresh waiter cannot fire early: the old leader stops refreshing at the reset
+  // and only starts again once it is the leader.
+  {
+    auto reset_waiter = LogWaiter(old_leader, "ResetCachedCatalogVersions: cache reset");
+    ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+    ASSERT_OK(reset_waiter.WaitFor(30s * kTimeMultiplier));
+  }
+  auto refresh_waiter = LogWaiter(old_leader, "RefreshPgCatalogVersionCache: cache refreshed");
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader(old_leader->uuid()));
+  ASSERT_OK(refresh_waiter.WaitFor(30s * kTimeMultiplier));
+
+  ASSERT_OK(cluster_->SetFlag(observer_ts, "TEST_tserver_disable_heartbeat", "false"));
+
+  // conn_observer refreshes its catalog cache on its first query after the restored leader has
+  // sent the new catalog version to the observer node. Queries that run before that do not
+  // refresh, so polling here does not perturb the refresh counts. Poll with a query whose result
+  // shape does not depend on foo: a "SELECT * FROM foo" that races the refresh fails in libpq
+  // with "unexpected field count", because its row description is built from the pre-refresh
+  // relcache while its rows come from the post-refresh one.
+  int64_t full_refreshes_after = 0;
+  int64_t delta_refreshes_after = 0;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(conn_observer.FetchAllAsString("SELECT 1"));
+    full_refreshes_after = GetInt64MetricsHelper("CatCacheRefresh", kObserverTs);
+    delta_refreshes_after = GetInt64MetricsHelper("CatCacheDeltaRefresh", kObserverTs);
+    return full_refreshes_after + delta_refreshes_after >
+           full_refreshes_before + delta_refreshes_before;
+  }, 60s * kTimeMultiplier, "observer to refresh its catalog cache"));
+
+  // The refresh must have been incremental. With a stale fingerprint the restored leader keeps
+  // an empty invalidation messages cache, so it sends the observer node the new catalog version
+  // without the messages that go with it, and conn_observer has to refresh in full instead.
+  EXPECT_EQ(full_refreshes_after - full_refreshes_before, 0)
+      << "conn_observer did a full catalog cache refresh: the master leader sent the new catalog "
+      << "version without its invalidation messages";
+  EXPECT_GE(delta_refreshes_after - delta_refreshes_before, 1);
+
+  // The refresh brought in the DDL: conn_observer now sees the new column.
+  ASSERT_EQ(ASSERT_RESULT(conn_observer.FetchAllAsString("SELECT * FROM foo")), "1, NULL");
 }
 
 } // namespace pgwrapper
