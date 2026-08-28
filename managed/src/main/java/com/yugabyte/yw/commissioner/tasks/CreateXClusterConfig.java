@@ -71,7 +71,6 @@ import org.yb.master.MasterTypes;
 @Retryable
 public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
-  public static final long TIME_BEFORE_DELETE_BACKUP_MS = TimeUnit.DAYS.toMillis(1);
   private static final long DELAY_BETWEEN_RETRIES_MS = TimeUnit.SECONDS.toMillis(10);
   private final OperatorStatusUpdater kubernetesStatus;
 
@@ -737,8 +736,18 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               : xClusterConfig
                   .getTableById(getTableId(tablesInfoListNeedBootstrap.get(0)))
                   .getBackup();
+      Restore restore =
+          xClusterConfig.getType() == ConfigType.Db
+              ? xClusterConfig.getNamespaceById(namespaceId).getRestore()
+              : xClusterConfig
+                  .getTableById(getTableId(tablesInfoListNeedBootstrap.get(0)))
+                  .getRestore();
+      // Once the restore has completed, the backup is not needed anymore and may already be
+      // deleted, so on a retry neither the backup nor the restore subtasks must run again.
+      boolean restoreCompleted = restore != null && restore.getState() == Restore.State.Completed;
 
-      if (backup == null || backup.getState() != Backup.BackupState.Completed) {
+      if (!restoreCompleted
+          && (backup == null || backup.getState() != Backup.BackupState.Completed)) {
         backup =
             createAllBackupSubtasks(
                 backupRequestParams,
@@ -757,13 +766,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         }
       }
 
-      Restore restore =
-          xClusterConfig.getType() == ConfigType.Db
-              ? xClusterConfig.getNamespaceById(namespaceId).getRestore()
-              : xClusterConfig
-                  .getTableById(getTableId(tablesInfoListNeedBootstrap.get(0)))
-                  .getRestore();
-      if (restore == null || restore.getState() != Restore.State.Completed) {
+      if (!restoreCompleted) {
         // Before dropping the tables on the target universe, delete the associated PITR configs.
         Optional<PitrConfig> pitrConfigOnTargetOptional =
             PitrConfig.maybeGet(
@@ -939,7 +942,18 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         }
       }
 
-      if (xClusterConfig.getType() == ConfigType.Db) {
+      if (backup != null) {
+        // The backup is needed only to bootstrap the target universe; delete it as soon as the
+        // restore has finished. On a retry, the backup may already be queued for deletion or
+        // garbage collected, in which case there is nothing left to delete.
+        UUID backupUUID = backup.getBackupUUID();
+        createDeleteBackupYbTasks(Collections.singletonList(backup), backup.getCustomerUUID())
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingBackup)
+            .setShouldRunPredicate(
+                bootstrapRequiredPredicate.and(task -> Backup.maybeGet(backupUUID).isPresent()));
+      }
+
+      if (xClusterConfig.getType() == ConfigType.Db && backup != null && restore != null) {
         // Delete backup restore objects here if bootstrappig was not required as backup and
         //  restore objects were generated during subtask creation.
         createDeleteXClusterBackupRestoreEntriesTask(backup, restore)
@@ -1082,8 +1096,9 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     backupRequestParams.setUniverseUUID(sourceUniverse.getUniverseUUID());
     backupRequestParams.customerUUID = Customer.get(sourceUniverse.getCustomerId()).getUuid();
     backupRequestParams.backupType = tableType;
-    backupRequestParams.timeBeforeDelete = TIME_BEFORE_DELETE_BACKUP_MS;
-    backupRequestParams.expiryTimeUnit = com.yugabyte.yw.models.helpers.TimeUnit.MILLISECONDS;
+    // The backup must not expire (timeBeforeDelete of zero means no expiry); it is deleted by a
+    // subtask right after the restore to the target universe finishes.
+    backupRequestParams.timeBeforeDelete = 0L;
     // Set to true because it is a beta version of bootstrapping, and we need to debug it.
     backupRequestParams.enableVerboseLogs = true;
     // Ensure keyspaceTableList is not specified by the user.

@@ -7,17 +7,23 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -110,6 +116,27 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
       createXClusterConfigSetStatusTask(
               xClusterConfig, XClusterConfig.XClusterConfigStatusType.Updating)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+    }
+
+    // Delete the bootstrap backups associated with the xCluster config if they have not been
+    // deleted already; a backup outlives its restore only if a previous create/edit attempt
+    // failed before the backup could be deleted.
+    List<Backup> backupsToDelete =
+        Stream.concat(
+                xClusterConfig.getTableDetails().stream().map(XClusterTableConfig::getBackup),
+                xClusterConfig.getNamespaces().stream().map(XClusterNamespaceConfig::getBackup))
+            .filter(Objects::nonNull)
+            .filter(backup -> !Backup.IN_PROGRESS_STATES.contains(backup.getState()))
+            .collect(
+                Collectors.collectingAndThen(
+                    Collectors.toMap(Backup::getBackupUUID, backup -> backup, (a, b) -> a),
+                    backupsByUuid -> new ArrayList<>(backupsByUuid.values())));
+    if (!backupsToDelete.isEmpty()) {
+      createDeleteBackupYbTasks(
+              backupsToDelete,
+              backupsToDelete.get(0).getCustomerUUID(),
+              taskParams().isForced() /* ignoreErrors */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingBackup);
     }
 
     // Create all the subtasks to delete the xCluster config and all the bootstrap ids related

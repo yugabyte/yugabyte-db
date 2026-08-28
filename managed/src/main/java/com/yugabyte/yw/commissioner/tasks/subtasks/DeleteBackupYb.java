@@ -24,6 +24,8 @@ public class DeleteBackupYb extends AbstractTaskBase {
     public UUID customerUUID;
     public UUID backupUUID;
     public boolean deleteForcefully;
+    // Do not fail the subtask if the backup does not exist or cannot be queued for deletion.
+    public boolean ignoreErrors;
   }
 
   public Params params() {
@@ -32,7 +34,19 @@ public class DeleteBackupYb extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Backup backup = Backup.getOrBadRequest(params().customerUUID, params().backupUUID);
+    Backup backup;
+    try {
+      backup = Backup.getOrBadRequest(params().customerUUID, params().backupUUID);
+    } catch (Exception e) {
+      if (params().ignoreErrors) {
+        log.warn(
+            "Ignoring the error fetching backup {} for deletion: {}",
+            params().backupUUID,
+            e.getMessage());
+        return;
+      }
+      throw e;
+    }
     if (Backup.IN_PROGRESS_STATES.contains(backup.getState())) {
       log.error("Cannot delete backup that are in {} state", backup.getState());
       return;
@@ -65,6 +79,13 @@ public class DeleteBackupYb extends AbstractTaskBase {
       log.error("Errored out with: " + e);
       if (updateState) {
         backup.transitionState(BackupState.FailedToDelete);
+      }
+      if (params().ignoreErrors) {
+        log.warn(
+            "Ignoring the error queueing backup {} for deletion: {}",
+            params().backupUUID,
+            e.getMessage());
+        return;
       }
       throw new RuntimeException(e.getMessage());
     }
