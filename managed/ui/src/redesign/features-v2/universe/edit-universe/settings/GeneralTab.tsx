@@ -142,6 +142,7 @@ export const GeneralTab = () => {
         coordinates={MAP_COORDINATES}
         initialBounds={undefined}
         mapContainerProps={MAP_CONTAINER_PROPS}
+        showBoundaries={false}
       >
         {/* {isGeoPartitionPresent && (
           <StyledYBSelect

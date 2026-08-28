@@ -175,6 +175,7 @@ function RRPlacementMap({
           zoom: 2,
           center: [0, 0]
         }}
+        showBoundaries={false}
       >
         {(primaryPins.map((p) => (
           <YBMapMarker
