@@ -6,7 +6,8 @@ MODULE_big = yb_ycql_utils
 OBJS = yb_ycql_utils.o $(WIN32RES)
 
 EXTENSION = yb_ycql_utils
-DATA = yb_ycql_utils--1.0.sql yb_ycql_utils--1.0--1.1.sql yb_ycql_utils--1.1--1.2.sql
+DATA = yb_ycql_utils--1.0.sql yb_ycql_utils--1.0--1.1.sql \
+	yb_ycql_utils--1.1--1.2.sql yb_ycql_utils--1.2--1.1.sql
 SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lyb_pggate -lyb_pggate_util
 
 ifdef USE_PGXS
