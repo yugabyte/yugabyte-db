@@ -41,9 +41,11 @@ namespace cqlserver {
 namespace {
 
 // Histogram configuration constants, kept identical to YSQL's pg_stat_statements defaults so the
-// resulting yb_latency_histogram jsonb is comparable across YSQL and YCQL.
-constexpr double kYbHdrLatencyResMs = 0.1;
-constexpr double kYbHdrMaxLatencyMs = 1677721.6;
+// resulting yb_latency_histogram jsonb is comparable across YSQL and YCQL. Resolution is float
+// because that is how YSQL divides total_time; a double 0.1 places exact 0.1ms multiples one
+// bucket higher.
+constexpr float kYbHdrLatencyResMs = 0.1f;
+constexpr float kYbHdrMaxLatencyMs = 1677721.6f;
 constexpr int kYbHdrBucketFactor = 16;
 
 // Shared, immutable configuration derived once for all YCQL statement histograms.
@@ -58,15 +60,19 @@ struct HdrConfig {
 const HdrConfig& GetHdrConfig() {
   // Mirrors the bucket-config derivation in pg_stat_statements.c so both APIs use the same buckets.
   static const HdrConfig config = [] {
-    HdrConfig c;
+    HdrConfig c{};
     const int64_t prelim_max_value = static_cast<int64_t>(kYbHdrMaxLatencyMs / kYbHdrLatencyResMs);
-    yb_hdr_calculate_bucket_config(1, prelim_max_value - 1, kYbHdrBucketFactor, &c.cfg);
+    CHECK_EQ(yb_hdr_calculate_bucket_config(
+                 1, prelim_max_value - 1, kYbHdrBucketFactor, &c.cfg),
+             0);
 
     const int derived_max_magnitude =
         c.cfg.sub_bucket_half_count_magnitude + c.cfg.bucket_count;
     c.max_value = static_cast<int64_t>(std::pow(2, derived_max_magnitude));
     if (prelim_max_value != c.max_value) {
-      yb_hdr_calculate_bucket_config(1, c.max_value - 1, kYbHdrBucketFactor, &c.cfg);
+      CHECK_EQ(yb_hdr_calculate_bucket_config(
+                   1, c.max_value - 1, kYbHdrBucketFactor, &c.cfg),
+               0);
     }
     c.alloc_size =
         sizeof(hdr_histogram) + static_cast<size_t>(c.cfg.counts_len) * sizeof(count_t);
@@ -121,7 +127,9 @@ void StmtLatencyHistogram::SnapshotFrom(const StmtLatencyHistogram& other) {
     return;
   }
 
-  snapshot_.reserve(static_cast<size_t>(GetHdrConfig().cfg.counts_len));
+  // Typical statements populate a handful of buckets; a small hint avoids realloc
+  // without allocating for every HDR slot.
+  snapshot_.reserve(8);
   hdr_iter iter;
   hdr_iter_init(&iter, other.hist_.get());
   while (hdr_iter_next(&iter)) {

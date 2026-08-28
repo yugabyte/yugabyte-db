@@ -606,9 +606,9 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
   ASSERT_STR_CONTAINS(result, "prepared_statements");
   ASSERT_STR_CONTAINS(result, "dummyquery");
   ASSERT_STR_CONTAINS(result, std::stoull(b2a_hex("dummyqueryid").substr(0, 16), 0, 16));
-  // A single 1 ms execution should be recorded in the [1.0,1.x) latency bucket.
+  // A 1 ms sample uses the same float resolution as YSQL, so it lands in [0.9,1.0).
   ASSERT_STR_CONTAINS(result, "yb_latency_histogram");
-  ASSERT_STR_CONTAINS(result, "[1.0,");
+  ASSERT_STR_CONTAINS(result, "[0.9,");
 
   // reset the counters and verify
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",

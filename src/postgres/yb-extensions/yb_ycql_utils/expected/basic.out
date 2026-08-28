@@ -9,3 +9,59 @@ select * from ycql_stat_statements;
 ---------+-------+-------------+-------+------------+----------+----------+-----------+-------------+----------+----------------------
 (0 rows)
 
+-- 1.1 <-> 1.2 upgrade and downgrade scripts.
+drop extension yb_ycql_utils;
+create extension yb_ycql_utils version '1.1';
+select extversion from pg_extension where extname = 'yb_ycql_utils';
+ extversion 
+------------
+ 1.1
+(1 row)
+
+select exists (
+    select 1 from pg_attribute
+    where attrelid = 'ycql_stat_statements'::regclass
+      and attname = 'yb_latency_histogram'
+      and not attisdropped
+) as has_yb_latency_histogram;
+ has_yb_latency_histogram 
+--------------------------
+ f
+(1 row)
+
+alter extension yb_ycql_utils update to '1.2';
+select extversion from pg_extension where extname = 'yb_ycql_utils';
+ extversion 
+------------
+ 1.2
+(1 row)
+
+select exists (
+    select 1 from pg_attribute
+    where attrelid = 'ycql_stat_statements'::regclass
+      and attname = 'yb_latency_histogram'
+      and not attisdropped
+) as has_yb_latency_histogram;
+ has_yb_latency_histogram 
+--------------------------
+ t
+(1 row)
+
+alter extension yb_ycql_utils update to '1.1';
+select extversion from pg_extension where extname = 'yb_ycql_utils';
+ extversion 
+------------
+ 1.1
+(1 row)
+
+select exists (
+    select 1 from pg_attribute
+    where attrelid = 'ycql_stat_statements'::regclass
+      and attname = 'yb_latency_histogram'
+      and not attisdropped
+) as has_yb_latency_histogram;
+ has_yb_latency_histogram 
+--------------------------
+ f
+(1 row)
+
