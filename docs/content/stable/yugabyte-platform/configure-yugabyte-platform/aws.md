@@ -148,7 +148,7 @@ To add your own machine images to the catalog:
 
 1. Enter the Amazon Machine Image (AMI) ID to use for each [provider region](#regions).
 
-1. Provide the SSH user and port to use to access the machine image OS. The SSH user is required; it must have passwordless sudo access and must not be named `yugabyte`. For standard cloud images, use the image's default login user (the user the cloud injects the SSH key into), for example `ec2-user`, `centos`, or `ubuntu`.
+1. Provide the SSH user and port to use to access the machine image OS. The SSH user is required; it must have passwordless sudo access and must not be named `yugabyte`. For standard AMIs, use the image's default login user (for example `ec2-user` or `ubuntu`).
 
 1. To configure instances so that the [Instance Metadata Service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html) _requires_ IMDSv2, select the **Use IMDSv2** option (recommended). If **Use IMDSv2** is not selected, the service accepts both IMDSv1 and IMDSv2 requests.
 

@@ -177,7 +177,7 @@ To add your own machine images to the catalog:
 
 1. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [Use a shared image gallery](#use-a-shared-image-gallery).
 
-1. Provide the SSH user and port to use to access the machine image OS. The SSH user is required; it must have passwordless sudo access and must not be named `yugabyte`. For standard cloud images, use the image's default login user (the user the cloud injects the SSH key into), for example `centos` or `ubuntu`.
+1. Provide the SSH user and port to use to access the machine image OS. The SSH user is required; it must have passwordless sudo access and must not be named `yugabyte`. Azure creates this user when it provisions the VM. For a custom or shared-gallery image, choose a username that does not already exist on the image; Azure rejects the request if that user is already present.
 
 1. Click **Add Linux Version**.
 
