@@ -72,6 +72,7 @@
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
+#include "yb/docdb/unique_index_verifier.h"
 
 #include "yb/dockv/value_type.h"
 
@@ -109,6 +110,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
+#include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
@@ -162,6 +164,11 @@ DEFINE_RUNTIME_bool(delete_intents_sst_files, true,
 DEFINE_RUNTIME_uint64(backfill_index_write_batch_size, 128,
     "The batch size for backfilling the index.");
 TAG_FLAG(backfill_index_write_batch_size, advanced);
+
+DEFINE_RUNTIME_uint64(unique_index_verify_max_buffered_versions_per_group, 1024,
+    "Version-group buffering bound for the deferred uniqueness verification scan; a DocKey "
+    "group exceeding it is replayed by the bounded-memory reverse walk instead.");
+TAG_FLAG(unique_index_verify_max_buffered_versions_per_group, advanced);
 
 DEFINE_RUNTIME_int32(backfill_index_rate_rows_per_sec, 0,
     "Rate of at which the indexed table's entries are populated into the index table during index "
@@ -3235,6 +3242,95 @@ Status Tablet::UpdateIndexBackfillOrderingGeneration(
   RETURN_NOT_OK(metadata_->ApplyIndexBackfillOrderingGenerationOp(
       op_id, table_id, activate, retention_barrier_ht, write_id_floor_version));
   return metadata_->Flush();
+}
+
+Result<docdb::UniqueIndexVerificationResult> Tablet::VerifyUniqueIndex(
+    const tserver::VerifyUniqueIndexTabletRequestPB& req, CoarseTimePoint deadline) {
+  // The scan reads the regular DB outside the usual read paths; hold the shutdown guard so
+  // RocksDB cannot be shut down under the iterators. Not-blocking variant: tablet shutdown
+  // aborts the scan (this is an RPC, never a Raft apply).
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart(deadline);
+  RETURN_NOT_OK(scoped_read_operation);
+
+  // The scan is only meaningful against the generation the caller activated: released or
+  // replaced generations mean the verification window no longer describes this tablet's
+  // marked writes. Fail without scanning; the caller decides whether to re-drive.
+  const auto generation = metadata_->index_backfill_ordering_generation();
+  SCHECK(
+      generation.active, IllegalState,
+      "No active index-backfill ordering generation on this tablet");
+  SCHECK_EQ(
+      generation.table_id, req.index_table_id(), IllegalState,
+      "Active ordering generation covers a different index table");
+  if (req.has_generation_base_op_index()) {
+    SCHECK_EQ(
+        generation.base_op_index, req.generation_base_op_index(), IllegalState,
+        "Active ordering generation has a different base");
+  }
+
+  const auto window_lower = HybridTime::FromPB(req.backfill_read_ht());
+  const auto window_upper = HybridTime::FromPB(req.verify_upper_ht());
+  // An unset backfill_read_ht decodes to the invalid sentinel, which compares greater than
+  // any real hybrid time -- the history-cutoff checks below would pass vacuously and an
+  // invalid lower bound would reach the scan.
+  SCHECK(
+      window_lower.is_valid() && window_upper.is_valid(), InvalidArgument,
+      "Verification window bounds must be valid hybrid times");
+  SCHECK_LE(window_lower, window_upper, InvalidArgument, "Verification window is inverted");
+
+  // History below the *applied* cutoff may have been compacted away; a scan whose window dips
+  // below it could silently miss versions, so refuse rather than degrade. The applied cutoff
+  // is read from the regular DB's flushed frontier -- the cutoff past compactions actually
+  // used -- not from the retention policy: the policy's directive both mutates committed
+  // state (unacceptable on a read path) and only bounds *future* compactions, which the
+  // retention-hold part of this feature prevents from advancing anyway.
+  //
+  // Until that retention hold lands, this point-in-time check is advisory: a compaction
+  // finishing mid-scan could still remove window history. The post-scan re-check below
+  // converts that race into a detectable failure instead of a silent one.
+  const auto applied_history_cutoff = [this]() -> HybridTime {
+    const auto flushed_frontier = regular_db_->GetFlushedFrontier();
+    if (!flushed_frontier) {
+      return HybridTime::kInvalid;
+    }
+    return down_cast<docdb::ConsensusFrontier&>(*flushed_frontier).history_cutoff()
+        .primary_cutoff_ht;
+  };
+  const auto cutoff_before = applied_history_cutoff();
+  SCHECK(
+      !cutoff_before || window_lower >= cutoff_before, IllegalState,
+      "Verification window begins below the applied history cutoff");
+
+  // The identity column: a regular value column on unique-index tablets. Its absence means
+  // this tablet does not host a unique index shaped for verification.
+  const auto& schema = metadata_->primary_table_info()->schema();
+  const auto basectid_idx = schema.find_column("ybidxbasectid");
+  SCHECK_NE(
+      basectid_idx, Schema::kColumnNotFound, InvalidArgument,
+      "Tablet's primary table has no ybidxbasectid column; not a unique-index tablet");
+
+  docdb::UniqueIndexVerifierOptions options;
+  options.window_lower = window_lower;
+  options.window_upper = window_upper;
+  options.ybidxbasectid_column_id = schema.column_id(basectid_idx);
+  options.start_dockey = req.start_key();
+  options.max_dockey_groups = req.max_dockey_groups();
+  options.deadline = deadline;
+  options.max_buffered_versions_per_group =
+      FLAGS_unique_index_verify_max_buffered_versions_per_group;
+
+  auto tablet_doc_db = doc_db();
+  auto result = VERIFY_RESULT(docdb::VerifyUniqueIndexTablet(
+      tablet_doc_db.regular, *tablet_doc_db.key_bounds, metadata_.get(), options));
+
+  // A compaction may have advanced the applied cutoff mid-scan, silently dropping window
+  // history under the iterators. Detect it after the fact and fail the call rather than
+  // return a result computed over possibly-incomplete history.
+  const auto cutoff_after = applied_history_cutoff();
+  SCHECK(
+      !cutoff_after || window_lower >= cutoff_after, IllegalState,
+      "Applied history cutoff advanced past the verification window during the scan");
+  return result;
 }
 
 Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
