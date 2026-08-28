@@ -51,7 +51,6 @@ class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
   int ysql_max_connections_ = 0;
 
   bool log_debug_ = false;
-  bool log_config_ = false;
   bool log_session_ = false;
   bool log_query_ = false;
   bool log_stats_ = false;
