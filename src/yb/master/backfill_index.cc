@@ -32,6 +32,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -133,6 +134,15 @@ DEFINE_test_flag(bool, block_index_backfill_ordering_generation_release, false,
     "Skip releasing index-backfill ordering generations in the terminal funnel, keeping them "
     "active so tests can run the verification scan against a completed build.");
 
+DEFINE_RUNTIME_bool(ysql_index_backfill_fail_closed_verification, true,
+    "Gate unique-index publication on the deferred verification outcome: after a SKIP_ALL "
+    "backfill completes, an index reaches READ_WRITE_AND_DELETE only if every index tablet "
+    "verifies clean; a violation or an unresolvable inconclusive outcome fails CREATE INDEX "
+    "through the existing backfill failure path. Implies running the verification phase even "
+    "when ysql_index_backfill_shadow_verification is off. Default on: observational "
+    "(record-and-publish) mode is an explicit opt-out, never the default polarity of a "
+    "safety property. Inert while no job selects SKIP_ALL.");
+
 DEFINE_RUNTIME_bool(ysql_index_backfill_shadow_verification, false,
     "Run the deferred uniqueness verification scan after a SKIP_ALL unique-index backfill "
     "completes. The scan itself runs on the publication critical path (CREATE INDEX waits "
@@ -152,6 +162,10 @@ DEFINE_RUNTIME_int32(index_backfill_verify_rpc_timeout_ms, 60000,
     "A dedicated budget like the backfill chunks' ysql_index_backfill_rpc_timeout_ms rather "
     "than the generic master_ts_rpc_timeout_ms: every page re-establishes iterators, so "
     "sizing pages independently of unrelated master RPCs matters on large tablets.");
+
+DEFINE_test_flag(bool, fail_unique_index_verification_resolution, false,
+    "Fail the verification phase's index-table resolution, exercising the coordinator-failure "
+    "path before any index is selected for verification.");
 
 DEFINE_test_flag(bool, skip_index_backfill, false,
     "Skips backfilling the data on tservers and leaves the index in inconsistent state.");
@@ -865,13 +879,19 @@ BackfillTable::BackfillTable(
   schema_version_ = indexed_table_->metadata().state().pb.version();
 
   const auto& pb = indexed_table_->metadata().state().pb;
-  // The uniqueness-check mode is immutable per job: reuse the persisted value when resuming
-  // an existing job (missing means CHECK_ALL); select it only for a brand-new job. Launch()
-  // persists the selection together with the job.
+  // The uniqueness-check mode and the gating decision are immutable per job: reuse the
+  // persisted values when resuming an existing job (missing means CHECK_ALL/observational);
+  // select them only for a brand-new job. Launch() persists the selection together with the
+  // job, so failover, retries, and runtime flag changes cannot reinterpret an active job.
   if (pb.backfill_jobs_size() > 0) {
     unique_index_backfill_mode_ = pb.backfill_jobs(0).unique_index_backfill_mode();
+    verification_gates_publication_ = pb.backfill_jobs(0).verification_gates_publication();
   } else {
     unique_index_backfill_mode_ = SelectUniqueIndexBackfillMode();
+    verification_gates_publication_ =
+        FLAGS_ysql_index_backfill_fail_closed_verification &&
+        unique_index_backfill_mode_ == UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL &&
+        pb.table_type() == TableType::PGSQL_TABLE_TYPE;
   }
   if (pb.backfill_jobs_size() > 0 && pb.backfill_jobs(0).has_backfilling_timestamp() &&
       read_time_for_backfill_.FromUint64(pb.backfill_jobs(0).backfilling_timestamp()).ok()) {
@@ -941,8 +961,12 @@ Status BackfillTable::Launch() {
             {idx_info.table_id(), BackfillJobPB::IN_PROGRESS});
       }
       backfill_job->set_unique_index_backfill_mode(unique_index_backfill_mode_);
+      backfill_job->set_verification_gates_publication(verification_gates_publication_);
       LOG_WITH_PREFIX(INFO) << "Selected unique-index backfill mode "
                             << UniqueIndexBackfillMode_Name(unique_index_backfill_mode_)
+                            << (verification_gates_publication_
+                                    ? " with fail-closed verification"
+                                    : "")
                             << " for backfill job";
       RETURN_NOT_OK_PREPEND(
           master_->catalog_manager_impl()->sys_catalog_->Upsert(
@@ -1505,7 +1529,7 @@ Status BackfillTable::RelaunchOrderingGenerationRelease(
 }
 
 Status BackfillTable::LaunchShadowVerificationOrFinish() {
-  if (!FLAGS_ysql_index_backfill_shadow_verification ||
+  if ((!FLAGS_ysql_index_backfill_shadow_verification && !verification_gates_publication()) ||
       unique_index_backfill_mode() != UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL ||
       indexed_table_->GetTableType() != TableType::PGSQL_TABLE_TYPE) {
     return FinishShadowVerification();
@@ -1532,6 +1556,9 @@ Status BackfillTable::LaunchShadowVerificationOrFinish() {
   // verification state is VERIFY_IN_PROGRESS (the structural guard in
   // CatalogManager::GetBackfillStatus).
   auto index_tables_result = GetUniqueIndexTables(RestrictToIndexesToBuild::kFalse);
+  if (PREDICT_FALSE(FLAGS_TEST_fail_unique_index_verification_resolution)) {
+    index_tables_result = STATUS(InternalError, "Injected verification resolution failure");
+  }
   if (!index_tables_result.ok()) {
     ShadowVerificationPhaseFailed(index_tables_result.status(), "resolve index table");
     return Status::OK();
@@ -1799,18 +1826,33 @@ void BackfillTable::ShadowVerificationTabletDone(
 // INCONCLUSIVE, then always continue into publication.
 void BackfillTable::ShadowVerificationPhaseFailed(
     const Status& status, const char* while_doing) {
-  LOG_WITH_PREFIX(WARNING) << "Shadow verification phase failed (" << while_doing
-                           << "): " << status << "; degrading to INCONCLUSIVE and publishing";
+  const bool gating = verification_gates_publication();
+  LOG_WITH_PREFIX(WARNING) << "Verification phase failed (" << while_doing << "): " << status
+                           << (gating ? "; failing unverified indexes (fail-closed)"
+                                      : "; degrading to INCONCLUSIVE and publishing");
   {
     std::lock_guard l(mutex_);
     shadow_verification_.terminal = true;
     shadow_verification_.pending_tablets.clear();
   }
+  // Records INCONCLUSIVE for the in-flight index; in gating mode that also fails it.
   WARN_NOT_OK(
       RecordShadowVerificationOutcome(
           UniqueIndexVerificationStatePB::VERIFY_INCONCLUSIVE, "coordinator error"),
-      "Failed to record shadow verification outcome");
-  WARN_NOT_OK(FinishShadowVerification(), "Failed to finish backfill after shadow phase");
+      "Failed to record verification outcome");
+  if (gating) {
+    // In gating mode the job's (single) unique index is marked only when verified clean, so
+    // if it is still IN_PROGRESS here -- Record's marking failed, or the phase failed before
+    // it could record anything -- it is unverified and must not publish.
+    const auto unverified = indexes_to_build();
+    if (!unverified.empty()) {
+      WARN_NOT_OK(
+          MarkIndexesAsFailed(
+              unverified, STATUS(Aborted, "unique index verification could not complete")),
+          "Failed to mark unverified indexes as failed");
+    }
+  }
+  WARN_NOT_OK(FinishShadowVerification(), "Failed to finish backfill after verification phase");
 }
 
 Status BackfillTable::RecordShadowVerificationOutcome(
@@ -1822,6 +1864,9 @@ Status BackfillTable::RecordShadowVerificationOutcome(
           state_pb->set_reason(reason);
         }
       }));
+  const bool gating = verification_gates_publication();
+  // The job has exactly one index. The phase's table pointer is null only when the phase
+  // failed before resolving it; the job's index info names it either way.
   TableId index_table_id;
   {
     std::lock_guard l(mutex_);
@@ -1829,16 +1874,41 @@ Status BackfillTable::RecordShadowVerificationOutcome(
       index_table_id = shadow_verification_.index_table->id();
     }
   }
-  // SHADOW: the outcome is recorded and logged, never enforced. The fail-closed
-  // verify-before-publication gate is a separate, later capability.
+  if (index_table_id.empty() && !index_infos_.empty()) {
+    index_table_id = index_infos_.front().table_id();
+  }
   const auto severity_prefix =
       state == UniqueIndexVerificationStatePB::VERIFY_CLEAN ? "" : "NOT CLEAN: ";
   LOG_WITH_PREFIX(INFO) << "Shadow verification outcome for unique index "
-                        << (index_table_id.empty() ? "<unresolved>" : index_table_id)
+                        << index_table_id
                         << ": " << severity_prefix
                         << UniqueIndexVerificationStatePB::State_Name(state)
-                        << (reason.empty() ? "" : Format(" ($0)", reason));
-  return Status::OK();
+                        << (reason.empty() ? "" : Format(" ($0)", reason))
+                        << (gating ? " [gating]" : " [observational]");
+  if (!gating) {
+    // Observational: the outcome is recorded and logged, never enforced.
+    return Status::OK();
+  }
+  // Fail-closed: the outcome decides publication. Clean marks the (deferred) backfill
+  // success; anything else fails the index through the existing backfill failure path --
+  // never READ_WRITE_AND_DELETE, never indisvalid. Reasons are value-free by construction.
+  // A crash between the verification-state write above and the marking below self-heals:
+  // failover resumes the phase, re-finds every tablet clean, and re-drives this marking.
+  if (state == UniqueIndexVerificationStatePB::VERIFY_CLEAN) {
+    return MarkIndexesAsSuccess({index_table_id});
+  }
+  auto failure = STATUS_FORMAT(
+      Aborted, "unique index verification did not pass: $0$1",
+      UniqueIndexVerificationStatePB::State_Name(state),
+      reason.empty() ? "" : Format(" ($0)", reason));
+  if (state == UniqueIndexVerificationStatePB::VERIFY_VIOLATION) {
+    // The status reaches the CREATE INDEX backend intact (IndexInfoPB.backfill_status), so a
+    // verified duplicate surfaces as SQLSTATE 23505 exactly like a CHECK_ALL duplicate or
+    // vanilla PostgreSQL. INCONCLUSIVE carries no code: it is an infrastructure failure, not a
+    // statement about the data.
+    failure = failure.CloneAndAddErrorCode(PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
+  }
+  return MarkIndexesAsFailed({index_table_id}, failure);
 }
 
 Status BackfillTable::FinishShadowVerification() {
@@ -1878,8 +1948,14 @@ Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& f
     }
     LOG_WITH_PREFIX(INFO) << "Completed backfilling the index table.";
     StopLivenessMonitor();
-    RETURN_NOT_OK_PREPEND(
-        MarkAllIndexesAsSuccess(), "Failed to mark indexes as successfully backfilled.");
+    if (verification_gates_publication() && JobIndexIsUnique()) {
+      // Fail-closed: the job's (single) unique index is marked successful only once it
+      // verifies clean (RecordShadowVerificationOutcome). A non-unique index has nothing to
+      // verify and is marked here as before.
+    } else {
+      RETURN_NOT_OK_PREPEND(
+          MarkAllIndexesAsSuccess(), "Failed to mark indexes as successfully backfilled.");
+    }
     RETURN_NOT_OK_PREPEND(
         LaunchShadowVerificationOrFinish(), "Failed to complete backfill.");
   } else {
@@ -1903,9 +1979,21 @@ Status BackfillTable::MarkAllIndexesAsFailed() {
 }
 
 Status BackfillTable::MarkAllIndexesAsSuccess() {
-  const auto index_ids = indexes_to_build();
+  return MarkIndexesAsSuccess(indexes_to_build());
+}
+
+Status BackfillTable::MarkIndexesAsSuccess(const std::unordered_set<TableId>& index_ids) {
+  if (index_ids.empty()) {
+    return Status::OK();
+  }
   RETURN_NOT_OK(master_->xcluster_manager()->MarkIndexBackfillCompleted(index_ids, epoch_));
   return MarkIndexesAsDesired(index_ids, BackfillJobPB::SUCCESS, Status::OK());
+}
+
+bool BackfillTable::JobIndexIsUnique() const {
+  // YSQL backfills exactly one index per job; this is only consulted for SKIP_ALL jobs, which
+  // are YSQL-only.
+  return index_infos_.size() == 1 && index_infos_.front().is_unique();
 }
 
 Status BackfillTable::MarkIndexesAsDesired(
@@ -2063,9 +2151,13 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
     for (const auto& kv_pair : indexed_table_pb.backfill_jobs(0).backfill_state()) {
       VLOG(2) << "Reading backfill_state for " << kv_pair.first << " as "
               << BackfillJobPB_State_Name(kv_pair.second);
-      if (PREDICT_TRUE(!FLAGS_TEST_simulate_empty_indexes_during_backfill)) {
-        DCHECK_NE(kv_pair.second, BackfillJobPB::IN_PROGRESS)
-            << __func__ << " is expected to be only called after all indexes are done.";
+      if (kv_pair.second == BackfillJobPB::IN_PROGRESS &&
+          PREDICT_TRUE(!FLAGS_TEST_simulate_empty_indexes_during_backfill)) {
+        // Every path into the funnel marks a terminal state first; reachable only if that
+        // marking itself kept failing (sys-catalog writes failing). The mapping below then
+        // publishes the index as failed -- the safe direction.
+        LOG_WITH_PREFIX(DFATAL) << "Index " << kv_pair.first
+                                << " reached the terminal funnel still IN_PROGRESS";
       }
       const bool success = (kv_pair.second == BackfillJobPB::SUCCESS);
       all_success &= success;
