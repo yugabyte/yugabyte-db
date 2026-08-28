@@ -427,17 +427,15 @@ struct PgClientData : public FetchBigDataCallback {
   rpc::CallData big_call_data GUARDED_BY(exchange_mutex);
   // Only the owning future accesses this span while starting or finishing the shared-memory
   // request. Exchange callbacks do not touch it, so it does not need exchange_mutex protection.
-  dist_trace::SpanWithScopePtr otel_span;
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span;
 
   PgClientData(const LWReqPB& req_, ThreadSafeArena* arena_) : req(req_), resp(arena_) {}
 
   void StartSharedMemorySpan() {
-    otel_span = dist_trace::StartClientSpanWithScope(
-        GetSharedMemSpanName(kSharedExchangeRequestType));
+    otel_span = dist_trace::StartClientSpan(GetSharedMemSpanName(kSharedExchangeRequestType));
     if (otel_span) {
       // Mirror the attributes the RPC outbound span carries (outbound_call.cc).
       otel_span->SetAttribute("rpc.system", "yb_shmem");
-      otel_span->DropScope();
     }
   }
 

@@ -333,26 +333,25 @@ nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name) {
   return StartSpan(op_name, {});
 }
 
-SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name) {
+nostd::shared_ptr<trace::Span> StartClientSpan(std::string_view op_name) {
   // Drained even when there is nothing to start, so the attributes cannot leak into a later span.
   const auto pending = ConsumePendingRpcAttrs();
 
   if (!HasActiveContext()) {
-    return nullptr;
+    return {};
   }
 
   trace::StartSpanOptions options;
   options.kind = trace::SpanKind::kClient;
-  return std::make_unique<SpanWithScope>(StartSpan(op_name, SpanAttrsView(pending), options));
+  return StartSpan(op_name, SpanAttrsView(pending), options);
 }
 
-SpanWithScopePtr ActivateParentScope(const trace::SpanContext& parent_context) {
+ScopedAdoptSpan::ScopedAdoptSpan(const trace::SpanContext& parent_context) {
   if (!IsDistTraceEnabled() || !parent_context.IsValid()) {
-    return nullptr;
+    return;
   }
   // A non-recording span that merely carries parent_context.
-  return std::make_unique<SpanWithScope>(
-      nostd::shared_ptr<trace::Span>(new trace::DefaultSpan(parent_context)));
+  scope_.emplace(nostd::shared_ptr<trace::Span>(new trace::DefaultSpan(parent_context)));
 }
 
 void AddPendingRpcStringAttr(std::string key, std::string value) {
