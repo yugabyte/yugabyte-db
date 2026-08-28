@@ -143,8 +143,10 @@ Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {
     // shadowing late-arriving backfill writes.  Skip the SnapshotTooOld check for such readers.
     // The justification above assumes the forward/backward uniqueness checks regenerate
     // conflicts from re-read base rows. A SKIP_ALL build (active index-backfill ordering
-    // generation) removes those checks, so the bypass is unsound there -- and the verification
-    // scan relies on this registration being a real check of the cutoff against its window.
+    // generation) removes those checks, so the bypass is unsound there -- and unnecessary:
+    // the generation's retention barrier holds the cutoff below the verification window, so
+    // legitimate readers in the window never reach this branch, and the verification scan
+    // relies on this registration being a real check of the cutoff against its window.
     const bool bypass_allowed = ShouldRetainDeleteMarkersInMajorCompaction() &&
                                 !metadata_.index_backfill_ordering_generation().active;
     if (!bypass_allowed) {

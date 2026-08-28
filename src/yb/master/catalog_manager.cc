@@ -7141,8 +7141,29 @@ void CatalogManager::GetBackfillStatus(
           index_info_pb.has_index_permissions() ?
               IndexPermissions_Name(index_info_pb.index_permissions()) : "-");
 
-      indexes_for_callback.emplace_back(
-          index_info_pb.table_id(), master::GetBackfillStatus(index_info_pb));
+      auto backfill_status = master::GetBackfillStatus(index_info_pb);
+      // Structural guard for the tserver metadata validator's release backstop: while
+      // deferred uniqueness verification is in progress, the validator must not release the
+      // index tablets' ordering generations (or, through them, the retention barrier holding
+      // the verification window). Today this cannot fire -- index permissions stay at
+      // DO_BACKFILL (never a terminal status) until the terminal funnel runs after the
+      // verification phase -- but the validator's safety should not hinge on that ordering
+      // staying true.
+      if (backfill_status != IndexStatusPB::BACKFILL_UNKNOWN) {
+        for (const auto& backfill_job : indexed_table_lock->pb.backfill_jobs()) {
+          // The job's single verification state covers the job's single index (YSQL never
+          // batches); the membership check keeps a stale job for another index from masking.
+          if (backfill_job.backfill_state().count(index_info_pb.table_id()) > 0 &&
+              backfill_job.has_unique_index_verification() &&
+              backfill_job.unique_index_verification().state() ==
+                  UniqueIndexVerificationStatePB::VERIFY_IN_PROGRESS) {
+            backfill_status = IndexStatusPB::BACKFILL_UNKNOWN;
+            break;
+          }
+        }
+      }
+
+      indexes_for_callback.emplace_back(index_info_pb.table_id(), backfill_status);
     }
   }
 
