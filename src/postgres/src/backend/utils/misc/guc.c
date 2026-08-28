@@ -4528,8 +4528,21 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_reorderbuffer_max_memory_kb", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Maximum reorder buffer memory in kilobytes before logical "
+						 "replication changes are streamed or spilled to disk."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_UNIT_KB
+		},
+		&yb_reorderbuffer_max_memory_kb,
+		4096, 64, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_reorderbuffer_max_changes_in_memory", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Maximum number of changes kept in memory per transaction "
+			gettext_noop("DEPRECATED: Use yb_reorderbuffer_max_memory_kb instead. "
+						 "Maximum number of changes kept in memory per transaction "
 						 "in reorder buffer, which is used in streaming changes via "
 						 "logical replication. After that, changes are spooled to disk."),
 			NULL,
