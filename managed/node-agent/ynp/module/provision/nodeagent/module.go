@@ -13,6 +13,7 @@ import (
 	"node-agent/ynp/yba"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -161,6 +162,46 @@ func (m *InstallNodeAgent) generateProviderUpdatePayload(
 	return provider
 }
 
+// parseMountPoints parses instance_type_mount_points from config (e.g. "['/mnt/d0', '/mnt/d1']").
+func parseMountPoints(mountPoints string) ([]string, error) {
+	mountPoints = strings.Trim(mountPoints, "[]")
+	mountPoints = strings.ReplaceAll(mountPoints, "'", "")
+	mountPoints = strings.ReplaceAll(mountPoints, "\"", "")
+	mps := strings.Split(mountPoints, ",")
+	j := 0
+	for i := range mps {
+		mp := strings.TrimSpace(mps[i])
+		if len(mp) == 0 {
+			continue
+		}
+		filePath := filepath.Clean(mp)
+		if filePath == "/" {
+			return nil, errors.New("Root mount point '/' is not allowed")
+		}
+		mps[j] = filePath
+		j++
+	}
+	mps = mps[:j]
+	if len(mps) == 0 {
+		return nil, errors.New("No mount points provided")
+	}
+	return mps, nil
+}
+
+func mountPathsFromInstanceType(instanceType *model.NodeInstanceType) []string {
+	var paths []string
+	for _, vd := range instanceType.Details.VolumeDetailsList {
+		for _, p := range strings.Split(vd.MountPath, ",") {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			paths = append(paths, filepath.Clean(p))
+		}
+	}
+	return paths
+}
+
 func (m *InstallNodeAgent) generateInstanceTypePayload(
 	values map[string]any,
 ) (*model.NodeInstanceType, error) {
@@ -174,25 +215,9 @@ func (m *InstallNodeAgent) generateInstanceTypePayload(
 			"instance_type_mount_points is required but not provided in configuration",
 		)
 	}
-	mountPoints = strings.Trim(mountPoints, "[]")
-	mountPoints = strings.ReplaceAll(mountPoints, "'", "")
-	mps := strings.Split(mountPoints, ", ")
-	j := 0
-	for i := range mps {
-		if len(mps[i]) == 0 {
-			// Skip empty mount points.
-			continue
-		}
-		filePath := filepath.Clean(mps[i])
-		if filePath == "/" {
-			return nil, errors.New("Root mount point '/' is not allowed")
-		}
-		mps[j] = filePath
-		j++
-	}
-	mps = mps[:j]
-	if len(mps) == 0 {
-		return nil, errors.New("No mount points provided")
+	mps, err := parseMountPoints(mountPoints)
+	if err != nil {
+		return nil, err
 	}
 	volumeDetails := []model.VolumeDetails{}
 	for _, mp := range mps {
@@ -252,7 +277,7 @@ func (m *InstallNodeAgent) createInstanceIfNotExists(
 	skipTlsVerify := config.GetBool(values, "skip_tls_verify", false)
 	customerUuid := values["customer_uuid"].(string)
 	instanceTypeName := values["instance_type_name"].(string)
-	_, err := yba.GetInstanceType(ctx,
+	instanceType, err := yba.GetInstanceType(ctx,
 		ybaUrl,
 		apiKey,
 		skipTlsVerify,
@@ -261,8 +286,8 @@ func (m *InstallNodeAgent) createInstanceIfNotExists(
 		instanceTypeName,
 	)
 	if err == nil {
-		// Instance type already exists, no need to create.
-		return nil
+		// Instance type already exists; config mounts must match YBA.
+		return m.verifyInstanceTypeMountPaths(ctx, values, instanceTypeName, instanceType)
 	}
 	if err == util.ErrNotExist {
 		util.ConsoleLogger().Info(ctx, "Instance type does not exist, creating it.")
@@ -358,6 +383,41 @@ func (m *InstallNodeAgent) checkIfNodeInstanceAlreadyExists(
 		}
 	}
 	return false, nil
+}
+
+// verifyInstanceTypeMountPaths ensures YAML mount points match an existing instance type
+// in YBA. Divergent mounts on reprovision can desync local disk layout from what YBA expects.
+func (m *InstallNodeAgent) verifyInstanceTypeMountPaths(
+	ctx context.Context,
+	values map[string]any,
+	instanceTypeCode string,
+	instanceType *model.NodeInstanceType,
+) error {
+	mountPoints, ok := values["instance_type_mount_points"].(string)
+	if !ok || mountPoints == "" {
+		return errors.New(
+			"Config instance_type_mount_points is required but not provided in configuration",
+		)
+	}
+	inputPaths, err := parseMountPoints(mountPoints)
+	if err != nil {
+		return err
+	}
+	existingPaths := mountPathsFromInstanceType(instanceType)
+	if !slices.Equal(inputPaths, existingPaths) {
+		util.FileLogger().Errorf(ctx,
+			"Mount paths differ from existing instance type: config=%v, instance type=%v",
+			inputPaths,
+			existingPaths,
+		)
+		return fmt.Errorf(
+			"Config mount paths %v do not match existing instance type %s mount paths %v",
+			inputPaths,
+			instanceTypeCode,
+			existingPaths,
+		)
+	}
+	return nil
 }
 
 func (m *InstallNodeAgent) cleanup(ctx context.Context, values map[string]any) {
