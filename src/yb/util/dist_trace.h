@@ -106,7 +106,6 @@ class ScopedAdoptSpan {
 
   explicit ScopedAdoptSpan(const TraceParent& parent) : ScopedAdoptSpan(parent.context()) {}
 
-
   ScopedAdoptSpan(const ScopedAdoptSpan&) = delete;
   ScopedAdoptSpan& operator=(const ScopedAdoptSpan&) = delete;
   ScopedAdoptSpan(ScopedAdoptSpan&&) = delete;
