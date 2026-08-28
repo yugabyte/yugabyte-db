@@ -462,10 +462,6 @@ class OutboundCall : public RpcCall {
   virtual size_t GetSidecarsCount() const;
   virtual size_t TransferSidecars(Sidecars* dest);
 
-  // Distributed-trace span for this call; LocalOutboundCall reads its context to parent the local
-  // inbound span.
-  const dist_trace::SpanWithScopePtr& otel_span() const { return otel_span_; }
-
   // ----------------------------------------------------------------------------------------------
   // Protected fields set in constructor or during initialization
   // ----------------------------------------------------------------------------------------------
@@ -610,7 +606,7 @@ class OutboundCall : public RpcCall {
 
   // OpenTelemetry span for this call, created at start (if a trace context is active) and ended at
   // completion.
-  dist_trace::SpanWithScopePtr otel_span_;
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span_;
 
   // The trace context active when this call was constructed -- its PARENT, re-activated around the
   // completion callback so follow-on RPCs nest as SIBLINGS of this call.
