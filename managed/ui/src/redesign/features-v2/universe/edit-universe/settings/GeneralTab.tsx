@@ -31,10 +31,10 @@ import {
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import { LinuxVersion } from '../components';
 import { MapRegionsView } from '../components/MapRegionView';
-import { MapGeoPartitionView } from '../components/MapGeoPartitionView';
+import { useYBToast } from '../../create-universe/helpers/ToastUtils';
+import { PROVIDER_TYPES } from '@app/config';
 import { Star } from '@material-ui/icons';
 import CopyIcon from '../../../../assets/copy_blue.svg';
-import { useYBToast } from '../../create-universe/helpers/ToastUtils';
 
 const { Box, styled, Typography, Grid2, Divider, MenuItem } = mui;
 
@@ -105,6 +105,7 @@ export const GeneralTab = () => {
   const readReplicaCluster = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
 
   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
+  const providerName = PROVIDER_TYPES.find((provider) => provider.code === providerCode)?.name;
   const providerIcon = getProviderIcon(providerCode);
 
   let totalNodesCount = 0;
@@ -188,7 +189,7 @@ export const GeneralTab = () => {
               <span className="value">
                 <Grid2 container alignItems="center" gap={0.5}>
                   {providerIcon}
-                  {toUpper(providerCode ?? '')}
+                  {providerName ?? ''}
                 </Grid2>
               </span>
             </div>

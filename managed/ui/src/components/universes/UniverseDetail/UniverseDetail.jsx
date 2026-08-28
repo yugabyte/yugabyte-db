@@ -745,12 +745,13 @@ class UniverseDetail extends Component {
       : isReadReplicaAsymmetricBlocked
         ? ASYMMETRIC_CLUSTER_EDIT_REASON
         : '';
+    const hasReadReplica = this.hasReadReplica(universeInfo);
     const isReadReplicaDisabled =
       isUniverseStatusPending ||
       isReadReplicaAsymmetricBlocked ||
       isActionFrozen(
         allowedTasks,
-        this.hasReadReplica(universeInfo) ? UNIVERSE_TASKS.EDIT_RR : UNIVERSE_TASKS.ADD_RR
+        hasReadReplica ? UNIVERSE_TASKS.EDIT_RR : UNIVERSE_TASKS.ADD_RR
       ) ||
       isK8ActionsDisabled;
     const isSampleAppsDisabled = isUniverseStatusPending && !backupRestoreInProgress;
@@ -1482,12 +1483,14 @@ class UniverseDetail extends Component {
                     </RbacValidator>
                   )}
 
-                  {!isReadOnlyUniverse && !universePaused && (
+                  {!isReadOnlyUniverse &&
+                    !universePaused &&
+                    !(isV2EditUniverseUIEnabled && hasReadReplica) && (
                     <RbacValidator
                       isControl
                       accessRequiredOn={{
                         onResource: uuid,
-                        ...(this.hasReadReplica(universeInfo)
+                        ...(hasReadReplica
                           ? ApiPermissionMap.GET_UNIVERSES_BY_ID
                           : ApiPermissionMap.CREATE_READ_REPLICA)
                       }}
@@ -1497,12 +1500,11 @@ class UniverseDetail extends Component {
                         <YBMenuItem
                           disabled={isReadReplicaDisabled}
                           to={
-                            isV2EditUniverseUIEnabled ? getAddReadReplicaRoute(uuid) : 
-                            this.isNewUIEnabled()
-                              ? `/universes/${uuid}/${
-                                  this.hasReadReplica(universeInfo) ? 'edit' : 'create'
-                                }/async`
-                              : `/universes/${uuid}/edit/async`
+                            isV2EditUniverseUIEnabled
+                              ? getAddReadReplicaRoute(uuid)
+                              : this.isNewUIEnabled()
+                                ? `/universes/${uuid}/${hasReadReplica ? 'edit' : 'create'}/async`
+                                : `/universes/${uuid}/edit/async`
                           }
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -1510,7 +1512,7 @@ class UniverseDetail extends Component {
                           )}
                         >
                           <YBLabelWithIcon icon="fa fa-copy fa-fw">
-                            {this.hasReadReplica(universeInfo) ? 'Edit' : 'Add'} Read Replica
+                            {hasReadReplica ? 'Edit' : 'Add'} Read Replica
                           </YBLabelWithIcon>
                         </YBMenuItem>
                       )}

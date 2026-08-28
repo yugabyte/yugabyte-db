@@ -19,6 +19,7 @@ import {
   AZURE_CLOUD_OPTION,
   GCP_CLOUD_OPTION,
   K8S_CLOUD_OPTION,
+  OCI_CLOUD_OPTION,
   ON_PREM_CLOUD_OPTION
 } from '@yugabyte-ui-library/core';
 import { EditUniverseContext } from './EditUniverseContext';
@@ -53,6 +54,8 @@ export const getProviderIcon = (providerCode?: string) => {
       return ON_PREM_CLOUD_OPTION.icon;
     case CloudType.kubernetes:
       return K8S_CLOUD_OPTION.icon;
+    case CloudType.oci:
+      return OCI_CLOUD_OPTION.icon;
     default:
       return null;
   }
