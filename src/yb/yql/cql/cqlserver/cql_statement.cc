@@ -49,8 +49,10 @@ constexpr int kYbHdrBucketFactor = 16;
 // Shared, immutable configuration derived once for all YCQL statement histograms.
 struct HdrConfig {
   hdr_histogram_bucket_config cfg;
-  int64_t max_value;   // Latencies at or above this (in resolution units) go to the overflow bucket.
-  size_t alloc_size;   // Bytes to allocate for a histogram (struct + inline counts array).
+  // Latencies at or above this (in resolution units) go to the overflow bucket.
+  int64_t max_value;
+  // Bytes to allocate for a histogram (struct + inline counts array).
+  size_t alloc_size;
 };
 
 const HdrConfig& GetHdrConfig() {
