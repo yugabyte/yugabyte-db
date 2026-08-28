@@ -453,6 +453,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   struct UpdateReplicaResult {
     OpId wait_for_op_id;
 
+    // The request carried no ops, so the wait is bounded tighter. See Update().
+    bool empty_request = false;
+
     // Start an election after the writes are committed?
     bool start_election = false;
 
@@ -697,7 +700,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Wait until the operation with op id equal to wait_for_op_id is flushed in the WAL.
   // If term was changed during wait from the specified one - exit with error.
-  Status WaitForWrites(int64_t term, const OpId& wait_for_op_id);
+  // If the op is still not flushed when the deadline expires - exit with TimedOut.
+  Status WaitForWrites(int64_t term, const OpId& wait_for_op_id, CoarseTimePoint deadline);
 
   // See comment for ReplicaState::CancelPendingOperation
   void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg, bool should_exists);
