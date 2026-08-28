@@ -208,7 +208,7 @@ Status MultiStepMonitoredTask::RunInternal() {
 
   RETURN_NOT_OK(ValidateRunnable());
 
-  auto parent_scope = trace_parent_.Activate();
+  dist_trace::ScopedAdoptSpan parent_scope(trace_parent_);
   return step();
 }
 

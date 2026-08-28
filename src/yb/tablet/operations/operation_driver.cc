@@ -409,7 +409,7 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
 
   // Re-activate the submitting thread's trace on this apply thread so RPCs the operation issues
   // during apply (e.g. APPLYING/APPLIED UpdateTransaction RPCs) nest under it.
-  auto otel_scope = otel_parent_.Activate();
+  dist_trace::ScopedAdoptSpan otel_scope(otel_parent_);
 
 #ifndef NDEBUG
   {

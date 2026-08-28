@@ -158,7 +158,7 @@ void Strand::Task::Done(const Status& status) {
 
       auto running = active_enqueues_.load(std::memory_order_acquire) < Strand::kStopMark;
       const auto& actual_status = running ? status : StrandAbortedStatus();
-      auto parent_scope = dist_trace::ActivateParentScope(task->trace_parent());
+      dist_trace::ScopedAdoptSpan parent_scope(task->trace_parent());
       if (actual_status.ok()) {
         task->Run();
       }
