@@ -189,8 +189,10 @@ SELECT id, k1, k2, k3, length(v) FROM t1m t ORDER BY id;
 -- Should choose PARALLEL index only scan
 --
 
+-- An expensive skip scan on the 3rd key column makes this parallel-worthy, but
+-- the matching row count must stay moderate to keep the gather cost low.
 EXPLAIN (COSTS off, SUMMARY off)
-SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(900/2 - 1) AND 5000+(900/2);
+SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(400/2 - 1) AND 5000+(400/2);
 
 
 --
