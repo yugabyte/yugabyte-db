@@ -767,6 +767,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Status CheckColocationPacking(
       ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
+  // Apply path: a table tombstone was written for this table. Forward to DocReadContext so the
+  // colocated tombstone-time cache is invalidated (watermark/generation advanced, cache cleared).
+  void NotifyTableTombstoneWritten(ColocationId colocation_id, HybridTime write_ht) override;
+  void NotifyTableTombstoneWritten(const Uuid& cotable_id, HybridTime write_ht) override;
+
+  // Arm colocated tombstone-time caches with the tablet SafeTime (serve-ready / live rebuild).
+  // Unarmed contexts default to watermark kMax (cache off). Arming enables the cache for
+  // read_ht >= safe_time; any truncate applied before serving satisfies T <= safe_time.
+  void ArmColocatedTombstoneCaches(HybridTime safe_time);
+
   std::unordered_set<StatefulServiceKind> GetHostedServiceList() const;
 
   Result<std::string> FilePath() const;

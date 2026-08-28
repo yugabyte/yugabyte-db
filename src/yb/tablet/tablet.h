@@ -1130,6 +1130,13 @@ class Tablet : public AbstractTablet,
 
   void DocDBDebugDump(std::vector<std::string>* lines);
 
+  // Enable the colocated table-tombstone caches of this tablet's DocReadContexts, which are
+  // constructed unarmed (watermark kMax, cache off). Call after any path that builds new contexts.
+  // Skipping it only costs the optimization for those fresh contexts - never correctness. That
+  // does not describe RestoreCheckpoint, which can leave an already-armed warm cache over swapped
+  // RocksDB data (separate follow-up: unarm/re-arm at end of restore).
+  void ArmColocatedTombstoneCaches();
+
   Status WriteTransactionalBatch(
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,

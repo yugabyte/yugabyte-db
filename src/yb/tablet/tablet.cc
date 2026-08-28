@@ -1689,6 +1689,9 @@ void Tablet::Start() {
     transaction_participant_->Start();
   }
 
+  // A read racing ahead of this still skips the cache and does not fill it.
+  ArmColocatedTombstoneCaches();
+
   // Launch vector index backfill only now, after the tablet has been published by its TabletPeer.
   // The backfill resolves transaction statuses of provisional records, which reads the tablet's
   // safe time; running it during bootstrap (before TabletPeer::tablet_ is assigned) would race with
@@ -2139,6 +2142,10 @@ Status Tablet::ApplyKeyValueRowOperations(
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
     WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
+    // External-intent table tombstones: second notify after the memtable publish so a concurrent
+    // IntentAwareIterator miss cannot re-cache "no tombstone" under the raised watermark
+    // (see NonTransactionalBatchWriter::FlushPendingTableTombstoneNotifies).
+    batcher.FlushPendingTableTombstoneNotifies();
 
     if (!vector_indexes_->has_vector_deletion() &&
         frontiers.Largest().has_vector_deletion()) {
@@ -3121,6 +3128,33 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
     schedule_tablet_metadata_validation_(*metadata_);
   }
 
+  // New colocated DocReadContext is constructed unarmed (watermark kMax). Arm with the create HT.
+  //
+  // Arming here is safe against the colocation-id reuse case (DROP then CREATE with the same id),
+  // where the DROP's tombstone lands at its commit hybrid time via an APPLYING op that raft may
+  // order either side of this ADD_TABLE. Note that gives no ordering between the create HT and the
+  // tombstone HT, so the two cases are covered differently:
+  //   - tombstone applies after this: its notify resolves GetTableInfo(colocation_id) through the
+  //     colocation_to_table entry this op just repointed, so it raises *this* context's watermark.
+  //   - tombstone applied before this: its commit hybrid time was already known when this op's ht
+  //     was assigned, so hybrid-clock propagation puts ht above it.
+  // PgMiniTest.TestNoStaleDataOnColocationIdReuse covers the applies-after leg.
+  //
+  // A replayed ADD_TABLE re-arms an already-armed context and bumps the generation, dropping a warm
+  // cache. Perf only.
+  if (table_info_ptr->doc_read_context && table_info_ptr->schema().has_colocation_id()) {
+    HybridTime arm_ht = ht;
+    if (!arm_ht.is_valid() || arm_ht == HybridTime::kMax) {
+      auto safe_time = SafeTime(RequireLease::kFalse);
+      if (safe_time.ok()) {
+        arm_ht = *safe_time;
+      }
+    }
+    if (arm_ht.is_valid() && arm_ht != HybridTime::kMax) {
+      table_info_ptr->doc_read_context->AdvanceTombstoneCacheWatermark(arm_ht);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -3254,7 +3288,18 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
   }
 
   // Flush the updated schema metadata to disk.
-  return metadata_->Flush();
+  RETURN_NOT_OK(metadata_->Flush());
+
+  // SetSchema built new DocReadContexts, which start unarmed.
+  ArmColocatedTombstoneCaches();
+  return Status::OK();
+}
+
+void Tablet::ArmColocatedTombstoneCaches() {
+  auto safe_time = SafeTime(RequireLease::kFalse);
+  if (safe_time.ok() && safe_time->is_valid()) {
+    metadata_->ArmColocatedTombstoneCaches(*safe_time);
+  }
 }
 
 Status Tablet::InsertPackedSchemaForXClusterTarget(
@@ -3266,7 +3311,13 @@ Status Tablet::InsertPackedSchemaForXClusterTarget(
       current_table_info->table_id);
 
   // Flush the updated schema metadata to disk.
-  return metadata_->Flush();
+  RETURN_NOT_OK(metadata_->Flush());
+
+  // This is an AlterSchema early return, so it misses the arm at the end of AlterSchema. The two
+  // TableInfos built above (version-1 and version) carry fresh unarmed DocReadContexts and
+  // colocation_to_table now points at them, so without this the cache stays off until restart.
+  ArmColocatedTombstoneCaches();
+  return Status::OK();
 }
 
 Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
