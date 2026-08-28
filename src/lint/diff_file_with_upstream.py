@@ -115,7 +115,7 @@ def main(filepath, *diff_options):
         print(f"{type(e).__name__}: {e}")
         raise
 
-    p = subprocess.Popen(["diff", filepath, "-"],
+    p = subprocess.Popen(["diff", filepath, "-"] + list(diff_options),
                          stdin=subprocess.PIPE,
                          stdout=subprocess.PIPE)
     p.communicate(req.read())
