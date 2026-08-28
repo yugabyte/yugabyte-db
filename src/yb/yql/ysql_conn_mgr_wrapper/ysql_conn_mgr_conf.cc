@@ -170,7 +170,6 @@ void YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>* ysql_conn
 void YsqlConnMgrConf::UpdateLogSettings(const std::string& log_settings_str) {
   /* Set all to false initially to handle removal of flag at runtime */
   log_debug_ = false;
-  log_config_ = false;
   log_session_ = false;
   log_query_ = false;
   log_stats_ = false;
@@ -183,8 +182,6 @@ void YsqlConnMgrConf::UpdateLogSettings(const std::string& log_settings_str) {
     if (!setting.empty()) {
       if (setting == "log_debug") {
         log_debug_ = true;
-      } else if (setting == "log_config") {
-        log_config_ = true;
       } else if (setting == "log_session") {
         log_session_ = true;
       } else if (setting == "log_query") {
@@ -221,7 +218,6 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
      std::to_string(FLAGS_ysql_conn_mgr_max_client_connections)},
     {"{%ysql_port%}", std::to_string(postgres_address_.port())},
     {"{%log_debug%}", BoolToString(log_debug_)},
-    {"{%log_config%}", BoolToString(log_config_)},
     {"{%log_session%}", BoolToString(log_session_)},
     {"{%log_query%}", BoolToString(log_query_)},
     {"{%log_stats%}", BoolToString(log_stats_)},
