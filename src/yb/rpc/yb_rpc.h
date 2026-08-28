@@ -206,12 +206,8 @@ class YBInboundCall : public InboundCall {
   void CreateServerSpan(
       std::optional<opentelemetry::trace::SpanContext> traceparent = std::nullopt);
 
-  // Releases the server span's thread-local scope on the handler thread once synchronous handling
-  // is done. The span itself ends later (RespondSuccess/Failure), possibly on another thread.
-  void DropServerSpanScope() {
-    if (span_) {
-      span_->DropScope();
-    }
+  const opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>& server_span() const {
+    return span_;
   }
 
   size_t ObjectSize() const override { return sizeof(*this); }
@@ -249,8 +245,8 @@ class YBInboundCall : public InboundCall {
   // Parent span context parsed from the inbound trace_context header field, if present.
   std::optional<opentelemetry::trace::SpanContext> parent_span_context_;
 
-  // Server-side distributed-trace span (with activated scope) for this call.
-  dist_trace::SpanWithScopePtr span_;
+  // Server-side distributed-trace span for this call.
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> span_;
 
   // The buffers for serialized response. Set by SerializeResponseBuffer().
   RefCntBuffer response_buf_;
