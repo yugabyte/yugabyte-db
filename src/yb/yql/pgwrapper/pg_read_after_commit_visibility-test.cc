@@ -47,6 +47,7 @@ DECLARE_string(time_source);
 DECLARE_int32(replication_factor);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_uint64(ysql_lease_refresher_interval_ms);
@@ -584,6 +585,8 @@ class PgReadAfterCommitVisibilityDdlTest
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = transactional_ddl;
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = transactional_ddl;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = transactional_ddl;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = transactional_ddl;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_serializable_isolation_for_ddl_txn) =

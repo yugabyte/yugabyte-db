@@ -27,6 +27,8 @@ public class TestPgRegressDDLIsolationNoTxnDDLNoObjectLocking extends BasePgRegr
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    // DDL savepoint requires transactional DDL to be enabled.
+    flagMap.put("ysql_yb_enable_ddl_savepoint_support", "false");
     flagMap.put("enable_object_locking_for_table_locks", "false");
     flagMap.put("ysql_enable_concurrent_ddl", "false");
     flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
@@ -41,6 +43,8 @@ public class TestPgRegressDDLIsolationNoTxnDDLNoObjectLocking extends BasePgRegr
     // locking must be disabled on the master too (not just on tservers). Otherwise the check is
     // short-circuited on the master and the guard never engages.
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    // DDL savepoint requires transactional DDL to be enabled.
+    flagMap.put("ysql_yb_enable_ddl_savepoint_support", "false");
     flagMap.put("enable_object_locking_for_table_locks", "false");
     flagMap.put("ysql_enable_concurrent_ddl", "false");
     flagMap.put("ysql_suppress_unsafe_alter_notice", "true");

@@ -98,6 +98,9 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
         Format("--enable_object_locking_for_table_locks=$0", enable_table_locks));
     options->extra_tserver_flags.push_back(
         Format("--ysql_yb_ddl_transaction_block_enabled=$0", enable_table_locks));
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_yb_enable_ddl_savepoint_support=$0", enable_table_locks));
     // Concurrent DDL requires object locking, so when object locking is disabled, disable
     // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
     // on. When object locking is enabled, leave concurrent DDL at its default.

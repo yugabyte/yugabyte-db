@@ -497,6 +497,7 @@ class PgBackendsTestPgTimeout : public PgBackendsTest {
           // isn't the case with object locking enabled. Hence disable it.
           "--enable_object_locking_for_table_locks=false",
           "--ysql_yb_ddl_transaction_block_enabled=false",
+          "--ysql_yb_enable_ddl_savepoint_support=false",
           "--allowed_preview_flags_csv=ysql_enable_concurrent_ddl",
           "--ysql_enable_concurrent_ddl=false"
         });

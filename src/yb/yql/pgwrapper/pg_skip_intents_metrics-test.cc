@@ -1082,8 +1082,12 @@ class SkipIntentsSafetyTest : public SkipIntentsMetricTest {
         "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
     options->extra_tserver_flags.emplace_back(
         "--ysql_yb_enable_ddl_savepoint_support=true");
-    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
-                       "ysql_yb_enable_ddl_savepoint_support");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_master_flags.emplace_back(
+        "--ysql_yb_enable_ddl_savepoint_support=true");
+    options->extra_master_flags.emplace_back(
+        "--ysql_yb_ddl_transaction_block_enabled=true");
   }
 };
 

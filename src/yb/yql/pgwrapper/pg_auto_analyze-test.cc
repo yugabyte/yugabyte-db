@@ -1792,11 +1792,9 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
 
     // The test is specifically written for cases when txn ddl is disabled.
     // For the enabled case, see PgConcurrentDDLAnalyzeTestTxnDDL below.
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils*=1";
   }
@@ -2001,10 +1999,6 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
 class PgConcurrentDDLAnalyzeTestTxnDDL : public PgConcurrentDDLAnalyzeTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
     options->extra_master_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
     PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);

@@ -186,7 +186,7 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_savepoint_infra, kLocalPersisted
     "Auto flag that controls whether DDL savepoint support can be safely enabled "
     "during upgrade. Both this flag and ysql_yb_enable_ddl_savepoint_support "
     "must be true to enable the feature.");
-DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_ddl_savepoint_support, false,
+DEFINE_NON_RUNTIME_bool(ysql_yb_enable_ddl_savepoint_support, kEnableDdlTransactionBlocks,
     "If true, support for savepoints for DDL statements within a transaction block will be "
     "enabled. This flag only takes effect if ysql_yb_ddl_transaction_block_enabled is set to "
     "true.");
