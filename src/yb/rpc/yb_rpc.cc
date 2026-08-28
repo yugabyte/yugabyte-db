@@ -345,7 +345,7 @@ void YBInboundCall::CreateServerSpan(std::optional<opentelemetry::trace::SpanCon
     return;
   }
   auto span_name = Format("rpc $0.$1", parsed_method->service, parsed_method->method);
-  span_ = dist_trace::StartServerSpanWithScope(span_name, *parent_context);
+  span_ = dist_trace::StartServerSpan(span_name, *parent_context);
   if (span_) {
     span_->SetAttribute("rpc.system", "yb_rpc");
     span_->SetAttribute("rpc.call_id", header_.call_id);

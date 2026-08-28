@@ -21,6 +21,8 @@
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/yb_rpc.h"
 
+#include "yb/util/dist_trace.h"
+
 namespace yb {
 namespace rpc {
 
@@ -51,8 +53,7 @@ class LocalOutboundCall : public OutboundCall {
   }
 
   // Span context of this outbound call's trace span, to parent the matching local inbound span
-  // (local calls carry no wire header). nullopt when tracing is off. Safe after the scope is
-  // dropped.
+  // (local calls carry no wire header). nullopt when tracing is off.
   std::optional<opentelemetry::trace::SpanContext> otel_span_context() const {
     if (otel_span_) {
       return otel_span_->GetContext();
@@ -134,6 +135,9 @@ auto HandleCall(InboundCallPtr call, F f) {
     auto* resp = yb::down_cast<typename Params::ResponseType*>(
         Params::CastMessage(outbound_call->response()));
     RpcContext rpc_context(std::move(local_call));
+    // Current only for the synchronous part of the handler; the span itself lives on the call and
+    // ends at respond time, possibly on another thread.
+    dist_trace::ScopedAdoptSpan span_scope(yb_call->server_span());
     f(req, resp, std::move(rpc_context));
   } else {
     auto params = std::make_shared<Params>();
@@ -141,10 +145,10 @@ auto HandleCall(InboundCallPtr call, F f) {
     auto* resp = &params->response();
     RpcContext rpc_context(yb_call, std::move(params));
     if (!rpc_context.responded()) {
+      dist_trace::ScopedAdoptSpan span_scope(yb_call->server_span());
       f(req, resp, std::move(rpc_context));
     }
   }
-  yb_call->DropServerSpanScope();
 }
 
 class LocalYBInboundCallTracker : public InboundCall::CallProcessedListener {
