@@ -2662,17 +2662,16 @@ class PgClientSession::Impl {
         ? TrackSharedMemoryPgMethodExecution<T>(wait_state, query.ash_metadata())
         : std::nullopt;
     // Start the inbound span for this shared memory request, as a child of the propagated context.
-    dist_trace::SpanWithScopePtr trace_scope;
+    opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> trace_span;
     const auto& trace_context = query.trace_context();
     if (dist_trace::IsDistTraceEnabled() && trace_context && trace_context->has_span_id()) {
       auto parent_context = rpc::ToSpanContext(*trace_context);
       if (parent_context.ok()) {
-        trace_scope = dist_trace::StartServerSpanWithScope(
-            SharedMemHandlerSpanName<T>(), *parent_context);
-        if (trace_scope) {
+        trace_span = dist_trace::StartServerSpan(SharedMemHandlerSpanName<T>(), *parent_context);
+        if (trace_span) {
           // Mirror the attributes the RPC inbound span carries (yb_rpc.cc), minus the ones with no
           // shared-memory analog (rpc.call_id).
-          trace_scope->SetAttribute("rpc.system", "yb_shmem");
+          trace_span->SetAttribute("rpc.system", "yb_shmem");
         }
       }
     }
@@ -2683,13 +2682,15 @@ class PgClientSession::Impl {
       return Status::OK();
     }
 
+    dist_trace::ScopedAdoptSpan trace_scope(trace_span);
     const auto status = DoHandleSharedExchangeQuery(precondition_waiter, std::move(data), deadline);
-    if (trace_scope) {
+    if (trace_span) {
       if (status.ok()) {
-        trace_scope->SetStatus(opentelemetry::trace::StatusCode::kOk);
+        trace_span->SetStatus(opentelemetry::trace::StatusCode::kOk);
       } else {
-        trace_scope->SetStatus(opentelemetry::trace::StatusCode::kError, status.ToUserMessage());
+        trace_span->SetStatus(opentelemetry::trace::StatusCode::kError, status.ToUserMessage());
       }
+      trace_span->End();
     }
     return status;
   }
