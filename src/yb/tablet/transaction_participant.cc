@@ -1423,6 +1423,9 @@ class TransactionParticipant::Impl
 
   Status ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline) {
     RETURN_NOT_OK(WaitUntil(participant_context_.clock_ptr().get(), resolve_at, deadline));
+    // A transaction still being loaded from the intents DB is not in transactions_ yet and would
+    // be missed by the status sweep below.
+    RETURN_NOT_OK(loader_.WaitAllLoaded());
 
     if (FLAGS_max_transactions_in_status_request == 0) {
       return STATUS(
@@ -1537,6 +1540,35 @@ class TransactionParticipant::Impl
               10ms * std::min<size_t>(10, committed_ids.size()), deadline - now));
         }
       }
+    }
+
+    // A local commit time does not mean applied: a transaction with more than
+    // txn_max_apply_batch_records intents applies in batches from the apply task, and until the
+    // last batch lands its remaining records exist only in the intents DB. Callers go on to read
+    // the regular DB, so wait for those applies to finish as well (the task clears
+    // ProcessingApply() and removes the transaction when done).
+    for (;;) {
+      RETURN_NOT_OK(CheckClosing());
+      size_t applying = 0;
+      {
+        std::lock_guard lock(mutex_);
+        for (const auto& transaction : transactions_) {
+          const auto commit_time = transaction->local_commit_time();
+          if (commit_time.is_valid() && commit_time <= resolve_at &&
+              transaction->ProcessingApply()) {
+            ++applying;
+          }
+        }
+      }
+      if (applying == 0) {
+        break;
+      }
+      const auto now = CoarseMonoClock::Now();
+      if (now >= deadline) {
+        return STATUS(TimedOut, "Timed out waiting for committed transactions to finish applying");
+      }
+      std::this_thread::sleep_for(std::min<CoarseMonoClock::Duration>(
+          10ms * std::min<size_t>(10, applying), deadline - now));
     }
 
     return Status::OK();
