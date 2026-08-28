@@ -104,7 +104,8 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kXClusterTableSetup)
   (kXClusterFailover)
   (kXClusterWalAnchorDeletion)
-  (kUpdateIndexBackfillOrderingGeneration));
+  (kUpdateIndexBackfillOrderingGeneration)
+  (kVerifyUniqueIndexTablet));
 
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:

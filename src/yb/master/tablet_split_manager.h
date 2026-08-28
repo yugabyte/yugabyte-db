@@ -61,8 +61,15 @@ class TabletSplitManager {
 
   // Table-level checks for splitting that are checked not only as a best-effort
   // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.
+  //
+  // indexed_table: when `table` is an index, the resolved TableInfo of its indexed table
+  // (nullptr when not an index or when the indexed table is gone). Resolved by the caller
+  // because callers differ in catalog-mutex state -- this function is reachable from
+  // CatalogManager::ValidateSplitCandidateUnlocked with the catalog mutex already held, so it
+  // must not call locking CatalogManager accessors itself.
   Status ValidateSplitCandidateTable(
       const TableInfoPtr& table,
+      const TableInfoPtr& indexed_table,
       IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse,
       IgnoreVectorIndexesValidation ignore_vector_indexes_validation =
           IgnoreVectorIndexesValidation::kFalse);
