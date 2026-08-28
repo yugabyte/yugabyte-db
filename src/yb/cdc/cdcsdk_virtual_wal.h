@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <optional>
 #include <queue>
 #include <unordered_set>
 
@@ -225,6 +226,16 @@ class CDCSDKVirtualWAL {
 
   bool IsCatalogTableEligibleForCDC(const TableId& table_id) const;
 
+  bool IsDmlOnPgCatalogTableForDetectingDDL(
+      const std::shared_ptr<CDCSDKProtoRecordPB>& record) const;
+
+  Result<std::optional<uint32_t>> GetPublishedTableOidFromPgCatalogRecord(
+      const std::shared_ptr<CDCSDKProtoRecordPB>& record) const;
+
+  Status AddSyntheticDDLRecordFromCatalogDML(
+      const std::shared_ptr<CDCSDKProtoRecordPB>& record, GetConsistentChangesResponsePB* resp,
+      GetConsistentChangesRespMetadata* metadata, uint64_t* resp_records_size);
+
   bool ShouldPopulateExplicitCheckpoint();
 
   bool CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record);
@@ -366,6 +377,10 @@ class CDCSDKVirtualWAL {
   // The table ID of pg_class catalog table for the database on which virtual WAL is polling.
   TableId pg_class_table_id_;
 
+  // The table ID of pg_attribute catalog table for the database on which virtual WAL is polling.
+  // Only populated when TEST_ysql_yb_enable_replication_slot_transactional_ddl is enabled.
+  TableId pg_attribute_table_id_;
+
   // The table ID of pg_publication_rel catalog table for the database on which virtual WAL is
   // polling.
   TableId pg_publication_rel_table_id_;
@@ -375,6 +390,9 @@ class CDCSDKVirtualWAL {
 
   // The table ID of pg_publication catalog table for the database on which virtual WAL is polling.
   TableId pg_publication_table_id_;
+
+  // The PG database OID for the namespace on which this virtual WAL is polling.
+  uint32_t pg_database_oid_ = 0;
 
   // The list of publication OIDs that are being polled by the virtual WAL.
   std::unordered_set<uint32_t> publications_list_;

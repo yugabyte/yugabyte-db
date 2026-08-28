@@ -172,6 +172,8 @@ DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
 DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb {
 
@@ -563,7 +565,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint64_t session_id = kVWALSessionId1,
       const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr,
       bool include_oid_to_relfilenode = false,
-      int timeout = kRpcTimeout);
+      int timeout = kRpcTimeout,
+      const std::vector<uint32_t>& publication_oids = {},
+      bool pub_all_tables = false);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
