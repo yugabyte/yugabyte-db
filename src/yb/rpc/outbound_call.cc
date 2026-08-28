@@ -279,15 +279,12 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
 
   // Guarded so that with tracing off the span name below is never formatted.
   if (dist_trace::HasActiveContext()) {
-    // Save this call's traceparent before StartClientSpanWithScope makes otel_span_ current.
-    // InvokeCallbackSync restores it around the callback so follow-on work nests as a sibling.
     trace_parent_ = dist_trace::GetActiveSpanContext();
 
-    otel_span_ = dist_trace::StartClientSpanWithScope(Format("rpc $0", remote_method_.ToString()));
+    otel_span_ = dist_trace::StartClientSpan(Format("rpc $0", remote_method_.ToString()));
     if (otel_span_) {
       otel_span_->SetAttribute("rpc.system", "yb_rpc");
       otel_span_->SetAttribute("rpc.call_id", call_id_);
-      otel_span_->DropScope();
     }
   }
 }
@@ -494,8 +491,7 @@ bool OutboundCall::SetState(State new_state, const Status& status) {
     }
     if (state_.compare_exchange_weak(old_state, new_state, std::memory_order_acq_rel)) {
       if (otel_span_ && FinishedState(new_state)) {
-        DCHECK(otel_span_->span);
-        SetSpanStatus(*otel_span_->span, new_state, status);
+        SetSpanStatus(*otel_span_, new_state, status);
         otel_span_->End();
       }
       return true;
@@ -566,10 +562,9 @@ void OutboundCall::InvokeCallbackSync(std::optional<CoarseTimePoint> now_optiona
 
   int64_t start_cycles = CycleClock::Now();
   // Re-activate the call's parent context so RPCs the callback issues nest as siblings, not
-  // parentless roots. No-op when trace_parent_ is invalid; parent_scope drops at block end so it
-  // can't leak.
+  // parentless roots.
   {
-    auto parent_scope = dist_trace::ActivateParentScope(trace_parent_);
+    dist_trace::ScopedAdoptSpan parent_scope(trace_parent_);
     callback_();
   }
   // Clear the callback, since it may be holding onto reference counts
