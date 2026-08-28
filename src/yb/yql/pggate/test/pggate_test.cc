@@ -86,7 +86,8 @@ uint16_t GetSessionReplicationOriginId() {
   return 0;
 }
 
-void CheckForInterruptsNoOp() {
+bool HasProcessableAbortInterruptNoOp() {
+  return false;
 }
 
 YbcReadPointHandle GetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists) {
@@ -184,7 +185,7 @@ Status PggateTest::Init(
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
   callbacks.GetSessionReplicationOriginId = &GetSessionReplicationOriginId;
-  callbacks.CheckForInterrupts = &CheckForInterruptsNoOp;
+  callbacks.HasProcessableAbortInterrupt = &HasProcessableAbortInterruptNoOp;
   callbacks.GetCatalogSnapshotReadPoint = &GetCatalogSnapshotReadPoint;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =

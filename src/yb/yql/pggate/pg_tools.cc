@@ -22,14 +22,17 @@
 #include <boost/functional/hash/hash.hpp>
 
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/pgsql_error.h"
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_type.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -131,6 +134,15 @@ const std::string ToString(const YbcObjectLockId& lock_id) {
 const std::string ToString(const YbcAdvisoryLockId& lock_id) {
   return Format("advisory lock { db_oid: $0, classid: $1, object_oid: $2, object_sub_oid: $3 } ",
                 lock_id.database_id, lock_id.classid, lock_id.objid, lock_id.objsubid);
+}
+
+Status CheckForPgInterrupts() {
+  if (!YBCHasProcessableAbortInterrupt()) [[likely]] {
+    return Status::OK();
+  }
+  return STATUS_EC_FORMAT(
+      Aborted, PgsqlError{YBPgErrorCode::YB_PG_QUERY_CANCELED},
+      "Canceled due to pending postgres interrupt");
 }
 
 } // namespace yb::pggate

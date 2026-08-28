@@ -185,4 +185,6 @@ const std::string ToString(const YbcObjectLockId& lock_id);
 
 using TablespaceMap = std::unordered_map<PgObjectId, PgOid, PgObjectIdHash>;
 
+Status CheckForPgInterrupts();
+
 } // namespace yb::pggate

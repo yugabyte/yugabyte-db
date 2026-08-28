@@ -54,8 +54,6 @@
 #include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb::pggate {
 
@@ -124,7 +122,7 @@ class ExchangeFuture {
 template <class Data>
 class ResultFuture {
  public:
-  using Result = typename ResultTypeResolver<Data>::ResultType;
+  using ResultTp = typename ResultTypeResolver<Data>::ResultType;
 
   template <class... Args>
   ResultFuture(Args&&... args) : variant_(std::forward<Args>(args)...) {} // NOLINT
@@ -149,16 +147,14 @@ class ResultFuture {
     return std::visit([](const auto& future) { return future.valid(); }, variant_);
   }
 
-  Result Get() {
+  Result<ResultTp> Get() {
     const auto& result = std::visit([](auto& future) { return future.get(); }, variant_);
-
-    // Check for interrupts are waiting on async RPC.
-    YBCCheckForInterrupts();
+    RETURN_NOT_OK(CheckForPgInterrupts());
     return result;
   }
 
  private:
-  using SimpleFuture = std::future<Result>;
+  using SimpleFuture = std::future<ResultTp>;
   std::variant<SimpleFuture, ExchangeFuture<Data>> variant_;
 };
 

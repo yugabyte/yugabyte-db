@@ -397,8 +397,7 @@ typedef struct {
   YbcReadPointHandle (*GetCatalogSnapshotReadPoint)(YbcPgOid table_oid, bool create_if_not_exists);
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
-  /* CHECK_FOR_INTERRUPTS */
-  void (*CheckForInterrupts)();
+  bool (*HasProcessableAbortInterrupt)();
 } YbcPgCallbacks;
 
 typedef struct {

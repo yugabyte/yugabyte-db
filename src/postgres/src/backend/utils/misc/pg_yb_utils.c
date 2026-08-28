@@ -1172,7 +1172,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.CheckUserMap = &check_usermap,
 			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
 			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId,
-			.CheckForInterrupts = &YBCheckForInterrupts,
+			.HasProcessableAbortInterrupt = &YBHasProcessableAbortInterrupt,
 			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint
 		};
 
@@ -9283,6 +9283,24 @@ HandleYBStatusAtErrorLevelImpl(YbcStatus status, int elevel, const char *text_do
 {
 	Assert(status);
 	const int adjusted_elevel = YBCAdjustElevel(elevel, status);
+	if (adjusted_elevel >= ERROR)
+	{
+		/*
+		 * Execution is going to be interrupted (adjusted_elevel >= ERROR) because of
+		 * the error status, check for postgres interruptions first to prefer native postgres error
+		 * over the error status.
+		 */
+		PG_TRY();
+		{
+			CHECK_FOR_INTERRUPTS();
+		}
+		PG_CATCH();
+		{
+			YBCFreeStatus(status);
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+	}
 	if (errstart(adjusted_elevel, text_domain))
 	{
 		const uint32_t pg_err_code = YBCStatusPgsqlError(status);
