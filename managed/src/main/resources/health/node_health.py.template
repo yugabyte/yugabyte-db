@@ -3185,7 +3185,11 @@ def main():
     if not n.is_k8s and n.check_thp:
         coordinator.add_check(checker, "check_thp_settings")
 
-    if not n.is_k8s:
+    # YBA passes --yba_ynp_version only with yb.node_agent.enable_ynp_version_check on, so it
+    # doubles as the on switch. The check has to be skipped wholesale when it is off, not just its
+    # skew comparison: it also publishes yb_node_ynp_version == 0 for a node with no version file,
+    # and the YNP_VERSION_SKEW alert fires on that independently of any skew.
+    if not n.is_k8s and args.yba_ynp_version:
         coordinator.add_check(checker, "check_ynp_version")
 
     entries = coordinator.run()
