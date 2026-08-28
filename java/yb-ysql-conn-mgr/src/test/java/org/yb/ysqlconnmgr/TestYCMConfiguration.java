@@ -14,13 +14,17 @@
 package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.fail;
 
 import java.sql.*;
+import java.util.concurrent.TimeUnit;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
+import com.google.common.net.HostAndPort;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestYCMConfiguration extends BaseYsqlConnMgr {
@@ -153,5 +157,73 @@ public class TestYCMConfiguration extends BaseYsqlConnMgr {
       LOG.info("Connection is expected to fail on eaching max pool size", e);
     }
 
+  }
+
+  @Test
+  public void testRuntimeUpdateLogSettings() throws Exception {
+    String targetHost = getPgHost(TSERVER_IDX);
+    HostAndPort tserver = miniCluster.getTabletServers().keySet().stream()
+        .filter(hp -> hp.getHost().equals(targetHost)).findFirst()
+        .orElseThrow(() -> new IllegalStateException("No tserver found for host " + targetHost));
+
+    ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, TSERVER_IDX);
+    tailer.skipToEnd();
+
+    // Phase 1: enable log_query and verify query text appears in logs.
+    setServerFlag(tserver, "ysql_conn_mgr_log_settings", "log_query");
+    String routeLineMatch = tailer
+        .waitForLogRegex("routes created/deleted and scheduled for removal", 1, TimeUnit.SECONDS);
+    assertNotNull("Expected config reload to happen after changing flag", routeLineMatch);
+    tailer.skipToEnd();
+
+    try (
+        Connection conn =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withTServer(TSERVER_IDX).connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT 'log_query_marker'");
+    }
+
+    String matched = tailer.waitForLogRegex("log_query_marker", 10, TimeUnit.SECONDS);
+    assertNotNull("Expected query log line containing 'log_query_marker' after enabling log_query",
+        matched);
+
+    // Phase 2: switch to log_debug and verify debug-level log lines appear.
+    setServerFlag(tserver, "ysql_conn_mgr_log_settings", "log_debug");
+    routeLineMatch = tailer.waitForLogRegex("routes created/deleted and scheduled for removal", 1,
+        TimeUnit.SECONDS);
+    assertNotNull("Expected config reload to happen after changing flag", routeLineMatch);
+    tailer.skipToEnd();
+
+    try (
+        Connection conn =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withTServer(TSERVER_IDX).connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT 'log_debug_marker'");
+    }
+
+    matched = tailer.waitForLogRegex("debug", 10, TimeUnit.SECONDS);
+    assertNotNull("Expected debug log lines after enabling log_debug", matched);
+
+    // Phase 3: disable all log settings and verify silence.
+    setServerFlag(tserver, "ysql_conn_mgr_log_settings", "");
+    routeLineMatch = tailer.waitForLogRegex("routes created/deleted and scheduled for removal", 1,
+        TimeUnit.SECONDS);
+    assertNotNull("Expected config reload to happen after changing flag", routeLineMatch);
+    tailer.skipToEnd();
+
+    try (
+        Connection conn =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withTServer(TSERVER_IDX).connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT 'should_not_appear'");
+    }
+
+    String noMatch = tailer.waitForLogRegex("should_not_appear", 5, TimeUnit.SECONDS);
+    assertNull("Expected no query log lines after disabling log settings", noMatch);
+    noMatch = tailer.waitForLogRegex("debug", 0, TimeUnit.SECONDS);
+    assertNull("Expected no debug log lines after disabling log settings", noMatch);
   }
 }

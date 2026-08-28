@@ -14,6 +14,7 @@
 
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/net/net_util.h"
 
 namespace yb {
@@ -57,7 +58,7 @@ class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
   void UpdateConfigFromGFlags();
   std::string GetBindAddress();
   void AddSslConfig(std::map<std::string, std::string>* ysql_conn_mgr_configs);
-  void UpdateLogSettings(std::string& log_settings_str);
+  void UpdateLogSettings(const std::string& log_settings_str);
 };
 
 class YsqlConnMgrWrapper : public yb::ProcessWrapper {
@@ -71,14 +72,8 @@ class YsqlConnMgrWrapper : public yb::ProcessWrapper {
   YsqlConnMgrConf conf_;
   key_t stat_shm_key_;
 
-  // TODO(janand) GH #17877 Support for reloading config.
-  Status ReloadConfig() override {
-    return STATUS(IllegalState, "Custom implementation is required");
-  }
-
-  virtual Status UpdateAndReloadConfig() override {
-    return STATUS(IllegalState, "Custom implementation is required.");
-  }
+  Status ReloadConfig() override;
+  Status UpdateAndReloadConfig() override;
 };
 
 // YsqlConnMgrSupervisor: monitoring a Ysql Connection Manager child process
@@ -89,10 +84,19 @@ class YsqlConnMgrSupervisor : public yb::ProcessSupervisor {
   ~YsqlConnMgrSupervisor() {}
 
   std::shared_ptr<ProcessWrapper> CreateProcessWrapper() override;
+  void UpdateAndReloadConfig();
 
  private:
+  Status RegisterFlagChangeNotifications() REQUIRES(mtx_);
+  Status RegisterReloadConfigCallback(const void* flag_ptr) REQUIRES(mtx_);
+  void DeregisterFlagChangeNotifications() REQUIRES(mtx_);
+
+  void PrepareForStop() REQUIRES(mtx_) override;
+  Status PrepareForStart() REQUIRES(mtx_) override;
+
   YsqlConnMgrConf conf_;
   key_t stat_shm_key_;
+  std::vector<FlagCallbackRegistration> flag_callbacks_ GUARDED_BY(mtx_);
   std::string GetProcessName() override {
     return "Ysql Connection Manager";
   }
