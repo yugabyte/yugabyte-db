@@ -280,8 +280,8 @@ TEST_F(PeriodicTimerTraceTest, TraceContextCarriedToTask) {
   opts.one_shot = true;
   shared_ptr<PeriodicTimer> timer;
   {
-    auto scope = dist_trace::ActivateParentScope(expected);
-    ASSERT_TRUE(scope != nullptr);
+    dist_trace::ScopedAdoptSpan scope(expected);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
     timer = PeriodicTimer::Create(
         messenger_.get(),
         [&observed, &latch] {

@@ -156,8 +156,8 @@ TEST_F(SchedulerTraceTest, TraceContextCarriedToScheduledTask) {
   std::promise<Status> promise;
   auto future = promise.get_future();
   {
-    auto scope = dist_trace::ActivateParentScope(expected);
-    ASSERT_TRUE(scope != nullptr);
+    dist_trace::ScopedAdoptSpan scope(expected);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
     scheduler_->Schedule([&observed, &promise](const Status& status) {
       observed = dist_trace::GetActiveSpanContext();
       promise.set_value(status);
@@ -178,8 +178,8 @@ TEST_F(SchedulerTraceTest, TraceContextCarriedToScheduledTaskWithId) {
   std::promise<Status> promise;
   auto future = promise.get_future();
   {
-    auto scope = dist_trace::ActivateParentScope(expected);
-    ASSERT_TRUE(scope != nullptr);
+    dist_trace::ScopedAdoptSpan scope(expected);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
     scheduler_->Schedule([&observed, &promise](ScheduledTaskId task_id, const Status& status) {
       observed = dist_trace::GetActiveSpanContext();
       promise.set_value(status);

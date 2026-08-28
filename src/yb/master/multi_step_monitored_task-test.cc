@@ -375,8 +375,8 @@ TEST_F(CatalogEntityTaskTraceTest, TraceContextCarriedToSteps) {
   const auto expected = dist_trace::MakeTestSpanContext(0x5a);
   std::shared_ptr<TraceObservingCatalogEntityTask> task;
   {
-    auto scope = dist_trace::ActivateParentScope(expected);
-    ASSERT_TRUE(scope != nullptr);
+    dist_trace::ScopedAdoptSpan scope(expected);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
     task = std::make_shared<TraceObservingCatalogEntityTask>(
         catalog_entity, *thread_pool.get(), *messenger.get());
   }
