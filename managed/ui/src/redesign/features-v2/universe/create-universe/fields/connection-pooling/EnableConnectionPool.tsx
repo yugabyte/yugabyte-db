@@ -182,7 +182,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({
               {t('helperMsg')}
               <StyledLinkText
                 underline="always"
-                href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
+                href="https://docs.yugabyte.com/stable/additional-features/connection-manager-ysql/"
                 target="_blank"
               ></StyledLinkText>
             </Trans>

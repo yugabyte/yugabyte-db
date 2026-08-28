@@ -6,7 +6,7 @@ import NavArrowIcon from '@app/redesign/assets/what-changed/nav-arrow.svg';
 import SortIcon from '@app/redesign/assets/what-changed/sort.svg';
 import {
   ArrowWrap,
-  DEFAULT_RELEASE_NOTES_URL,
+  NEW_EXPERIENCE_DOCS_URL,
   FooterActions,
   HeaderLabel,
   ModalBody,
@@ -22,7 +22,6 @@ interface WhereThingsMovedModalProps {
   open: boolean;
   onClose: () => void;
   onFindOutMore?: () => void;
-  releaseNotesUrl?: string;
 }
 
 interface RelocationRow {
@@ -59,8 +58,7 @@ const RELOCATION_ROWS: RelocationRow[] = [
 export const WhereThingsMovedModal: FC<WhereThingsMovedModalProps> = ({
   open,
   onClose,
-  onFindOutMore,
-  releaseNotesUrl = DEFAULT_RELEASE_NOTES_URL
+  onFindOutMore
 }) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'onBoarding.whereThingsMovedModal'
@@ -71,7 +69,7 @@ export const WhereThingsMovedModal: FC<WhereThingsMovedModalProps> = ({
       onFindOutMore();
       return;
     }
-    window.open(releaseNotesUrl, '_blank', 'noopener,noreferrer');
+    window.open(NEW_EXPERIENCE_DOCS_URL, '_blank', 'noopener,noreferrer');
     onClose();
   };
 

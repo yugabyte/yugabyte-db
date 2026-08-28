@@ -551,7 +551,19 @@ export const ResilienceAndRegions = forwardRef<
       {!hideHelpText && (
         <StyledHelpText>
           <Flash />
-          <Trans t={t} i18nKey="helpText" components={{ a: <a /> }} />
+          <Trans
+            t={t}
+            i18nKey="helpText"
+            components={{
+              a: (
+                <a
+                  href="https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/create-deployments/read-replicas/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              )
+            }}
+          />
         </StyledHelpText>
       )}
       {showErrorsAfterSubmit && errors?.faultToleranceType?.message && (

@@ -2,7 +2,12 @@ import { FC, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { mui, TourPlacement, YBTag, YBTourSpotlight } from '@yugabyte-ui-library/core';
 import { DEFAULT_RELEASE_NOTES_URL, GradientTitle } from '../modals/HelperComponent';
-import { TourStep, dismissTourStep, isTourStepDismissed, subscribeTourProgressReady } from '../tour-progress';
+import {
+  TourStep,
+  dismissTourStep,
+  isTourStepDismissed,
+  subscribeTourProgressReady
+} from '../tour-progress';
 import MapIcon from '@app/redesign/assets/guided-expert-mode/map-icon.svg';
 import CommandIcon from '@app/redesign/assets/guided-expert-mode/command.svg';
 import { OnboardingTourPopper } from './OnboardingTourPopper';
@@ -183,7 +188,13 @@ export const GuidedExpertModePopover: FC<GuidedExpertModePopoverProps> = ({
           <Subtitle>{t('guided.subtitle')}</Subtitle>
           <Description>{t('guided.description')}</Description>
         </ModeCopy>
-        <LearnMoreLink href={DEFAULT_RELEASE_NOTES_URL} target="_blank" rel="noopener noreferrer">
+        <LearnMoreLink
+          href={
+            'https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/create-deployments/create-universes-overview/#guided-mode'
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           {t('learnMore')}
         </LearnMoreLink>
       </ModeColumn>
@@ -201,7 +212,13 @@ export const GuidedExpertModePopover: FC<GuidedExpertModePopoverProps> = ({
           <Subtitle>{t('expert.subtitle')}</Subtitle>
           <Description>{t('expert.description')}</Description>
         </ModeCopy>
-        <LearnMoreLink href={DEFAULT_RELEASE_NOTES_URL} target="_blank" rel="noopener noreferrer">
+        <LearnMoreLink
+          href={
+            'https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/create-deployments/create-universes-overview/#expert-mode'
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           {t('learnMore')}
         </LearnMoreLink>
       </ModeColumn>
