@@ -40,7 +40,7 @@ The columns of the `ycql_stat_statements` view are described in the following ta
 | stddev_time | float8 | Population standard deviation of time spent executing the statement, in milliseconds. |
 | yb_latency_histogram | jsonb | List of latency ranges (buckets) and the number of times the statement was executed in each range. |
 
-The `yb_latency_histogram` column uses the same format and bucket configuration as the YSQL [pg_stat_statements.yb_latency_histogram](../pg-stat-statements/#yb-latency-histogram-column) column, so the [yb_get_percentile](../pg-stat-statements/#show-latency-percentiles) helper function works with it as well. Refer to the YSQL page for the full list of [latency range buckets](../pg-stat-statements/#latency-range-buckets).
+The `yb_latency_histogram` column uses the same format and default bucket configuration as the YSQL [pg_stat_statements.yb_latency_histogram](../pg-stat-statements/#yb-latency-histogram-column) column, so the [yb_get_percentile](../pg-stat-statements/#show-latency-percentiles) helper function works with it as well. Refer to the YSQL page for the default [latency range buckets](../pg-stat-statements/#latency-range-buckets). Changing YSQL's `pg_stat_statements.yb_hdr_bucket_factor` setting does not change the YCQL buckets.
 
 ## Examples
 

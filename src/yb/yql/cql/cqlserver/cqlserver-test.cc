@@ -735,6 +735,10 @@ TEST(TestStmtLatencyHistogram, TestJsonFormat) {
   StmtLatencyHistogram copy = hist;
   ASSERT_EQ(hist.ToJsonArrayString(), copy.ToJsonArrayString());
 
+  StmtLatencyHistogram assigned;
+  assigned = copy;
+  ASSERT_EQ(copy.ToJsonArrayString(), assigned.ToJsonArrayString());
+
   // Reset clears all recorded samples.
   hist.Reset();
   ASSERT_EQ("[]", hist.ToJsonArrayString());

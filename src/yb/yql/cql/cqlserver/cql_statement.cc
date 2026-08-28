@@ -21,7 +21,6 @@
 
 #include <cmath>
 #include <cstdlib>
-#include <cstring>
 #include <sstream>
 
 #include "yb/gutil/stringprintf.h"
@@ -87,16 +86,15 @@ StmtLatencyHistogram::StmtLatencyHistogram() {
 
 StmtLatencyHistogram::StmtLatencyHistogram(const StmtLatencyHistogram& other)
     : slow_executions_(other.slow_executions_) {
-  const auto& config = GetHdrConfig();
-  hist_.reset(static_cast<hdr_histogram*>(malloc(config.alloc_size)));
-  memcpy(hist_.get(), other.hist_.get(), config.alloc_size);
+  SnapshotFrom(other);
 }
 
 StmtLatencyHistogram& StmtLatencyHistogram::operator=(const StmtLatencyHistogram& other) {
   if (this != &other) {
-    const auto& config = GetHdrConfig();
-    memcpy(hist_.get(), other.hist_.get(), config.alloc_size);
+    hist_.reset();
+    snapshot_.clear();
     slow_executions_ = other.slow_executions_;
+    SnapshotFrom(other);
   }
   return *this;
 }
@@ -110,7 +108,27 @@ void StmtLatencyHistogram::Allocate() {
   hdr_init_preallocated(hist_.get(), &cfg);
 }
 
+void StmtLatencyHistogram::SnapshotFrom(const StmtLatencyHistogram& other) {
+  if (!other.hist_) {
+    snapshot_ = other.snapshot_;
+    return;
+  }
+
+  hdr_iter iter;
+  hdr_iter_init(&iter, other.hist_.get());
+  while (hdr_iter_next(&iter)) {
+    if (iter.count > 0) {
+      snapshot_.push_back({
+          .value_iterated_to = iter.value_iterated_to,
+          .highest_equivalent_value = iter.highest_equivalent_value,
+          .count = iter.count,
+      });
+    }
+  }
+}
+
 void StmtLatencyHistogram::Record(double time_in_msec) {
+  DCHECK(hist_);
   if (time_in_msec < 0) {
     time_in_msec = 0;
   }
@@ -124,6 +142,7 @@ void StmtLatencyHistogram::Record(double time_in_msec) {
 }
 
 void StmtLatencyHistogram::Reset() {
+  DCHECK(hist_);
   hdr_reset(hist_.get());
   slow_executions_ = 0;
 }
@@ -132,16 +151,30 @@ void StmtLatencyHistogram::WriteAsJsonArray(JsonWriter* jw) const {
   const auto& config = GetHdrConfig();
   jw->StartArray();
 
-  hdr_iter iter;
-  hdr_iter_init(&iter, hist_.get());
-  while (hdr_iter_next(&iter)) {
-    if (iter.count > 0) {
-      jw->StartObject();
-      jw->String(StringPrintf(
-          "[%.1f,%.1f)", iter.value_iterated_to * kYbHdrLatencyResMs,
-          (iter.highest_equivalent_value + 1) * kYbHdrLatencyResMs));
-      jw->Int64(iter.count);
-      jw->EndObject();
+  const auto write_bucket = [jw](const Bucket& bucket) {
+    jw->StartObject();
+    jw->String(StringPrintf(
+        "[%.1f,%.1f)", bucket.value_iterated_to * kYbHdrLatencyResMs,
+        (bucket.highest_equivalent_value + 1) * kYbHdrLatencyResMs));
+    jw->Int64(bucket.count);
+    jw->EndObject();
+  };
+
+  if (hist_) {
+    hdr_iter iter;
+    hdr_iter_init(&iter, hist_.get());
+    while (hdr_iter_next(&iter)) {
+      if (iter.count > 0) {
+        write_bucket({
+            .value_iterated_to = iter.value_iterated_to,
+            .highest_equivalent_value = iter.highest_equivalent_value,
+            .count = iter.count,
+        });
+      }
+    }
+  } else {
+    for (const auto& bucket : snapshot_) {
+      write_bucket(bucket);
     }
   }
 
@@ -160,6 +193,10 @@ std::string StmtLatencyHistogram::ToJsonArrayString() const {
   JsonWriter jw(&ss, JsonWriter::COMPACT);
   WriteAsJsonArray(&jw);
   return ss.str();
+}
+
+size_t StmtLatencyHistogram::DynamicMemoryUsage() const {
+  return hist_ ? GetHdrConfig().alloc_size : snapshot_.capacity() * sizeof(Bucket);
 }
 
 //------------------------------------------------------------------------------------------------

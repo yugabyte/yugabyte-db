@@ -39,9 +39,8 @@ class CQLStatement;
 
 // Tracks the distribution of YCQL statement execution latencies using an HDR histogram.
 //
-// The histogram configuration (resolution, max latency, bucket factor) and the JSON output format
-// intentionally match YSQL's pg_stat_statements yb_latency_histogram column, so that the resulting
-// jsonb is compatible with helpers such as yb_get_percentile.
+// The histogram configuration matches the defaults for YSQL's pg_stat_statements
+// yb_latency_histogram column, and the JSON is compatible with helpers such as yb_get_percentile.
 class StmtLatencyHistogram {
  public:
   StmtLatencyHistogram();
@@ -61,7 +60,16 @@ class StmtLatencyHistogram {
   // Returns the histogram as a compact JSON array string (YSQL yb_latency_histogram format).
   std::string ToJsonArrayString() const;
 
+  // Returns the heap memory used by a live histogram.
+  size_t DynamicMemoryUsage() const;
+
  private:
+  struct Bucket {
+    int64_t value_iterated_to;
+    int64_t highest_equivalent_value;
+    int64_t count;
+  };
+
   struct FreeDeleter {
     void operator()(hdr_histogram* h) const;
   };
@@ -69,7 +77,10 @@ class StmtLatencyHistogram {
   // Allocates and initializes an empty histogram using the shared configuration.
   void Allocate();
 
+  void SnapshotFrom(const StmtLatencyHistogram& other);
+
   std::unique_ptr<hdr_histogram, FreeDeleter> hist_;
+  std::vector<Bucket> snapshot_;
 
   // Count of executions slower than the maximum tracked latency (overflow bucket).
   int64_t slow_executions_ = 0;
@@ -153,6 +164,8 @@ class CQLStatement : public ql::Statement {
   }
 
   void SetCounters(const std::shared_ptr<StmtCounters>& other) {
+    DCHECK(!stmt_counters_);
+    consumption_.Add(other->latency_histogram.DynamicMemoryUsage());
     stmt_counters_ = other;
   }
 
