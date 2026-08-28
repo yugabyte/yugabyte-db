@@ -118,7 +118,12 @@ SPELLING_RE = re.compile(r"\b(%s)\b" % "|".join(SPELLING))
 
 
 def excluded(param):
-    """Reason this parameter is left off the page, or None to list it."""
+    """Reason this parameter is left off the page, or None to list it.
+
+    These rules seeded the allowlist; the allowlist, not this function, decides what the
+    page publishes. They stay so that --audit can explain why a parameter that a release
+    exposes is not in the allowlist.
+    """
     if param["category"] == DEVELOPER_CATEGORY or TEST_NAME.search(param["name"]):
         return "developer/test"
     if INTERNAL_DESC.search(param["short_desc"] or "") or param["context"] == "internal":
@@ -128,6 +133,17 @@ def excluded(param):
     if UPGRADE_NAME.search(param["name"]):
         return "upgrade plumbing"
     return None
+
+
+def read_allowlist(path):
+    """Parameter names the page is allowed to publish, in file order."""
+    names = []
+    with open(path) as handle:
+        for line in handle:
+            line = line.split("#", 1)[0].strip()
+            if line:
+                names.append(line)
+    return names
 
 
 def area_of(param):
@@ -192,7 +208,7 @@ def entries(params, anchors):
     """
     out = []
     for p in sorted(params, key=lambda x: x["name"]):
-        out.append("### %s\n" % p["name"])
+        out.append("##### %s\n" % p["name"])
         out.append("{{% tags/wrap %}}")
         # Hugo only parses the shortcode's inner content as markdown when it starts on its
         # own block, so the blank line here is load-bearing: without it the first metadata
@@ -241,9 +257,11 @@ menu:
     weight: 2460
 type: docs
 showRightNav: true
-rightNav:
-  hideH3: true
 ---
+
+{{{{< warning title="Advanced parameters" >}}}}
+Most deployments should not need to change these parameters. The defaults are chosen to suit the majority of workloads, and changing a parameter without understanding its effect can degrade performance, correctness, or stability. Change one only when you have a specific reason to, and test the change before applying it in production.
+{{{{< /warning >}}}}
 
 YSQL supports the PostgreSQL [server configuration parameters](https://www.postgresql.org/docs/15/runtime-config.html), plus the YugabyteDB-specific parameters listed on this page. Frequently used parameters are documented in detail under [YSQL configuration parameters](../yb-tserver/#ysql-configuration-parameters) on the YB-TServer reference page; entries below link to that page where such an entry exists.
 
@@ -313,6 +331,10 @@ def main():
     parser.add_argument("--version", help="release the data was collected from, e.g. 2026.1.1.1")
     parser.add_argument("--docs-version", default="stable",
                         help="docs version folder used in the menu front matter")
+    parser.add_argument("--allowlist",
+                        default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                             "ysql-parameters-allowlist.txt"),
+                        help="file listing the parameters the page may publish")
     parser.add_argument("--tserver-page",
                         help="path to yb-tserver.md, used to link parameters that have a "
                              "prose entry there")
@@ -331,14 +353,16 @@ def main():
 
     anchors = find_anchors(args.tserver_page)
 
-    listed = []
-    dropped = Counter()
-    for param in params:
-        reason = excluded(param)
-        if reason:
-            dropped[reason] += 1
-        else:
-            listed.append(param)
+    allowed = read_allowlist(args.allowlist)
+    by_name = {p["name"]: p for p in params}
+
+    listed = [by_name[n] for n in allowed if n in by_name]
+
+    # A release can add, rename, or remove parameters. Report both directions so neither
+    # goes unnoticed: an unlisted parameter is never published silently, and a stale
+    # allowlist entry is not silently ignored.
+    unlisted = [p for p in params if p["name"] not in set(allowed)]
+    missing = [n for n in allowed if n not in by_name]
 
     areas = OrderedDict((area, []) for area in AREAS)
     for area in NAME_AREAS:
@@ -361,8 +385,23 @@ def main():
 
     print("Wrote %s from v%s: %d of %d parameters listed" % (
         args.output, args.version, len(listed), len(params)), file=sys.stderr)
-    for reason, count in sorted(dropped.items()):
-        print("  excluded %-16s %d" % (reason, count), file=sys.stderr)
+
+    reasons = Counter(excluded(p) or "not in allowlist" for p in unlisted)
+    for reason, count in sorted(reasons.items()):
+        print("  not published: %-18s %d" % (reason, count), file=sys.stderr)
+
+    review = [p["name"] for p in unlisted if not excluded(p)]
+    if review:
+        print("\n  %d parameter(s) this release exposes are not in the allowlist and do "
+              "not match an exclusion rule.\n  Add them to %s or leave them off "
+              "deliberately:" % (len(review), args.allowlist), file=sys.stderr)
+        for name in review:
+            print("    %s" % name, file=sys.stderr)
+    if missing:
+        print("\n  %d allowlist entry/entries not present in this release (renamed or "
+              "removed?):" % len(missing), file=sys.stderr)
+        for name in missing:
+            print("    %s" % name, file=sys.stderr)
     return 0
 
 
