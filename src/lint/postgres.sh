@@ -115,16 +115,21 @@ if is_yb_file "$1"; then
   # Match only .h/.hpp includes, not .def X-macro includes.
   done < <(grep -nB 100 '^#include.*\.h' "$1" | grep -EA 100 '^[0-9]+[:-]#include')
 else
-  diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1")
+  # Materialize the upstream counterpart once so that the two diffs below share
+  # the work of getting it.
+  upstream_dir=$(mktemp -d)
+  trap 'rm -rf "$upstream_dir"' EXIT
+  upstream_copy=$upstream_dir/${1##*/}
+  fetch_result=$("${BASH_SOURCE%/*}"/upstream_file.py "$1" "$upstream_copy")
   exit_code=$?
   if [ $exit_code -ne 0 ]; then
     if [ $exit_code -ne 2 ]; then
       # The following messages are not emitted to stderr because those messages
       # may be buried under a large python stacktrace also emitted to stderr.
-      if [ -z "$diff_result" ]; then
+      if [ -z "$fetch_result" ]; then
         echo "Unexpected failure, exit code $exit_code"
       else
-        echo "$diff_result"
+        echo "$fetch_result"
       fi
       exit 1
     fi
@@ -138,6 +143,12 @@ else
 ' or remotely in the corresponding remote repository (and you need internet'\
 ' access in that case).:1:'"$(head -1)"
   else
+    diff_result=$(diff "$1" "$upstream_copy")
+    if [ $? -gt 1 ]; then
+      echo "Failed to diff $1"
+      exit 1
+    fi
+
     grep -inE '(yb|yugabyte) includes' "$1" \
       | grep -vE '^[0-9]+:/\* YB includes \*/$' \
       | while read -r line; do
@@ -268,8 +279,7 @@ else
 
     # For kwlist.h, new keywords by YB should have "_YB_" prefix.
     #
-    # TODO(jason): this does not belong in the "includes" section, but it is
-    # also wasteful to re-run diff_file_with_upstream.py a second time.  Should
+    # TODO(jason): this does not belong in the "includes" section.  Should
     # refactor this in the future.
     if [[ "$1" == */kwlist.h ]]; then
       grep -E '^< ' <<<"$diff_result" \
@@ -281,35 +291,22 @@ else
 'YB-added keywords should have "_YB_" prefix and "_P" suffix:/'
           done
     fi
-  fi
 
-  # This time, run with --ignore-space-change.
-  diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1" \
-                --ignore-space-change)
-  exit_code=$?
-  if [ $exit_code -eq 2 ]; then
-    # There is no upstream counterpart, which the first diff above already
-    # reported as bad_filename_for_yb_file, so there is nothing to compare.
-    diff_result=
-  elif [ $exit_code -ne 0 ]; then
-    # The following messages are not emitted to stderr because those messages
-    # may be buried under a large python stacktrace also emitted to stderr.
-    if [ -z "$diff_result" ]; then
-      echo "Unexpected failure, exit code $exit_code"
-    else
-      echo "$diff_result"
+    # This time, diff with --ignore-space-change.
+    diff_result=$(diff --ignore-space-change "$1" "$upstream_copy")
+    if [ $? -gt 1 ]; then
+      echo "Failed to diff $1"
+      exit 1
     fi
-    exit 1
-  fi
 
-  # Find YB-side hunks.
-  while read -r line_ranges; do
-    if sed -n "$line_ranges"p "$1" \
-         | grep -Eq 'YB|Yb|yb|YSQL|Ysql|ysql|Yuga|yuga'; then
-      continue
-    fi
-    lineno=${line_ranges%%,*}
-    echo 'warning:missing_yb_marker_for_yb_changes:'\
+    # Find YB-side hunks.
+    while read -r line_ranges; do
+      if sed -n "$line_ranges"p "$1" \
+           | grep -Eq 'YB|Yb|yb|YSQL|Ysql|ysql|Yuga|yuga'; then
+        continue
+      fi
+      lineno=${line_ranges%%,*}
+      echo 'warning:missing_yb_marker_for_yb_changes:'\
 'YB changes to upstream owned files should have "yb", "ysql", or "yuga".'\
 ' In case the YB changes are legitimate, prioritize resolving this by'\
 ' renaming YB-introduced variables/functions/types with YB prefix; if there'\
@@ -320,9 +317,10 @@ else
 ' src/lint/diff_file_with_upstream.py '"$1"' -b, and find hunks with lines'\
 ' starting with <:'\
 "$lineno:$(sed -n "$lineno"p "$1")"
-  done < <(grep -E '^(< |[0-9])' <<<"$diff_result" \
-           | grep -B1 '^<' \
-           | grep -Eo '^[0-9]+(,[0-9]+)?')
+    done < <(grep -E '^(< |[0-9])' <<<"$diff_result" \
+             | grep -B1 '^<' \
+             | grep -Eo '^[0-9]+(,[0-9]+)?')
+  fi
 fi
 
 if [[ "$1" == src/postgres/third-party-extensions/* ]]; then
