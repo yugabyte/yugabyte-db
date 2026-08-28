@@ -436,17 +436,44 @@ TEST(CatalogManagerUtilTest, MaxNumReplicasValidation) {
   ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, -1)));
   ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(2, 3, 3)));
 
-  // Explicit maxima are only supported on fully-specified (non-wildcard) placement blocks.
+  // A placement with any explicit maximum must consist solely of fully-specified (non-wildcard)
+  // placement blocks: a wildcard block on the capped block itself is rejected.
   {
     auto placement_info = make_placement(2, 2, -1);
     placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->clear_placement_zone();
     placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->set_placement_region("r2");
     ASSERT_NOK_STR_CONTAINS(
         master::CatalogManagerUtil::IsPlacementInfoValid(placement_info),
-        "max_num_replicas is not supported for wildcard placement blocks");
+        "max_num_replicas is not supported in combination with wildcard placement blocks");
     ASSERT_NOK_STR_CONTAINS(
         master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
-        "max_num_replicas is not supported for wildcard placement blocks");
+        "max_num_replicas is not supported in combination with wildcard placement blocks");
+  }
+  // ... and so is an uncapped wildcard block alongside a capped fully-qualified block. If such a
+  // wildcard overlapped the capped block, tservers could be attributed to the wildcard block and
+  // bypass the cap.
+  {
+    auto placement_info = make_placement(2, 2, -1);
+    placement_info.mutable_placement_blocks(1)->mutable_cloud_info()->clear_placement_zone();
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
+        "max_num_replicas is not supported in combination with wildcard placement blocks");
+  }
+  // Duplicate blocks are also rejected when an explicit maximum is present, as a tserver could
+  // be attributed to either duplicate.
+  {
+    auto placement_info = make_placement(2, 2, -1);
+    placement_info.mutable_placement_blocks(1)->mutable_cloud_info()->set_placement_zone("z1");
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
+        "max_num_replicas is not supported in combination with duplicate placement blocks");
+  }
+  // Without any explicit maximum, wildcard and duplicate blocks remain acceptable to this
+  // validator (legacy placements are not held to the stricter structural rules).
+  {
+    auto placement_info = make_placement(2, -1, -1);
+    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->clear_placement_zone();
+    ASSERT_OK(master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info));
   }
 }
 

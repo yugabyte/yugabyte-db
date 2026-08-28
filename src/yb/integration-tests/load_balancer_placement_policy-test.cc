@@ -366,7 +366,12 @@ TEST_F(LoadBalancerPlacementPolicyTest, MaxNumReplicasIsAHardCap) {
   yb::client::YBSchema schema;
   builder.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
   ASSERT_OK(builder.Build(&schema));
-  ASSERT_NOK(NewTableCreator()->table_name(placement_table).schema(&schema).Create());
+  // Assert on the distinguishing error text: the raw quorum checks pass here (five live
+  // tservers, three of them in z0), so creation must fail specifically in the cap-aware
+  // feasibility calculation (z0 contributes at most two replicas, z3/z4 contribute none).
+  ASSERT_NOK_STR_CONTAINS(
+      NewTableCreator()->table_name(placement_table).schema(&schema).Create(),
+      "Can only find 2 tablet servers for the replicas but need at least 3");
 
   // With one tserver in z3, a quorum (two in z0 plus one in z3) becomes feasible and creation
   // succeeds, initially under-replicated.

@@ -2419,15 +2419,26 @@ Status ClusterAdminClient::FillPlacementInfo(
 
     pb->set_min_num_replicas(static_cast<int32_t>(replica_limits.min_num_replicas));
     if (replica_limits.max_num_replicas) {
-      // Explicit maxima are only supported on fully-specified (non-wildcard) placement blocks;
-      // the master rejects them as well (CatalogManagerUtil::ValidateMaxNumReplicasFields), but
-      // failing here gives a friendlier error.
-      if (!pb->cloud_info().has_placement_region() || !pb->cloud_info().has_placement_zone()) {
-        return STATUS(InvalidCommand,
-            "Max replica count is not supported for wildcard placements. "
-            "Invalid placement block: " + placement_block);
-      }
       pb->set_max_num_replicas(static_cast<int32_t>(*replica_limits.max_num_replicas));
+    }
+  }
+
+  // Explicit maxima require unambiguously attributing each tserver to one placement block, so
+  // they cannot be combined with wildcard (partially-specified) blocks anywhere in the placement.
+  // The master rejects this as well (CatalogManagerUtil::ValidateMaxNumReplicasFields), but
+  // failing here gives a friendlier error.
+  const auto& parsed_blocks = placement_info_pb->placement_blocks();
+  const bool has_explicit_max = std::any_of(
+      parsed_blocks.begin(), parsed_blocks.end(),
+      [](const auto& block) { return block.has_max_num_replicas(); });
+  if (has_explicit_max) {
+    for (const auto& block : parsed_blocks) {
+      if (!block.cloud_info().has_placement_region() ||
+          !block.cloud_info().has_placement_zone()) {
+        return STATUS(InvalidCommand,
+            "Max replica counts are not supported in combination with wildcard placements. "
+            "Invalid placement block: " + block.cloud_info().ShortDebugString());
+      }
     }
   }
 
