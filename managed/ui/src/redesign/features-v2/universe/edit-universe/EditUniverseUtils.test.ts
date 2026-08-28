@@ -5,6 +5,7 @@ import {
   Universe
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
+  getDedicatedClusterDisplayNodeTotal,
   hasDedicatedNodesForCluster,
   placementSpecToAvailabilityZones
 } from './EditUniverseUtils';
@@ -14,7 +15,9 @@ import {
   FIXTURE_ASYNC_CLUSTER_UUID,
   FIXTURE_PRIMARY_CLUSTER_UUID,
   FIXTURE_REGION_CODE,
+  makeGeoUniverseWithDedicatedNodeDetails,
   makeNonGeoUniverse,
+  makeNonGeoUniverseWithDedicatedNodeDetails,
   makeNonGeoUniverseWithReadReplicaPlacementSpec,
   makePrimaryPlacementSpec
 } from './__fixtures__/editUniverseFixtures';
@@ -104,6 +107,45 @@ describe('hasDedicatedNodesForCluster', () => {
     };
     expect(hasDedicatedNodesForCluster(u, u.spec!.clusters[0])).toBe(false);
     expect(hasDedicatedNodesForCluster(u, readReplica)).toBe(true);
+  });
+});
+
+describe('getDedicatedClusterDisplayNodeTotal', () => {
+  it('returns undefined for non-dedicated cluster', () => {
+    const u = makeNonGeoUniverse();
+    const primary = u.spec!.clusters[0];
+    expect(getDedicatedClusterDisplayNodeTotal(u, primary, 2)).toBeUndefined();
+  });
+
+  it('returns tserver + master when dedicated_nodes is set and node details are empty', () => {
+    const u = makeNonGeoUniverse();
+    const primary = u.spec!.clusters[0];
+    primary.node_spec = { ...primary.node_spec, dedicated_nodes: true };
+    // placement AZ sums: 1 + 1 = 2 tservers; RF fallback: 3 masters
+    expect(getDedicatedClusterDisplayNodeTotal(u, primary, 2)).toBe(5);
+  });
+
+  it('returns tserver + master from node details when dedicated_nodes is set', () => {
+    const u = makeNonGeoUniverseWithDedicatedNodeDetails();
+    const primary = u.spec!.clusters[0];
+    primary.node_spec = { ...primary.node_spec, dedicated_nodes: true };
+    // 2 tservers + 1 master from node_details_set
+    expect(getDedicatedClusterDisplayNodeTotal(u, primary, 2)).toBe(3);
+  });
+
+  it('returns tserver + master when dedicated is detected via node_details only (legacy)', () => {
+    const u = makeNonGeoUniverseWithDedicatedNodeDetails();
+    const primary = u.spec!.clusters[0];
+    // no dedicated_nodes spec flag; hasDedicatedNodesForCluster is true via node_details
+    expect(getDedicatedClusterDisplayNodeTotal(u, primary, 2)).toBe(3);
+  });
+
+  it('uses per-region node details for geo partitions instead of blind RF inflation', () => {
+    const u = makeGeoUniverseWithDedicatedNodeDetails();
+    const primary = u.spec!.clusters[0];
+    primary.node_spec = { ...primary.node_spec, dedicated_nodes: true };
+    // 1 tserver (az1) + 1 master (az2) from node_details; not RF=3 masters
+    expect(getDedicatedClusterDisplayNodeTotal(u, primary, 3)).toBe(2);
   });
 });
 

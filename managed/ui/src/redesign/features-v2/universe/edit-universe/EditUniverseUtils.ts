@@ -475,6 +475,81 @@ export const countMasterAndTServerNodes = (
   return dedicatedNodesCount;
 };
 
+/** Count dedicated nodes when node_details omit placement_uuid (legacy primary clusters). */
+function countLegacyDedicatedNodes(
+  universeData: Universe,
+  cluster: ClusterSpec
+): { tserver: number; master: number } {
+  let tserver = 0;
+  let master = 0;
+  universeData.info?.node_details_set?.forEach((node) => {
+    if (!node.dedicated_to) return;
+    const matchesCluster = node.placement_uuid
+      ? node.placement_uuid === cluster.uuid
+      : cluster.cluster_type === ClusterSpecClusterType.PRIMARY;
+    if (!matchesCluster) return;
+    if (node.dedicated_to === NodeDetailsDedicatedTo.MASTER) {
+      master += 1;
+    } else {
+      tserver += 1;
+    }
+  });
+  return { tserver, master };
+}
+
+/**
+ * Total display node count when dedicated masters are enabled (tservers + masters).
+ * Returns undefined for colocated-master clusters — callers should use pricing/spec `num_nodes`.
+ */
+export function getDedicatedClusterDisplayNodeTotal(
+  universeData: Universe | undefined,
+  cluster: ClusterSpec | undefined,
+  apiNumNodes?: number
+): number | undefined {
+  if (!universeData || !cluster || !hasDedicatedNodesForCluster(universeData, cluster)) {
+    return undefined;
+  }
+
+  let tserver = 0;
+  let master = 0;
+
+  const legacy = countLegacyDedicatedNodes(universeData, cluster);
+  if (legacy.tserver > 0 || legacy.master > 0) {
+    tserver = legacy.tserver;
+    master = legacy.master;
+  } else if (cluster.partitions_spec?.length) {
+    cluster.partitions_spec.forEach((partition) => {
+      if (!partition.placement) return;
+      const counts = getDedicatedTserverMasterDisplayCounts(
+        universeData,
+        cluster,
+        partition.placement
+      );
+      tserver += counts.tserver;
+      master += counts.master;
+    });
+  } else {
+    const placement = getPlacementSpecFromCluster(cluster);
+    if (placement) {
+      ({ tserver, master } = getDedicatedTserverMasterDisplayCounts(universeData, cluster, placement));
+    } else {
+      const fromDetails = countMasterAndTServerNodes(universeData, cluster);
+      tserver = fromDetails[NodeDetailsDedicatedTo.TSERVER] ?? 0;
+      master = fromDetails[NodeDetailsDedicatedTo.MASTER] ?? 0;
+    }
+  }
+
+  if (tserver <= 0) {
+    tserver = apiNumNodes ?? cluster.num_nodes ?? 0;
+  }
+  if (master <= 0) {
+    master = cluster.replication_factor ?? 0;
+  }
+
+  const total = tserver + master;
+  return total > 0 ? total : undefined;
+}
+
 export function useIsUniverseReady() {
   const { universeData } = useEditUniverseContext();
   return !universeData?.info?.update_in_progress && !universeData?.info?.universe_paused;
