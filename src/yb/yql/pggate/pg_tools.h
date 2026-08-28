@@ -229,4 +229,6 @@ void ApplySkipIntentsOptimizationInfo(const YbcPgSkipIntentsOptimizationInfo& in
   }
 }
 
+Status CheckForPgInterrupts();
+
 } // namespace yb::pggate

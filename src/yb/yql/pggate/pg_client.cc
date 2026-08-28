@@ -13,6 +13,7 @@
 
 #include "yb/yql/pggate/pg_client.h"
 
+#include <chrono>
 #include <concepts>
 #include <mutex>
 
@@ -161,22 +162,11 @@ class PgTimeout {
   std::pair<CoarseTimePoint, MonoDelta> GetDeadlineAndTimeoutForRPC(
       CoarseTimePoint rpc_deadline = CoarseTimePoint()) const {
 
-    const CoarseTimePoint now = CoarseMonoClock::now();
-    const MonoDelta operation_timeout = GetOperationTimeout<T>();
+    const auto now = CoarseMonoClock::now();
+    const auto operation_timeout = GetOperationTimeout<T>();
 
     // Prioritize the minimum of RPC and global deadline, if supplied.
-    CoarseTimePoint deadline = MinDeadline(rpc_deadline, global_deadline_);
-
-    // If an RPC is being scheduled while we're in the grace period, it is likely that the
-    // statement timer has already fired in postgres. Therefore check for interrupts.
-    if (PREDICT_FALSE(
-        global_deadline_ != CoarseTimePoint() &&
-        global_deadline_ - MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms) < now)) {
-      YBCCheckForInterrupts();
-    }
-
-    // Assert that the global deadline is not in the past.
-    DCHECK(deadline == CoarseTimePoint() || now < deadline);
+    auto deadline = MinDeadline(rpc_deadline, global_deadline_);
 
     // If an operation timeout is applicable, apply it to further clamp the deadline.
     if (operation_timeout.Initialized()) {
@@ -188,7 +178,15 @@ class PgTimeout {
       deadline = now + GetDefaultRpcTimeout();
     }
 
-    return std::make_pair(deadline, deadline - now);
+    // If an RPC is being scheduled while we're in the grace period, it is likely that the
+    // statement timer has already fired in postgres. Therefore check for interrupts.
+    if (global_deadline_ != CoarseTimePoint() &&
+        (global_deadline_ - FLAGS_pg_client_extra_timeout_ms * 1ms) < now &&
+        !CheckForPgInterrupts().ok()) [[unlikely]] {
+        deadline = now;
+    }
+
+    return {deadline, deadline - now};
   }
 
  private:
@@ -1188,7 +1186,8 @@ class PgClient::Impl : public BigDataFetcher {
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->AcquireObjectLockAsync(req, resp, controller, std::move(callback));
     };
-    return PrepareAndSend<AcquireObjectLockData>(method, req, &object_locks_arena_).Get().status;
+    return VERIFY_RESULT(
+        PrepareAndSend<AcquireObjectLockData>(method, req, &object_locks_arena_).Get()).status;
   }
 
   bool TryAcquireObjectLockInSharedMemory(
@@ -2040,20 +2039,16 @@ class PgClient::Impl : public BigDataFetcher {
         yb_debug_log_docdb_requests &&
         std::ranges::any_of(kDebugLogRPCs, [rpc_enum](auto value) { return value == rpc_enum; });
 
-    if (log_detail) {
-      LOG(INFO) << "DoSyncRPC " << GetTypeName<Req>() << ":\n " << req.ShortDebugString();
-    }
+    LOG_IF_WITH_FUNC(INFO, log_detail) << GetTypeName<Req>() << ":\n " << req.ShortDebugString();
 
     auto watcher = wait_event_watcher_(wait_event, rpc_enum);
     const auto s = (proxy.*func)(req, &resp, controller);
 
-    if (log_detail) {
-      LOG(INFO) << "DoSyncRPC " << GetTypeName<Resp>() << " response:\n"
-                << "status " << s << "\n" << resp.ShortDebugString();
-    }
+    LOG_IF_WITH_FUNC(INFO, log_detail)
+        << GetTypeName<Resp>() << " response:\n"
+        << "status " << s << "\n" << resp.ShortDebugString();
 
-    // Check for interrupts are executing sync RPC.
-    YBCCheckForInterrupts();
+    RETURN_NOT_OK(CheckForPgInterrupts());
 
     return s;
   }
