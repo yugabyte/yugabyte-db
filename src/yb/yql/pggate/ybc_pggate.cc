@@ -2348,22 +2348,9 @@ void YBCClearTimeout() {
   pgapi->ClearTimeout();
 }
 
-void YBCCheckForInterrupts() {
-  // CHECK_FOR_INTERRUPTS may longjmp, so it is only safe on the backend main thread. Extensions
-  // such as pg_duckdb run pggate calls on their own worker threads; there the interrupt is left
-  // for the main thread. Logged so that an unintended off-main-thread caller stays observable.
-  if (!is_main_thread()) {
-    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 60, 1)
-        << __PRETTY_FUNCTION__ << " invoked off the main thread, skipping the interrupt check";
-    return;
-  }
-
-  // If we're in the midst of shutting down, do not bother checking for interrupts.
-  if (!pgapi) {
-    return;
-  }
-
-  pgapi->pg_callbacks()->CheckForInterrupts();
+bool YBCHasProcessableAbortInterrupt() {
+  return PREDICT_FALSE(!pgapi)
+      ? false : pgapi->pg_callbacks()->HasProcessableAbortInterrupt();
 }
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle) {

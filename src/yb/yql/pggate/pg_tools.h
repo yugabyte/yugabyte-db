@@ -42,7 +42,7 @@
 #include "yb/util/lru_cache.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -230,5 +230,7 @@ void ApplySkipIntentsOptimizationInfo(const YbcPgSkipIntentsOptimizationInfo& in
     req.set_read_at_in_txn_limit(true);
   }
 }
+
+Status CheckForPgInterrupts();
 
 } // namespace yb::pggate
