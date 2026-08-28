@@ -62,6 +62,12 @@ message BackfillJobPB {
   // failover so verification resumes with the same window and does not re-scan tablets
   // already confirmed clean.
   map<string, UniqueIndexVerificationStatePB> unique_index_verification = 7;
+
+  // Whether the deferred verification outcome gates publication (fail-closed) for this job.
+  // Latched from ysql_index_backfill_fail_closed_verification when the job is created and
+  // immutable for the job's lifetime, across master failover, retries, and runtime flag
+  // changes. Missing means observational (shadow) semantics.
+  optional bool verification_gates_publication = 8;
 }
 
 message UniqueIndexVerificationStatePB {
