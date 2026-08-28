@@ -265,6 +265,14 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
     return unique_index_backfill_mode_;
   }
 
+  // True when the deferred verification outcome decides publication for this job
+  // (fail-closed flag + SKIP_ALL + PGSQL); false means observational (shadow) semantics.
+  // Latched and persisted like unique_index_backfill_mode(): runtime flag flips cannot
+  // reinterpret an active job.
+  bool verification_gates_publication() const {
+    return verification_gates_publication_;
+  }
+
   const std::unordered_set<TableId> indexes_to_build() const;
 
   const TableId& indexed_table_id() const { return indexed_table_->id(); }
@@ -377,10 +385,21 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
       const TabletInfoPtr& tablet, const std::string& start_key) EXCLUDES(mutex_);
   Status RecordShadowVerificationOutcome(
       UniqueIndexVerificationStatePB::State state, const std::string& reason) EXCLUDES(mutex_);
+  // Gating mode: marks the job's unique index per the verification outcome -- SUCCESS for
+  // VERIFY_CLEAN, FAILED (with a value-free reason; VIOLATION carries the unique-violation
+  // code) otherwise. Filtered through indexes_to_build(), so an index already marked (a resume
+  // after a crash past the marking) is not marked again: MarkIndexesAsSuccess checkpoints the
+  // index with xCluster, which must happen once.
+  Status ApplyVerificationOutcomeMarking(
+      UniqueIndexVerificationStatePB::State state, const std::string& reason);
   Status FinishShadowVerification();
+  // The job's persisted verification state (VERIFY_NONE when never started).
+  Result<UniqueIndexVerificationStatePB> PersistedVerificationState() const;
 
-  // Degrades any shadow-phase coordinator failure to VERIFY_INCONCLUSIVE and continues into
-  // publication: the phase is on the CREATE INDEX critical path and must never strand it.
+  // Coordinator failure: the phase is on the CREATE INDEX critical path and must never
+  // strand it, so this always continues into publication. Observational mode degrades the
+  // in-flight index to VERIFY_INCONCLUSIVE and publishes; gating mode additionally fails
+  // every unique index still unverified (in-flight, never reached, or never selected).
   void ShadowVerificationPhaseFailed(const Status& status, const char* while_doing)
       EXCLUDES(mutex_);
 
@@ -391,6 +410,10 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   Status MarkAllIndexesAsFailed();
   Status MarkAllIndexesAsSuccess();
+  Status MarkIndexesAsSuccess(const std::unordered_set<TableId>& index_ids);
+
+  // Whether the job's single index is unique (the only kind deferred verification applies to).
+  bool JobIndexIsUnique() const;
 
   Status MarkIndexesAsFailed(
       const std::unordered_set<TableId>& indexes, const Status& backfill_status);
@@ -435,6 +458,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   int32_t schema_version_;
   UniqueIndexBackfillMode unique_index_backfill_mode_ =
       UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_CHECK_ALL;
+  bool verification_gates_publication_ = false;
 
   std::atomic<State> state_{State::kRunning};
   std::atomic_bool timestamp_chosen_{false};

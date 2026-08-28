@@ -1661,6 +1661,10 @@ class PgIndexBackfillVerifier : public PgIndexBackfillSkipAllRaftOrdering {
     PgIndexBackfillSkipAllRaftOrdering::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back(
         "--TEST_block_index_backfill_ordering_generation_release=true");
+    // This fixture drives the verification RPC itself, including over builds with duplicates
+    // that the default-on fail-closed gate would refuse to publish.
+    options->extra_master_flags.push_back(
+        "--ysql_index_backfill_fail_closed_verification=false");
     // The pgwrapper base fixture zeroes history retention. The index tablets' window history
     // is now held by the generation's retention barrier (the read fence), but the *base*
     // table's backfill reads still depend on general retention until the source-side pin
@@ -1887,6 +1891,9 @@ class PgIndexBackfillShadowVerification : public PgIndexBackfillSkipAllRaftOrder
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillSkipAllRaftOrdering::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back("--ysql_index_backfill_shadow_verification=true");
+    // Observational mode is an explicit opt-out of the (default-on) fail-closed gate.
+    options->extra_master_flags.push_back(
+        "--ysql_index_backfill_fail_closed_verification=false");
     options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=900");
   }
 };
@@ -1984,6 +1991,156 @@ TEST_P(PgIndexBackfillShadowVerificationFailover, ResumesWithPersistedWindowAcro
 
   thread_holder_.JoinAll();
   ASSERT_OK(CheckIndexConsistency(kIndexName));
+}
+
+// Re-activation after failover moves the generation's base_op_index above every marked write
+// the first leader produced. The verifier classifies marked records by write-ID domain, not by
+// base, so those candidates must still count: a duplicate written entirely before the failover
+// is still reported after it.
+TEST_P(PgIndexBackfillShadowVerificationFailover, DuplicateWrittenBeforeFailoverIsStillReported) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 50) g", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (100, 7)", kTableName));  // dup b = 7.
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_verify_unique_index_tablet_rpc", "true"));
+  {
+    auto start_waiter = cluster_->GetMasterLogWaiter("Starting shadow verification");
+    thread_holder_.AddThreadFunctor([this] {
+      auto create_conn = ASSERT_RESULT(Connect());
+      // Observational mode: the build publishes regardless; the outcome is what is pinned.
+      ASSERT_OK(create_conn.ExecuteFormat(
+          "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+    });
+    ASSERT_OK(start_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+  }
+
+  // All marked writes exist; the new leader re-activates (base moves up) and resumes the scan.
+  auto violation_waiter = cluster_->GetMasterLogWaiter("NOT CLEAN: VERIFY_VIOLATION");
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_verify_unique_index_tablet_rpc", "false"));
+  ASSERT_OK(violation_waiter.WaitFor(MonoDelta::FromSeconds(120) * kTimeMultiplier));
+  thread_holder_.JoinAll();
+}
+
+// Fail-closed verification: the outcome decides publication. CLEAN publishes; anything else
+// fails CREATE INDEX through the existing backfill failure path -- the index is never
+// READ_WRITE_AND_DELETE and never indisvalid.
+class PgIndexBackfillFailClosedVerification : public PgIndexBackfillSkipAllRaftOrdering {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillSkipAllRaftOrdering::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--ysql_index_backfill_fail_closed_verification=true");
+    // Base-table retention (see the verifier fixture comment; #32565).
+    options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=900");
+  }
+
+ protected:
+  Result<bool> IndexIsValid() {
+    return conn_->FetchRow<bool>(Format(
+        "SELECT indisvalid FROM pg_index WHERE indexrelid = '$0'::regclass", kIndexName));
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillFailClosedVerification, ::testing::Bool());
+
+TEST_P(PgIndexBackfillFailClosedVerification, CleanBuildPublishes) {
+  auto clean_waiter = cluster_->GetMasterLogWaiter(": VERIFY_CLEAN");
+  constexpr auto kNumRows = 200;
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC)) $1", kTableName,
+      GenerateSplitClause(kNumRows, /* num_tablets= */ 4)));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, $1) g", kTableName, kNumRows));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  ASSERT_OK(clean_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
+  ASSERT_TRUE(ASSERT_RESULT(IndexIsValid()));
+}
+
+TEST_P(PgIndexBackfillFailClosedVerification, ViolationFailsCreateIndex) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 20) g", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (100, 5)", kTableName));  // dup b = 5.
+
+  const auto status = conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "verification");
+  // Same SQLSTATE as a CHECK_ALL duplicate (and vanilla PostgreSQL): the verified violation is
+  // a statement about the data, not an infrastructure failure.
+  ASSERT_EQ(PgsqlError::ValueFromStatus(status), YBPgErrorCode::YB_PG_UNIQUE_VIOLATION) << status;
+
+  // Never published: the index exists but is invalid; the base table is unaffected and the
+  // invalid index is droppable.
+  ASSERT_FALSE(ASSERT_RESULT(IndexIsValid()));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (200, 200)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+}
+
+// An unresolvable INCONCLUSIVE outcome must fail the build the same way: fail-closed means
+// "not proven clean", not "proven violated".
+class PgIndexBackfillFailClosedInconclusive : public PgIndexBackfillFailClosedVerification {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillFailClosedVerification::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--TEST_force_verify_unique_index_inconclusive=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillFailClosedInconclusive, ::testing::Bool());
+
+TEST_P(PgIndexBackfillFailClosedInconclusive, InconclusiveFailsCreateIndex) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 20) g", kTableName));
+
+  const auto status = conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "verification");
+  // Not proven violated, so no unique_violation SQLSTATE is attached.
+  ASSERT_NE(PgsqlError::ValueFromStatus(status), YBPgErrorCode::YB_PG_UNIQUE_VIOLATION) << status;
+  ASSERT_FALSE(ASSERT_RESULT(IndexIsValid()));
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+}
+
+// A coordinator failure (not a per-tablet outcome) must equally fail the build in gating
+// mode: unique indexes the phase never selected are unverified and may not publish.
+class PgIndexBackfillFailClosedPhaseFailure : public PgIndexBackfillFailClosedVerification {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillFailClosedVerification::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_fail_unique_index_verification_resolution=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillFailClosedPhaseFailure, ::testing::Bool());
+
+TEST_P(PgIndexBackfillFailClosedPhaseFailure, CoordinatorFailureFailsCreateIndex) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 20) g", kTableName));
+
+  // The data is clean: only the injected coordinator failure can produce INCONCLUSIVE here,
+  // and the "coordinator error" reason is produced only by the phase-failure path (never a
+  // tablet outcome).
+  const auto status = conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(
+      status.message().ToBuffer(), "did not pass: VERIFY_INCONCLUSIVE (coordinator error)");
+  // No SQLSTATE 23505 for an infrastructure failure (only a verified duplicate carries it).
+  ASSERT_STR_NOT_CONTAINS(status.message().ToBuffer(), "duplicate key");
+
+  ASSERT_FALSE(ASSERT_RESULT(IndexIsValid()));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (200, 200)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
 }
 
 TEST_P(PgIndexBackfillShadowVerificationPaginated, CleanAcrossManyRpcs) {
@@ -3360,7 +3517,9 @@ TEST_P(PgIndexBackfillMultiMaster, BackfillResumesAfterMasterFailover) {
 // the job's lifetime. Select SKIP_ALL via the master-side test override, verify the persisted
 // job carries it, then clear the override and fail the leader over while backfill is blocked.
 // The new leader resumes the job from persisted state: if it wrongly re-selected the mode it
-// would now pick CHECK_ALL and fail the build on the pre-existing duplicates.
+// would now pick CHECK_ALL and fail the build on the pre-existing duplicates with the
+// foreground "duplicate key" error; a job that stayed SKIP_ALL instead runs to the deferred
+// verification phase, which is what reports the duplicates.
 TEST_P(PgIndexBackfillMultiMaster, UniqueCheckModePersistedAcrossMasterFailover) {
   ASSERT_OK(cluster_->SetFlagOnMasters(
       "TEST_ysql_index_backfill_unique_check_mode", "skip_all"));
@@ -3371,9 +3530,13 @@ TEST_P(PgIndexBackfillMultiMaster, UniqueCheckModePersistedAcrossMasterFailover)
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin create thread";
     PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-    // Succeeds only if the resumed job still runs SKIP_ALL after failover.
-    ASSERT_OK(create_conn.ExecuteFormat(
-        "CREATE UNIQUE INDEX $0 ON $1 (b ASC)", kIndexName, kTableName));
+    // Reaches the verification phase only if the resumed job still runs SKIP_ALL after
+    // failover; the (default-on) fail-closed gate then reports the duplicates.
+    const auto status = create_conn.ExecuteFormat(
+        "CREATE UNIQUE INDEX $0 ON $1 (b ASC)", kIndexName, kTableName);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(
+        status.message().ToBuffer(), "verification did not pass: VERIFY_VIOLATION");
   });
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin master leader stepdown thread";
@@ -4058,10 +4221,13 @@ TEST_P(PgIndexBackfillBlockDoBackfill, DuplicatesExistBeforeBackfill) {
 // on the mode carried by the write request: pre-existing duplicates (which fail the backfill
 // under CHECK_ALL, see DuplicatesExistBeforeBackfill) are admitted only if SKIP_ALL arrived
 // at the DocDB write path through every hop. The resulting index is intentionally
-// inconsistent: without the later verification layers the override is a plumbing test only.
+// inconsistent, so the (default-on) fail-closed verification gate is opted out of here: this
+// is a plumbing test of the write path, not of the outcome (which the verification fixtures
+// cover).
 TEST_P(PgIndexBackfillTest, UniqueCheckModePlumbedFromMasterToWritePath) {
   ASSERT_OK(cluster_->SetFlagOnMasters(
       "TEST_ysql_index_backfill_unique_check_mode", "skip_all"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_index_backfill_fail_closed_verification", "false"));
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1), (2, 1)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat(
