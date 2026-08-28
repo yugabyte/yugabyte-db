@@ -62,6 +62,23 @@ JDK_BINARY_URL ?= https://github.com/adoptium/temurin17-binaries/releases/downlo
 YBDB_BINARY_NAME ?= yugabyte-2.17.2.0-b216-linux-x86_64.tar.gz
 YBDB_BINARY_URL ?= https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/releases/2.17.2.0/yugabyte-2.17.2.0-b216-linux-x86_64.tar.gz
 
+# Perf Advisor collects table DDL with ysql_dump, which nothing else on a yba-installer host
+# provides. We repackage just ysql_dump and the YugabyteDB C++ runtime it links against out of a
+# YBDB release, rather than shipping the whole release.
+YSQL_DUMP_YBDB_VERSION ?= 2026.1.0.0-b118
+YSQL_DUMP_YBDB_RELEASE ?= $(shell echo $(YSQL_DUMP_YBDB_VERSION) | sed 's/-b.*//')
+YSQL_DUMP_YBDB_PLATFORM ?= $(if $(filter arm64,$(GOARCH)),el8-aarch64,linux-x86_64)
+YSQL_DUMP_YBDB_BINARY_NAME ?= yugabyte-$(YSQL_DUMP_YBDB_VERSION)-$(YSQL_DUMP_YBDB_PLATFORM).tar.gz
+YSQL_DUMP_YBDB_BINARY_URL ?= \
+  https://downloads.yugabyte.com/releases/$(YSQL_DUMP_YBDB_RELEASE)/$(YSQL_DUMP_YBDB_BINARY_NAME)
+YSQL_DUMP_CLIENT_BUNDLE ?= ysql_dump_client.tar.gz
+YSQL_DUMP_HOST_ARCH := $(if $(filter arm64,$(GOARCH)),aarch64,x86_64)
+
+# Libraries ysql_dump needs at runtime; the release moves them between directories across
+# versions, so the recipe below probes for the directory that has all of them.
+YSQL_DUMP_REQUIRED_LIBS := 'libunwind\.so(\.[0-9]+)*$$' 'libc\+\+\.so(\.[0-9]+)*$$' \
+  'libc\+\+abi\.so(\.[0-9]+)*$$' 'libabsl[^/]*\.so(\.[0-9]+)*$$'
+
 
 
 # Remove partially built targets on recipe failure so the next build re-runs
@@ -70,7 +87,7 @@ YBDB_BINARY_URL ?= https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/rel
 
 all: test package
 
-prereqs: postgres jdk perf_advisor
+prereqs: postgres jdk perf_advisor ysql_dump_client
 
 echo:
 	@echo $(CURDIR)
@@ -114,6 +131,58 @@ ybdb: ${PREREQS_DIR}/${YBDB_BINARY_NAME}
 ${PREREQS_DIR}/${YBDB_BINARY_NAME}:
 	curl -fLo $@ ${YBDB_BINARY_URL}
 	@echo downloaded $@
+
+# Bundles ysql_dump with the YugabyteDB runtime libraries it links against, out of a full YBDB
+# release. Two things are dropped, together ~90% of the release: the rest of the postgres tree
+# (server binaries, headers, share), and tserver/lib/yb, which holds the YugabyteDB server
+# libraries no client links against. The recipe then runs the bundled binary against only the
+# libraries the bundle ships, which is what proves the trim is complete; that check needs a host
+# that can execute the target's binaries, so it is skipped when cross-building.
+ysql_dump_client: ${PREREQS_DIR}/${YSQL_DUMP_CLIENT_BUNDLE}
+${PREREQS_DIR}/${YSQL_DUMP_CLIENT_BUNDLE}:
+	set -eu; \
+	tmp_dir=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp_dir"' EXIT; \
+	expanded_dir="$$tmp_dir/expanded"; \
+	bundle_dir="$$tmp_dir/bundle"; \
+	mkdir -p "$$expanded_dir" "$$bundle_dir/postgres/bin" "$$bundle_dir/tserver"; \
+	curl -fLo "$$tmp_dir/ybdb.tar.gz" "$(YSQL_DUMP_YBDB_BINARY_URL)"; \
+	tar -zxf "$$tmp_dir/ybdb.tar.gz" -C "$$expanded_dir" --strip-components=1; \
+	if [ ! -x "$$expanded_dir/postgres/bin/ysql_dump" ]; then \
+	    echo "ERROR: postgres/bin/ysql_dump missing from $(YSQL_DUMP_YBDB_BINARY_NAME)"; \
+	    exit 1; \
+	fi; \
+	cp -a "$$expanded_dir/postgres/bin/ysql_dump" "$$bundle_dir/postgres/bin/"; \
+	lib_dir=""; \
+	for candidate in "$$expanded_dir/tserver/lib" "$$expanded_dir/lib" \
+	                 "$$expanded_dir/thirdparty"; do \
+	    [ -d "$$candidate" ] || continue; \
+	    files=$$(find "$$candidate" -type f); \
+	    complete=1; \
+	    for lib in $(YSQL_DUMP_REQUIRED_LIBS); do \
+	        printf '%s\n' "$$files" | grep -Eq "$$lib" || complete=0; \
+	    done; \
+	    if [ "$$complete" -eq 1 ]; then lib_dir="$$candidate"; break; fi; \
+	    echo "skipping $$candidate: missing some of ysql_dump's runtime libraries"; \
+	done; \
+	if [ -z "$$lib_dir" ]; then \
+	    echo "ERROR: no runtime library directory in $(YSQL_DUMP_YBDB_BINARY_NAME) has every"; \
+	    echo "       library ysql_dump needs (checked tserver/lib, lib, thirdparty)"; \
+	    exit 1; \
+	fi; \
+	echo "using runtime libraries from $$lib_dir"; \
+	cp -a "$$lib_dir" "$$bundle_dir/tserver/lib"; \
+	rm -rf "$$bundle_dir/tserver/lib/yb"; \
+	if [ "$$(uname -s)" = "Linux" ] && [ "$(GOOS)" = "linux" ] && \
+	   [ "$$(uname -m)" = "$(YSQL_DUMP_HOST_ARCH)" ]; then \
+	    libs="$$bundle_dir/tserver/lib"; \
+	    LD_LIBRARY_PATH="$$libs/yb-thirdparty:$$libs/postgres:$$libs" \
+	        "$$bundle_dir/postgres/bin/ysql_dump" --version; \
+	else \
+	    echo "skipping ysql_dump smoke test: cannot run $(GOOS)/$(GOARCH) binaries here"; \
+	fi; \
+	tar -czf $@ -C "$$bundle_dir" postgres tserver/lib
+	@echo packaged $@
 
 yba-ctl: config test ${BIN_DIR}/${BIN_NAME}
 ${BIN_DIR}/${BIN_NAME}:
