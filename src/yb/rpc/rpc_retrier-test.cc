@@ -103,8 +103,8 @@ TEST_F(RpcRetrierTraceTest, TraceContextCarriedAcrossRetry) {
   auto rpc = std::make_shared<TraceObservingRpcCommand>(deadline);
   std::unique_ptr<RpcRetrier> retrier;
   {
-    auto scope = dist_trace::ActivateParentScope(expected);
-    ASSERT_TRUE(scope != nullptr);
+    dist_trace::ScopedAdoptSpan scope(expected);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
     retrier = std::make_unique<RpcRetrier>(deadline, messenger_.get(), proxy_cache_.get());
   }
 

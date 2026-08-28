@@ -75,8 +75,8 @@ TEST_F(RetryingRpcTaskTraceTest, TraceContextCarriedToRun) {
 
   std::shared_ptr<TraceObservingRpcTask> task;
   {
-    auto scope = dist_trace::ActivateParentScope(expected);
-    ASSERT_TRUE(scope != nullptr);
+    dist_trace::ScopedAdoptSpan scope(expected);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
     task = std::make_shared<TraceObservingRpcTask>();
   }
 
@@ -106,11 +106,11 @@ TEST_F(RetryingRpcTaskTraceTest, TraceContextIsPerTask) {
   std::shared_ptr<TraceObservingRpcTask> first_task;
   std::shared_ptr<TraceObservingRpcTask> second_task;
   {
-    auto scope = dist_trace::ActivateParentScope(first_context);
+    dist_trace::ScopedAdoptSpan scope(first_context);
     first_task = std::make_shared<TraceObservingRpcTask>();
   }
   {
-    auto scope = dist_trace::ActivateParentScope(second_context);
+    dist_trace::ScopedAdoptSpan scope(second_context);
     second_task = std::make_shared<TraceObservingRpcTask>();
   }
 
