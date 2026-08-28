@@ -1505,7 +1505,7 @@ class PggateTestRowBounds : public PggateTest {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewInsert(
         kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-        YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
+        YbcPgTransactionSetting::YB_TRANSACTIONAL, {} /* skip_intents_info */, &pg_stmt));
 
     // First row.
     YbcPgExpr expr_h1;
@@ -1589,7 +1589,7 @@ class PggateTestRowBounds : public PggateTest {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewSelect(
         kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
-        false /* skip_intents_read */, &pg_stmt));
+        {} /* skip_intents_info */, &pg_stmt));
 
     // Specify the selected expressions.
     YbcPgExpr colref;
