@@ -16,6 +16,15 @@
 #include "yb/yql/cql/cqlserver/cql_statement.h"
 
 #include <openssl/md5.h>
+
+#include <hdr/hdr_histogram.h>
+
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <sstream>
+
+#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
 
 DEFINE_RUNTIME_bool(cql_use_metadata_cache_for_schema_version_check, true,
@@ -28,6 +37,128 @@ using std::string;
 
 namespace yb {
 namespace cqlserver {
+
+namespace {
+
+// Histogram configuration constants, kept identical to YSQL's pg_stat_statements defaults so the
+// resulting yb_latency_histogram jsonb is comparable across YSQL and YCQL.
+constexpr double kYbHdrLatencyResMs = 0.1;
+constexpr double kYbHdrMaxLatencyMs = 1677721.6;
+constexpr int kYbHdrBucketFactor = 16;
+
+// Shared, immutable configuration derived once for all YCQL statement histograms.
+struct HdrConfig {
+  hdr_histogram_bucket_config cfg;
+  int64_t max_value;   // Latencies at or above this (in resolution units) go to the overflow bucket.
+  size_t alloc_size;   // Bytes to allocate for a histogram (struct + inline counts array).
+};
+
+const HdrConfig& GetHdrConfig() {
+  // Mirrors the bucket-config derivation in pg_stat_statements.c so both APIs use the same buckets.
+  static const HdrConfig config = [] {
+    HdrConfig c;
+    const int64_t prelim_max_value = static_cast<int64_t>(kYbHdrMaxLatencyMs / kYbHdrLatencyResMs);
+    yb_hdr_calculate_bucket_config(1, prelim_max_value - 1, kYbHdrBucketFactor, &c.cfg);
+
+    const int derived_max_magnitude =
+        c.cfg.sub_bucket_half_count_magnitude + c.cfg.bucket_count;
+    c.max_value = static_cast<int64_t>(std::pow(2, derived_max_magnitude));
+    if (prelim_max_value != c.max_value) {
+      yb_hdr_calculate_bucket_config(1, c.max_value - 1, kYbHdrBucketFactor, &c.cfg);
+    }
+    c.alloc_size =
+        sizeof(hdr_histogram) + static_cast<size_t>(c.cfg.counts_len) * sizeof(count_t);
+    return c;
+  }();
+  return config;
+}
+
+}  // namespace
+
+void StmtLatencyHistogram::FreeDeleter::operator()(hdr_histogram* h) const {
+  free(h);
+}
+
+StmtLatencyHistogram::StmtLatencyHistogram() {
+  Allocate();
+}
+
+StmtLatencyHistogram::StmtLatencyHistogram(const StmtLatencyHistogram& other)
+    : slow_executions_(other.slow_executions_) {
+  const auto& config = GetHdrConfig();
+  hist_.reset(static_cast<hdr_histogram*>(malloc(config.alloc_size)));
+  memcpy(hist_.get(), other.hist_.get(), config.alloc_size);
+}
+
+StmtLatencyHistogram& StmtLatencyHistogram::operator=(const StmtLatencyHistogram& other) {
+  if (this != &other) {
+    const auto& config = GetHdrConfig();
+    memcpy(hist_.get(), other.hist_.get(), config.alloc_size);
+    slow_executions_ = other.slow_executions_;
+  }
+  return *this;
+}
+
+StmtLatencyHistogram::~StmtLatencyHistogram() = default;
+
+void StmtLatencyHistogram::Allocate() {
+  const auto& config = GetHdrConfig();
+  hist_.reset(static_cast<hdr_histogram*>(calloc(1, config.alloc_size)));
+  auto cfg = config.cfg;
+  hdr_init_preallocated(hist_.get(), &cfg);
+}
+
+void StmtLatencyHistogram::Record(double time_in_msec) {
+  if (time_in_msec < 0) {
+    time_in_msec = 0;
+  }
+  const auto& config = GetHdrConfig();
+  const int64_t value = static_cast<int64_t>(time_in_msec / kYbHdrLatencyResMs);
+  if (value < config.max_value) {
+    hdr_record_value(hist_.get(), value);
+  } else {
+    ++slow_executions_;
+  }
+}
+
+void StmtLatencyHistogram::Reset() {
+  hdr_reset(hist_.get());
+  slow_executions_ = 0;
+}
+
+void StmtLatencyHistogram::WriteAsJsonArray(JsonWriter* jw) const {
+  const auto& config = GetHdrConfig();
+  jw->StartArray();
+
+  hdr_iter iter;
+  hdr_iter_init(&iter, hist_.get());
+  while (hdr_iter_next(&iter)) {
+    if (iter.count > 0) {
+      jw->StartObject();
+      jw->String(StringPrintf(
+          "[%.1f,%.1f)", iter.value_iterated_to * kYbHdrLatencyResMs,
+          (iter.highest_equivalent_value + 1) * kYbHdrLatencyResMs));
+      jw->Int64(iter.count);
+      jw->EndObject();
+    }
+  }
+
+  if (slow_executions_ > 0) {
+    jw->StartObject();
+    jw->String(StringPrintf("[%.1f,)", config.max_value * kYbHdrLatencyResMs));
+    jw->Int64(slow_executions_);
+    jw->EndObject();
+  }
+
+  jw->EndArray();
+}
+
+std::string StmtLatencyHistogram::ToJsonArrayString() const {
+  std::stringstream ss;
+  JsonWriter jw(&ss, JsonWriter::COMPACT);
+  WriteAsJsonArray(&jw);
+  return ss.str();
+}
 
 //------------------------------------------------------------------------------------------------
 CQLStatement::CQLStatement(
@@ -108,6 +239,9 @@ void StmtCounters::WriteAsJson(
 
   jw->String("stddev_time");
   jw->Double(stddev_time);
+
+  jw->String("yb_latency_histogram");
+  this->latency_histogram.WriteAsJsonArray(jw);
   jw->EndObject();
 }
 
@@ -117,6 +251,7 @@ void StmtCounters::ResetCounters() {
   this->min_time_in_msec = 0.;
   this->max_time_in_msec = 0.;
   this->sum_var_time_in_msec = 0.;
+  this->latency_histogram.Reset();
 }
 
 double StmtCounters::GetStdDevTime() const {

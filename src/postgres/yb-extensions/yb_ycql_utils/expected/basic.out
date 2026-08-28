@@ -5,7 +5,7 @@ select ycql_stat_statements();
 (0 rows)
 
 select * from ycql_stat_statements;
- queryid | query | is_prepared | calls | total_time | min_time | max_time | mean_time | stddev_time | keyspace 
----------+-------+-------------+-------+------------+----------+----------+-----------+-------------+----------
+ queryid | query | is_prepared | calls | total_time | min_time | max_time | mean_time | stddev_time | keyspace | yb_latency_histogram 
+---------+-------+-------------+-------+------------+----------+----------+-----------+-------------+----------+----------------------
 (0 rows)
 

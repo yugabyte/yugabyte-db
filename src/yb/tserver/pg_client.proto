@@ -1281,6 +1281,8 @@ message YCQLStatementStatsPB {
   double mean_time = 8;
   double stddev_time = 9;
   string keyspace = 10;
+  // JSON array of latency buckets, matching the pg_stat_statements yb_latency_histogram format.
+  string yb_latency_histogram = 11;
 }
 
 message PgTabletsMetadataRequestPB {

@@ -800,6 +800,7 @@ typedef struct {
   double mean_time;
   double stddev_time;
   const char* keyspace;
+  const char* yb_latency_histogram;
 } YbcYCQLStatementStats;
 
 // Struct to store ASH samples in the circular buffer.

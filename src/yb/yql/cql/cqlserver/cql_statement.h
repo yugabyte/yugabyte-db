@@ -21,16 +21,59 @@
 #pragma once
 
 #include <list>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "yb/util/jsonwriter.h"
 #include "yb/yql/cql/ql/statement.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
 
+// HDR histogram C struct from the third-party HdrHistogram_c library (global scope, extern "C").
+struct hdr_histogram;
+
 namespace yb {
 namespace cqlserver {
 
 class CQLStatement;
+
+// Tracks the distribution of YCQL statement execution latencies using an HDR histogram.
+//
+// The histogram configuration (resolution, max latency, bucket factor) and the JSON output format
+// intentionally match YSQL's pg_stat_statements yb_latency_histogram column, so that the resulting
+// jsonb is compatible with helpers such as yb_get_percentile.
+class StmtLatencyHistogram {
+ public:
+  StmtLatencyHistogram();
+  StmtLatencyHistogram(const StmtLatencyHistogram& other);
+  StmtLatencyHistogram& operator=(const StmtLatencyHistogram& other);
+  ~StmtLatencyHistogram();
+
+  // Records a single execution latency (in milliseconds) into the histogram.
+  void Record(double time_in_msec);
+
+  // Clears all recorded latencies.
+  void Reset();
+
+  // Writes the histogram as a JSON array (YSQL yb_latency_histogram format) into jw.
+  void WriteAsJsonArray(JsonWriter* jw) const;
+
+  // Returns the histogram as a compact JSON array string (YSQL yb_latency_histogram format).
+  std::string ToJsonArrayString() const;
+
+ private:
+  struct FreeDeleter {
+    void operator()(hdr_histogram* h) const;
+  };
+
+  // Allocates and initializes an empty histogram using the shared configuration.
+  void Allocate();
+
+  std::unique_ptr<hdr_histogram, FreeDeleter> hist_;
+
+  // Count of executions slower than the maximum tracked latency (overflow bucket).
+  int64_t slow_executions_ = 0;
+};
 
 // A map of CQL query id to the prepared statement for caching the prepared statments. Shared_ptr
 // is used so that a prepared statement can be aged out and removed from the cache without deleting
@@ -50,7 +93,8 @@ struct StmtCounters{
       num_calls(other->num_calls), total_time_in_msec(other->total_time_in_msec),
       min_time_in_msec(other->min_time_in_msec), max_time_in_msec(other->max_time_in_msec),
       sum_var_time_in_msec(other->sum_var_time_in_msec), query(other->query),
-      keyspace(other->keyspace), is_prepared(other->is_prepared) {}
+      keyspace(other->keyspace), is_prepared(other->is_prepared),
+      latency_histogram(other->latency_histogram) {}
 
   void WriteAsJson(JsonWriter* jw, const ql::CQLMessage::QueryId& query_id) const;
 
@@ -66,6 +110,7 @@ struct StmtCounters{
   std::string query;                // Stores the query text.
   std::string keyspace;             // Stores the keyspace name.
   bool is_prepared = false;         // If the stmt is prepared (batch: if all children prepared).
+  StmtLatencyHistogram latency_histogram;  // Distribution of execution latencies.
 };
 
 // A CQL statement that is prepared and cached.
