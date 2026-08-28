@@ -5574,6 +5574,16 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 			Path	   *sorted_path;
 			List	   *useful_pathkeys_list = NIL;
 
+			/*
+			 * YB: Do not wrap Unique/Limit around paths that are already
+			 * distinct.  Those paths are added to distinct_rel at the end of
+			 * this function.  Wrapping them here can make add_path() pfree a
+			 * path that is still referenced as a child (#20893).
+			 */
+			if (IsYugaByteEnabled() &&
+				list_member_ptr(yb_distinct_paths, input_path))
+				continue;
+
 			useful_pathkeys_list =
 				get_useful_pathkeys_for_distinct(root,
 												 needed_pathkeys,
@@ -5591,6 +5601,13 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 				if (sorted_path == NULL)
 					continue;
+
+				/*
+				 * YB: Avoid adding UniquePath twice.  PG19 collapsed
+				 * UpperUniquePath into UniquePath.
+				 */
+				if (IsYugaByteEnabled() && IsA(sorted_path, UniquePath))
+					sorted_path = ((UniquePath *) sorted_path)->subpath;
 
 				/*
 				 * distinct_pathkeys may have become empty if all of the
@@ -5634,57 +5651,6 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 				}
 			}
 		}
-		/* YB_TODO_PG19MERGE: PG refactored this code, YB logic below needs to be ported */
-#if 0
-				/* YB: Do not consider paths that are already distinct. */
-				if (!IsYugaByteEnabled() ||
-					!list_member_ptr(yb_distinct_paths, path))
-				{
-					/* YB: Avoid adding UpperUniquePath twice. */
-					if (IsYugaByteEnabled() && IsA(path, UpperUniquePath))
-						path = ((UpperUniquePath *) path)->subpath;
-
-					add_path(distinct_rel, (Path *)
-							 create_upper_unique_path(root, distinct_rel, path,
-													  list_length(root->distinct_pathkeys),
-													  numDistinctRows));
-				}
-			}
-		}
-
-		/* For explicit-sort case, always use the more rigorous clause */
-		if (list_length(root->distinct_pathkeys) <
-			list_length(root->sort_pathkeys))
-		{
-			needed_pathkeys = root->sort_pathkeys;
-			/* Assert checks that parser didn't mess up... */
-			Assert(pathkeys_contained_in(root->distinct_pathkeys,
-										 needed_pathkeys));
-		}
-		else
-			needed_pathkeys = root->distinct_pathkeys;
-
-		path = cheapest_input_path;
-		if (!pathkeys_contained_in(needed_pathkeys, path->pathkeys))
-			path = (Path *) create_sort_path(root, distinct_rel,
-											 path,
-											 needed_pathkeys,
-											 -1.0);
-
-		/* YB: Ignore sort+uniq if cheapest_input_path is already distinct. */
-		if (!IsYugaByteEnabled() ||
-			!list_member_ptr(yb_distinct_paths, cheapest_input_path))
-		{
-			/* YB: Avoid adding UpperUniquePath twice. */
-			if (IsYugaByteEnabled() && IsA(path, UpperUniquePath))
-				path = ((UpperUniquePath *) path)->subpath;
-
-			add_path(distinct_rel, (Path *)
-					 create_upper_unique_path(root, distinct_rel, path,
-											  list_length(root->distinct_pathkeys),
-											  numDistinctRows));
-		}
-#endif
 	}
 
 	/*
