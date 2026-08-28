@@ -3827,6 +3827,28 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
     result = metadata->cdc_sdk_safe_time();
   }
 
+  // Deferred uniqueness verification (#33444): while an index-backfill ordering generation
+  // is active, every physical version in the verification window [backfill_read_ht,
+  // verify_upper_ht] must survive compaction. Holding the cutoff at the persisted barrier
+  // (backfill_read_ht.Decremented(); strictly below the window per the equality-insufficiency
+  // analysis) preserves them: compaction's overwrite-based skip only drops records strictly
+  // below the cutoff -- and, by the same property, never repacks in-window records into new
+  // packed rows the verifier would misattribute. Fail closed like the xCluster path below: an
+  // active generation whose barrier is missing blocks all GC rather than silently letting the
+  // window be compacted away.
+  const auto generation = metadata->index_backfill_ordering_generation();
+  if (generation.active) {
+    if (!generation.retention_barrier_ht) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30)
+          << "Active index-backfill ordering generation without a retention barrier on tablet "
+          << metadata->raft_group_id() << "; blocking history GC";
+      return {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = HybridTime::kMin};
+    }
+    VLOG(1) << "Index-backfill retention barrier: " << generation.retention_barrier_ht
+            << " for tablet: " << metadata->raft_group_id();
+    result.MakeAtMost(generation.retention_barrier_ht);
+  }
+
   Status s = BackfillNamespaceIdIfNeeded(metadata->table_id(), *metadata, client());
   if (!s.ok()) {
     YB_LOG_EVERY_N_SECS(ERROR, 30) << "Unable to backfill tablet metadata namespace_id for tablet: "

@@ -480,6 +480,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   HybridTime TEST_LastSnapshotHybridTime(const SnapshotScheduleId& schedule_id) const
       EXCLUDES(snapshot_schedule_info_mutex_);
 
+  docdb::HistoryCutoff TEST_AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
+    return AllowedHistoryCutoff(metadata);
+  }
+
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
   friend class ComputeDbHistoryRetentionPinCutoffTest;
