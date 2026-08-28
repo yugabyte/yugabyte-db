@@ -3465,7 +3465,8 @@ TEST_F_EX(PgLibPqTest,
           Format("pgrep -P $0 -f 'YSQL webserver' | wc -l", postmaster_pid)));
       return count.find("1") != string::npos;
     }, 2500ms, "Webserver restarting..."));
-    ASSERT_OK(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid)));
+    // Same Mac quirk as above: -P must precede -f, or this kills unrelated processes.
+    ASSERT_OK(RunShellProcess(Format("pkill -9 -P $0 -f 'YSQL webserver'", postmaster_pid)));
   }
 }
 
