@@ -28,7 +28,9 @@
 # Claude side and failClosed covers a crash on the Cursor side, so a miss in
 # this script costs the message, never the block.
 
-msg='Blocked: raw git push is disabled. Use .agents/scripts/git-push.sh instead. It pushes to your fork, or to upstream when the branch is a feature-stack/<feature>/<change> stack branch.'
+msg='Blocked: raw git push is disabled. Use .agents/scripts/git-push.sh instead. '
+msg+='It pushes to your fork, or to upstream when the branch is a '
+msg+='feature-stack/<feature>/<change> stack branch.'
 
 payload=$(cat)
 
