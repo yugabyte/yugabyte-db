@@ -266,7 +266,10 @@ struct KvStoreInfo {
   std::string upper_bound_key;
 
   // See KvStoreInfoPB field with the same name.
-  bool parent_data_compacted = false;
+  bool rocksdb_parent_data_compacted = false;
+
+  // See KvStoreInfoPB field with the same name.
+  uint64_t split_generation = 0;
 
   // See KvStoreInfoPB field with the same name.
   uint64_t last_full_compaction_time = kNoLastFullCompactionTime;
@@ -461,14 +464,15 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   bool IsUnderXClusterReplication() const;
 
-  bool parent_data_compacted() const {
+  // Returns true if parent's RocksDB data is compacted.
+  bool rocksdb_parent_data_compacted() const {
     std::lock_guard lock(data_mutex_);
-    return kv_store_.parent_data_compacted;
+    return kv_store_.rocksdb_parent_data_compacted;
   }
 
-  void set_parent_data_compacted(const bool& value) {
+  void set_rocksdb_parent_data_compacted(const bool& value) {
     std::lock_guard lock(data_mutex_);
-    kv_store_.parent_data_compacted = value;
+    kv_store_.rocksdb_parent_data_compacted = value;
   }
 
   std::optional<uint64_t> post_split_compaction_file_number_upper_bound() const {
@@ -671,7 +675,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Creates a new Raft group metadata for the part of existing tablet contained in this Raft group.
   // Assigns specified Raft group ID, partition and key bounds for a new tablet.
-  Result<RaftGroupMetadataPtr> CreateSubtabletMetadata(
+  // Child split_generation is set to this tablet's split_generation + 1.
+  Result<RaftGroupMetadataPtr> CreateSplitChildMetadata(
       const RaftGroupId& raft_group_id, const dockv::Partition& partition,
       const std::string& lower_bound_key, const std::string& upper_bound_key) const;
 
@@ -694,6 +699,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::vector<TabletId> split_child_tablet_ids() const;
 
   OpId split_op_id() const;
+
+  // See KvStoreInfoPB::split_generation.
+  uint64_t split_generation() const;
+
+  // Required for restoring split generation from vector index manifest on tablet bootstrap.
+  void set_split_generation(uint64_t value);
 
   // If this tablet should be deleted, returns op id that should be applied to all replicas,
   // before performing such deletion.
@@ -834,7 +845,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   mutable Mutex flush_lock_;
 
   // No thread safety annotations on raft_group_id_ because it is a constant after the object is
-  // fully created. We cannot mark it as const since CreateSubtabletMetadata sets it to its parents
+  // fully created. We cannot mark it as const since CreateSplitChildMetadata sets it to its parents
   // id in order to call LoadFromSuperBlock and then updates it to the right value.
   RaftGroupId raft_group_id_;
 

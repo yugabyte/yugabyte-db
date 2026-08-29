@@ -878,7 +878,16 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
     disk_size_info.ToPB(status_pb_out);
     // Set hide status of the tablet.
     status_pb_out->set_is_hidden(meta_->hidden());
-    status_pb_out->set_parent_data_compacted(meta_->parent_data_compacted());
+    status_pb_out->set_rocksdb_parent_data_compacted(meta_->rocksdb_parent_data_compacted());
+    // Reports whether a compaction is still required, not the physical state: with
+    // vector_index_include_into_post_split_compaction off nothing will ever compact
+    // the inherited data, and a consumer waiting on this bit would wait forever.
+    // Left unset when the tablet is not available, so that consumers don't read
+    // an unknown state as compacted.
+    if (tablet) {
+      status_pb_out->set_vector_indexes_parent_data_compacted(
+          !tablet->vector_indexes().PostSplitCompactionRequired());
+    }
     for (const auto& table : meta_->GetAllColocatedTables()) {
       status_pb_out->add_colocated_table_ids(table);
     }

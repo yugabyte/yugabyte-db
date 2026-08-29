@@ -1334,11 +1334,12 @@ Status TSTabletManager::ApplyTabletSplit(
     const auto& new_tablet_id = tcmeta.tablet_id;
 
     // Copy raft group metadata.
-    tcmeta.raft_group_metadata = VERIFY_RESULT(tablet->CreateSubtablet(
+    tcmeta.raft_group_metadata = VERIFY_RESULT(tablet->CreateSplitChildTablet(
         new_tablet_id, tcmeta.partition, tcmeta.key_bounds, split_op_id,
         operation->hybrid_time()));
     LOG(INFO) << TabletLogPrefix(new_tablet_id) << "Created raft group metadata for table: "
-              << table_id << ", key bounds: " << tcmeta.key_bounds.ToString();
+              << table_id << ", key bounds: " << tcmeta.key_bounds.ToString()
+              << ", split_generation: " << tcmeta.raft_group_metadata->split_generation();
 
     // Store consensus metadata.
     // Here we reuse the same cmeta instance for both new tablets. This is safe, because:

@@ -50,6 +50,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/path_util.h"
 #include "yb/util/sync_point.h"
@@ -76,6 +77,7 @@ DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_vector_index_exact);
+DECLARE_bool(vector_index_require_parent_data_compacted_before_split);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(heartbeat_interval_ms);
@@ -119,6 +121,8 @@ namespace yb::tablet {
 
 extern bool TEST_block_after_backfilling_first_vector_index_chunks;
 extern bool TEST_fail_on_seq_scan_with_vector_indexes;
+extern bool TEST_skip_vector_index_post_split_compaction;
+extern bool TEST_vector_index_force_parent_data_not_compacted;
 extern std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill;
 
 } // namespace yb::tablet
@@ -2151,14 +2155,16 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
         ASSERT_STR_EQ(files, expected_files);
       } else {
         // Wait for compaction is done.
+        // InitFrontiers flushes the frontier (creating manifest 1), then compaction
+        // creates manifest 2 and the compacted chunk file.
         ASSERT_OK(
             LoggedWaitFor([vi]() -> Result<bool> {
-              return vi->TEST_NextManifestFileNo() > 1;
+              return vi->TEST_NextManifestFileNo() > 2;
             }, MonoDelta::FromSeconds(10),
             Format("Vector index compaction,tablet $0", tablet->tablet_id()))
         );
         const auto expected_files = Format(
-            "[0.meta, 1.meta, vectorindex_2$0]",
+            "[0.meta, 1.meta, 2.meta, vectorindex_2$0]",
             docdb::GetVectorIndexChunkFileExtension(vi->options()));
         ASSERT_STR_EQ(files, expected_files);
       }
@@ -2385,6 +2391,188 @@ TEST_P(PgDistributedVectorIndexTest, MetaCacheLookupAfterDropWithoutReads) {
   // partition information in cache at this point.
   ASSERT_OK(CreateIndex(conn));
   ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+// The test verifies that a split is blocked if parent tablet has uncompacted vector indexes data.
+TEST_P(PgDistributedVectorIndexTest, SplitBlockedWithOrphanedPostSplitData) {
+  constexpr size_t kNumRows = 80;
+
+  // The knobs below are process-wide, restore them to not affect the following tests.
+  auto flags_restorer = ScopeExit([
+      require = FLAGS_vector_index_require_parent_data_compacted_before_split,
+      force_not_compacted = tablet::TEST_vector_index_force_parent_data_not_compacted,
+      skip_compaction = tablet::TEST_skip_vector_index_post_split_compaction] {
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_require_parent_data_compacted_before_split) = require;
+    ANNOTATE_UNPROTECTED_WRITE(
+        tablet::TEST_vector_index_force_parent_data_not_compacted) = force_not_compacted;
+    ANNOTATE_UNPROTECTED_WRITE(
+        tablet::TEST_skip_vector_index_post_split_compaction) = skip_compaction;
+  });
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 0, kNumRows - 1));
+
+  // Wait for all intents are applied and flush tablets.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+
+  // Trigger tablet split for the only tablet.
+  LOG(INFO) << "Splitting tablet " << peers.back()->tablet_id();
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.back()->tablet_id()));
+
+  // Make sure parent tablet got cleaned up.
+  SleepFor(MonoDelta::FromSeconds(
+      2 * ANNOTATE_UNPROTECTED_READ(FLAGS_cleanup_split_tablets_interval_sec)));
+
+  // Make sure all peers meta data was updated.
+  peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), 2 * cluster_->num_tablet_servers());
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    LOG(INFO) << "Checking parent data compaction status for peer "
+              << peer->permanent_uuid() << " tablet " << tablet->tablet_id();
+    ASSERT_TRUE(tablet->metadata()->rocksdb_parent_data_compacted());
+    ASSERT_TRUE(tablet->vector_indexes().ParentDataCompacted());
+  }
+
+  // Let's be explicit on the exected parent data compaction state.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_require_parent_data_compacted_before_split) = true;
+
+  // Simulate vector index post-split compaction still being in progress.
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  const auto tablet_ids = ListTabletIdsForTable(cluster_.get(), table_id);
+  ASSERT_EQ(tablet_ids.size(), 2);
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_force_parent_data_not_compacted) = true;
+
+  // Invoke split and check the required reason for the block is being logged. The logs scan
+  // is required because the split is done asynchronously and has several steps.
+  {
+    auto log_waiter = StringWaiterLogSink("Tablet has orphaned post-split data");
+    auto status = InvokeSplitTabletRpc(cluster_.get(), *tablet_ids.begin());
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+  }
+
+  // Validate that the split does not wait for vector index parent data to be compacted if the
+  // flag is not set. Vector index post-split compaction is skipped, so the new children keep
+  // their inherited parent data while RocksDB post-split compaction completes.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_force_parent_data_not_compacted) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_skip_vector_index_post_split_compaction) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_require_parent_data_compacted_before_split) = false;
+
+  const auto tablet_ids_before_split = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), *tablet_ids.begin()));
+
+  // The wait above returns as soon as RocksDB post-split compaction is done, so the new children
+  // must be RocksDB compacted with vector index parent data still in place. Only the new children
+  // are inspected, hence there's no need to wait for the parent tablet cleanup.
+  size_t new_tablet_peers = 0;
+  for (const auto& peer : ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"))) {
+    if (tablet_ids_before_split.contains(peer->tablet_id())) {
+      continue;
+    }
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    LOG(INFO) << "Checking parent data compaction status for peer "
+              << peer->permanent_uuid() << " tablet " << tablet->tablet_id();
+    ASSERT_TRUE(tablet->metadata()->rocksdb_parent_data_compacted());
+    ASSERT_FALSE(tablet->vector_indexes().ParentDataCompacted());
+    ++new_tablet_peers;
+  }
+
+  ASSERT_EQ(new_tablet_peers, 2 * cluster_->num_tablet_servers());
+}
+
+// Simulates a binary rollback that dropped KvStoreInfo.split_generation (superblock 0) while the
+// vector index still has the generation. Bootstrap must restore it so the next split increments
+// past that value.
+TEST_P(PgDistributedVectorIndexTest, SplitGenerationRestoredAfterSuperblockReset) {
+  constexpr size_t kNumRows = 80;
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 0, kNumRows - 1));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto leaders = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(leaders.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), leaders.front()->tablet_id()));
+  SleepFor(MonoDelta::FromSeconds(
+      2 * ANNOTATE_UNPROTECTED_READ(FLAGS_cleanup_split_tablets_interval_sec)));
+
+  std::unordered_map<TabletId, uint64_t> expected_generation;
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_FALSE(peers.empty());
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    const auto gen = tablet->metadata()->split_generation();
+    // Parent tablets keep generation 0; only split children have a value to restore.
+    if (gen == 0) {
+      continue;
+    }
+    ASSERT_EQ(tablet->vector_indexes().MaxPersistedSplitGeneration(), gen);
+    expected_generation.emplace(tablet->tablet_id(), gen);
+    tablet->metadata()->set_split_generation(0);
+    ASSERT_OK(tablet->metadata()->Flush());
+    ASSERT_EQ(tablet->metadata()->split_generation(), 0);
+  }
+  ASSERT_FALSE(expected_generation.empty());
+
+  ASSERT_OK(RestartCluster());
+
+  peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  size_t restored_replicas = 0;
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto it = expected_generation.find(tablet->tablet_id());
+    if (it == expected_generation.end()) {
+      continue;
+    }
+    ++restored_replicas;
+    ASSERT_EQ(tablet->metadata()->split_generation(), it->second);
+    ASSERT_EQ(tablet->vector_indexes().MaxPersistedSplitGeneration(), it->second);
+  }
+  ASSERT_EQ(restored_replicas, expected_generation.size() * cluster_->num_tablet_servers());
+
+  // The next split must continue from the restored generation, otherwise the new children would
+  // not treat their inherited vectors as parent data.
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  const auto [split_source_id, source_generation] = *expected_generation.begin();
+  const auto tablet_ids_before_split = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+
+  // A freshly restarted master rejects split candidates until it has refreshed tablespace info.
+  ASSERT_OK(WaitFor([this, id = split_source_id]() -> Result<bool> {
+    auto status = InvokeSplitTabletRpc(cluster_.get(), id);
+    if (!status.ok()) {
+      LOG(INFO) << "Split RPC is not accepted yet: " << status;
+    }
+    return status.ok();
+  }, 60s * kTimeMultiplier, "Split RPC accepted"));
+
+  // The children's split generation is set on tablet open, so there's no need to wait for their
+  // post-split compaction.
+  ASSERT_OK(WaitForTableActiveTabletLeadersPeers(
+      cluster_.get(), table_id, tablet_ids_before_split.size() + 1));
+  ASSERT_OK(WaitAllReplicasReady(cluster_.get(), table_id, 30s * kTimeMultiplier));
+
+  size_t next_generation_replicas = 0;
+  for (const auto& peer : ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"))) {
+    if (tablet_ids_before_split.contains(peer->tablet_id())) {
+      continue;
+    }
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    ASSERT_EQ(tablet->metadata()->split_generation(), source_generation + 1);
+    ASSERT_EQ(tablet->vector_indexes().MaxPersistedSplitGeneration(), source_generation + 1);
+    ++next_generation_replicas;
+  }
+  ASSERT_EQ(next_generation_replicas, 2 * cluster_->num_tablet_servers());
 }
 
 ////////////////////////////////////////////////////////

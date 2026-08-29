@@ -1810,23 +1810,20 @@ Status WaitForPeersPostSplitCompacted(
   std::stringstream description;
   description << "Waiting for peers [" << CollectionToString(ids) << "] are post split compacted.";
 
-  const auto s = LoggedWaitFor([&peers, &ids](){
-    for (size_t n = 0; n < peers.size(); ++n) {
-      const auto peer = peers[n];
-      if (!peer) {
-        continue;
-      }
-      if (peer->tablet_metadata()->parent_data_compacted()) {
-        ids.erase(peer->tablet_id());
-        peers[n] = nullptr;
-      }
-    }
-    return ids.empty();
+  // Every listed replica must be compacted. Erasing a tablet id on the first finished replica
+  // would return while followers of the same tablet are still compacting.
+  const auto s = LoggedWaitFor([&peers]() {
+    std::erase_if(peers, [](const auto& peer) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      return tablet && !tablet->MayHaveOrphanedPostSplitData();
+    });
+    return peers.empty();
   }, timeout, description.str());
 
-  if (!s.ok() && !ids.empty()) {
-    LOG(ERROR) <<
-      "Failed to wait for peers [" << CollectionToString(ids) << "] are post split compacted.";
+  if (!s.ok() && !peers.empty()) {
+    LOG(ERROR) << "Failed to wait for peers ["
+               << CollectionToString(peers, [](const auto& p) { return p->tablet_id(); })
+               << "] are post split compacted.";
   }
   return s;
 }

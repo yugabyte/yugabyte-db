@@ -671,8 +671,9 @@ Result<std::vector<tablet::TabletPeerPtr>> TabletSplitITest::ListTestTableActive
 
 Status TabletSplitITest::WaitForTestTableTabletPeersPostSplitCompacted(MonoDelta timeout) {
   auto peer_to_str = [](const tablet::TabletPeerPtr& peer) {
-    return peer->LogPrefix() +
-           (peer->tablet_metadata()->parent_data_compacted() ? "Compacted" : "NotCompacted");
+    return
+        peer->LogPrefix() +
+        (peer->tablet_metadata()->rocksdb_parent_data_compacted() ? "Compacted" : "NotCompacted");
   };
   std::vector<std::string> not_compacted_peers;
   auto s = LoggedWaitFor(
@@ -685,7 +686,7 @@ Status TabletSplitITest::WaitForTestTableTabletPeersPostSplitCompacted(MonoDelta
                   << JoinStrings(*peers | boost::adaptors::transformed(peer_to_str), "\n");
         not_compacted_peers.clear();
         for (auto peer : *peers) {
-          if (!peer->tablet_metadata()->parent_data_compacted()) {
+          if (!peer->tablet_metadata()->rocksdb_parent_data_compacted()) {
             not_compacted_peers.push_back(peer_to_str(peer));
           }
         }
@@ -703,7 +704,7 @@ Result<int> TabletSplitITest::NumTestTableTabletPeersPostSplitCompacted() {
   int count = 0;
   for (auto peer : VERIFY_RESULT(ListTestTableActiveTabletPeers())) {
     const auto tablet = peer->shared_tablet_maybe_null();
-    if (tablet && tablet->metadata()->parent_data_compacted()) {
+    if (tablet && tablet->metadata()->rocksdb_parent_data_compacted()) {
       ++count;
     }
   }

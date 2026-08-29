@@ -353,6 +353,16 @@ DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
 
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
+TAG_FLAG(vector_index_include_into_post_split_compaction, hidden);
+
+DEFINE_RUNTIME_bool(vector_index_require_parent_data_compacted_before_split, true,
+    "Whether to require co-hosted vector indexes to complete post-split compaction before allowing "
+    "further tablet splits. When set to false, the vector index post-split compaction state is "
+    "ignored, so tablets may be split (and load balancer moves re-enabled) without waiting for "
+    "potentially long-running vector index post-split compactions to finish. The vector index "
+    "post-split compaction itself is not affected by this flag and is still scheduled based on "
+    "the value of vector_index_include_into_post_split_compaction flag (true by default).");
+TAG_FLAG(vector_index_require_parent_data_compacted_before_split, advanced);
 
 DEFINE_RUNTIME_uint64(cdc_min_sec_to_retain_intent, 8 * 3600,
     "Minimum number of seconds for which intent SST files of tablets under CDCSDK replication are "
@@ -4505,8 +4515,31 @@ Result<bool> Tablet::StillHasOrphanedPostSplitData() {
   return StillHasOrphanedPostSplitDataAbortable();
 }
 
+bool Tablet::NeedPostSplitCompaction() {
+  if (!key_bounds().IsInitialized()) {
+    return false;
+  }
+
+  if (!metadata()->rocksdb_parent_data_compacted()) {
+    return true;
+  }
+
+  return vector_indexes().PostSplitCompactionRequired();
+}
+
 bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
-  return key_bounds().IsInitialized() && !metadata()->parent_data_compacted();
+  if (!NeedPostSplitCompaction()) {
+    return false;
+  }
+
+  if (FLAGS_vector_index_require_parent_data_compacted_before_split) {
+    // There's leftover parent data (RocksDB or vector index), and the flag requires waiting for
+    // both, so there's nothing else to check.
+    return true;
+  }
+
+  VLOG_WITH_PREFIX(1) << "Vector index parent data compaction is not required before split";
+  return !metadata()->rocksdb_parent_data_compacted();
 }
 
 bool Tablet::MayHaveOrphanedPostSplitData() {
@@ -4519,6 +4552,8 @@ bool Tablet::MayHaveOrphanedPostSplitData() {
 }
 
 bool Tablet::ShouldDisableLbMove() {
+  // Same policy as StillHasOrphanedPostSplitData: vector-index leftover is ignored when
+  // vector_index_require_parent_data_compacted_before_split is false.
   auto still_has_parent_data_result = StillHasOrphanedPostSplitData();
   if (still_has_parent_data_result.ok()) {
     return still_has_parent_data_result.get();
@@ -4577,14 +4612,14 @@ Status Tablet::ForceRocksDBCompact(
   auto regular_options = options;
   if (regular_db_) {
     // Our expectations at this point:
-    // 1) If parent_data_compacted then we don't want to compact again.
+    // 1) If rocksdb_parent_data_compacted then we don't want to compact again.
     // 2) If file_number_upper_bound is not set, then we don't setup limited compaction.
-    // 3) If file_number_upper_bound is 0 and !parent_data_compacted then is looks like a bug,
-    //    but we still want to compact to have parent_data_compacted.
-    // (1) and (3) are possible due to async nature of triggereing ForceRocksDBCompact()
+    // 3) If file_number_upper_bound is 0 and !rocksdb_parent_data_compacted then it looks like a
+    //    bug, but we still want to compact to have rocksdb_parent_data_compacted.
+    // (1) and (3) are possible due to async nature of triggering ForceRocksDBCompact()
     // via TriggerPostSplitCompactionIfNeeded().
-    const auto parent_data_compacted = metadata()->parent_data_compacted();
-    if (parent_data_compacted) {
+    const auto rocksdb_parent_data_compacted = metadata()->rocksdb_parent_data_compacted();
+    if (rocksdb_parent_data_compacted) {
       LOG_WITH_PREFIX(WARNING) << "Ignoring post split compaction as "
                                << "parent data have already been compacted.";
       return Status::OK();
@@ -4916,7 +4951,7 @@ Result<IsolationLevel> Tablet::DoGetIsolationLevel(const PB& transaction) {
   return VERIFY_RESULT(transaction_participant_->PrepareMetadata(transaction)).isolation;
 }
 
-Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
+Result<RaftGroupMetadataPtr> Tablet::CreateSplitChildTablet(
     const TabletId& tablet_id, const dockv::Partition& partition,
     const docdb::KeyBounds& key_bounds, const OpId& split_op_id,
     const HybridTime& split_op_hybrid_time) {
@@ -4925,9 +4960,9 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
-  RETURN_NOT_OK(Flush(FlushMode::kSync, rocksdb::FlushReason::kSubtabletCreation));
+  RETURN_NOT_OK(Flush(FlushMode::kSync, rocksdb::FlushReason::kSplitChildTabletCreation));
 
-  auto metadata = VERIFY_RESULT(metadata_->CreateSubtabletMetadata(
+  auto metadata = VERIFY_RESULT(metadata_->CreateSplitChildMetadata(
       tablet_id, partition, key_bounds.lower.ToStringBuffer(), key_bounds.upper.ToStringBuffer()));
 
   RETURN_NOT_OK(snapshots_->CreateCheckpoint(
@@ -5216,19 +5251,21 @@ void Tablet::TriggerPostSplitCompactionIfNeeded() {
     LOG(INFO) << "Skipping post split compaction due to FLAGS_TEST_skip_post_split_compaction";
     return;
   }
-  if (!StillHasOrphanedPostSplitDataAbortable()) {
+  if (!NeedPostSplitCompaction()) {
     return;
   }
-  auto status = TriggerManualCompactionIfNeeded(rocksdb::CompactionReason::kPostSplitCompaction);
-  if (status.ok()) {
-    ts_post_split_compaction_added_->Increment();
-  } else if (!status.IsServiceUnavailable()) {
+
+  auto status = TriggerManualCompactionIfNeeded(
+      rocksdb::CompactionReason::kPostSplitCompaction, IncludeVectorIndexes::kTrue);
+  if (!status.ok() && !status.IsServiceUnavailable()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to submit compaction for post-split tablet: "
                              << status.ToString();
   }
 }
 
-Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compaction_reason) {
+Status Tablet::TriggerManualCompactionIfNeeded(
+    rocksdb::CompactionReason compaction_reason,
+    IncludeVectorIndexes include_vector_indexes) {
   DCHECK_NE(compaction_reason, rocksdb::CompactionReason::kUnknown);
   if (!full_compaction_pool_ || state_ != State::kOpen) {
     return STATUS(ServiceUnavailable, "Full compaction thread pool unavailable.");
@@ -5245,24 +5282,40 @@ Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compact
         full_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
-  bool compact_vector_index = compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction;
-  if (compact_vector_index && !FLAGS_vector_index_include_into_post_split_compaction) {
-    LOG_WITH_PREFIX(INFO) << "Vector index post-split compaction disabled by the gflag";
-    compact_vector_index = false;
+  // Compaction status may change between here and the actual compaction task execution. This is
+  // safe because each component (RocksDB and vector indexes) has its own compaction-time guard.
+  bool compact_rocksdb = true;
+  bool compact_vector_index = include_vector_indexes;
+  if (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
+    compact_rocksdb = !metadata()->rocksdb_parent_data_compacted();
+    compact_vector_index =
+        compact_vector_index && vector_indexes().PostSplitCompactionRequired();
+  }
+
+  if (!compact_rocksdb && !compact_vector_index) {
+    LOG_WITH_PREFIX(INFO) <<
+        "Skipping post-split compaction: RocksDB and vector indexes "
+        "are already post-split compacted";
+    return Status::OK();
   }
 
   tablet::ManualCompactionOptions options {
       .compaction_reason = compaction_reason,
       .compaction_completion_callback = {},
       .vector_index_ids = compact_vector_index ? std::make_shared<TableIds>() : nullptr,
-      .vector_index_only = VectorIndexOnly::kFalse,
+      .vector_index_only = VectorIndexOnly(!compact_rocksdb),
       .skip_corrupt_data_blocks_unsafe = rocksdb::SkipCorruptDataBlocksUnsafe::kFalse,
   };
 
   auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
-  return full_compaction_task_pool_token_->SubmitFunc([this, token, options] {
+  RETURN_NOT_OK(full_compaction_task_pool_token_->SubmitFunc([this, token, options] {
     WARN_NOT_OK(TriggerManualCompactionSync(options), "Trigger manual compaction failed");
-  });
+  }));
+
+  if (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
+    ts_post_split_compaction_added_->Increment();
+  }
+  return Status::OK();
 }
 
 Status Tablet::TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions& options) {
@@ -5283,13 +5336,20 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions&
   });
 }
 
-Status Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
+Status Tablet::TriggerVectorIndexCompactionSync(const ManualCompactionOptions& options) {
+  if (!options.vector_index_ids) {
+    // No vector indexes to compact.
+    return Status::OK();
+  }
+
+  const auto& vector_index_ids = *options.vector_index_ids;
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "vectors index ids: " << AsString(vector_index_ids);
   auto vector_index_list = vector_indexes().Collect(vector_index_ids);
-  vector_index_list.Compact();
-  auto status = vector_index_list.WaitForCompaction();
+  vector_index_list.Compact(options.compaction_reason);
+  Status status = vector_index_list.WaitForCompaction();
   WARN_WITH_PREFIX_NOT_OK(
       status, Format("$0: Failed vector index compaction", log_prefix_suffix_));
+
   return status;
 }
 
@@ -5306,9 +5366,11 @@ Status Tablet::TriggerManualCompactionSyncUnsafe(const ManualCompactionOptions& 
         options.compaction_reason, options.skip_corrupt_data_blocks_unsafe);
   }
 
-  if (options.vector_index_ids) {
-    auto s = TriggerVectorIndexCompactionSync(*options.vector_index_ids);
-    status = status.ok() ? s : status.CloneAndAppend(s.ToString());
+  // Vector index compaction may depend on RocksDB compaction: its merge filter decides what
+  // to drop by looking up reverse mappings in RegularDB. If RocksDB compaction failed, obsolete
+  // mappings are still there. No need to trigger vector index compaction if status is not OK.
+  if (status.ok()) {
+    status = TriggerVectorIndexCompactionSync(options);
   }
 
   if (options.compaction_completion_callback) {

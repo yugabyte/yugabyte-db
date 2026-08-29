@@ -142,6 +142,8 @@ class ConsensusFrontier : public storage::UserFrontier {
   void SetBackfillDone();
   void SetBackfillPosition(Slice key);
   void SetHasVectorDeletion();
+  void SetSplitGeneration(uint64_t split_generation);
+  void SetSplitMinChunkSerialNo(uint64_t serial_no);
 
   bool backfill_done() const {
     return backfill_done_;
@@ -153,6 +155,14 @@ class ConsensusFrontier : public storage::UserFrontier {
 
   bool has_vector_deletion() const {
     return has_vector_deletion_;
+  }
+
+  uint64_t split_generation() const {
+    return split_generation_;
+  }
+
+  uint64_t split_min_chunk_serial_no() const {
+    return split_min_chunk_serial_no_;
   }
 
  private:
@@ -192,9 +202,17 @@ class ConsensusFrontier : public storage::UserFrontier {
   */
   ByteBuffer<64> hybrid_time_filter_;
 
+  // Vector-index only.
+  // TODO(vector_index): group these into a nested vector index related struct.
   bool backfill_done_ = false;
   std::string backfill_key_;
   bool has_vector_deletion_ = false;
+  // The tablet's split_generation recorded when split_min_chunk_serial_no was stamped.
+  // Used to detect whether a new split requires a new split_min_chunk_serial_no.
+  uint64_t split_generation_ = 0;
+  // Smallest chunk serial_no that is not inherited parent data.
+  // 0 means no pending post-split compaction.
+  uint64_t split_min_chunk_serial_no_ = 0;
 };
 
 using ConsensusFrontiers = storage::UserFrontiersBase<ConsensusFrontier>;
