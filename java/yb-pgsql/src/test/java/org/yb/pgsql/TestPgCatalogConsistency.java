@@ -47,6 +47,8 @@ public class TestPgCatalogConsistency extends BasePgSQLTest {
     Map<String, String> flags = new HashMap<>(getTServerFlags());
     flags.put("enable_object_locking_for_table_locks", "false");
     flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    // DDL savepoint requires transactional DDL to be enabled.
+    flags.put("ysql_yb_enable_ddl_savepoint_support", "false");
     flags.put("ysql_enable_concurrent_ddl", "false");
     flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
         (existing, added) -> existing + "," + added);
