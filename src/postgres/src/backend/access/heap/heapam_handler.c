@@ -1199,7 +1199,6 @@ heapam_index_build_range_scan(Relation heapRelation,
 
 	/* YB variables */
 	MemoryContext oldcontext = CurrentMemoryContext;
-	int			yb_tuples_done = 0;
 	YbPushdownExprs *yb_pushdown = NULL;
 	List	   *yb_local_quals = NIL;
 	List	   *yb_rel_colrefs = NIL;
@@ -1740,7 +1739,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 			{
 				if (IsYBRelation(indexRelation) && !indexInfo->ii_Concurrent)
 					pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
-												 ++yb_tuples_done);
+												 (int64) reltuples);
 				continue;
 			}
 		}
@@ -1818,7 +1817,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 			MemoryContextReset(econtext->ecxt_per_tuple_memory);
 			if (!indexInfo->ii_Concurrent)
 				pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
-											 ++yb_tuples_done);
+											 (int64) reltuples);
 		}
 	}
 
