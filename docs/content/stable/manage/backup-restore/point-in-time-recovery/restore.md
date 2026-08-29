@@ -88,6 +88,6 @@ This is the preferred path when policy does not allow creating a [clone](../clon
 YugabyteDB Anywhere provides a managed experience for Restore to PIT using PITR-enabled backups:
 
 1. Create a [scheduled backup with ability to restore to point-in-time](../../../../yugabyte-platform/back-up-restore-universes/schedule-data-backups/).
-1. [Restore the backup](../../../../yugabyte-platform/back-up-restore-universes/restore-universe-data/#restore-a-pitr-enabled-backup) and select **An earlier point in time** to choose any moment in the backup's restore window.
+1. [Restore the backup](../../../../yugabyte-platform/back-up-restore-universes/restore-universe-data/#restore-from-backup) and select **An earlier point in time** to choose any moment in the backup's restore window.
 
 You can restore to the original universe or to an alternate universe, and optionally rename databases or keyspaces. The same DDL boundary limitation applies.

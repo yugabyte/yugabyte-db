@@ -15,13 +15,13 @@ menu:
 type: docs
 ---
 
-You can use YugabyteDB Anywhere to back up your universe data. This includes deleting and restoring backups, as well as restoring and copying the database location.
+You can use YugabyteDB Anywhere to perform and manage backups for universes. This includes deleting and restoring backups, as well as restoring and copying the database location.
 
 Before you can back up universes, you need to [configure a storage location](../configure-backup-storage/) for your backups.
 
-If you are using v2.16 or later to manage universes with YugabyteDB v2.16 or later, you can additionally create [incremental backups](#create-incremental-backups) and [configure backup performance parameters](#configure-backup-performance-parameters).
+You can additionally create [incremental backups](#create-incremental-backups) and [configure backup performance parameters](#configure-backup-performance-parameters).
 
-For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe backups](../schedule-data-backups/).
+For information on how to schedule backups for a later time or as a recurring task, as well as enable Restore to point in time, see [Schedule universe backups](../schedule-data-backups/).
 
 Note that non-transactional backups are not supported.
 
@@ -33,7 +33,7 @@ By default, the list displays all the backups generated for the universe regardl
 
 The universe **Backups** page allows you to create new backups that start immediately, as follows:
 
-1. Navigate to the universe and select **Backups**, then click **Backup now**.
+1. On the universe **Backups > Backups** tab, click **Backup now**.
 
     ![Backup](/images/yp/create-backup-ysql-20252.png)
 
@@ -45,13 +45,13 @@ The universe **Backups** page allows you to create new backups that start immedi
 
 1. For YCQL backups, you can choose to back up all tables in the keyspace to which the database belongs or only certain tables. Click **Select a subset of tables** to display the **Select Tables** dialog, where you can select one or more tables to back up. Click **Confirm** when you are done.
 
+1. To back up database roles (YSQL only), choose the **Include roles and grants** option.
+
 1. For YSQL backups of universes with geo-partitioning, you can choose to back up the tablespaces. Select the **Backup tablespaces information** option.
 
     If you don't choose to back up tablespaces, the tablespaces are not preserved and their data is backed up to the primary region.
 
 1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
-
-1. To back up database roles (YSQL only), choose the **Backup global roles** option.
 
 1. Click **Backup**.
 
@@ -65,17 +65,27 @@ The **Backup Details** include the storage address of your backup. If you want t
 
 To access a list of all backups from all universes, including deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu.
 
+### Cancel a backup
+
+To cancel an in-progress backup:
+
+- On the universe **Backups** tab, click **Cancel Backup** for the in-progress backup you want to cancel.
+
+This stops the backup, and its status will change to **Stopping** and then **Stopped**. This does not disable future backups or scheduled policies.
+
+You can also abort the backup task from [Tasks](../manage-deployments/retry-failed-task/).
+
 ## Create incremental backups
 
-You can use **Backup Details** to add an incremental backup (v2.16 or later and universe running YugabyteDB v2.16 or later only).
+You can use **Backup Details** to add an incremental backup.
 
 Incremental backups are taken on top of a complete backup. To reduce the length of time spent on each backup, only SST files that are new to YugabyteDB and not present in the previous backups are incrementally backed up. For example, in most cases, for incremental backups occurring every hour, the 1-hour delta would be significantly smaller compared to the complete backup. The restore happens until the point of the defined increment.
 
-You can create an incremental backup on any complete or incremental backup taken using YB Controller, as follows:
+You can create an incremental backup on any complete or incremental backup as follows:
 
 1. Navigate to **Backups**, select a backup, and then click on it to open **Backup Details**.
 
-1. In the  **Backup Details** view, click **Add Incremental Backup**.
+1. In the **Backup Details** view, click **Add Incremental Backup**.
 
 1. On the **Add Incremental Backup** dialog, click **Confirm**.
 
@@ -106,6 +116,18 @@ To configure throttle parameters:
 1. Set resource parameters for backups and restores.
 
 1. Click **Save**.
+
+## Disable backups for a universe
+
+By default, backups are enabled for new universes.
+
+To enable or disable universe backups, navigate to your universe, and on the **Tables** tab, click **Actions > More** and choose either **Disable Backup** or **Enable Backup**.
+
+When backups are disabled:
+
+- On-demand **Backup now** is not available.
+- You cannot create new scheduled backup policies. Existing scheduled policies are not deleted, but any backup runs are skipped until you enable backups again. Skipped runs do not backlog.
+- A backup already in progress stops after the current table.
 
 ## Access backups in storage
 
