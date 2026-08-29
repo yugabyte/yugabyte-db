@@ -1957,10 +1957,14 @@ YbCullArray(ArrayType *arrayval,
  * predetermine-recheck purposes, so don't actually do binds but still
  * calculate all_ordinary_keys_bound.
  * TODO(jason): do a proper cleanup.
+ *
+ * is_column_eq_or_in_bound is set for the column of a plain scalar IN that
+ * actually got bound, the ybctid batch bind included.
  */
 static void
 YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 				  int skey_index, bool is_for_precheck, bool is_column_bound[],
+				  bool is_column_eq_or_in_bound[],
 				  bool *bail_out)
 {
 	/* based on _bt_preprocess_array_keys() */
@@ -2061,7 +2065,62 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 							scalar_attnum, num_elems,
 							elem_values, scalar_null_bound);
 
+	/*
+	 * A ROW IN logically pins each member column per stream, but
+	 * ybcBindTupleExprCondIn binds it as one condition over the member
+	 * columns together: none of them, whatever the member order, gets
+	 * an equality value or a scalar IN list of its own, so none
+	 * qualifies for is_column_eq_or_in_bound.  Revisit if the planner
+	 * ever produces merge plans over a ROW IN.
+	 */
+	if (!is_row)
+		is_column_eq_or_in_bound[YBAttnumToBmsIndex(relation, scalar_attnum)] =
+			true;
+
 	pfree(elem_values);
+}
+
+/*
+ * Verify that every index column the planner declared in
+ * yb_merge_scan_info->saop_cols got a usable bound condition: a single
+ * equality value or a plain scalar IN list.  The merge scan would silently
+ * return missing or misordered rows otherwise, so raise an error.
+ */
+static void
+ybValidateMergeScanBinds(YbScanDesc ybScan, YbScanPlan scan_plan,
+						 YbMergeScanInfo *yb_merge_scan_info,
+						 bool is_column_eq_or_in_bound[], int max_idx)
+{
+	Relation	index = ybScan->index;
+	ListCell   *lc;
+
+	Assert(index);
+	foreach(lc, yb_merge_scan_info->saop_cols)
+	{
+		YbMergeScanSaopColInfo *info = lfirst_node(YbMergeScanSaopColInfo, lc);
+
+		/*
+		 * Map the index column to its bind relation attribute the same way
+		 * ybcSetupScanPlan maps scan keys: the base relation column for a
+		 * primary key scan, the index attribute otherwise.
+		 */
+		AttrNumber	attnum = (index->rd_index->indisprimary ?
+							  index->rd_index->indkey.values[info->indexcol] :
+							  info->indexcol + 1);
+		int			idx = YBAttnumToBmsIndex(scan_plan->target_relation,
+											 attnum);
+
+		if (idx < max_idx && is_column_eq_or_in_bound[idx])
+			continue;
+
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("merge scan stream key column \"%s\" has no usable bound condition",
+						NameStr(TupleDescAttr(scan_plan->bind_desc,
+											  attnum - 1)->attname)),
+				 errdetail("The chosen query plan is not executable as declared. This is a bug."),
+				 errhint("As a workaround, disable merge scan with \"SET yb_max_merge_scan_streams = 0\".")));
+	}
 }
 
 /*
@@ -2120,6 +2179,25 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 
 	memset(is_column_bound, 0, sizeof(bool) * max_idx);
 
+	/*
+	 * Which columns are bound by a single equality value (IS NULL counts as
+	 * equality to null) or a plain scalar IN list.  Row IN, inequality, and IS
+	 * NOT NULL binds do not qualify.
+	 */
+	bool		is_column_eq_or_in_bound[max_idx]; /* VLA */
+
+	memset(is_column_eq_or_in_bound, 0, sizeof(bool) * max_idx);
+
+	YbMergeScanInfo *yb_merge_scan_info = NULL;
+
+	if (scan)
+	{
+		if (IsA(scan, IndexScan))
+			yb_merge_scan_info = ((IndexScan *) scan)->yb_merge_scan_info;
+		else if (IsA(scan, IndexOnlyScan))
+			yb_merge_scan_info = ((IndexOnlyScan *) scan)->yb_merge_scan_info;
+	}
+
 	bool		start_valid[max_idx];	/* VLA - scratch space */
 
 	memset(start_valid, 0, sizeof(bool) * max_idx);
@@ -2167,19 +2245,8 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 		{
 			Datum		this_array_const;
 			ListCell   *lc;
-			YbMergeScanInfo *yb_merge_scan_info = NULL;
 
 			this_array_const = YbGetArrayConst(&ybScan->keys[i]);
-
-			if (scan)
-			{
-				if (IsA(scan, IndexScan))
-					yb_merge_scan_info =
-						((IndexScan *) scan)->yb_merge_scan_info;
-				else if (IsA(scan, IndexOnlyScan))
-					yb_merge_scan_info =
-						((IndexOnlyScan *) scan)->yb_merge_scan_info;
-			}
 
 			if (yb_merge_scan_info)
 			{
@@ -2199,17 +2266,26 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 					 */
 					if (this_array_const == pinned_array_const)
 					{
-						bool		bail_out = false;
+						/*
+						 * If the following check fails, then the bind is not
+						 * done, so the merge scan validation will report it.
+						 */
+						if (!YbCheckScanTypes(ybScan, scan_plan, i))
+							ybScan->all_ordinary_keys_bound = false;
+						else
+						{
+							bool		bail_out = false;
 
-						/* YbBindSearchArray updates is_column_bound. */
-						YbBindSearchArray(ybScan, scan_plan, i,
-										  is_for_precheck,
-										  is_column_bound,
-										  &bail_out);
+							/* YbBindSearchArray updates is_column_bound. */
+							YbBindSearchArray(ybScan, scan_plan, i,
+											  is_for_precheck,
+											  is_column_bound,
+											  is_column_eq_or_in_bound,
+											  &bail_out);
 
-						if (bail_out)
-							return false;
-
+							if (bail_out)
+								return false;
+						}
 						continue;
 					}
 				}
@@ -2359,6 +2435,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 									 key->sk_argument, is_null);
 					}
 					is_column_bound[idx] = true;
+					is_column_eq_or_in_bound[idx] = true;
 				}
 				else if (YbIsSearchArray(key))
 				{
@@ -2368,6 +2445,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 					YbBindSearchArray(ybScan, scan_plan, i,
 									  is_for_precheck,
 									  is_column_bound,
+									  is_column_eq_or_in_bound,
 									  &bail_out);
 
 					if (bail_out)
@@ -2529,6 +2607,16 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 			}
 		}
 	}
+
+	/*
+	 * The validation is execution only: precheck callers ask whether the
+	 * keys can be bound, not whether the plan's reliances hold, and some
+	 * value datums are not yet available under precheck.
+	 */
+	if (yb_merge_scan_info && !is_for_precheck)
+		ybValidateMergeScanBinds(ybScan, scan_plan, yb_merge_scan_info,
+								 is_column_eq_or_in_bound, max_idx);
+
 	return true;
 }
 
