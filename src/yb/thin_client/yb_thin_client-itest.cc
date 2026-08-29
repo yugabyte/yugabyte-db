@@ -1333,7 +1333,7 @@ TEST_F(PgThinClientTest, WriteFencedByIgnoreAfterHybridTime) {
 
   // Compared against the leader's clock, so it has to be a hybrid time, not a micro count.
   const auto far_future = HybridTime::FromMicros(
-      static_cast<uint64_t>(GetCurrentTimeMicros()) + 3600 * 1000000ULL).ToUint64();
+      static_cast<uint64_t>(GetCurrentTimeMicros()) + 3600 * 1000000ULL).ToPB();
   ASSERT_EQ(upsert(2, far_future), YBTHIN_OK) << "a write inside its fence must be applied";
   ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>(
                    "SELECT count(*) FROM fenced WHERE k = 2")));

@@ -38,6 +38,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
@@ -81,6 +82,7 @@
 using yb::DataType;
 using yb::faststring;
 using yb::HostPort;
+using yb::HybridTime;
 using yb::MonoDelta;
 using yb::RefCntSlice;
 using yb::Result;
@@ -201,8 +203,8 @@ ybthin_status_code ClassifyStatus(const Status& status) {
   }
   // The fence's own code, not the Expired category -- which a read deadline and a stale retryable
   // request id also produce, on writes that may well have replicated.
-  if (tserver::TabletServerError::ValueFromStatus(status) ==
-      tserver::TabletServerErrorPB::WRITE_FENCE_EXPIRED) {
+  const auto ts_error = tserver::TabletServerError::ValueFromStatus(status);
+  if (ts_error == tserver::TabletServerErrorPB::WRITE_FENCE_EXPIRED) {
     return YBTHIN_FENCED;
   }
   return YBTHIN_OTHER;
@@ -1309,8 +1311,8 @@ void ybthin_upsert_batch_async(
     if (build.ok()) {
       build = dockv::InitPartitionKey(table->schema, table->partition_schema, write);
     }
-    if (row.ignore_after_hybrid_time) {
-      write->set_ignore_after_hybrid_time(row.ignore_after_hybrid_time);
+    if (const auto fence = HybridTime::FromPB(row.ignore_after_hybrid_time)) {
+      write->set_ignore_after_hybrid_time(fence.ToPB());
     }
     for (size_t col_idx = 0; col_idx < row.n_values && build.ok(); ++col_idx) {
       auto* cv = write->add_column_values();

@@ -1381,19 +1381,19 @@ Status RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
   if (msg.op_type() != OperationType::WRITE_OP) {
     return Status::OK();
   }
-  const auto fence = msg.write().ignore_after_hybrid_time();
+  const auto fence = HybridTime::FromPB(msg.write().ignore_after_hybrid_time());
   if (!fence) {
     return Status::OK();
   }
   // clock_, not the op's own hybrid time, which AddLeaderPending has not assigned yet. Nor
   // state_->Clock(), which is the coarse clock and not in the fence's time domain.
   const auto now = clock_->Now();
-  if (fence > now.ToUint64()) {
+  if (fence > now) {
     return Status::OK();
   }
   return STATUS_EC_FORMAT(
       Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
-      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", HybridTime(fence), now);
+      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, now);
 }
 
 Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(

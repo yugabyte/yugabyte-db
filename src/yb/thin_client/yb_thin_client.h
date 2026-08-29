@@ -229,6 +229,7 @@ typedef struct {
   // Fences this row against a lease the caller holds: the leader rejects the write with
   // YBTHIN_FENCED if this hybrid time has already passed by the time the op is assigned its own.
   // 0 means no fence. Judged per tablet, so a batch straddling the boundary can be partly applied.
+  // Build it from a physical time; the logical component is always 0 here.
   uint64_t ignore_after_hybrid_time;
 } ybthin_upsert_row;
 
