@@ -643,7 +643,7 @@ class VectorMetadataFilter {
     // keys sit outside the row-coprefix regions covered by GetLiveRanges() and are therefore
     // included in every compaction's live ranges, so a non-post-split compaction may legitimately
     // observe parent-inherited entries for the sibling's range before the async post-split
-    // compaction runs (or if it is skipped once parent_data_compacted is set).
+    // compaction runs (or if it is skipped once rocksdb_parent_data_compacted is set).
     return IsWithinBounds(key_bounds_, ybctid)
         ? rocksdb::FilterDecision::kKeep : rocksdb::FilterDecision::kDiscard;
   }
