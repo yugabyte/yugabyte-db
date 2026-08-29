@@ -131,6 +131,7 @@ class DocVectorIndex {
   virtual const PgVectorIdxOptionsPB& options() const = 0;
   virtual const std::string& path() const = 0;
   virtual HybridTime hybrid_time() const = 0;
+  virtual uint64_t split_generation() const = 0;
   virtual const DocVectorIndexContext& context() const = 0;
   virtual const DocVectorIndexMetrics& metrics() const = 0;
 
@@ -151,12 +152,14 @@ class DocVectorIndex {
   virtual Status WaitForCompaction() = 0;
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
+
   // Computes the requested frontiers (flushed and/or in-memory) atomically, so the views are
   // mutually consistent. This is the single primitive subclasses override; the accessors below are
   // expressed in terms of it.
   virtual storage::FrontierInfo GetFrontiers(storage::FrontierKinds kinds) = 0;
 
   docdb::ConsensusFrontierPtr GetFlushedFrontier();
+
   // Returns the (smallest, largest) frontiers of the in-memory (not yet flushed) state. The
   // smallest frontier is used to determine how much of the index is durably flushed.
   storage::UserFrontierRange GetInMemoryFrontiers();
@@ -180,6 +183,10 @@ class DocVectorIndex {
 
   bool BackfillDone();
 
+  // Returns true if all inherited parent-tablet chunks have been compacted away.
+  // Caches the true result; ComputeParentDataCompacted() is the uncached check.
+  bool ParentDataCompacted();
+
   // Writes reverse mapping for the vector id in `value`.
   // kInvalidColumnId means legacy raw-ybctid format; otherwise V1 value format.
   static void ApplyReverseEntry(
@@ -187,7 +194,10 @@ class DocVectorIndex {
       ColumnId column_id = kInvalidColumnId, Slice table_key_prefix = {});
 
  private:
+  virtual bool ComputeParentDataCompacted() const = 0;
+
   std::atomic<bool> backfill_done_cache_{false};
+  std::atomic<bool> parent_data_compacted_cache_{false};
 };
 
 struct DocVectorIndexThreadPools {
@@ -210,6 +220,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
+    uint64_t split_generation,
     const qlexpr::IndexInfo& index_info,
     DocVectorIndexContextPtr vector_index_context,
     const hnsw::BlockCachePtr& block_cache,

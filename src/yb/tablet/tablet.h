@@ -666,6 +666,8 @@ class Tablet : public AbstractTablet,
 
   // If true, we should report, in our heartbeat to the master, that loadbalancer moves should be
   // disabled. We do so, for example, when StillHasOrphanedPostSplitData() returns true.
+  // Same policy as the split check: vector-index leftover is ignored when
+  // vector_index_require_parent_data_compacted_before_split is false.
   bool ShouldDisableLbMove();
 
   Status ForceManualRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
@@ -794,12 +796,8 @@ class Tablet : public AbstractTablet,
   // Flushes this tablet data onto disk before creating sub tablet.
   // Also updates flushed frontier for regular and intents DBs to match split_op_id and
   // split_op_hybrid_time.
-  // In case of error sub-tablet could be partially persisted on disk.
-  // NB! As of now the method is supposed to be used only for creation child tablets during
-  // splitting operation. For any other type of usage, the method must be verified and possibly
-  // updated to correctly handle split_op_id, split_op_hybrid_time, parent_data_compacted
-  // and post_split_compaction_file_number_upper_bound.
-  Result<RaftGroupMetadataPtr> CreateSubtablet(
+  // In case of error the child tablet could be partially persisted on disk.
+  Result<RaftGroupMetadataPtr> CreateSplitChildTablet(
       const TabletId& tablet_id, const dockv::Partition& partition,
       const docdb::KeyBounds& key_bounds, const OpId& split_op_id,
       const HybridTime& split_op_hybrid_time);
@@ -910,7 +908,8 @@ class Tablet : public AbstractTablet,
   // Triggers a manual compaction on this tablet (e.g. post tablet split, scheduled).
   // It is an error to call this function if it was called previously
   // and that compaction has not yet finished.
-  Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
+  Status TriggerManualCompactionIfNeeded(
+      rocksdb::CompactionReason reason, IncludeVectorIndexes include_vector_indexes);
 
   // Triggers an admin full compaction on this tablet.
   Status TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions& options);
@@ -1183,7 +1182,7 @@ class Tablet : public AbstractTablet,
 
   Status TriggerManualCompactionSync(const ManualCompactionOptions& options);
 
-  Status TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
+  Status TriggerVectorIndexCompactionSync(const ManualCompactionOptions& options);
 
   Status ForceRocksDBCompact(
       const rocksdb::CompactRangeOptions& regular_options,
@@ -1200,9 +1199,16 @@ class Tablet : public AbstractTablet,
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
 
-  // Returns true if the tablet was created after a split but it has not yet had data from it's
-  // parent which are now outside of its key range removed.
+  // Split/LB policy: true when this tablet still has parent data that should block a further
+  // split (or, today, a load-balancer move). RocksDB leftover always counts; vector-index leftover
+  // counts only when vector_index_include_into_post_split_compaction and
+  // vector_index_require_parent_data_compacted_before_split are both true.
+  // Compaction retry uses NeedPostSplitCompaction() instead, which ignores the require flag.
   bool StillHasOrphanedPostSplitDataAbortable();
+
+  // True when a post-split compaction should be (re)scheduled: split child with RocksDB parent
+  // data still present, or with a vector index post-split compaction still required.
+  bool NeedPostSplitCompaction();
 
   template <class PB>
   Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);

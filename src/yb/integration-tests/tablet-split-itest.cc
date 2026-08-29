@@ -270,12 +270,12 @@ TEST_F(TabletSplitITest, SplitTabletIsAsync) {
 
   for (auto peer : ASSERT_RESULT(ListTestTableActiveTabletPeers())) {
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
-    EXPECT_FALSE(tablet->metadata()->parent_data_compacted());
+    EXPECT_FALSE(tablet->metadata()->rocksdb_parent_data_compacted());
   }
   std::this_thread::sleep_for(1s * kTimeMultiplier);
   for (auto peer : ASSERT_RESULT(ListTestTableActiveTabletPeers())) {
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
-    EXPECT_FALSE(tablet->metadata()->parent_data_compacted());
+    EXPECT_FALSE(tablet->metadata()->rocksdb_parent_data_compacted());
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
   ASSERT_OK(WaitForTestTableTabletPeersPostSplitCompacted(15s * kTimeMultiplier));
@@ -1489,7 +1489,7 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingWaitsForAllPeersCompac
       ASSERT_OK(tablet->ForceManualRocksDBCompact());
       ASSERT_OK(LoggedWaitFor(
         [peer]() -> Result<bool> {
-          return peer->tablet_metadata()->parent_data_compacted();
+          return peer->tablet_metadata()->rocksdb_parent_data_compacted();
         },
         15s * kTimeMultiplier,
         "Wait for post tablet split compaction to be completed for peer: " + peer->tablet_id()));
@@ -2897,6 +2897,31 @@ TEST_F(TabletSplitSingleServerITest, PostSplitCompactionsBlockScheduledFullCompa
   ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 2);
 }
 
+TEST_F(TabletSplitSingleServerITest, PostSplitCompactionScheduledOnTabletOpen) {
+  constexpr auto kNumRows = kDefaultNumRows;
+
+  // Create split children with incomplete post-split compaction metadata.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
+  ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
+
+  ASSERT_EQ(ASSERT_RESULT(NumTestTableTabletPeersPostSplitCompacted()), 0);
+
+  // Turning off the skip flag alone should not compact existing children until they are reopened.
+  // Poll repeatedly to make sure the count stays at 0 throughout the wait period.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = false;
+  {
+    auto deadline = CoarseMonoClock::Now() + 1s * kTimeMultiplier;
+    while (CoarseMonoClock::Now() < deadline) {
+      ASSERT_EQ(ASSERT_RESULT(NumTestTableTabletPeersPostSplitCompacted()), 0);
+      SleepFor(100ms);
+    }
+  }
+
+  ASSERT_OK(cluster_->RestartSync());
+  ASSERT_OK(WaitForTestTableTabletPeersPostSplitCompacted(15s * kTimeMultiplier));
+  ASSERT_EQ(ASSERT_RESULT(NumTestTableTabletPeersPostSplitCompacted()), 2);
+}
+
 TEST_F(TabletSplitSingleServerITest, TabletServerOrphanedPostSplitData) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
   constexpr auto kNumRows = 2000;
@@ -3990,7 +4015,7 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
   ASSERT_OK(tablet->ForceManualRocksDBCompact());
   ASSERT_OK(LoggedWaitFor(
       [peer]() -> Result<bool> {
-        return peer->tablet_metadata()->parent_data_compacted();
+        return peer->tablet_metadata()->rocksdb_parent_data_compacted();
       },
       15s * kTimeMultiplier,
       "Wait for tablet manual compaction to be completed for peer: " + peer->tablet_id()));

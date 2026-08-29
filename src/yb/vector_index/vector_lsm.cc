@@ -13,6 +13,7 @@
 
 #include "yb/vector_index/vector_lsm.h"
 
+#include <algorithm>
 #include <functional>
 #include <queue>
 #include <thread>
@@ -1591,6 +1592,7 @@ uint64_t VectorLSM<Vector, DistanceResult>::LastSerialNo() const {
   // thread_pool is always set on an opened VectorLSM and cleared in the destructor, so a null value
   // here means a compaction task is dereferencing the VectorLSM after it was destroyed.
   DCHECK_ONLY_NOTNULL(options_.thread_pool);
+
   SharedLock lock(mutex_);
   return last_serial_no_;
 }
@@ -2040,6 +2042,22 @@ uint64_t VectorLSM<Vector, DistanceResult>::OnDiskSize() const {
     result += chunk->file_size();
   }
   return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+std::optional<uint64_t> VectorLSM<Vector, DistanceResult>::MinSerialNo() const {
+  SharedLock lock(mutex_);
+  auto it = std::ranges::min_element(immutable_chunks_, {}, [](const auto& chunk) {
+    return chunk->file ? chunk->file->serial_no() : std::numeric_limits<uint64_t>::max();
+  });
+
+  // Need to check both conditions to exclude the case when the chunk has no file
+  // but was returned by the min_element by max().
+  if (it == immutable_chunks_.end() || !(*it)->file) {
+    return std::nullopt;
+  }
+
+  return (*it)->file->serial_no();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

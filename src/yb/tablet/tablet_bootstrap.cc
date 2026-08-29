@@ -669,18 +669,32 @@ class TabletBootstrap {
 
   // Makes updates to tablet meta if required.
   Status MaybeUpdateMetaAfterTabletHasBeenOpened(const Tablet& tablet) {
+    bool updated = false;
+
     // For backward compatibility: allow old tablets to use benefits of one-file-at-a-time
     // post split compaction algorithm by explicitly setting the value for
     // post_split_compaction_file_number_upper_bound.
     if (tablet.regular_db() && tablet.key_bounds().IsInitialized() &&
-        !meta_->parent_data_compacted() &&
+        !meta_->rocksdb_parent_data_compacted() &&
         !meta_->post_split_compaction_file_number_upper_bound().has_value()) {
       meta_->set_post_split_compaction_file_number_upper_bound(
           tablet.regular_db()->GetNextFileNumber());
-      RETURN_NOT_OK(meta_->Flush());
+      updated = true;
     }
 
-    return Status::OK();
+    // A binary rollback drops KvStoreInfo.split_generation, while the vector index manifests keep
+    // it. Restore the superblock so the next split increments past the persisted generation.
+    if (meta_->split_generation() == 0) {
+      const auto persisted = tablet.vector_indexes().MaxPersistedSplitGeneration();
+      if (persisted != 0) {
+        LOG_WITH_PREFIX(INFO)
+            << "Restoring split_generation to " << persisted << " from vector index manifest";
+        meta_->set_split_generation(persisted);
+        updated = true;
+      }
+    }
+
+    return updated ? meta_->Flush() : Status::OK();
   }
 
   // Checks if a previous log recovery directory exists. If so, it deletes any files in the log dir

@@ -422,7 +422,7 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)
 
   // Restart the tserver to force a fresh bootstrap of the children. If the async-write
   // race ever leaked an intent past split_op_id into the source's intents flushed_frontier,
-  // CreateSubtablet's checkpoint would propagate it into the children, and the children's
+  // CreateSplitChildTablet's checkpoint would propagate it into the children, and the children's
   // bootstrap would fail the prev_op_id >= committed_op_id SCHECK in
   // TabletBootstrap::PlaySegments. With the fix in RaftConsensus::AppendNewRoundsToQueueUnlocked,
   // no such intent is ever written, so the children inherit a clean frontier and bootstrap
@@ -794,19 +794,19 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
     expected_rows.emplace_back(k, k);
   }
 
-  // Resume post split compaciton and wait for a completion.
+  // Resume post split compaction and wait for completion.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
   ASSERT_OK(WaitForPeersPostSplitCompacted(
       cluster_.get(), { peers.front()->tablet_id(), peers.back()->tablet_id() }));
 
-  // WaitForPeersPostSplitCompacted() is waiting on tablet's meta `parent_data_compacted` field,
+  // WaitForPeersPostSplitCompacted() is waiting on tablet's meta `rocksdb_parent_data_compacted`,
   // which is updated only when regular db instances are compacted as we are not so interested in
   // intents db compactions. That's why the waiting loop can finish when the latest intents db
   // post split compaction is still running or not yet started. But in this test we are going to
   // track all compaction jobs, that's why let's wait for all expected compactions are done.
   compactions_listener.compactions_done.WaitFor(15s * kTimeMultiplier);
 
-  // Analyse compactions. The order is preserved.
+  // Analyze compactions. The order is preserved.
   // 1) We expected 4 instances (1 regular db and 1 intents db per child).
   auto compactions_per_db = compactions_listener.GetCompactions();
   ASSERT_EQ(4, compactions_per_db.size());
@@ -2180,7 +2180,7 @@ TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
       << "Async-write race fired: source intents flushed_frontier (" << stored.intents
       << ") advanced beyond SPLIT_OP (" << split_op_id
       << "). After split apply, this state is propagated into the children via "
-         "Tablet::CreateSubtablet's RocksDB checkpoint, and bootstrap of the children on "
+         "Tablet::CreateSplitChildTablet's RocksDB checkpoint, and bootstrap of the children on "
          "this replica will fail with TabletBootstrap::PlaySegments's SCHECK.";
 
   // Make sure split actually completes, and children bootstrap cleanly.

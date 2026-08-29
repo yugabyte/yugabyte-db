@@ -213,7 +213,8 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
 
     // Use Fetch (raw value), not FetchYbctid: we only care whether a reverse-mapping entry
     // exists. Decoding is unnecessary, and FetchYbctid would treat tombstones as missing
-    // while this filter relies on regular compaction to clean those up.
+    // while this filter relies on regular compaction to clean those up. Fetch also drops
+    // live mappings whose ybctid is outside tablet key bounds.
     auto ybctid = reverse_mapping_reader_->Fetch(vector_id);
     if (!ybctid.ok()) {
       LOG_WITH_PREFIX(DFATAL) << "Failed to fetch ybctid, status: " << ybctid.status();
@@ -277,6 +278,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return hybrid_time_;
   }
 
+  uint64_t split_generation() const override {
+    return split_generation_;
+  }
+
   const DocVectorIndexContext& context() const override {
     return *context_;
   }
@@ -287,6 +292,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Status Open(const std::string& log_prefix,
               const std::string& storage_dir,
+              uint64_t split_generation,
               const DocVectorIndexThreadPoolProvider& thread_pool_provider) {
     auto merge_filter_factory = [this]() -> typename LSM::Options::MergeFilterFactory::result_type {
       auto reader =
@@ -313,7 +319,9 @@ class DocVectorIndexImpl : public DocVectorIndex {
       // TODO(vector_index): store ybctid as the vector payload in a follow up to #33353.
       .store_vector_payload = vector_index::StoreVectorPayload::kFalse,
     };
-    return lsm_.Open(std::move(lsm_options));
+    RETURN_NOT_OK(lsm_.Open(std::move(lsm_options)));
+
+    return InitFrontiers(split_generation);
   }
 
   Status Destroy() override {
@@ -474,6 +482,92 @@ class DocVectorIndexImpl : public DocVectorIndex {
  private:
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
 
+  const std::string& LogPrefix() const {
+    return lsm_.LogPrefix();
+  }
+
+  // Detects whether a new split occurred. If so, records the new split generation and
+  // split_min_chunk_serial_no so ParentDataCompacted() can check whether all inherited chunks gone.
+  Status InitFrontiers(uint64_t split_generation) {
+    auto frontier = GetFlushedFrontier();
+
+    // Sanity check. Absent frontier is possible only if there are no data chunks yet.
+    // It is safe to read MinSerialNo() as no flush could be happening at this point.
+    DCHECK(frontier || !lsm_.MinSerialNo());
+
+    const auto persisted_split_generation = frontier ? frontier->split_generation() : 0;
+    if (persisted_split_generation > split_generation) {
+      // Having split_generation == 0 (taken from the superblock) with a non-zero split_generation
+      // from the vector index manifest means the superblock lost the field: either an older build
+      // rewrote KvStoreInfo without it, or the metadata came from a snapshot predating the field.
+      // Tablet restores the superblock from the vector indexes manifests after open.
+      if (split_generation == 0) {
+        LOG_WITH_PREFIX(WARNING)
+            << "Superblock split_generation is 0 while vector index manifest has "
+            << persisted_split_generation
+            << "; will be restored after tablet opened";
+      } else {
+        // Any other mismatch is unexpected.
+        LOG_WITH_PREFIX(DFATAL)
+            << "Persisted split generation " << persisted_split_generation << " is greater than "
+            << "the current split generation " << split_generation;
+      }
+    }
+
+    // No split happened, just pick the current split_min_chunk_serial_no for the cases when
+    // previous post-split compaction was not yet completed.
+    if (split_generation <= persisted_split_generation) {
+      split_generation_ = persisted_split_generation;
+      split_min_chunk_serial_no_ = frontier ? frontier->split_min_chunk_serial_no() : 0;
+      return Status::OK();
+    }
+
+    // No frontier means the index has no data chunks yet. Which means we can treat it as
+    // all parent data compacted and avoid persisting frontiers without chunks.
+    // However, we still need to persist the split generation to not treat it as a new split
+    // when opening the index, when it is created on a split child.
+    if (frontier) {
+      // A new split happened since the last recording, update split_min_chunk_serial_no.
+      split_min_chunk_serial_no_ = lsm_.LastSerialNo() + 1;
+    }
+
+    // Update the split generation.
+    DCHECK_GT(split_generation, 0);
+    split_generation_ = split_generation;
+
+    // Persist the new split generation together with split_min_chunk_serial_no, so
+    // ParentDataCompacted() can later tell whether all pre-split chunks have been compacted away.
+    ConsensusFrontiers frontiers;
+    frontiers.Largest().SetSplitGeneration(split_generation_);
+    if (split_min_chunk_serial_no_) {
+      frontiers.Largest().SetSplitMinChunkSerialNo(split_min_chunk_serial_no_);
+    }
+
+    // No need to wait for flush here, as Insert happens on vector index open, before any data
+    // is inserted, and VectorLSM keeps flushes ordered, so the boundary can not miss a chunk.
+    RETURN_NOT_OK(Insert(
+        DocVectorIndexInsertEntries{}, InsertOptions{ .frontiers = &frontiers, }));
+    return Flush();
+  }
+
+  // Checks whether all data chunks have serial_no >= split_min_chunk_serial_no.
+  // split_min_chunk_serial_no == 0 or no data chunks means no pending post-split compaction.
+  bool ComputeParentDataCompacted() const override {
+    // All legacy vector indexes (created before introducing this parameter) are treated as
+    // already compacted, because there's no simple way to tell whether they were really compacted.
+    if (split_min_chunk_serial_no_ == 0) {
+      return true;
+    }
+
+    // Treat no chunks as all parent data has been compacted.
+    auto min_serial_no = lsm_.MinSerialNo();
+    if (!min_serial_no) {
+      return true;
+    }
+
+    return *min_serial_no >= split_min_chunk_serial_no_;
+  }
+
   const TableId table_id_;
   const KeyBuffer indexed_table_key_prefix_;
   const PgVectorIdxOptionsPB options_;
@@ -483,6 +577,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
   const MemTrackerPtr mem_tracker_;
   const MetricEntityPtr metric_entity_;
   const DocVectorIndexMetrics metrics_;
+
+  // Both are set by InitFrontiers() during Open() and stay immutable afterwards.
+  uint64_t split_generation_ = 0;
+  uint64_t split_min_chunk_serial_no_ = 0;
 
   std::string name_;
   LSM lsm_;
@@ -539,6 +637,19 @@ bool DocVectorIndex::BackfillDone() {
   return false;
 }
 
+bool DocVectorIndex::ParentDataCompacted() {
+  if (parent_data_compacted_cache_.load(std::memory_order_relaxed)) {
+    return true;
+  }
+
+  if (ComputeParentDataCompacted()) {
+    parent_data_compacted_cache_.store(true, std::memory_order_relaxed);
+    return true;
+  }
+
+  return false;
+}
+
 void DocVectorIndex::ApplyReverseEntry(
     rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht,
     ColumnId column_id, Slice table_key_prefix) {
@@ -563,6 +674,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
+    uint64_t split_generation,
     const qlexpr::IndexInfo& index_info,
     DocVectorIndexContextPtr vector_index_context,
     const hnsw::BlockCachePtr& block_cache,
@@ -571,7 +683,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), index_info.vector_idx_options(), hybrid_time, indexed_table_key_prefix,
       std::move(vector_index_context), block_cache, mem_tracker, metric_entity);
-  RETURN_NOT_OK(result->Open(log_prefix, storage_dir, thread_pool_provider));
+  RETURN_NOT_OK(result->Open(log_prefix, storage_dir, split_generation, thread_pool_provider));
   return result;
 }
 

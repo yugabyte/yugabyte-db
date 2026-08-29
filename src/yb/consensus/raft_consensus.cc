@@ -1435,7 +1435,7 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     // DoReplicated -> ApplyRowOperations for use_async_write requests, which writes intents into
     // the intents memtable. Rolling back the op_id afterwards does not undo that memtable write, so
     // the intents flushed_frontier can advance past split_op_id and propagate into the children via
-    // Tablet::CreateSubtablet's RocksDB checkpoint -- breaking bootstrap with
+    // Tablet::CreateSplitChildTablet's RocksDB checkpoint -- breaking bootstrap with
     // "WAL files missing, or committed op id is incorrect" (TabletBootstrap::PlaySegments).
     OpId op_id = VERIFY_RESULT(state_->NewIdUnlocked(round->replicate_msg()->op_type()));
 
