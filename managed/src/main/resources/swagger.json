@@ -15004,13 +15004,6 @@
           "description" : "Whether advanced observability (metrics export) is enabled",
           "type" : "boolean"
         },
-        "dataMountPoints" : {
-          "description" : "Data mount points",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
         "mode" : {
           "description" : "How the universe is registered with the collector",
           "enum" : [
@@ -15019,13 +15012,6 @@
             "ONLINE"
           ],
           "type" : "string"
-        },
-        "otherMountPoints" : {
-          "description" : "Other mount points",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
         },
         "paEndpointName" : {
           "description" : "Perf Advisor Endpoint name, set for ONLINE mode only",

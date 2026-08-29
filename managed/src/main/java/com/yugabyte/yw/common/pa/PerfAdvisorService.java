@@ -194,8 +194,6 @@ public class PerfAdvisorService {
                   info.setUniverseUuid(meta.getId());
                   Optional<Universe> universe = Universe.maybeGet(meta.getId());
                   info.setUniverseName(universe.map(Universe::getName).orElse(null));
-                  info.setDataMountPoints(meta.getDataMountPoints());
-                  info.setOtherMountPoints(meta.getOtherMountPoints());
                   info.setAdvancedObservability(meta.isMetricsExportToPrometheusEnabled());
                   info.setMode(PaRegistrationMode.of(meta));
                   // The collector's export config ids are Perf Advisor Endpoint uuids by
@@ -513,9 +511,6 @@ public class PerfAdvisorService {
         new PerfAdvisorClient.UniverseMetadata()
             .setId(universe.getUniverseUUID())
             .setCustomerId(paCollector.getCustomerUUID())
-            .setDataMountPoints(splitMountPoints(MetricQueryHelper.getDataMountPoints(universe)))
-            .setOtherMountPoints(
-                splitMountPoints(MetricQueryHelper.getOtherMountPoints(confGetter, universe)))
             .setMetricsExportToPrometheusEnabled(mode.isMetricsExportToPrometheusEnabled())
             .setCollectionMode(mode.getCollectionMode())
             .setExportConfigIds(mode.requiresExportConfig() ? exportConfigIds : null);
@@ -546,10 +541,6 @@ public class PerfAdvisorService {
 
   public void deleteUniverse(PACollector paCollector, Universe universe) {
     client.deleteUniverseMetadata(paCollector, universe.getUniverseUUID());
-  }
-
-  private List<String> splitMountPoints(String mountPoints) {
-    return Arrays.stream(mountPoints.split("\\|")).toList();
   }
 
   public void validate(PACollector platform) {
