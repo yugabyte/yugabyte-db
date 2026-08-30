@@ -127,19 +127,18 @@ void StmtLatencyHistogram::SnapshotFrom(const StmtLatencyHistogram& other) {
     return;
   }
 
-  // Typical statements populate a handful of buckets; a small hint avoids realloc
-  // without allocating for every HDR slot.
+  // Typical statements populate a handful of buckets. The recorded-values iterator
+  // skips empty HDR slots so this copy (taken under the statement-cache mutex)
+  // does not walk all counts_len entries.
   snapshot_.reserve(8);
   hdr_iter iter;
-  hdr_iter_init(&iter, other.hist_.get());
+  hdr_iter_recorded_init(&iter, other.hist_.get());
   while (hdr_iter_next(&iter)) {
-    if (iter.count > 0) {
-      snapshot_.push_back({
-          .value_iterated_to = iter.value_iterated_to,
-          .highest_equivalent_value = iter.highest_equivalent_value,
-          .count = iter.count,
-      });
-    }
+    snapshot_.push_back({
+        .value_iterated_to = iter.value_iterated_to,
+        .highest_equivalent_value = iter.highest_equivalent_value,
+        .count = iter.count,
+    });
   }
 }
 
@@ -183,15 +182,13 @@ void StmtLatencyHistogram::WriteAsJsonArray(JsonWriter* jw) const {
 
   if (hist_) {
     hdr_iter iter;
-    hdr_iter_init(&iter, hist_.get());
+    hdr_iter_recorded_init(&iter, hist_.get());
     while (hdr_iter_next(&iter)) {
-      if (iter.count > 0) {
-        write_bucket({
-            .value_iterated_to = iter.value_iterated_to,
-            .highest_equivalent_value = iter.highest_equivalent_value,
-            .count = iter.count,
-        });
-      }
+      write_bucket({
+          .value_iterated_to = iter.value_iterated_to,
+          .highest_equivalent_value = iter.highest_equivalent_value,
+          .count = iter.count,
+      });
     }
   } else {
     for (const auto& bucket : snapshot_) {
