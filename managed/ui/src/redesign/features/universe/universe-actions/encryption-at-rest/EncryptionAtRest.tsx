@@ -23,6 +23,7 @@ import { YBLoading } from '../../../../../components/common/indicators';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
+import { transitToUniverse } from '../../universe-form/utils/helpers';
 
 //EAR Component
 interface EncryptionAtRestProps {
@@ -50,10 +51,10 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     api.getKMSConfigs
   );
   //fetch kms history
-  const {
-    data: kmsHistory = [],
-    isLoading: isKMSHistoryLoading
-  } = useQuery(QUERY_KEY.getKMSHistory, () => api.getKMSHistory(universeId));
+  const { data: kmsHistory = [], isLoading: isKMSHistoryLoading } = useQuery(
+    QUERY_KEY.getKMSHistory,
+    () => api.getKMSHistory(universeId)
+  );
 
   //kms info
   const { encryptionAtRestEnabled, kmsConfigUUID } = encryptionAtRestConfig;
@@ -128,7 +129,7 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
           //disabling kms
           toast.warn(t('universeActions.encryptionAtRest.earDisabedSuccess'), TOAST_OPTIONS);
         }
-
+        if (universeId) transitToUniverse(universeId);
         onClose();
       },
       onError: () => {
