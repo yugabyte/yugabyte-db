@@ -3226,6 +3226,17 @@ Status Tablet::MarkBackfillDone(
   return metadata_->Flush();
 }
 
+Status Tablet::UpdateIndexBackfillOrderingGeneration(
+    const OpId& op_id, const TableId& table_id, ActivateGeneration activate,
+    HybridTime retention_barrier_ht, uint32_t write_id_floor_version) {
+  LOG_WITH_PREFIX(INFO) << (activate ? "Activating" : "Releasing")
+                        << " index-backfill ordering generation for table " << table_id
+                        << " at " << op_id;
+  RETURN_NOT_OK(metadata_->ApplyIndexBackfillOrderingGenerationOp(
+      op_id, table_id, activate, retention_barrier_ht, write_id_floor_version));
+  return metadata_->Flush();
+}
+
 Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
   const auto* request = operation->request();
   auto current_table_info = VERIFY_RESULT(metadata_->GetTableInfo(

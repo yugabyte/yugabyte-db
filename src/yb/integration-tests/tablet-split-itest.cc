@@ -973,10 +973,12 @@ TEST_F(TabletSplitITest, MaxCreateTabletsPerTs) {
   auto table = catalog_mgr->GetTableInfo(table_->id());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 1;
-  ASSERT_NOK(master.tablet_split_manager().ValidateSplitCandidateTable(table));
+  ASSERT_NOK(master.tablet_split_manager().ValidateSplitCandidateTable(
+      table, /* indexed_table= */ nullptr));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 2;
-  ASSERT_OK(master.tablet_split_manager().ValidateSplitCandidateTable(table));
+  ASSERT_OK(master.tablet_split_manager().ValidateSplitCandidateTable(
+      table, /* indexed_table= */ nullptr));
 }
 
 TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
@@ -2765,23 +2767,26 @@ TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
   auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_->id()));
 
   // Candidate table should start as a valid split candidate.
-  ASSERT_OK(split_manager->ValidateSplitCandidateTable(table_info));
+  ASSERT_OK(split_manager->ValidateSplitCandidateTable(
+      table_info, /* indexed_table= */ nullptr));
 
   // State that table should not be split for the next 1 second.
   // Candidate table should no longer be valid.
   split_manager->DisableSplittingForTtlTable(table_->id());
-  ASSERT_NOK(split_manager->ValidateSplitCandidateTable(table_info));
+  ASSERT_NOK(split_manager->ValidateSplitCandidateTable(
+      table_info, /* indexed_table= */ nullptr));
 
   // After 2 seconds, table is a valid split candidate again.
   SleepFor(kSecondsBetweenChecks * 2s);
-  ASSERT_OK(split_manager->ValidateSplitCandidateTable(table_info));
+  ASSERT_OK(split_manager->ValidateSplitCandidateTable(
+      table_info, /* indexed_table= */ nullptr));
 
   // State again that table should not be split for the next 1 second.
   // Candidate table should still be a valid candidate if ignore_disabled_list
   // is true (e.g. in the case of manual tablet splitting).
   split_manager->DisableSplittingForTtlTable(table_->id());
-  ASSERT_OK(split_manager->ValidateSplitCandidateTable(table_info,
-      master::IgnoreDisabledList::kTrue));
+  ASSERT_OK(split_manager->ValidateSplitCandidateTable(
+      table_info, /* indexed_table= */ nullptr, master::IgnoreDisabledList::kTrue));
 }
 
 TEST_F(TabletSplitSingleServerITest, ScheduledFullCompactionsDoNotBlockSplit) {

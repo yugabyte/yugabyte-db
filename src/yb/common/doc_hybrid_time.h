@@ -54,6 +54,12 @@ constexpr IntraTxnWriteId kBackfillWriteIdFloor = kIntraTxnWriteIdLimit;
 constexpr IntraTxnWriteId kBackfillWriteIdIndexMax = kMaxWriteId - kBackfillWriteIdFloor - 1;
 static_assert((kBackfillWriteIdFloor | kBackfillWriteIdIndexMax) == kMaxWriteId - 1);
 
+// Version of the floor scheme recorded in each ordering generation
+// (IndexBackfillOrderingGenerationPB.write_id_floor_version): 1 = the scheme above; 0 is
+// reserved as absent/unknown. Bump if the floor or the derivation ever changes, so marked data
+// written under an older scheme cannot be misinterpreted.
+constexpr uint32_t kIndexBackfillWriteIdFloorVersion = 1;
+
 // An aggressive upper bound on the length of a DocDB-encoded hybrid time with a write id.
 // This could happen in the degenerate case when all three VarInts in encoded representation of a
 // DocHybridTime take 10 bytes (the maximum length for a VarInt-encoded int64_t).
