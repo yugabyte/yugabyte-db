@@ -2494,6 +2494,37 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.Adding).build(),
             filteredNodes -> {
+              // An instance behind a node still in Adding state is a leftover from an attempt
+              // that did not finish, and its state cannot be trusted, so destroy it and create
+              // again rather than adopt it. The destroy is always planned, never only on a retry:
+              // YBA requires a retried task to plan the same subtasks as the original, and it is
+              // a no-op when there is no instance. Public clouds only: onprem nodes are
+              // pre-existing hardware, and kubernetes and local never go through instance destroy.
+              Set<NodeDetails> leftoverNodes =
+                  filteredNodes.stream()
+                      .filter(
+                          n ->
+                              universe
+                                  .getCluster(n.placementUuid)
+                                  .getProviderCloudType(n)
+                                  .isPublicCloud())
+                      .collect(Collectors.toSet());
+              if (!leftoverNodes.isEmpty()) {
+                // isForceDelete stays false: creating on top of a cleanup that silently failed is
+                // the class of bug this exists to remove. skipUpdateNodeState keeps the node in
+                // Adding for the create that follows - letting it reach Terminated would make a
+                // mid-task restart skip the node, since applyOnNodesWithStatus filters on the
+                // persisted status.
+                createDestroyServerTasks(
+                        universe,
+                        leftoverNodes,
+                        n -> false /* isForceDelete */,
+                        false /* deleteNode */,
+                        true /* deleteRootVolumes */,
+                        true /* skipDestroyPrecheck */,
+                        true /* skipUpdateNodeState */)
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              }
               createCreateServerTasks(filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             });
