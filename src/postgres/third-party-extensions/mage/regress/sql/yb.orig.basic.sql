@@ -51,3 +51,21 @@ RESET search_path;
 DROP EXTENSION mage;
 SELECT count(*) FROM pg_extension WHERE extname = 'mage';
 SELECT count(*) FROM pg_namespace WHERE nspname = 'basic';
+-- The extension is now gone. mag_catalog.ag_graph no longer exists (the
+-- mag_catalog schema itself can linger after the DROP above, but ag_graph does
+-- not). `DROP EXTENSION IF EXISTS mage` must be a clean no-op. Before the fix,
+-- is_age_drop() unconditionally routed this to drop_age_extension(), which
+-- enumerates graphs from mag_catalog.ag_graph and errored with
+-- `table "ag_graph" does not exist`. This is exactly the statement ysql_dump
+-- emits before recreating the empty extension in a binary-upgrade restore, so the
+-- failure broke backup/restore on databases using mage.
+DROP EXTENSION IF EXISTS mage;
+-- Without IF EXISTS, dropping the absent extension must raise the standard
+-- "extension does not exist" error -- not the ag_graph/mag_catalog error.
+DROP EXTENSION mage;
+-- When the extension *is* installed, DROP EXTENSION IF EXISTS must still run the
+-- AGE-specific cleanup hook (is_age_drop() returns true and drop_age_extension()
+-- tears down the per-graph schemas).
+CREATE EXTENSION mage;
+DROP EXTENSION IF EXISTS mage;
+SELECT count(*) FROM pg_extension WHERE extname = 'mage';
