@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+import static com.yugabyte.yw.models.TaskInfo.State.Aborted;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -48,6 +49,7 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -63,6 +65,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -820,6 +823,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     initMockUpgrade()
         .precheckTasks(new TaskType[0])
+        .addTask(TaskType.MarkRollbackUnsafe, null)
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         .applyToTservers()
@@ -904,6 +908,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .tserverTask(
             TaskType.ChangeInstanceType,
             Json.newObject().put("cgroupSize", String.valueOf(NEW_CGROUP_SIZE)))
+        .oneShotBefore(TaskType.MarkRollbackUnsafe, TaskType.InstanceActions)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         .applyRound()
         .addTask(TaskType.PersistResizeNode, null)
@@ -1034,6 +1039,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
+        .oneShotBefore(TaskType.MarkRollbackUnsafe, TaskType.InstanceActions)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         // Only primary cluster affected
         .applyToCluster(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
@@ -1104,6 +1110,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
+        .oneShotBefore(TaskType.MarkRollbackUnsafe, TaskType.InstanceActions)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         // Primary cluster first
         .applyToCluster(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
@@ -1176,6 +1183,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
+        .oneShotBefore(TaskType.MarkRollbackUnsafe, TaskType.InstanceActions)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         // Only RR cluster
         .applyToCluster(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
@@ -1205,6 +1213,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
+        .oneShotBefore(TaskType.MarkRollbackUnsafe, TaskType.InstanceActions)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         .applyToTservers()
         .addTask(TaskType.PersistResizeNode, null)
@@ -1252,6 +1261,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
+        .oneShotBefore(TaskType.MarkRollbackUnsafe, TaskType.InstanceActions)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         .masterTask(TaskType.ChangeInstanceType)
         .masterTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
@@ -1284,6 +1294,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
         .applyToTservers()
+        .addTask(TaskType.MarkRollbackUnsafe, null)
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
         .masterTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         .applyToMasters()
@@ -1317,6 +1328,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .masterTask(TaskType.ChangeInstanceType)
+        .oneShotBefore(TaskType.MarkRollbackUnsafe, TaskType.InstanceActions)
         .masterTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         .applyToMasters()
         .addTask(TaskType.PersistResizeNode, null)
@@ -1392,6 +1404,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(false))
+        .addTask(TaskType.MarkRollbackUnsafe, null)
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
         .masterTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         .applyToMasters()
@@ -1621,6 +1634,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
+        .oneShotBefore(TaskType.MarkRollbackUnsafe, TaskType.InstanceActions)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         .applyRound()
         .addTask(TaskType.PersistResizeNode, null)
@@ -2283,6 +2297,139 @@ public class ResizeNodeTest extends UpgradeTaskTest {
               mockUpgrade.addTask(TaskType.UpdateUniverseFields, null);
             })
         .build();
+  }
+
+  @Test
+  public void testMarkRollbackUnsafeAfterVolumeSizeCheckpoint() throws InterruptedException {
+    ResizeNodeParams taskParams = createResizeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.creatingUser = defaultUser;
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    TestUtils.setFakeHttpContext(defaultUser);
+    // Freeze runs in the first runSubTasks batch; MarkRollbackUnsafe is created afterward.
+    // Pause on the mark itself so the upgrade graph exists, then abort after it commits.
+    setPausePosition(2);
+    UUID taskUUID = commissioner.submit(TaskType.ResizeNode, taskParams);
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ResizeNode,
+        "fake-name");
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    CommissionerBaseTest.waitForTaskPaused(taskInfo.getUuid(), commissioner);
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
+    int markPosition = -1;
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    for (int i = 0; i < subTasks.size(); i++) {
+      if (subTasks.get(i).getTaskType() == TaskType.MarkRollbackUnsafe) {
+        markPosition = i;
+        break;
+      }
+    }
+    assertTrue(markPosition >= 0);
+    setAbortPosition(markPosition + 1);
+    commissioner.resumeTask(taskInfo.getUuid());
+    try {
+      taskInfo = waitForTask(taskInfo.getUuid());
+      assertEquals(Aborted, taskInfo.getTaskState());
+      boolean sawMark =
+          taskInfo.getSubTasks().stream()
+              .anyMatch(
+                  t ->
+                      t.getTaskType() == TaskType.MarkRollbackUnsafe
+                          && t.getTaskState() == Success);
+      assertTrue(sawMark);
+      Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+      StateTransitionDetails details = universe.getStateTransitionDetails();
+      assertNotNull(details);
+      assertFalse(details.isRollbackSafe());
+      assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
+    } finally {
+      clearAbortOrPausePositions();
+    }
+  }
+
+  @Test
+  public void testStillRollbackableBeforeVolumeSizeCheckpoint() throws InterruptedException {
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    ResizeNodeParams taskParams = createResizeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.creatingUser = defaultUser;
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    TestUtils.setFakeHttpContext(defaultUser);
+    // Freeze finishes the first runSubTasks batch; MarkRollbackUnsafe is early in the rolling
+    // graph. Pause there so ChangeInstanceType can complete but the checkpoint is not crossed.
+    setPausePosition(3);
+    UUID taskUUID = commissioner.submit(TaskType.ResizeNode, taskParams);
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ResizeNode,
+        "fake-name");
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    CommissionerBaseTest.waitForTaskPaused(taskInfo.getUuid(), commissioner);
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
+    int firstChangeInstance = -1;
+    int markPosition = -1;
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    for (int i = 0; i < subTasks.size(); i++) {
+      TaskType type = subTasks.get(i).getTaskType();
+      if (type == TaskType.ChangeInstanceType && firstChangeInstance < 0) {
+        firstChangeInstance = i;
+      }
+      if (type == TaskType.MarkRollbackUnsafe) {
+        markPosition = i;
+      }
+    }
+    assertTrue(firstChangeInstance >= 0);
+    assertTrue(markPosition > firstChangeInstance);
+    assertTrue(
+        "pause must be at or before MarkRollbackUnsafe, mark=" + markPosition, markPosition >= 3);
+    setAbortPosition(markPosition);
+    commissioner.resumeTask(taskInfo.getUuid());
+    try {
+      taskInfo = waitForTask(taskInfo.getUuid());
+      assertEquals(Aborted, taskInfo.getTaskState());
+      boolean sawMarkSuccess =
+          taskInfo.getSubTasks().stream()
+              .anyMatch(
+                  t ->
+                      t.getTaskType() == TaskType.MarkRollbackUnsafe
+                          && t.getTaskState() == Success);
+      assertFalse(sawMarkSuccess);
+      boolean sawChangeInstanceSuccess =
+          taskInfo.getSubTasks().stream()
+              .anyMatch(
+                  t ->
+                      t.getTaskType() == TaskType.ChangeInstanceType
+                          && t.getTaskState() == Success);
+      assertTrue(sawChangeInstanceSuccess);
+      Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+      StateTransitionDetails details = universe.getStateTransitionDetails();
+      assertNotNull(details);
+      assertTrue(details.isRollbackSafe());
+      // Listing hides Rollback while the flag is off (computer.isEnabled()).
+      assertFalse(commissioner.canTaskRollback(taskInfo));
+      assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
+      factory.globalRuntimeConf().setValue("yb.task.allow_resize_node_rollback", "true");
+      assertTrue(commissioner.canTaskRollback(taskInfo));
+      assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+    } finally {
+      clearAbortOrPausePositions();
+    }
   }
 
   private TaskInfo submitTask(ResizeNodeParams requestParams) {

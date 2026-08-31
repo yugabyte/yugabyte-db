@@ -8,12 +8,14 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.common.LocalNodeManager;
@@ -52,6 +54,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -322,6 +325,106 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         getDiskFlags(rrNode, universe, UniverseTaskBase.ServerType.TSERVER);
     assertTrue(newValues.containsKey("yb_enable_read_committed_isolation"));
     assertFalse(newValues.containsKey("log_max_seconds_to_retain"));
+  }
+
+  @Test
+  public void testResizeRollbackRevertsGFlags() throws InterruptedException {
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_resize_node_rollback", "true");
+
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    Map<String, String> masterBefore =
+        new HashMap<>(
+            userIntent.specificGFlags.getGFlags(null, UniverseTaskBase.ServerType.MASTER));
+    Map<String, String> tserverBefore =
+        new HashMap<>(
+            userIntent.specificGFlags.getGFlags(null, UniverseTaskBase.ServerType.TSERVER));
+    masterBefore.put("max_log_size", "1805");
+    tserverBefore.put("log_max_seconds_to_retain", "86333");
+    userIntent.specificGFlags = SpecificGFlags.construct(masterBefore, tserverBefore);
+    Universe universe = createUniverse(userIntent);
+    String beforeInstanceType =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
+
+    Map<String, String> masterTarget = new HashMap<>(masterBefore);
+    masterTarget.put("max_log_size", "2205");
+    Map<String, String> tserverTarget = new HashMap<>(tserverBefore);
+    tserverTarget.put("max_log_size", "1806");
+    tserverTarget.remove("log_max_seconds_to_retain");
+    SpecificGFlags targetFlags = SpecificGFlags.construct(masterTarget, tserverTarget);
+
+    AtomicReference<String> firstResizedNode = new AtomicReference<>();
+    localNodeManager.setFailureInjection(
+        pair -> {
+          if (pair.getFirst() == NodeManager.NodeCommandType.Change_Instance_Type) {
+            firstResizedNode.compareAndSet(null, pair.getSecond().nodeName);
+            return false;
+          }
+          if (pair.getFirst() != NodeManager.NodeCommandType.Control) {
+            return false;
+          }
+          AnsibleClusterServerCtl.Params params = (AnsibleClusterServerCtl.Params) pair.getSecond();
+          if (!"stop".equals(params.command)) {
+            return false;
+          }
+          String first = firstResizedNode.get();
+          return first != null && !first.equals(params.nodeName);
+        });
+
+    ResizeNodeParams resizeParams =
+        getUpgradeParams(
+            universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, ResizeNodeParams.class);
+    resizeParams.getPrimaryCluster().userIntent.instanceType = instanceType2.getInstanceTypeCode();
+    resizeParams.getPrimaryCluster().userIntent.specificGFlags = targetFlags;
+    TaskInfo failed =
+        waitForTask(
+            upgradeUniverseHandler.resizeNode(
+                resizeParams, customer, Universe.getOrBadRequest(universe.getUniverseUUID())),
+            universe);
+    assertEquals(TaskInfo.State.Failure, failed.getTaskState());
+    assertNotNull(firstResizedNode.get());
+    assertTrue(commissioner.canTaskRollbackDetailed(failed));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNotNull(universe.getStateTransitionDetails());
+    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+
+    NodeDetails resized = universe.getNode(firstResizedNode.get());
+    assertEquals(
+        "2205",
+        getDiskFlags(resized, universe, UniverseTaskBase.ServerType.MASTER).get("max_log_size"));
+    Map<String, String> resizedTserverDisk =
+        getDiskFlags(resized, universe, UniverseTaskBase.ServerType.TSERVER);
+    assertEquals("1806", resizedTserverDisk.get("max_log_size"));
+    assertFalse(resizedTserverDisk.containsKey("log_max_seconds_to_retain"));
+
+    localNodeManager.setFailureInjection(null);
+    CustomerTask rollbackTask =
+        customerTaskManager.rollbackCustomerTask(customer.getUuid(), failed.getUuid());
+    TaskInfo rollbackInfo = waitForTask(rollbackTask.getTaskUUID(), universe);
+    assertEquals(TaskInfo.State.Success, rollbackInfo.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    for (NodeDetails node : universe.getNodes()) {
+      assertEquals(beforeInstanceType, node.cloudInfo.instance_type);
+      assertEquals(
+          "1805",
+          getDiskFlags(node, universe, UniverseTaskBase.ServerType.MASTER).get("max_log_size"));
+      Map<String, String> tserverDisk =
+          getDiskFlags(node, universe, UniverseTaskBase.ServerType.TSERVER);
+      assertEquals("86333", tserverDisk.get("log_max_seconds_to_retain"));
+      // extra_gflags always sets max_log_size=256; the forward-added 1806 must be gone.
+      assertEquals("256", tserverDisk.get("max_log_size"));
+      assertEquals(
+          "1805", getVarz(node, universe, UniverseTaskBase.ServerType.MASTER).get("max_log_size"));
+      Map<String, String> tserverVarz =
+          getVarz(node, universe, UniverseTaskBase.ServerType.TSERVER);
+      assertEquals("86333", tserverVarz.get("log_max_seconds_to_retain"));
+      assertEquals("256", tserverVarz.get("max_log_size"));
+    }
+    compareGFlags(universe);
+    assertNull(universe.getStateTransitionDetails());
+    verifyUniverseState(universe);
   }
 
   @Test

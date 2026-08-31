@@ -23,6 +23,8 @@ import play.libs.Json;
 @Singleton
 public class AddNodeToUniverseRollbackComputer implements TaskRollbackComputer {
 
+  public static final TaskType ROLLBACK_TASK_TYPE = TaskType.RollbackAddNodeToUniverse;
+
   private final RuntimeConfGetter confGetter;
 
   @Inject
@@ -33,6 +35,11 @@ public class AddNodeToUniverseRollbackComputer implements TaskRollbackComputer {
   @Override
   public boolean isEnabled() {
     return confGetter.getGlobalConf(GlobalConfKeys.allowAddNodeRollback);
+  }
+
+  @Override
+  public TaskType rollbackTaskType() {
+    return ROLLBACK_TASK_TYPE;
   }
 
   @Override
@@ -55,7 +62,7 @@ public class AddNodeToUniverseRollbackComputer implements TaskRollbackComputer {
     }
     params.expectedUniverseVersion = -1;
     return new RollbackSubmission(
-        TaskType.RollbackAddNodeToUniverse,
+        rollbackTaskType(),
         params,
         CustomerTask.TaskType.RollbackAddNodeToUniverse,
         false /* setPreviousTaskUUID */);

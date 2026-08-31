@@ -34,6 +34,7 @@ import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.QueryLogConfigParams;
+import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
@@ -45,6 +46,7 @@ import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
@@ -1175,5 +1177,99 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
             () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
     assertTrue(ex.getMessage().contains("not implemented"));
     verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  // Builds ResizeNodeParams JSON that reuses the current universe intent so a JSON round-trip
+  // through ResizeNodeParams round-trips cleanly.
+  private JsonNode resizeNodeTaskParams(Universe universe) {
+    ResizeNodeParams params = new ResizeNodeParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.clusters = universe.getUniverseDetails().clusters;
+    params.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    return Json.toJson(params);
+  }
+
+  // Marks the universe as needing rollback by seeding state_transition_details with a simple
+  // one-field delta so requireRollbackable and getBeforeUniverseDetails both succeed.
+  private Universe markResizeNodeFailed(Universe universe) {
+    UniverseDefinitionTaskParams before =
+        Json.fromJson(
+            Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams target =
+        Json.fromJson(
+            Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+    // Tweak a benign field so buildDeltaJsonTree emits a non-empty delta but does not touch
+    // dedicatedNodes (which would flip requireRollbackable).
+    target.getPrimaryCluster().userIntent.instanceType = "c4.medium";
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(before, target);
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams d = u.getUniverseDetails();
+          d.updateInProgress = false;
+          u.setUniverseDetails(d);
+          u.setStateTransitionDetails(new StateTransitionDetails(true, delta));
+        });
+  }
+
+  @Test
+  public void testRollbackResizeNodeDisabledByRuntimeFlag() {
+    // yb.task.allow_resize_node_rollback off (default) rejects at the computer (second gate).
+    // Listing would already hide the button via isEnabled().
+    universe = ModelFactory.createUniverse(customer.getId());
+    universe = markResizeNodeFailed(universe);
+    JsonNode taskParams = resizeNodeTaskParams(universe);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
+    assertTrue(ex.getMessage().contains("not enabled"));
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testRollbackResizeNodeSubmitsRollbackResizeNodeWhenEnabled() {
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.task.allow_resize_node_rollback", "true");
+    universe = ModelFactory.createUniverse(customer.getId());
+    universe = markResizeNodeFailed(universe);
+    JsonNode taskParams = resizeNodeTaskParams(universe);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    UUID rollbackTaskUUID = UUID.randomUUID();
+    persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.RollbackResizeNode);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.RollbackResizeNode), any()))
+        .thenReturn(rollbackTaskUUID);
+
+    CustomerTask rollbackTask =
+        taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.RollbackResizeNode), paramsCaptor.capture());
+    // Fresh rollback task must not inherit ResizeNode runtimeInfo.
+    assertNull(paramsCaptor.getValue().getPreviousTaskUUID());
+    // First failure in chain: failed task is the chain root.
+    assertEquals(failedTaskUUID, paramsCaptor.getValue().getOriginalTaskUUID());
+    assertEquals(CustomerTask.TaskType.RollbackResizeNode, rollbackTask.getType());
+    assertEquals(rollbackTaskUUID, rollbackTask.getTaskUUID());
+  }
+
+  @Test
+  public void testTaskRollbackComputerRegistryBindsResizeNode() {
+    Injector guiceInjector = app.injector().instanceOf(Injector.class);
+    Map<TaskType, TaskRollbackComputer> computers =
+        guiceInjector.getInstance(
+            Key.get(new TypeLiteral<Map<TaskType, TaskRollbackComputer>>() {}));
+    assertNotNull(computers.get(TaskType.ResizeNode));
   }
 }

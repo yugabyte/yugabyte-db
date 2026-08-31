@@ -493,6 +493,11 @@ public enum TaskType {
       CustomerTask.TaskType.ResizeNode,
       CustomerTask.TargetType.Universe),
 
+  RollbackResizeNode(
+      com.yugabyte.yw.commissioner.tasks.upgrade.RollbackResizeNode.class,
+      CustomerTask.TaskType.RollbackResizeNode,
+      CustomerTask.TargetType.Universe),
+
   CreateTableSpacesInUniverse(
       com.yugabyte.yw.commissioner.tasks.CreateTableSpacesInUniverse.class,
       CustomerTask.TaskType.CreateTableSpaces,
@@ -1430,6 +1435,7 @@ public enum TaskType {
           .put(GFlagsUpgrade, 32)
           .put(RebootUniverse, 33)
           .put(ResizeNode, 34)
+          .put(RollbackResizeNode, 66)
           .put(RestartUniverse, 35)
           .put(SoftwareUpgrade, 36)
           .put(SoftwareUpgradeYB, 36)

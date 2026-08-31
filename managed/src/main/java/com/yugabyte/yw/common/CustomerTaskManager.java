@@ -930,6 +930,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
         break;
       case ResizeNode:
+      case RollbackResizeNode:
         taskParams = Json.fromJson(oldTaskParams, ResizeNodeParams.class);
         break;
       case DestroyKubernetesUniverse:

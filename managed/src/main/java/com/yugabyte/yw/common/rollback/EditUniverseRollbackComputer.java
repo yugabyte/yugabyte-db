@@ -28,6 +28,8 @@ import play.libs.Json;
 @Singleton
 public class EditUniverseRollbackComputer implements TaskRollbackComputer {
 
+  public static final TaskType ROLLBACK_TASK_TYPE = TaskType.RollbackEditUniverse;
+
   private final RuntimeConfGetter confGetter;
 
   @Inject
@@ -38,6 +40,11 @@ public class EditUniverseRollbackComputer implements TaskRollbackComputer {
   @Override
   public boolean isEnabled() {
     return confGetter.getGlobalConf(GlobalConfKeys.allowEditUniverseRollback);
+  }
+
+  @Override
+  public TaskType rollbackTaskType() {
+    return ROLLBACK_TASK_TYPE;
   }
 
   @Override
@@ -64,7 +71,7 @@ public class EditUniverseRollbackComputer implements TaskRollbackComputer {
     params.expectedUniverseVersion = -1;
     // Fresh task: must not inherit EditUniverse runtimeInfo / retry semantics.
     return new RollbackSubmission(
-        TaskType.RollbackEditUniverse,
+        rollbackTaskType(),
         params,
         CustomerTask.TaskType.RollbackEditUniverse,
         false /* setPreviousTaskUUID */);

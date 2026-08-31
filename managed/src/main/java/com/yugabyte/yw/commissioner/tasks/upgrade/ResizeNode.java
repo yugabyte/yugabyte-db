@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -44,6 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Retryable
+@CanRollback
 public class ResizeNode extends UpgradeTaskBase {
 
   @Inject
@@ -69,6 +71,14 @@ public class ResizeNode extends UpgradeTaskBase {
   @Override
   public void validateParams(boolean isFirstTry) {
     super.validateParams(isFirstTry);
+    verifyResizeParams(isFirstTry);
+  }
+
+  /**
+   * Forward ResizeNode verifies {@link ResizeNodeParams}. Rollback overrides this so the generic
+   * universe checks still run without applying forward-only {@code verifyParams}.
+   */
+  protected void verifyResizeParams(boolean isFirstTry) {
     taskParams().verifyParams(getUniverse(), !isFirstTry() ? getNodeState() : null, isFirstTry);
   }
 
@@ -156,6 +166,8 @@ public class ResizeNode extends UpgradeTaskBase {
     LinkedHashSet<NodeDetails> nodesNotUpdated = new LinkedHashSet<>(allNodes);
     Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters =
         taskParams().getNewVersionsOfClusters(universe);
+    final Map<UUID, UniverseDefinitionTaskParams.Cluster> gflagsBaseline =
+        flagsProvided ? getGFlagsBaselineClusters(universe) : Collections.emptyMap();
     // Create task sequence to resize allNodes.
     for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
       if (flagsProvided) {
@@ -189,7 +201,11 @@ public class ResizeNode extends UpgradeTaskBase {
       for (NodeDetails node : clusterNodes) {
         if (isInstanceChanging(node, userIntent, currentIntent)) {
           nodesToApplyCalculated.instanceChangingNodes.add(node);
-        } else if (isModifyingDevice(node, userIntent, currentIntent)) {
+        } else if (taskParams().isForceResizeNode()
+            || isModifyingDevice(
+                node,
+                currentIntent.evaluateDeviceInfoForNode(node),
+                userIntent.evaluateDeviceInfoForNode(node))) {
           nodesToApplyCalculated.justModifyDeviceNodes.add(node);
         }
       }
@@ -205,7 +221,7 @@ public class ResizeNode extends UpgradeTaskBase {
               .filter(
                   n -> {
                     UniverseDefinitionTaskParams.Cluster curCluster =
-                        universe.getCluster(n.placementUuid);
+                        gflagsBaseline.get(n.placementUuid);
                     UniverseDefinitionTaskParams.Cluster newCluster =
                         newVersionsOfClusters.get(n.placementUuid);
                     return nodesToApplyCalculated.applyGFlagsToAllNodes
@@ -213,7 +229,7 @@ public class ResizeNode extends UpgradeTaskBase {
                             n,
                             ServerType.MASTER,
                             curCluster,
-                            universe.getUniverseDetails().clusters,
+                            gflagsBaseline.values(),
                             newCluster,
                             newVersionsOfClusters.values());
                   })
@@ -224,7 +240,7 @@ public class ResizeNode extends UpgradeTaskBase {
               .filter(
                   n -> {
                     UniverseDefinitionTaskParams.Cluster curCluster =
-                        universe.getCluster(n.placementUuid);
+                        gflagsBaseline.get(n.placementUuid);
                     UniverseDefinitionTaskParams.Cluster newCluster =
                         newVersionsOfClusters.get(n.placementUuid);
                     return nodesToApplyCalculated.applyGFlagsToAllNodes
@@ -232,7 +248,7 @@ public class ResizeNode extends UpgradeTaskBase {
                             n,
                             ServerType.TSERVER,
                             curCluster,
-                            universe.getUniverseDetails().clusters,
+                            gflagsBaseline.values(),
                             newCluster,
                             newVersionsOfClusters.values());
                   })
@@ -322,7 +338,11 @@ public class ResizeNode extends UpgradeTaskBase {
                         })
                     .build(),
                 taskParams().isYbcInstalled());
-            // Only disk modification, could be done without restarts.
+            // Only disk modification, could be done without restarts. Volume grow is
+            // irreversible in the cloud; flip rollbackSafe before the first size Disk_Update.
+            if (anyNodeModifyingVolumeSize(justModifyDeviceNodes, userIntent, currentIntent)) {
+              createMarkRollbackUnsafeTaskOnce();
+            }
             createNonRestartUpgradeTaskFlow(
                 (nodes, processTypes) ->
                     createUpdateDiskSizeTasks(nodes)
@@ -375,9 +395,12 @@ public class ResizeNode extends UpgradeTaskBase {
       Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters,
       boolean applyToAll) {
 
+    Map<UUID, UniverseDefinitionTaskParams.Cluster> gflagsBaseline =
+        getGFlagsBaselineClusters(universe);
+
     for (NodeDetails node : nodes) {
       UUID clusterUUID = node.placementUuid;
-      UniverseDefinitionTaskParams.Cluster oldCluster = universe.getCluster(clusterUUID);
+      UniverseDefinitionTaskParams.Cluster oldCluster = gflagsBaseline.get(clusterUUID);
       UniverseDefinitionTaskParams.Cluster newCluster = newVersionsOfClusters.get(clusterUUID);
 
       for (ServerType processType : processTypes) {
@@ -386,7 +409,7 @@ public class ResizeNode extends UpgradeTaskBase {
                 node,
                 processType,
                 oldCluster,
-                universe.getUniverseDetails().clusters,
+                gflagsBaseline.values(),
                 newCluster,
                 newVersionsOfClusters.values())) {
           createServerConfFileUpdateTasks(
@@ -394,7 +417,7 @@ public class ResizeNode extends UpgradeTaskBase {
               nodes,
               Collections.singleton(processType),
               oldCluster,
-              universe.getUniverseDetails().clusters,
+              gflagsBaseline.values(),
               newCluster,
               newVersionsOfClusters.values());
         }
@@ -402,7 +425,7 @@ public class ResizeNode extends UpgradeTaskBase {
     }
   }
 
-  private boolean isInstanceChanging(
+  protected boolean isInstanceChanging(
       NodeDetails node,
       UniverseDefinitionTaskParams.UserIntent newIntent,
       UniverseDefinitionTaskParams.UserIntent currentIntent) {
@@ -417,27 +440,17 @@ public class ResizeNode extends UpgradeTaskBase {
         || !Objects.equals(oldCgroupSize, newCgroupSize);
   }
 
-  private boolean isModifyingDevice(
-      NodeDetails node,
-      UniverseDefinitionTaskParams.UserIntent newIntent,
-      UniverseDefinitionTaskParams.UserIntent currentIntent) {
-    if (taskParams().isForceResizeNode()) {
-      return true;
-    }
-    DeviceInfo currentDeviceInfo = currentIntent.evaluateDeviceInfoForNode(node);
-    DeviceInfo newDeviceInfo = newIntent.evaluateDeviceInfoForNode(node);
-    return isModifyingDevice(currentDeviceInfo, newDeviceInfo);
-  }
-
-  private boolean isModifyingDevice(DeviceInfo currentDeviceInfo, DeviceInfo newDeviceInfo) {
+  protected boolean isModifyingDevice(
+      NodeDetails node, DeviceInfo currentDeviceInfo, DeviceInfo newDeviceInfo) {
     // Disk will not be modified if the cluster has no currently defined device info.
     if (currentDeviceInfo == null) {
       log.warn("Cannot modify disk since the cluster has no defined device info");
       return false;
     }
-    boolean modifySize =
-        newDeviceInfo.volumeSize != null
-            && !newDeviceInfo.volumeSize.equals(currentDeviceInfo.volumeSize);
+    if (newDeviceInfo == null) {
+      return false;
+    }
+    boolean modifySize = isModifyingVolumeSize(currentDeviceInfo, newDeviceInfo);
     boolean modifyIops =
         newDeviceInfo.diskIops != null
             && !newDeviceInfo.diskIops.equals(currentDeviceInfo.diskIops);
@@ -445,6 +458,30 @@ public class ResizeNode extends UpgradeTaskBase {
         newDeviceInfo.throughput != null
             && !newDeviceInfo.throughput.equals(currentDeviceInfo.throughput);
     return modifySize || modifyIops || modifyThroughput;
+  }
+
+  /**
+   * True when {@code volumeSize} differs. Narrower than {@link #isModifyingDevice}: IOPS /
+   * throughput-only changes stay rollbackable (subject to cooldown). Cloud volume grow cannot be
+   * undone, so callers enqueue {@link #createMarkRollbackUnsafeTaskOnce()} before size Disk_Update.
+   */
+  private boolean isModifyingVolumeSize(DeviceInfo currentDeviceInfo, DeviceInfo newDeviceInfo) {
+    return currentDeviceInfo != null
+        && newDeviceInfo != null
+        && newDeviceInfo.volumeSize != null
+        && !newDeviceInfo.volumeSize.equals(currentDeviceInfo.volumeSize);
+  }
+
+  private boolean anyNodeModifyingVolumeSize(
+      Collection<NodeDetails> nodes,
+      UniverseDefinitionTaskParams.UserIntent newIntent,
+      UniverseDefinitionTaskParams.UserIntent currentIntent) {
+    return nodes.stream()
+        .anyMatch(
+            n ->
+                isModifyingVolumeSize(
+                    currentIntent.evaluateDeviceInfoForNode(n),
+                    newIntent.evaluateDeviceInfoForNode(n)));
   }
 
   private void createPreResizeNodeTasks(
@@ -474,7 +511,7 @@ public class ResizeNode extends UpgradeTaskBase {
           for (NodeDetails node : nodes) {
             DeviceInfo newDeviceInfo = newIntent.evaluateDeviceInfoForNode(node);
             String newInstanceType = newIntent.getInstanceType(type, node.getAzUuid());
-            String currentInstanceType = node.cloudInfo.instance_type;
+            String currentInstanceType = instanceTypeForChangeDecision(node);
             DeviceInfo currentDeviceInfo = currentIntent.evaluateDeviceInfoForNode(node);
             Integer newCgroupSize = newIntent.getCGroupSize(node);
             Integer oldCgroupSize = currentIntent.getCGroupSize(node);
@@ -512,7 +549,7 @@ public class ResizeNode extends UpgradeTaskBase {
       for (NodeDetails node : nodes) {
         // Check if the node needs to be resized.
         if (!taskParams().isForceResizeNode()
-            && node.cloudInfo.instance_type.equals(newInstanceType)
+            && isNodeAlreadyAtInstanceType(node, newInstanceType)
             && !cgroupSizeChanging) {
           log.info("Skipping node {} as its type is already {}", node.nodeName, newInstanceType);
           continue;
@@ -528,7 +565,13 @@ public class ResizeNode extends UpgradeTaskBase {
     log.info("Existing device info: {}", currentDeviceInfo);
     if (newDeviceInfo != null) {
       // Check if the storage needs to be modified.
-      if (taskParams().isForceResizeNode() || isModifyingDevice(currentDeviceInfo, newDeviceInfo)) {
+      if (taskParams().isForceResizeNode()
+          || nodes.stream().anyMatch(n -> isModifyingDevice(n, currentDeviceInfo, newDeviceInfo))) {
+        // Volume grow cannot be undone; flip rollbackSafe before the first size Disk_Update.
+        // IOPS/throughput-only Disk_Update stays inside the rollback-safe window.
+        if (isModifyingVolumeSize(currentDeviceInfo, newDeviceInfo)) {
+          createMarkRollbackUnsafeTaskOnce();
+        }
         // Resize the nodes' disks.
         log.info("New device info: {}", newDeviceInfo);
         createUpdateDiskSizeTasks(nodes, taskParams().isForceResizeNode())
@@ -539,6 +582,35 @@ public class ResizeNode extends UpgradeTaskBase {
                 + " Skipping disk modification.");
       }
     }
+  }
+
+  /**
+   * Instance type used to decide whether ChangeInstanceType must run. Forward ResizeNode uses YBA
+   * postgres; rollback uses the cloud type when known so a persist-abort after the cloud change is
+   * not skipped.
+   */
+  protected String instanceTypeForChangeDecision(NodeDetails node) {
+    return node.cloudInfo.instance_type;
+  }
+
+  /**
+   * True when YBA's recorded instance type already equals the target. Rollback overrides this to
+   * also require the cloud instance type to match (persist may have aborted after
+   * ChangeInstanceType).
+   */
+  protected boolean isNodeAlreadyAtInstanceType(NodeDetails node, String targetInstanceType) {
+    return node.cloudInfo.instance_type.equals(targetInstanceType);
+  }
+
+  /**
+   * Clusters used as the "old" side of gflag diffs and conf rewrites. Forward ResizeNode uses the
+   * persisted universe. Rollback overrides this with the failed task's target so nodes the forward
+   * already updated still get their conf rewritten back to before.
+   */
+  protected Map<UUID, UniverseDefinitionTaskParams.Cluster> getGFlagsBaselineClusters(
+      Universe universe) {
+    return universe.getUniverseDetails().clusters.stream()
+        .collect(Collectors.toMap(c -> c.uuid, c -> c));
   }
 
   private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node, String instanceType) {

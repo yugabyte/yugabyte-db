@@ -233,6 +233,9 @@ public class CustomerTask extends Model {
     @EnumValue("ResizeNode")
     ResizeNode,
 
+    @EnumValue("RollbackResizeNode")
+    RollbackResizeNode,
+
     @Deprecated
     @EnumValue("UpdateCert")
     UpdateCert,
@@ -491,6 +494,8 @@ public class CustomerTask extends Model {
           return completed ? "Decommissioned" : "Decommissioning";
         case ResizeNode:
           return completed ? "Resized Node" : "Resizing Node";
+        case RollbackResizeNode:
+          return completed ? "Rolled back node resize" : "Rolling back node resize";
         case Replace:
           return completed ? "Replaced Node" : "Replacing Node";
         case Resume:

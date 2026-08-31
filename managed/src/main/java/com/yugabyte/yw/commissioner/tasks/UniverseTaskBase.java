@@ -99,6 +99,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.rollback.TaskRollbackModule;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -287,6 +288,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RollbackEditUniverse,
           TaskType.RollbackEditKubernetesUniverse,
           TaskType.RollbackAddNodeToUniverse,
+          TaskType.RollbackResizeNode,
           TaskType.RestartUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
@@ -641,19 +643,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
         builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
       }
-      // 1:1 with EditUniverseRollbackComputer / TaskType.EditUniverse.
-      if (lockedTaskType == TaskType.EditUniverse) {
-        builder.taskTypes(ImmutableSet.of(TaskType.RollbackEditUniverse));
-      }
-      // 1:1 with EditKubernetesUniverseRollbackComputer / TaskType.EditKubernetesUniverse. Additive
-      // with the rerun path below (EditKubernetesUniverse is rerunnable), so both roll back and
-      // rerun are allowed on a failed K8s edit.
-      if (lockedTaskType == TaskType.EditKubernetesUniverse) {
-        builder.taskTypes(ImmutableSet.of(TaskType.RollbackEditKubernetesUniverse));
-      }
-      // 1:1 with AddNodeToUniverseRollbackComputer / TaskType.AddNodeToUniverse.
-      if (lockedTaskType == TaskType.AddNodeToUniverse) {
-        builder.taskTypes(ImmutableSet.of(TaskType.RollbackAddNodeToUniverse));
+      // 1:1 placement rollback types live next to the Guice bindings. Additive with the rerun
+      // path below (EditKubernetesUniverse is rerunnable), so both roll back and rerun stay
+      // allowed on a failed K8s edit.
+      TaskType rollbackType = TaskRollbackModule.PLACEMENT_ROLLBACK_TASK_TYPES.get(lockedTaskType);
+      if (rollbackType != null) {
+        builder.taskTypes(ImmutableSet.of(rollbackType));
       }
       if (RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
         builder.rerun(true);

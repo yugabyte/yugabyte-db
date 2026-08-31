@@ -112,6 +112,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.MultiTableBackup,
           TaskType.BackupUniverse,
           TaskType.ResizeNode,
+          TaskType.RollbackResizeNode,
           TaskType.StartNodeInUniverse,
           TaskType.StopNodeInUniverse,
           TaskType.CloudProviderDelete,

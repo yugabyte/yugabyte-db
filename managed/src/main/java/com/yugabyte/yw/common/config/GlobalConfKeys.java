@@ -2086,6 +2086,27 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " is out of scope.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowResizeNodeRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_resize_node_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Resize Node Tasks",
+          "Allow rolling back a failed resize node task via the task rollback API. Kubernetes"
+              + " and disk-size shrink are out of scope; IOPS/throughput revert during the cloud"
+              + " disk-modify cooldown window is rejected.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipResizeNodeRollbackCooldown =
+      new ConfKeyInfo<>(
+          "yb.task.skip_resize_node_rollback_cooldown",
+          ScopeType.GLOBAL,
+          "Skip Cloud Disk-modify Cooldown Check on Resize Node Rollback",
+          "Bypass the cloud disk-modify cooldown gate when submitting or executing a resize node"
+              + " rollback. The cooldown protects against cloud-side rejection of IOPS/throughput"
+              + " reverts; enable only when the operator has independently confirmed the window"
+              + " has expired or the cloud will accept the reverse modify.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.continuous_platform_backups",
