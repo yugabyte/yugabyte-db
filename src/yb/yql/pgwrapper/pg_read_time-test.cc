@@ -1547,9 +1547,10 @@ TEST_P(PgBackfillReadTimeTest, PrecedesClampDefer) {
 
   for (const auto* mode : {"relaxed", "deferred"}) {
     ASSERT_OK(internal.ExecuteFormat("SET yb_read_after_commit_visibility = '$0'", mode));
-    const auto bf = ASSERT_RESULT((internal.FetchRow<std::string, double>(Format(
+    const auto bf = ASSERT_RESULT((internal.FetchRow<std::string, double, double>(Format(
         "BACKFILL INDEX $0 WITH x'0880011a00' READ TIME $1 PARTITION x''", idx_oid, t1_ht))));
     ASSERT_EQ(std::get<1>(bf), 6) << mode;
+    ASSERT_EQ(std::get<2>(bf), 6) << mode;
   }
 }
 
