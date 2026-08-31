@@ -16,9 +16,9 @@ description: >-
   another src/postgres check.  These requests look like ordinary edits,
   but code written from general PostgreSQL knowledge violates the fork's
   conventions and gets rejected in lint or review -- follow this guide
-  instead.  Applies only when changing src/postgres code: not for
-  explaining code without editing it, nor for areas outside the fork that
-  merely sound related (tserver/pggate gflags, odyssey, live-cluster
+  instead.  Applies only when changing src/postgres code: not when merely
+  reading or explaining that code, and not for areas outside the fork
+  that just sound related (tserver/pggate gflags, odyssey, live-cluster
   ysqlsh operations, benchmarking).
 ---
 
@@ -35,10 +35,12 @@ catchup time saved.  Every rule here serves one of two goals:
    them and conflicts appear only where a real logical conflict exists.
 
 The pinned upstream version of any file is defined by
-`src/lint/upstream_repositories.csv`.  To see the YB delta of a file:
+`src/lint/upstream_repositories.csv`.  To see the YB delta of a file, or
+to fetch the pinned upstream copy itself:
 
 ```bash
 src/lint/diff_file_with_upstream.py <file> -b
+src/lint/upstream_file.py <file> <output-path>
 ```
 
 Older files predate these conventions and violate them freely (e.g.
@@ -59,8 +61,8 @@ it comes right after (`pg_yb_...` catalog names, `_YB_...` keyword
 tokens).  Match the casing style of the surroundings.  The marker is what
 lets a merger (and lint) attribute a line to YB without archaeology.
 
-- Markers flag the YB/PG boundary; they are not needed fractally inside
-  it.  Within code that is already YB by context -- the body of a
+- Markers flag the YB/PG boundary, not every line inside it.  Within
+  code that is already YB by context -- the body of a
   yb-prefixed function (`yb_foo`, `is_yb_foo`, `YbFoo`, ...), a
   YB-introduced file, or a block gated by a YB condition
   (`IsYugaByteEnabled()`, `IsYBRelation(...)`, a `yb_*` GUC) -- local
@@ -69,10 +71,18 @@ lets a merger (and lint) attribute a line to YB without archaeology.
   but not others is noisier than marking none.  Use `/* YB: ... */`
   markers only where YB code sits directly in PG-owned context and the
   marker is what attributes it.
-- Do not use a `ybc` prefix in `src/postgres` (that namespace belongs to
-  pggate); `Yb` file names are reserved for `nodeYb*` executor files.
+- Do not introduce new `ybc`-prefixed names: that namespace belongs to
+  pggate, whose `YbcPg*` types src/postgres code uses everywhere.
+  (`ybctid` is not one of them: it parses as yb + `ctid`.)  When
+  extending an existing ybc-named family (e.g. the `ybcin*` index-AM
+  handlers), match the family rather than stick out.
 - YB-introduced files must be recognizable by name: start the file name
-  with `yb` (or `pg_yb`), and every type they define must contain `yb`.
+  with `yb` (`pg_yb` only where a constraint forces it, such as catalog
+  table filenames), and every type they define must contain `yb` (any
+  casing: `yb`/`Yb`/`YB`).  File names take the casing of the upstream
+  family they join -- executor nodes are camel, `nodeHashjoin.c` ->
+  `nodeYbBatchedNestloop.c`, today the only such family (lint allows `Yb`
+  in a file name there and nowhere else).
   YB-introduced files must NOT contain a `/* YB includes */` block -- the
   whole file is YB, so includes are just normal includes.
 
@@ -81,7 +91,7 @@ lets a merger (and lint) attribute a line to YB without archaeology.
 Group YB code separately from PG code.  Upstream constantly appends to its
 own lists -- includes, declarations, struct fields, function parameters,
 functions -- and a YB line sitting inside one turns every upstream append
-into a conflict, or worse, an undetected mis-merge.  Do not let a YB
+into a conflict.  Do not let a YB
 addition sit directly against a PG-owned line: put it in a YB block opened
 by a marker comment and separated from PG code by a blank line.
 
@@ -93,43 +103,49 @@ by a marker comment and separated from PG code by a blank line.
   header, at the bottom of the file (before the closing `#endif`); append
   to the YB block already there if one exists.  Declarations stay bare:
   PG puts the descriptive comment on the definition, not the declaration.
-- `/* YB fields */` -- for YB fields appended to a PG-owned struct (append
-  at the end unless field order is semantically constrained).  Keep PG's
-  member-comment split: at most a short one-liner on the member itself;
-  a longer description goes in a `YB:` paragraph appended at the bottom
-  of the struct's or enum's header comment, before the closing `*/` --
-  the upstream comment lines themselves stay untouched.
+- `/* YB fields */` -- for YB fields appended to a PG-owned struct,
+  enum, or union (append at the end unless field order is semantically
+  constrained).  Keep PG's member-comment split: at most a short
+  one-liner on the member itself; a longer description goes in a `YB:`
+  paragraph appended at the bottom of the type's header comment, before
+  the closing `*/` -- the upstream comment lines themselves stay
+  untouched.
 - Functions: place new YB functions at the bottom of the file (or in an
-  existing YB function cluster), never between two upstream functions.
+  existing YB function cluster), not between two upstream functions.
   If a static YB function is called from code above it, add a prototype to
   the `/* YB declarations */` block instead of moving the definition up.
+  Exception: a yb function factored out of an upstream function stays
+  where the upstream code was when that keeps the diff vs upstream
+  smaller.
 - Function parameters: cluster YB parameters at the end of the upstream
   parameter list and yb-prefix them; do not insert into the middle if
   avoidable.
 
-Interleaving is allowed only when an ordering constraint forces it -- a
-sorted list (e.g. `kwlist.h` keywords) or semantically ordered entries.
+Interleaving is otherwise allowed only when an ordering constraint forces
+it -- a sorted list (e.g. `kwlist.h` keywords) or semantically ordered
+entries.
 Each interleaved YB entry then carries its own marker: a yb-prefixed
 identifier (as in `_YB_ACCOUNT_P`) or, if the entry has no identifier, an
 inline `/* YB */` comment.
 
 Convention clusters YB blocks at the bottom, after the corresponding
-upstream section.  Upstream tends to append its own new code there too, so
-the marker comment and the blank line are what keep the merge clean --
-never skip them.
+upstream section.  Upstream tends to append its own new code there too,
+so conflicts at the seam are expected.  The marker comment and the blank
+line are what make them quick to attribute and resolve -- never skip
+them.
 
 ## Do not touch PG-owned lines
 
-Avoid touching PG-owned lines if possible; when a YB change must touch
-them, keep the change minimal and mechanical.
+Try to keep PG-owned lines exactly byte-identical.  The one allowance,
+when a YB change must wrap them, is an indentation-only change --
+`diff_file_with_upstream.py -b` and merge tooling can see through that.
 
 - Do not fix upstream style, typos, or whitespace -- if the style is
   wrong, leave it wrong.  Trailing-whitespace "cleanup" of PG-owned lines
   has caused real merge conflicts.
 - When a YB `if`/`else` must wrap PG-owned lines, do a pure indent: add
-  leading tabs only, and do not rewrap the lines to fit 80 columns.  Diff
-  and merge tooling can be told to see through indentation-only changes;
-  rewrapped lines defeat it.
+  leading tabs only, and do not rewrap the lines to fit 80 columns --
+  rewrapped lines defeat the indentation-blind tooling.
 - Avoid refactors and style changes of PG code in a feature diff,
   especially while a PG major-version merge is ongoing (save them for
   after it completes).  A needed code move gets its own revision, as a
@@ -140,7 +156,7 @@ them, keep the change minimal and mechanical.
 
 The regress test file taxonomy -- upstream-named files, `yb.port.*`,
 `yb.orig.*`, `yb.depd.*`, schedule ordering, YB-deviation marking -- is
-documented in `src/postgres/src/test/regress/README`; read it before
+documented in `src/postgres/src/test/regress/README`.  Read it before
 touching test files.  Do not edit a test with an upstream name to make a
 YB behavior pass: the YB difference belongs in the `yb.port.*` version,
 marked with a `-- YB: <reason>` comment.  (Lint pins upstream-named files
