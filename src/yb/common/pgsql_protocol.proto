@@ -335,6 +335,17 @@ message PgsqlWriteRequestPB {
   //
   // Like skip_intents_write this is a client-side signal; docdb does not read it.
   optional bool read_at_in_txn_limit = 31;
+
+  // Fences the write against a caller-held lease: the leader rejects the op if this hybrid time has
+  // already passed when the op is about to be assigned its own. An RPC deadline cannot express
+  // this -- nothing cancels an operation once it is handed to Raft, so a write the caller saw time
+  // out can still commit. 0 means no fence.
+  //
+  // Each leader evaluates the fence independently, so a batch spanning tablets can be partially
+  // applied when it straddles the boundary; non-transactional single-shard writes have no
+  // all-or-nothing to fall back on. Like any hybrid time comparison it is only as tight as
+  // max_clock_skew_usec.
+  optional fixed64 ignore_after_hybrid_time = 32;
 }
 
 //--------------------------------------------------------------------------------------------------
