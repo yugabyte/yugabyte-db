@@ -88,10 +88,10 @@ export function CreateUniverse() {
 
   const getButtonLabel = (resType: ResilienceType | undefined, actStep: number) => {
     if (resType === ResilienceType.SINGLE_NODE) {
-      if (actStep === 8) return t('applyChanges', { keyPrefix: 'common' });
+      if (actStep === 8) return t('create', { keyPrefix: 'common' });
       else return t(actStep === 7 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
     } else {
-      if (actStep === 9) return t('applyChanges', { keyPrefix: 'common' });
+      if (actStep === 9) return t('create', { keyPrefix: 'common' });
       else return t(actStep === 8 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
     }
   };
