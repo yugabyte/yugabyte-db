@@ -246,6 +246,42 @@ message RaftGroupReplicaSuperBlockPB {
   // successful. The master is responsible for not sending multiple clone requests with different
   // sequence_numbers until the previous one is complete or aborted on all tablets.
   optional uint32 last_attempted_clone_seq_no = 38;
+
+  // Active fixed-hybrid-time write-ID ordering generation for unique-index backfill. While
+  // active on an index tablet: marked backfill writes must derive their write IDs from Raft
+  // operation indexes strictly above base_op_index, and tablet cloning is fenced (a clone's
+  // metadata is built fresh, so it would hold marked versions with no generation record and no
+  // backfill job to verify or release them). Set by the master before the first marked backfill
+  // write and cleared when the backfill operation reaches a terminal state. Split children
+  // inherit this with the rest of the superblock; splitting is fenced by the master only while
+  // the deferred verification scan is in progress.
+  optional IndexBackfillOrderingGenerationPB index_backfill_ordering_generation = 39;
+}
+
+message IndexBackfillOrderingGenerationPB {
+  optional bool active = 1;
+
+  // The index table this generation covers. The record is one per tablet by design: a
+  // colocated tablet hosts many tables, so SKIP_ALL is limited to dedicated index tablets
+  // (colocated indexes stay CHECK_ALL) rather than tracked per table. The owner is still named
+  // so that a marked write, activation, or release for a different index is refused or
+  // ignored (fail closed) instead of silently adopted; per-table records would be an additive
+  // sibling field if colocated support is ever wanted.
+  optional bytes table_id = 2;
+
+  // Raft operation index of the activation ChangeMetadataOperation. Marked backfill writes must
+  // carry indexes strictly above this; see TabletPeer::CheckReplicateAllowed.
+  optional int64 base_op_index = 3;
+
+  // History before this hybrid time is not needed by deferred verification; retention
+  // enforcement holds reads at backfill_read_time.Decremented() while the generation is active.
+  optional fixed64 retention_barrier_ht = 4;
+
+  // Version of the write-ID-floor constant (kBackfillWriteIdFloor) the marked writes of this
+  // generation were stored with, so a future floor change cannot misinterpret older marked data.
+  // Numbering starts at 1 for the initial floor (kIntraTxnWriteIdLimit, 2^31); 0 is reserved as
+  // absent/unknown. Written by the master activation flow.
+  optional uint32 write_id_floor_version = 5;
 }
 
 message FilePB {

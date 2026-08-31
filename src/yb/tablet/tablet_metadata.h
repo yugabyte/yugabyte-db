@@ -341,6 +341,40 @@ struct RaftGroupMetadataData {
   std::string target_storage_tier = {};
 };
 
+// Fixed-hybrid-time write-ID ordering generation for unique-index backfill. While active on an
+// index tablet, marked backfill writes must derive their write IDs from Raft operation indexes
+// strictly above base_op_index, and tablet cloning is fenced (a clone's metadata is built
+// fresh, so it would hold marked versions with no generation record and no backfill job to
+// verify or release them). Durable in the superblock
+// (IndexBackfillOrderingGenerationPB); split children inherit it. Splitting is fenced by the
+// master, and only while the deferred verification scan is in progress.
+struct IndexBackfillOrderingGeneration {
+  bool active = false;
+  // The index table this generation covers.
+  TableId table_id;
+  // Raft operation index of the activation ChangeMetadataOperation; marked writes must carry
+  // indexes strictly above it.
+  int64_t base_op_index = 0;
+  // History at or above this hybrid time must be retained while the generation is active
+  // (backfill_read_time.Decremented()); enforcement lands with the verification read fence.
+  HybridTime retention_barrier_ht = HybridTime::kInvalid;
+  // Version of kBackfillWriteIdFloor the generation's marked writes were stored with.
+  uint32_t write_id_floor_version = 0;
+
+  friend bool operator==(
+      const IndexBackfillOrderingGeneration&, const IndexBackfillOrderingGeneration&) = default;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(active, table_id, base_op_index, retention_barrier_ht,
+                               write_id_floor_version);
+  }
+
+  friend std::ostream& operator<<(
+      std::ostream& out, const IndexBackfillOrderingGeneration& generation) {
+    return out << generation.ToString();
+  }
+};
+
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
 // super block found in the tablets/ directory, and then instantiate
 // Raft groups from this data.
@@ -505,6 +539,15 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   OpId cdc_sdk_min_checkpoint_op_id() const;
 
   HybridTime cdc_sdk_safe_time() const;
+
+  // Persists the fixed-hybrid-time write-ID ordering generation for unique-index backfill
+  // (durable in the superblock, inherited by split children). While active, marked
+  // backfill writes must carry Raft indexes strictly above base_op_index and tablet cloning
+  // is fenced.
+  Status set_index_backfill_ordering_generation(
+      const IndexBackfillOrderingGeneration& generation);
+
+  IndexBackfillOrderingGeneration index_backfill_ordering_generation() const;
 
   bool is_under_cdc_sdk_replication() const;
 
@@ -969,6 +1012,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // The minimum hybrid time based on which data is retained for before image
   HybridTime cdc_sdk_safe_time_ GUARDED_BY(data_mutex_);
+
+  IndexBackfillOrderingGeneration index_backfill_ordering_generation_ GUARDED_BY(data_mutex_);
 
   bool is_under_xcluster_replication_ GUARDED_BY(data_mutex_) = false;
 
