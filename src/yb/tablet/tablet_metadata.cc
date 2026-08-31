@@ -1293,6 +1293,20 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
 
     cdc_sdk_safe_time_ = HybridTime::FromPB(superblock.cdc_sdk_safe_time());
+    if (superblock.has_index_backfill_ordering_generation()) {
+      const auto& generation_pb = superblock.index_backfill_ordering_generation();
+      index_backfill_ordering_generation_ = IndexBackfillOrderingGeneration {
+          .active = generation_pb.active(),
+          .table_id = generation_pb.table_id(),
+          .base_op_index = generation_pb.base_op_index(),
+          .retention_barrier_ht = HybridTime::FromPB(generation_pb.retention_barrier_ht()),
+          .write_id_floor_version = generation_pb.write_id_floor_version(),
+      };
+    } else {
+      // LoadFromSuperBlock also runs on existing metadata (e.g. remote-bootstrap superblock
+      // replacement), so an absent field must clear any previous generation.
+      index_backfill_ordering_generation_ = IndexBackfillOrderingGeneration();
+    }
     is_under_xcluster_replication_ = superblock.is_under_xcluster_replication();
     hidden_ = superblock.hidden();
     auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
@@ -1474,6 +1488,16 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
   cdc_sdk_min_checkpoint_op_id_.ToPB(pb.mutable_cdc_sdk_min_checkpoint_op_id());
   pb.set_cdc_sdk_safe_time(cdc_sdk_safe_time_.ToUint64());
+  if (index_backfill_ordering_generation_.active) {
+    auto* generation_pb = pb.mutable_index_backfill_ordering_generation();
+    generation_pb->set_active(true);
+    generation_pb->set_table_id(index_backfill_ordering_generation_.table_id);
+    generation_pb->set_base_op_index(index_backfill_ordering_generation_.base_op_index);
+    generation_pb->set_retention_barrier_ht(
+        index_backfill_ordering_generation_.retention_barrier_ht.ToUint64());
+    generation_pb->set_write_id_floor_version(
+        index_backfill_ordering_generation_.write_id_floor_version);
+  }
   pb.set_is_under_xcluster_replication(is_under_xcluster_replication_);
   pb.set_hidden(hidden_);
   if (restoration_hybrid_time_) {
@@ -1854,6 +1878,27 @@ Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_t
     cdc_sdk_safe_time_ = cdc_sdk_safe_time;
   }
   return Flush();
+}
+
+Status RaftGroupMetadata::set_index_backfill_ordering_generation(
+    const IndexBackfillOrderingGeneration& generation) {
+  // The durable form of an inactive generation is field absence (ToSuperBlockUnlocked persists
+  // only active generations), so an inactive record with populated fields would diverge from
+  // what a reload produces. Normalize so the in-memory and durable states stay identical; the
+  // contract for callers is "set an active generation or set {}".
+  DCHECK(generation.active || generation == IndexBackfillOrderingGeneration())
+      << "Inactive ordering generation with populated fields: " << generation;
+  {
+    std::lock_guard lock(data_mutex_);
+    index_backfill_ordering_generation_ =
+        generation.active ? generation : IndexBackfillOrderingGeneration();
+  }
+  return Flush();
+}
+
+IndexBackfillOrderingGeneration RaftGroupMetadata::index_backfill_ordering_generation() const {
+  std::lock_guard lock(data_mutex_);
+  return index_backfill_ordering_generation_;
 }
 
 Status RaftGroupMetadata::set_all_cdc_retention_barriers(

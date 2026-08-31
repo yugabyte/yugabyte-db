@@ -23,10 +23,17 @@
 #include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_splitter.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
+
+DEFINE_test_flag(bool, bypass_index_backfill_ordering_generation_split_fence, false,
+    "Skip the tablet-side rejection of splits while an index-backfill write-ID ordering "
+    "generation is active. Used to demonstrate that per-key uniqueness of marked write IDs "
+    "survives a split that the fence would normally prevent.");
 
 using namespace std::literals;
 
@@ -121,6 +128,24 @@ Status SplitOperation::CheckOperationAllowed(
 
 Status SplitOperation::Prepare(IsLeaderSide is_leader_side) {
   VLOG_WITH_PREFIX(2) << "Prepare";
+  return Status::OK();
+}
+
+Status SplitOperation::ValidateLeaderOpId(const OpId& op_id) const {
+  // Fence splits while a fixed-hybrid-time write-ID ordering generation is active: deferred
+  // uniqueness verification must run against a stable tablet set, and the generation's
+  // lifecycle (activation, release, retention) is tracked per tablet. Rejecting here, before
+  // the split op is appended to Raft, is the fail-closed layer under the master-side split
+  // fence.
+  if (PREDICT_FALSE(FLAGS_TEST_bypass_index_backfill_ordering_generation_split_fence)) {
+    return Status::OK();
+  }
+  const auto generation =
+      VERIFY_RESULT(tablet_safe())->metadata()->index_backfill_ordering_generation();
+  SCHECK(
+      !generation.active, IllegalState,
+      "Tablet splitting is fenced while an index-backfill write-ID ordering generation is "
+      "active");
   return Status::OK();
 }
 

@@ -231,6 +231,37 @@ message RaftGroupReplicaSuperBlockPB {
   // successful. The master is responsible for not sending multiple clone requests with different
   // sequence_numbers until the previous one is complete or aborted on all tablets.
   optional uint32 last_attempted_clone_seq_no = 38;
+
+  // Active fixed-hybrid-time write-ID ordering generation for unique-index backfill. While
+  // active on an index tablet: marked backfill writes must derive their write IDs from Raft
+  // operation indexes strictly above base_op_index, and tablet splitting and cloning are fenced
+  // so deferred uniqueness verification runs against a stable tablet set. Set by the master
+  // before the first marked backfill write and cleared when the backfill operation reaches a
+  // terminal state. Split children and clones inherit this with the rest of the superblock.
+  optional IndexBackfillOrderingGenerationPB index_backfill_ordering_generation = 39;
+}
+
+message IndexBackfillOrderingGenerationPB {
+  optional bool active = 1;
+
+  // The index table this generation covers (the tablet may host multiple tables when colocated;
+  // colocated indexes select the fully checked mode in v1, but the record names its owner so a
+  // misrouted activation is detectable rather than silently adopted).
+  optional bytes table_id = 2;
+
+  // Raft operation index of the activation ChangeMetadataOperation. Marked backfill writes must
+  // carry indexes strictly above this; see WriteOperation::ValidateLeaderOpId.
+  optional int64 base_op_index = 3;
+
+  // History before this hybrid time is not needed by deferred verification; retention
+  // enforcement holds reads at backfill_read_time.Decremented() while the generation is active.
+  optional fixed64 retention_barrier_ht = 4;
+
+  // Version of the write-ID-floor constant (kBackfillWriteIdFloor) the marked writes of this
+  // generation were stored with, so a future floor change cannot misinterpret older marked data.
+  // Numbering starts at 1 for the initial floor (kIntraTxnWriteIdLimit, 2^31); 0 is reserved as
+  // absent/unknown. Written by the master activation flow.
+  optional uint32 write_id_floor_version = 5;
 }
 
 message FilePB {
