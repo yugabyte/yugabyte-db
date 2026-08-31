@@ -33,6 +33,7 @@ import org.yb.util.SystemUtil;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import com.google.gson.Gson;
@@ -88,6 +89,15 @@ public class MiniYugabytedCluster implements AutoCloseable {
      */
     private static final int[] TSERVER_CLIENT_FIXED_API_PORTS = new int[] { CQL_PORT,
             REDIS_PORT };
+
+    /**
+     * Ports the generated yugabyted config file does not override, so the daemons always bind
+     * them on their compiled-in defaults: Redis and YCQL proxy webservers, YSQL metrics and the
+     * yugabyted UI. They fall inside TestUtils' random port range, so handing one of them out as
+     * an RPC/web/API port kills the daemon that owns the default with a bind failure.
+     */
+    private static final ImmutableSet<Integer> YUGABYTED_FIXED_PORTS =
+            ImmutableSet.of(11000, 12000, 13000, 15433);
 
     /**
      * Hard memory limit for YB daemons. This should be consistent with the memory
@@ -399,9 +409,11 @@ public class MiniYugabytedCluster implements AutoCloseable {
             if (perTserverFlagsCounter < numNodes)
                 perTserverFlagsCounter++;
 
-            // Wait for Yugabyted Node to start all processes
+            // Wait for Yugabyted Node to start all processes. Bringing up the master, the tserver
+            // and postgres normally takes ~15s, but under parallel test load YSQL readiness can
+            // lag well past the original 70s budget.
             YugabytedTestUtils.waitForNodeToStart(nodeConfig.baseDir, yugabytedAdvertiseAddress,
-                                                ysqlPort,70000, 5000);
+                                                ysqlPort, 150000, 5000);
 
             Thread.sleep(20000);
             i++;
@@ -426,14 +438,22 @@ public class MiniYugabytedCluster implements AutoCloseable {
         LOG.info("Wrote flags file content: " + content);
     }
 
+    private static int findFreeYugabytedPort(String bindAddress) throws IOException {
+        int port;
+        do {
+            port = TestUtils.findFreePort(bindAddress);
+        } while (YUGABYTED_FIXED_PORTS.contains(port));
+        return port;
+    }
+
     private List<YugabytedMasterHostPortAllocation> reserveHostAndPort(int numNodes)
         throws Exception {
 
     final List<YugabytedMasterHostPortAllocation> yugabytedHostPortAllocList = new ArrayList<>();
 
     String yugabytedBindAddress = getYugabytedBindAddress();
-    int rpcPort = TestUtils.findFreePort(yugabytedBindAddress);
-    int webPort = TestUtils.findFreePort(yugabytedBindAddress);
+    int rpcPort = findFreeYugabytedPort(yugabytedBindAddress);
+    int webPort = findFreeYugabytedPort(yugabytedBindAddress);
 
     // Add the first node
     yugabytedHostPortAllocList.add(
@@ -631,10 +651,10 @@ public class MiniYugabytedCluster implements AutoCloseable {
             Map<String, String> yugabyatedAdvancedFlags) throws IOException {
 
         if (i==0){
-            tserverRpcPort = TestUtils.findFreePort(advertiseAddress);
-            tserverWebPort = TestUtils.findFreePort(advertiseAddress);
-            ycqlPort = TestUtils.findFreePort(advertiseAddress);
-            ysqlPort = TestUtils.findFreePort(advertiseAddress);
+            tserverRpcPort = findFreeYugabytedPort(advertiseAddress);
+            tserverWebPort = findFreeYugabytedPort(advertiseAddress);
+            ycqlPort = findFreeYugabytedPort(advertiseAddress);
+            ysqlPort = findFreeYugabytedPort(advertiseAddress);
         }
 
         Map<String, Object> customFlags = new HashMap<String, Object>();

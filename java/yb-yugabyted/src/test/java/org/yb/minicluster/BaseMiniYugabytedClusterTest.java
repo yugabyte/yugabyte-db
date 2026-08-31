@@ -106,6 +106,13 @@ public class BaseMiniYugabytedClusterTest extends BaseYBTest {
         return -1;
     }
 
+    // Each test method boots one or more yugabyted clusters node by node, with fixed sleeps in
+    // between, so the default 180s leaves almost no room for a slow node startup.
+    @Override
+    public int getTestMethodTimeoutSec() {
+        return 900;
+    }
+
     protected void resetSettings() {
     }
 
