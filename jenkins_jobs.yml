@@ -50,6 +50,7 @@ jobs:
     build_opts: YB_LINKING_TYPE=full-lto YB_PGO_BOLT=1
     release_artifact: true
     when:
+     - change
      - full
 
   - os: mac14
