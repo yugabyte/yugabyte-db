@@ -163,9 +163,9 @@ public class TestPgViewYCQLStats extends BasePgSQLTest {
       Row histRow = getSingleRow(statement,
           "SELECT calls, yb_latency_histogram::text, " +
           "       yb_get_percentile(yb_latency_histogram, 99), " +
-          "       (SELECT COALESCE(SUM((value)::bigint), 0)::bigint " +
+          "       (SELECT COALESCE(SUM((kv.value)::bigint), 0)::bigint " +
           "        FROM jsonb_array_elements(yb_latency_histogram) elem, " +
-          "             jsonb_each_text(elem)) " +
+          "             jsonb_each_text(elem) AS kv) " +
           "FROM ycql_stat_statements " +
           "WHERE is_prepared='t' AND query LIKE '%select col1%'");
       long calls = histRow.getLong(0);
