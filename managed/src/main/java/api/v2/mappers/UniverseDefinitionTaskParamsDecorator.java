@@ -157,8 +157,7 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     for (ClusterSpec otherCluster : universeSpec.getClusters()) {
       if (!otherCluster.getClusterType().equals(ClusterTypeEnum.PRIMARY)) {
         ClusterSpec mergedClusterSpec = new ClusterSpec();
-        clusterMapper.deepCopyClusterSpecWithoutPlacementSpec(
-            primaryClusterSpec, mergedClusterSpec);
+        clusterMapper.deepCopyInheritableClusterSpec(primaryClusterSpec, mergedClusterSpec);
         clusterMapper.deepCopyClusterSpec(otherCluster, mergedClusterSpec);
         clusters.add(mergedClusterSpec);
       }
@@ -170,7 +169,7 @@ public abstract class UniverseDefinitionTaskParamsDecorator
   @Override
   public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromCreateSpec(
       UniverseCreateSpec universeCreateSpec) {
-    // copy over unintialized properties of RR cluster from primary cluster
+    // Copy unset RR/async properties from primary (excludes placement, partitions, nodeSpec).
     UniverseSpec universeSpec = inheritFromPrimaryBeforeMapping(universeCreateSpec.getSpec());
     UniverseDefinitionTaskParams params = toV1UniverseDefinitionTaskParams(universeSpec);
     // set Arch

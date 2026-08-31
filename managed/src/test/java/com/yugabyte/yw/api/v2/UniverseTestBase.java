@@ -605,7 +605,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
     ClusterSpec primary = universeCreateSpec.getSpec().getClusters().get(0);
     ClusterSpec rrClusterSpec = new ClusterSpec();
-    // Any property not specified for the RR cluster will inherit its value from primary cluster
+    // Unset RR properties inherit from primary, except placement/partitions/nodeSpec.
     // TODO: Rename ASYNC to READ_REPLICA
     rrClusterSpec.setClusterType(ClusterTypeEnum.ASYNC);
     rrClusterSpec.setNumNodes(3);
