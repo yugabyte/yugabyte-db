@@ -50,6 +50,8 @@
 
 METRIC_DECLARE_entity(cluster);
 METRIC_DECLARE_counter(backfill_aborted);
+METRIC_DECLARE_counter(unique_index_verification_outcome_clean);
+METRIC_DECLARE_counter(unique_index_verification_versions_scanned);
 
 using std::string;
 
@@ -1811,6 +1813,17 @@ TEST_P(PgIndexBackfillShadowVerification, CleanOutcomeRecordedMultiTablet) {
 
   ASSERT_OK(clean_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
   ASSERT_OK(CheckIndexConsistency(kIndexName));
+
+  // Master-side observability: the per-index outcome counter and the scan accounting
+  // aggregated from the per-tablet responses. Exactly one job with one unique index and no
+  // failover ran, so the outcome counter is exact -- this would catch a double-count.
+  auto* master = cluster_->GetLeaderMaster();
+  ASSERT_EQ(1, ASSERT_RESULT(master->GetMetric<int64>(
+      &METRIC_ENTITY_cluster, nullptr, &METRIC_unique_index_verification_outcome_clean,
+      "value")));
+  ASSERT_GT(ASSERT_RESULT(master->GetMetric<int64>(
+      &METRIC_ENTITY_cluster, nullptr, &METRIC_unique_index_verification_versions_scanned,
+      "value")), 0);
 }
 
 TEST_P(PgIndexBackfillShadowVerification, ViolationRecordedButDoesNotBlockPublication) {

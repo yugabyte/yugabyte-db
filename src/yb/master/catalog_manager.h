@@ -1954,6 +1954,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void IncrementBackfillAborted();
 
+  // Deferred unique-index verification observability: scan accounting aggregated from
+  // per-tablet verification responses, and per-index terminal outcomes.
+  void RecordUniqueIndexVerificationScan(uint64_t versions_scanned, uint64_t fallback_groups);
+  void RecordUniqueIndexVerificationOutcome(UniqueIndexVerificationStatePB::State state);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -2660,6 +2665,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   scoped_refptr<Counter> metric_create_table_too_many_tablets_;
 
   scoped_refptr<Counter> metric_backfill_aborted_;
+
+  scoped_refptr<Counter> metric_unique_index_verification_outcome_clean_;
+  scoped_refptr<Counter> metric_unique_index_verification_outcome_violation_;
+  scoped_refptr<Counter> metric_unique_index_verification_outcome_inconclusive_;
+  scoped_refptr<Counter> metric_unique_index_verification_versions_scanned_;
+  scoped_refptr<Counter> metric_unique_index_verification_fallback_groups_;
 
   scoped_refptr<AtomicGauge<uint64_t>> metric_max_follower_heartbeat_delay_;
 

@@ -851,6 +851,7 @@ void TabletServiceAdminImpl::VerifyUniqueIndexTablet(
   }
   resp->set_dockey_groups_scanned(result->dockey_groups_scanned);
   resp->set_versions_scanned(result->versions_scanned);
+  resp->set_fallback_groups(result->fallback_groups);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   context.RespondSuccess();
 }
