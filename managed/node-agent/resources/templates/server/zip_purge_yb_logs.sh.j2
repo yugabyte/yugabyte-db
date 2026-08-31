@@ -384,6 +384,7 @@ purge_audit_dir() {
     echo "WARN: failed to reap stale audit scratch files under $audit_dir:" \
       "$find_output" >&2
   fi
+  return 0
 }
 
 server_types="master tserver"
@@ -400,8 +401,8 @@ if [ "$ycql_audit_log_retention_days" -gt 0 ] && [ "$ycql_audit_log_level" != "N
 fi
 for daemon_type in $daemon_types; do
   YB_LOG_DIR="$YB_HOME_DIR/$daemon_type/logs/"
-  ysql_audit_dir="$YB_LOG_DIR/audit/ysql"
-  ycql_audit_dir="$YB_LOG_DIR/audit/ycql"
+  ysql_audit_dir="${YB_LOG_DIR%/}/audit/ysql"
+  ycql_audit_dir="${YB_LOG_DIR%/}/audit/ycql"
 
   for level in $log_levels; do
     log_regex="yb-$daemon_type*log.$level* ! -name *.gz"

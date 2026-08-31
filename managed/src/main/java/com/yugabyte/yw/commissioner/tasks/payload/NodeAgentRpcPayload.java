@@ -48,10 +48,8 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.S3Config;
@@ -73,18 +71,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
@@ -173,6 +168,13 @@ public class NodeAgentRpcPayload {
     return null;
   }
 
+  /**
+   * Name of the otel collector archive as it lands in the third-party package directory. The
+   * dependency list is fetched with {@code wget -i}, which saves each file under its URL basename,
+   * so this must track the archive names published to ybm-package-store. The executable inside is
+   * named {@code otelcol-unified}; node-agent renames it to {@code otelcol-contrib} on extract to
+   * keep the running process name stable.
+   */
   private String getOtelCollectorPackagePath(Architecture arch) {
     String architecture = "";
     if (arch.equals(Architecture.x86_64)) {
@@ -181,7 +183,7 @@ public class NodeAgentRpcPayload {
       architecture = "arm64";
     }
     return String.format(
-        "otelcol-contrib_%s_%s_%s.tar.gz",
+        "otelcol-unified_%s_%s_%s.tar.gz",
         ManageOtelCollector.OtelCollectorVersion,
         ManageOtelCollector.OtelCollectorPlatform,
         architecture);
@@ -587,22 +589,9 @@ public class NodeAgentRpcPayload {
       installOtelCollectorInputBuilder.setOtelColConfigFile(
           customTmpDirectory + "/" + Paths.get(otelCollectorConfigFile).getFileName().toString());
 
-      Set<UUID> exporterUUIDs = new HashSet<>();
-      if (config != null && CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
-        for (UniverseLogsExporterConfig logsExporterConfig :
-            config.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-      if (queryLogConfig != null
-          && CollectionUtils.isNotEmpty(queryLogConfig.getUniverseLogsExporterConfig())) {
-        for (UniverseQueryLogsExporterConfig logsExporterConfig :
-            queryLogConfig.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-
-      for (UUID exporterUUID : exporterUUIDs) {
+      // Same helper the legacy NodeManager path uses, so every export section contributes its
+      // credential-bearing exporters rather than only audit and query logs.
+      for (UUID exporterUUID : OtelCollectorUtil.getActiveExporterUuids(telemetryConfig)) {
         installOtelCollectorInputBuilder =
             setupInstallOtelCollectorBitsEnv(
                 installOtelCollectorInputBuilder,

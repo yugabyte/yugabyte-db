@@ -47,9 +47,11 @@ DECLARE_string(time_source);
 DECLARE_int32(replication_factor);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_uint64(ysql_lease_refresher_interval_ms);
+DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 
 namespace yb::pgwrapper {
 
@@ -539,6 +541,305 @@ TEST_F(PgReadAfterCommitVisibilityTest, DeferredModeHiddenDml) {
     "INSERT INTO kv(k) VALUES (1) RETURNING k"
     ") SELECT k FROM new_kv"
   );
+}
+
+YB_STRONGLY_TYPED_BOOL(DdlInTxnBlock);
+
+// Mode each DDL test runs in. `serializable` is applied via
+// FLAGS_ysql_serializable_isolation_for_ddl_txn for an autonomous DDL, which picks its own
+// isolation level, and via the enclosing transaction for a transactional DDL, which inherits it.
+struct DdlTestParam {
+  bool transactional_ddl = false;
+  bool serializable = false;
+
+  IsolationLevel TxnIsolation() const {
+    return serializable ? IsolationLevel::SERIALIZABLE_ISOLATION
+                        : IsolationLevel::SNAPSHOT_ISOLATION;
+  }
+
+  std::string Name() const {
+    if (transactional_ddl) {
+      return serializable ? "TransactionalDdlInSerializableTxn" : "TransactionalDdlInSnapshotTxn";
+    }
+    return serializable ? "SerializableDdlTxn" : "SnapshotDdlTxn";
+  }
+};
+
+// Test fixture for the DDL flavors that read user tables.
+//
+// The test parameter selects between autonomous DDLs (a separate transaction per DDL, even inside
+// a transaction block) and transactional DDLs, and for autonomous DDLs whether the transaction is
+// created with serializable or snapshot isolation.
+//
+// Deferring only has an effect on autonomous DDLs in snapshot isolation. Serializable transactions
+// don't face read restart errors in the first place, and transactional DDLs that read user tables
+// take an object lock that visits all nodes in the cluster, which clamps the uncertainty window.
+class PgReadAfterCommitVisibilityDdlTest
+    : public PgReadAfterCommitVisibilityTest,
+      public ::testing::WithParamInterface<DdlTestParam> {
+ public:
+  void SetUp() override {
+    const auto transactional_ddl = GetParam().transactional_ddl;
+    server::SkewedClock::Register();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = transactional_ddl;
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = transactional_ddl;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = transactional_ddl;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = transactional_ddl;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_serializable_isolation_for_ddl_txn) =
+        GetParam().serializable;
+    PgMiniTestBase::SetUp();
+    SpawnSupervisors();
+  }
+
+ protected:
+  // Attempts allowed for a DDL that is expected to hit a read restart, see the retry loop in
+  // CheckDdlSeesCommittedData().
+  static constexpr int kMaxDdlAttempts = 10;
+
+  // Creates the table read by the DDLs under test, plus a reference table for the foreign key
+  // test. Every row inserted by InsertRowOnHost() satisfies both `v > 0` and the foreign key
+  // kv(v) -> kv_ref(k), so a DDL that validates data only fails if it cannot read that data.
+  Status SetupTables(PGConn& conn) {
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE TABLE kv (k INT, v INT, PRIMARY KEY(k HASH)) SPLIT INTO 1 TABLETS"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE kv_ref (k INT PRIMARY KEY)"));
+    return conn.Execute("INSERT INTO kv_ref(k) VALUES (1)");
+  }
+
+  Status InsertRowOnHost(PGConn& conn) {
+    return conn.ExecuteFormat("INSERT INTO kv(k, v) VALUES ($0, 1)", ++next_key_);
+  }
+
+  // Whether the autonomous DDL transaction runs in serializable isolation.
+  bool IsSerializableDdlTxn() const { return GetParam().serializable; }
+
+  // Only an autonomous DDL in snapshot isolation reads at the proxy's (behind) clock.
+  bool ExpectsReadRestartWithoutDeferredMode() const {
+    return !GetParam().transactional_ddl && !IsSerializableDdlTxn();
+  }
+
+  // Core assertion shared by all the DDL flavors below. The proxy's clock lags the data host's, so
+  // a row just committed on the data host falls into the proxy's uncertainty window.
+  //
+  // In snapshot isolation, a DDL without deferred mode reads at the proxy's (behind) clock, hits a
+  // read restart, and fails -- read restarts are not retried for DDLs. With deferred mode the read
+  // point is set to global_limit, which is above the commit timestamp, so the DDL sees all
+  // committed data.
+  //
+  // In serializable isolation no read time is picked, and a transactional DDL clamps the
+  // uncertainty window via object locks, so the DDL never faces a read restart and always sees the
+  // committed row. Deferred mode is a no-op there; we only verify that enabling it does not change
+  // the outcome.
+  //
+  // Every DDL is checked both outside and inside an explicit transaction block; it runs in its own
+  // autonomous transaction either way.
+  struct DdlCheck {
+    std::string ddl;
+
+    // Undoes a successful `ddl` so that it can be run again.
+    std::string undo = "";
+
+    // Optional query returning the number of rows the DDL should have seen. Checked after every
+    // successful run of the DDL.
+    std::string row_count_query = "";
+  };
+
+  void CheckDdlSeesCommittedData(PGConn& proxy_conn, PGConn& host_conn, const DdlCheck& check) {
+    // The DDL runs in autocommit in one phase and in an explicit transaction block in the other.
+    // Set the session default so both phases use the isolation level under test.
+    ASSERT_OK(proxy_conn.ExecuteFormat(
+        "SET default_transaction_isolation = '$0'",
+        GetParam().serializable ? "serializable" : "repeatable read"));
+
+    // Run the DDL once before skewing the clocks. A first-time catalog miss during the DDL reads
+    // from the master, which lifts the proxy's clock and can close the uncertainty window the test
+    // relies on.
+    ASSERT_OK(RunDdlAndUndo(proxy_conn, check));
+
+    auto changers = JumpClockDataNodes(200ms);
+
+    for (auto in_txn_block : {DdlInTxnBlock::kFalse, DdlInTxnBlock::kTrue}) {
+      SCOPED_TRACE(Format("ddl: $0, in_txn_block: $1", check.ddl, in_txn_block));
+      ASSERT_OK(proxy_conn.Execute("RESET yb_read_after_commit_visibility"));
+      ASSERT_OK(InsertRowOnHost(host_conn));
+
+      if (ExpectsReadRestartWithoutDeferredMode()) {
+        // The DDL only hits a read restart while the commit is still inside the proxy's
+        // uncertainty window, that is, while the proxy's clock stays below the commit's hybrid
+        // time. Nothing keeps it there: every response the proxy processes lifts its clock to the
+        // hybrid time the responder stamped, so one response stamped by the data host after the
+        // commit -- which can land while the INSERT above is still in flight -- puts the proxy's
+        // clock at the commit and the DDL legitimately sees the row. Undo the DDL, commit a newer
+        // row and retry.
+        Status status;
+        for (int attempt = 1; (status = ExecuteDdl(proxy_conn, check.ddl, in_txn_block)).ok();
+             ++attempt) {
+          ASSERT_LT(attempt, kMaxDdlAttempts) << "DDL unexpectedly succeeded without deferred mode";
+          LOG(INFO) << "DDL saw the committed row without deferred mode, re-arming; attempt "
+                    << attempt;
+          if (!check.undo.empty()) {
+            ASSERT_OK(proxy_conn.Execute(check.undo));
+          }
+          ASSERT_OK(InsertRowOnHost(host_conn));
+        }
+        LOG(INFO) << "Expected read restart error for DDL without deferred mode: " << status;
+        ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
+
+        // The failed attempt propagated the data host's hybrid time to the proxy, so commit one
+        // more row to put the proxy's clock behind again.
+        ASSERT_OK(InsertRowOnHost(host_conn));
+      }
+
+      ASSERT_OK(proxy_conn.Execute("SET yb_read_after_commit_visibility = 'deferred'"));
+      ASSERT_OK(ExecuteDdl(proxy_conn, check.ddl, in_txn_block));
+
+      if (!check.row_count_query.empty()) {
+        const auto count = ASSERT_RESULT(proxy_conn.FetchRow<int64_t>(check.row_count_query));
+        ASSERT_EQ(count, NumRowsInserted());
+      }
+      if (!check.undo.empty()) {
+        ASSERT_OK(proxy_conn.Execute(check.undo));
+      }
+    }
+    ASSERT_OK(proxy_conn.Execute("RESET yb_read_after_commit_visibility"));
+  }
+
+  Status RunDdlAndUndo(PGConn& conn, const DdlCheck& check) {
+    RETURN_NOT_OK(conn.Execute(check.ddl));
+    return check.undo.empty() ? Status::OK() : conn.Execute(check.undo);
+  }
+
+  // Runs the DDL, optionally wrapped in an explicit transaction block. The DDL runs in its own
+  // autonomous transaction either way. Returns the status of the DDL itself.
+  Status ExecuteDdl(PGConn& conn, const std::string& ddl, DdlInTxnBlock in_txn_block) {
+    if (!in_txn_block) {
+      return conn.Execute(ddl);
+    }
+    RETURN_NOT_OK(conn.StartTransaction(GetParam().TxnIsolation()));
+    const auto status = conn.Execute(ddl);
+    RETURN_NOT_OK(status.ok() ? conn.CommitTransaction() : conn.RollbackTransaction());
+    return status;
+  }
+
+  // Number of rows committed on the data host so far.
+  int NumRowsInserted() const { return next_key_; }
+
+ private:
+  int next_key_ = 0;
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    DdlMode, PgReadAfterCommitVisibilityDdlTest,
+    ::testing::Values(
+        DdlTestParam{.transactional_ddl = false, .serializable = false},
+        DdlTestParam{.transactional_ddl = false, .serializable = true},
+        DdlTestParam{.transactional_ddl = true, .serializable = false},
+        DdlTestParam{.transactional_ddl = true, .serializable = true}),
+    [](const auto& info) { return info.param.Name(); });
+
+// Verify that REFRESH MATERIALIZED VIEW sees committed data when using deferred
+// read-after-commit visibility in autonomous DDL mode.
+TEST_P(PgReadAfterCommitVisibilityDdlTest, DeferredModeDdl) {
+  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
+  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+
+  ASSERT_OK(SetupTables(hostConn));
+  ASSERT_OK(hostConn.Execute("CREATE MATERIALIZED VIEW kv_mv AS SELECT k, v FROM kv"));
+  ASSERT_OK(proxyConn.Execute("REFRESH MATERIALIZED VIEW kv_mv"));
+  auto count = ASSERT_RESULT(proxyConn.FetchRow<int64_t>("SELECT COUNT(1) FROM kv_mv"));
+  ASSERT_EQ(count, 0);
+
+  ASSERT_NO_FATALS(CheckDdlSeesCommittedData(proxyConn, hostConn, {
+      .ddl = "REFRESH MATERIALIZED VIEW kv_mv",
+      .row_count_query = "SELECT COUNT(1) FROM kv_mv"}));
+
+  // In deferred mode, a DML in the enclosing transaction block sees the committed data too.
+  ASSERT_OK(InsertRowOnHost(hostConn));
+  ASSERT_OK(proxyConn.Execute("SET yb_read_after_commit_visibility = 'deferred'"));
+  ASSERT_OK(proxyConn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  const auto rows = ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT k FROM kv"));
+  ASSERT_EQ(rows.size(), NumRowsInserted());
+  ASSERT_OK(proxyConn.CommitTransaction());
+  ASSERT_OK(proxyConn.Execute("RESET yb_read_after_commit_visibility"));
+}
+
+TEST_P(PgReadAfterCommitVisibilityDdlTest, DeferredModeCtas) {
+  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
+  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+
+  ASSERT_OK(SetupTables(hostConn));
+  ASSERT_NO_FATALS(CheckDdlSeesCommittedData(proxyConn, hostConn, {
+      .ddl = "CREATE TABLE kv_ctas AS SELECT k, v FROM kv",
+      .undo = "DROP TABLE kv_ctas",
+      .row_count_query = "SELECT COUNT(1) FROM kv_ctas"}));
+}
+
+// ALTER TABLE ... VALIDATE CONSTRAINT scans the table to validate an existing NOT VALID
+// constraint.
+TEST_P(PgReadAfterCommitVisibilityDdlTest, DeferredModeValidateConstraint) {
+  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
+  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+
+  ASSERT_OK(SetupTables(hostConn));
+  ASSERT_OK(hostConn.Execute(
+      "ALTER TABLE kv ADD CONSTRAINT kv_v_positive CHECK (v > 0) NOT VALID"));
+  ASSERT_NO_FATALS(CheckDdlSeesCommittedData(proxyConn, hostConn, {
+      .ddl = "ALTER TABLE kv VALIDATE CONSTRAINT kv_v_positive",
+      // Reset the constraint back to NOT VALID so it can be validated again.
+      .undo = "ALTER TABLE kv DROP CONSTRAINT kv_v_positive;"
+              "ALTER TABLE kv ADD CONSTRAINT kv_v_positive CHECK (v > 0) NOT VALID"}));
+}
+
+// ALTER TABLE ... ADD CONSTRAINT ... CHECK validates the existing rows as part of the DDL.
+TEST_P(PgReadAfterCommitVisibilityDdlTest, DeferredModeAddCheckConstraint) {
+  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
+  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+
+  ASSERT_OK(SetupTables(hostConn));
+  ASSERT_NO_FATALS(CheckDdlSeesCommittedData(proxyConn, hostConn, {
+      .ddl = "ALTER TABLE kv ADD CONSTRAINT kv_v_positive CHECK (v > 0)",
+      .undo = "ALTER TABLE kv DROP CONSTRAINT kv_v_positive"}));
+}
+
+// ALTER TABLE ... ADD FOREIGN KEY scans the referencing table to verify every row has a match.
+TEST_P(PgReadAfterCommitVisibilityDdlTest, DeferredModeAddForeignKey) {
+  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
+  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+
+  ASSERT_OK(SetupTables(hostConn));
+  ASSERT_NO_FATALS(CheckDdlSeesCommittedData(proxyConn, hostConn, {
+      .ddl = "ALTER TABLE kv ADD CONSTRAINT kv_v_fk FOREIGN KEY (v) REFERENCES kv_ref(k)",
+      .undo = "ALTER TABLE kv DROP CONSTRAINT kv_v_fk"}));
+}
+
+// ATTACH PARTITION scans the table being attached to verify it satisfies the partition bounds.
+TEST_P(PgReadAfterCommitVisibilityDdlTest, DeferredModeAddPartition) {
+  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
+  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+
+  ASSERT_OK(SetupTables(hostConn));
+  ASSERT_OK(hostConn.Execute("CREATE TABLE kv_part (k INT, v INT) PARTITION BY RANGE (k)"));
+  ASSERT_NO_FATALS(CheckDdlSeesCommittedData(proxyConn, hostConn, {
+      .ddl = "ALTER TABLE kv_part ATTACH PARTITION kv FOR VALUES FROM (0) TO (1000000)",
+      .undo = "ALTER TABLE kv_part DETACH PARTITION kv",
+      .row_count_query = "SELECT COUNT(1) FROM kv_part"}));
+}
+
+// Altering a column type rewrites the table, i.e. the DDL reads every row of the old table.
+TEST_P(PgReadAfterCommitVisibilityDdlTest, DeferredModeAlterTableRewrite) {
+  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
+  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+
+  ASSERT_OK(SetupTables(hostConn));
+  ASSERT_NO_FATALS(CheckDdlSeesCommittedData(proxyConn, hostConn, {
+      .ddl = "ALTER TABLE kv ALTER COLUMN v TYPE BIGINT",
+      // Rewrite the column back to INT so the next phase rewrites the table again.
+      .undo = "ALTER TABLE kv ALTER COLUMN v TYPE INT",
+      .row_count_query = "SELECT COUNT(1) FROM kv"}));
 }
 
 } // namespace yb::pgwrapper

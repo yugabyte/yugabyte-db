@@ -40,11 +40,14 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yb/util/flags.h"
 #include <gtest/gtest_prod.h>
 
+#include "yb/fs/fs_root_pin.h"
+
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/path_util.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -81,8 +84,9 @@ struct FsManagerOpts {
   FsManagerOpts(const FsManagerOpts&);
   FsManagerOpts& operator=(const FsManagerOpts&);
 
-  // The aggregated registry associated with the server.
-  MetricRegistry* metric_registry;
+  // The aggregated registry associated with the server. Left null by callers that do not export
+  // metrics (tools, unit tests), so every use has to be null-checked.
+  MetricRegistry* metric_registry = nullptr;
 
   // The memory tracker under which all new memory trackers will be parented.
   // If NULL, new memory trackers will be parented to the root tracker.
@@ -231,6 +235,37 @@ class FsManager {
   // Return the tablet IDs in the metadata directory.
   Result<std::vector<std::string>> ListTabletIds(CleanupTemporaryFiles cleanup_temporary_files);
 
+  // ==========================================================================
+  //  Data-root pinning: detection of swapped data mounts
+  // ==========================================================================
+
+  // Reads every data root's pin file and evaluates it against `evidence`. Writes nothing, and
+  // unlike CheckAndOpenFileSystemRoots it does not probe each root with a temp file, so it is safe
+  // to run against a live node's directories.
+  //
+  // Pass evidence_complete=kFalse when tablet superblocks have not been read yet; unpinned roots
+  // then come back kPending rather than being certified from evidence that was never gathered.
+  Result<FsRootPinReport> SurveyDataRoots(
+      const std::vector<TabletSuperblockEvidence>& evidence,
+      FsRootEvidenceComplete evidence_complete);
+
+  // Verifies the pins that already exist. Called from CheckAndOpenFileSystemRoots, i.e., at the
+  // first point we touch disk and before anything is created. It cannot certify an unpinned root,
+  // because tablets have not been enumerated at that point.
+  //
+  // Returns IllegalState, with the operator-facing report as the message, when any root must
+  // refuse startup.
+  Status VerifyExistingDataRootPins();
+
+  // Verifies pins and certifies unpinned roots from tablet superblock evidence, writing a pin for
+  // every root the evidence proves. Called once tablet metadata is loaded.
+  Status CertifyDataRoots(const std::vector<TabletSuperblockEvidence>& evidence);
+
+  // Read-only listing of tablet ids per data root, for the offline survey. Unlike ListTabletIds it
+  // tolerates a missing tablet-meta directory, never deletes temp files, does not populate
+  // tablet_id_to_path_, and reports cross-root duplicates instead of failing on the first one.
+  Result<std::map<std::string, std::vector<std::string>>> ListTabletIdsByRoot();
+
   Result<std::string> GetUniverseUuidFromTserverInstanceMetadata() const;
 
   Status SetUniverseUuidOnTserverInstanceMetadata(const UniverseUuid& universe_uuid);
@@ -323,6 +358,36 @@ class FsManager {
 
   void CreateAndSetFaultDriveMetric(const std::string& path);
 
+  // The union of the WAL and data roots we are actually going to use, i.e. excluding any dropped
+  // for failing the startup write check.
+  //
+  // Deliberately not canonicalized_all_fs_roots_, which is the same union as configured but is
+  // never narrowed afterwards: the write-check failure path in CheckAndOpenFileSystemRoots()
+  // erases a faulted root from the WAL and data sets only. That is the right set for callers that
+  // clean up (lock files, DeleteFileSystemLayout, DumpFileSystemTree), which still have business
+  // with a faulted root, and the wrong one for callers about to write to or account for a drive.
+  std::set<std::string> UsableFsRoots() const;
+
+  // Instantiates the 'drive' metric entity for every root we are going to use and wires it to the
+  // per-drive IO counters that the writable-file layer feeds. Until a root is registered here,
+  // writes under it are not attributed to any drive and cost nothing.
+  void SetUpDriveIoMetrics();
+
+  // Instantiates the 'drive' metric entity for 'path', creating it if needed.
+  scoped_refptr<MetricEntity> GetOrCreateDriveMetricEntity(const std::string& path);
+
+  // FsRootPinPath(root, server_type_): <root>/yb-data/<server_type>/fs-root-pin.json.
+  std::string GetFsRootPinPath(const std::string& root) const;
+
+  // Shared tail of VerifyExistingDataRootPins() and CertifyDataRoots(): logs the report and, when
+  // `may_write` and the report allows it, writes pins for the newly certified roots.
+  Status ApplyFsRootPinReport(const FsRootPinReport& report, bool may_write);
+
+  // Which of `roots` sit on the same device as "/" while at least one sibling does not, i.e.,
+  // which look like mount points whose volume did not mount. Returns empty when the answer
+  // carries no information (all of them, none of them, or any stat failure). Diagnostic only.
+  static std::set<std::string> RootsLikelyUnmounted(const std::set<std::string>& roots);
+
   // ==========================================================================
   //  file-system helpers
   // ==========================================================================
@@ -363,6 +428,11 @@ class FsManager {
   std::string canonicalized_default_fs_root_;
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
+
+  // Roots erased from the two sets above by the faulty-drive branch of
+  // CheckAndOpenFileSystemRoots. Kept so that the pin survey can say its answer is incomplete
+  // rather than report a clean node whose whole root went unexamined.
+  std::set<std::string> dropped_fs_roots_;
 
   // Tier maps built during Init().
   std::unordered_map<std::string, std::string> tier_by_canonicalized_fs_root_;

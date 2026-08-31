@@ -157,6 +157,11 @@ class SchemaPackingProvider {
     return Status::OK();
   }
 
+  // Called when a table-level tombstone is written to regular DB (truncate / drop path).
+  // Default is a no-op; RaftGroupMetadata advances the colocated tombstone-time cache watermark.
+  virtual void NotifyTableTombstoneWritten(ColocationId colocation_id, HybridTime write_ht) {}
+  virtual void NotifyTableTombstoneWritten(const Uuid& cotable_id, HybridTime write_ht) {}
+
   virtual ~SchemaPackingProvider() = default;
 };
 

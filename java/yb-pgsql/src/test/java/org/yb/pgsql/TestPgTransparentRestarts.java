@@ -1170,7 +1170,12 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         ConnectionBuilder cb,
         String valueToInsert,
         boolean expectRestartErrors) {
-      super(cb, valueToInsert, 50 /* numInserts */);
+      // A surfaced read restart requires an INSERT to commit while a SELECT is in flight, so the
+      // expected number of restarts per isolation level scales with the number of INSERTs, not with
+      // the speed of a single SELECT. Tests that require restarts to happen need a bigger INSERT
+      // budget to keep that expectation comfortably above zero; tests that require no restarts keep
+      // the smaller budget to avoid increasing test time.
+      super(cb, valueToInsert, expectRestartErrors ? 150 : 50 /* numInserts */);
       this.expectRestartErrors = expectRestartErrors;
     }
 
@@ -1217,8 +1222,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
 
       List<ThrowingRunnable> runnables = new ArrayList<>();
       //
-      // Singular SELECT statement (equal probability of being either serializable/repeatable read/
-      // /read committed isolation level)
+      // Singular SELECT statement (isolation level rotates over serializable/repeatable read/
+      // read committed, so each level gets the same number of attempts)
       //
       runnables.add(() -> {
         Map<IsolationLevel, Integer> selectsAttempted =
@@ -1262,9 +1267,12 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               setReadAfterCommitVisibility + getReadAfterCommitVisibility());
           }
 
-          for (/* No setup */; !isExecutionDone.getAsBoolean(); /* NOOP */) {
+          for (int attempt = 0; !isExecutionDone.getAsBoolean(); ++attempt) {
+            // Rotate over isolation levels rather than picking one at random: a random split gives
+            // one level noticeably fewer attempts than the others often enough that it ends up with
+            // no restart opportunity at all.
             IsolationLevel isolation =
-                RandomUtil.getRandomElement(isolationLevels);
+                isolationLevels.get(attempt % isolationLevels.size());
             Stmt stmt =
                 chooseForIsolation(isolation, serializableStmt, rrStmt, rcStmt);
 

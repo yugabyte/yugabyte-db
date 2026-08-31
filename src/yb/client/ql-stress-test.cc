@@ -135,6 +135,13 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
     ASSERT_OK(WaitForTabletLeaders());
   }
 
+  void DoTearDown() override {
+    QLDmlTestBase<MiniCluster>::DoTearDown();
+    // A transaction could be released by a client reactor thread, and its destructor accesses the
+    // transaction manager. So destroy the manager only after the client has been shut down.
+    txn_manager_.reset();
+  }
+
   virtual void CompleteSchemaBuilder(YBSchemaBuilder* b) {}
 
   virtual int NumTablets() {
@@ -237,6 +244,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   void TestWriteRejection();
 
   TableHandle table_;
+  std::optional<TransactionManager> txn_manager_;
 
   int checkpoint_index_ = 0;
 };
@@ -349,9 +357,8 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0.25;
 
   const bool transactional = table_.table()->schema().table_properties().is_transactional();
-  std::optional<TransactionManager> txn_manager;
   if (transactional) {
-    txn_manager = CreateTxnManager();
+    txn_manager_ = CreateTxnManager();
   }
 
   TestThreadHolder thread_holder;
@@ -359,13 +366,13 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   for (int i = 0; i != kConcurrentWrites; ++i) {
     thread_holder.AddThreadFunctor(
         [this, &key_source, &stop_requested = thread_holder.stop_flag(),
-         &txn_manager, kTransactionalWriteProbability] {
+         kTransactionalWriteProbability] {
       auto session = NewSession();
       while (!stop_requested.load(std::memory_order_acquire)) {
         int32_t key = key_source.fetch_add(1, std::memory_order_acq_rel);
         YBTransactionPtr txn;
-        if (txn_manager && RandomActWithProbability(kTransactionalWriteProbability)) {
-          txn = std::make_shared<YBTransaction>(&txn_manager.value());
+        if (txn_manager_ && RandomActWithProbability(kTransactionalWriteProbability)) {
+          txn = std::make_shared<YBTransaction>(&txn_manager_.value());
           ASSERT_OK(txn->Init(IsolationLevel::SNAPSHOT_ISOLATION));
           session->SetTransaction(txn);
         } else {
@@ -410,18 +417,23 @@ void QLStressTest::TestRetryWrites(bool restarts) {
 
   size_t total_entries = 0;
   size_t expected_leaders = table_.table()->GetPartitionCount();
+  size_t entries_per_row = FLAGS_ycql_enable_packed_row ? 1 : 2;
+  size_t expected_entries = written_keys * entries_per_row;
+  // Intents of a committed transaction are applied to the regular DB asynchronously, so the rows
+  // could be readable before they are counted as regular DB entries.
   ASSERT_OK(WaitFor(
-      std::bind(&QLStressTest::CheckRetryableRequestsCountsAndLeaders, this,
-                expected_leaders, &total_entries),
+      [this, expected_leaders, expected_entries, &total_entries] {
+        return CheckRetryableRequestsCountsAndLeaders(expected_leaders, &total_entries) &&
+               total_entries >= expected_entries;
+      },
       15s, "Retryable requests cleanup and leader wait"));
 
-  size_t entries_per_row = FLAGS_ycql_enable_packed_row ? 1 : 2;
   if (FLAGS_detect_duplicates_for_retryable_requests) {
-    ASSERT_EQ(total_entries, written_keys * entries_per_row);
+    ASSERT_EQ(total_entries, expected_entries);
   } else {
     // If duplicate request tracking is disabled, then total_entries should be greater than
     // written keys, otherwise test does not work.
-    ASSERT_GT(total_entries, written_keys * entries_per_row);
+    ASSERT_GT(total_entries, expected_entries);
   }
 
   ASSERT_GE(written_keys, RegularBuildVsSanitizers(100, 40));

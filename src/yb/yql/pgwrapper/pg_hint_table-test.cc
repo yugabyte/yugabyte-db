@@ -281,11 +281,10 @@ class PgHintTableTestTableLocksDisabled : public PgHintTableTest {
     options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
     AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
     options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
   }
 };
 

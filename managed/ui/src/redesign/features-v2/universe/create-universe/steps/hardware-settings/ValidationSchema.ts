@@ -101,7 +101,7 @@ export const InstanceSettingsValidationSchema = (
       otherwise: Yup.mixed().nullable()
     }),
 
-    keepMasterTserverSame: Yup.boolean().nullable().default(false),
+    keepMasterTserverSame: Yup.boolean().nullable().default(true),
 
     enableEbsVolumeEncryption: Yup.boolean().nullable().default(false),
 
@@ -144,7 +144,7 @@ const toFiniteNumber = (value: unknown): number | null => {
 };
 
 // yup number().nullable().required() can let null through
-const requiredPositiveNumber = (t: TFunction, field: string, min = 1) =>
+const requiredPositiveNumber = (t: TFunction, field: string, min = 1, max?: number) =>
   Yup.mixed()
     .test('required', t('validation.required', { field }), (value) => {
       return !isEmptyNumberInput(value);
@@ -159,12 +159,20 @@ const requiredPositiveNumber = (t: TFunction, field: string, min = 1) =>
       const n = toFiniteNumber(value);
       if (n == null || n <= 0) return true;
       return n >= min;
+    })
+    .test('max', t('validation.maxValue', { field, max }), (value) => {
+      if (max == null || isEmptyNumberInput(value)) return true;
+      const n = toFiniteNumber(value);
+      if (n == null || n <= 0) return true;
+      return n <= max;
     });
+
+const MAX_NUM_VOLUMES = 32;
 
 export const DeviceInfoValidationSchema = (t: TFunction) => {
   return Yup.object().shape({
     volumeSize: requiredPositiveNumber(t, 'Volume Size', 1),
-    numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1),
+    numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1, MAX_NUM_VOLUMES),
 
     diskIops: Yup.mixed()
       .nullable()
@@ -275,7 +283,7 @@ export const DeviceInfoValidationSchema = (t: TFunction) => {
 export const K8VolumeInfoValidationSchema = (t: TFunction) => {
   return Yup.object().shape({
     volumeSize: requiredPositiveNumber(t, 'Volume Size', 1),
-    numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1),
+    numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1, MAX_NUM_VOLUMES),
     storageClass: Yup.string()
       .nullable()
       .test(

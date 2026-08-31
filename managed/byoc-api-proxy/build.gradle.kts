@@ -36,7 +36,7 @@ extra["lombokVersion"] = "1.18.30"
 dependencies {
   implementation("org.springframework.boot:spring-boot-starter")
   implementation("org.springframework.boot:spring-boot-starter-validation")
-  implementation("com.yugabyte:aeon-openapi-client:1.0.0:shaded")
+  implementation("com.yugabyte:aeon-openapi-client:1.0.2248:shaded")
   implementation("net.logstash.logback:logstash-logback-encoder:7.3")
   implementation("org.codehaus.janino:janino:3.1.9")
   compileOnly("org.projectlombok:lombok:${property("lombokVersion")}")

@@ -6,12 +6,16 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.controllers.JWTVerifier;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
+import com.yugabyte.yw.forms.CertificateParams.CustomCertInfo;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
+import com.yugabyte.yw.models.NodeAgent.DeployContext;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import io.ebean.annotation.Transactional;
@@ -35,7 +39,6 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
-import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -97,20 +100,32 @@ public class NodeAgentManager {
     this.fileHelperService = fileHelperService;
   }
 
+  public enum CopyType {
+    UPLOAD,
+    REMOTE_COPY
+  }
+
   @Getter
   public static class CopyFileInfo {
     @NonNull private final Path sourcePath;
     @NonNull private final Path targetPath;
+    private final CopyType copyType;
     private final String permission;
     private final boolean deleteAfterCopy;
 
     CopyFileInfo(Path sourcePath, Path targetPath) {
-      this(sourcePath, targetPath, null, false);
+      this(sourcePath, targetPath, CopyType.UPLOAD, null, false);
     }
 
-    CopyFileInfo(Path sourcePath, Path targetPath, String permission, boolean deleteAfterCopy) {
+    CopyFileInfo(
+        Path sourcePath,
+        Path targetPath,
+        CopyType copyType,
+        String permission,
+        boolean deleteAfterCopy) {
       this.sourcePath = sourcePath;
       this.targetPath = targetPath;
+      this.copyType = copyType;
       this.permission = permission;
       this.deleteAfterCopy = deleteAfterCopy;
     }
@@ -140,6 +155,15 @@ public class NodeAgentManager {
         copyFileInfos.forEach(CopyFileInfo::cleanupAfterCopy);
       }
     }
+  }
+
+  /** Response for generate certs API. */
+  @Builder
+  @Getter
+  public static class GenerateCertsResponse {
+    private final Path certDir;
+    private final KeyPair signerKeyPair;
+    @Nullable private final Pair<X509Certificate, KeyPair> serverCertKeyPair;
   }
 
   @VisibleForTesting
@@ -222,36 +246,73 @@ public class NodeAgentManager {
     }
   }
 
-  private Pair<X509Certificate, KeyPair> generateNodeAgentCerts(NodeAgent nodeAgent, Path dirPath) {
+  private KeyPair createSignerKeyPair(
+      NodeAgent nodeAgent, String publicKeyPath, String privateKeyPath) {
+    try {
+      KeyPair keyPair = CertificateHelper.getKeyPairObject();
+      CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPublic(), publicKeyPath);
+      CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPrivate(), privateKeyPath);
+      return keyPair;
+    } catch (RuntimeException e) {
+      log.error("Failed to create signer key pair for node agent {}", nodeAgent, e);
+      throw e;
+    } catch (Exception e) {
+      log.error("Failed to create signer key pair for node agent {}", nodeAgent, e);
+      throw new RuntimeException(e.getMessage(), e);
+    }
+  }
+
+  private GenerateCertsResponse generateNodeAgentCerts(
+      NodeAgent nodeAgent, Path dirPath, CertificateInfo certificateInfo) {
     try {
       String caCertPath = dirPath.resolve(NodeAgent.ROOT_CA_CERT_NAME).toString();
       String caKeyPath = dirPath.resolve(NodeAgent.ROOT_CA_KEY_NAME).toString();
       String serverCertPath = dirPath.resolve(NodeAgent.SERVER_CERT_NAME).toString();
       String serverKeyPath = dirPath.resolve(NodeAgent.SERVER_KEY_NAME).toString();
+      String signerPublicKeyPath = dirPath.resolve(NodeAgent.SIGNER_PUBLIC_KEY_NAME).toString();
+      String signerPrivateKeyPath = dirPath.resolve(NodeAgent.SIGNER_PRIVATE_KEY_NAME).toString();
       int expiryYrs = appConfig.getInt("yb.tlsCertificate.server.maxLifetimeInYears");
+      GenerateCertsResponse.GenerateCertsResponseBuilder responseBldr =
+          GenerateCertsResponse.builder().certDir(dirPath);
+      if (certificateInfo == null) {
+        Pair<X509Certificate, KeyPair> pair = createRootCert(nodeAgent, caCertPath, caKeyPath);
+        log.info(
+            "Generated root cert for node agent: {} at key path: {} and cert path: {}",
+            nodeAgent,
+            caKeyPath,
+            caCertPath);
 
-      Pair<X509Certificate, KeyPair> pair = createRootCert(nodeAgent, caCertPath, caKeyPath);
-      log.info(
-          "Generated root cert for node agent: {} at key path: {} and cert path: {}",
-          nodeAgent,
-          caKeyPath,
-          caCertPath);
+        Pair<X509Certificate, KeyPair> serverPair =
+            createServerCert(
+                nodeAgent,
+                pair.getLeft(),
+                pair.getRight().getPrivate(),
+                serverCertPath,
+                serverKeyPath,
+                expiryYrs);
+        responseBldr.serverCertKeyPair(serverPair);
+      } else {
+        caCertPath = certificateInfo.getCertificate();
+        log.debug(
+            "Using custom root cert for node agent: {} at cert path: {}", nodeAgent, caCertPath);
+        if (certificateInfo.getCertType() == CertConfigType.SelfSigned) {
+          // Node cert and key are generated from the given root cert for self-signed certs.
+          Pair<X509Certificate, KeyPair> serverPair =
+              createServerCert(
+                  nodeAgent,
+                  CertificateHelper.getCertificateFromFile(caCertPath),
+                  CertificateHelper.getPrivateKeyFromFile(certificateInfo.getPrivateKey()),
+                  serverCertPath,
+                  serverKeyPath,
+                  expiryYrs);
+          responseBldr.serverCertKeyPair(serverPair);
+        }
+      }
+      KeyPair signerKeyPair =
+          createSignerKeyPair(nodeAgent, signerPublicKeyPath, signerPrivateKeyPath);
+      responseBldr.signerKeyPair(signerKeyPair);
 
-      Pair<X509Certificate, KeyPair> serverPair =
-          createServerCert(
-              nodeAgent,
-              pair.getLeft(),
-              pair.getRight().getPrivate(),
-              serverCertPath,
-              serverKeyPath,
-              expiryYrs);
-
-      log.info(
-          "Generated self-signed server cert for node agent: {} at key path: {} and cert path: {}",
-          nodeAgent,
-          serverKeyPath,
-          serverKeyPath);
-      return serverPair;
+      return responseBldr.build();
     } catch (RuntimeException e) {
       log.error("Failed to generate certs for node agent {}", nodeAgent, e);
       throw e;
@@ -261,9 +322,13 @@ public class NodeAgentManager {
     }
   }
 
-  private void generateMergedNodeAgentCerts(NodeAgent nodeAgent, Path nextCertDirPath) {
+  private void generateMergedNodeAgentCerts(
+      NodeAgent nodeAgent, Path nextCertDirPath, CertificateInfo certificateInfo) {
     Path currCertFilepath = nodeAgent.getCaCertFilePath();
-    Path nextCertFilepath = nextCertDirPath.resolve(NodeAgent.ROOT_CA_CERT_NAME);
+    Path nextCertFilepath =
+        certificateInfo == null
+            ? nextCertDirPath.resolve(NodeAgent.ROOT_CA_CERT_NAME)
+            : Paths.get(certificateInfo.getCertificate());
     Path mergedCertFilepath = nextCertDirPath.resolve(NodeAgent.MERGED_ROOT_CA_CERT_NAME);
     log.info(
         "Creating merged cert file {} of curr {} and new {} for node agent {}",
@@ -301,7 +366,7 @@ public class NodeAgentManager {
     if (!nodeAgentOp.isPresent()) {
       throw new RuntimeException(String.format("Node agent %s does not exist", nodeAgentUuid));
     }
-    return nodeAgentOp.get().getPrivateKey();
+    return nodeAgentOp.get().getSignerPrivateKey();
   }
 
   /**
@@ -315,13 +380,7 @@ public class NodeAgentManager {
     if (!nodeAgentOp.isPresent()) {
       throw new RuntimeException(String.format("Node agent %s does not exist", nodeAgentUuid));
     }
-    return nodeAgentOp.get().getPublicKey();
-  }
-
-  public Date getServerCertExpiry(NodeAgent nodeAgent) {
-    return CertificateHelper.extractDatesFromCertBundle(
-            Collections.singletonList(nodeAgent.getServerX509Cert()))
-        .getRight();
+    return nodeAgentOp.get().getSignerPublicKey();
   }
 
   /**
@@ -349,11 +408,11 @@ public class NodeAgentManager {
    * @param nodeAgent the node agent.
    * @return path to the cert dir.
    */
-  public Path generateCerts(NodeAgent nodeAgent) {
+  public Path generateCerts(NodeAgent nodeAgent, CertificateInfo certificateInfo) {
     nodeAgent.ensureState(State.UPGRADE);
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
-    generateNodeAgentCerts(nodeAgent, certDirPath);
-    generateMergedNodeAgentCerts(nodeAgent, certDirPath);
+    generateNodeAgentCerts(nodeAgent, certDirPath, certificateInfo);
+    generateMergedNodeAgentCerts(nodeAgent, certDirPath, certificateInfo);
     return certDirPath;
   }
 
@@ -477,21 +536,55 @@ public class NodeAgentManager {
    * @return the updated node agent record along with cert and key in the config.
    */
   @Transactional
-  public NodeAgent create(NodeAgent nodeAgent, boolean includeCertContents) {
+  public NodeAgent create(
+      NodeAgent nodeAgent, DeployContext deployContext, boolean includeCertContents) {
     nodeAgent.setConfig(new NodeAgent.Config());
+    nodeAgent
+        .getConfig()
+        .setServerCertExpirySecs(
+            Instant.now().plus(NodeAgent.INITIAL_SERVER_CERT_EXPIRY).getEpochSecond());
     nodeAgent.setState(State.REGISTERING);
+    if (deployContext.isCustomCerts()) {
+      nodeAgent.setCertificateUuid(deployContext.getCertificateUuid());
+    }
     nodeAgent.insert();
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
-    Pair<X509Certificate, KeyPair> serverPair = generateNodeAgentCerts(nodeAgent, certDirPath);
+    CertificateInfo certificateInfo =
+        deployContext.isCustomCerts()
+            ? CertificateInfo.getOrBadRequest(deployContext.getCertificateUuid())
+            : null;
+    GenerateCertsResponse response =
+        generateNodeAgentCerts(nodeAgent, certDirPath, certificateInfo);
+    Pair<X509Certificate, KeyPair> serverPair = response.serverCertKeyPair;
+    KeyPair signerKeyPair = response.signerKeyPair;
     nodeAgent.getConfig().setCertPath(certDirPath.toString());
     nodeAgent.save();
     if (includeCertContents) {
-      X509Certificate serverCert = serverPair.getLeft();
-      KeyPair serverKeyPair = serverPair.getRight();
-      nodeAgent.getConfig().setServerCert(CertificateHelper.getAsPemString(serverCert));
       nodeAgent
           .getConfig()
-          .setServerKey(CertificateHelper.getAsPemString(serverKeyPair.getPrivate()));
+          .setSignerPublicKey(CertificateHelper.getAsPemString(signerKeyPair.getPublic()));
+      nodeAgent
+          .getConfig()
+          .setSignerPrivateKey(CertificateHelper.getAsPemString(signerKeyPair.getPrivate()));
+      // Default and SelfSigned custom certs return server cert/key in the registration response.
+      // CustomCertHostPath certs are copied from the remote host paths during YBA-driven install.
+      if (!deployContext.isCustomCerts()
+          || certificateInfo.getCertType() == CertConfigType.SelfSigned) {
+        serverPair =
+            Objects.requireNonNull(
+                serverPair,
+                () -> "Server cert and key pair must be generated for node agent " + nodeAgent);
+        X509Certificate serverCert = serverPair.getLeft();
+        KeyPair serverKeyPair = serverPair.getRight();
+        nodeAgent.getConfig().setServerCert(CertificateHelper.getAsPemString(serverCert));
+        nodeAgent
+            .getConfig()
+            .setServerKey(CertificateHelper.getAsPemString(serverKeyPair.getPrivate()));
+      } else if (certificateInfo.getCertType() == CertConfigType.CustomCertHostPath) {
+        CustomCertInfo customCertInfo = certificateInfo.getCustomCertPathParams();
+        nodeAgent.getConfig().setServerCertLocalPath(customCertInfo.nodeCertPath);
+        nodeAgent.getConfig().setServerKeyLocalPath(customCertInfo.nodeKeyPath);
+      }
     }
     return nodeAgent;
   }
@@ -500,51 +593,123 @@ public class NodeAgentManager {
    * Returns the installer files to be copied over to the remote node for installation or upgrade.
    * The files may be copied via node agent RPC for upgrade or over SSH/SCP for installation.
    *
-   * @param nodeAgent nodeAgent the node agent record.
-   * @param nodeAgentDirPath path to the node agent directory.
-   * @param certsOnly generate only the certs if it is true.
+   * @param nodeAgent the given node agent.
+   * @param deployContext the given context for the deployment.
    * @return the installer files.
    */
-  public InstallerFiles getInstallerFiles(
-      NodeAgent nodeAgent, Path nodeAgentDirPath, boolean certsOnly) {
+  public InstallerFiles getInstallerFiles(NodeAgent nodeAgent, DeployContext deployContext) {
     InstallerFiles.InstallerFilesBuilder builder = InstallerFiles.builder();
+    CertificateInfo certificateInfo =
+        deployContext.isCustomCerts()
+            ? CertificateInfo.getOrBadRequest(deployContext.getCertificateUuid())
+            : null;
     Path certDirPath = null;
-    if (certsOnly) {
-      certDirPath = generateCerts(nodeAgent);
+    Path nodeAgentHome = Paths.get(nodeAgent.getHome());
+    if (deployContext.isCertsOnly()) {
+      certDirPath = generateCerts(nodeAgent, certificateInfo);
     } else {
       // Package tgz file to be copied.
       Path packagePath = getNodeAgentPackagePath(nodeAgent.getOsType(), nodeAgent.getArchType());
-      Path targetPackagePath = nodeAgentDirPath.resolve(Paths.get("release", "node-agent.tgz"));
+      Path targetPackagePath = nodeAgentHome.resolve(Paths.get("release", "node-agent.tgz"));
       builder.packagePath(targetPackagePath);
       builder.copyFileInfo(new CopyFileInfo(packagePath, targetPackagePath));
       if (nodeAgent.getState() == State.REGISTERING) {
         builder.createDir(targetPackagePath.getParent());
         certDirPath = nodeAgent.getCertDirPath();
       } else {
-        certDirPath = generateCerts(nodeAgent);
+        certDirPath = generateCerts(nodeAgent, certificateInfo);
         // Upload the installer script for upgrade as the old one may not be forward compatible.
         Path tmpInstallerScriptPath = getInstallerScriptTempFile("node-agent-installer-");
         Path targetInstallerScriptPath =
-            nodeAgentDirPath.resolve(Paths.get("pkg", "bin", NODE_AGENT_INSTALLER_FILE));
+            nodeAgentHome.resolve(Paths.get("pkg", "bin", NODE_AGENT_INSTALLER_FILE));
         builder.copyFileInfo(
-            new CopyFileInfo(tmpInstallerScriptPath, targetInstallerScriptPath, "755", true));
+            new CopyFileInfo(
+                tmpInstallerScriptPath, targetInstallerScriptPath, CopyType.UPLOAD, "755", true));
       }
     }
 
     String targetCertDir = UUID.randomUUID().toString();
     builder.certDir(targetCertDir);
 
-    // Cert file to be copied.
-    Path targetCertDirPath = nodeAgentDirPath.resolve(Paths.get("cert", targetCertDir));
+    // Cert file to be copied on the remote node agent node.
+    Path targetCertDirPath = nodeAgentHome.resolve(Paths.get("cert", targetCertDir));
     builder.createDir(targetCertDirPath);
-    Path caCertPath = certDirPath.resolve(NodeAgent.SERVER_CERT_NAME);
-    Path targetCaCertPath = targetCertDirPath.resolve("node_agent.crt");
-    builder.copyFileInfo(new CopyFileInfo(caCertPath, targetCaCertPath, "644", false));
 
-    // Key file to be copied.
-    Path keyPath = certDirPath.resolve(NodeAgent.SERVER_KEY_NAME);
-    Path targetKeyPath = targetCertDirPath.resolve("node_agent.key");
-    builder.copyFileInfo(new CopyFileInfo(keyPath, targetKeyPath, "644", false));
+    // Set the copyFileInfos for the certs and keys to be copied to the remote node agent node.
+    builder.copyFileInfo(
+        new CopyFileInfo(
+            certDirPath.resolve(NodeAgent.SIGNER_PUBLIC_KEY_NAME),
+            targetCertDirPath.resolve(NodeAgent.SIGNER_PUBLIC_KEY_NAME),
+            CopyType.UPLOAD,
+            "644",
+            false));
+    builder.copyFileInfo(
+        new CopyFileInfo(
+            certDirPath.resolve(NodeAgent.SIGNER_PRIVATE_KEY_NAME),
+            targetCertDirPath.resolve(NodeAgent.SIGNER_PRIVATE_KEY_NAME),
+            CopyType.UPLOAD,
+            "644",
+            false));
+    if (deployContext.isCustomCerts()) {
+      switch (certificateInfo.getCertType()) {
+        case CustomCertHostPath:
+          CustomCertInfo customCertInfo = certificateInfo.getCustomCertPathParams();
+          Path nodeCertPath = Paths.get(customCertInfo.nodeCertPath);
+          Path nodeKeyPath = Paths.get(customCertInfo.nodeKeyPath);
+          builder.copyFileInfo(
+              new CopyFileInfo(
+                  nodeCertPath,
+                  targetCertDirPath.resolve(NodeAgent.NODE_AGENT_CERT_NAME),
+                  CopyType.REMOTE_COPY,
+                  "644",
+                  false));
+          builder.copyFileInfo(
+              new CopyFileInfo(
+                  nodeKeyPath,
+                  targetCertDirPath.resolve(NodeAgent.NODE_AGENT_KEY_NAME),
+                  CopyType.REMOTE_COPY,
+                  "644",
+                  false));
+          break;
+        case SelfSigned:
+          builder.copyFileInfo(
+              new CopyFileInfo(
+                  certDirPath.resolve(NodeAgent.SERVER_CERT_NAME),
+                  targetCertDirPath.resolve(NodeAgent.NODE_AGENT_CERT_NAME),
+                  CopyType.UPLOAD,
+                  "644",
+                  false));
+          builder.copyFileInfo(
+              new CopyFileInfo(
+                  certDirPath.resolve(NodeAgent.SERVER_KEY_NAME),
+                  targetCertDirPath.resolve(NodeAgent.NODE_AGENT_KEY_NAME),
+                  CopyType.UPLOAD,
+                  "644",
+                  false));
+          break;
+        default:
+          throw new RuntimeException(
+              String.format(
+                  "Unsupported certificate type %s for node agent %s",
+                  certificateInfo.getCertType(), nodeAgent));
+      }
+
+    } else {
+      builder.copyFileInfo(
+          new CopyFileInfo(
+              certDirPath.resolve(NodeAgent.SERVER_CERT_NAME),
+              targetCertDirPath.resolve(NodeAgent.NODE_AGENT_CERT_NAME),
+              CopyType.UPLOAD,
+              "644",
+              false));
+      builder.copyFileInfo(
+          new CopyFileInfo(
+              certDirPath.resolve(NodeAgent.SERVER_KEY_NAME),
+              targetCertDirPath.resolve(NodeAgent.NODE_AGENT_KEY_NAME),
+              CopyType.UPLOAD,
+              "644",
+              false));
+    }
     return builder.build();
   }
 
@@ -588,11 +753,6 @@ public class NodeAgentManager {
     }
   }
 
-  /**
-   * Perform post-upgrade cleanup.
-   *
-   * @param nodeAgent the node agent.
-   */
   public void postUpgrade(NodeAgent nodeAgent) {
     // Get and delete the merged cert file if it exists.
     File mergedCaCertFile = nodeAgent.getMergedCaCertFilePath().toFile();

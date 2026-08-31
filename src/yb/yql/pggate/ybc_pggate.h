@@ -639,7 +639,7 @@ YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         bool skip_intents_read,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          int targrows,
                          double rstate_w,
                          uint64_t rand_state_s0,
@@ -661,14 +661,14 @@ YbcStatus YBCPgNewInsertBlock(
     YbcPgOid table_oid,
     YbcPgTableLocalityInfo locality_info,
     YbcPgTransactionSetting transaction_setting,
-    bool skip_intents_write,
+    YbcPgSkipIntentsOptimizationInfo skip_intents_info,
     YbcPgStatement *handle);
 
 YbcStatus YBCPgNewInsert(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle);
@@ -684,7 +684,7 @@ YbcStatus YBCPgNewUpdate(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle);
@@ -694,7 +694,7 @@ YbcStatus YBCPgNewDelete(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle);
@@ -715,7 +715,7 @@ YbcStatus YBCPgNewSelect(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          const YbcPgPrepareParameters *prepare_params,
                          YbcPgTableLocalityInfo locality_info,
-                         bool skip_intents_read,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle);
 
 // Set forward/backward scan direction.
@@ -899,7 +899,7 @@ void YBCClearTimeout();
 
 void YBCSetLockTimeout(int lock_timeout_ms, void* extra);
 
-void YBCCheckForInterrupts();
+bool YBCHasProcessableAbortInterrupt();
 
 //--------------------------------------------------------------------------------------------------
 // Thread-Local variables.
@@ -1059,6 +1059,10 @@ YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point);
 YbcStatus YBCPgRegisterSnapshotReadTime(
     uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle);
 
+// Publishes the oldest live snapshot read-point serial into session shared memory for tserver
+// history-retention-pin aggregation. Requires pg_client_use_shared_memory.
+void YBCPgPublishOldestReadPointHandle(YbcReadPointHandle handle);
+
 // Records the current statement as a temporary relation DDL statement.
 void YBCRecordTempRelationDDL();
 
@@ -1128,13 +1132,10 @@ YbcStatus YBCResetAutoAnalyzeMutationCounters(
 YbcStatus YBCPgNewGlobalViewRead(YbcPgGlobalViewRead* handle);
 void YBCPgGlobalViewReadSetParams(
     YbcPgGlobalViewRead handle, int num_params, const char** param_values);
-// Returns the result protobuf, valid until ClearResult or the next ExecScan;
-// NULL on error or empty result.
-YbcPgResultPB YBCPgGlobalViewReadExecScan(
+YbcPgGvScanResult YBCPgGlobalViewReadExecScan(
     YbcPgGlobalViewRead handle, const char *database_name, const char *query,
     const char *tserver_uuid);
-// Error message from the last ExecScan; NULL if it succeeded. Owned by the
-// handle, valid until the next ExecScan.
+bool YBCPgGlobalViewReadNextRow(YbcPgGlobalViewRead handle, const char **values);
 const char* YBCPgGlobalViewReadGetError(YbcPgGlobalViewRead handle);
 void YBCPgGlobalViewReadClearScanState(YbcPgGlobalViewRead handle);
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle);

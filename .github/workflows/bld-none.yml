@@ -1,0 +1,39 @@
+name: "bld-none"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review ]
+    # Need to catch the case of PRs that have only non-build, non-docs files
+    paths:
+      - '.agents/**'
+      - '.arc*'
+      - '.claude/**'
+      - '.cursor/**'
+      - '.git/**'
+      - '.github/**'
+      - '.gitignore'
+      - 'architecture/**'
+      - 'arcanist/**'
+      - CONTRIBUTORS.md
+      - 'cloud/**'
+      - code_style
+      - 'community/**'
+      - java/yb-client
+      - LICENSE.md
+      - 'license/**'
+      - NOTICE.txt
+      - '**/README*'
+      - 'sample/**'
+      - 'src/lint/**'
+
+# Can be skipped if PR is draft or the commit message contains [skip ci] or [ci skip]
+jobs:
+  bld-none:
+    if: github.event.pull_request.draft == false
+    runs-on: ybdbghr
+    steps:
+      - name: Build Trigger
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ybbld "$PR_NUMBER" "$PR_SHA" NO-BLD

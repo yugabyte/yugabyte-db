@@ -13,17 +13,32 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class SetUniverseKey extends UniverseTaskBase {
 
+  private final OperatorStatusUpdater kubernetesStatus;
+
   @Inject
-  protected SetUniverseKey(BaseTaskDependencies baseTaskDependencies) {
+  protected SetUniverseKey(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
+  }
+
+  // Only set when the Kubernetes operator submitted this task. On the API path there is no CR to
+  // report against, so the status calls are skipped entirely.
+  private boolean isOperatorTask() {
+    return taskParams().getKubernetesResourceDetails() != null;
   }
 
   @Override
@@ -34,12 +49,24 @@ public class SetUniverseKey extends UniverseTaskBase {
   @Override
   public void run() {
     log.info("Started {} task.", getName());
+    Throwable th = null;
     try {
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
-      lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, null /* Txn callback */);
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
       preTaskActions();
+
+      if (isOperatorTask()) {
+        kubernetesStatus.startYBUniverseEventStatus(
+            universe,
+            taskParams().getKubernetesResourceDetails(),
+            TaskType.SetUniverseKey.name(),
+            getUserTaskUUID(),
+            UniverseState.EDITING);
+      }
 
       // Manage encryption at rest
       log.debug(
@@ -71,8 +98,18 @@ public class SetUniverseKey extends UniverseTaskBase {
           taskParams().getUniverseUUID());
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      th = t;
       throw t;
     } finally {
+      if (isOperatorTask()) {
+        kubernetesStatus.updateYBUniverseStatus(
+            getUniverse(),
+            taskParams().getKubernetesResourceDetails(),
+            TaskType.SetUniverseKey.name(),
+            getUserTaskUUID(),
+            (th != null) ? UniverseState.ERROR_UPDATING : UniverseState.READY,
+            th);
+      }
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate();

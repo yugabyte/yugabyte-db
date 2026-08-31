@@ -110,6 +110,9 @@ message WritePB {
 
   // See SysCDCStreamEntryPB.xcluster_use_target_applied_filter.
   optional bool xcluster_target_applied = 23;
+
+  // Earliest PgsqlWriteRequestPB.ignore_after_hybrid_time over this batch; 0 means no fence.
+  optional fixed64 ignore_after_hybrid_time = 24;
 }
 
 message ChangeMetadataRequestPB {
@@ -169,6 +172,9 @@ message ChangeMetadataRequestPB {
   optional int32 first_provisional_column_id = 21;
 
   optional bool only_abort_txns_not_using_table_locks = 22;
+
+  // Index inception / birth hybrid time, sent as part of the BackfillDone RPC.
+  optional fixed64 birth_time = 23;
 }
 
 message SplitTabletRequestPB {

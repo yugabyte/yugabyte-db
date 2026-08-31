@@ -11,24 +11,29 @@ import org.mapstruct.ReportingPolicy;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 
+/**
+ * RestoreState carries x-enum-varnames in the OpenAPI schema (the generated Go constants are
+ * package-scoped and Failed/Aborted collided with SupportBundleStatus), so the v2 constant names
+ * are prefixed and no longer match the internal Restore.State names.
+ */
 @Mapper(unmappedSourcePolicy = ReportingPolicy.ERROR)
 public interface RestoreEnumMapper {
 
   @ValueMappings({
-    @ValueMapping(target = "Created", source = "Created"),
-    @ValueMapping(target = "InProgress", source = "InProgress"),
-    @ValueMapping(target = "Completed", source = "Completed"),
-    @ValueMapping(target = "Failed", source = "Failed"),
-    @ValueMapping(target = "Aborted", source = "Aborted")
+    @ValueMapping(target = "RestoreCreated", source = "Created"),
+    @ValueMapping(target = "RestoreInProgress", source = "InProgress"),
+    @ValueMapping(target = "RestoreCompleted", source = "Completed"),
+    @ValueMapping(target = "RestoreFailed", source = "Failed"),
+    @ValueMapping(target = "RestoreAborted", source = "Aborted")
   })
   RestoreState toRestoreState(Restore.State state);
 
   @ValueMappings({
-    @ValueMapping(target = "Created", source = "Created"),
-    @ValueMapping(target = "InProgress", source = "InProgress"),
-    @ValueMapping(target = "Completed", source = "Completed"),
-    @ValueMapping(target = "Failed", source = "Failed"),
-    @ValueMapping(target = "Aborted", source = "Aborted")
+    @ValueMapping(target = "RestoreCreated", source = "Created"),
+    @ValueMapping(target = "RestoreInProgress", source = "InProgress"),
+    @ValueMapping(target = "RestoreCompleted", source = "Completed"),
+    @ValueMapping(target = "RestoreFailed", source = "Failed"),
+    @ValueMapping(target = "RestoreAborted", source = "Aborted")
   })
   RestoreState toRestoreState(RestoreKeyspace.State state);
 

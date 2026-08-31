@@ -70,6 +70,9 @@ DEFINE_test_flag(uint32, tablet_validator_max_tables_number_per_rpc, 50,
 DEFINE_test_flag(bool, tablet_validator_one_rpc_per_validation_period, false,
     "Used in tests to send exactly only one RPC per validation period.");
 
+DEFINE_test_flag(bool, tablet_validator_disable_metadata_backfill_done, false,
+    "Used in tests to disable invoking metadata backfill done.");
+
 using namespace std::literals;
 
 namespace yb::tserver {
@@ -137,7 +140,16 @@ bool IsBackfillDone(const master::IndexStatusPB& index_status) {
          index_status.backfill_status() == master::IndexStatusPB::BACKFILL_SUCCESS;
 }
 
-using TabletTablesMap = std::unordered_map<TabletId, std::vector<TableId>>;
+struct IndexUpdateInfo {
+  TableId index_table_id;
+  uint64_t birth_time = 0;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(index_table_id, birth_time);
+  }
+};
+
+using TabletTablesMap = std::unordered_map<TabletId, std::vector<IndexUpdateInfo>>;
 
 std::chrono::milliseconds SanitizeRetainDeleteMarkersValidationPeriod(const uint32_t value) {
   return MonoDelta::FromSeconds(value == 0 ? 60 : value).ToChronoMilliseconds();
@@ -246,6 +258,11 @@ bool TabletMetadataValidator::Impl::HandleMasterResponse(
     return false; // Will try during next period.
   }
 
+  if (FLAGS_TEST_tablet_validator_disable_metadata_backfill_done) {
+    VLOG_WITH_PREFIX(1) << "Metadata backfill done is disabled";
+    return false;
+  }
+
   // Check there's something to handle.
   if (response.index_status_size() == 0) {
     return true; // Returning true due to no master error for the response.
@@ -284,10 +301,13 @@ bool TabletMetadataValidator::Impl::HandleMasterResponse(
                 << "error: [" << StatusFromPB(index_status.error()) << "]. "
                 << "It is expected to get some errors from time to time.";
     } else if (IsBackfillDone(index_status)) {
+      const uint64_t birth_time = index_status.has_birth_time()
+          ? index_status.birth_time() : 0;
       auto [index_tablets_begin, index_tablets_end] =
           index_tablets_to_sync_.get<IndexTableIdTag>().equal_range(index_table_id);
       for (auto it = index_tablets_begin; it != index_tablets_end; ++it) {
-        indexes_for_update[it->index_tablet_id].emplace_back(index_table_id);
+        indexes_for_update[it->index_tablet_id].push_back(
+            IndexUpdateInfo{index_table_id, birth_time});
       }
     }
 
@@ -330,7 +350,10 @@ std::pair<size_t, size_t> TabletMetadataValidator::Impl::HandleScheduledTablets(
     VLOG_WITH_PREFIX(2) << "Index status for table " << cache_it->table_id()
                         << " was found in the cache: sync with master is not required";
     if (IsBackfillDone(cache_it->index_status)) {
-      indexes_from_cache[(*it).index_tablet_id].emplace_back((*it).index_table_id);
+      const uint64_t birth_time = cache_it->index_status.has_birth_time()
+          ? cache_it->index_status.birth_time() : 0;
+      indexes_from_cache[(*it).index_tablet_id].push_back(
+          IndexUpdateInfo{(*it).index_table_id, birth_time});
     }
   }
   VLOG_WITH_PREFIX(2) << "To sync: " << yb::ToString(index_tablets_to_sync_);
@@ -516,14 +539,17 @@ void TabletMetadataValidator::Impl::TriggerMetadataUpdate(
     }
 
     // Iterate through all tables of the current tablet and trigger backfill done.
-    for (const auto& index_table_id : index_tables) {
+    for (const auto& index_update : index_tables) {
       LOG_WITH_PREFIX(INFO) << "Tablet " << index_tablet_id << " index table "
-                            << index_table_id << ": resetting backfill as done";
-      auto status = tablet_meta->OnBackfillDone(index_table_id);
+                            << index_update.index_table_id << ": resetting backfill as done"
+                            << " (birth_time=" << index_update.birth_time << ")";
+      auto status = tablet_meta->OnBackfillDone(
+          index_update.index_table_id, index_update.birth_time);
       // Sanity check. In accordace with the method description, NotFound is the only possible
       // error. We are OK to not handle the error as the peer is not serving the table anymore.
       if (!status.ok() && !status.IsNotFound()) {
-        LOG_WITH_PREFIX(DFATAL) << "Tablet " << index_tablet_id << " table " << index_table_id
+        LOG_WITH_PREFIX(DFATAL) << "Tablet " << index_tablet_id << " table "
+                                << index_update.index_table_id
                                 << " backfill done failed, status: " << status;
       }
     }

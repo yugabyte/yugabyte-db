@@ -22,16 +22,19 @@
 #include <boost/functional/hash/hash.hpp>
 
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/pgsql_utils.h"
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_type.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_string(TEST_yb_test_wait_event_aux_to_sleep_at_csv);
@@ -102,7 +105,7 @@ bool IsEmpty(const YbcPgTableLocalityInfo& info) {
 } // namespace
 
 RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params) {
-  return exec_params && exec_params->rowmark > -1
+  return exec_params && exec_params->rowmark != YBC_NO_ROW_MARK
       ? static_cast<RowMarkType>(exec_params->rowmark)
       : RowMarkType::ROW_MARK_ABSENT;
 }
@@ -184,6 +187,15 @@ bool SkipIntents(const PgsqlOp& op) {
   return op.is_read()
       ? HasSkipIntents(down_cast<const PgsqlReadOp&>(op).read_request())
       : HasSkipIntents(down_cast<const PgsqlWriteOp&>(op).write_request());
+}
+
+Status CheckForPgInterrupts() {
+  if (!YBCHasProcessableAbortInterrupt()) [[likely]] {
+    return Status::OK();
+  }
+  return STATUS_EC_FORMAT(
+      Aborted, PgsqlError{YBPgErrorCode::YB_PG_QUERY_CANCELED},
+      "Canceled due to pending postgres interrupt");
 }
 
 } // namespace yb::pggate

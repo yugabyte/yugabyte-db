@@ -435,7 +435,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Gets the backfilling status of the specified index tables. The result is provided via
   // the callback for every index from the indexes argument. If the indexes argument is empty,
   // the result is provided for every index of the specified indexed table. The callback must have
-  // the following signature: void (const Status&, const TableId&, IndexStatusPB::BackfillStatus).
+  // the following signature:
+  // void (const Status&, const TableId&, IndexStatusPB::BackfillStatus, uint64_t birth_time).
+  // birth_time is the value persisted on the index table's IndexInfo (0 if unset).
   void GetBackfillStatus(const TableId& indexed_table_id, TableIdSet&& indexes, auto&& callback);
 
   // Backfill the indexes for the specified table.
@@ -506,8 +508,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status UpdateSysCatalogWithNewSchema(
     const scoped_refptr<TableInfo>& table,
     const std::vector<DdlLogEntry>& ddl_log_entries,
-    const std::string& new_namespace_id,
-    const std::string& new_table_name,
     const LeaderEpoch& epoch,
     AlterTableResponsePB* resp);
 
@@ -588,7 +588,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn_data,
                                     const std::vector<DdlLogEntry>& ddl_log_entries,
-                                    const std::string& new_table_name,
                                     bool success,
                                     int rollback_till_ddl_state_index = 0);
 
@@ -1555,11 +1554,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status UpdateCDCStream(
       const UpdateCDCStreamRequestPB* req, UpdateCDCStreamResponsePB* resp, rpc::RpcContext* rpc);
 
-  Status YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      const YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB* req,
-      YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB* resp,
-      rpc::RpcContext* rpc);
-
   // This is used to backfill legacy gRPC streams (having no slot_name and plugin_name) which were
   // created before promotion of FLAGS_cdc_pg_create_grpc_stream. Such streams are given a slot
   // name, plugin name, and logical replication stream's analogous slot entry in cdc_state table.
@@ -1580,6 +1574,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ValidateAndSyncCDCStateEntriesForCDCSDKStream(
       const ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB* req,
       ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status CleanupStaleCDCStreams(
+      const CleanupStaleCDCStreamsRequestPB* req,
+      CleanupStaleCDCStreamsResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   Status RemoveTablesFromCDCSDKStream(
       const RemoveTablesFromCDCSDKStreamRequestPB* req,
@@ -1682,6 +1681,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Returns true if the given CDCSDK stream is a logical replication stream.
   bool IsCdcLogicalReplicationStream(const CDCStreamInfo& stream) const REQUIRES_SHARED(mutex_);
+
+  // Returns true if the given CDCSDK stream resolves per-table record types through the replica
+  // identity map instead of the record_type option. Logical replication streams and PG-syntax
+  // gRPC streams (with yb_grpc plugin) are such streams.
+  bool StreamRequiresReplicaIdentityMap(const CDCStreamInfo& stream) const REQUIRES_SHARED(mutex_);
 
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
@@ -2591,6 +2595,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Background threadpool, newer features use this (instead of the Background thread)
   // to execute time-lenient catalog manager tasks.
+  //
+  // Warning: this is a limited size thread pool; deadlocks are possible if a task on this pool
+  // needs to wait (indirectly) for another task that needs to run on this pool.
   std::unique_ptr<yb::ThreadPool> background_tasks_thread_pool_;
 
   // TODO: convert this to YB_DEFINE_ENUM for automatic pretty-printing.
@@ -3116,8 +3123,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
       const TableInfoPtr& table, const xrepl::StreamId& stream_id);
 
-  Status ReplicationSlotValidateName(const std::string& replication_slot_name);
-
   Status TEST_CDCSDKFailCreateStreamRequestIfNeeded(const std::string& sync_point);
 
   // Create the cdc_state table if needed (i.e. if it does not exist already).
@@ -3283,6 +3288,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status DropXClusterStreamsOfTables(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
 
   void SchedulePostTabletCreationTasksForPendingTables(const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
+  // Queues every table that has a backfill job recorded but no backfill running for resumption by
+  // CatalogManagerBgTasks.
+  void EnqueuePendingBackfillsAfterLoad() EXCLUDES(mutex_);
 
   Status BumpVersionAndStoreClusterConfig(
       ClusterConfigInfo* cluster_config, ClusterConfigInfo::WriteLock* l);

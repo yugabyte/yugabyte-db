@@ -274,11 +274,12 @@ DEPRECATE_FLAG(int32, read_pool_max_queue_size, "05_2026");
 DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_threads, "02_2024");
 DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_queue_size, "02_2024");
 
-DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 2,
+DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, -1,
              "The maximum number of threads allowed for full_compaction_pool_. This "
              "pool is used to run full compactions on tablets, either on a scheduled basis "
               "or after they have been split and still contain irrelevant data from the tablet "
-              "they were sourced from.");
+              "they were sourced from. If the value is zero or negative (-1 by default), it is "
+              "derived from the CPU count: 1 for nodes with up to 4 cores, 2 otherwise.");
 
 DEPRECATE_FLAG(int32, full_compaction_pool_max_queue_size, "05_2026");
 
@@ -334,11 +335,15 @@ DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
 DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_int32(snapshot_cleanup_pool_size);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_bool(qos_compaction_per_db_cgroups);
 DECLARE_bool(qos_consensus_per_db_cgroups);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
+DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_uint32(vector_index_num_compactions_limit);
 
 namespace yb::tserver {
@@ -508,6 +513,26 @@ void TSTabletManager::PollWaitingTxnRegistry() {
   DCHECK_NOTNULL(waiting_txn_registry_)->SendWaitForGraph();
 }
 
+namespace {
+
+// Resolves FLAGS_full_compaction_pool_max_threads: a positive value is used as-is; zero or
+// a negative value means the pool size is derived from the CPU count.
+int32_t GetFullCompactionPoolMaxThreads() {
+  const auto flag_value = FLAGS_full_compaction_pool_max_threads;
+  if (flag_value > 0) {
+    return flag_value;
+  }
+  static const int32_t cpu_based_value = []() -> int32_t {
+    const int32_t value = NumEffectiveCPUs() <= 4 ? 1 : 2;
+    LOG(INFO) << "FLAGS_full_compaction_pool_max_threads was not set, automatically configuring "
+              << "to " << value << " based on the CPU count.";
+    return value;
+  }();
+  return cpu_based_value;
+}
+
+}  // namespace
+
 TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  TabletServer* server,
                                  MetricRegistry* metric_registry)
@@ -538,6 +563,12 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     .name = "raft_notifications",
     .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
   });
+
+  CHECK_GT(FLAGS_snapshot_cleanup_pool_size, 0);
+  CHECK_OK(ThreadPoolBuilder("snapshot-cleanup")
+               .set_min_threads(1)
+               .set_max_threads(FLAGS_snapshot_cleanup_pool_size)
+               .Build(&snapshot_cleanup_pool_));
 
   CHECK_OK(ThreadPoolBuilder("log-sync")
                .set_min_threads(1)
@@ -581,7 +612,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                    server_->metric_entity(), admin_triggered_compaction_pool))
                .Build(&admin_triggered_compaction_pool_));
   CHECK_OK(ThreadPoolBuilder("full-compaction")
-              .set_max_threads(FLAGS_full_compaction_pool_max_threads)
+              .set_max_threads(GetFullCompactionPoolMaxThreads())
               .set_metrics(THREAD_POOL_METRICS_INSTANCE(
                   server_->metric_entity(), full_compaction_pool))
               .Build(&full_compaction_pool_));
@@ -699,6 +730,7 @@ Status TSTabletManager::Init() {
     // waiting_txn_pool tokens get per-task cgroup wired up per-tablet in MaybeAssignPerDbCgroups.
     open_tablet_pool_->SetCgroup(sys_med);
     flush_bootstrap_state_pool_->SetCgroup(sys_med);
+    snapshot_cleanup_pool_->SetCgroup(sys_med);
     waiting_txn_pool_->SetCgroup(sys_med);
     read_pool_->SetCgroup(sys_med);
   }
@@ -771,6 +803,58 @@ Status TSTabletManager::Init() {
   LOG(INFO) << "Loaded metadata for " << tablet_ids.size() << " tablet in "
             << elapsed.ToMilliseconds() << " ms";
   ts_open_metadata_time_us_->IncrementBy(elapsed.ToMicroseconds());
+
+  // Certify the data roots before any tablet is opened or registered, and in particular before
+  // RegisterDataAndWalDir() below, which registers the root derived from the superblock rather than
+  // the root the superblock was found under -- on a swapped node that populates the drive
+  // assignment maps with the wrong disk, and new replicas then land wherever looks emptier.
+  //
+  // The evidence is already in memory: FsManager remembers where it found each superblock, and the
+  // superblock records its own data directory as an absolute path written when the layout was
+  // correct. If the device now at root R carries a superblock naming R, that device has not moved.
+  {
+    std::vector<TabletSuperblockEvidence> evidence;
+    evidence.reserve(tablet_ids.size());
+    const auto collect = [this, &evidence](const RaftGroupMetadataPtr& meta) {
+      TabletSuperblockEvidence e;
+      e.tablet_id = meta->raft_group_id();
+      // Both sides are normalized to the data root, since data_root_dir() ends in ".../data",
+      // wal_root_dir() in ".../wals", and GetTabletPath() in ".../<server_type>".
+      auto tablet_path = fs_manager_->GetTabletPath(e.tablet_id);
+      if (!tablet_path.ok()) {
+        // Should not happen: ListTabletIds() populated this map for every id we opened.
+        LOG(DFATAL) << "No metadata path recorded for tablet " << e.tablet_id << ": "
+                    << tablet_path.status();
+        return;
+      }
+      e.containing_root = FsRootOfYbDataPath(*tablet_path);
+      // A tombstoned tablet carries no RocksDB directory; it stays in the list (so the root's
+      // tablet count is right) but proves nothing, and EvaluateFsRootPins ignores it.
+      e.recorded_data_root = FsRootOfYbDataPath(meta->data_root_dir());
+      e.recorded_wal_root = FsRootOfYbDataPath(meta->wal_root_dir());
+      evidence.push_back(std::move(e));
+    };
+    {
+      std::lock_guard lock(metas.ready_metas_mutex);
+      for (const auto& meta : metas.ready_metas) {
+        collect(meta);
+      }
+    }
+    {
+      std::lock_guard lock(metas.non_ready_metas_mutex);
+      for (const auto& meta : metas.non_ready_metas) {
+        collect(meta);
+      }
+    }
+    // On refusal this carries one aggregated message naming every affected root and the tablets
+    // whose metadata disagrees. LOG_AND_RETURN_FROM_MAIN_NOT_OK in the TServer main turns it into
+    // one FATAL per start attempt, rather than a FATAL per tablet. A supervisor such as systemd
+    // may keep restarting the process, but every attempt refuses here, before anything is created
+    // or registered, so the retries change nothing on disk. It fires one boot earlier than the
+    // duplicate-superblock FATAL, before any replacement replica exists, so nothing has been lost
+    // and the fix is to remount and restart.
+    RETURN_NOT_OK(fs_manager_->CertifyDataRoots(evidence));
+  }
 
   // Validator should be created before tablets are open.
   tablet_metadata_validator_ = std::make_unique<TabletMetadataValidator>(LogPrefix(), this);
@@ -2330,6 +2414,10 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
           return VectorIndexCompactionToken();
         },
         .vector_index_block_cache = vector_index_block_cache_,
+        .schedule_tablet_metadata_validation =
+            [this](const tablet::RaftGroupMetadata& metadata) {
+              tablet_metadata_validator_->ScheduleValidation(metadata);
+            },
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -2390,6 +2478,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         tablet->GetTableMetricsEntity(),
         tablet->GetTabletMetricsEntity(),
         raft_pool(),
+        snapshot_cleanup_pool(),
         raft_notifications_pool(),
         tablet_prepare_pool(),
         &retryable_requests,
@@ -2439,7 +2528,23 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
   }
 
-  tablet->TriggerPostSplitCompactionIfNeeded();
+  // The tablet peer is already started, so an applied snapshot restore could be replacing the
+  // storages and resetting the key bounds that TriggerPostSplitCompactionIfNeeded reads (see
+  // Tablet::CompleteShutdownStorages). Only that synchronous check needs the guard, the compaction
+  // it schedules takes its own scoped operation. The guard is not inside
+  // TriggerPostSplitCompactionIfNeeded because its other caller,
+  // TabletSnapshots::RestoreCheckpoint, runs with read/write operations paused and would never
+  // acquire the operation.
+  {
+    auto scoped_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+    if (scoped_op.ok()) {
+      tablet->TriggerPostSplitCompactionIfNeeded();
+    } else {
+      // The storages are being shut down or replaced, so there's nothing to compact.
+      LOG(INFO) << kLogPrefix << "Skipped post split compaction trigger: "
+                << scoped_op.CreateStatus();
+    }
+  }
 
   if (tablet->ShouldDisableLbMove()) {
     std::lock_guard lock(mutex_);
@@ -2622,6 +2727,9 @@ void TSTabletManager::CompleteShutdown() {
   // Shut down the apply pool.
   apply_pool_->Shutdown();
 
+  if (snapshot_cleanup_pool_) {
+    snapshot_cleanup_pool_->Shutdown();
+  }
   if (raft_pool_) {
     raft_pool_->Shutdown();
   }
@@ -3688,6 +3796,28 @@ HybridTime TSTabletManager::TEST_LastSnapshotHybridTime(
   return it != snapshot_schedule_info_.end() ? it->second.last_snapshot_ht : HybridTime::kMin;
 }
 
+HybridTime TSTabletManager::ComputeDbHistoryRetentionPinCutoff(
+    HybridTime now, uint32_t db_oid, tablet::RaftGroupMetadata* metadata) const {
+
+  const auto safety_window_cutoff =
+      now.AddSeconds(-FLAGS_timestamp_history_retention_interval_sec);
+  const auto hard_cap_cutoff = now.AddSeconds(-FLAGS_db_history_retention_pin_max_txn_age_sec);
+  const auto pin = server_->GetClusterYsqlDbOldestPinnedReadTime(db_oid);
+  // Without a pin, only the default safety window governs this database.
+  HybridTime db_cutoff = pin.is_valid() ? pin : safety_window_cutoff;
+  // Minimum safety window (retain at least timestamp_history_retention_interval_sec).
+  db_cutoff.MakeAtMost(safety_window_cutoff);
+  // Hard cap (retain at most db_history_retention_pin_max_txn_age_sec).
+  db_cutoff.MakeAtLeast(hard_cap_cutoff);
+
+  VLOG(1) << "DB history retention pin cutoff: " << db_cutoff << " (pin: " << pin
+          << ", safety window: " << safety_window_cutoff
+          << ", hard cap: " << hard_cap_cutoff << ") for tablet: "
+          << metadata->raft_group_id();
+
+  return db_cutoff;
+}
+
 docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
   HybridTime result = HybridTime::kMax;
   // CDC SDK safe time
@@ -3766,6 +3896,35 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
       WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
     }
   }
+  // Apply the cluster-wide per-database history retention pin (aggregated by the master across
+  // all live tservers) on YSQL tables. The pin is bounded by:
+  //  * minimum safety window: never collapse history newer than now -
+  //    timestamp_history_retention_interval_sec, even if the pin would allow it.
+  //  * hard cap: always allow compaction of history older than now -
+  //    db_history_retention_pin_max_txn_age_sec, even if a pin is still protecting it
+  //    (so a single long-running transaction cannot block compaction forever).
+  // When neither bound binds, compact based on the pin: history older than the pin is compactable,
+  // history at or after the pin is retained.
+  //
+  // In the event where a transaction runs longer than the hard cap and gets forcefully compacted,
+  // the session's published pin is not cleared until the transaction ends. However, with the
+  // snapshot gone, the transaction should fail with snapshot too old error, which aborts and calls
+  // FinishTransaction, where the pin will be cleared.
+  if (FLAGS_enable_db_history_retention_pins && metadata->table_type() == PGSQL_TABLE_TYPE &&
+      !metadata->namespace_id().empty()) {
+    auto db_oid_result = GetPgsqlDatabaseOid(metadata->namespace_id());
+    if (db_oid_result.ok()) {
+      const auto now = server_->Clock()->Now();
+
+      const auto db_cutoff = ComputeDbHistoryRetentionPinCutoff(now, *db_oid_result, metadata);
+      result.MakeAtMost(db_cutoff);
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 30)
+          << "Unable to resolve db_oid for namespace " << metadata->namespace_id()
+          << " on tablet " << metadata->raft_group_id() << ": " << db_oid_result.status();
+    }
+  }
+
   VLOG(1) << "Setting the allowed history cutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
   return {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = result};

@@ -1,10 +1,16 @@
-import { forwardRef, useContext, useImperativeHandle, useMemo } from 'react';
+import { forwardRef, useContext, useImperativeHandle, useMemo, type ReactNode } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { mui } from '@yugabyte-ui-library/core';
+import {
+  MapLegendItem,
+  MarkerType,
+  mui,
+  useGetMapIcons,
+  YBTag
+} from '@yugabyte-ui-library/core';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { ArchitectureType } from '@app/components/configRedesign/providerRedesign/constants';
-import { ClusterSpecClusterType, NodeDetailsDedicatedTo } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType, InstanceType, Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import type { UniverseResourceDetails, Universe, ClusterSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -17,8 +23,8 @@ import {
   AddReadReplicaSteps
 } from '../../AddReadReplicaContext';
 import {
-  countMasterAndTServerNodes,
-  getClusterByType
+  getClusterByType,
+  getDedicatedClusterDisplayNodeTotal
 } from '../../../../edit-universe/EditUniverseUtils';
 import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
 import {
@@ -28,8 +34,10 @@ import {
 } from '../../buildUniverseSpecForReadReplicaPricing';
 import {
   ReviewAndSummaryComponent,
-  ReviewItem
+  ReviewItem,
+  ReviewMapMarker
 } from '../../../../create-universe/steps/review-summary/ReviewAndSummaryComponent';
+import { getPrimaryMapPins } from '../RRRegionsAndAZ/RRRegionsAndAZ';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { useGetZones } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
@@ -42,6 +50,15 @@ import { useSubmitReadReplica } from '../../useSubmitReadReplica';
 const { Box } = mui;
 
 const MONTHLY_COST_MULTIPLIER = 30;
+
+function formatGbValue(value: string, dash = '-'): ReactNode {
+  if (value === dash) return dash;
+  return (
+    <>
+      {value} <span style={{ fontWeight: 200 }}>GB</span>
+    </>
+  );
+}
 
 /** API may omit fields or use numeric strings; avoid hiding the whole row on strict typeof checks. */
 function finiteMetric(v: unknown): number | undefined {
@@ -83,38 +100,6 @@ function finiteHourlyPrice(d: UniverseResourceDetails | undefined): number | und
   return readResourceMetric(d, 'price_per_hour');
 }
 
-/**
- * When dedicated masters are enabled, API/spec `num_nodes` is T-Server count only.
- * Match create-universe review: display total = tservers + masters (masters ≈ RF).
- */
-function getDedicatedPrimaryNodeTotal(
-  universeData: Universe | undefined,
-  primary: ClusterSpec | undefined,
-  apiNumNodes: number | undefined
-): number | undefined {
-  if (!primary?.node_spec?.dedicated_nodes) {
-    return undefined;
-  }
-
-  const fromDetails = universeData
-    ? countMasterAndTServerNodes(universeData, primary)
-    : undefined;
-  const tFromDetails = fromDetails?.[NodeDetailsDedicatedTo.TSERVER] ?? 0;
-  const mFromDetails = fromDetails?.[NodeDetailsDedicatedTo.MASTER] ?? 0;
-
-  const tserver =
-    tFromDetails > 0
-      ? tFromDetails
-      : apiNumNodes ?? finiteMetric(primary.num_nodes);
-  const master =
-    mFromDetails > 0 ? mFromDetails : finiteMetric(primary.replication_factor);
-
-  if (tserver === undefined || master === undefined) {
-    return undefined;
-  }
-  return tserver + master;
-}
-
 export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
   const [
     {
@@ -125,7 +110,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
       databaseSettings,
       activeStep
     },
-    { moveToPreviousPage }
+    { moveToPreviousPage, setActiveStep }
   ] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
 
   const inheritPrimaryHardware = Boolean(instanceSettings?.inheritPrimaryInstance);
@@ -225,6 +210,34 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
       .map((r) => (r.regionUuid ? byUuid.get(r.regionUuid) : undefined))
       .filter((r): r is Region => Boolean(r));
   }, [regionsAndAZ, regionsList]);
+
+  const primaryMapPins = useMemo(
+    () => getPrimaryMapPins(universeData, regionsList as Region[]),
+    [universeData, regionsList]
+  );
+
+  const reviewMapMarkers: ReviewMapMarker[] = useMemo(() => {
+    const primary: ReviewMapMarker[] = primaryMapPins.map((p) => ({
+      key: p.key,
+      lat: p.lat,
+      lng: p.lng,
+      name: p.name,
+      type: MarkerType.REGION_SELECTED
+    }));
+    const rr: ReviewMapMarker[] = mapPins
+      .filter((r) => r.latitude != null && r.longitude != null)
+      .map((r) => ({
+        key: `rr-${r.uuid}`,
+        lat: r.latitude as number,
+        lng: r.longitude as number,
+        name: r.name,
+        type: MarkerType.READ_REPLICA
+      }));
+    return [...primary, ...rr];
+  }, [primaryMapPins, mapPins]);
+
+  const primaryMapIcon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
+  const rrMapIcon = useGetMapIcons({ type: MarkerType.READ_REPLICA });
 
   const providerForInstanceTypes = useMemo<Partial<ProviderType>>(
     () => ({
@@ -376,7 +389,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
 
   const reviewItems: ReviewItem[] = useMemo(() => {
     const items: ReviewItem[] = [];
-    const nodesLabel = t(isK8s ? 'reviewSummary.totalPods' : 'reviewSummary.totalNodes');
+    const nodesLabel = t(isK8s ? 'reviewSummary.pods' : 'reviewSummary.nodes');
     const coresLabel = t('reviewSummary.totalCores');
     const memLabel = t('reviewSummary.totalMemory');
     const storageLabel = t('reviewSummary.totalStorage');
@@ -392,7 +405,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
       : undefined;
     const primaryNodesFromSpec = finiteMetric(primarySpecCluster?.num_nodes);
     const primaryNodesForScale = pNodes ?? primaryNodesFromSpec;
-    const dedicatedPrimaryNodes = getDedicatedPrimaryNodeTotal(
+    const dedicatedPrimaryNodes = getDedicatedClusterDisplayNodeTotal(
       universeData,
       primarySpecCluster as ClusterSpec | undefined,
       pNodes
@@ -467,6 +480,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
 
     items.push({
       name: t('reviewCostSummary.primaryCluster'),
+      nameVariant: 'plain',
       icon: <ClusterIcon />,
       attributes: [
         {
@@ -479,11 +493,11 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
         },
         {
           name: memLabel,
-          value: pMem !== undefined ? String(pMem) : dash
+          value: formatGbValue(pMem !== undefined ? String(pMem) : dash)
         },
         {
           name: storageLabel,
-          value: pVol !== undefined ? String(pVol) : dash
+          value: formatGbValue(pVol !== undefined ? String(pVol) : dash)
         }
       ],
       dailyCost: hasPrimaryCost ? (primaryHourly! * 24).toFixed(2) : dash,
@@ -502,6 +516,15 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
 
     items.push({
       name: t('reviewCostSummary.readReplicaTitle'),
+      nameVariant: 'link',
+      onNameClick: () => setActiveStep(AddReadReplicaSteps.REGIONS_AND_AZ),
+      badge: (
+        <span data-testid="rr-review-new-badge">
+          <YBTag size="small" variant="dark" color="success" customSx={{ color: '#13A768' }}>
+            {t('newRegionBadge')}
+          </YBTag>
+        </span>
+      ),
       icon: <ReplicaIcon />,
       attributes: [
         {
@@ -519,11 +542,11 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
         },
         {
           name: memLabel,
-          value: rrMemDisplay
+          value: formatGbValue(rrMemDisplay)
         },
         {
           name: storageLabel,
-          value: rrStorageDisplay
+          value: formatGbValue(rrStorageDisplay)
         }
       ],
       dailyCost: hasRrCost ? (rrMetrics.hourly * 24).toFixed(2) : dash,
@@ -546,7 +569,8 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     hasRrCost,
     inheritPrimaryHardware,
     primaryHourly,
-    rrSpecHardwareTotals
+    rrSpecHardwareTotals,
+    setActiveStep
   ]);
 
   const totalDailyCost = hasTotalCost ? (totalHourly! * 24).toFixed(2) : dash;
@@ -565,11 +589,23 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
       </div>
       <ReviewAndSummaryComponent
         regions={mapPins}
+        mapMarkers={reviewMapMarkers}
+        mapLegendItems={[
+          <MapLegendItem
+            key="primary-legend"
+            icon={<>{primaryMapIcon.normal}</>}
+            label={t('legendPrimaryCluster')}
+          />,
+          <MapLegendItem
+            key="rr-legend"
+            icon={<>{rrMapIcon.normal}</>}
+            label={t('legendReadReplica')}
+          />
+        ]}
         reviewItems={reviewItems}
         totalDailyCost={totalDailyCost}
         totalMonthlyCost={totalMonthlyCost}
         summaryTranslationKeyPrefix="readReplica.addRR.reviewSummary"
-        mapLegendLabel={t('legendSecondary')}
         mapsDataTestId="yb-maps-rr-review-summary"
       />
     </Box>

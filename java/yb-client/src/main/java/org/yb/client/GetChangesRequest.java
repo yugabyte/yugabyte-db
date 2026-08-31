@@ -41,6 +41,7 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
   private final int walSegmentIndex;
   // When set, overrides the tserver flag cdc_stream_records_threshold_size_bytes for this request.
   private final Long getchangesRespMaxSizeBytes;
+  private final long maxIndexInSortWindow;
 
   public GetChangesRequest(YBTable table, String streamId, String tabletId,
    long term, long index, byte[] key, int write_id, long time, boolean needSchemaInfo) {
@@ -67,6 +68,15 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
       byte[] key, int write_id, long time, boolean needSchemaInfo,
       CdcSdkCheckpoint explicitCheckpoint, String tableId, long safeHybridTime,
       int walSegmentIndex, Long getchangesRespMaxSizeBytes) {
+    this(table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo,
+        explicitCheckpoint, tableId, safeHybridTime, walSegmentIndex, getchangesRespMaxSizeBytes,
+        0);
+  }
+
+  public GetChangesRequest(YBTable table, String streamId, String tabletId, long term, long index,
+      byte[] key, int write_id, long time, boolean needSchemaInfo,
+      CdcSdkCheckpoint explicitCheckpoint, String tableId, long safeHybridTime,
+      int walSegmentIndex, Long getchangesRespMaxSizeBytes, long maxIndexInSortWindow) {
     super(table);
     this.streamId = streamId;
     this.tabletId = tabletId;
@@ -81,6 +91,7 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     this.safeHybridTime = safeHybridTime;
     this.walSegmentIndex = walSegmentIndex;
     this.getchangesRespMaxSizeBytes = getchangesRespMaxSizeBytes;
+    this.maxIndexInSortWindow = maxIndexInSortWindow;
   }
 
   @Override
@@ -124,6 +135,8 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     }
 
     builder.setWalSegmentIndex(walSegmentIndex);
+
+    builder.setMaxIndexInSortWindow(maxIndexInSortWindow);
 
     if (getchangesRespMaxSizeBytes != null) {
       builder.setGetchangesRespMaxSizeBytes(getchangesRespMaxSizeBytes);

@@ -2,6 +2,7 @@ package com.yugabyte.yw.common.diagnostics;
 
 import com.typesafe.config.ConfigException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.io.File;
 import javax.inject.Inject;
@@ -49,6 +50,29 @@ public class SupportBundlePublisher extends BasePublisher<File> {
 
     String blobPath =
         String.join("/", universe.getUniverseUUID().toString(), supportBundleFile.getName());
+    return publishToEnabledDestinations(supportBundleFile, blobPath);
+  }
+
+  /**
+   * Publishes a YBA-only support bundle using the customer UUID as the storage prefix.
+   *
+   * @param supportBundleFile The support bundle file to upload
+   * @param customer The customer context for path generation
+   * @return true if at least one destination succeeded, false otherwise
+   */
+  public boolean publishForCustomer(File supportBundleFile, Customer customer) {
+    if (supportBundleFile == null || !supportBundleFile.exists()) {
+      log.error("Support bundle file is null or does not exist");
+      return false;
+    }
+    if (customer == null) {
+      log.error("Customer is null");
+      return false;
+    }
+
+    String blobPath =
+        String.join(
+            "/", "yba-support-bundles", customer.getUuid().toString(), supportBundleFile.getName());
     return publishToEnabledDestinations(supportBundleFile, blobPath);
   }
 }

@@ -50,8 +50,8 @@ export const UniverseDisplayPanel = ({
   const {
     open: isUniverseCreationPopoverOpen,
     anchorRef: createUniverseAnchorRef,
-    handleCreateUniverseClick,
-    handleClose: handleUniverseCreationPopoverClose
+    handleClose: handleUniverseCreationPopoverClose,
+    handleClickAway: handleUniverseCreationPopoverClickAway
   } = useUniverseCreationPopover();
   const isOnboardingExperienceEnabled = useOnboardingNewExperienceEnabled();
   const currentUser = useSelector((state: any) => state.customer.currentUser.data);
@@ -148,7 +148,6 @@ export const UniverseDisplayPanel = ({
                 <span ref={createUniverseAnchorRef} style={{ display: 'inline-block' }}>
                   <Link
                     to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}
-                    onClick={isNewV2CreateUniverseUIEnabled ? handleCreateUniverseClick : undefined}
                   >
                     <YBButton
                       btnClass="universe-button btn btn-lg btn-orange"
@@ -177,6 +176,7 @@ export const UniverseDisplayPanel = ({
               open={isUniverseCreationPopoverOpen}
               anchorRef={createUniverseAnchorRef}
               onClose={handleUniverseCreationPopoverClose}
+              onClickAway={handleUniverseCreationPopoverClickAway}
             />
           </>
         )}

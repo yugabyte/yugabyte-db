@@ -36,7 +36,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
 #include "common/ip.h"
-#include "common/pg_yb_param_status_flags.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "libpq/libpq-be.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -943,17 +943,18 @@ yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
 	/* Client needs to be connected on unix domain socket */
 	if (MyProcPort->raddr.addr.ss_family != AF_UNIX && !yb_is_auth_backend)
 		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-						errmsg("yb_is_client_ysqlconnmgr can only be set "
-							   "if the connection is made over unix domain "
-							   "socket or if the backend is an authentication "
-							   "backend")));
+						errmsg("%s can only be set if the connection is made "
+							   "over unix domain socket or if the backend is "
+							   "an authentication backend",
+							   YB_YCM_IS_CLIENT_YSQLCONNMGR)));
 
 	/* Authentication method needs to be yb-tserver-key */
 	if (!MyProcPort->yb_is_tserver_auth_method)
 		ereport(FATAL,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("yb_is_client_ysqlconnmgr can only be set "
-						"if the authentication method was yb-tserver-key")));
+				 errmsg("%s can only be set if the authentication method was "
+						"yb-tserver-key",
+						YB_YCM_IS_CLIENT_YSQLCONNMGR)));
 
 	return true;
 }

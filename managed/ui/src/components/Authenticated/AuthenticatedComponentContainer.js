@@ -49,8 +49,12 @@ import {
   fetchAdminNotifications,
   fetchAdminNotificationsResponse,
   fetchPerfAdvisorList,
-  fetchPerfAdvisorListResponse
+  fetchPerfAdvisorListResponse,
+  updateUserProfileSuccess
 } from '../../actions/customers';
+import {
+  bindTourProgress
+} from '../../redesign/features-v2/onboarding/universe-revamp/tour-progress';
 import {
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
@@ -194,6 +198,10 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(fetchUser(userId)).then((userResponse) => {
         if (userResponse.payload.status === 200) {
           dispatch(fetchUserSuccess(userResponse));
+          const user = userResponse.payload.data;
+          bindTourProgress(user, (updated) => {
+            dispatch(updateUserProfileSuccess({ data: updated, status: 200 }));
+          });
         } else {
           dispatch(fetchUserFailure(userResponse.payload.error));
         }

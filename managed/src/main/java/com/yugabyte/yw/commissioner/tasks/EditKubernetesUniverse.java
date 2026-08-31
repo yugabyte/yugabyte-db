@@ -81,9 +81,9 @@ import play.libs.Json;
 @Retryable
 // TODO(PLAT-21484): add @CanRollback here once RollbackEditKubernetesUniverse (PLAT-21484), the
 // state_transition_details safe-window gate (PLAT-21387 / PLAT-21483) and the runtime flag
-// (PLAT-21488) are in place. The TaskRollbackComputer registry already has a placeholder
-// (EditUniverseRollbackComputer) that rejects until those land. Annotating before they exist
-// would surface canRollback=true in the UI/API while the rollback action is not yet implemented.
+// (PLAT-21488) are in place. Bind EditKubernetesUniverse in TaskRollbackModule when those land.
+// Annotating before they exist would surface canRollback=true in the UI/API while the rollback
+// action is not yet implemented.
 public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;
@@ -389,6 +389,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         canResizeDisk(
             curPlacement, newPlacement, newIntent, curIntent, taskParams().nodeDetailsSet);
     if (!azToDiskSizeChangeMap.isEmpty()) {
+      // Rollback checkpoint: resizing existing pods' disks mutates running servers.
+      createMarkRollbackUnsafeTaskOnce();
       createResizeDiskTask(
           universe.getName(),
           curPlacement,
@@ -519,11 +521,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
       // Update master addresses to the latest required ones,
       // We use the original unfiltered mastersToAdd which is determined from pi.
+      // Rollback checkpoint: moving masters mutates the existing master quorum.
+      createMarkRollbackUnsafeTaskOnce();
       createMoveMasterTasks(new ArrayList<>(mastersToAdd), new ArrayList<>(mastersToRemove));
     }
 
     if (CollectionUtils.isNotEmpty(fullMoveMasterAZs)
         || CollectionUtils.isNotEmpty(fullMoveTserverAZs)) {
+      // Rollback checkpoint: a full move replaces existing pods and deletes their PVCs.
+      createMarkRollbackUnsafeTaskOnce();
       if (CollectionUtils.isNotEmpty(fullMoveMasterAZs)) {
         // Ybc is not present on master-only nodes currently
         createFullMoveTasks(
@@ -633,6 +639,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       }
     }
 
+    // Rollback checkpoint: the placement update on the master leader starts data migration /
+    // blacklisting of existing tservers (mirrors the VM EditUniverse checkpoint before
+    // createPlacementInfoTask). New-pod scale-up above stays in the safe window.
+    createMarkRollbackUnsafeTaskOnce();
     // Update the blacklist servers on master leader.
     createPlacementInfoTask(tserversToRemove, taskParams().clusters)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
@@ -674,6 +684,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     // Now roll all the old pods that haven't been removed and aren't newly added.
     // This will update the master addresses as well as the instance type changes.
+    // A HELM_UPGRADE re-renders the whole per-AZ release (both the master and tserver
+    // StatefulSets), so the storage stanza it generates must reflect the target device info -
+    // which is what the cluster has already converged to after the disk-resize / move steps above.
+    // If we let it render the still-stale persisted intent, Kubernetes rejects the resulting
+    // immutable volumeClaimTemplates update on the (master) StatefulSet. Passing the "use new
+    // device info" flags keeps the rendered storage in sync with the live StatefulSets. Full-move
+    // AZs are excluded via skipAZs, so this only affects the in-place edited AZs.
     if (restartAllPods) {
       upgradePodsTask(
           universe.getName(),
@@ -692,7 +709,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           PodUpgradeParams.DEFAULT,
           null /* ysqlMajorVersionUpgradeState */,
           null /* rootCAUUID */,
-          fullMoveMasterAZs);
+          fullMoveMasterAZs,
+          true /* useNewMasterDeviceInfo */,
+          true /* useNewTserverDeviceInfo */);
 
       upgradePodsTask(
           universe.getName(),
@@ -711,7 +730,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           PodUpgradeParams.DEFAULT,
           null /* ysqlMajorVersionUpgradeState */,
           null /* rootCAUUID */,
-          fullMoveTserverAZs);
+          fullMoveTserverAZs,
+          true /* useNewMasterDeviceInfo */,
+          true /* useNewTserverDeviceInfo */);
     } else if (instanceTypeChanged) {
       upgradePodsTask(
           universe.getName(),
@@ -730,7 +751,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           PodUpgradeParams.DEFAULT,
           null /* ysqlMajorVersionUpgradeState */,
           null /* rootCAUUID */,
-          fullMoveTserverAZs);
+          fullMoveTserverAZs,
+          true /* useNewMasterDeviceInfo */,
+          true /* useNewTserverDeviceInfo */);
     } else if (masterAddressesChanged) {
       // Update master_addresses flag on Master
       // and tserver_master_addrs flag on tserver without restart.

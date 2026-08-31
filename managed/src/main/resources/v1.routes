@@ -297,7 +297,7 @@ DELETE  /customers/:cUUID/universes/:uniUUID                                   c
 # Universe Info like status, cost, query stats, health, resource usage
 GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseInfoController.universeStatus(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/spot_status                       com.yugabyte.yw.controllers.UniverseInfoController.spotInstanceStatus(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-GET     /customers/:cUUID/universes/:uniUUID/health_check                      com.yugabyte.yw.controllers.UniverseInfoController.healthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/health_check                      com.yugabyte.yw.controllers.UniverseInfoController.healthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID, limit: Integer ?= 10)
 GET     /customers/:cUUID/universes/:uniUUID/trigger_health_check              com.yugabyte.yw.controllers.UniverseInfoController.triggerHealthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/cost                                                 com.yugabyte.yw.controllers.UniverseInfoController.universeListCost(cUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/cost                              com.yugabyte.yw.controllers.UniverseInfoController.universeCost(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -682,7 +682,7 @@ PUT /customers/:cUUID/pa_collector/:paUUID                                     c
 DELETE /customers/:cUUID/pa_collector/:paUUID                                  com.yugabyte.yw.controllers.PACollectorController.deletePACollector(cUUID: java.util.UUID, paUUID: java.util.UUID, force: java.lang.Boolean ?= false, request: Request)
 POST /customers/:cUUID/pa_collector/:paUUID/universes/page                      com.yugabyte.yw.controllers.PACollectorController.pageRegisteredUniverses(cUUID: java.util.UUID, paUUID: java.util.UUID, request: Request)
 GET /customers/:cUUID/universes/:uUUID/pa_collector                            com.yugabyte.yw.controllers.PACollectorController.checkRegistered(cUUID: java.util.UUID, uUUID: java.util.UUID)
-PUT /customers/:cUUID/universes/:uUUID/pa_collector/:paUUID                    com.yugabyte.yw.controllers.PACollectorController.registerUniverse(cUUID: java.util.UUID, uUUID: java.util.UUID, paUUID: java.util.UUID, advancedObservability: java.lang.Boolean ?= false, request: Request)
+PUT /customers/:cUUID/universes/:uUUID/pa_collector/:paUUID                    com.yugabyte.yw.controllers.PACollectorController.registerUniverse(cUUID: java.util.UUID, uUUID: java.util.UUID, paUUID: java.util.UUID, advancedObservability: java.lang.Boolean ?= false, mode: java.lang.String ?= null, paEndpointUUID: java.util.UUID ?= null, request: Request)
 DELETE /customers/:cUUID/universes/:uUUID/pa_collector                        com.yugabyte.yw.controllers.PACollectorController.unregisterUniverse(cUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
 
 # PA Proxy - reverse proxy for PA UI XHRs. Universe-scoped routes come first so

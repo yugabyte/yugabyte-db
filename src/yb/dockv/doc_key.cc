@@ -1362,7 +1362,7 @@ Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special) {
   return true;
 }
 
-Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rhs) {
+Result<bool> HashedOrFirstRangeComponentsExistAndEqual(const Slice& lhs, const Slice& rhs) {
   DocKeyDecoder lhs_decoder(lhs);
   DocKeyDecoder rhs_decoder(rhs);
   RETURN_NOT_OK(lhs_decoder.DecodeCotableId());
@@ -1383,6 +1383,11 @@ Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rh
 
   // Check all hashed components if present or first range component otherwise.
   int num_components_to_check = hash_present ? kNumValuesNoLimit : 1;
+
+  // A key with neither hash nor range components.
+  if (!hash_present && lhs_decoder.GroupEnded()) {
+    return false;
+  }
 
   while (!lhs_decoder.GroupEnded() && num_components_to_check > 0) {
     auto lhs_start = lhs_decoder.left_input().data();

@@ -47,7 +47,6 @@
 /* YB includes */
 #include "access/sysattr.h"
 #include "access/xact.h"
-#include "access/yb_scan.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -167,7 +166,7 @@ IndexNext(IndexScanState *node)
 		IndexScan  *plan;
 
 		scandesc->yb_exec_params = &estate->yb_exec_params;
-		scandesc->yb_exec_params->rowmark = -1;
+		scandesc->yb_exec_params->rowmark = YBC_NO_ROW_MARK;
 
 		/* Add row marks. */
 		plan = castNode(IndexScan, node->ss.ps.plan);

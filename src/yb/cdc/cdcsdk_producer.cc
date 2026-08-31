@@ -121,6 +121,7 @@ DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
 
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb::cdc {
 
@@ -909,13 +910,19 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     // Check if packed row schema version is present in the schema_packing_storage. If not
     // present, invalidate the cached_schema_details so that we fetch schema with required
     // version from sys catalog.
-    if (!SchemaPackingStorageContainsVersion(
-            schema_packing_storage, narrow_cast<SchemaVersion>(pr_schema_version))) {
-      update_schema_packing_storage = true;
-      auto it = cached_schema_details->find(table_id);
-      if (it != cached_schema_details->end()) {
-        (*cached_schema_details).erase(it);
-      }
+    update_schema_packing_storage = !SchemaPackingStorageContainsVersion(
+        schema_packing_storage, narrow_cast<SchemaVersion>(pr_schema_version));
+
+    // The cached entry holds a single schema version per table, but with transactional DDL, a
+    // transaction containing DDL writes rows under more than one version. A schema from a different
+    // version cannot resolve this row's column ids, so drop it and fetch the one this row was
+    // written with.
+    auto it = cached_schema_details->find(table_id);
+    if (it != cached_schema_details->end() &&
+        (update_schema_packing_storage ||
+         (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+          it->second.schema_version != pr_schema_version))) {
+      (*cached_schema_details).erase(it);
     }
   }
 
@@ -942,19 +949,26 @@ Result<tablet::TableInfoPtr> WarnIfNotFoundOrReturn(
     return result;
   }
 
-  LOG(WARNING) << "Did not find table info for table with colocation / cotable id: " << id
+  LOG(WARNING) << "Did not find table info for table with colocation / cotable / table id: " << id
                << " and tablet id: " << tablet_id
-               << ". This could be because the object corresponding to colocation id has "
-                  "been deleted.";
+               << ". This could be because the object corresponding to the id has been deleted.";
+  // TODO(#31908): callers treat this nullptr as a dropped or rewritten colocated table and skip the
+  // record, which is safe only while a lagging stream cannot stream such a table's remaining
+  // events.  Once that is supported, callers must resolve the table as of the record instead.
   return nullptr;
+}
+
+// The id is either a ColocationId or a TableId, matching the GetTableInfo overloads.
+template <class Id>
+Result<tablet::TableInfoPtr> GetTableInfoForColocatedTable(
+    const Id& id, tablet::TabletPtr tablet_ptr) {
+  auto table_info_result = tablet_ptr->metadata()->GetTableInfo(id);
+  return WarnIfNotFoundOrReturn(table_info_result, AsString(id), tablet_ptr->tablet_id());
 }
 
 Result<tablet::TableInfoPtr> GetTableInfoForColocatedTable(
     const dockv::SubDocKey& decoded_key, tablet::TabletPtr tablet_ptr) {
-  const auto& colocation_id = decoded_key.doc_key().colocation_id();
-  auto table_info_result = tablet_ptr->metadata()->GetTableInfo(colocation_id);
-  return WarnIfNotFoundOrReturn(
-      table_info_result, std::to_string(colocation_id), tablet_ptr->tablet_id());
+  return GetTableInfoForColocatedTable(decoded_key.doc_key().colocation_id(), tablet_ptr);
 }
 
 Result<tablet::TableInfoPtr> GetTableInfoForSysCatalogTable(
@@ -2126,7 +2140,7 @@ Status GetConsistentWALRecords(
     uint64_t* consistent_safe_time, const OpId& historical_max_op_id,
     bool* wait_for_wal_update, OpId* last_seen_op_id, OpId* last_skipped_op_id,
     int64_t& last_readable_opid_index, const int64_t& safe_hybrid_time_req,
-    const CoarseTimePoint& deadline,
+    int64_t max_index_in_sort_window_req, const CoarseTimePoint& deadline,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* consistent_wal_records,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints,
     HybridTime* last_read_wal_op_record_time, bool* is_entire_wal_read) {
@@ -2232,7 +2246,15 @@ Status GetConsistentWALRecords(
       last_read_segment_footer_safe_time = consistent_stream_safe_time_footer;
     }
 
-    if (!consistent_wal_records->empty()) {
+    // In the happy path, where the WAL ops happen to be in sorted order, this condition will be
+    // trivially true, since we will read the WAL beyond the max_index_in_sort_window_req in this
+    // call.
+    // However, in case of out of order applies, we want to ensure that subsequent GetChanges calls
+    // serviced by any peer of the tablet, see the same sorted WAL ops, irrespective of their
+    // segment boundaries.
+    bool reached_max_index = last_seen_op_id->index >= max_index_in_sort_window_req;
+
+    if (reached_max_index && !consistent_wal_records->empty()) {
       auto record = consistent_wal_records->front();
       if (FLAGS_cdc_read_wal_segment_by_segment &&
           GetTransactionCommitTime(record) <= consistent_stream_safe_time_footer.ToUint64()) {
@@ -2248,6 +2270,12 @@ Status GetConsistentWALRecords(
     }
 
   } while (last_seen_op_id->index < last_readable_opid_index);
+
+  // If we could not read far enough to cover the max_index_in_sort_window_req, do not stream
+  // anything in this call.
+  if (last_seen_op_id->index < max_index_in_sort_window_req) {
+    *wait_for_wal_update = true;
+  }
 
   // Skip updating consistent safe time when entire WAL is read and we can ship all records
   // till the consistent safe time computed in cdc producer.
@@ -2682,6 +2710,7 @@ Status GetChangesForCDCSDK(
     int64_t safe_hybrid_time_req,
     std::optional<uint64_t> consistent_snapshot_time,
     int wal_segment_index_req,
+    int64_t max_index_in_sort_window_req,
     int64_t* last_readable_opid_index,
     const TableId& colocated_table_id,
     CoarseTimePoint deadline,
@@ -2694,13 +2723,16 @@ Status GetChangesForCDCSDK(
   auto op_id = OpId::FromPB(from_op_id);
   VLOG(1) << "GetChanges request has from_op_id: " << AsString(from_op_id)
           << ", safe_hybrid_time: " << safe_hybrid_time_req
-          << ", wal_segment_index: " << wal_segment_index_req << " for tablet_id: " << tablet_id;
+          << ", wal_segment_index: " << wal_segment_index_req
+          << ", max_index_in_sort_window: " << max_index_in_sort_window_req
+          << " for tablet_id: " << tablet_id;
   ScopedTrackedConsumption consumption;
   CDCSDKCheckpointPB checkpoint;
   // 'checkpoint_updated' decides if the response checkpoint should be copied from
   // previously declared 'checkpoint' or the 'from_op_id'.
   bool checkpoint_updated = false;
   int wal_segment_index = GetWalSegmentIndex(wal_segment_index_req);
+  int64_t max_wal_op_index_read = op_id.index;
   bool report_tablet_split = false, snapshot_operation = false, pending_intents = false,
        wait_for_wal_update = false, txn_load_in_progress = false;
 
@@ -2755,19 +2787,21 @@ Status GetChangesForCDCSDK(
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>> wal_records, all_checkpoints;
 
     DCHECK(last_readable_opid_index);
-    if (FLAGS_cdc_enable_consistent_records)
+    if (FLAGS_cdc_enable_consistent_records) {
       RETURN_NOT_OK(GetConsistentWALRecords(
           tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
           historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_skipped_op_id,
-          *last_readable_opid_index, safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
-          &last_read_wal_op_record_time, &is_entire_wal_read));
-    else
+          *last_readable_opid_index, safe_hybrid_time_req, max_index_in_sort_window_req, deadline,
+          &wal_records, &all_checkpoints, &last_read_wal_op_record_time, &is_entire_wal_read));
+      max_wal_op_index_read = last_seen_op_id.index;
+    } else {
       // 'skip_intents' is true here because we want the first transaction to be the partially
       // streamed transaction.
       RETURN_NOT_OK(GetWALRecords(
           tablet_peer, mem_tracker, msgs_holder, &consumption, consistent_stream_safe_time,
           &last_seen_op_id, &last_readable_opid_index, safe_hybrid_time_req, deadline, true,
           &wal_records, &all_checkpoints));
+      }
 
     have_more_messages = HaveMoreMessages(true);
 
@@ -2880,19 +2914,21 @@ Status GetChangesForCDCSDK(
       }
 
       DCHECK(last_readable_opid_index);
-      if (FLAGS_cdc_enable_consistent_records)
+      if (FLAGS_cdc_enable_consistent_records) {
         RETURN_NOT_OK(GetConsistentWALRecords(
             tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
             historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_skipped_op_id,
-            *last_readable_opid_index, safe_hybrid_time_req, deadline, &wal_records,
-            &all_checkpoints, &last_read_wal_op_record_time, &is_entire_wal_read));
-      else
+            *last_readable_opid_index, safe_hybrid_time_req, max_index_in_sort_window_req, deadline,
+            &wal_records, &all_checkpoints, &last_read_wal_op_record_time, &is_entire_wal_read));
+        max_wal_op_index_read = last_seen_op_id.index;
+      } else {
         // 'skip_intents' is false otherwise in case the complete wal segment is filled with
         // intents we will break the loop thinking that WAL has no more records.
         RETURN_NOT_OK(GetWALRecords(
             tablet_peer, mem_tracker, msgs_holder, &consumption, consistent_stream_safe_time,
             &last_seen_op_id, &last_readable_opid_index, safe_hybrid_time_req, deadline, false,
             &wal_records, &all_checkpoints));
+        }
 
       if (wait_for_wal_update) {
         VLOG_WITH_FUNC(1)
@@ -3078,12 +3114,41 @@ Status GetChangesForCDCSDK(
 
           case consensus::OperationType::CHANGE_METADATA_OP: {
             VLOG(3) << "Will stream a DDL record. " << msg->ShortDebugString();
+            if (!msg->change_metadata_request().has_schema()) {
+              // A change metadata op without a schema (for example a mark_backfill_done op
+              // or a colocated table add_table/remove_table_id) carries no schema change to
+              // stream.  Skip it instead of running the schema path below, which would cache
+              // an empty schema under version 0 and emit an empty schema DDL record if the
+              // sys catalog lookup fails.
+              VLOG(3) << "Skipping schema-less CHANGE_METADATA_OP. " << msg->ShortDebugString();
+              AcknowledgeStreamedMsg(
+                  msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                  &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                  &safe_hybrid_time_resp, &wal_segment_index);
+              checkpoint_updated = true;
+              break;
+            }
             RETURN_NOT_OK(SchemaFromPB(
                 msg->change_metadata_request().schema().ToGoogleProtobuf(), &current_schema));
             TabletId table_id = tablet_ptr->metadata()->table_id();
             if (tablet_ptr->metadata()->colocated()) {
-              auto table_info = CHECK_RESULT(tablet_ptr->metadata()->GetTableInfo(
-                  msg->change_metadata_request().alter_table_id().ToBuffer()));
+              auto table_info = VERIFY_RESULT(GetTableInfoForColocatedTable(
+                  msg->change_metadata_request().alter_table_id().ToBuffer(), tablet_ptr));
+              if (!table_info) {
+                // The table this op alters is no longer in the tablet metadata.  This happens
+                // when a colocated table is dropped after writing this op but before the
+                // stream reads it, since the lookup above reflects the current metadata and
+                // not the metadata as of the op.  The table is gone, so there is nothing to
+                // stream for it.
+                LOG(INFO) << "Skipping CHANGE_METADATA_OP for a table that is no longer in the "
+                          << "tablet metadata. " << msg->ShortDebugString();
+                AcknowledgeStreamedMsg(
+                    msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                    &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                    &safe_hybrid_time_resp, &wal_segment_index);
+                checkpoint_updated = true;
+                break;
+              }
               table_id = table_info->table_id;
               table_name = table_info->table_name;
             }
@@ -3311,6 +3376,11 @@ Status GetChangesForCDCSDK(
                      : resp->mutable_cdc_sdk_checkpoint()->CopyFrom(from_op_id);
   resp->set_wal_segment_index(wal_segment_index);
 
+  // We should never move the max_index_in_sort_window backwards as that could lead to us missing
+  // out on sending data.
+  resp->set_max_index_in_sort_window(
+      std::max<int64_t>(max_wal_op_index_read, max_index_in_sort_window_req));
+
   if (last_streamed_op_id->index > 0) {
     last_streamed_op_id->ToPB(resp->mutable_checkpoint()->mutable_op_id());
   }
@@ -3338,6 +3408,7 @@ Status GetChangesForCDCSDK(
           << resp->cdc_sdk_checkpoint().ShortDebugString()
           << ", safe_hybrid_time: " << resp->safe_hybrid_time()
           << ", wal_segment_index: " << resp->wal_segment_index()
+          << ", max_index_in_sort_window: " << resp->max_index_in_sort_window()
           << ", num_records: " << resp->cdc_sdk_proto_records_size()
           << ", tablet_id: " << tablet_id;
 

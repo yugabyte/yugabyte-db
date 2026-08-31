@@ -38,8 +38,8 @@ func RetrieveUser(ctx context.Context, apiToken string) error {
 	return nil
 }
 
-// Registers the node agent to the platform.
-func RegisterNodeAgent(ctx context.Context, apiToken string) error {
+// Registers the node agent to the platform with the optional certificate name for TLS.
+func RegisterNodeAgent(ctx context.Context, apiToken, certificateName string) error {
 	config := util.CurrentConfig()
 	host := config.String(util.NodeBindIpKey)
 	port := config.String(util.NodePortKey)
@@ -59,7 +59,7 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 	}
 	defer server.Stop()
 	util.FileLogger().Info(ctx, "Submiting Registration task to the executor.")
-	registrationHandler := task.NewAgentRegistrationHandler(apiToken)
+	registrationHandler := task.NewAgentRegistrationHandler(apiToken, certificateName)
 	// Call platform to register the node agent.
 	err = executor.GetInstance().
 		ExecuteTask(ctx, registrationHandler.Handle)
@@ -71,9 +71,14 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 	nuuid := data.Uuid
 	config.Update(util.NodeAgentIdKey, nuuid)
 	util.FileLogger().Info(ctx, "Saving the node agent certs.")
+	// Clean up old cert folders to avoid piling up.
+	if err := util.RemoveSubfolders(util.CertsDir()); err != nil {
+		util.FileLogger().Errorf(ctx, "Failed to clear old cert dirs - %s", err)
+		return err
+	}
 	certsUUID := util.NewUUID().String()
 	config.Update(util.PlatformCertsKey, certsUUID)
-	err = util.SaveCerts(ctx, config, data.Config.ServerCert, data.Config.ServerKey, certsUUID)
+	err = util.SaveCerts(ctx, config, &data.Config, certsUUID)
 	if err != nil {
 		util.FileLogger().Info(
 			ctx,

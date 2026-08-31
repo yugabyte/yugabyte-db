@@ -40,6 +40,10 @@ from yugabyte.test_descriptor import TestDescriptor
 import dataclasses
 
 
+# Name of the worker archive inside a build root. The .spark-no-extract suffix keeps Spark's
+# addFile from unpacking it for us - the untar step on the worker controls where the tree lands.
+ARCHIVE_FOR_WORKERS_NAME = 'archive_for_tests_on_spark.tar.gz.spark-no-extract'
+
 CLOCK_SYNC_WAIT_LOGGING_INTERVAL_SEC = 10
 
 MAX_TIME_TO_WAIT_FOR_CLOCK_SYNC_SEC = 60
@@ -107,27 +111,16 @@ class TestResult:
                 logging.info("Had errors during artifact upload: %s", copy_result)
 
 
-# The conf for this checkout, from the command line. Also settles $YB_COMPILER_TYPE, which the build
-# scripts read, so it has to run before anything shells out.
-def conf_from_args(args: argparse.Namespace) -> TestConfig:
-    build_root = os.path.realpath(args.build_root)
-
-    # This module is expected to be under python/yugabyte.
-    yb_src_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-
-    # Ensure that build_root is consistent with yb_src_root above.
-    yb_src_root_from_build_root = os.path.dirname(os.path.dirname(build_root))
-
-    build_type = get_build_type_from_build_root(build_root)
+# Derives a conf from a build root alone: everything about a tree that follows from its
+# <yb_src_root>/build/<flavor> layout.
+def make_conf_for_build_root(
+        build_root: str, send_archive_to_workers: bool, archive_name: str) -> TestConfig:
+    build_root = os.path.realpath(build_root)
+    yb_src_root = os.path.dirname(os.path.dirname(build_root))
 
     archive_for_workers = None
-    if args.send_archive_to_workers:
-        archive_for_workers = os.path.abspath(os.path.join(
-            build_root, 'archive_for_tests_on_spark.tar.gz.spark-no-extract'))
-
-    assert yb_src_root == yb_src_root_from_build_root, \
-        ("An inconstency between YB_SRC_ROOT derived from module location ({}) vs. the one derived "
-         "from BUILD_ROOT ({})").format(yb_src_root, yb_src_root_from_build_root)
+    if send_archive_to_workers:
+        archive_for_workers = os.path.abspath(os.path.join(build_root, archive_name))
 
     rel_build_root = os.path.relpath(
             os.path.abspath(build_root),
@@ -138,23 +131,38 @@ def conf_from_args(args: argparse.Namespace) -> TestConfig:
                 "source root: %s. build_root=%s, yb_src_root=%s" % (
                     rel_build_root, build_root, yb_src_root))
 
-    compiler_type = get_compiler_type_from_build_root(build_root)
-    compiler_type_from_env = os.environ.get('YB_COMPILER_TYPE')
-    if compiler_type_from_env is not None and compiler_type_from_env != compiler_type:
-        raise ValueError(
-                "Build root '%s' implies compiler type '%s' but YB_COMPILER_TYPE is '%s'" % (
-                    build_root, compiler_type, compiler_type_from_env))
-    os.environ['YB_COMPILER_TYPE'] = compiler_type
-
     return TestConfig(
             build_root=build_root,
-            build_type=build_type,
+            build_type=get_build_type_from_build_root(build_root),
             yb_src_root=yb_src_root,
             archive_for_workers=archive_for_workers,
             rel_build_root=rel_build_root,
-            compiler_type=compiler_type,
+            compiler_type=get_compiler_type_from_build_root(build_root),
             # The archive might not even exist yet.
             archive_sha256sum=None)
+
+
+# The conf for this checkout, from the command line. Also settles $YB_COMPILER_TYPE, which the build
+# scripts read, so it has to run before anything shells out.
+def conf_from_args(args: argparse.Namespace) -> TestConfig:
+    conf = make_conf_for_build_root(
+        args.build_root, args.send_archive_to_workers, ARCHIVE_FOR_WORKERS_NAME)
+
+    # This module is expected to be under python/yugabyte. Unlike the rest of the conf, this is a
+    # statement about the tree we are running *from*, so it only holds for this checkout.
+    yb_src_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+    assert yb_src_root == conf.yb_src_root, \
+        ("An inconstency between YB_SRC_ROOT derived from module location ({}) vs. the one derived "
+         "from BUILD_ROOT ({})").format(yb_src_root, conf.yb_src_root)
+
+    compiler_type_from_env = os.environ.get('YB_COMPILER_TYPE')
+    if compiler_type_from_env is not None and compiler_type_from_env != conf.compiler_type:
+        raise ValueError(
+                "Build root '%s' implies compiler type '%s' but YB_COMPILER_TYPE is '%s'" % (
+                    conf.build_root, conf.compiler_type, compiler_type_from_env))
+    os.environ['YB_COMPILER_TYPE'] = conf.compiler_type
+
+    return conf
 
 
 # -------------------------------------------------------------------------------------------------
@@ -261,7 +269,10 @@ def validate_mvn_local_repo(mvn_local_repo: str) -> None:
         logging.info(f"All Maven plugin patterns were found in local repo {mvn_local_repo}")
 
 
-def create_archive_for_workers(conf: TestConfig) -> None:
+# Packs the worker archive for the build tree described by conf, including mvn_local_repo as that
+# tree's Maven repository. Java tests run `mvn --offline` on the worker, so the repo has to be
+# included into the archive. Raises an error if mvn_local_repo is outside of build subdirectory.
+def create_archive_for_workers(conf: TestConfig, mvn_local_repo: str) -> None:
     dest_path = conf.archive_for_workers
     if dest_path is None:
         return
@@ -279,19 +290,13 @@ def create_archive_for_workers(conf: TestConfig) -> None:
             os.remove(dest_path)
         paths_in_src_dir = ARCHIVED_PATHS_IN_SRC_DIR + find_rel_java_paths_to_archive(yb_src_root)
 
-        added_local_repo = False
-        mvn_local_repo = os.environ.get('YB_MVN_LOCAL_REPO')
-        if mvn_local_repo:
-            mvn_local_repo = os.path.abspath(mvn_local_repo)
-            if mvn_local_repo.startswith(build_root_parent + '/'):
-                # Here, the path we're adding has to be relative to YB_SRC_ROOT.
-                paths_in_src_dir.append(os.path.relpath(mvn_local_repo, yb_src_root))
-                logging.info("Will add YB_MVN_LOCAL_REPO to archive: %s", mvn_local_repo)
-                validate_mvn_local_repo(mvn_local_repo)
-                added_local_repo = True
-        if not added_local_repo:
-            raise ValueError("YB_MVN_LOCAL_REPO (%s) must be within $YB_SRC_ROOT/build (%s)" % (
+        mvn_local_repo = os.path.abspath(mvn_local_repo)
+        if not mvn_local_repo.startswith(build_root_parent + '/'):
+            raise ValueError("Maven local repo (%s) must be within <yb_src_root>/build (%s)" % (
                 mvn_local_repo, build_root_parent))
+        paths_in_src_dir.append(os.path.relpath(mvn_local_repo, yb_src_root))
+        logging.info("Will add Maven local repo to archive: %s", mvn_local_repo)
+        validate_mvn_local_repo(mvn_local_repo)
 
         files_that_must_exist_in_build_dir = ['thirdparty_path.txt']
 
@@ -323,7 +328,7 @@ def create_archive_for_workers(conf: TestConfig) -> None:
         ]
 
         logging.info("Running the tar command: %s", tar_args)
-        subprocess.check_call(tar_args, cwd=conf.yb_src_root)
+        subprocess.check_call(tar_args, cwd=yb_src_root)
         if not os.path.exists(tmp_dest_path):
             raise IOError(
                     "Archive '%s' did not get created after command %s" % (

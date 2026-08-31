@@ -163,8 +163,8 @@ export const UniverseView = (props) => {
   const {
     open: isUniverseCreationPopoverOpen,
     anchorRef: createUniverseAnchorRef,
-    handleCreateUniverseClick,
-    handleClose: handleUniverseCreationPopoverClose
+    handleClose: handleUniverseCreationPopoverClose,
+    handleClickAway: handleUniverseCreationPopoverClickAway
   } = useUniverseCreationPopover();
   const isOnboardingExperienceEnabled = useOnboardingNewExperienceEnabled();
 
@@ -633,10 +633,7 @@ export const UniverseView = (props) => {
             isControl
           >
             <span ref={createUniverseAnchorRef} style={{ display: 'inline-block' }}>
-              <Link
-                to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}
-                onClick={isNewV2CreateUniverseUIEnabled ? handleCreateUniverseClick : undefined}
-              >
+              <Link to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}>
                 <YBButton
                   btnClass="universe-button btn btn-lg btn-orange"
                   disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
@@ -654,6 +651,7 @@ export const UniverseView = (props) => {
           open={isUniverseCreationPopoverOpen}
           anchorRef={createUniverseAnchorRef}
           onClose={handleUniverseCreationPopoverClose}
+          onClickAway={handleUniverseCreationPopoverClickAway}
         />
       )}
       <div className="universes-stats-container">

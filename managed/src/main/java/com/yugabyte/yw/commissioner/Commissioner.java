@@ -34,6 +34,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.annotation.Transactional;
 import java.time.Duration;
@@ -42,12 +43,14 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
@@ -74,8 +77,27 @@ public class Commissioner {
 
   private final TaskQueue taskQueue;
 
-  // A map of task UUIDs to latches for currently paused tasks.
-  private final Map<UUID, CountDownLatch> pauseLatches = new ConcurrentHashMap<>();
+  // A map of task UUIDs to the pause gate of the currently active listener generation. The gate is
+  // used by resume/abort/isTaskPaused to locate the pause point; blocked subtasks wait on the gate
+  // captured in their own listener closure (see getBeforeTaskConsumer), not on this map entry.
+  private final Map<UUID, PauseGate> pauseGates = new ConcurrentHashMap<>();
+
+  /**
+   * A single pause point, owned by one listener generation. Both directions of the pause/resume
+   * handshake are {@link CompletableFuture}s whose completed state is sticky, so a resume can never
+   * be "lost": a subtask that reads a stale (still-pausing) listener and reaches the pause consumer
+   * after the resume has already fired waits on the same {@code released} future, sees it already
+   * completed, and proceeds instead of parking on a fresh latch that nobody would ever release.
+   */
+  private static final class PauseGate {
+    // Completed by the first subtask that parks here so isTaskPaused/waitForTaskPaused can observe
+    // that the task has actually reached the pause point.
+    private final CompletableFuture<Void> reached = new CompletableFuture<>();
+    // Completed by resume/abort to release every waiter on this gate - both those already parked
+    // and
+    // any straggler that joins later.
+    private final CompletableFuture<Void> released = new CompletableFuture<>();
+  }
 
   private final ProviderEditRestrictionManager providerEditRestrictionManager;
 
@@ -266,10 +288,10 @@ public class Commissioner {
       log.warn("Task {} is not in running state", taskUUID);
       return false;
     }
-    CountDownLatch latch = pauseLatches.get(taskUUID);
-    if (latch != null) {
-      // Resume if it is already paused to abort faster.
-      latch.countDown();
+    PauseGate gate = pauseGates.get(taskUUID);
+    if (gate != null) {
+      // Release if it is already paused to abort faster.
+      gate.released.complete(null);
     }
     Optional<TaskInfo> optional = taskExecutor.abort(taskUUID, force);
     boolean success = optional.isPresent();
@@ -289,27 +311,19 @@ public class Commissioner {
    */
   public boolean resumeTask(UUID taskUUID) {
     TaskInfo.getOrBadRequest(taskUUID);
-    CountDownLatch latch = pauseLatches.get(taskUUID);
-    if (latch == null) {
+    PauseGate current = pauseGates.get(taskUUID);
+    if (current == null || current.released.isDone()) {
       return false;
     }
+    // Arm the next pause point first by installing a fresh listener generation. Its own gate is
+    // registered as the current one once a subtask reaches it (see getBeforeTaskConsumer).
     Optional<RunnableTask> optional = taskExecutor.maybeGetRunnableTask(taskUUID);
-    if (optional.isPresent()) {
-      optional.get().setTaskExecutionListener(getTaskExecutionListener());
-    }
-    latch.countDown();
-    // Wait for the task to come out of the wait and starts running.
-    while (true) {
-      try {
-        CountDownLatch currentLatch = pauseLatches.get(taskUUID);
-        if (currentLatch == null || currentLatch != latch) {
-          break;
-        }
-        Thread.sleep(10);
-      } catch (InterruptedException e) {
-        throw new RuntimeException(e);
-      }
-    }
+    optional.ifPresent(
+        runnableTask -> runnableTask.setTaskExecutionListener(getTaskExecutionListener()));
+    // Release everyone on the outgoing gate - both subtasks already parked and any straggler still
+    // running the previous (pausing) listener that reaches the pause consumer later. Completion is
+    // sticky, so the wakeup can never be missed.
+    current.released.complete(null);
     return true;
   }
 
@@ -347,6 +361,16 @@ public class Commissioner {
       responseJson.put("correlationId", correlationId);
     }
     responseJson.put("userEmail", task.getUserEmail());
+
+    // Root of the retry/rollback chain when stored on task params (no previousTaskUUID fallback:
+    // that would surface the immediate predecessor and contradict root semantics).
+    JsonNode taskParams = taskInfo.getTaskParams();
+    if (taskParams != null) {
+      JsonNode originalNode = taskParams.get("originalTaskUUID");
+      if (originalNode != null && !originalNode.isNull() && !originalNode.asText().isEmpty()) {
+        responseJson.put("originalTaskUUID", originalNode.asText());
+      }
+    }
 
     // Get subtask groups and add other details to it if applicable.
     UserTaskDetails userTaskDetails;
@@ -407,7 +431,17 @@ public class Commissioner {
               return taskUuidsToAllowRetry.contains(taskInfo.getUuid().toString());
             });
     responseJson.put("retryable", retryable);
-    responseJson.put("canRollback", canTaskRollback(taskInfo));
+    // Listing hint: @CanRollback + error state + optional moreCondition (ownership), same pattern
+    // as retryable. Submit uses canTaskRollbackDetailed (universe checkpoint when present).
+    boolean canRollback =
+        canTaskRollback(
+            taskInfo,
+            tf -> {
+              Set<String> taskUuidsToAllowRollback =
+                  updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
+              return taskUuidsToAllowRollback.contains(tf.getUuid().toString());
+            });
+    responseJson.put("canRollback", canRollback);
     if (isTaskPaused(taskInfo.getUuid())) {
       // Set this only if it is true. The thread is just parking. From the task state
       // perspective, it is still running.
@@ -460,9 +494,79 @@ public class Commissioner {
     return false;
   }
 
+  /**
+   * Whether the failed task may be rolled back, with an optional extra predicate (same pattern as
+   * {@link #isTaskRetryable(TaskInfo, Predicate)}).
+   *
+   * <p>Checks {@code @CanRollback} + error state, then {@code moreCondition}. Listing passes
+   * placement/updating ownership without loading the universe. Submit uses {@link
+   * #canTaskRollbackDetailed(TaskInfo)}.
+   */
+  public boolean canTaskRollback(TaskInfo taskInfo, Predicate<TaskInfo> moreCondition) {
+    if (canTaskTypeRollback(taskInfo.getTaskType())
+        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
+      return moreCondition.test(taskInfo);
+    }
+    return false;
+  }
+
+  /**
+   * Listing-path overload with no extra condition (annotation + error state only). Prefer {@link
+   * #canTaskRollback(TaskInfo, Predicate)} when ownership or universe checks apply.
+   */
   public boolean canTaskRollback(TaskInfo taskInfo) {
-    return canTaskTypeRollback(taskInfo.getTaskType())
-        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState());
+    return canTaskRollback(taskInfo, t -> true);
+  }
+
+  /**
+   * Submit-path eligibility: {@link #canTaskRollback(TaskInfo, Predicate)} with {@link
+   * #canRollbackTaskOnUniverse(TaskInfo)}. The rollback task's precheck remains the authoritative
+   * safety gate.
+   *
+   * <p>When {@code state_transition_details} is present (edit-universe style checkpoint), the
+   * failed task must still own {@code placementModificationTaskUuid} and the delta must be {@code
+   * rollbackSafe}. Ownership intentionally transfers to {@link TaskType#RollbackEditUniverse} on
+   * freeze so that task can be retried; the original edit is then no longer start-rollback
+   * eligible.
+   */
+  public boolean canTaskRollbackDetailed(TaskInfo taskInfo) {
+    return canTaskRollback(taskInfo, this::canRollbackTaskOnUniverse);
+  }
+
+  /**
+   * Universe-aware rollback gate. If there is no {@code state_transition_details}, returns true
+   * (software-upgrade style). When details are present, requires placement ownership and a safe
+   * delta (including refusing dedicatedNodes flips).
+   */
+  private boolean canRollbackTaskOnUniverse(TaskInfo taskInfo) {
+    try {
+      JsonNode params = taskInfo.getTaskParams();
+      if (params == null || params.path("universeUUID").isMissingNode()) {
+        return true;
+      }
+      UUID universeUUID = UUID.fromString(params.get("universeUUID").asText());
+      Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
+      if (!universeOpt.isPresent()) {
+        return false;
+      }
+      Universe universe = universeOpt.get();
+      StateTransitionDetails details = universe.getStateTransitionDetails();
+      if (details == null) {
+        return true;
+      }
+      // Must match the failed task - not an in-progress/failed RollbackEditUniverse.
+      if (!Objects.equals(
+          universe.getUniverseDetails().placementModificationTaskUuid, taskInfo.getUuid())) {
+        return false;
+      }
+      return details.isRollbackSafe() && !details.isDedicatedNodesChanged();
+    } catch (Exception e) {
+      log.warn(
+          "canRollbackTaskOnUniverse check failed for task {}: {}",
+          taskInfo.getUuid(),
+          e.getMessage());
+      return false;
+    }
   }
 
   public ObjectNode getVersionInfo(CustomerTask task, TaskInfo taskInfo) {
@@ -489,7 +593,8 @@ public class Commissioner {
   }
 
   public boolean isTaskPaused(UUID taskUuid) {
-    return pauseLatches.containsKey(taskUuid);
+    PauseGate gate = pauseGates.get(taskUuid);
+    return gate != null && gate.reached.isDone() && !gate.released.isDone();
   }
 
   public boolean isTaskRunning(UUID taskUuid) {
@@ -601,22 +706,35 @@ public class Commissioner {
           };
     }
     if (subTaskPausePosition >= 0) {
+      // One gate per listener generation. It is captured by-value here, so every subtask that runs
+      // THIS listener's beforeTask waits on THIS gate, independent of any later listener swap done
+      // by resumeTask. This is what makes the stale-listener/shared-position straggler race safe.
+      final PauseGate gate = new PauseGate();
       // Handle pause of subtask.
       Consumer<TaskInfo> pauseConsumer =
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskPausePosition) {
               log.debug("Pausing task {} at position {}", taskInfo, taskInfo.getPosition());
               final UUID parentTaskUUID = taskInfo.getParentUuid();
+              // Register as the current gate so resume/abort/isTaskPaused can find this pause
+              // point.
+              pauseGates.put(parentTaskUUID, gate);
+              // Idempotent; lets waitForTaskPaused observe that the pause point was reached.
+              gate.reached.complete(null);
               try {
-                // Insert if absent and get the latch.
-                pauseLatches.computeIfAbsent(parentTaskUUID, k -> new CountDownLatch(1)).await();
-              } catch (InterruptedException e) {
+                // Sticky wait: if resume/abort already completed this gate, returns immediately
+                // instead of parking on a latch that nobody would ever release.
+                gate.released.get();
+              } catch (InterruptedException | ExecutionException e) {
                 throw new CancellationException("Subtask cancelled: " + e.getMessage());
-              } finally {
-                pauseLatches.remove(parentTaskUUID);
               }
-              // Resume can set a new listener.
-              RunnableTask runnableTask = taskExecutor.getRunnableTask(taskInfo.getParentUuid());
+              // Resume installs a new listener generation carrying the abort/pause position set for
+              // this resume. Re-apply it to this same subtask before it runs so a newly-set abort
+              // position takes effect at exactly this position (and stepping can re-pause). The new
+              // listener owns its own gate, so a straggler that reaches this point after resume
+              // cannot be stranded - it waited on this gate (already released) and now re-checks
+              // against the current listener.
+              RunnableTask runnableTask = taskExecutor.getRunnableTask(parentTaskUUID);
               TaskExecutionListener listener = runnableTask.getTaskExecutionListener();
               if (listener != null) {
                 listener.beforeTask(taskInfo);
@@ -632,6 +750,9 @@ public class Commissioner {
     return taskInfo -> {
       if (taskInfo.getParentUuid() == null) {
         log.debug("Parent task {} has completed", taskInfo.getTaskType());
+        // The parent task is done; drop its pause gate so the map does not grow over the lifetime
+        // of this singleton.
+        pauseGates.remove(taskInfo.getUuid());
         try {
           taskQueue.dequeue(
               taskExecutor.getRunnableTask(taskInfo.getUuid()), (t, p) -> execute(t, p));

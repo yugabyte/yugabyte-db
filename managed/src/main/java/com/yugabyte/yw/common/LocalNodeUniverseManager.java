@@ -73,6 +73,19 @@ public class LocalNodeUniverseManager {
       long timeoutSec,
       boolean authEnabled,
       boolean cpEnabled) {
+    return runYsqlCommand(
+        node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled, true);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled,
+      boolean logCmdOutput) {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     LocalCloudInfo cloudInfo = LocalNodeManager.getCloudInfo(node, universe);
     List<String> bashCommand = new ArrayList<>();
@@ -116,7 +129,11 @@ public class LocalNodeUniverseManager {
       processBuilder.environment().put("sslmode", "require");
     }
     try {
-      log.debug("Running command {}", String.join(" ", bashCommand));
+      if (logCmdOutput) {
+        log.debug("Running command {}", String.join(" ", bashCommand));
+      } else {
+        log.debug("Running YSQL command on node {}", node.nodeName);
+      }
       Process process = processBuilder.start();
       long timeOut = timeoutSec * 1000;
       while (process.isAlive() && timeOut > 0) {

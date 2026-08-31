@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -38,6 +39,28 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
   public Map<String, String> tserverGFlags;
 
   @JsonIgnore GFlagsValidation gFlagsValidation;
+
+  @Override
+  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState, boolean isFirstTry) {
+    super.verifyParams(universe, nodeState, isFirstTry);
+    if (upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
+      Set<String> changedNonRollingOnlyGFlags = getChangedNonRollingOnlyGFlags(universe);
+      if (!changedNonRollingOnlyGFlags.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "GFlags %s can only be changed using NON_ROLLING_UPGRADE",
+                String.join(", ", changedNonRollingOnlyGFlags)));
+      }
+    }
+  }
+
+  public Set<String> getChangedNonRollingOnlyGFlags(Universe universe) {
+    return GFlagsUtil.getChangedGFlags(
+        universe.getUniverseDetails().clusters,
+        getNewVersionsOfClusters(universe).values(),
+        GFlagsUtil.GFLAGS_ALLOWED_ONLY_IN_NON_ROLLING_UPGRADE);
+  }
 
   protected boolean verifyGFlagsHasChanges(Universe universe) {
     if (isUsingSpecificGFlags(universe)) {

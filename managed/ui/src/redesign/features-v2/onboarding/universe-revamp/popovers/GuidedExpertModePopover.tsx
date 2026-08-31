@@ -1,7 +1,13 @@
-import { FC, MouseEvent, RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { FC, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { mui, TourPlacement, YBTag, YBTourSpotlight } from '@yugabyte-ui-library/core';
 import { DEFAULT_RELEASE_NOTES_URL, GradientTitle } from '../modals/HelperComponent';
+import {
+  TourStep,
+  dismissTourStep,
+  isTourStepDismissed,
+  subscribeTourProgressReady
+} from '../tour-progress';
 import MapIcon from '@app/redesign/assets/guided-expert-mode/map-icon.svg';
 import CommandIcon from '@app/redesign/assets/guided-expert-mode/command.svg';
 import { OnboardingTourPopper } from './OnboardingTourPopper';
@@ -11,12 +17,13 @@ const { Box, Link, Typography, styled } = mui;
 /** Vertical gap between the Guided Mode button and the popover. */
 const POPOVER_OFFSET: [number, number] = [0, 12];
 
-export const GUIDED_EXPERT_MODE_POPOVER_DISMISS_KEY = 'yb_guided_expert_mode_popover_dismissed';
-
 interface GuidedExpertModePopoverProps {
   open: boolean;
   anchorRef: RefObject<HTMLElement>;
+  /** Permanent Hide Tip. */
   onClose: () => void;
+  /** Transient click-away close. */
+  onClickAway: () => void;
 }
 
 const WideSpotlight = styled(YBTourSpotlight)(() => ({
@@ -104,14 +111,11 @@ const LearnMoreLink = styled(Link)(({ theme }) => ({
 }));
 
 export const isGuidedExpertModePopoverDismissed = (): boolean =>
-  localStorage.getItem(GUIDED_EXPERT_MODE_POPOVER_DISMISS_KEY) === 'true';
+  isTourStepDismissed(TourStep.GuidedExpert);
 
 export const dismissGuidedExpertModePopover = (): void => {
-  localStorage.setItem(GUIDED_EXPERT_MODE_POPOVER_DISMISS_KEY, 'true');
+  dismissTourStep(TourStep.GuidedExpert);
 };
-
-export const shouldInterceptGuidedExpertModeClick = (): boolean =>
-  !isGuidedExpertModePopoverDismissed();
 
 /** Delay before auto-opening the Guided/Expert tip on create-universe. */
 const AUTO_OPEN_DELAY_MS = 700;
@@ -125,24 +129,19 @@ export const useGuidedExpertModePopover = () => {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (isGuidedExpertModePopoverDismissed()) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setOpen(true);
-    }, AUTO_OPEN_DELAY_MS);
+    let timer: number | undefined;
+    const unsub = subscribeTourProgressReady(() => {
+      if (isGuidedExpertModePopoverDismissed()) {
+        return;
+      }
+      timer = window.setTimeout(() => {
+        setOpen(true);
+      }, AUTO_OPEN_DELAY_MS);
+    });
     return () => {
-      window.clearTimeout(timer);
+      unsub();
+      if (timer != null) window.clearTimeout(timer);
     };
-  }, []);
-
-  const handleGuidedExpertModeClick = useCallback((event: MouseEvent) => {
-    if (!shouldInterceptGuidedExpertModeClick()) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    setOpen(true);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -150,18 +149,24 @@ export const useGuidedExpertModePopover = () => {
     setOpen(false);
   }, []);
 
+  const handleOpen = useCallback(() => {
+    setOpen(true);
+  }, []);
+
   return {
     open,
     anchorRef,
-    handleGuidedExpertModeClick,
-    handleClose
+    handleOpen,
+    handleClose,
+    handleClickAway: handleClose
   };
 };
 
 export const GuidedExpertModePopover: FC<GuidedExpertModePopoverProps> = ({
   open,
   anchorRef,
-  onClose
+  onClose,
+  onClickAway
 }) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'onBoarding.guidedExpertModePopover'
@@ -183,7 +188,13 @@ export const GuidedExpertModePopover: FC<GuidedExpertModePopoverProps> = ({
           <Subtitle>{t('guided.subtitle')}</Subtitle>
           <Description>{t('guided.description')}</Description>
         </ModeCopy>
-        <LearnMoreLink href={DEFAULT_RELEASE_NOTES_URL} target="_blank" rel="noopener noreferrer">
+        <LearnMoreLink
+          href={
+            'https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/create-deployments/create-universes-overview/#guided-mode'
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           {t('learnMore')}
         </LearnMoreLink>
       </ModeColumn>
@@ -201,7 +212,13 @@ export const GuidedExpertModePopover: FC<GuidedExpertModePopoverProps> = ({
           <Subtitle>{t('expert.subtitle')}</Subtitle>
           <Description>{t('expert.description')}</Description>
         </ModeCopy>
-        <LearnMoreLink href={DEFAULT_RELEASE_NOTES_URL} target="_blank" rel="noopener noreferrer">
+        <LearnMoreLink
+          href={
+            'https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/create-deployments/create-universes-overview/#expert-mode'
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           {t('learnMore')}
         </LearnMoreLink>
       </ModeColumn>
@@ -221,6 +238,7 @@ export const GuidedExpertModePopover: FC<GuidedExpertModePopoverProps> = ({
       placement={TourPlacement.BottomEnd}
       offset={POPOVER_OFFSET}
       zIndex={(theme) => theme.zIndex.modal}
+      onClickAway={onClickAway}
     >
       <WideSpotlight
         title=""

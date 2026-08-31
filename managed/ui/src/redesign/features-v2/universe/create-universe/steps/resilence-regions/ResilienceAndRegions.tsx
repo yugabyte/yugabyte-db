@@ -39,7 +39,12 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
-import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceFormMode, ResilienceType } from './dtos';
+import {
+  FaultToleranceType,
+  ResilienceAndRegionsProps,
+  ResilienceFormMode,
+  ResilienceType
+} from './dtos';
 import {
   FAULT_TOLERANCE_TYPE,
   REGIONS_FIELD,
@@ -56,9 +61,11 @@ import {
 import MapIcon from '@app/redesign/assets/map.svg';
 import MapIconSelected from '@app/redesign/assets/map_selected.svg';
 import MapDisabled from '@app/redesign/assets/map_disabled.svg';
+import CommandIcon from '@app/redesign/assets/guided-expert-mode/command.svg';
+import CommandIconSelected from '@app/redesign/assets/guided-expert-mode/command-selected.svg';
 import Flash from '@app/redesign/assets/flash_transparent.svg';
 
-const { Grid2: Grid, Collapse, styled, Box } = mui;
+const { Collapse, styled, Box, Link, Typography } = mui;
 
 const StyledHelpText = styled('div')(({ theme }) => ({
   padding: '16px 24px',
@@ -77,9 +84,67 @@ const StyledHelpText = styled('div')(({ theme }) => ({
   }
 }));
 
+const SetupModeCard = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '16px',
+  width: '100%',
+  height: '88px',
+  padding: '24px 16px',
+  borderRadius: '8px',
+  border: `1px solid ${theme.palette.grey[300]}`,
+  backgroundColor: '#FBFCFD',
+  boxSizing: 'border-box'
+}));
+
+const SetupModeCopy = styled(Box)(() => ({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '8px',
+  minWidth: 0,
+  flex: 1
+}));
+
+const SetupModeTitle = styled(Typography)(({ theme }) => ({
+  fontSize: 15,
+  fontWeight: 600,
+  lineHeight: '16px',
+  color: theme.palette.grey[900]
+}));
+
+const SetupModeDescription = styled(Typography)(({ theme }) => ({
+  fontSize: 13,
+  fontWeight: 400,
+  lineHeight: '16px',
+  color: theme.palette.grey[900],
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'flex-start',
+  gap: '4px'
+}));
+
+const SetupModeLearnMore = styled(Link)(({ theme }) => ({
+  fontSize: 13,
+  fontWeight: 400,
+  lineHeight: '16px',
+  color: theme.palette.grey[900],
+  textDecoration: 'underline',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  border: 'none',
+  background: 'none',
+  padding: 0,
+  fontFamily: 'inherit',
+  '&:hover': {
+    color: theme.palette.grey[900],
+    textDecoration: 'underline'
+  }
+}));
+
 export const ResilienceAndRegions = forwardRef<
   StepsRef,
-  { isGeoPartition?: boolean; hideHelpText?: boolean, disableGuidedMode?: boolean }
+  { isGeoPartition?: boolean; hideHelpText?: boolean; disableGuidedMode?: boolean }
 >(({ isGeoPartition = false, hideHelpText = false, disableGuidedMode = false }, forwardRef) => {
   const [
     { generalSettings, resilienceAndRegionsSettings, nodesAvailabilitySettings },
@@ -90,7 +155,7 @@ export const ResilienceAndRegions = forwardRef<
       moveToNextPage,
       setResilienceType
     }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
+  ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.resilienceAndRegions'
@@ -99,8 +164,9 @@ export const ResilienceAndRegions = forwardRef<
   const {
     open: isGuidedExpertModePopoverOpen,
     anchorRef: guidedExpertModeAnchorRef,
-    handleGuidedExpertModeClick,
-    handleClose: handleGuidedExpertModePopoverClose
+    handleOpen: handleGuidedExpertModePopoverOpen,
+    handleClose: handleGuidedExpertModePopoverClose,
+    handleClickAway: handleGuidedExpertModePopoverClickAway
   } = useGuidedExpertModePopover();
 
   const methods = useForm<ResilienceAndRegionsProps>({
@@ -251,18 +317,17 @@ export const ResilienceAndRegions = forwardRef<
     }
   }, [formMode, methods, saveNodesAvailabilitySettings, saveResilienceAndRegionsSettings]);
 
-  // RF / region selection drive node placement. Clear stale nodesAndAvailability so the Nodes
+  // RF / FT / region selection drive node placement. Clear stale nodesAndAvailability so the Nodes
   // step rebuilds from the new resilience settings (same as resilience-type / form-mode resets).
   const prevPlacementDriversRef = useRef<{
     resilienceFactor: number;
     regionSignature: string;
+    faultToleranceType: string;
   } | null>(null);
 
   useEffect(() => {
-    const regionSignature = JSON.stringify(
-      (regions ?? []).map((r) => r.uuid ?? r.code).sort()
-    );
-    const next = { resilienceFactor, regionSignature };
+    const regionSignature = JSON.stringify((regions ?? []).map((r) => r.uuid ?? r.code).sort());
+    const next = { resilienceFactor, regionSignature, faultToleranceType };
     if (prevPlacementDriversRef.current === null) {
       prevPlacementDriversRef.current = next;
       return;
@@ -270,13 +335,14 @@ export const ResilienceAndRegions = forwardRef<
     const prev = prevPlacementDriversRef.current;
     if (
       prev.resilienceFactor === next.resilienceFactor &&
-      prev.regionSignature === next.regionSignature
+      prev.regionSignature === next.regionSignature &&
+      prev.faultToleranceType === next.faultToleranceType
     ) {
       return;
     }
     prevPlacementDriversRef.current = next;
     saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
-  }, [resilienceFactor, regions, saveNodesAvailabilitySettings]);
+  }, [resilienceFactor, regions, faultToleranceType, saveNodesAvailabilitySettings]);
 
   // When guided/expert mode, fault tolerance type, RF, or resilience type changes, hide submit
   // errors until the user clicks Next again (do not carry forward stale validation UI).
@@ -370,6 +436,16 @@ export const ResilienceAndRegions = forwardRef<
     if (faultToleranceType === FaultToleranceType.NONE && resilienceFactor > 1) {
       methods.setValue(RESILIENCE_FACTOR, 1, { shouldValidate: true });
     }
+    // NONE / NODE_LEVEL UI is single-region; keep stored regions in sync with the autocomplete.
+    if (
+      faultToleranceType === FaultToleranceType.NONE ||
+      faultToleranceType === FaultToleranceType.NODE_LEVEL
+    ) {
+      const current = methods.getValues(REGIONS_FIELD) ?? [];
+      if (current.length > 1) {
+        methods.setValue(REGIONS_FIELD, [current[0]], { shouldValidate: true });
+      }
+    }
   }, [faultToleranceType, resilienceFactor]);
 
   return (
@@ -398,11 +474,25 @@ export const ResilienceAndRegions = forwardRef<
       )}
       {resilienceType === ResilienceType.REGULAR && (
         <>
-          <Grid alignItems={'center'} justifyContent={'flex-end'} container width="100%">
-            <span
-              ref={guidedExpertModeAnchorRef}
-              onClickCapture={handleGuidedExpertModeClick}
-            >
+          <SetupModeCard data-testid="setup-mode-card">
+            <SetupModeCopy>
+              <SetupModeTitle>{t('setupMode.title')}</SetupModeTitle>
+              <SetupModeDescription>
+                <span>{t('setupMode.description')}</span>
+                <SetupModeLearnMore
+                  component="button"
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleGuidedExpertModePopoverOpen();
+                  }}
+                >
+                  {t('setupMode.learnMore')}
+                </SetupModeLearnMore>
+              </SetupModeDescription>
+            </SetupModeCopy>
+            <span ref={guidedExpertModeAnchorRef} style={{ display: 'inline-flex', flexShrink: 0 }}>
               <YBButtonGroup
                 key={modeButtonGroupKey}
                 size="large"
@@ -412,7 +502,13 @@ export const ResilienceAndRegions = forwardRef<
                   {
                     value: ResilienceFormMode.GUIDED,
                     label: t('formType.guidedMode'),
-                    icon: disableGuidedMode ? <MapDisabled /> : formMode === ResilienceFormMode.GUIDED ? <MapIconSelected /> : <MapIcon />,
+                    icon: disableGuidedMode ? (
+                      <MapDisabled />
+                    ) : formMode === ResilienceFormMode.GUIDED ? (
+                      <MapIconSelected />
+                    ) : (
+                      <MapIcon />
+                    ),
                     onClick: handleGuidedModeClick,
                     buttonProps: {
                       dataTestId: 'guided-mode-button',
@@ -423,6 +519,12 @@ export const ResilienceAndRegions = forwardRef<
                   {
                     value: ResilienceFormMode.EXPERT_MODE,
                     label: t('formType.expertMode'),
+                    icon:
+                      formMode === ResilienceFormMode.EXPERT_MODE ? (
+                        <CommandIconSelected />
+                      ) : (
+                        <CommandIcon />
+                      ),
                     onClick: () => {
                       methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.EXPERT_MODE, {
                         shouldValidate: true
@@ -439,8 +541,9 @@ export const ResilienceAndRegions = forwardRef<
               open={isGuidedExpertModePopoverOpen}
               anchorRef={guidedExpertModeAnchorRef}
               onClose={handleGuidedExpertModePopoverClose}
+              onClickAway={handleGuidedExpertModePopoverClickAway}
             />
-          </Grid>
+          </SetupModeCard>
           {formMode === ResilienceFormMode.GUIDED ? <GuidedMode /> : <ExpertMode />}
         </>
       )}
@@ -448,7 +551,19 @@ export const ResilienceAndRegions = forwardRef<
       {!hideHelpText && (
         <StyledHelpText>
           <Flash />
-          <Trans t={t} i18nKey="helpText" components={{ a: <a /> }} />
+          <Trans
+            t={t}
+            i18nKey="helpText"
+            components={{
+              a: (
+                <a
+                  href="https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/create-deployments/read-replicas/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              )
+            }}
+          />
         </StyledHelpText>
       )}
       {showErrorsAfterSubmit && errors?.faultToleranceType?.message && (

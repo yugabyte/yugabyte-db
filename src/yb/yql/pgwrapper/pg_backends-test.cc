@@ -493,6 +493,13 @@ class PgBackendsTestPgTimeout : public PgBackendsTest {
                  kRpcTimeout.ToMilliseconds()),
           Format("--ysql_yb_wait_for_backends_catalog_version_timeout=$0",
                  kTimeout.ToMilliseconds()),
+          // The tests expects create index to fail because of lagging backends, which
+          // isn't the case with object locking enabled. Hence disable it.
+          "--enable_object_locking_for_table_locks=false",
+          "--ysql_yb_ddl_transaction_block_enabled=false",
+          "--ysql_yb_enable_ddl_savepoint_support=false",
+          "--allowed_preview_flags_csv=ysql_enable_concurrent_ddl",
+          "--ysql_enable_concurrent_ddl=false"
         });
   }
 

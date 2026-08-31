@@ -35,6 +35,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ysql_lease.pb.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
@@ -276,6 +277,20 @@ class ObjectLockInfoManager::Impl {
     // No need to acquire the leader lock for testing.
     LockGuard lock(mutex_);
     return local_lock_manager_;
+  }
+
+  Result<SysObjectLockEntryPB> TEST_GetObjectLockInfoPB(const std::string& tserver_uuid)
+      EXCLUDES(mutex_) {
+    LockGuard lock(mutex_);
+    auto it = object_lock_infos_map_.find(tserver_uuid);
+    if (it == object_lock_infos_map_.end()) {
+      return STATUS_FORMAT(NotFound, "No ObjectLockInfo for tserver $0", tserver_uuid);
+    }
+    return it->second->LockForRead()->pb;
+  }
+
+  tserver::DdlLockEntriesPB TEST_ExportObjectLockInfoForMaster() EXCLUDES(mutex_) {
+    return ExportObjectLockInfoForMaster();
   }
 
   /*
@@ -555,7 +570,8 @@ std::string ReleaseObjectLockRequestToString(const ReleaseObjectLockRequestPB& p
   ss << "ReleaseObjectLockRequestPB{";
   ss << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
       txn_id, pb.subtxn_id(), pb.session_host_uuid(), pb.lease_epoch(),
-      pb.apply_after_hybrid_time(), pb.propagated_hybrid_time(), pb.request_id());
+      pb.apply_after_hybrid_time(), pb.propagated_hybrid_time(), pb.request_id(),
+      pb.ignore_lease_epochs_before());
   ss << "}";
   return ss.str();
 }
@@ -607,6 +623,9 @@ ReleaseObjectLockRequestPB ReleaseRequestToPersist(const ReleaseObjectLockReques
   DCHECK(!req.has_db_catalog_inval_messages_data());
   req_to_persist.set_populate_db_catalog_info(req.populate_db_catalog_info());
   req_to_persist.mutable_object_locks()->CopyFrom(req.object_locks());
+  if (req.has_ignore_lease_epochs_before()) {
+    req_to_persist.set_ignore_lease_epochs_before(req.ignore_lease_epochs_before());
+  }
 
 #ifndef NDEBUG
   DCHECK(CompareReleaseRequestsIgnoringCatalogFields(req, req_to_persist))
@@ -745,6 +764,15 @@ bool ObjectLockInfoManager::TabletServerHasLiveLease(const std::string& ts_uuid)
 
 std::shared_ptr<tserver::TSLocalLockManager> ObjectLockInfoManager::TEST_ts_local_lock_manager() {
   return impl_->TEST_ts_local_lock_manager();
+}
+
+Result<SysObjectLockEntryPB> ObjectLockInfoManager::TEST_GetObjectLockInfoPB(
+    const std::string& tserver_uuid) {
+  return impl_->TEST_GetObjectLockInfoPB(tserver_uuid);
+}
+
+tserver::DdlLockEntriesPB ObjectLockInfoManager::TEST_ExportObjectLockInfoForMaster() {
+  return impl_->TEST_ExportObjectLockInfoForMaster();
 }
 
 std::shared_ptr<ObjectLockInfo> ObjectLockInfoManager::Impl::GetOrCreateObjectLockInfo(
@@ -1343,9 +1371,10 @@ std::shared_ptr<CountDownLatch> ObjectLockInfoManager::Impl::ReleaseLocksHeldByE
         request.set_session_host_uuid(tserver_uuid);
         auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
         request.set_txn_id(txn_id.data(), txn_id.size());
-        request.set_lease_epoch(max_lease_epoch_to_release + 1);
+        request.set_lease_epoch(lease_epoch);
         request.set_request_id(next_request_id());
         request.set_populate_db_catalog_info(requests_per_txn.size() == 1);
+        request.set_ignore_lease_epochs_before(max_lease_epoch_to_release + 1);
       }
     }
   }

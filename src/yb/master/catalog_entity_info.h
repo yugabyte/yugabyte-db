@@ -51,6 +51,7 @@
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_ysql_lease.fwd.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
 
@@ -769,6 +770,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Add a tablet to this table.
   Status AddTablet(const TabletInfoPtr& tablet);
 
+  Status AddTablet(const TabletInfoPtr& tablet, const PersistentTabletInfo& tablet_state);
+
   // Finds a tablet whose partition can be shrunk.
   // This is only used for transaction status tables.
   Result<TabletWithSplitPartitions> FindSplittableHashPartitionForStatusTable() const;
@@ -999,7 +1002,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
 
-  Status AddTabletUnlocked(const TabletInfoPtr& tablet) REQUIRES(lock_);
+  Status AddTabletUnlocked(
+      const TabletInfoPtr& tablet, const PersistentTabletInfo& tablet_state) REQUIRES(lock_);
   Result<bool> RemoveTabletUnlocked(
       const TableId& tablet_id,
       DeactivateOnly deactivate_only = DeactivateOnly::kFalse) REQUIRES(lock_);

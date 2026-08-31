@@ -6,6 +6,7 @@ import LifeBuoyIcon from '@app/redesign/assets/where-things-moved/life-buoy.svg'
 
 const { Box, styled } = mui;
 
+/** Figma node 15921:86122 — Life-Buoy tip under Settings tabs. */
 const TipPill = styled('button')(() => ({
   display: 'inline-flex',
   alignItems: 'center',
@@ -13,11 +14,14 @@ const TipPill = styled('button')(() => ({
   gap: 2,
   height: 28,
   marginTop: 16,
-  padding: '6px 10px 6px 4px',
+  // Align left edge with Settings tabs (no extra left inset).
+  marginLeft: 0,
+  padding: '6px 10px 6px 8px',
   border: '1px solid #CBCCFB',
   borderRadius: 50,
   backgroundColor: '#F2F3FE',
   color: '#5542B9',
+  fontFamily: 'Inter',
   fontSize: 11.5,
   fontWeight: 400,
   lineHeight: '16px',
@@ -44,13 +48,25 @@ export const WhereThingsMovedTip: FC = () => {
 
   return (
     <>
-      <TipPill
-        type="button"
-        onClick={() => setOpen(true)}
-        data-testid="where-things-moved-tip"
-      >
-        <Box component="span" sx={{ display: 'inline-flex', width: 24, height: 24 }}>
-          <LifeBuoyIcon width={24} height={24} />
+      <TipPill type="button" onClick={() => setOpen(true)} data-testid="where-things-moved-tip">
+        <Box
+          component="span"
+          sx={{
+            display: 'inline-flex',
+            width: 18,
+            height: 18,
+            flexShrink: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            '& > svg': {
+              width: 18,
+              height: 18,
+              display: 'block'
+            }
+          }}
+        >
+          <LifeBuoyIcon />
         </Box>
         {t('label')}
       </TipPill>

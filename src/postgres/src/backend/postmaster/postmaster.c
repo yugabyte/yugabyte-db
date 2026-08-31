@@ -144,6 +144,7 @@
 #include "arpa/inet.h"
 #include "commands/async.h"
 #include "common/pg_yb_common.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
 #include "replication/syncrep.h"
@@ -2421,13 +2422,13 @@ retry1:
 							 errhint("Valid values are: \"false\", 0, \"true\", 1, \"database\".")));
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_authonly") == 0)
+					 && strcmp(nameptr, YB_YCM_AUTHONLY) == 0)
 			{
 				if (!parse_bool(valptr, &yb_is_auth_backend))
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_authonly",
+									YB_YCM_AUTHONLY,
 									valptr),
 							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
 
@@ -2435,19 +2436,19 @@ retry1:
 				if (port->raddr.addr.ss_family != AF_UNIX)
 					ereport(FATAL,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("yb_authonly can only be set "
-									"if the connection is made over unix domain "
-									"socket")));
+							 errmsg("%s can only be set if the connection is "
+									"made over unix domain socket",
+									YB_YCM_AUTHONLY)));
 				yb_is_client_ysqlconnmgr = yb_is_auth_backend;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_is_control_conn") == 0)
+					 && strcmp(nameptr, YB_YCM_IS_CONTROL_CONN) == 0)
 			{
 				if (!parse_bool(valptr, &yb_is_control_conn))
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_is_control_conn",
+									YB_YCM_IS_CONTROL_CONN,
 									valptr),
 							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
 
@@ -2455,22 +2456,22 @@ retry1:
 				if (port->raddr.addr.ss_family != AF_UNIX)
 					ereport(FATAL,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("yb_is_control_conn can only be set "
-									"if the connection is made over unix domain "
-									"socket")));
+							 errmsg("%s can only be set if the connection is "
+									"made over unix domain socket",
+									YB_YCM_IS_CONTROL_CONN)));
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_auth_remote_host") == 0)
+					 && strcmp(nameptr, YB_YCM_AUTH_REMOTE_HOST) == 0)
 				yb_auth_backend_remote_host = pstrdup(valptr);
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_logical_conn_type") == 0)
+					 && strcmp(nameptr, YB_YCM_LOGICAL_CONN_TYPE) == 0)
 			{
 				if (strlen(valptr) != 1 ||
 					(valptr[0] != 'U' && valptr[0] != 'E'))
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_logical_conn_type",
+									YB_YCM_LOGICAL_CONN_TYPE,
 									valptr),
 							 errhint("Valid values are: \"U\" or \"E\".")));
 
@@ -2573,9 +2574,10 @@ retry1:
 			if (!yb_is_auth_via_conn_mgr)
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("yb_auth_remote_host must only be provided "
-								"when yb_authonly is true or in an auth passthrough "
-								"'A' request packet")));
+						 errmsg("%s must only be provided when %s is true or "
+								"in an auth passthrough 'A' request packet",
+								YB_YCM_AUTH_REMOTE_HOST,
+								YB_YCM_AUTHONLY)));
 
 			/*
 			 * HARD Code connection type between client and ysql_conn_mgr to
@@ -2598,8 +2600,9 @@ retry1:
 			if (!yb_is_auth_via_conn_mgr)
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("yb_logical_conn_type must only be provided "
-								"when the client is the connection manager")));
+						 errmsg("%s must only be provided when the client is "
+								"the connection manager",
+								YB_YCM_LOGICAL_CONN_TYPE)));
 
 			port->yb_is_ssl_enabled_in_logical_conn =
 				yb_logical_conn_type == 'E';

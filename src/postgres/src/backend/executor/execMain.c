@@ -99,7 +99,6 @@ static void ExecutePlan(QueryDesc *queryDesc,
 						uint64 numberTuples,
 						ScanDirection direction,
 						DestReceiver *dest);
-static bool ExecCheckRTEPerms(RangeTblEntry *rte);
 static bool ExecCheckRTEPermsModified(Oid relOid, Oid userid,
 									  Bitmapset *modifiedCols,
 									  AclMode requiredPerms);
@@ -144,12 +143,6 @@ YbIsReadAheadAllowed()
 void
 ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-	/*
-	 * Disable skip intents if this query has a modifying CTE. We must do this
-	 * before execution starts because the write might occur before any read.
-	 */
-	YbDisableSkipIntentsIfModifyingCTE(queryDesc);
-
 	/*
 	 * In some cases (e.g. an EXECUTE statement or an execute message with the
 	 * extended query protocol) the query_id won't be reported, so do it now.
@@ -653,7 +646,7 @@ ExecCheckRTPerms(List *rangeTable, bool ereport_on_violation)
  * ExecCheckRTEPerms
  *		Check access permissions for a single RTE.
  */
-static bool
+bool
 ExecCheckRTEPerms(RangeTblEntry *rte)
 {
 	AclMode		requiredPerms;

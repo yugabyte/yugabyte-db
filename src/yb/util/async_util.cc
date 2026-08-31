@@ -32,7 +32,8 @@ void CallStatusCBMaybe(std::weak_ptr<Synchronizer> weak_sync, const Status& stat
 } // anonymous namespace
 
 Synchronizer::~Synchronizer() {
-  EnsureWaitDone();
+  std::unique_lock<std::mutex> lock(mutex_);
+  EnsureWaitDone(lock);
 }
 
 void Synchronizer::StatusCB(const Status& status) {
@@ -80,6 +81,11 @@ StdStatusCallback Synchronizer::AsStdStatusCallback(
 
 Status Synchronizer::WaitUntil(const std::chrono::steady_clock::time_point& time) {
   std::unique_lock<std::mutex> lock(mutex_);
+  return DoWaitUntil(lock, time);
+}
+
+Status Synchronizer::DoWaitUntil(
+    std::unique_lock<std::mutex>& lock, const std::chrono::steady_clock::time_point& time) {
   auto predicate = [this] { return assigned_; };
   if (time == std::chrono::steady_clock::time_point::max()) {
     cond_.wait(lock, predicate);
@@ -96,14 +102,14 @@ Status Synchronizer::WaitUntil(const std::chrono::steady_clock::time_point& time
 }
 
 void Synchronizer::Reset() {
-  std::lock_guard lock(mutex_);
-  EnsureWaitDone();
+  std::unique_lock<std::mutex> lock(mutex_);
+  EnsureWaitDone(lock);
   assigned_ = false;
   status_ = Status::OK();
   must_wait_ = false;
 }
 
-void Synchronizer::EnsureWaitDone() {
+void Synchronizer::EnsureWaitDone(std::unique_lock<std::mutex>& lock) {
   if (must_wait_) {
     static const char* kErrorMsg =
         "Synchronizer went out of scope, Wait() has returned success, callbacks may "
@@ -114,7 +120,8 @@ void Synchronizer::EnsureWaitDone() {
 #else
     const int kWaitSec = 10;
     YB_LOG_EVERY_N_SECS(DFATAL, 1) << kErrorMsg << " Waiting up to " << kWaitSec << " seconds";
-    CHECK_OK(WaitFor(MonoDelta::FromSeconds(kWaitSec)));
+    CHECK_OK(DoWaitUntil(
+        lock, std::chrono::steady_clock::now() + std::chrono::seconds(kWaitSec)));
 #endif
   }
 }

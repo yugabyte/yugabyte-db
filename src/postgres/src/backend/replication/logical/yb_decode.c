@@ -31,6 +31,7 @@
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
 #include "replication/yb_decode.h"
+#include "replication/yb_virtual_wal_client.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -440,6 +441,13 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 			 "yb_start_decoding_at = %lu.",
 			 yb_record->xid, commit_lsn, ctx->yb_start_decoding_at);
 		ReorderBufferForget(ctx->reorder, yb_record->xid, commit_lsn);
+
+		/*
+		 * The client never sees this transaction, so it will never acknowledge
+		 * it. Hence, remember the filtered commit_lsn and acknowledge it before
+		 * the next GetConsistentChanges call.
+		 */
+		YBCTrackFilteredTransaction(commit_lsn);
 		return;
 	}
 

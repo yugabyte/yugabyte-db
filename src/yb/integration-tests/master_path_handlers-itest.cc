@@ -76,6 +76,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_tablespace_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
@@ -99,6 +100,7 @@ DECLARE_bool(TEST_assert_local_op);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(load_balancer_initial_delay_secs);
+DECLARE_int32(load_balancer_min_inbound_remote_bootstraps_per_tserver);
 DECLARE_bool(TEST_pause_rbs_before_download_wal);
 DECLARE_int32(TEST_sleep_before_reporting_lb_ui_ms);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
@@ -1098,6 +1100,76 @@ TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointTableReplic
   cluster_->Shutdown();
 }
 
+class MasterPathHandlersUnderReplicationColocatedItest :
+    public MasterPathHandlersUnderReplicationItest {
+ public:
+  void SetUp() override {
+    opts_.enable_ysql = true;
+    opts_.extra_master_flags.push_back("--ysql_enable_colocated_tables_with_tablespaces=true");
+    opts_.extra_master_flags.push_back("--ysql_tablespace_info_refresh_secs=1");
+    opts_.extra_tserver_flags.push_back("--ysql_enable_colocated_tables_with_tablespaces=true");
+    MasterPathHandlersUnderReplicationItest::SetUp();
+  }
+};
+
+// Colocated child tables are not in the tablespace map, so GetTableReplicationInfoWithDefault
+// falls back to the cluster spec for them. The underreplicated-tablets UI must use the parent
+// tablegroup's replication info instead; otherwise RF-1 colocated tablets in a custom tablespace
+// are falsely reported as underreplicated against the cluster RF.
+TEST_F_EX(
+    MasterPathHandlersItest, TestTabletUnderReplicationColocatedTablespace,
+    MasterPathHandlersUnderReplicationColocatedItest) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn.Execute("CREATE DATABASE colodb WITH COLOCATION = true"));
+  conn = ASSERT_RESULT(cluster_->ConnectToDB("colodb"));
+
+  const test::Tablespace ts("ts_rf1", 1, {test::PlacementBlock("c", "r", "z0", 1)});
+  ASSERT_OK(conn.Execute(ts.CreateCmd()));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t (k INT PRIMARY KEY) TABLESPACE $0", ts.name));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  TabletId tablet_id;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto tables = VERIFY_RESULT(client->ListTables("t", false /* exclude_ysql */, "colodb"));
+        const client::YBTableName* table = nullptr;
+        for (const auto& listed : tables) {
+          if (listed.table_name() == "t") {
+            table = &listed;
+            break;
+          }
+        }
+        if (!table) {
+          return false;
+        }
+        master::GetTableLocationsResponsePB locs;
+        auto s = itest::GetTableLocations(
+            cluster_.get(), *table, 10s, RequireTabletsRunning::kFalse, &locs);
+        if (!s.ok() || locs.tablet_locations_size() != 1) {
+          return false;
+        }
+        const auto& tablet = locs.tablet_locations(0);
+        if (tablet.replicas_size() != 1) {
+          return false;
+        }
+        tablet_id = tablet.tablet_id();
+        return true;
+      },
+      30s * kTimeMultiplier, "Wait for RF-1 colocated tablet"));
+
+  faststring response;
+  ASSERT_OK(GetUrl("/api/v1/tablet-under-replication", &response));
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(response.ToString()));
+  auto underreplicated_tablets =
+      ASSERT_RESULT(json_obj["underreplicated_tablets"].GetArray());
+  for (const auto& tablet_json : underreplicated_tablets) {
+    ASSERT_NE(ASSERT_RESULT(tablet_json["tablet_uuid"].GetString()), tablet_id)
+        << "Tablet reported underreplicated, expected_num_replicas="
+        << ASSERT_RESULT(tablet_json["expected_num_replicas"].GetInt32());
+  }
+}
+
 class MasterPathHandlersUnderReplicationTwoTsItest :
     public MasterPathHandlersUnderReplicationItest {
  protected:
@@ -1866,6 +1938,10 @@ TEST_F(MasterPathHandlersItest, ClusterBalancerTasksSummary) {
 }
 
 TEST_F(MasterPathHandlersItest, ClusterBalancerOngoingRbs) {
+  // The paused RBSs never finish, so the cluster balancer's inbound size limit (which assumes
+  // unknown tablet sizes are 1GB) would stop scheduling RBSs after a few tablets. Raise the
+  // parallelism floor so that system tablets do not take all the slots before this table's tablets.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_min_inbound_remote_bootstraps_per_tserver) = 50;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = true;
   CreateTestTable(3 /* num_tablets */);
   auto& cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();

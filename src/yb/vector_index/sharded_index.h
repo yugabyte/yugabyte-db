@@ -26,11 +26,11 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
  public:
   using Base = VectorIndexIf<Vector, DistanceResult>;
 
-  ShardedVectorIndex(const VectorIndexFactory<Vector, DistanceResult>& factory,
+  ShardedVectorIndex(const VectorIndexTraitsPtr<Vector, DistanceResult>& index_traits,
                      size_t num_shards)
       : indexes_(num_shards), round_robin_counter_(0) {
     for (auto& index : indexes_) {
-      index = factory(FactoryMode::kCreate);
+      index = index_traits->Create(FactoryMode::kCreate);
     }
   }
 
@@ -152,6 +152,33 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
  private:
   std::vector<VectorIndexIfPtr<Vector, DistanceResult>> indexes_;
   std::atomic<size_t> round_robin_counter_;  // Atomic counter for thread-safe round-robin insertion
+};
+
+// Traits that create ShardedVectorIndex instances over the specified underlying traits.
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class ShardedVectorIndexTraits : public VectorIndexTraitsIf<Vector, DistanceResult> {
+ public:
+  ShardedVectorIndexTraits(
+      VectorIndexTraitsPtr<Vector, DistanceResult> index_traits, size_t num_shards)
+      : index_traits_(std::move(index_traits)), num_shards_(num_shards) {}
+
+  VectorIndexIfPtr<Vector, DistanceResult> Create(FactoryMode mode) const override {
+    return std::make_shared<ShardedVectorIndex<Vector, DistanceResult>>(
+        index_traits_, num_shards_);
+  }
+
+  DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
+    return index_traits_->Distance(lhs, rhs);
+  }
+
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    // The byte budget is shared across all shards, see ShardedVectorIndex.
+    return index_traits_->EstimateNumVectorsForBytes(bytes_limit / num_shards_) * num_shards_;
+  }
+
+ private:
+  const VectorIndexTraitsPtr<Vector, DistanceResult> index_traits_;
+  const size_t num_shards_;
 };
 
 }  // namespace yb::vector_index

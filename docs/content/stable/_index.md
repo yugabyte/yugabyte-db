@@ -7,7 +7,7 @@ type: indexpage
 breadcrumbDisable: true
 ---
 
-YugabyteDB is an open source PostgreSQL-compatible distributed database for cloud native apps. Resilient, scalable, and flexible, it can be deployed across public and private clouds as well as in Kubernetes environments.
+The AI-ready, multi-modal, distributed PostgreSQL database for cloud-native apps. Resilient, scalable, flexible, and 100% open source. Deploy YugabyteDB across public and private clouds, as well as in Kubernetes environments.
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box

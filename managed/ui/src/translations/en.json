@@ -40,6 +40,7 @@
       "startDate": "Start Date",
       "endDate": "End Date",
       "dot": ".",
+      "add": "Add",
       "and": "and",
       "learnMore": "Learn more",
       "clear": "Clear",
@@ -165,6 +166,7 @@
       }
     },
     "universeActions": {
+      "blockedByKubernetesOperator": "This universe is controlled by the Kubernetes operator and cannot be modified from YugabyteDB Anywhere.",
       "precheckInitiatedMsg": "Running Prechecks...",
       "runPrecheckOnlyButton": "Run Pre-check Only",
       "lbState": {
@@ -638,7 +640,13 @@
         "enableAdvancedObservabilityFailure": "Failed to enable Advanced Observability for the universe",
         "disableAdvancedObservabilityTitle": "Disable Advanced Observability",
         "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This will disable additional metrics export to Prometheus.",
-        "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe"
+        "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe",
+        "modeLabel": "Collection mode",
+        "modeBasic": "Basic - collect and store performance data on this YugabyteDB Anywhere",
+        "modeAdvanced": "Advanced observability - also export universe metrics to Prometheus",
+        "modeOnline": "Online - collect here and send everything to an external Perf Advisor",
+        "onlineDestinationLabel": "Destination",
+        "onlinePrerequisite": "The universe must already be registered on the destination Perf Advisor before online mode can be enabled."
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -701,18 +709,24 @@
         }
       },
       "reprovisionNodesWithYnpModal": {
-        "title": "Reprovision Nodes with YNP",
-        "instructions": "Nodes will be provisioned in a rolling manner.",
+        "title": "Reprovision Universe Nodes",
+        "description": "This re-applies host setup on the selected nodes, including OS configuration, required packages, and Node Agent installation.",
+        "learnMoreAboutOperationalConsiderations": "Learn more about operational considerations",
+        "rollingRestartNoteRF3": "<bold>Note!</bold> Reprovisioning nodes will require a <bold>rolling restart</bold> of <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+        "rollingRestartNoteRF3SelectedNode": "<bold>Note!</bold> Reprovisioning will require a <bold>restart</bold> of <bold>{{nodeName}}</bold>. The universe will remain online and available throughout.",
+        "rollingRestartNoteLowRF": "<bold>Note!</bold> Reprovisioning nodes will require a <bold>restart</bold> of <bold>{{universeName}}</bold>. The universe won't be available for reads and writes during the restart.",
+        "rollingRestartNoteLowRFSelectedNode": "<bold>Note!</bold> Reprovisioning will require a <bold>restart</bold> of <bold>{{nodeName}}</bold>. The universe won't be available for reads and writes during the restart.",
         "reprovisionNodesFor": "Reprovision nodes for:",
         "allNodeInUniverse": "All nodes in this Universe",
         "selectedNode": "Selected node",
-        "confirmButton": "Reprovision Nodes with YNP",
+        "selectedNodeDisabledSingleNodeUniverse": "This universe only has one node.",
+        "confirmButton": "Reprovision Universe Nodes",
         "error": {
-          "requestFailureLabel": "Reprovision nodes with YNP request failed",
-          "taskFailure": "Failed to reprovision nodes with YNP."
+          "requestFailureLabel": "Reprovision Universe Nodes request failed",
+          "taskFailure": "Failed to Reprovision Universe Nodes."
         },
         "success": {
-          "requestSuccess": "Reprovision nodes with YNP started.",
+          "requestSuccess": "Reprovision Universe Nodes started.",
           "taskSuccess": "Reprovisioned nodes with YNP."
         }
       }
@@ -849,7 +863,7 @@
         "addFlag": "Add Flag",
         "addGflags": "Add Flags",
         "addJson": "Add as JSON",
-        "addToTServer": "Add to T-Server",
+        "addToTServer": "Add to TServer",
         "addToMaster": "Add to Master",
         "addValue": "Add value",
         "editFlag": "Edit Flag",
@@ -869,13 +883,13 @@
         "removeValue": "Remove Value",
         "selectedDBVersion": "Selected DB Version : ",
         "title": "G-Flags",
-        "tServerValue": "T-SERVER VALUE",
+        "tServerValue": "TSERVER VALUE",
         "requiresRestart": "RESTART REQUIRED",
         "addRow": "Add Row",
         "addKeyset": "Add JSON web key set(JWKS)",
         "inheritFlagsMsg": "Apply the same Flags to primary cluster and Read Replica.",
         "note": "Note! ",
-        "rrWithOnlyTserver": "Read Replicas only have T-Servers",
+        "rrWithOnlyTserver": "Read Replicas only have TServers",
         "primaryClusterFlags": "Primary Cluster Flags",
         "primaryTab": "Primary Cluster",
         "rrTab": "Read Replica",
@@ -1101,6 +1115,8 @@
     },
     "clusterDetail": {
       "troubleshoot": {
+        "onlineModeTitle": "This universe is collected in online mode",
+        "onlineModeSubText": "Performance data for this universe is collected here and sent to an external Perf Advisor. Open that Perf Advisor to analyze it.",
         "Troubleshoot": "Troubleshoot",
         "resolved": "Resolved",
         "Details": "Refer to details",
@@ -1156,7 +1172,8 @@
           "forceUnregisterCheckBoxLabel": "Force Unregister",
           "unregisterButton": "Unregister",
           "unregisterMessage": "Are you sure you want to unregister the Perf Advisor service with URL: {{url}} ?"
-        }
+        },
+        "collectorTabTitle": "Collector"
       },
       "performance": {
         "advisor": {
@@ -2105,6 +2122,49 @@
         "error": {
           "failedToFetchUniverseTaskList": "Unable to fetch universe task list."
         }
+      },
+      "perfAdvisorEndpoint": {
+        "tabTitle": "Endpoints",
+        "listSubText": "External Perf Advisors that universes registered in online mode send their collected data to.",
+        "addButton": "Add Endpoint",
+        "addTitle": "Add Perf Advisor Endpoint",
+        "editTitle": "Edit Perf Advisor Endpoint",
+        "emptyList": "No Perf Advisor endpoints configured yet.",
+        "name": "Name",
+        "type": "Type",
+        "typeByoc": "BYOC",
+        "collectionEndpoint": "Collection endpoint",
+        "collectionAuth": "Collection authentication",
+        "metricsEndpoint": "Metrics endpoint",
+        "metricsType": "Metrics protocol",
+        "metricsTypeOtlp": "OTLP/HTTP",
+        "metricsTypeRemoteWrite": "Prometheus remote write",
+        "metricsAuth": "Metrics authentication",
+        "authNone": "None",
+        "authBasic": "Basic",
+        "authBasicWithUser": "Basic ({{username}})",
+        "username": "Username",
+        "password": "Password",
+        "ybmAccountId": "YugabyteDB Managed account ID",
+        "ybmProjectId": "YugabyteDB Managed project ID",
+        "universesUsing": "Universes",
+        "actions": "Actions",
+        "fieldRequired": "This field is required",
+        "created": "Perf Advisor endpoint created",
+        "updated": "Perf Advisor endpoint updated",
+        "deleted": "Perf Advisor endpoint deleted",
+        "saveFailed": "Failed to save the Perf Advisor endpoint",
+        "fetchFailed": "Failed to fetch Perf Advisor endpoints",
+        "deleteFailed": "Failed to delete the Perf Advisor endpoint",
+        "deleteTitle": "Delete Perf Advisor Endpoint",
+        "deleteConfirm": "Delete endpoint \"{{name}}\"? Nothing is sending to it.",
+        "deleteBlocked": "Endpoint \"{{name}}\" is used by {{count}} universe(s). Disable Perf Advisor online mode on those universes first.",
+        "heading": "Perf Advisor Endpoints",
+        "inUse": "In use",
+        "notInUse": "Not in use",
+        "editEndpoint": "Edit Endpoint",
+        "deleteEndpoint": "Delete Endpoint",
+        "andMoreUniverses": "and {{count}} more"
       }
     },
     "cdc": {
@@ -2140,6 +2200,7 @@
           "ModelResetConfigTitle": "Reset Configuration",
           "ShowOverridenConfigs": "Show Overridden Configs",
           "EditConfigWarningMessage": "Value not changed",
+          "EditUniverseV2ConfigInfo": "When enabled, all users on this account will use the <experienceLink>new YugabyteDB Anywhere UI experience</experienceLink>.",
           "SelectProvider": "Select Provider:",
           "SelectUniverse": "Select Universe:",
           "SelectCustomer": "Select Customer:",
@@ -3695,6 +3756,7 @@
           "enabled": "Enabled",
           "disabled": "Disabled",
           "creating": "Policy creation is in progress...",
+          "operatorControlledPolicy": "This backup schedule is controlled by the Kubernetes operator and cannot be changed from YugabyteDB Anywhere.",
           "deleteMsg": "scheduled backup policy is being deleted",
           "editModal": {
             "title": "Edit Scheduled Backup Policy",
@@ -3845,8 +3907,13 @@
           "quickSetup": "Quick Setup"
         },
         "formType": {
-          "guidedMode": "Guided Mode",
-          "expertMode": "Expert Mode"
+          "guidedMode": "Guided",
+          "expertMode": "Expert"
+        },
+        "setupMode": {
+          "title": "Setup Mode",
+          "description": "Choose how to configure cluster resilience and placement.",
+          "learnMore": "Learn more"
         },
         "singleNode": {
           "availabilityZone": "Availability Zone",
@@ -3855,7 +3922,7 @@
           "caution": "Caution!",
           "cautionMsg": "Single node clusters are not resilient to outages and will be subject to downtime during operations that require a restart."
         },
-        "helpText": "Advanced placement options such as  <a>Read Replicas</a>  and  <a>Geo Partitioning</a>  can be configured post cluster creation.",
+        "helpText": "Advanced placement options such as <a>Read Replicas</a> can be configured post cluster creation.",
         "expertModeHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
         "expertModeFaultToleranceMinMsg": "Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
         "guidedModeNotSupported": "This Universe configuration is not supported in Guided mode.",
@@ -3867,6 +3934,7 @@
           "cancel": "Cancel"
         },
         "regions": "Regions",
+        "expertRegionIntro": "Start by selecting one or more regions.",
         "replicationFactor": "Replication Factor",
         "availabilityZonesCount": "{{count}} Availability Zone",
         "errMsg": {
@@ -3885,7 +3953,8 @@
           "moreNodesNone": "Fault tolerance <b>None</b> supports only single node deployments."
         },
         "guidedMode": {
-          "helpText": "Select the cluster’s <a>resilience</a> level to guide the setup.",
+          "header": "Resilience",
+          "helpText": "Start by Selecting the cluster’s <a>resilience</a> level to guide the setup.",
           "selectedResilienceRequires": "Selected resilience level requires:",
           "automaticReplicationFactor": "Replication factor {{replication_factor}} will be applied automatically.",
           "wordRegion": "region",
@@ -3901,20 +3970,20 @@
           "cautionLabel": "Caution!",
           "resilienceOutageWord": "outage",
           "REGION_LEVEL": {
-            "title": "Region",
+            "title": "Region Level",
             "subText": "Resilient to region outages.",
             "name": "region"
           },
           "NODE_LEVEL": {
-            "title": "Node",
+            "title": "Node Level",
             "subText": "Resilient to node outages but not availability zone outages.",
             "name": "node",
-            "titlePod": "Pod",
+            "titlePod": "Pod Level",
             "subTextPod": "Resilient to pod outages but not availability zone outages.",
             "namePod": "pod"
           },
           "AZ_LEVEL": {
-            "title": "Availability",
+            "title": "Availability Zone Level",
             "subText": "Resilient to availability zone outages.",
             "name": "availability zone"
           },
@@ -3948,11 +4017,11 @@
           "nodes": "Nodes",
           "pods": "Pods",
           "nodesPerAz": "Nodes per Availability Zone",
-          "nodesTserverPerAz": "Nodes (T-Server) per Availability Zone",
+          "nodesTserverPerAz": "Nodes (TServer) per Availability Zone",
           "totalNodes": "Total Nodes",
           "totalPods": "Total Pods",
-          "totalNodesTserver": "Total Nodes (Tserver)",
-          "totalPodsTserver": "Total Pods (Tserver)"
+          "totalNodesTserver": "Total Nodes (TServer)",
+          "totalPodsTserver": "Total Pods (TServer)"
         },
         "inferredResilienceCard": {
           "resilientMessage": "Current setup is resilient to <b>{{count}} {{outageLevel}}</b>",
@@ -3966,6 +4035,7 @@
           "title": "Availability Zones and Nodes",
           "titlePods": "Availability Zones and Pods",
           "region": "Region {{region_count}}",
+          "newRegionBadge": "NEW",
           "availabilityZone": "Availability Zone",
           "removeAvailabilityZone": "Remove availability zone",
           "add_button": "Add Availability Zone",
@@ -3973,6 +4043,7 @@
           "tServerPods": "Pods (TServer)",
           "nodes": "Nodes",
           "pods": "Pods",
+          "rankingAcrossRegions": "Ranking is applied across regions.",
           "tooltips": {
             "regionTag": "You can add or remove regions in the previous step (Regions).",
             "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.<br/><br/><a>Learn more</a>",
@@ -3996,7 +4067,7 @@
           "helpText1": "Improve metadata and cluster coordination capacity by placing master servers on dedicated nodes.",
           "helpText2": "<b>Recommended</b> for deployments with many databases or very large table counts.",
           "totalNodes": "Total Nodes",
-          "totalTServer": "Total T-Server Nodes",
+          "totalTServer": "Total TServer Nodes",
           "totalMaster": "Total Master Server Nodes",
           "tooltip": "Master node count is system-assigned and is equal to the cluster’s replication factor. This is to maintain consensus and fault tolerance.<br><br> <a>Learn more</a>"
         },
@@ -4037,7 +4108,7 @@
           "expertAzCountMismatch": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{faultToleranceNeeded}} availability zones</b>. You have selected <b>{{nodeCount}} availability zones</b>. Update your selection to proceed.",
           "expertRfPlacementRequirement": "<b>Invalid configuration:</b> RF <b>{{rf}}</b> requires either <b>at least {{rf}} availability zones</b> or <b>at least {{rf}} total nodes</b> across zones.",
           "lessNodes": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} nodes</b>. The current configuration falls below this requirement.",
-          "lessNodesDedicated": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} T-Server nodes</b>. The current configuration falls below this requirement.",
+          "lessNodesDedicated": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} TServer nodes</b>. The current configuration falls below this requirement.",
           "nodeLevelOneRegionOneAz": "<b>Invalid configuration:</b> Node-level resilience requires placement in <b>one region</b> only. Remove availability zones in other regions or consolidate regions in the previous step.",
           "nodeLevelGuidedExactlyOneAz": "<b>Invalid configuration:</b> Guided node-level resilience requires exactly <b>one availability zone</b>. Remove extra zones to proceed.",
           "azZeroNodes": "<b>Invalid configuration:</b> Every selected availability zone must have <b>at least one node</b>. Increase the node count for any zone showing zero.",
@@ -4099,7 +4170,7 @@
         "spotInstance": "{{cloudType}} Spot Instance",
         "useAwsSpotInstance": "Use {{cloudType}} spot instances",
         "clusterInstance": "Cluster Instance",
-        "tserver": "T-Server Instance",
+        "tserver": "TServer Instance",
         "master": "Master Server Instance (Optional)",
         "totalNodes": "Total Nodes",
         "totalPods": "Total Pods",
@@ -4107,7 +4178,7 @@
         "totalTServerPods": "Total TServer Pods",
         "totalMasterServerNodes": "Total Master Server Nodes",
         "totalMasterServerPods": "Total Master Server Pods",
-        "keepMasterTserverSame": "Keep master server instance settings same as T-Server instance settings.",
+        "keepMasterTserverSame": "Keep master server instance settings same as TServer instance settings.",
         "cantChangeLater": "This CANNOT be changed after creation",
         "EBSVolume": {
           "title": "EBS Volume Encryption"
@@ -4231,8 +4302,8 @@
           "defaultPortValue": "Default {{port}}",
           "masterHttpPort": "Master HTTP Port",
           "masterRpcPort": "Master RPC Port",
-          "tserverHttpPort": "T-Server HTTP Port",
-          "tserverRpcPort": "T-Server RPC Port",
+          "tserverHttpPort": "TServer HTTP Port",
+          "tserverRpcPort": "TServer RPC Port",
           "yqlServerHttpPort": "YCQL HTTP Port",
           "yqlServerRpcPort": "YCQL Port",
           "ysqlServerHttpPort": "YSQL HTTP Port",
@@ -4243,7 +4314,7 @@
           "nodeExporterPort": "Node Exporter Port",
           "ybControllerRpcPort": "YB Controller RPC Port",
           "masterGroup": "Master Server",
-          "tServerGroup": "T-Server",
+          "tServerGroup": "TServer",
           "ysqlGroup": "YSQL",
           "ycqlGroup": "YCQL",
           "redisGroup": "Redis",
@@ -4279,7 +4350,11 @@
         "addHelmOverrides": "Add Helm Overrides",
         "overrideConfigured": "Helm Override Configured",
         "editHelmOverrides": "Edit Helm Overrides",
-        "helmOverrides": "HELM OVERRIDES"
+        "helmOverrides": "HELM OVERRIDES",
+        "validation": {
+          "duplicatePorts": "Port must be unique.",
+          "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
+        }
       },
       "reviewAndSummary": {
         "daily": "Daily",
@@ -4298,7 +4373,9 @@
         "passwordStrength": "Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.",
         "required": "{{field}} is required",
         "universeNameValidation": "{{cloudType}} Universe name cannot contain capital letters or special characters except dashes",
-        "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
+        "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding.",
+        "invalidArn": "Enter a valid AWS ARN.",
+        "duplicatePorts": "Port must be unique."
       }
     },
     "geoPartition": {
@@ -4423,14 +4500,18 @@
         "replicationFactor": "Replication Factor",
         "totalNodes": "Total Nodes",
         "totalPods": "Total Pods",
-        "totalNodesTServerMaster": "{{total_nodes}} ({{tservers}} T-Servers | {{masters}} Masters)",
-        "tServers": "T-Servers",
+        "totalNodesTServerMaster": "{{total_nodes}} ({{tservers}} TServers | {{masters}} Masters)",
+        "tServers": "TServers",
         "masters": "Masters",
         "region": "Region",
         "availabilityZone": "Availability Zone",
+        "preferred": "Preferred",
+        "preferredYesRank": "Yes | Rank {{rank}}",
+        "notPreferred": "Not Preferred",
         "noOfNodes": "No. of Nodes",
         "noOfPods": "No. of Pods",
         "reviewChanges": "Review Changes",
+        "noPlacementChanges": "Nothing to update - no placement fields changed.",
         "editPlacementConfirmModal": {
           "title": "Review Changes",
           "summary": "Summary of instance configuration changes:",
@@ -4484,7 +4565,7 @@
         "throughput": "provisioned throughput / Node",
         "throughputPod": "provisioned throughput / Pod",
         "throughtputValue": "{{throughput}} MB/s",
-        "tServerInstance": "T-Server Instance",
+        "tServerInstance": "TServer Instance",
         "masterServerInstance": "Master Server Instance",
         "editHardwareModal": {
           "title": "Cluster Instance",
@@ -4492,8 +4573,8 @@
           "noHardwareChanges": "Nothing to update - no hardware fields changed.",
           "totalNodes": "Total Nodes",
           "totalPods": "Total Pods",
-          "totalTServerNodes": "Total T-Server Nodes",
-          "totalTServerPods": "Total T-Server Pods",
+          "totalTServerNodes": "Total TServer Nodes",
+          "totalTServerPods": "Total TServer Pods",
           "totalMasterServerNodes": "Total Master Server Nodes",
           "totalMasterServerPods": "Total Master Server Pods"
         },
@@ -4522,6 +4603,25 @@
           "migrateNodes": "Migrate to a new set of nodes.",
           "migrateNodesDescription": "Migrate all data to a new set of nodes with new IP addresses. The universe will remain online and available throughout.",
           "confirmAndApply": "Confirm and Apply"
+        },
+        "storageOverrides": {
+          "title": "Storage Overrides",
+          "primaryClusterTitle": "Primary Cluster Storage Overrides",
+          "asyncClusterTitle": "Read Replica Storage Overrides",
+          "emptyStateText": "Override storage settings for selected availability zones.",
+          "addStorageOverride": "Add Storage Override",
+          "editStorageOverride": "Edit Storage Override",
+          "modalTitle": "Storage Override",
+          "zonesWithStorageOverrides": "Zones With Storage Overrides",
+          "availabilityZone": "Availability Zone",
+          "select": "Select",
+          "tserver": "T-Server",
+          "masterServer": "Master Server",
+          "volumeCount": "Volume Count",
+          "volumeSizeGib": "Volume Size (Gib)",
+          "storageClass": "Storage Class",
+          "addAvailabilityZone": "Add Availability Zone",
+          "applyingChanges": "Applying changes..."
         }
       },
       "security": {
@@ -4546,7 +4646,7 @@
         "features": "Features",
         "advancedConfigFlags": "Advanced Config Flags",
         "flagName": "Flag Name",
-        "tServer": "T-Server",
+        "tServer": "TServer",
         "master": "Master",
         "editYSQLSettings": "Edit YSQL Settings",
         "editYCQLSettings": "Edit YCQL Settings",
@@ -4574,6 +4674,12 @@
         "enableProxyServer": "Enable Proxy Server",
         "proxyHelper": "Configure web proxies as gateways for traffic from your database nodes. <a>Learn more</a>",
         "unableToApplyChanges": "Unable to apply changes."
+      },
+      "fullMoveWarning": {
+        "message": "<bold>Changes to \"{{setting}} settings\" require a full move.</bold><br />Database performance may be temporarily affected while data is being moved. Consider making the change during lower-traffic period.",
+        "publicIp": "Public IP",
+        "networkPorts": "Network port",
+        "instanceProfileArn": "Instance Profile ARN"
       },
       "logs": {
         "troubleshootingLogs": "Troubleshooting Logs",
@@ -4683,7 +4789,9 @@
             "logParameter": "pgaudit.log_parameter",
             "logRelation": "pgaudit.log_relation",
             "logStatement": "pgaudit.log_statement",
-            "logStatementOnce": "pgaudit.log_statement_once"
+            "logStatementOnce": "pgaudit.log_statement_once",
+            "retainAuditLogArchive": "Retain audit log archive on database nodes",
+            "logRetentionDays": "Retention period (days)"
           },
           "tooltips": {
             "read": "Log SELECT and COPY when the source is a relation or a query.",
@@ -4699,7 +4807,12 @@
             "logParameter": "Include parameters passed with the statement. Parameters are provided in .csv format after the statement text.",
             "logRelation": "Create separate log entries for each relation (TABLE, VIEW, etc.) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging.",
             "logStatement": "Include statement text with every log entry.",
-            "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry."
+            "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry.",
+            "retainAuditLogArchive": "Saves audit records in separate compressed archives on each database node so they can be retained independently of regular PostgreSQL logs.",
+            "logRetentionDays": "Number of days to keep the compressed audit log archives on each database node."
+          },
+          "validation": {
+            "logRetentionDaysMin": "Enter an integer of at least 1"
           },
           "confirmation": {
             "title": "Confirm Configuration Change",
@@ -4742,7 +4855,7 @@
           "auditLogExport": "audit log export"
         }
       },
-        "telemetryExport": {
+      "telemetryExport": {
         "title": "Telemetry Export",
         "subtitle": "Export metrics and logs to external observability tools.",
         "k8sUnsupportedAuditExportVersion": "Requires database version {{stableVersion}} (stable) or {{previewVersion}} (preview) or later.",
@@ -4936,7 +5049,7 @@
         "instanceOptional": "Instance Settings (Optional)",
         "advancedFlags": "Advanced Config Flags",
         "advancedFlagLabel": "Customize Database Config Flags for Read Replica",
-        "advancedFlagSubText": "By default, T-Server flags from the primary cluster are applied to Read Replicas.",
+        "advancedFlagSubText": "By default, TServer flags from the primary cluster are applied to Read Replicas.",
         "advancedFlagNote": "<strong>Note:</strong> Read replicas do not include Master servers.",
         "regionAZHelpText": "Enhance read scalability and availability with geographically distributed replicas. <a>Learn more</a>",
         "regionsSectionTitle": "Regions",
@@ -4945,11 +5058,12 @@
         "nodes": "Nodes",
         "pods": "Pods",
         "replicationFactor": "Replication Factor",
+        "firstSelectARegion": "First select a region.",
         "replicationFactorTooltip": "Number of copies of primary cluster data maintained in this availability zone. Determines fault tolerance within the read replica.<br/>",
         "totalNodesPlacement": "Total Nodes",
         "totalPodsPlacement": "Total Pods",
-        "totalNodesPlacementTserver": "Total Nodes (T-Server)",
-        "totalPodsPlacementTserver": "Total Pods (T-Server)",
+        "totalNodesPlacementTserver": "Total Nodes (TServer)",
+        "totalPodsPlacementTserver": "Total Pods (TServer)",
         "addAvailabilityZone": "Add Availability Zone",
         "removeRegion": "Remove region",
         "addRegion": "Add Region",
@@ -4975,15 +5089,18 @@
           "daily": "Daily",
           "monthly": "Monthly",
           "universeTotal": "Universe total",
+          "nodes": "Nodes",
+          "pods": "Pods",
           "totalNodes": "Total nodes",
           "totalPods": "Total pods",
-          "totalCores": "Total cores",
-          "totalMemory": "Total memory",
-          "totalStorage": "Total storage"
+          "totalCores": "Total Cores",
+          "totalMemory": "Total Memory",
+          "totalStorage": "Total Storage"
         },
         "toast": {
           "addRRFailed": "Failed to add read replica",
-          "updateRRFailed": "Failed to update read replica"
+          "updateRRFailed": "Failed to update read replica",
+          "noPlacementChanges": "Nothing to update - no placement fields changed."
         },
         "validation": {
           "invalidArchitecture": "Invalid CPU Architecture",
@@ -5006,14 +5123,13 @@
         "title": "What Changed",
         "newAndImproved": "New and Improved",
         "enhancedUniverseConfigTitle": "Enhanced Universe Configuration",
-        "enhancedUniverseConfigDescription": "Set up and manage universes using a wizard in Guided or Expert mode to help you build the right topology. <learnMore>Learn more</learnMore>",
+        "enhancedUniverseConfigDescription": "Set up and manage universes using a wizard in Guided or Expert mode to help you build the right topology.",
         "centralizedSettingsTitle": "Centralized Settings",
-        "centralizedSettingsDescription": "Access all your universe configuration settings from a single Settings tab. <learnMore>Learn more</learnMore>",
+        "centralizedSettingsDescription": "Access all your universe configuration settings from a single Settings tab.",
         "preferredAzRankingTitle": "Preferred availability zone ranking",
-        "preferredAzRankingDescription": "Rank preferred availability zones to optimize connection latency. <learnMore>Learn more</learnMore>",
+        "preferredAzRankingDescription": "Rank preferred availability zones to optimize connection latency.",
         "otherImprovements": "Learn about other improvements in <releaseLink>this release.</releaseLink>",
-        "whereDidFeaturesMove": "Where did features move?",
-        "whereDidFeaturesMoveDescription": "Same features, new home. Here's where to find them now.",
+        "sameFeaturesNewHome": "Same features, new home",
         "then": "Then",
         "now": "Now",
         "editUniverse": "Edit Universe",
@@ -5022,6 +5138,8 @@
         "logs": "Logs",
         "logsAndMetricsExport": "Logs & Metrics Export",
         "settings": "Settings",
+        "rolloutTitle": "Roll out the new experience for everyone",
+        "rolloutBody": "To enable the new experience for all users, set the <configTag>{{runtimeConfig}}</configTag> config on",
         "close": "Close",
         "findOutMore": "Find Out More",
         "nowPlacement": "Placement",
@@ -5050,7 +5168,7 @@
         "findOutMore": "Find Out More"
       },
       "whereThingsMovedTip": {
-        "label": "Where things moved?"
+        "label": "Can't find a setting?"
       },
       "whatNewInPlacement": {
         "title": "What's New",
@@ -5065,14 +5183,26 @@
         "findOutMore": "Find Out More"
       },
       "beforeProceedWithNewModal": {
-        "title": "Before you proceed...",
-        "note": "Note that database audit log is now available under  “<settings>Settings</settings>”.",
-        "databaseAuditLogs": "Database audit logs",
-        "databaseAuditLogExport": "Database audit log export",
+        "title": "“Database Audit Log ” has moved",
+        "note": "Database audit log is now available under  “<settings>Settings</settings>” tab.",
+        "databaseAuditLogs": "Database audit logs settings",
+        "databaseAuditLogExport": "Database audit log export settings",
         "settings": "Settings",
         "nowLogs": "Logs",
         "nowTelemetryExport": "Telemetry Export",
         "close": "Close"
+      },
+      "unsupportedFeatureWarningModal": {
+        "title": "Are you sure?",
+        "affectedUniverses": "The following universes use features that are only available in the new experience.",
+        "accessChange": "Your universes will continue to run normally, but how you access some features will change.",
+        "learnMore": "Learn more",
+        "afterSwitchingBack": "After switching back:",
+        "preferredAzRanking": "Preferred AZ ranking will be removed.",
+        "databaseQueryLogging": "Database query logging must be managed through the API.",
+        "proxies": "Proxies can only be managed through the API.",
+        "cancel": "Cancel",
+        "switchBack": "Switch back"
       },
       "universeCreationPopover": {
         "title": "New Universe creation",
@@ -5114,20 +5244,19 @@
         "tryItFirst": "Try it first on your account",
         "tryItFirstInfoHeadline": "Applies only to your account. Other users will not see any change.",
         "tryItFirstInfoBody": "To enable the new experience for all users on this YugabyteDB Anywhere instance, enable the <bold>{{runtimeConfig}}</bold> runtime configuration.",
-        "findOutMore": "Find out more"
+        "findOutMore": "Find out more",
+        "switchedToNewExperience": "Switched to new experience"
       },
       "beforeNewExperiencePopover": {
-        "title": "Try the new experience",
-        "bodyLine1": "Switch between the current and new experiences at any time.",
-        "bodyLine2": "Once ready, use the <bold>{{runtimeConfig}} runtime configuration</bold> to enable the new experience for all users.",
-        "seeWhatsChanged": "See what's changed",
+        "title": "Try the new experience on your account.",
+        "body": "Switch between the current and new experiences at any time.",
+        "seeWhatsChanged": "See what’s changed",
         "hideTip": "Hide tip"
       },
       "afterNewExperiencePopover": {
         "title": "Welcome to the new experience",
-        "bodyLine1": "YugabyteDB Anywhere has been updated with improved workflows, navigation, and settings organization.",
-        "bodyLine2": "See what's changed to learn about the new layout.",
-        "seeWhatsChanged": "See what's changed",
+        "body": "YugabyteDB Anywhere has been updated with improved workflows, navigation, and settings organization.",
+        "seeWhatsChanged": "See what’s changed",
         "hideTip": "Hide tip"
       }
     }

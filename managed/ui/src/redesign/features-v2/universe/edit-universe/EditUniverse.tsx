@@ -23,7 +23,7 @@ import {
 } from './editUniverseTabUtils';
 import { WhereThingsMovedTip } from '@app/redesign/features-v2/onboarding/universe-revamp/tips/WhereThingsMovedTip';
 
-const { Grid2: Grid, styled, Box } = mui;
+const { styled, Box } = mui;
 
 interface EditUniverseProps {
   universeUUID: string;
@@ -99,91 +99,94 @@ const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
 
   return (
     <Box
+      data-edit-universe-root
       sx={{
         display: 'flex',
         flex: 1,
         width: '100%',
-        overflow: 'hidden'
+        minHeight: 0,
+        overflow: 'hidden',
+        // Contain portaled onboarding tips (e.g. Advanced Placement) within this shell.
+        position: 'relative'
       }}
     >
-      <Grid
-        container
-        spacing={{ xs: 1.5, md: 1.5, lg: 1.5, xl: 3 }}
-        sx={{ flex: 1, minHeight: 0, width: '100%', flexWrap: 'nowrap' }}
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          width: '232px',
+          minWidth: '232px',
+          maxWidth: '232px',
+          flexShrink: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          '& .MuiTabs-root': {
+            width: '100%',
+            maxWidth: '100%',
+            overflow: 'hidden'
+          },
+          '& .MuiTabs-scroller': {
+            overflowX: 'hidden !important',
+            overflowY: 'visible !important'
+          },
+          '& .MuiTabs-flexContainer': {
+            width: '100%',
+            maxWidth: '100%'
+          },
+          '& .MuiTab-root': {
+            maxWidth: '100%',
+            boxSizing: 'border-box'
+          }
+        }}
       >
-        <Grid sx={{ overflowY: 'auto', flexShrink: 0 }} size="auto">
-          <Box sx={{ display: 'flex', flexDirection: 'column', width: '232px' }}>
-            <YBTabs
-              orientation="vertical"
-              variant="secondary"
-              tabWidth={200}
-              value={selectedTab}
-              onChange={handleTabChange}
-            >
-              <TabItem value={EditUniverseTabs.GENERAL} label={t('general')} />
-              <TabItem value={EditUniverseTabs.PLACEMENT} label={t('placement')} />
-              <TabItem value={EditUniverseTabs.HARDWARE} label={t('hardware')} />
-              <TabItem value={EditUniverseTabs.SECURITY} label={t('security')} />
-              <TabItem value={EditUniverseTabs.DATABASE} label={t('database')} />
-              <TabItem value={EditUniverseTabs.ADVANCED} label={t('advanced')} />
-              <StyledDivider orientation="horizontal" />
-              <TabItem value={EditUniverseTabs.LOGS} label={t('logs')} />
-              <TabItem value={EditUniverseTabs.TELEMETRY_EXPORT} label={t('telemetryExport')} />
-            </YBTabs>
-            <Box sx={{ marginTop: '-8px' }}>
-              <WhereThingsMovedTip />
-            </Box>
-          </Box>
-        </Grid>
-        <Grid
-          container
-          direction={'column'}
-          size="grow"
-          spacing={0}
-          sx={{ flex: 1, minHeight: 0, minWidth: 0 }}
+        <YBTabs
+          orientation="vertical"
+          variant="secondary"
+          tabWidth={200}
+          value={selectedTab}
+          onChange={handleTabChange}
         >
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              minWidth: '856px',
-              width: '100%',
-              mt: 2
-            }}
-          >
-            <EditUniverseContext.Provider value={contextValue}>
-              <SwitchEditUniverseTabs />
-            </EditUniverseContext.Provider>
-          </Box>
-        </Grid>
-      </Grid>
+          <TabItem value={EditUniverseTabs.GENERAL} label={t('general')} />
+          <TabItem value={EditUniverseTabs.PLACEMENT} label={t('placement')} />
+          <TabItem value={EditUniverseTabs.HARDWARE} label={t('hardware')} />
+          <TabItem value={EditUniverseTabs.SECURITY} label={t('security')} />
+          <TabItem value={EditUniverseTabs.DATABASE} label={t('database')} />
+          <TabItem value={EditUniverseTabs.ADVANCED} label={t('advanced')} />
+          <StyledDivider orientation="horizontal" />
+          <TabItem value={EditUniverseTabs.LOGS} label={t('logs')} />
+          <TabItem value={EditUniverseTabs.TELEMETRY_EXPORT} label={t('telemetryExport')} />
+        </YBTabs>
+        <Box
+          sx={{ marginTop: '-8px', marginLeft: '16px', maxWidth: 'calc(100% - 16px)', minWidth: 0 }}
+        >
+          <WhereThingsMovedTip />
+        </Box>
+      </Box>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          overflow: 'auto'
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: '856px',
+            width: '100%',
+            mt: 2
+          }}
+        >
+          <EditUniverseContext.Provider value={contextValue}>
+            <SwitchEditUniverseTabs />
+          </EditUniverseContext.Provider>
+        </Box>
+      </Box>
     </Box>
-    // <Grid container direction="row" spacing={2}>
-    //   <Grid item sx={{ width: '230px' }}>
-    //     <YBTabs
-    //       orientation="vertical"
-    //       variant="secondary"
-    //       tabWidth={200}
-    //       value={selectedTab}
-    //       onChange={handleTabChange}
-    //     >
-    //       <TabItem value={EditUniverseTabs.GENERAL} label={t('general')} />
-    //       <TabItem value={EditUniverseTabs.PLACEMENT} label={t('placement')} />
-    //       <TabItem value={EditUniverseTabs.HARDWARE} label={t('hardware')} />
-    //       <TabItem value={EditUniverseTabs.SECURITY} label={t('security')} />
-    //       <TabItem value={EditUniverseTabs.DATABASE} label={t('database')} />
-    //       <TabItem value={EditUniverseTabs.ADVANCED} label={t('advanced')} />
-    //       <StyledDivider orientation="horizontal" />
-    //       <TabItem value={EditUniverseTabs.LOGS} label={t('logs')} />
-    //       <TabItem value={EditUniverseTabs.TELEMETRY_EXPORT} label={t('telemetryExport')} />
-    //     </YBTabs>
-    //   </Grid>
-    //   <Grid item sx={{ flexGrow: 1, flex: 1 }}>
-    //     <EditUniverseContext.Provider value={contextValue}>
-    //       <SwitchEditUniverseTabs />
-    //     </EditUniverseContext.Provider>
-    //   </Grid>
-    // </Grid>
   );
 };
 

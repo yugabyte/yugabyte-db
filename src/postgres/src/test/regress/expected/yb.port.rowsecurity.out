@@ -403,11 +403,12 @@ NOTICE:  f_leak => great manga
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
-                       QUERY PLAN                        
----------------------------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Seq Scan on document
-   Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
-(2 rows)
+   Storage Filter: (dauthor = CURRENT_USER)
+   Filter: f_leak(dtitle)
+(3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle);
                                 QUERY PLAN                                 
@@ -415,10 +416,11 @@ EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dt
  YB Batched Nested Loop Join
    Join Filter: (document.cid = category.cid)
    ->  Seq Scan on document
-         Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
+         Storage Filter: (dauthor = CURRENT_USER)
+         Filter: f_leak(dtitle)
    ->  Index Scan using category_pkey on category
          Index Cond: (cid = ANY (ARRAY[document.cid, $1, $2, ..., $1023]))
-(6 rows)
+(7 rows)
 
 -- interaction of FK/PK constraints
 SET SESSION AUTHORIZATION regress_rls_alice;
@@ -1052,7 +1054,7 @@ NOTICE:  f_leak => awesome science fiction
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
                      QUERY PLAN                     
 ----------------------------------------------------
- Seq Scan on part_document_fiction part_document
+ Seq Scan on part_document_fiction part_document_1
    Storage Filter: ((cid < 55) AND (dlevel <= $0))
    Filter: f_leak(dtitle)
    InitPlan 1 (returns $0)
@@ -1131,7 +1133,7 @@ NOTICE:  f_leak => awesome science fiction
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
                      QUERY PLAN                     
 ----------------------------------------------------
- Seq Scan on part_document_fiction part_document
+ Seq Scan on part_document_fiction part_document_1
    Storage Filter: ((cid < 55) AND (dlevel <= $0))
    Filter: f_leak(dtitle)
    InitPlan 1 (returns $0)
@@ -1224,16 +1226,19 @@ NOTICE:  f_leak => great technology book
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-                          QUERY PLAN                           
----------------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Append
    ->  Seq Scan on part_document_fiction part_document_1
-         Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
+         Storage Filter: (dauthor = CURRENT_USER)
+         Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_satire part_document_2
-         Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
+         Storage Filter: (dauthor = CURRENT_USER)
+         Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_nonfiction part_document_3
-         Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
-(7 rows)
+         Storage Filter: (dauthor = CURRENT_USER)
+         Filter: f_leak(dtitle)
+(10 rows)
 
 -- database superuser does bypass RLS policy when enabled
 RESET SESSION AUTHORIZATION;
@@ -3668,7 +3673,6 @@ SELECT * FROM coll_t;
 (1 row)
 
 ROLLBACK;
-DROP TABLE coll_t; -- YB: workaround for lack of transaction DDL
 --
 -- Shared Object Dependencies
 --
@@ -3724,7 +3728,6 @@ SAVEPOINT q;
 DROP ROLE regress_rls_frank; -- succeeds
 ROLLBACK TO q;
 ROLLBACK; -- cleanup
-DROP TABLE tbl1; -- YB: workaround for lack of transactional DDL
 --
 -- Converting table to view
 --
@@ -3747,7 +3750,6 @@ DROP POLICY p ON t;
 CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
   SELECT * FROM generate_series(1,5) t0(c); -- succeeds
 ROLLBACK;
-DROP VIEW t; -- YB: manually ROLLBACK and DROP the VIEW conversion above to prevent conflict with CREATE TABLE below (see #1404)
 --
 -- Policy expression handling
 --
@@ -3756,7 +3758,6 @@ CREATE TABLE t (c) AS VALUES ('bar'::text);
 CREATE POLICY p ON t USING (max(c)); -- fails: aggregate functions are not allowed in policy expressions
 ERROR:  aggregate functions are not allowed in policy expressions
 ROLLBACK;
-DROP TABLE t; -- YB: workaround for lack of transactional DDL
 --
 -- Non-target relations are only subject to SELECT policies
 --
@@ -4149,7 +4150,7 @@ RESET SESSION AUTHORIZATION;
 DROP VIEW rls_view;
 DROP TABLE rls_tbl;
 DROP TABLE ref_tbl;
--- Leaky operator test
+-- Leaky operator tests
 CREATE TABLE rls_tbl (a int);
 INSERT INTO rls_tbl SELECT x/10 FROM generate_series(1, 100) x;
 ANALYZE rls_tbl;
@@ -4166,9 +4167,80 @@ SELECT * FROM rls_tbl WHERE a <<< 1000;
 ---
 (0 rows)
 
+RESET SESSION AUTHORIZATION;
+CREATE TABLE rls_child_tbl () INHERITS (rls_tbl);
+INSERT INTO rls_child_tbl SELECT x/10 FROM generate_series(1, 100) x;
+ANALYZE rls_child_tbl;
+CREATE TABLE rls_ptbl (a int) PARTITION BY RANGE (a);
+CREATE TABLE rls_part PARTITION OF rls_ptbl FOR VALUES FROM (-100) TO (100);
+INSERT INTO rls_ptbl SELECT x/10 FROM generate_series(1, 100) x;
+ANALYZE rls_ptbl, rls_part;
+ALTER TABLE rls_ptbl ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rls_part ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON rls_ptbl TO regress_rls_alice;
+GRANT SELECT ON rls_part TO regress_rls_alice;
+CREATE POLICY p1 ON rls_tbl USING (a < 0);
+CREATE POLICY p2 ON rls_ptbl USING (a < 0);
+CREATE POLICY p3 ON rls_part USING (a < 0);
+SET SESSION AUTHORIZATION regress_rls_alice;
+SELECT * FROM rls_tbl WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
+SELECT * FROM rls_child_tbl WHERE a <<< 1000;
+ERROR:  permission denied for table rls_child_tbl
+SELECT * FROM rls_ptbl WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
+SELECT * FROM rls_part WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
+SELECT * FROM (SELECT * FROM rls_tbl UNION ALL
+               SELECT * FROM rls_tbl) t WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
+SELECT * FROM (SELECT * FROM rls_child_tbl UNION ALL
+               SELECT * FROM rls_child_tbl) t WHERE a <<< 1000;
+ERROR:  permission denied for table rls_child_tbl
+RESET SESSION AUTHORIZATION;
+REVOKE SELECT ON rls_tbl FROM regress_rls_alice;
+CREATE VIEW rls_tbl_view AS SELECT * FROM rls_tbl;
+ALTER TABLE rls_child_tbl ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON rls_child_tbl TO regress_rls_alice;
+CREATE POLICY p4 ON rls_child_tbl USING (a < 0);
+SET SESSION AUTHORIZATION regress_rls_alice;
+SELECT * FROM rls_tbl WHERE a <<< 1000;
+ERROR:  permission denied for table rls_tbl
+SELECT * FROM rls_tbl_view WHERE a <<< 1000;
+ERROR:  permission denied for view rls_tbl_view
+SELECT * FROM rls_child_tbl WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
+SELECT * FROM (SELECT * FROM rls_tbl UNION ALL
+               SELECT * FROM rls_tbl) t WHERE a <<< 1000;
+ERROR:  permission denied for table rls_tbl
+SELECT * FROM (SELECT * FROM rls_child_tbl UNION ALL
+               SELECT * FROM rls_child_tbl) t WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
 DROP OPERATOR <<< (int, int);
 DROP FUNCTION op_leak(int, int);
 RESET SESSION AUTHORIZATION;
+DROP TABLE rls_part;
+DROP TABLE rls_ptbl;
+DROP TABLE rls_child_tbl;
+DROP VIEW rls_tbl_view;
 DROP TABLE rls_tbl;
 -- Bug #16006: whole-row Vars in a policy don't play nice with sub-selects
 SET SESSION AUTHORIZATION regress_rls_alice;

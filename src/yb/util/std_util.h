@@ -19,6 +19,7 @@
 #include <ranges>
 #include <tuple>
 #include <type_traits>
+#include <unordered_set>
 
 #include "yb/gutil/stl_util.h"
 
@@ -160,5 +161,28 @@ template <MoveOnlyType... Args>
         std::forward<Args>(args)...);
   }
 }
+
+namespace std_util_internal {
+
+struct TransparentPointerHash {
+  using is_transparent = void;
+  constexpr size_t operator()(const auto& p) const {
+    auto* address = std::to_address(p);
+    return std::hash<decltype(address)>{}(address);
+  }
+};
+
+struct TransparentPointerKeyEqual {
+  using is_transparent = void;
+  bool operator()(const auto& lhs, const auto& rhs) const {
+    return std::to_address(lhs) == std::to_address(rhs);
+  }
+};
+
+} // namespace std_util_internal
+
+template<typename P>
+using PointerUnorderedSet = std::unordered_set<
+    P, std_util_internal::TransparentPointerHash, std_util_internal::TransparentPointerKeyEqual>;
 
 } // namespace yb

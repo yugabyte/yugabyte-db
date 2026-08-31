@@ -360,9 +360,9 @@ class PeerMessageQueue {
 
   Status UnRegisterObserver(PeerMessageQueueObserver* observer);
 
-  bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
+  virtual bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
 
-  OpId PeerLastReceivedOpId(const TabletServerId& uuid) const;
+  virtual OpId PeerLastReceivedOpId(const TabletServerId& uuid) const;
 
   // Choose an up-to-date peer for leader elections that do not specify a new_leader_uuid. Any VOTER
   // would be valid, but we pick from those with the highest op id to minimize how long the leader
@@ -665,9 +665,6 @@ struct MajorityReplicatedData {
   CoarseTimePoint leader_lease_expiration;
   MicrosTime ht_lease_expiration;
   uint64_t num_sst_files;
-
-  // Update was caused by the following peer, that received all operations.
-  TabletServerId peer_got_all_ops;
 
   std::string ToString() const;
 };

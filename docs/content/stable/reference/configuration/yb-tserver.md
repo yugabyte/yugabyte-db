@@ -446,6 +446,19 @@ Default: `true`
 
 Enable or disable the query planner's use of batched nested loop join.
 
+##### yb_enable_advanced_index_cond_fold
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Enables advanced folding of multiple conditions on the same index column when binding index scan conditions to DocDB. When enabled, YugabyteDB can fold more conditions on the same column at bind time. That reduces rows fetched from storage and PostgreSQL-side index rechecks.
+
+For example, when an IN array and an inequality both apply to the same column, the inequality can cull the array before the scan instead of fetching the full array and discarding rows after DocDB returns them.
+
+Available in v2026.1.0.0 and later. In v2026.1.1.0 and later, folding also applies to merge scan pinned IN-list conditions.
+
 ##### yb_enable_cbo
 
 {{% tags/wrap %}}
@@ -1772,7 +1785,7 @@ The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memo
 
 Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
 
-Each tablet replica generally requires 700 MiB of this memory.
+Each tablet replica generally requires 0.7 MiB of this tablet overhead memory.
 
 ### Raft and consistency/timing flags
 
@@ -2313,6 +2326,51 @@ Default: `false`
 
 Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
 
+### Explicit row locking flags
+
+To learn about explicit row locking, see [Row-level locks](../../../explore/transactions/explicit-locking/#row-level-locks) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
+
+##### --ysql_yb_explicit_row_locking_batch_size
+
+{{% tags/wrap %}}
+
+Default: `1024`
+{{% /tags/wrap %}}
+
+Controls the batch size of explicit row locking operations. When YugabyteDB processes SELECT FOR UPDATE/SHARE statements, it batches lock requests to optimize performance. Larger batches improve throughput by reducing server round-trips but consume more memory. Smaller batches reduce memory usage and latency for small result sets.
+
+This flag can be set dynamically:
+
+```sql
+SET yb_explicit_row_locking_batch_size = 512;
+```
+
+Works together with `yb_explicit_row_lock_skip_locked_max_read_ahead` for SKIP LOCKED query optimization. For tuning guidance, refer to [Row-level explicit locking clauses](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses).
+
+<!-- No ysql flag for this parameter
+##### yb_explicit_row_lock_skip_locked_max_read_ahead
+
+{{% tags/wrap %}}
+
+Default: `1` (disabled)
+{{% /tags/wrap %}}
+
+Controls the maximum number of rows that can be locked in parallel when the `SKIP LOCKED` clause is used. This parameter enables read-ahead optimization for SKIP LOCKED operations, allowing YugabyteDB to prefetch and attempt to lock multiple rows concurrently rather than processing them sequentially.
+
+- **Value `1` (default):** Disables read-ahead; rows are processed sequentially
+- **Values greater than 1:** Enables read-ahead; YugabyteDB attempts to lock up to this many rows in parallel
+
+Setting a value greater than 1 can significantly improve performance for SKIP LOCKED queries by reducing latency when multiple rows are available for locking.
+
+Example:
+
+```sql
+SET yb_explicit_row_lock_skip_locked_max_read_ahead = 10;
+```
+
+Available from YugabyteDB 2026.1.1.0 and later. For performance tuning guidance, refer to [Row-level explicit locking clauses](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses).
+-->
+
 ### Advisory lock flags
 
 To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
@@ -2402,6 +2460,53 @@ Default: `128`
 
 The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
 
+### Multitenancy (resource governor) flags
+
+These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. The feature relies on Linux cgroups and requires operating system setup before it can be enabled. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
+
+Set these flags on both YB-Master and YB-TServer.
+
+##### --enable_qos
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables per-database CPU limits and the maximum database count cap. When `false`, per-database cgroups are not created and none of the other `qos_*` flags have any effect.
+
+##### --qos_max_db_cpu_percent
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/t-server>}}
+Default: `100.0`
+{{% /tags/wrap %}}
+
+The maximum percentage (0.0–100.0) of the node's non-system-reserved CPU that work for any single database is allowed to use on a YB-TServer. Has no effect unless `enable_qos` is `true`.
+
+##### --qos_evaluation_window_us
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/t-server>}}
+Default: `100000`
+{{% /tags/wrap %}}
+
+Advanced flag that maps directly to the Linux `cfs_period_us` parameter: the period, in microseconds, that the scheduler uses when checking CPU limits and throttling cgroups. Accepts values from 1000 to 1000000. This should normally not be changed. Has no effect unless `enable_qos` is `true`.
+
+##### --qos_system_high_cpu_reserved_percent
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/t-server>}}
+Default: `0`
+{{% /tags/wrap %}}
+
+The percentage (0.0–100.0) of CPU reserved for high-priority system work.
+
 ### Other performance tuning options
 
 ##### --allowed_preview_flags_csv
@@ -2436,6 +2541,19 @@ Default: `false`
 Enables concurrent replication of multiple write operations in a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
 
 Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
+
+##### --use_cgroups_cpu
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Determines the number of available CPUs from the cgroup CPU limit rather than the total number of CPUs on the host. Set this to `true` in containerized environments where the container is allotted a fraction of the host's CPUs.
+
+The maximum number of databases is controlled by the [--qos_max_db_count](../yb-master/#qos-max-db-count) flag on the YB-Master.
 
 ## Security
 
@@ -2753,6 +2871,7 @@ When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL
 ##### --pg_client_use_shared_memory
 
 {{% tags/wrap %}}
+
 Default: `true`
 {{% /tags/wrap %}}
 

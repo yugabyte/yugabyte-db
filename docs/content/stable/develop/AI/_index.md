@@ -14,12 +14,23 @@ YugabyteDB offers the familiarity and extensibility of PostgreSQL, while also de
 
 Using the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) PostgreSQL extension, YugabyteDB functions as a highly performant vector database, with enterprise scale and resilience. This means you can use YugabyteDB to support Retrieval-augmented generation (RAG) workloads, providing AI agents with knowledge of your unstructured data, while its scalability allows it to store and search billions of vectors.
 
+For integrated document preprocessing and embedding generation from SQL, use the [pg_dist_rag](distributed-rag/) extension {{<tags/feature/tp>}} (YugabyteDB {{<release "2026.1.1.0">}} or later). It registers document sources, coordinates distributed chunking and embedding pipelines, and stores vectors in pgvector indexes—without building external ETL.
+
 Learn more about developing GenAI and RAG applications with YugabyteDB:
 
+- [Beyond RAG: Using YugabyteDB as the Foundation for Reliable AI Decisions](https://www.yugabyte.com/blog/using-yugabytedb-for-reliable-ai-decisions/)
 - [Introducing New YugabyteDB Functionality for Ultra-Resilient AI Apps](https://www.yugabyte.com/blog/new-yugabytedb-functionality-for-ultra-resilient-ai-apps/)
 - [Introducing the YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server/)
 - [How to Build a RAG Workflow for Agentic AI without Code](https://www.yugabyte.com/blog/build-a-rag-workflow-for-agentic-ai-without-codev/)
 - [From RAG to Riches: AI That Knows Your Support Stack](https://www.yugabyte.com/blog/rag-ai-that-knows-your-support-stack/)
+
+## YugabyteDB MCP server and skills
+
+The YugabyteDB MCP Server is a lightweight, Python-based server that enables agents to securely connect to access, query, analyze, and interpret data in your YugabyteDB database using natural language prompts. Complement the MCP server with YugabyteDB Agent Skills. These structured skill packages give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows.
+
+{{<lead link="mcp-server/">}}
+Install skills and connect to the [MCP server](mcp-server/).
+{{</lead>}}
 
 ## Get started
 
@@ -55,6 +66,7 @@ Explore the following tutorials to see how YugabyteDB integrates with different 
 | [YugabyteDB MCP server](mcp-server/) | Enable LLMs to interact directly with YugabyteDB using natural language. | Claude / Cursor | External |
 | [LlamaIndex](ai-llamaindex-openai/) | Connect LLMs to structured and unstructured data using LlamaIndex. | OpenAI / LlamaIndex | External |
 | [LangChain](ai-langchain-openai/) | Build a natural language interface to query your database without writing SQL. | OpenAI / LangChain | External |
+| [Distributed RAG](distributed-rag/) | Build distributed RAG pipelines with integrated document preprocessing and embedding generation from SQL. | OpenAI / LangChain / Unstructured.io | External |
 
 <!--
 ## Retrieval-augmented generation

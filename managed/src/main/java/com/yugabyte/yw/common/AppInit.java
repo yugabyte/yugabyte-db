@@ -45,7 +45,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.operator.KubernetesOperator;
-import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
+import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
@@ -145,7 +145,7 @@ public class AppInit {
       UniverseArchitectureBackfill universeArchitectureBackfill,
       RoleBindingUtil roleBindingUtil,
       SlowQueriesAggregator slowQueriesAggregator,
-      EmbeddedCollectorInitializer embeddedCollectorInitializer)
+      PACollectorSync paCollectorSync)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -180,7 +180,7 @@ public class AppInit {
           for (Users user : Users.find.all()) {
             Principal principal = Principal.get(user.getUuid());
             if (principal == null) {
-              log.info("Adding Principal entry for user with email: " + user.getEmail());
+              log.info("Adding Principal entry for user with uuid: " + user.getUuid());
               new Principal(user).save();
             }
             ResourceGroup resourceGroup =
@@ -198,7 +198,7 @@ public class AppInit {
                 "Created system role binding for user '{}' (email '{}') of customer '{}', "
                     + "with role '{}' (name '{}'), and default role binding '{}'.",
                 user.getUuid(),
-                user.getEmail(),
+                RedactingService.SECRET_REPLACEMENT,
                 customer.getUuid(),
                 newRbacRole.getRoleUUID(),
                 newRbacRole.getName(),
@@ -366,7 +366,7 @@ public class AppInit {
         // Add checksums for all certificates that don't have a checksum.
         CertificateHelper.createChecksums();
 
-        embeddedCollectorInitializer.start();
+        paCollectorSync.start();
 
         long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
         String elapsedStr = String.valueOf(elapsed);

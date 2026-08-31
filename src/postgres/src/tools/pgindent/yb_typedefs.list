@@ -110,6 +110,9 @@ YbHistPair
 YbHistParseState
 YbIndexBuildCallback
 YbIndexCondTypes
+YbIndexCorruptionErrors
+YbIndexErrorInfo
+YbIndexInconsistencyLogStore
 YbIndexPathInfo
 YbIndexProcessorState
 YbInsertOnConflictBatchState
@@ -138,6 +141,8 @@ YbNotifsPollerInitStatus
 YbNotifsPollerShmemData
 YbObjectLockMode
 YbOidAssignmentMapEntry
+YbOpaque
+YbOpaqueData
 YbOptSplit
 YbOptionalReadPointHandle
 YbPFetchTable
@@ -146,6 +151,7 @@ YbPFetchTableState
 YbParentScan
 YbParentScanData
 YbParitionedTableOptions
+YbParseType
 YbPartitionPruneStepFuncOp
 YbPathInfo
 YbPgAttributeRow
@@ -192,8 +198,6 @@ YbRowBounds
 YbRunWithPrefetcherContext
 YbSample
 YbSampleData
-YbScanDesc
-YbScanDescData
 YbScanPlan
 YbScanPlanData
 YbSendDirectFn
@@ -226,6 +230,9 @@ YbTableCacheInfo
 YbTableCacheType
 YbTableDistribution
 YbTablePrefetcherState
+YbTableScanDesc
+YbTableScanDescData
+YbTableScanOptions
 YbTablegroupInfo
 YbTempNamespaceSuffixBuffer
 YbTerminatedQueriesBuffer
@@ -264,6 +271,7 @@ YbcConstSliceVector
 YbcCreateMemoryContextFn
 YbcCstringToTextWithLenFn
 YbcDbCatalogCacheMetricVisitor
+YbcDbHistoryRetentionPinModeEnum
 YbcDeleteMemoryContextFn
 YbcFlushDebugContext
 YbcGetTableKeyRangesCallback
@@ -307,6 +315,7 @@ YbcPgFunction
 YbcPgGFlagsAccessor
 YbcPgGlobalTabletsDescriptor
 YbcPgGlobalViewRead
+YbcPgGvScanResult
 YbcPgInitPostgresInfo
 YbcPgInitTransactionData
 YbcPgInsertOnConflictKeyInfo
@@ -321,7 +330,6 @@ YbcPgOid
 YbcPgPrepareParameters
 YbcPgReplicaIdentityDescriptor
 YbcPgReplicationSlotSnapshotAction
-YbcPgResultPB
 YbcPgRowMessage
 YbcPgRowMessageAction
 YbcPgServerMetricsInfo
@@ -329,6 +337,7 @@ YbcPgSession
 YbcPgSessionState
 YbcPgSessionTxnInfo
 YbcPgSharedDataPlaceholder
+YbcPgSkipIntentsOptimizationInfo
 YbcPgSplitDatum
 YbcPgStatement
 YbcPgSysColumns

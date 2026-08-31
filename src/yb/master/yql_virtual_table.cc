@@ -20,7 +20,6 @@
 #include "yb/dockv/key_entry_value.h"
 
 #include "yb/master/master.h"
-#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_vtable_iterator.h"
 
@@ -64,11 +63,6 @@ Status YQLVirtualTable::GetIterator(
     const qlexpr::QLScanSpec& spec,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const {
-  // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
-  // not change.
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-  RETURN_NOT_OK(l.first_failed_status());
-
   MonoTime start_time = MonoTime::Now();
   iter->reset(new YQLVTableIterator(
       VERIFY_RESULT(RetrieveData(request)), request.hashed_column_values()));

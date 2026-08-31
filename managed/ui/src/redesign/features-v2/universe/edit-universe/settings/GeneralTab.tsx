@@ -11,7 +11,6 @@ import {
   extractRegionsAndNodeDataFromUniverse
 } from '../../geo-partition/add/AddGeoPartitionUtils';
 import {
-  StyledInfoRow,
   StyledInfoRowNew
 } from '../../create-universe/components/DefaultComponents';
 import { ClusterType } from '@app/redesign/helpers/dtos';
@@ -24,7 +23,7 @@ import {
   getClusterByType,
   getProviderIcon,
   getResilientType,
-  hasDedicatedNodes,
+  hasDedicatedNodesForCluster,
   isKubernetesUniverse,
   useEditUniverseContext
 } from '../EditUniverseUtils';
@@ -32,10 +31,10 @@ import {
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import { LinuxVersion } from '../components';
 import { MapRegionsView } from '../components/MapRegionView';
-import { MapGeoPartitionView } from '../components/MapGeoPartitionView';
+import { useYBToast } from '../../create-universe/helpers/ToastUtils';
+import { PROVIDER_TYPES } from '@app/config';
 import { Star } from '@material-ui/icons';
 import CopyIcon from '../../../../assets/copy_blue.svg';
-import { useYBToast } from '../../create-universe/helpers/ToastUtils';
 
 const { Box, styled, Typography, Grid2, Divider, MenuItem } = mui;
 
@@ -47,13 +46,6 @@ const StyledArea = styled('div')(({ theme }) => ({
   gap: '24px',
   flexDirection: 'column',
   background: theme.palette.common.white
-}));
-
-const StyledGeneralInfo = styled('div')(() => ({
-  display: 'flex',
-  flexDirection: 'row',
-  height: '200px',
-  justifyContent: 'space-between'
 }));
 
 const StyledGeneralInfoNew = styled(Box)(() => ({
@@ -113,11 +105,12 @@ export const GeneralTab = () => {
   const readReplicaCluster = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
 
   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
+  const providerName = PROVIDER_TYPES.find((provider) => provider.code === providerCode)?.name;
   const providerIcon = getProviderIcon(providerCode);
 
   let totalNodesCount = 0;
 
-  if (!hasDedicatedNodes(universeData!)) {
+  if (!hasDedicatedNodesForCluster(universeData!, primaryCluster)) {
     const primaryRegionStats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
     const readReplicaRegionStats = countRegionsAzsAndNodes(readReplicaCluster?.placement_spec);
     totalNodesCount = primaryRegionStats.totalNodes + readReplicaRegionStats.totalNodes;
@@ -139,7 +132,7 @@ export const GeneralTab = () => {
   });
 
   const currentProvider = providers?.find(
-    (provider) => provider.uuid === primaryCluster?.provider_spec.provider
+    (provider) => provider.uuid === primaryCluster?.provider_spec?.provider
   );
 
   return (
@@ -150,6 +143,7 @@ export const GeneralTab = () => {
         coordinates={MAP_COORDINATES}
         initialBounds={undefined}
         mapContainerProps={MAP_CONTAINER_PROPS}
+        showBoundaries={false}
       >
         {/* {isGeoPartitionPresent && (
           <StyledYBSelect
@@ -195,7 +189,7 @@ export const GeneralTab = () => {
               <span className="value">
                 <Grid2 container alignItems="center" gap={0.5}>
                   {providerIcon}
-                  {toUpper(providerCode ?? '')}
+                  {providerName ?? ''}
                 </Grid2>
               </span>
             </div>
@@ -249,7 +243,7 @@ export const GeneralTab = () => {
                   <YBTag
                     key={region.code}
                     variant="light"
-                    size="medium"
+                    size="large"
                     endIcon={
                       region.uuid ===
                       primaryCluster?.placement_spec?.cloud_list[0].default_region ? (

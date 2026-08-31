@@ -80,7 +80,7 @@ public class CustomerTaskHandler {
     if (customerTask == null) {
       throw new PlatformServiceException(NOT_FOUND, "Cannot find task with uuid " + taskUUID);
     }
-    if (!commissioner.canTaskRollback(customerTask.getTaskInfo())) {
+    if (!commissioner.canTaskRollbackDetailed(customerTask.getTaskInfo())) {
       throw new PlatformServiceException(FORBIDDEN, "Task " + taskUUID + " cannot be rolled back");
     }
     CustomerTask rollbackTask = customerTaskManager.rollbackCustomerTask(customerUUID, taskUUID);
@@ -226,6 +226,9 @@ public class CustomerTaskHandler {
       taskData.abortable = taskProgress.get("abortable").asBoolean();
       taskData.retryable = taskProgress.get("retryable").asBoolean();
       taskData.canRollback = taskProgress.get("canRollback").asBoolean();
+      if (taskProgress.hasNonNull("originalTaskUUID")) {
+        taskData.originalTaskUUID = UUID.fromString(taskProgress.get("originalTaskUUID").asText());
+      }
       taskData.id = task.getTaskUUID();
       taskData.title = task.getFriendlyDescription();
       taskData.createTime = task.getCreateTime();

@@ -3055,8 +3055,8 @@ public class UniverseCRUDHandler {
         });
   }
 
-  private void maybeSetNewInstallGflags(
-      Customer customer, Universe universe, Cluster primaryCluster) {
+  @VisibleForTesting
+  void maybeSetNewInstallGflags(Customer customer, Universe universe, Cluster primaryCluster) {
 
     Map<String, String> newInstallMasterGflags = new HashMap<>();
     Map<String, String> newInstallTserverGflags = new HashMap<>();
@@ -3075,7 +3075,9 @@ public class UniverseCRUDHandler {
               "split_respects_tablet_replica_limits",
               "true"));
       if (primaryCluster.userIntent.enableYSQL) {
-        newInstallTserverGflags.putAll(Map.of("use_memory_defaults_optimized_for_ysql", "true"));
+        Map<String, String> memGflags = Map.of("use_memory_defaults_optimized_for_ysql", "true");
+        newInstallTserverGflags.putAll(memGflags);
+        newInstallMasterGflags.putAll(memGflags);
       }
     }
 

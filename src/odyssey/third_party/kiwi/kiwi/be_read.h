@@ -312,13 +312,17 @@ KIWI_API static inline int kiwi_be_read_parse(char *data, uint32_t size,
 	int rc = kiwi_read(&len, &data, &size);
 	if (kiwi_unlikely(rc != 0))
 		return -1;
-	/* YB: Also parse new YB parse packets as they have the same format */
+	/* YB: Also parse the YbParse packet, which has a leading type byte */
 	if (kiwi_unlikely(header->type != KIWI_FE_PARSE &&
-			  header->type != YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE &&
-			  header->type != YB_KIWI_FE_FORCE_PARSE))
+			  header->type != YB_KIWI_FE_YB_PARSE))
 		return -1;
 	uint32_t pos_size = len;
 	char *pos = kiwi_header_data(header);
+	if (header->type == YB_KIWI_FE_YB_PARSE) {
+		rc = kiwi_readn(1, &pos, &pos_size);
+		if (kiwi_unlikely(rc == -1))
+			return -1;
+	}
 	/* operator_name */
 	*name = pos;
 	rc = kiwi_readsz(&pos, &pos_size);

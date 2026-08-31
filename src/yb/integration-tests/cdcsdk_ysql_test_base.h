@@ -127,6 +127,7 @@ DECLARE_bool(TEST_cdc_add_dynamic_index_to_state_table);
 DECLARE_uint64(cdcsdk_publication_list_refresh_interval_secs);
 DECLARE_bool(TEST_cdcsdk_use_microseconds_refresh_interval);
 DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_micros);
+DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_ht_delta);
 DECLARE_bool(cdcsdk_enable_dynamic_table_support);
 DECLARE_bool(enable_cdcsdk_setting_get_changes_response_byte_limit);
 DECLARE_uint64(cdcsdk_vwal_getchanges_resp_max_size_bytes);
@@ -171,6 +172,8 @@ DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
 DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb {
 
@@ -562,7 +565,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint64_t session_id = kVWALSessionId1,
       const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr,
       bool include_oid_to_relfilenode = false,
-      int timeout = kRpcTimeout);
+      int timeout = kRpcTimeout,
+      const std::vector<uint32_t>& publication_oids = {},
+      bool pub_all_tables = false);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
@@ -931,6 +936,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestValidationAndSyncOfCDCStateEntriesAfterUserTableRemoval(
       bool use_consistent_snapshot_stream);
+
+  Result<std::string> CleanupStaleCDCStreams(bool dry_run);
 
   void TestNonEligibleTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 

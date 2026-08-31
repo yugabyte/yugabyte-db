@@ -345,10 +345,11 @@ DEFINE_test_flag(bool, skip_remove_intent, false,
 DEFINE_test_flag(bool, simulate_load_txn_for_cdc, false,
     "If true GetMinStartHTRunningTxnsForCDCProducer returns kInvalid");
 
-DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, false,
+DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
     "If true, the flushed op id of intents db may be updated to match that of "
-    "regular db during flushing regular db memtable. "
-    "Don't enable it on xcluster target side for now");
+    "regular db during flushing regular db memtable. Implicitly disabled for a "
+    "tablet once it has applied an external (xCluster target) write batch, until "
+    "the next tserver restart.");
 
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
@@ -759,7 +760,9 @@ Tablet::Tablet(const TabletInitData& data)
       full_compaction_pool_(data.full_compaction_pool),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
-      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)) {
+      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)),
+      schedule_tablet_metadata_validation_(
+          std::move(data.schedule_tablet_metadata_validation)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->primary_table_schema_version();
@@ -839,7 +842,7 @@ Tablet::Tablet(const TabletInitData& data)
     SplitDone();
   }
   auto restoration_hybrid_time = metadata_->restoration_hybrid_time();
-  if (restoration_hybrid_time && transaction_participant_ && FLAGS_consistent_restore) {
+  if (restoration_hybrid_time && transaction_participant_) {
     transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
   SyncRestoringOperationFilter(ResetSplit::kFalse);
@@ -1418,12 +1421,15 @@ void Tablet::RegularDbFilesChanged() {
   }
 }
 
-void Tablet::SetCleanupPool(ThreadPool* thread_pool) {
+void Tablet::SetCleanupPool(
+    ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
+  snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
+
   if (!transaction_participant_) {
     return;
   }
 
-  cleanup_intent_files_token_ = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+  cleanup_intent_files_token_ = intent_cleanup_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
 
   CleanupIntentFiles();
 }
@@ -1683,6 +1689,9 @@ void Tablet::Start() {
     transaction_participant_->Start();
   }
 
+  // A read racing ahead of this still skips the cache and does not fill it.
+  ArmColocatedTombstoneCaches();
+
   // Launch vector index backfill only now, after the tablet has been published by its TabletPeer.
   // The backfill resolves transaction statuses of provisional records, which reads the tablet's
   // safe time; running it during bootstrap (before TabletPeer::tablet_ is assigned) would race with
@@ -1703,6 +1712,8 @@ bool Tablet::StartShutdown(
   // release a backfill parked at TabletVectorIndexes::Backfill:Start here without deadlocking that
   // pause.
   TEST_SYNC_POINT("Tablet::StartShutdown");
+
+  snapshots_->StartShutdown();
 
   // Stop the transaction coordinator's pollers before StartShutdownStorages pauses read/write
   // operations below: otherwise a poll could submit a transaction status update operation against
@@ -1752,6 +1763,7 @@ void Tablet::CompleteShutdown() {
   LOG_IF_WITH_PREFIX(DFATAL, !shutdown_requested_.load(std::memory_order_acquire))
       << "CompleteShutdown called without a preceding StartShutdown";
 
+  snapshots_->CompleteShutdown();
   cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
@@ -2125,11 +2137,15 @@ Status Tablet::ApplyKeyValueRowOperations(
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
         GetSchemaPackingProvider(), frontiers, vector_indexes_->List().impl(), apply_to_storages,
-        table_type());
+        table_type(), &can_advance_intents_flush_op_id_);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
     WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
+    // External-intent table tombstones: second notify after the memtable publish so a concurrent
+    // IntentAwareIterator miss cannot re-cache "no tombstone" under the raised watermark
+    // (see NonTransactionalBatchWriter::FlushPendingTableTombstoneNotifies).
+    batcher.FlushPendingTableTombstoneNotifies();
 
     if (!vector_indexes_->has_vector_deletion() &&
         frontiers.Largest().has_vector_deletion()) {
@@ -2623,7 +2639,9 @@ Status Tablet::Flush(
   ScopedRWOperation pending_op;
   if (!HasFlags(flags, FlushFlags::kNoScopedOperation)) {
     pending_op = CreateScopedRWOperationBlockingRocksDbShutdownStart();
-    LOG_IF(DFATAL, !pending_op.ok())
+    // A background flush (e.g. from TabletMemoryManager) legitimately races with shutdown of the
+    // tablet it picked, and its caller just logs the returned error.
+    LOG_IF(DFATAL, !pending_op.ok() && !IsShutdownRequested())
         << "CreateScopedRWOperationBlockingRocksDbShutdownStart failed";
     RETURN_NOT_OK(pending_op);
   }
@@ -2920,20 +2938,22 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
 Status Tablet::SetAllCDCRetentionBarriersUnlocked(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
     HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff, bool initial_retention_barrier,
-    HybridTime min_start_ht_cdc_unstreamed_txns) {
+    HybridTime min_start_ht_cdc_unstreamed_txns,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
   // WAL, History, Intents Retention
   RETURN_NOT_OK(metadata_->SetAllCDCRetentionBarriers(cdc_wal_index,
                                                       cdc_sdk_intents_op_id,
                                                       cdc_sdk_history_cutoff,
                                                       require_history_cutoff,
-                                                      initial_retention_barrier));
+                                                      initial_retention_barrier,
+                                                      barrier_move_selector));
   // Intents Retention setting on txn_participant
   // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
   // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
   // 3. min_start_ht_cdc_unstreamed_txns - time up to which intents SST files retained for CDC can
   // be deleted, provided their maximum record time is earlier than this value.
   auto txn_participant = transaction_participant();
-  if (txn_participant) {
+  if (barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id && txn_participant) {
     VLOG_WITH_PREFIX_AND_FUNC(1)
         << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
         << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
@@ -2952,14 +2972,16 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
 // retention barrier
 Status Tablet::SetAllInitialCDCRetentionBarriers(
     log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
-    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
 
   VLOG_WITH_PREFIX(1) << "CDC Retention barrier initialization request";
   std::lock_guard lock(cdcsdk_retention_barrier_lock_);
 
   cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
 
-  if (log && log->cdc_min_replicated_index() > cdc_wal_index) {
+  if (barrier_move_selector.move_cdc_min_replicated_index && log &&
+      log->cdc_min_replicated_index() > cdc_wal_index) {
     log->set_cdc_min_replicated_index(cdc_wal_index);
   }
   auto intent_retention_duration =
@@ -2970,7 +2992,7 @@ Status Tablet::SetAllInitialCDCRetentionBarriers(
   return SetAllCDCRetentionBarriersUnlocked(
       cdc_wal_index, cdc_sdk_intents_op_id, intent_retention_duration, cdc_sdk_history_cutoff,
       require_history_cutoff, true /* initial_retention_barrier */,
-      min_start_ht_cdc_unstreamed_txns);
+      min_start_ht_cdc_unstreamed_txns, barrier_move_selector);
 }
 
 // This is called From ChangeMetadaOperation::Apply during the
@@ -3002,7 +3024,7 @@ Status Tablet::SetAllInitialCDCSDKRetentionBarriers(
 Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
     log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
     MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
-    bool require_history_cutoff) {
+    bool require_history_cutoff, CDCRetentionBarrierMoveSelector barrier_move_selector) {
 
   VLOG_WITH_PREFIX(1) << "Move forward CDC Retention barrier request";
   std::lock_guard lock(cdcsdk_retention_barrier_lock_);
@@ -3017,7 +3039,7 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
       FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) {
     VLOG_WITH_PREFIX(1) << "Advance CDC retention barriers";
 
-    if (log) {
+    if (barrier_move_selector.move_cdc_min_replicated_index && log) {
       log->set_cdc_min_replicated_index(cdc_wal_index);
     }
 
@@ -3026,7 +3048,7 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
     RETURN_NOT_OK(SetAllCDCRetentionBarriersUnlocked(
         cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
         require_history_cutoff, false /* initial_retention_barrier */,
-        min_start_ht_cdc_unstreamed_txns));
+        min_start_ht_cdc_unstreamed_txns, barrier_move_selector));
     return true;
   } else {
     VLOG_WITH_PREFIX(1) << "Revision of CDC retention barriers is currently blocked";
@@ -3101,6 +3123,38 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
         *table_info_ptr, indexed_table_info, state_ == State::kBootstrapping));
   }
 
+  // Analogous to ScheduleValidation on tablet open for non-colocated index tablets.
+  if (schedule_tablet_metadata_validation_) {
+    schedule_tablet_metadata_validation_(*metadata_);
+  }
+
+  // New colocated DocReadContext is constructed unarmed (watermark kMax). Arm with the create HT.
+  //
+  // Arming here is safe against the colocation-id reuse case (DROP then CREATE with the same id),
+  // where the DROP's tombstone lands at its commit hybrid time via an APPLYING op that raft may
+  // order either side of this ADD_TABLE. Note that gives no ordering between the create HT and the
+  // tombstone HT, so the two cases are covered differently:
+  //   - tombstone applies after this: its notify resolves GetTableInfo(colocation_id) through the
+  //     colocation_to_table entry this op just repointed, so it raises *this* context's watermark.
+  //   - tombstone applied before this: its commit hybrid time was already known when this op's ht
+  //     was assigned, so hybrid-clock propagation puts ht above it.
+  // PgMiniTest.TestNoStaleDataOnColocationIdReuse covers the applies-after leg.
+  //
+  // A replayed ADD_TABLE re-arms an already-armed context and bumps the generation, dropping a warm
+  // cache. Perf only.
+  if (table_info_ptr->doc_read_context && table_info_ptr->schema().has_colocation_id()) {
+    HybridTime arm_ht = ht;
+    if (!arm_ht.is_valid() || arm_ht == HybridTime::kMax) {
+      auto safe_time = SafeTime(RequireLease::kFalse);
+      if (safe_time.ok()) {
+        arm_ht = *safe_time;
+      }
+    }
+    if (arm_ht.is_valid() && arm_ht != HybridTime::kMax) {
+      table_info_ptr->doc_read_context->AdvanceTombstoneCacheWatermark(arm_ht);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -3133,9 +3187,10 @@ Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
   return Status::OK();
 }
 
-Status Tablet::MarkBackfillDone(const OpId& op_id, const TableId& table_id) {
+Status Tablet::MarkBackfillDone(
+    const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done";
-  auto status = metadata_->OnBackfillDone(op_id, table_id);
+  auto status = metadata_->OnBackfillDone(op_id, table_id, birth_time);
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Triggering backfill done failed: " << status;
     return status;
@@ -3233,7 +3288,18 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
   }
 
   // Flush the updated schema metadata to disk.
-  return metadata_->Flush();
+  RETURN_NOT_OK(metadata_->Flush());
+
+  // SetSchema built new DocReadContexts, which start unarmed.
+  ArmColocatedTombstoneCaches();
+  return Status::OK();
+}
+
+void Tablet::ArmColocatedTombstoneCaches() {
+  auto safe_time = SafeTime(RequireLease::kFalse);
+  if (safe_time.ok() && safe_time->is_valid()) {
+    metadata_->ArmColocatedTombstoneCaches(*safe_time);
+  }
 }
 
 Status Tablet::InsertPackedSchemaForXClusterTarget(
@@ -3245,7 +3311,13 @@ Status Tablet::InsertPackedSchemaForXClusterTarget(
       current_table_info->table_id);
 
   // Flush the updated schema metadata to disk.
-  return metadata_->Flush();
+  RETURN_NOT_OK(metadata_->Flush());
+
+  // This is an AlterSchema early return, so it misses the arm at the end of AlterSchema. The two
+  // TableInfos built above (version-1 and version) carry fresh unarmed DocReadContexts and
+  // colocation_to_table now points at them, so without this the cache stays off until restart.
+  ArmColocatedTombstoneCaches();
+  return Status::OK();
 }
 
 Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
@@ -4327,6 +4399,25 @@ Status Tablet::MayModifyIntentsDbFlushedOpId() {
                                                      /*invalid_if_no_new_data*/ false);
   OpId intents_op_id = docdb::MaxPersistentOpIdForDb(intents_db_.get(),
                                                      /*invalid_if_no_new_data*/ false);
+
+  // Read the flag AFTER 'regular_op_id', never before. An external batch goes through these steps,
+  // in this order:
+  //   1. its entries are written into the regular db memtable M;
+  //   2. still inside that same write, NonTransactionalBatchWriter::Apply clears the flag -- and
+  //      only after Apply returns does WriteBatch::Iterate stamp M's frontier with the op id;
+  //   3. M is switched, which needs the write thread, so only after that write completes;
+  //   4. M is flushed, and only now does the batch's op id reach regular_op_id.
+  // So if 'regular_op_id' covers an external batch, the flag was cleared in step 2, before its op
+  // id was even stamped into M's frontier -- this load must read false. Reading the flag before
+  // 'regular_op_id' has no such ordering: with multiple flush threads, an earlier flush's listener
+  // could pass the check while a later flush covers the batch, bringing the bug back.
+  //
+  // Conversely, if the flag is true here, nothing covered by 'regular_op_id' is waiting for an
+  // intents db write => advancing the intents flushed op id up to 'regular_op_id' is safe.
+  if (!can_advance_intents_flush_op_id_.load(std::memory_order_acquire)) {
+    VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: external intents write seen";
+    return Status::OK();
+  }
 
   auto intents_flush_ability = intents_db_->GetFlushAbility();
   VLOG_WITH_PREFIX(4) << "regular_op_id: " << regular_op_id << ", intents_op_id: " << intents_op_id
@@ -5457,7 +5548,7 @@ Status Tablet::RestoreFinished(
   metadata_->UnregisterRestoration(restoration_id);
   if (restoration_hybrid_time) {
     metadata_->SetRestorationHybridTime(restoration_hybrid_time);
-    if (transaction_participant_ && FLAGS_consistent_restore) {
+    if (transaction_participant_) {
       transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
     }
   }
@@ -5470,9 +5561,7 @@ Status Tablet::RestoreFinished(
 
 Status Tablet::CheckRestorations(const RestorationCompleteTimeMap& restoration_complete_time) {
   auto restoration_hybrid_time = metadata_->CheckCompleteRestorations(restoration_complete_time);
-  if (restoration_hybrid_time != HybridTime::kMin
-      && transaction_participant_
-      && FLAGS_consistent_restore) {
+  if (restoration_hybrid_time != HybridTime::kMin && transaction_participant_) {
     transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
 

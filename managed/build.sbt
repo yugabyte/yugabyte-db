@@ -44,6 +44,23 @@ def ybLog(s: String): Unit = {
   println("[Yugabyte sbt log] " + s)
 }
 
+// Buffer the child output so a failure can quote the actual error, not just the exit code.
+def runCapturingOutput(command: String, cwd: java.io.File): (Int, Seq[String]) = {
+  val output = scala.collection.mutable.ListBuffer.empty[String]
+  def record(line: String): Unit = output.synchronized {
+    println(line)
+    output += line
+  }
+  val status = Process(command, cwd).!(ProcessLogger(record, record))
+  (status, output.toList)
+}
+
+def buildError(what: String, status: Int, output: Seq[String]): String = {
+  val tail = output.takeRight(30)
+  s"$what failed with exit code $status." +
+    (if (tail.isEmpty) "" else s" Last ${tail.size} line(s) of output:\n" + tail.mkString("\n"))
+}
+
 def getEnvVar(envVarName: String): String = {
   val envVarValue = System.getenv(envVarName)
   val strValue = normalizeEnvVarValue(envVarValue)
@@ -159,17 +176,17 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.7.11",
+  "org.postgresql" % "postgresql" % "42.7.13",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
-  "ch.qos.logback" % "logback-classic" % "1.5.32",
+  "ch.qos.logback" % "logback-classic" % "1.5.38",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.20.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
   "org.apache.commons" % "commons-compress" % "1.27.1",
   "org.apache.commons" % "commons-csv" % "1.13.0",
-  "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
-  "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
-  "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
+  "org.apache.httpcomponents.core5" % "httpcore5" % "5.4.3",
+  "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.4.3",
+  "org.apache.httpcomponents.client5" % "httpclient5" % "5.6.4",
   "org.apache.mina" % "mina-core" % "2.2.9",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
@@ -231,12 +248,13 @@ libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.80.0",
   "com.google.cloud" % "google-cloud-logging" % "3.23.7",
   "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
-  "com.oracle.oci.sdk" % "oci-java-sdk-common" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.57.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-common" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.77.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-objectstorage" % "3.77.2",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "3.1.0",
@@ -286,7 +304,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.7.0" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.0" % Test,
   "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
@@ -735,40 +753,44 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.7.0",
+    version := "1.8.0",
     target := file("client/java/target/v2"),
   )
 
 // Compile generated java v1 and v2 clients
-lazy val compileJavaGenV1Client = taskKey[Int]("Compile generated v1 Java client code")
+lazy val compileJavaGenV1Client =
+  taskKey[(Int, Seq[String])]("Compile generated v1 Java client code")
 compileJavaGenV1Client / fileInputs += baseDirectory.value.toGlob /
   "client/java/v1/" / ** / "*"
 compileJavaGenV1Client := {
   if (compileJavaGenV1Client.inputFileChanges.hasChanges) {
     val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
     val cmdOpt = if (isDefined(localMavenRepo)) "-Dmaven.repo.local=" + localMavenRepo else ""
-    val status = Process("mvn clean install -pl v1 -am " + cmdOpt, new File(baseDirectory.value + "/client/java")).!
-    status
+    runCapturingOutput(
+      "mvn clean install -pl v1 -am " + cmdOpt,
+      new File(baseDirectory.value + "/client/java"))
   } else {
     ybLog("OpenApi java client stubs for v1 are already generated." +
       " Run 'cleanClients' to force regeneration.")
-    0
+    (0, Seq.empty[String])
   }
 }
 
-lazy val compileJavaGenV2Client = taskKey[Int]("Compile generated v2 Java client code")
+lazy val compileJavaGenV2Client =
+  taskKey[(Int, Seq[String])]("Compile generated v2 Java client code")
 compileJavaGenV2Client / fileInputs += baseDirectory.value.toGlob /
   "client/java/v2/" / ** / "*"
 compileJavaGenV2Client := {
   if (compileJavaGenV2Client.inputFileChanges.hasChanges) {
     val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
     val cmdOpt = if (isDefined(localMavenRepo)) "-Dmaven.repo.local=" + localMavenRepo else ""
-    val status = Process("mvn clean install -pl v2 -am " + cmdOpt, new File(baseDirectory.value + "/client/java")).!
-    status
+    runCapturingOutput(
+      "mvn clean install -pl v2 -am " + cmdOpt,
+      new File(baseDirectory.value + "/client/java"))
   } else {
     ybLog("OpenApi java client stubs for v2 are already generated." +
       " Run 'cleanClients' to force regeneration.")
-    0
+    (0, Seq.empty[String])
   }
 }
 
@@ -828,61 +850,45 @@ lazy val goGenV2Client = project.in(file("client/go"))
   )
 
 // Compile generated go v1 and v2 clients
-lazy val compileGoGenV1Client = taskKey[Int]("Compile generated v1 Go clients")
+lazy val compileGoGenV1Client = taskKey[(Int, Seq[String])]("Compile generated v1 Go clients")
 compileGoGenV1Client := {
-  val status = Process("make testv1", new File(baseDirectory.value + "/client/go/")).!
-  status
+  runCapturingOutput("make testv1", new File(baseDirectory.value + "/client/go/"))
 }
-lazy val compileGoGenV2Client = taskKey[Int]("Compile generated v2 Go clients")
+lazy val compileGoGenV2Client = taskKey[(Int, Seq[String])]("Compile generated v2 Go clients")
 compileGoGenV2Client := {
-  val status = Process("make testv2", new File(baseDirectory.value + "/client/go/")).!
-  status
+  runCapturingOutput("make testv2", new File(baseDirectory.value + "/client/go/"))
 }
 
 // Compile the YBA CLI binary
-lazy val compileYbaCliBinary = taskKey[(Int, Seq[String])]("Compile YBA CLI Binary")
+lazy val compileYbaCliBinary = taskKey[Seq[String]]("Compile YBA CLI Binary")
 compileYbaCliBinary := {
-  var status = 0
-  var completeFileList = Seq.empty[String]
-  var fileList = Seq.empty[String]
-
   ybLog("Generating YBA CLI go binary.")
-
-  val (status1, fileList1) = makeYbaCliPackage("linux", baseDirectory.value)
-  completeFileList = fileList1
-  status = status1
-
-  val (status2, fileList2) = makeYbaCliPackage("darwin", baseDirectory.value)
-  completeFileList = completeFileList ++ fileList2
-  status = status max status2
-
-
-  (status, completeFileList)
+  makeYbaCliPackage("linux", baseDirectory.value) ++
+    makeYbaCliPackage("darwin", baseDirectory.value)
 }
 
 compileYbaCliBinary := ((compileYbaCliBinary) dependsOn versionGenerate).value
 
-def makeYbaCliPackage(goos: String, directory: java.io.File): (Int, Seq[String]) = {
-
-  var status = 0
-  var output = Seq.empty[String]
-  var fileList = Seq.empty[String]
-
-  val processLogger = ProcessLogger(
-    line => output :+= line,
-    line => println(s"Error: $line")
-  )
-  val env = Seq("GOOS" -> goos)
-  val process = Process("make package", new File(directory + "/yba-cli/"), env: _*)
-  status = process.!(processLogger)
-  if (status == 0) {
-    val fileListIndex = output.indexWhere(_.startsWith("Folder path for"))
-    fileList = if (fileListIndex != -1) output.drop(fileListIndex + 1) else Seq.empty[String]
-  } else {
-    fileList = Seq.empty[String]
+def makeYbaCliPackage(goos: String, directory: java.io.File): Seq[String] = {
+  val output = scala.collection.mutable.ListBuffer.empty[String]
+  def record(line: String, isError: Boolean): Unit = output.synchronized {
+    if (isError) {
+      println(s"Error: $line")
+    }
+    output += line
   }
 
-  (status, fileList)
+  val processLogger = ProcessLogger(record(_, false), record(_, true))
+  val env = Seq("GOOS" -> goos)
+  val process = Process("make package", new File(directory + "/yba-cli/"), env: _*)
+  val status = process.!(processLogger)
+  if (status != 0) {
+    throw new RuntimeException(
+      buildError(s"YBA CLI binary build for $goos", status, output.toList))
+  }
+
+  val fileListIndex = output.indexWhere(_.startsWith("Folder path for"))
+  if (fileListIndex != -1) output.drop(fileListIndex + 1).toList else Seq.empty[String]
 }
 
 // Clean the YBA CLI binary
@@ -932,8 +938,15 @@ openApiGenClients := openApiGenClients.dependsOn(Compile/openApiProcessServer).v
 
 lazy val openApiCompileClients = taskKey[Unit]("Compiling openapi v2 clients")
 openApiCompileClients := {
-  compileJavaGenV2Client.value
-  compileGoGenV2Client.value
+  val (javaStatus, javaOutput) = compileJavaGenV2Client.value
+  if (javaStatus != 0) {
+    throw new RuntimeException(
+      buildError("Java v2 client compilation", javaStatus, javaOutput))
+  }
+  val (goStatus, goOutput) = compileGoGenV2Client.value
+  if (goStatus != 0) {
+    throw new RuntimeException(buildError("Go v2 client compilation", goStatus, goOutput))
+  }
   // no compilation or running tests for python client
 }
 
@@ -946,8 +959,15 @@ swaggerGenClients := {
 
 lazy val swaggerCompileClients = taskKey[Unit]("Compiling swagger v1 clients")
 swaggerCompileClients := {
-  compileJavaGenV1Client.value
-  compileGoGenV1Client.value
+  val (javaStatus, javaOutput) = compileJavaGenV1Client.value
+  if (javaStatus != 0) {
+    throw new RuntimeException(
+      buildError("Java v1 client compilation", javaStatus, javaOutput))
+  }
+  val (goStatus, goOutput) = compileGoGenV1Client.value
+  if (goStatus != 0) {
+    throw new RuntimeException(buildError("Go v1 client compilation", goStatus, goOutput))
+  }
   // no compilation or running tests for python client
 }
 
@@ -998,22 +1018,16 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
 Universal / mappings ++= {
-  val (status, cliFolders) = compileYbaCliBinary.value
-  if (status == 0) {
-    cliFolders.flatMap { folderPath =>
-      val folder = file(folderPath)
-      if (folder.isDirectory) {
-        val targetPath = s"yba-cli/${folder.getName}"
-        val folderMappings = (folder ** "*") pair Path.rebase(folder, targetPath)
-        folderMappings
-      } else {
-        println(s"Warning: $folderPath is not a directory and will not be included in the package.")
-        Nil
-      }
+  compileYbaCliBinary.value.flatMap { folderPath =>
+    val folder = file(folderPath)
+    if (folder.isDirectory) {
+      val targetPath = s"yba-cli/${folder.getName}"
+      val folderMappings = (folder ** "*") pair Path.rebase(folder, targetPath)
+      folderMappings
+    } else {
+      println(s"Warning: $folderPath is not a directory and will not be included in the package.")
+      Nil
     }
-  } else {
-    ybLog("Error generating YBA CLI binary.")
-    Seq.empty
   }
 }
 
@@ -1042,29 +1056,32 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.121-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.122-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b10"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "io.netty" % "netty-codec-haproxy" % "4.1.135.Final",
+  "io.netty" % "netty-codec-haproxy" % "4.1.136.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
 )
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.136.Final"
 // netty-all does not force these core modules, so they stay at the next-highest
-// requested version (4.1.130) and must be pinned explicitly to reach 4.1.135.
-dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-codec" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-common" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-handler" % "4.1.135.Final"
-dependencyOverrides += "io.netty" % "netty-transport" % "4.1.135.Final"
+// requested version (4.1.130) and must be pinned explicitly to reach 4.1.136.
+dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-codec" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-common" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-handler" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-transport" % "4.1.136.Final"
+
+// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949.
+dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.1"
 
 dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
@@ -1108,11 +1125,13 @@ val pekkoOverrides = pekkoLibs.map(_ % pekkoVersion)
 
 dependencyOverrides ++= pekkoOverrides
 
-val jacksonVersion         = "2.18.6"
+val jacksonVersion         = "2.22.2"
+// jackson-annotations dropped the patch component from 2.20 onward: it publishes 2.20, 2.21,
+// 2.22, so it cannot follow jacksonVersion.
+val jacksonAnnotationsVersion = "2.22"
 
 val jacksonLibs = Seq(
   "com.fasterxml.jackson.core"       % "jackson-core",
-  "com.fasterxml.jackson.core"       % "jackson-annotations",
   "com.fasterxml.jackson.core"       % "jackson-databind",
   "com.fasterxml.jackson.datatype"   % "jackson-datatype-jdk8",
   "com.fasterxml.jackson.datatype"   % "jackson-datatype-jsr310",
@@ -1124,7 +1143,8 @@ val jacksonLibs = Seq(
   "com.fasterxml.jackson.module"     %% "jackson-module-scala",
 )
 
-val jacksonOverrides = jacksonLibs.map(_ % jacksonVersion)
+val jacksonOverrides = jacksonLibs.map(_ % jacksonVersion) :+
+  ("com.fasterxml.jackson.core" % "jackson-annotations" % jacksonAnnotationsVersion)
 
 dependencyOverrides ++= jacksonOverrides
 

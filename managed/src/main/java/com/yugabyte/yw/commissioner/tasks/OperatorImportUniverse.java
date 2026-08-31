@@ -18,6 +18,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
@@ -39,6 +40,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -79,6 +81,7 @@ public class OperatorImportUniverse extends UniverseTaskBase {
       Arrays.asList(
           this::createImportReleaseSubtasks,
           this::createImportProviderSubtasks,
+          this::createImportKmsConfigSubtasks,
           this::createImportUniverseSubtasks,
           this::createImportBackupSchedulesSubtasks,
           this::createImportBackupsSubtasks,
@@ -287,6 +290,61 @@ public class OperatorImportUniverse extends UniverseTaskBase {
       }
     }
     return null;
+  }
+
+  /**
+   * Imports the KMS config backing the universe's encryption at rest, if it has any. Every
+   * credential in the config's auth config is moved into its own Secret first, because the
+   * KMSConfig CRD only takes credentials by Secret reference.
+   */
+  private List<SubTaskGroup> createImportKmsConfigSubtasks(Universe universe) {
+    UUID kmsConfigUUID = OperatorUtils.getUniverseKmsConfigUuid(universe);
+    if (kmsConfigUUID == null) {
+      log.debug(
+          "Universe {} has no encryption at rest, skipping KMS config import", universe.getName());
+      return null;
+    }
+    KmsConfig kmsConfig = KmsConfig.get(kmsConfigUUID);
+    if (kmsConfig == null) {
+      log.warn("KMS config {} of universe {} no longer exists", kmsConfigUUID, universe.getName());
+      return null;
+    }
+
+    SubTaskGroup group =
+        createSubTaskGroup("ImportKMSConfig", SubTaskGroupType.OperatorImportResource);
+    SubTaskGroup secretGroup =
+        createSubTaskGroup("ImportKMSConfigSecrets", SubTaskGroupType.OperatorImportResource);
+
+    OperatorImportResource.Params params = new OperatorImportResource.Params();
+    params.kmsConfigUUID = kmsConfigUUID;
+    params.resourceType = OperatorImportResource.Params.ResourceType.KMS_CONFIG;
+    params.namespace = taskParams().namespace;
+
+    String crName = OperatorUtils.kubernetesCompatName(kmsConfig.getName());
+    // The Secret holds the credential under its auth-config field name, which is also the key the
+    // CR's Secret reference is built with.
+    for (Map.Entry<String, String> credential :
+        OperatorUtils.getKMSConfigSecretValues(kmsConfig).entrySet()) {
+      String secretName = kmsSecretName(crName, credential.getKey());
+      params.secretMap.put(credential.getKey(), secretName);
+      createImportSecretSubtask(
+          secretName, credential.getKey(), credential.getValue(), secretGroup);
+    }
+
+    OperatorImportResource task = createTask(OperatorImportResource.class);
+    initializeTask(group, task, params);
+    log.trace("initialized task for KMS config");
+    return List.of(secretGroup, group);
+  }
+
+  /** Kubernetes-compatible Secret name for one credential of a KMS config. */
+  private static String kmsSecretName(String kmsConfigCrName, String field) {
+    String name = kmsConfigCrName + "-" + field.toLowerCase().replace('_', '-') + "-secret";
+    // Kubernetes names must be less than 63 characters, and cannot end in a separator.
+    if (name.length() > OperatorUtils.KUBERNETES_NAME_MAX_LENGTH) {
+      name = name.substring(0, OperatorUtils.KUBERNETES_NAME_MAX_LENGTH);
+    }
+    return StringUtils.stripEnd(name, "-.");
   }
 
   private List<SubTaskGroup> createImportUniverseSubtasks(Universe universe) {

@@ -34,6 +34,8 @@ public class TestPgRegressParallelPlans extends BasePgRegressTest {
     Map<String, String> flags = super.getTServerFlags();
     // TODO(#26734): Enable transactional DDL (& table locks) once savepoint for DDLs are supported.
     flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    // DDL savepoint requires transactional DDL to be enabled.
+    flags.put("ysql_yb_enable_ddl_savepoint_support", "false");
     // Concurrent DDL requires object locking, so keep the two flags consistent.
     flags.put("enable_object_locking_for_table_locks", "false");
     flags.put("ysql_enable_concurrent_ddl", "false");
@@ -42,6 +44,16 @@ public class TestPgRegressParallelPlans extends BasePgRegressTest {
     // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
     flags.put("ysql_enable_auto_analyze", "false");
     flags.put("yb_enable_read_committed_isolation", "false");
+    // The default block cache is 50% of the mini cluster's 1GB memory limit (which cannot be
+    // raised: MiniYBCluster appends memory_limit_hard_bytes after these flags), and scanning the
+    // 1.5GB t1m table fills it, leaving too little for everything else.
+    flags.put("db_block_cache_size_bytes", String.valueOf(128L * 1024 * 1024));
+    // Let log GC reclaim the t1m load's WAL while it is being written.  The 900s default outlives
+    // the test, so every segment is retained and the host free space can fall under
+    // reject_writes_min_disk_space_pct.  A low retention needs the xCluster staleness check
+    // disabled (0 bypasses it), or every tserver fails flag validation at startup.
+    flags.put("log_min_seconds_to_retain", "10");
+    flags.put("xcluster_checkpoint_max_staleness_secs", "0");
     return flags;
   }
 

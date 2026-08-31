@@ -42,10 +42,10 @@ public class YNPProvisioning extends NodeTaskBase {
     public UUID customerUuid;
     public String nodeAgentInstallDir;
     public boolean isYbPrebuiltImage;
-    // True when re-provisioning a node of an existing universe (vs. provisioning a brand-new
-    // node). Propagated to the YNP config so configure_cgroup honors the persisted flag rather
-    // than the provider default for existing universes.
-    public boolean isReprovision;
+    // True when the node has YB software present on it.
+    public boolean isSoftwarePresent;
+    // True when the node has DB data present on it.
+    public boolean isDataPresent;
   }
 
   @Override
@@ -73,7 +73,8 @@ public class YNPProvisioning extends NodeTaskBase {
             .universe(universe)
             .userIntent(userIntent)
             .isYbPrebuiltImage(taskParams().isYbPrebuiltImage)
-            .isReprovision(taskParams().isReprovision)
+            .isSoftwarePresent(taskParams().isSoftwarePresent)
+            .isDataPresent(taskParams().isDataPresent)
             .build();
     return ynpConfigGenerator.generateConfigFile(configParams);
   }
@@ -89,6 +90,16 @@ public class YNPProvisioning extends NodeTaskBase {
 
     Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
     Provider provider = Util.getProviderForNode(node, universe);
+    // Bound the remote provisioning command. The node-side script buffers its output until it
+    // exits, so a step that blocks on the node (PLAT-22154) produces neither output nor an exit
+    // status, and this subtask would otherwise hold the universe task open indefinitely.
+    shellContext =
+        shellContext.toBuilder()
+            .timeoutSecs(
+                confGetter
+                    .getConfForScope(provider, ProviderConfKeys.ynpProvisionTimeout)
+                    .toSeconds())
+            .build();
 
     /*
      *  But First, setup the dual NIC on YBM if needed. Let's do that even before we run
@@ -132,10 +143,6 @@ public class YNPProvisioning extends NodeTaskBase {
 
   private AnsibleSetupServer.Params buildDualNicSetupParams(
       Universe universe, NodeDetails node, Provider provider, UserIntent taskUserIntent) {
-    UserIntent userIntent =
-        taskUserIntent == null
-            ? universe.getCluster(node.placementUuid).userIntent
-            : taskUserIntent;
     AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
     fillSetupParamsForNode(ansibleParams, universe.getCluster(node.placementUuid), node);
     ansibleParams.sshUserOverride = node.sshUserOverride;

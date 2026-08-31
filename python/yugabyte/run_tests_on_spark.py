@@ -189,6 +189,8 @@ HASH_COMMENT_RE = re.compile('#.*$')
 
 THREAD_JOIN_TIMEOUT_SEC = 10
 
+ARCHIVE_SHA_FILE_NAME = 'extracted_from_archive.sha256'
+
 UNTAR_SCRIPT_TEMPLATE = """#!{bash_shebang}
 set -euo pipefail
 (
@@ -196,7 +198,7 @@ set -euo pipefail
     flock -w 180 200 || exit 5
     # Check existing workspace.
     if [[ -d '{remote_yb_src_root}' ]]; then
-        previous_sha256_file_path='{remote_yb_src_root}/extracted_from_archive.sha256'
+        previous_sha256_file_path='{remote_yb_src_root}/{archive_sha_file_name}'
         if [[ ! -f $previous_sha256_file_path ]]; then
             echo "File $previous_sha256_file_path does not exist!" >&2
             previous_sha256sum="None-Found"
@@ -238,7 +240,7 @@ set -euo pipefail
             tar xzf '{archive_path}' -C "$yb_src_root_extract_tmp_dir"
         fi
         echo '{expected_archive_sha256sum}' \
-                >"$yb_src_root_extract_tmp_dir/extracted_from_archive.sha256"
+                >"$yb_src_root_extract_tmp_dir/{archive_sha_file_name}"
         mv "$yb_src_root_extract_tmp_dir" '{remote_yb_src_root}'
     fi
 )  200>'{lock_path}'
@@ -343,6 +345,10 @@ def init_spark_context(conf: yb_dist_tests.TestConfig,
 
 def spark_context_is_stopped() -> bool:
     if spark_context is None:
+        return True
+    # SparkContext.stop() clears _jsc, so a context that was stopped through this process is already
+    # known to be stopped.
+    if spark_context._jsc is None:
         return True
     try:
         return cast(bool, spark_context._jsc.sc().isStopped())
@@ -471,15 +477,19 @@ def join_build_root_with(conf: yb_dist_tests.TestConfig, rel_path: str) -> str:
     return os.path.join(conf.build_root, rel_path)
 
 
+# This is executed on a Spark executor.
 def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: Any,
-                      rerun: bool, conf: yb_dist_tests.TestConfig) -> None:
+                      rerun: bool,
+                      conf: yb_dist_tests.TestConfig,
+                      env_vars: Dict[str, str]) -> None:
     """
     This is invoked in parallel to actually run tests. conf is the submitting job's build tree
     config, unpickled from the task closure, so it is this task's own copy rather than module state
-    a previous task on this worker happened to leave behind.
+    a previous task on this worker happened to leave behind. env_vars is the same job's environment
+    for the workers, passed the same way.
     """
     try:
-        initialize_remote_task(conf)
+        initialize_remote_task(conf, env_vars)
     except Exception as e:
         build_host = os.environ.get('YB_BUILD_HOST', None)
         if build_host:
@@ -676,10 +686,15 @@ def get_bash_shebang() -> str:
 
 
 # This is executed on a Spark executor as part of running a task.
-def initialize_remote_task(conf: yb_dist_tests.TestConfig) -> None:
+def initialize_remote_task(conf: yb_dist_tests.TestConfig,
+                           env_vars: Dict[str, str]) -> None:
     configure_logging()
 
-    conf.set_env_on_spark_worker(propagated_env_vars)
+    # Re-applied on every task, not once per process: Spark reuses python workers
+    # (spark.python.worker.reuse), so this process may still carry conf and env a previous task on
+    # this worker applied. Setting both here keeps a task's environment a function of what its job
+    # submitted rather than of worker history.
+    conf.set_env_on_spark_worker(env_vars)
     if not conf.archive_for_workers:
         return
 
@@ -718,6 +733,7 @@ def initialize_remote_task(conf: yb_dist_tests.TestConfig) -> None:
 
             untar_script_file.write(UNTAR_SCRIPT_TEMPLATE.format(
                 archive_path=archive_path,
+                archive_sha_file_name=ARCHIVE_SHA_FILE_NAME,
                 bash_shebang=bash_shebang,
                 expected_archive_sha256sum=expected_archive_sha256sum,
                 lock_path=lock_path,
@@ -841,7 +857,11 @@ def get_jenkins_job_name() -> Optional[str]:
 def get_jenkins_job_name_path_component() -> str:
     jenkins_job_name = get_jenkins_job_name()
     if jenkins_job_name:
-        return "job_" + jenkins_job_name
+        # JOB_NAME has '/' for folder-nested jobs (e.g. 'users/<job>'); replace it so this stays a
+        # single path component: it's used as a directory name and as part of a report filename.
+        # An embedded '/' splits it into an extra directory level that nothing creates, so writing
+        # the report fails with FileNotFoundError.
+        return "job_" + jenkins_job_name.replace('/', '_')
 
     return "unknown_jenkins_job"
 
@@ -1259,7 +1279,8 @@ def run_spark_action(action: Any) -> Any:
 
 # Run the tests in parallel on Spark. This is executed on the main Spark driver.
 def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: bool,
-                  conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+                  conf: yb_dist_tests.TestConfig,
+                  env_vars: Dict[str, str]) -> List[yb_dist_tests.TestResult]:
     # Rather than collect results from RDD dataset, accumulate them in the spark_context.
     # That way we are not dependent on the entire test set to run successfully and can
     # capture partial results.
@@ -1305,7 +1326,8 @@ def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: b
         # lambda and unpickled in each task, so every task gets its own copy of this job's
         # build tree config.
         run_spark_action(lambda: test_names_rdd.map(
-            lambda test_name: parallel_run_test(test_name, fail_count, test_results, rerun, conf)
+            lambda test_name: parallel_run_test(test_name, fail_count, test_results, rerun,
+                                                conf, env_vars)
         ).collect())
 
     finally:
@@ -1317,6 +1339,18 @@ def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: b
     for rlist in test_results.value:
         results.extend(rlist)
     return results
+
+
+# Packs conf's tree for the workers, checksums the archive, and leaves that checksum beside the
+# tree: this host may run an executor too, and the sentinel is what tells a worker the tree
+# already in place is the one it needs, so it can skip re-extracting.
+def create_archive_and_record_checksum(
+        conf: yb_dist_tests.TestConfig, mvn_local_repo: str) -> None:
+    yb_dist_tests.create_archive_for_workers(conf=conf, mvn_local_repo=mvn_local_repo)
+    yb_dist_tests.compute_archive_sha256sum(conf=conf)
+    assert conf.archive_sha256sum is not None
+    with open(os.path.join(conf.yb_src_root, ARCHIVE_SHA_FILE_NAME), 'w') as archive_sha_file:
+        archive_sha_file.write(conf.archive_sha256sum)
 
 
 # Test-only fault injection, to exercise the re-submission / context-recovery path without waiting
@@ -1356,7 +1390,8 @@ def maybe_inject_submit_fault(
 # This is executed on the main Spark driver.
 def run_tests_job_with_resubmits(test_descriptors: List[yb_dist_tests.TestDescriptor],
                                  rerun: bool,
-                                 conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+                                 conf: yb_dist_tests.TestConfig,
+                                 env_vars: Dict[str, str]) -> List[yb_dist_tests.TestResult]:
     all_results: List[yb_dist_tests.TestResult] = []
     # descriptor_str includes the attempt index, so it uniquely identifies a test attempt.
     pending = list(test_descriptors)
@@ -1369,7 +1404,7 @@ def run_tests_job_with_resubmits(test_descriptors: List[yb_dist_tests.TestDescri
         try:
             if spark_context_is_stopped():
                 restart_spark_context(conf)
-            results = run_tests_job(pending, rerun=rerun, conf=conf)
+            results = run_tests_job(pending, rerun=rerun, conf=conf, env_vars=env_vars)
         except Exception as e:
             # Retry this submission only if it failed because the Spark application was lost or
             # due to another transient Spark error. In case of a genuine bug don't retry and
@@ -1651,19 +1686,19 @@ def main() -> None:
             conf.archive_for_workers is not None and
             os.path.exists(conf.archive_for_workers))
         if args.recreate_archive_for_workers or not archive_exists:
-            archive_sha_path = os.path.join(
-                conf.yb_src_root, 'extracted_from_archive.sha256')
+            archive_sha_path = os.path.join(conf.yb_src_root, ARCHIVE_SHA_FILE_NAME)
             if os.path.exists(archive_sha_path):
                 os.remove(archive_sha_path)
 
-            yb_dist_tests.create_archive_for_workers(conf)
+            # Java tests run `mvn --offline` on the workers, so the repo has to be in the archive.
+            mvn_local_repo = os.environ.get('YB_MVN_LOCAL_REPO')
+            if not mvn_local_repo:
+                fatal_error(
+                    "YB_MVN_LOCAL_REPO is not set, cannot build the archive for workers. Expected "
+                    "it to point at the Maven repo inside %s." % conf.build_root)
+                return
 
-            yb_dist_tests.compute_archive_sha256sum(conf)
-
-            # Local host may also be worker, so leave expected checksum here after archive created.
-            assert conf.archive_sha256sum is not None
-            with open(archive_sha_path, 'w') as archive_sha:
-                archive_sha.write(conf.archive_sha256sum)
+            create_archive_and_record_checksum(conf, mvn_local_repo)
         else:
             yb_dist_tests.compute_archive_sha256sum(conf)
 
@@ -1736,7 +1771,8 @@ def main() -> None:
                 total_num_tests, len(test_descriptors))
 
     if test_descriptors:
-        results = run_tests_job_with_resubmits(test_descriptors, rerun=False, conf=conf)
+        results = run_tests_job_with_resubmits(test_descriptors, rerun=False, conf=conf,
+                                               env_vars=propagated_env_vars)
     else:
         # Allow running zero tests, for testing the reporting logic.
         results = []
@@ -1829,7 +1865,8 @@ def main() -> None:
                 for i in range(1, args.fail_repetitions + 1)
             ]
             rerun_results = run_tests_job_with_resubmits(test_descriptors_rerun, rerun=True,
-                                                         conf=conf)
+                                                         conf=conf,
+                                                         env_vars=propagated_env_vars)
             logging.info("Re-run results: %s  Expected: %s", len(rerun_results),
                          len(test_descriptors_rerun))
             rerun_failed = 0

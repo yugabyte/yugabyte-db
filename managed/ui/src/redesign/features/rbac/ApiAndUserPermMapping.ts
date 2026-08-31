@@ -785,7 +785,17 @@ export const ApiPermissionMap = {
 
     GET_UNIVERSE_PERF_ADVISOR_STATUS: {
       requestType: ApiRequestType.GET,
-      endpoint: '/pa_collector/$paUUID<[^/]+>/universes/$uniUUID<[^/]+>'
+      endpoint: '/universes/$uUUID<[^/]+>/pa_collector'
+    },
+
+    REGISTER_UNIVERSE_TO_PERF_ADVISOR: {
+      requestType: ApiRequestType.PUT,
+      endpoint: '/universes/$uUUID<[^/]+>/pa_collector/$paUUID<[^/]+>'
+    },
+
+    UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR: {
+      requestType: ApiRequestType.DELETE,
+      endpoint: '/universes/$uUUID<[^/]+>/pa_collector'
     },
 
     MODIFY_BACKUP_STATE: {

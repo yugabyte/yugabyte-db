@@ -34,19 +34,24 @@ type ResponseMessage struct {
 }
 
 type CommonInfo struct {
-	Name     string `json:"name,omitempty"`
-	IP       string `json:"ip,omitempty"`
-	State    string `json:"state,omitempty"`
-	Version  string `json:"version,omitempty"`
-	ArchType string `json:"archType,omitempty"`
-	OSType   string `json:"osType,omitempty"`
-	Home     string `json:"home,omitempty"`
-	Port     int    `json:"port,omitempty"`
+	Name            string `json:"name,omitempty"`
+	IP              string `json:"ip,omitempty"`
+	State           string `json:"state,omitempty"`
+	Version         string `json:"version,omitempty"`
+	ArchType        string `json:"archType,omitempty"`
+	OSType          string `json:"osType,omitempty"`
+	Home            string `json:"home,omitempty"`
+	Port            int    `json:"port,omitempty"`
+	CertificateName string `json:"certificateName,omitempty"`
 }
 
 type NodeAgentConfig struct {
-	ServerCert string `json:"serverCert,omitempty"`
-	ServerKey  string `json:"serverKey,omitempty"`
+	ServerCert          string `json:"serverCert,omitempty"`
+	ServerKey           string `json:"serverKey,omitempty"`
+	ServerCertLocalPath string `json:"serverCertLocalPath,omitempty"`
+	ServerKeyLocalPath  string `json:"serverKeyLocalPath,omitempty"`
+	SignerPublicKey     string `json:"signerPublicKey,omitempty"`
+	SignerPrivateKey    string `json:"signerPrivateKey,omitempty"`
 }
 
 type Customer struct {

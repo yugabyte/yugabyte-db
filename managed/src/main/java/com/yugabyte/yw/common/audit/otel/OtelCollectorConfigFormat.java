@@ -300,13 +300,6 @@ public class OtelCollectorConfigFormat {
 
   @Data
   @EqualsAndHashCode(callSuper = true)
-  public static class LokiExporter extends Exporter {
-    private String endpoint;
-    private Map<String, String> headers;
-  }
-
-  @Data
-  @EqualsAndHashCode(callSuper = true)
   public static class OTLPExporter extends Exporter {
     private String endpoint;
     private String compression;
@@ -355,7 +348,9 @@ public class OtelCollectorConfigFormat {
     private String s3_bucket;
     private String region;
     private String s3_prefix;
-    private String s3_partition;
+    // Replaced the `s3_partition` granularity keyword in otel-collector-contrib 0.131.0-era
+    // (contrib #37954); takes a strftime layout instead of "hour"/"minute".
+    private String s3_partition_format;
     private String role_arn;
     private String file_prefix;
     private Boolean s3_force_path_style;
@@ -445,8 +440,42 @@ public class OtelCollectorConfigFormat {
     private List<String> exporters;
   }
 
+  // Since otel-collector 0.120.0 the flat `service::telemetry::metrics::address` field is gone.
+  // Internal telemetry is configured through the OpenTelemetry declarative-config MeterProvider
+  // schema (go.opentelemetry.io/contrib/otelconf), squashed into the metrics section as `readers`.
   @Data
   public static class MetricsConfig {
-    private String address;
+    private List<MetricReader> readers;
+  }
+
+  @Data
+  public static class MetricReader {
+    private PullMetricReader pull;
+  }
+
+  @Data
+  public static class PullMetricReader {
+    private MetricReaderExporter exporter;
+  }
+
+  @Data
+  public static class MetricReaderExporter {
+    private PrometheusMetricExporter prometheus;
+  }
+
+  /**
+   * The three {@code without_*} flags are opt-in upstream, and omitting them changes metric names:
+   * the OTel Prometheus exporter otherwise appends a {@code _total} suffix to counters, appends
+   * unit suffixes, and adds {@code otel_scope_name}/{@code otel_scope_version} labels. YBA's log
+   * and metric export failure alerts match exact {@code otelcol_*} counter names, so all three stay
+   * set to preserve the pre-0.120.0 naming.
+   */
+  @Data
+  public static class PrometheusMetricExporter {
+    private String host;
+    private Integer port;
+    private Boolean without_scope_info;
+    private Boolean without_type_suffix;
+    private Boolean without_units;
   }
 }

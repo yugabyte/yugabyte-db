@@ -91,8 +91,8 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
 #include "catalog/index.h"
+#include "catalog/pg_aggregate_d.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_collation.h"
@@ -2251,7 +2251,8 @@ typedef enum YbPFetchTable
 {
 	YB_PFETCH_TABLE_FIRST = 0,
 
-	YB_PFETCH_TABLE_PG_AM = YB_PFETCH_TABLE_FIRST,
+	YB_PFETCH_TABLE_PG_AGGREGATE = YB_PFETCH_TABLE_FIRST,
+	YB_PFETCH_TABLE_PG_AM,
 	YB_PFETCH_TABLE_PG_AMOP,
 	YB_PFETCH_TABLE_PG_AMPROC,
 	YB_PFETCH_TABLE_PG_ATTRDEF,
@@ -2316,6 +2317,7 @@ YbBinSearchCatNamesComp(const void *a, const void *b)
  * in production.
  */
 static const YbCatNamePfId YbCatalogNamesPfIds[] = {
+	{"pg_aggregate", YB_PFETCH_TABLE_PG_AGGREGATE},
 	{"pg_am", YB_PFETCH_TABLE_PG_AM},
 	{"pg_amop", YB_PFETCH_TABLE_PG_AMOP},
 	{"pg_amproc", YB_PFETCH_TABLE_PG_AMPROC},
@@ -2400,6 +2402,8 @@ static const YbPFetchTableInfo *
 YbGetPrefetchableTableInfo(YbPFetchTable table)
 {
 	static YbPFetchTableInfo tables[YB_PFETCH_TABLES_COUNT] = {
+		[YB_PFETCH_TABLE_PG_AGGREGATE] =
+		(YbPFetchTableInfo) {AggregateRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {AGGFNOID}}},
 		[YB_PFETCH_TABLE_PG_AM] =
 		(YbPFetchTableInfo) {AccessMethodRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {AMOID, AMNAME}}},
 		[YB_PFETCH_TABLE_PG_AMOP] =
@@ -2713,9 +2717,17 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 	 * become stale for subsequent connections used for restoring catalog metadata.
 	 * When a subsequent connection works with stale catalog metadata to do retore
 	 * work, it can lead to incorrect catalog restore result.
+	 *
+	 * yb_read_time != 0 indicates the session reads the catalog as of a point in
+	 * time in the past. The response cache key does not include yb_read_time, so
+	 * a cache hit would return rows as of the entry's fill time instead of
+	 * yb_read_time, while a cache miss reads at yb_read_time. Even if we fixed this,
+	 * it doesn't worth using the limited LRU cache in response_cache to hold
+	 * yb_read_time requests which likely don't reuse the read time often.
 	 */
 	if (!YBCIsInitDbModeEnvVarSet() &&
 		!IsBinaryUpgrade &&
+		yb_read_time == 0 &&
 		*YBCGetGFlags()->ysql_enable_read_request_caching)
 	{
 		starter_idx = 0;

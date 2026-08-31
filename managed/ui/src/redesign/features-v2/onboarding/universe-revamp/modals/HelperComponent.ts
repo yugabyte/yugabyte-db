@@ -5,12 +5,17 @@ const { Box, Typography, styled } = mui;
 export const DEFAULT_RELEASE_NOTES_URL =
   'https://docs.yugabyte.com/preview/releases/yba-releases/';
 
+export const NEW_EXPERIENCE_DOCS_URL =
+  'https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/yba-overview/#new-experience';
+
 export const ModalBody = styled(Box)(() => ({
   display: 'flex',
   flexDirection: 'column',
   gap: '16px',
   backgroundColor: '#FBFCFD',
-  padding: '16px 24px 24px'
+  // Figma content: pt 16 / px 24 / pb 24
+  padding: '16px 24px 24px',
+  boxSizing: 'border-box'
 }));
 
 export const SectionCard = styled(Box)(({ theme }) => ({
@@ -25,6 +30,7 @@ export const SectionCard = styled(Box)(({ theme }) => ({
 }));
 
 export const GradientTitle = styled(Typography)(() => ({
+  fontFamily: 'Inter',
   fontSize: '15px',
   fontWeight: 600,
   lineHeight: '16px',
@@ -36,6 +42,7 @@ export const GradientTitle = styled(Typography)(() => ({
 }));
 
 export const SectionTitle = styled(Typography)(() => ({
+  fontFamily: 'Inter',
   fontSize: '15px',
   fontWeight: 600,
   lineHeight: '16px',
@@ -100,10 +107,58 @@ export const MapWrap = styled(Box)(() => ({
   }
 }));
 
-export const LearnMoreLink = styled('a')(({ theme }) => ({
-  color: theme.palette.grey[700],
+export const UserGroupWrap = styled(Box)(() => ({
+  width: '24px',
+  height: '24px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  overflow: 'hidden',
+  '& > svg': {
+    width: '24px',
+    height: '24px',
+    display: 'block'
+  }
+}));
+
+/** Figma rollout callout (YBM Primary Blue 100 / 300). */
+export const RolloutBanner = styled(Box)(() => ({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '8px',
+  width: '100%',
+  padding: '16px 24px',
+  borderRadius: '8px',
+  border: '1px solid #CBDAFF',
+  backgroundColor: '#F2F6FF',
+  boxSizing: 'border-box'
+}));
+
+export const RuntimeConfigTag = styled(Box)(() => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '4px 6px',
+  borderRadius: '6px',
+  border: '1px solid #D7DEE4',
+  backgroundColor: '#FFFFFF',
+  fontFamily: 'Menlo, Monaco, Consolas, monospace',
+  fontSize: '11px',
+  fontWeight: 400,
+  lineHeight: 'normal',
+  color: '#0B1117',
+  whiteSpace: 'nowrap'
+}));
+
+export const LearnMoreLink = styled('a')(() => ({
+  color: '#4E5F6D',
+  fontFamily: 'Inter',
+  fontSize: '13px',
+  fontWeight: 400,
+  lineHeight: '16px',
   textDecoration: 'underline',
   textUnderlinePosition: 'from-font',
+  textDecorationSkipInk: 'none',
   cursor: 'pointer',
   '&:hover': {
     textDecoration: 'none'
@@ -141,14 +196,15 @@ export const TableRow = styled(Box)(({ theme }) => ({
   }
 }));
 
-export const HeaderLabel = styled(Box)(({ theme }) => ({
+export const HeaderLabel = styled(Box)(() => ({
   display: 'flex',
   alignItems: 'center',
   gap: '4px',
+  fontFamily: 'Inter',
   fontSize: '11.5px',
   fontWeight: 600,
   lineHeight: '16px',
-  color: theme.palette.grey[900],
+  color: '#0B1117',
   '& > svg': {
     width: '5px',
     height: '9px',

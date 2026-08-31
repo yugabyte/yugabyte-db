@@ -125,6 +125,12 @@ DEFINE_UNKNOWN_bool(evict_failed_followers, true,
             "follower_unavailable_considered_failed_sec");
 TAG_FLAG(evict_failed_followers, advanced);
 
+DEFINE_RUNTIME_bool(raft_monotonic_last_received_current_leader, true,
+    "Whether a replica advances the last received op id from the current leader monotonically on "
+    "fully-deduplicated requests, rather than only setting it once per term. Kill switch; a "
+    "watermark frozen at its first value can leave a lagging follower permanently uncatchable.");
+TAG_FLAG(raft_monotonic_last_received_current_leader, advanced);
+
 DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
                  "Whether a follower will return an error for all UpdateConsensus() requests.");
 
@@ -280,6 +286,19 @@ DEFINE_test_flag(bool, skip_election_when_fail_detected, false,
 
 DEFINE_test_flag(bool, pause_replica_start_before_triggering_pending_operations, false,
                  "Whether to pause before triggering pending operations in RaftConsensus::Start");
+
+DEFINE_RUNTIME_bool(enable_wal_sync_on_consensus_update, true,
+    "Whether every UpdateConsensus RPC a replica receives, including a heartbeat carrying no "
+    "operations, re-checks this tablet's WAL against --interval_durable_wal_write_ms and starts "
+    "a background fsync if the oldest unsynced entry is older than that. Without it the interval "
+    "is only ever evaluated when the next append arrives, so a tablet that takes one write and "
+    "then goes quiet can leave that write in the page cache indefinitely. The fsync always runs "
+    "in the background, never on the RPC thread. Scope: UpdateConsensus is received by "
+    "followers, not sent by the leader, so this bounds follower WALs only, and it stops firing "
+    "exactly when heartbeats stop arriving. It does not by itself make an acknowledged write "
+    "majority-durable: at RF=3 a commit needs 2 of 3 acks and the leader is normally one of "
+    "them, so a committed entry can have exactly one bounded copy while the leader's stays "
+    "unsynced. The leader's own WAL, RF=1, and a partitioned node get no bound from this flag.");
 
 namespace yb::consensus {
 
@@ -811,6 +830,12 @@ Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool gracefu
       graceful ? std::string() : peer.permanent_uuid(), MonoDelta());
 }
 
+bool RaftConsensus::ProtegeSynchronizedUnlocked() const {
+  DCHECK(state_->IsLocked());
+  return queue_->PeerLastReceivedOpId(delayed_step_down_.protege) >=
+         state_->GetLastReceivedOpIdUnlocked();
+}
+
 void RaftConsensus::CheckDelayedStepDown(const Status& status) {
   if (!status.ok()) {
     return;  // Scheduled task was aborted.
@@ -1046,7 +1071,16 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
     LOG_WITH_PREFIX(WARNING) << "Tablet error from RunLeaderElection() call to peer "
                              << election_state->req.dest_uuid() << ": "
                              << StatusFromPB(election_state->resp.error().status());
+  } else {
+    // The protege accepted the request and started an election, so it reports a loss back to us
+    // via NotifyOriginatorAboutLostElection.
+    return;
   }
+  // The protege did not even start an election, so it will never report the loss back to us.
+  // Handle it here, otherwise this tablet stays leaderless until the post stepdown election delay
+  // expires.
+  WARN_NOT_OK(ElectionLostByProtege(election_state->req.dest_uuid()),
+              "Failed to handle stepdown election request failure");
 }
 
 void RaftConsensus::ReportFailureDetectedTask() {
@@ -1342,6 +1376,26 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   return status;
 }
 
+Status RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
+  const auto& msg = *round->replicate_msg();
+  if (msg.op_type() != OperationType::WRITE_OP) {
+    return Status::OK();
+  }
+  const auto fence = HybridTime::FromPB(msg.write().ignore_after_hybrid_time());
+  if (!fence) {
+    return Status::OK();
+  }
+  // clock_, not the op's own hybrid time, which AddLeaderPending has not assigned yet. Nor
+  // state_->Clock(), which is the coarse clock and not in the fence's time domain.
+  const auto now = clock_->Now();
+  if (fence > now) {
+    return Status::OK();
+  }
+  return STATUS_EC_FORMAT(
+      Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
+      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, now);
+}
+
 Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     const ConsensusRounds& rounds, size_t* processed_rounds,
     std::vector<ReplicateMsgPtr>* replicate_msgs) {
@@ -1349,6 +1403,15 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
 
   for (const auto& round : rounds) {
     ++*processed_rounds;
+
+    // Must precede RegisterRetryableRequest, whose entry is only ever removed by
+    // ReplicationFinished -- which this rejection does not reach -- and NotifyAddedToLeader, whose
+    // side effects rolling back the op id does not undo.
+    if (auto s = CheckWriteFenceUnlocked(round); !s.ok()) {
+      round->NotifyReplicationFinished(s, round->bound_term(), /* applied_op_ids = */ nullptr);
+      round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
+      continue;
+    }
 
     if (round->replicate_msg()->op_type() == OperationType::WRITE_OP) {
       DCHECK_EQ(state_->GetActiveRoleUnlocked(), PeerRole::LEADER);
@@ -1471,9 +1534,9 @@ void RaftConsensus::UpdateMajorityReplicated(
 
   majority_num_sst_files_.store(majority_replicated_data.num_sst_files, std::memory_order_release);
 
-  if (!majority_replicated_data.peer_got_all_ops.empty() &&
-      delayed_step_down_.term == state_->GetCurrentTermUnlocked() &&
-      majority_replicated_data.peer_got_all_ops == delayed_step_down_.protege) {
+  // Complete a pending step down once the protege has received every op in our log.
+  if (delayed_step_down_.term == state_->GetCurrentTermUnlocked() &&
+      ProtegeSynchronizedUnlocked()) {
     LOG_WITH_PREFIX(INFO) << "Protege synchronized: " << delayed_step_down_.ToString();
     const auto* peer = FindPeer(state_->GetActiveConfigUnlocked(), delayed_step_down_.protege);
     if (peer) {
@@ -1629,6 +1692,18 @@ Status RaftConsensus::Update(
 
   VLOG_WITH_PREFIX(2) << "Replica received request: " << request.ShortDebugString();
 
+  // Bound how long an already-appended entry can sit unsynced on a tablet that has gone quiet:
+  // Log only re-evaluates --interval_durable_wal_write_ms when something is appended.
+  //
+  // Placed ahead of both the write-stop rejection and the update_mutex_ block below to ensure
+  // durability even in the following scenarios:
+  //   - write stalls
+  //   - unable to acquire update_mutex_
+  //   - UpdateReplica() fails and returns early
+  if (FLAGS_enable_wal_sync_on_consensus_update) {
+    log_->MaybeSyncInBackground();
+  }
+
   // Reject RPCs carrying operations when the tablet's RocksDB is in a hard write stop.
   // This check runs BEFORE acquiring update_mutex_ to prevent RPC thread pile-up: if a
   // thread is already blocked in DelayWrite() while holding update_mutex_, all subsequent
@@ -1669,7 +1744,14 @@ Status RaftConsensus::Update(
 
   // Release the lock while we wait for the log append to finish so that commits can go through.
   if (!result.wait_for_op_id.empty()) {
-    RETURN_NOT_OK(WaitForWrites(result.current_term, result.wait_for_op_id));
+    auto wait_deadline = deadline;
+    if (result.empty_request) {
+      // The leader sends heartbeats at heartbeat cadence, and MultiRaftUpdateConsensus() answers
+      // its requests sequentially, so bound this wait by one interval as well as by the deadline.
+      wait_deadline = std::min(
+          wait_deadline, CoarseMonoClock::Now() + FLAGS_raft_heartbeat_interval_ms * 1ms);
+    }
+    RETURN_NOT_OK(WaitForWrites(result.current_term, result.wait_for_op_id, wait_deadline));
   }
 
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
@@ -2120,17 +2202,17 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   FillConsensusResponseOKUnlocked(response);
 
   UpdateReplicaResult result;
+  // The response reports last_received, which is advanced before the append is durable (see
+  // MarkOperationsAsCommittedUnlocked), so wait for it even if this request appended nothing.
+  result.wait_for_op_id = state_->GetLastReceivedOpIdUnlocked();
+  result.empty_request = request.ops().empty();
+  result.current_term = state_->GetCurrentTermUnlocked();
 
   // Check if there is an election pending and the op id pending upon has just been committed.
   const auto& pending_election_op_id = state_->GetPendingElectionOpIdUnlocked();
   result.start_election =
       !pending_election_op_id.empty() &&
       pending_election_op_id.index <= state_->GetCommittedOpIdUnlocked().index;
-
-  if (!deduped_req.messages.empty()) {
-    result.wait_for_op_id = state_->GetLastReceivedOpIdUnlocked();
-  }
-  result.current_term = state_->GetCurrentTermUnlocked();
 
   uint64_t update_time_ms = 0;
   if (request.has_propagated_hybrid_time()) {
@@ -2273,7 +2355,8 @@ yb::OpId RaftConsensus::EnqueueWritesUnlocked(const LeaderRequest& deduped_req,
       OpId::FromPB(deduped_req.messages.back()->id()) : deduped_req.preceding_op_id;
 }
 
-Status RaftConsensus::WaitForWrites(int64_t term, const OpId& wait_for_op_id) {
+Status RaftConsensus::WaitForWrites(
+    int64_t term, const OpId& wait_for_op_id, CoarseTimePoint deadline) {
   // 5 - We wait for the writes to be durable.
 
   // Note that this is safe because dist consensus now only supports a single outstanding
@@ -2281,12 +2364,22 @@ Status RaftConsensus::WaitForWrites(int64_t term, const OpId& wait_for_op_id) {
   TRACE("Waiting on the replicates to finish logging");
   TRACE_EVENT0("consensus", "Wait for log");
   for (;;) {
+    // Durability is checked at least once even when the deadline has already expired, so an
+    // already-durable target still succeeds.
+    auto now = CoarseMonoClock::Now();
     auto wait_result = log_->WaitForSafeOpIdToApply(
-        wait_for_op_id, MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms));
+        wait_for_op_id,
+        std::clamp<CoarseDuration>(
+            deadline - now, CoarseDuration::zero(), FLAGS_raft_heartbeat_interval_ms * 1ms));
     // If just waiting for our log append to finish lets snooze the timer.
     // We don't want to fire leader election because we're waiting on our own log.
     if (!wait_result.empty()) {
       break;
+    }
+    if (now >= deadline) {
+      return STATUS_FORMAT(
+          TimedOut, "Op id $0 did not become durable in the local WAL before the deadline",
+          wait_for_op_id);
     }
     int64_t new_term;
     {
@@ -2351,7 +2444,12 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const LWConsensusRequest
                           deduped_req.preceding_op_id,
                           state_->GetLastReceivedOpIdUnlocked());
     }
-    state_->UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(deduped_req.preceding_op_id);
+    if (PREDICT_TRUE(FLAGS_raft_monotonic_last_received_current_leader)) {
+      state_->UpdateLastReceivedOpIdFromCurrentLeaderMonotonicUnlocked(
+          deduped_req.preceding_op_id);
+    } else {
+      state_->UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(deduped_req.preceding_op_id);
+    }
   }
 
   VLOG_WITH_PREFIX(1) << "Marking committed up to " << apply_up_to;
@@ -3129,8 +3227,10 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
           // ReplicaState lock and re-checking, here we simply block for up to 100ms in that case,
           // because this function is currently (08/14/2017) only used in a context when it is OK,
           // such as catalog manager initialization.
+          // The wait is capped at 100ms because the condition variable is not signalled when we
+          // lose leadership or shut down, so we must re-check the replica state periodically.
           leader_lease_wait_cond_.wait_for(
-              lock, std::max<MonoDelta>(100ms, deadline - now).ToSteadyDuration());
+              lock, std::min<MonoDelta>(100ms, deadline - now).ToSteadyDuration());
         }
         continue;
       case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE: {

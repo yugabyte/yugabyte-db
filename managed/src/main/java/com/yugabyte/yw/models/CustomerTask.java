@@ -189,6 +189,9 @@ public class CustomerTask extends Model {
     @EnumValue("RollbackUpgrade")
     RollbackUpgrade,
 
+    @EnumValue("RollbackEditUniverse")
+    RollbackEditUniverse,
+
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
 
@@ -333,6 +336,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("CreateSupportBundle")
     CreateSupportBundle,
+
+    @EnumValue("CreateSupportBundleV2")
+    CreateSupportBundleV2,
 
     @EnumValue("CreateTableSpaces")
     CreateTableSpaces,
@@ -504,6 +510,8 @@ public class CustomerTask extends Model {
           return completed ? "Finalized Upgrade" : "Finalizing Upgrade";
         case RollbackUpgrade:
           return completed ? "Rolled back upgrade" : "Rolling back upgrade";
+        case RollbackEditUniverse:
+          return completed ? "Rolled back edit universe" : "Rolling back edit universe";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd" : "Upgrading to Systemd";
         case GFlagsUpgrade:
@@ -584,6 +592,8 @@ public class CustomerTask extends Model {
         case Abort:
           return completed ? "Task aborted" : "Aborting task";
         case CreateSupportBundle:
+          return completed ? "Created Support Bundle in" : "Creating Support Bundle in";
+        case CreateSupportBundleV2:
           return completed ? "Created Support Bundle in" : "Creating Support Bundle in";
         case ThirdpartySoftwareUpgrade:
           return completed

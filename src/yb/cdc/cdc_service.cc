@@ -202,6 +202,13 @@ DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_cleanup_of_expired_table_entries,
     "update these entries in cdc_state table and also move the corresponding table's entry to "
     "unqualified tables list in stream metadata.");
 
+DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_selective_retention_barrier_revision,
+    kLocalVolatile, false, true,
+    "When enabled, a retention barrier revision request may move only a subset of the WAL, intents "
+    "and history retention barriers, via the no_*_retention_barrier fields of "
+    "UpdateCdcReplicatedIndexRequestPB. Requires every peer to understand these fields, else "
+    "peer ignores them and moves all three barriers.");
+
 DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
     "When enabled, users will be able to create a CDC stream having IMPLICIT checkpointing.");
 
@@ -267,6 +274,8 @@ DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 DECLARE_bool(cdc_enable_dynamic_schema_changes);
 
@@ -1918,7 +1927,8 @@ void CDCServiceImpl::GetChanges(
         composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
         &commit_timestamp, &cached_schema_details, &schema_packing_storages, &last_streamed_op_id,
         req->safe_hybrid_time(), consistent_snapshot_time, req->wal_segment_index(),
-        &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
+        req->max_index_in_sort_window(), &last_readable_index,
+        tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
         get_changes_deadline, getchanges_resp_max_size_bytes, &throughput_metrics);
     // This specific error from the docdb_pgapi layer is used to identify enum cache entry is
     // out of date, hence we need to repopulate.
@@ -1954,7 +1964,8 @@ void CDCServiceImpl::GetChanges(
           enum_map, composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
           &commit_timestamp, &cached_schema_details, &schema_packing_storages, &last_streamed_op_id,
           req->safe_hybrid_time(), consistent_snapshot_time, req->wal_segment_index(),
-          &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
+          req->max_index_in_sort_window(), &last_readable_index,
+          tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
           get_changes_deadline, getchanges_resp_max_size_bytes, &throughput_metrics);
     }
     // This specific error indicates that a tablet split occured on the tablet.
@@ -2151,7 +2162,8 @@ void CDCServiceImpl::GetChanges(
 
 Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
     const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min,
-    bool ignore_failures, bool initial_retention_barrier) {
+    bool ignore_failures, bool initial_retention_barrier,
+    tablet::CDCRetentionBarrierMoveSelector barrier_move_selector) {
   std::vector<client::internal::RemoteTabletServer*> servers;
   RETURN_NOT_OK(GetTServers(tablet_id, &servers));
 
@@ -2172,6 +2184,12 @@ Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
     update_index_req.add_cdc_sdk_ops_expiration_ms(
         cdc_checkpoint_min.cdc_sdk_op_id_expiration.ToMilliseconds());
     update_index_req.set_initial_retention_barrier(initial_retention_barrier);
+    update_index_req.set_skip_moving_wal_retention_barrier(
+        !barrier_move_selector.move_cdc_min_replicated_index);
+    update_index_req.set_skip_moving_intents_retention_barrier(
+        !barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id);
+    update_index_req.set_skip_moving_history_retention_barrier(
+        !barrier_move_selector.move_cdc_sdk_safe_time);
 
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
@@ -2858,9 +2876,9 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     // - If the tablet is colocated, we check the replica identities of this tablet's tables which
     // are present in the stream metadata's replica identity map.
     // - If the tablet is sys catalog, we check the replica identities of only tables
-    // 'pg_publication_rel', 'pg_class' & 'pg_replication_origin' residing in it (This is because
-    // currently only these sys catalog tables are part of publication's table list).
-    // If before image is active for any such tables then we should return true.
+    // 'pg_publication_rel', 'pg_class', 'pg_replication_origin', 'pg_publication' and optionally
+    // 'pg_attribute' (when ysql_yb_enable_replication_slot_transactional_ddl is enabled) residing
+    // in it. If before image is active for any such tables then we should return true.
     if (is_colocated_tablet || is_sys_catalog_tablet) {
       auto table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
       bool replica_identity_found_for_any_table = false;
@@ -3238,7 +3256,8 @@ void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
 
 Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
     const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
-    bool enable_update_local_peer_min_index, bool ignore_rpc_failures) {
+    bool enable_update_local_peer_min_index, bool ignore_rpc_failures,
+    tablet::CDCRetentionBarrierMoveSelector barrier_move_selector) {
   auto tablet_peer_result = context_->GetTablet(tablet_id);
   if (!tablet_peer_result.ok()) {
     VLOG(2) << "Did not find tablet peer for tablet " << tablet_id << " : "
@@ -3286,7 +3305,7 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
       min_index, tablet_info->cdc_sdk_op_id, tablet_info->cdc_sdk_op_id_expiration,
       tablet_info->cdc_sdk_safe_time, /* require_history_cutoff */
       tablet_info->cdc_sdk_safe_time == HybridTime::kInitial ? false : true,
-      set_initial_retention_barriers));
+      set_initial_retention_barriers, barrier_move_selector));
 
   if (!ignore_rpc_failures && !barrier_revised) {
     return STATUS_FORMAT(TryAgain, "Revision of CDC retention barriers is currently blocked");
@@ -3300,7 +3319,8 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
             << " expiration: " << tablet_info->cdc_sdk_op_id_expiration.ToMilliseconds()
             << " cdc_sdk_safe_time: " << tablet_info->cdc_sdk_safe_time;
     auto status = UpdatePeersCdcMinReplicatedIndex(
-        tablet_id, *tablet_info, ignore_rpc_failures, set_initial_retention_barriers);
+        tablet_id, *tablet_info, ignore_rpc_failures, set_initial_retention_barriers,
+        barrier_move_selector);
     WARN_NOT_OK(status, "UpdatePeersCdcMinReplicatedIndex failed");
     if (!ignore_rpc_failures && !status.ok()) {
       return status;
@@ -3617,9 +3637,38 @@ void CDCServiceImpl::CDCMasterBgTask() {
       LOG(WARNING) << "Failed to update gRPC slot entries: " << update_status;
     }
 
+    // We have 2 cases where sys_catalog_tablet-stream entry is not present or contains Invalid
+    // checkpoint:
+    // - System only contains old logical replication streams (which don't poll sys_catalog tablet)
+    // or gRPC streams. There's no sys_catalog_tablet-stream entry in cdc_state table for such
+    // streams.
+    // - A first logical replication stream (which polls the sys_catalog) creation is ongoing during
+    // which sys_catalog_tablet-stream entry is populated with Invalid checkpoint initially.
+    //
+    // In both such cases we advance only the history barrier, retaining the user tables' schema.
+    // Stream creation may set sys_catalog_tablet-stream entry to a valid checkpoint concurrently.
+    // Thus, it is not correct to release the WAL and intent barriers and anyways is not required.
+    tablet::CDCRetentionBarrierMoveSelector barrier_move_selector;
+    if (checkpoint_info.cdc_sdk_op_id == OpId::Max()) {
+      if (!FLAGS_cdcsdk_enable_selective_retention_barrier_revision) {
+        // Not every master necessarily understands the skip_moving_*_retention_barrier request
+        // fields yet, and one that ignores them would move all three barriers to the sentinel. Skip
+        // propagation altogether until the AutoFlag is promoted.
+        VLOG(2) << "CDCMasterBgTask: no sys_catalog checkpoint available yet and selective barrier "
+                   "revision is not enabled, skipping propagation";
+        continue;
+      }
+      VLOG(2) << "CDCMasterBgTask: no sys_catalog checkpoint available yet, advancing only the "
+                 "history retention barrier";
+      barrier_move_selector = {
+          .move_cdc_min_replicated_index = false,
+          .move_cdc_sdk_min_checkpoint_op_id = false,
+          .move_cdc_sdk_safe_time = true};
+    }
+
     auto propagate_status = UpdateTabletPeerWithCheckpoint(
         master::kSysCatalogTabletId, &checkpoint_info, context_->ShouldLocalPeerUpdateOwnBarriers(),
-        true /* ignore_rpc_failures */);
+        true /* ignore_rpc_failures */, barrier_move_selector);
     WARN_NOT_OK(propagate_status, "Failed to propagate sys_catalog retention barriers");
     if (propagate_status.ok()) {
       set_cdc_master_bg_task_ran_once();
@@ -3643,6 +3692,8 @@ void CDCServiceImpl::CDCMasterBgTask() {
 
 Result<std::optional<std::pair<TabletCDCCheckpointInfo, StreamIdHybridTimeMap>>>
 CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* expired_tables_map) {
+  std::unordered_set<xrepl::StreamId> refreshed_metadata_set;
+
   TabletCDCCheckpointInfo info;
   info.cdc_sdk_op_id = OpId::Max();
 
@@ -3689,13 +3740,21 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
     // We expect the stream metadata to be present in the master cache. If not, then it means that
     // the stream is deleted. We skip this entry from the calculation of sys_catalog retention
     // barriers.
-    auto stream_metadata_result = GetStream(stream_id);
+    RefreshStreamMapOption refresh_option = RefreshStreamMapOption::kNone;
+    if (!refreshed_metadata_set.contains(stream_id)) {
+      refresh_option = RefreshStreamMapOption::kIfInitiatedState;
+    }
+    auto stream_metadata_result = GetStream(stream_id, refresh_option);
     if (!stream_metadata_result.ok()) {
       VLOG(2) << "Failed to get stream metadata for stream " << stream_id << ": "
               << stream_metadata_result.status();
       continue;
     }
     auto& stream_metadata = **stream_metadata_result;
+    // Refresh metadata from master for a stream in INITIATED state only once per round.
+    if (stream_metadata.GetState() == master::SysCDCStreamEntryPB_State_INITIATED) {
+      refreshed_metadata_set.insert(stream_id);
+    }
     if (stream_metadata.GetSourceType() != CDCRequestSource::CDCSDK) {
       continue;
     }
@@ -4266,6 +4325,11 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(
   auto initial_retention_barrier =
       req->has_initial_retention_barrier() && req->initial_retention_barrier();
 
+  tablet::CDCRetentionBarrierMoveSelector barrier_move_selector{
+      .move_cdc_min_replicated_index = !req->skip_moving_wal_retention_barrier(),
+      .move_cdc_sdk_min_checkpoint_op_id = !req->skip_moving_intents_retention_barrier(),
+      .move_cdc_sdk_safe_time = !req->skip_moving_history_retention_barrier()};
+
   rollback_tablet_id_vec.reserve(req->tablet_ids_size());
   for (int i = 0; i < req->tablet_ids_size(); i++) {
     const OpId& cdc_sdk_op = req->cdc_sdk_consumed_ops().empty()
@@ -4280,7 +4344,7 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(
         &rollback_tablet_id_map,
         req->cdc_sdk_safe_times().size() > i ? HybridTime::FromPB(req->cdc_sdk_safe_times(i))
                                              : HybridTime::kInvalid,
-        initial_retention_barrier);
+        initial_retention_barrier, barrier_move_selector);
     RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
   }
 
@@ -4292,7 +4356,7 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
     const string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
     const MonoDelta& cdc_sdk_op_id_expiration,
     RollBackTabletIdCheckpointMap* rollback_tablet_id_map, const HybridTime cdc_sdk_safe_time,
-    bool initial_retention_barrier) {
+    bool initial_retention_barrier, tablet::CDCRetentionBarrierMoveSelector barrier_move_selector) {
   auto tablet_peer = VERIFY_RESULT(GetServingTablet(tablet_id));
   if (!tablet_peer->log_available()) {
     return STATUS(TryAgain, "Tablet peer is not ready to set its log cdc index");
@@ -4310,7 +4374,7 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
   auto barrier_revised = VERIFY_RESULT(tablet_peer->SetAllCDCRetentionBarriers(
       replicated_index, cdc_sdk_replicated_op, cdc_sdk_op_id_expiration, cdc_sdk_safe_time,
       cdc_sdk_safe_time == HybridTime::kInitial ? false : true /* require_history_cutoff */,
-      initial_retention_barrier));
+      initial_retention_barrier, barrier_move_selector));
   // If initial_retention_barrier was passed as true to tablet_peer's
   // SetAllCDCRetentionBarriers(), it always returns true for an OK status since the tablet's
   // SetAllInitialCDCRetentionBarriers() gets called.
@@ -4867,6 +4931,9 @@ Result<std::vector<TableId>> CDCServiceImpl::GetStreamableCatalogTables(
   std::vector<TableId> table_ids;
   auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgAttributeTableOid));
+  }
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
   table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));

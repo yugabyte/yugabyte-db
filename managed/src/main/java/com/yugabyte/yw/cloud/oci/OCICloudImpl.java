@@ -2,16 +2,25 @@
 
 package com.yugabyte.yw.cloud.oci;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.NOT_FOUND;
+
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.oracle.bmc.auth.AbstractAuthenticationDetailsProvider;
 import com.oracle.bmc.auth.InstancePrincipalsAuthenticationDetailsProvider;
 import com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
+import com.oracle.bmc.core.VirtualNetworkClient;
+import com.oracle.bmc.core.model.Subnet;
+import com.oracle.bmc.core.model.Vcn;
+import com.oracle.bmc.core.requests.GetSubnetRequest;
+import com.oracle.bmc.core.requests.GetVcnRequest;
 import com.oracle.bmc.identity.IdentityClient;
 import com.oracle.bmc.identity.requests.ListAvailabilityDomainsRequest;
 import com.oracle.bmc.identity.requests.ListRegionsRequest;
 import com.oracle.bmc.model.BmcException;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -109,35 +118,84 @@ public class OCICloudImpl implements CloudAPI {
     }
   }
 
+  /**
+   * Looks up a VCN by OCID in the given region. Throws NOT_FOUND when OCI reports the VCN does not
+   * exist, and BAD_REQUEST for other lookup failures.
+   */
+  public Vcn getVcnOrBadRequest(Provider provider, Region region) {
+    String vcnId = region.getVnetName();
+    try (VirtualNetworkClient networkClient = getVirtualNetworkClient(provider, region.getCode())) {
+      return networkClient.getVcn(GetVcnRequest.builder().vcnId(vcnId).build()).getVcn();
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (BmcException e) {
+      log.error("OCI VCN lookup failed for {}: ", vcnId, e);
+      throw wrapLookupFailure(e, "VCN", vcnId);
+    } catch (Exception e) {
+      log.error("Unexpected error looking up OCI VCN {}: ", vcnId, e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "VCN details extraction failed: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Looks up a subnet by OCID in the given region. Throws NOT_FOUND when OCI reports the subnet
+   * does not exist, and BAD_REQUEST for other lookup failures.
+   */
+  public Subnet getSubnetOrBadRequest(Provider provider, Region region, String subnetId) {
+    try (VirtualNetworkClient networkClient = getVirtualNetworkClient(provider, region.getCode())) {
+      return networkClient
+          .getSubnet(GetSubnetRequest.builder().subnetId(subnetId).build())
+          .getSubnet();
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (BmcException e) {
+      log.error("OCI subnet lookup failed for {}: ", subnetId, e);
+      throw wrapLookupFailure(e, "Subnet", subnetId);
+    } catch (Exception e) {
+      log.error("Unexpected error looking up OCI subnet {}: ", subnetId, e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Subnet details extraction failed: " + e.getMessage());
+    }
+  }
+
+  private static PlatformServiceException wrapLookupFailure(
+      BmcException e, String resourceLabel, String resourceId) {
+    if (e.getStatusCode() == NOT_FOUND) {
+      return new PlatformServiceException(NOT_FOUND, resourceLabel + " not found: " + resourceId);
+    }
+    return new PlatformServiceException(
+        BAD_REQUEST, resourceLabel + " details extraction failed: " + e.getMessage());
+  }
+
+  /**
+   * Builds a VirtualNetworkClient authenticated with the provider credentials for the given region
+   * code. Package-visible for tests.
+   */
+  VirtualNetworkClient getVirtualNetworkClient(Provider provider, String regionCode) {
+    OCICloudInfo ociCloudInfo = requireOciCloudInfo(provider);
+    AbstractAuthenticationDetailsProvider authProvider = buildAuthProvider(ociCloudInfo);
+    com.oracle.bmc.Region region = resolveRegion(regionCode, provider.getName());
+    return VirtualNetworkClient.builder().region(region).build(authProvider);
+  }
+
   // Performs a live OCI API round-trip to verify that the supplied API key credentials
   // authenticate and that the compartment OCID is reachable.
   private boolean validateApiKeyCredentials(Map<String, String> envVars, String providerName) {
-    String tenancyId = envVars.get(OCI_TENANCY_ID);
-    String userId = envVars.get(OCI_USER_ID);
-    String fingerprint = envVars.get(OCI_FINGERPRINT);
-    String privateKeyContent = envVars.get(OCI_PRIVATE_KEY_CONTENT);
     String compartmentId = envVars.get(OCI_COMPARTMENT_ID);
     String regionStr = envVars.get(OCI_REGION);
 
     com.oracle.bmc.Region region;
     try {
-      region = com.oracle.bmc.Region.fromRegionId(regionStr);
-    } catch (IllegalArgumentException e) {
+      region = resolveRegion(regionStr, providerName);
+    } catch (PlatformServiceException e) {
       log.error(
           "Invalid OCI region '{}' for provider {}: {}", regionStr, providerName, e.getMessage());
       return false;
     }
 
-    SimpleAuthenticationDetailsProvider authProvider =
-        SimpleAuthenticationDetailsProvider.builder()
-            .tenantId(tenancyId)
-            .userId(userId)
-            .fingerprint(fingerprint)
-            .privateKeySupplier(
-                () -> new ByteArrayInputStream(privateKeyContent.getBytes(StandardCharsets.UTF_8)))
-            .build();
-
-    return validateIdentityAccess(authProvider, region, compartmentId, providerName);
+    return validateIdentityAccess(
+        buildApiKeyAuthProvider(envVars), region, compartmentId, providerName);
   }
 
   private boolean validateInstancePrincipalCredentials(
@@ -147,8 +205,8 @@ public class OCICloudImpl implements CloudAPI {
 
     com.oracle.bmc.Region region;
     try {
-      region = com.oracle.bmc.Region.fromRegionId(regionStr);
-    } catch (IllegalArgumentException e) {
+      region = resolveRegion(regionStr, providerName);
+    } catch (PlatformServiceException e) {
       log.error(
           "Invalid OCI region '{}' for provider {}: {}", regionStr, providerName, e.getMessage());
       return false;
@@ -187,6 +245,48 @@ public class OCICloudImpl implements CloudAPI {
           providerName,
           e);
       return false;
+    }
+  }
+
+  private AbstractAuthenticationDetailsProvider buildAuthProvider(OCICloudInfo ociCloudInfo) {
+    if (ociCloudInfo.usesInstancePrincipal()) {
+      return InstancePrincipalsAuthenticationDetailsProvider.builder().build();
+    }
+    return buildApiKeyAuthProvider(ociCloudInfo.getEnvVars());
+  }
+
+  private SimpleAuthenticationDetailsProvider buildApiKeyAuthProvider(Map<String, String> envVars) {
+    String tenancyId = envVars.get(OCI_TENANCY_ID);
+    String userId = envVars.get(OCI_USER_ID);
+    String fingerprint = envVars.get(OCI_FINGERPRINT);
+    String privateKeyContent = envVars.get(OCI_PRIVATE_KEY_CONTENT);
+    return SimpleAuthenticationDetailsProvider.builder()
+        .tenantId(tenancyId)
+        .userId(userId)
+        .fingerprint(fingerprint)
+        .privateKeySupplier(
+            () -> new ByteArrayInputStream(privateKeyContent.getBytes(StandardCharsets.UTF_8)))
+        .build();
+  }
+
+  private OCICloudInfo requireOciCloudInfo(Provider provider) {
+    if (provider.getDetails() == null
+        || provider.getDetails().getCloudInfo() == null
+        || provider.getDetails().getCloudInfo().getOci() == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "OCI cloud info not configured for provider");
+    }
+    return provider.getDetails().getCloudInfo().getOci();
+  }
+
+  private com.oracle.bmc.Region resolveRegion(String regionStr, String providerName) {
+    try {
+      return com.oracle.bmc.Region.fromRegionId(regionStr);
+    } catch (IllegalArgumentException e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Invalid OCI region '%s' for provider %s: %s",
+              regionStr, providerName, e.getMessage()));
     }
   }
 

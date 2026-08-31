@@ -66,7 +66,7 @@ typedef struct DuckdbScanDescData *DuckdbScanDesc;
 
 static TableScanDesc
 duckdb_scan_begin(Relation relation, Snapshot snapshot, int nkeys, ScanKey /*key*/, ParallelTableScanDesc parallel_scan,
-                  uint32 flags) {
+                  uint32 flags, struct YbTableScanOptions * /*yb_options*/) {
 	DuckdbScanDesc scan = (DuckdbScanDesc)palloc(sizeof(DuckdbScanDescData));
 
 	scan->rs_base.rs_rd = relation;

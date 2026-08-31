@@ -1,6 +1,7 @@
--- If size limit is exceeded, last row has to be rescanned.
--- with too large row and too low size limit it means rescan of the each row,
--- except the last on the tablet.
+-- If size limit is exceeded, last row has to be rescanned by the next request.
+-- The rescan is not counted again in the rows scanned metrics, which report each
+-- row once, but with too large row and too low size limit it means an extra read
+-- request for each row, except the last on the tablet.
 -- Use explicit number of tablets to achieve predictable number of rows scanned
 CREATE TABLE t_large(a int primary key, v varchar(1000)) SPLIT INTO 3 TABLETS;
 INSERT INTO t_large SELECT g, REPEAT('x', 1000) FROM generate_series(1, 5000) g;
@@ -92,3 +93,19 @@ create index on test_correct(a asc);
 set yb_fetch_size_limit = '1kB';
 explain (analyze, costs off, timing off, summary off) select * from test_correct where a < 20 and b % 5 = 0;
 select a, b, substring(c, 0, 10) from test_correct where a < 20 and b % 5 = 0 order by a;
+
+--
+-- #33454: A scan driven by a colocated index reads the index and the table in one request.  A
+-- response that reaches the size limit drops its last row, which the request that follows reads
+-- again along with the index row that produced it, and both are counted once.  Rows are sized so
+-- that one fits under the size limit and two do not, since a row wider than the limit truncates
+-- nothing.
+--
+CREATE DATABASE colo WITH colocation = true;
+\c colo
+CREATE TABLE t_colo(k int PRIMARY KEY, a int, v varchar(600));
+INSERT INTO t_colo SELECT g, 1, REPEAT('x', 600) FROM generate_series(1, 200) g;
+CREATE INDEX ON t_colo(a ASC, k ASC);
+SET enable_seqscan = off;
+SET yb_fetch_size_limit = '1kB';
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_colo WHERE a = 1;

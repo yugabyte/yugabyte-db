@@ -134,6 +134,19 @@ public class OtelCollectorUtil {
     return config != null && config.isExportActive();
   }
 
+  /**
+   * Whether the OTEL collector sidecar runs in the yb-master pods of a K8s universe. Metrics are
+   * scraped pod-locally and yb-master glog lives in the yb-master pod, so the chart injects the
+   * sidecar there only when metrics export or master log export is active.
+   */
+  public static boolean isOtelSidecarNeededOnK8sMasterPods(TelemetryConfig tc) {
+    if (tc == null) {
+      return false;
+    }
+    return isMetricsExportEnabledInUniverse(tc.getMetricsExportConfig())
+        || isMasterLogExportEnabledInUniverse(tc.getMasterLogConfig());
+  }
+
   /** Enablement check shared by the internal-only diagnostic server-log configs. */
   public static boolean isSimpleServerLogExportEnabledInUniverse(SimpleServerLogConfig config) {
     return config != null && config.isExportActive();

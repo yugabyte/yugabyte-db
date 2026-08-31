@@ -53,7 +53,6 @@ std::optional<ObjectLockFastpathLockType> MakeObjectLockFastpathLockType(TableLo
     ObjectLockFastpathLockType lock_type);
 
 struct ObjectLockFastpathRequest {
-  SessionLockOwnerTag owner;
   SubTransactionId subtxn_id;
   uint32_t database_oid;
   uint32_t relation_oid;
@@ -63,7 +62,7 @@ struct ObjectLockFastpathRequest {
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
-        owner, subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
+        subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
   }
 };
 
@@ -75,39 +74,48 @@ class ObjectLockSharedState {
   class Impl;
 
  public:
-  class ActivationGuard {
-   public:
-    ActivationGuard() = default;
-    explicit ActivationGuard(Impl* impl);
-    ActivationGuard(ActivationGuard&& other);
-    ~ActivationGuard();
-    ActivationGuard& operator=(ActivationGuard&& other) PARENT_PROCESS_ONLY;
-   private:
-    Impl* impl_ = nullptr;
-  };
-
-  explicit ObjectLockSharedState(SharedMemoryBackingAllocator& allocator);
+  ObjectLockSharedState(
+      SharedMemoryBackingAllocator& allocator,
+      const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents);
   ~ObjectLockSharedState();
 
+  // Try to add a lock request from postgres side.
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
 
-  ActivationGuard Activate(
-      const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents)
-      PARENT_PROCESS_ONLY;
+  // Try to perform an unlock all from postgres side.
+  [[nodiscard]] bool UnlockAll();
 
-  void PauseAndReset() PARENT_PROCESS_ONLY;
-  void Resume() PARENT_PROCESS_ONLY;
+  // Try to add a lock request from tserver side. Similar to Lock() except for accounting.
+  [[nodiscard]] bool TServerLock(const ObjectLockFastpathRequest& request) PARENT_PROCESS_ONLY;
 
-  size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+  // Try to perform an unlock all from tserver side. Similar to UnlockAll() except for accounting.
+  [[nodiscard]] bool TServerUnlockAll() PARENT_PROCESS_ONLY;
 
-  size_t ConsumeAndAcquireExclusiveLockIntents(
+  void ForceDropAll() PARENT_PROCESS_ONLY;
+
+  // Indicate that TServer has loaded the transaction corresponding to this state into the lock
+  // manager.
+  void MarkTServerLoaded() PARENT_PROCESS_ONLY;
+
+  void Enable() PARENT_PROCESS_ONLY;
+
+  void Disable() PARENT_PROCESS_ONLY;
+
+  void Shutdown() PARENT_PROCESS_ONLY;
+
+  void ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+
+  void ConsumeAndAcquireExclusiveLockIntents(
       const FastLockRequestConsumer& consume,
       std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) PARENT_PROCESS_ONLY;
 
   void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
       PARENT_PROCESS_ONLY;
 
-  [[nodiscard]] SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY;
+  uint64_t PgLockRequestCount() const;
+  uint64_t PgLockReleaseCount() const;
+  uint64_t TServerLockRequestCount() const;
+  uint64_t TServerLockReleaseCount() const;
 
   [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY;
 

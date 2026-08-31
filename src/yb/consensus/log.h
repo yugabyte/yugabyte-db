@@ -105,6 +105,11 @@ YB_DEFINE_ENUM(SegmentOpIdRelation,
 
 YB_STRONGLY_TYPED_BOOL(SkipWalWrite);
 
+struct WalRetentionDiagnostics {
+  std::string details;
+  int64_t first_retained_segment_age_secs = -1;
+};
+
 using NewSegmentAllocationCallback = std::function<Status(void)>;
 
 // The op-index floors that bound WAL GC for a tablet, computed once by
@@ -121,9 +126,7 @@ struct MinRetainLogIndexInfo {
   // std::numeric_limits<int64_t>::max() means "no xrepl constraint".
   int64_t log_index_needed_by_cdc = std::numeric_limits<int64_t>::max();
 
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(earliest_needed_log_index, log_index_needed_by_cdc);
-  }
+  std::string ToString() const;
 };
 
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
@@ -197,6 +200,18 @@ class Log : public RefCountedThreadSafe<Log> {
   // fsync of log entries is enabled).
   Status WaitUntilAllFlushed();
 
+  // Re-evaluates the periodic-sync policy and, if it is overdue, kicks off an fsync on the
+  // log-sync pool. Returns true if a background sync was submitted.
+  //
+  // Used to honor interval_durable_wal_write_ms semantics on a somewhat quiet tablet that
+  // receives writes in intervals > interval_durable_wal_write_ms. Callers are expected to be
+  // something that keeps ticking on an idle tablet - today the follower's UpdateConsensus path,
+  // which a leader heartbeat reaches even with no ops attached.
+  //
+  // This never fsyncs on the calling thread, a kForceFsync is downgraded to a background sync
+  // and hence is safe to call on a consensus thread.
+  bool MaybeSyncInBackground() EXCLUDES(background_sync_token_mutex_);
+
   // The closure submitted to allocation_pool_ to allocate a new segment.
   void SegmentAllocationTask();
 
@@ -263,7 +278,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Computes the amount of bytes that would have been GC'd if Log::GC had been called.
   Status GetGCableDataSize(
-      const MinRetainLogIndexInfo& min_retain_log_index_info, int64_t* total_size) const;
+      const MinRetainLogIndexInfo& min_retain_log_index_info, int64_t* total_size,
+      WalRetentionDiagnostics* diagnostics = nullptr) const;
 
   // Test-only public wrapper around the private GetSegmentsToGC, used by unit tests that need to
   // compute the GC-eligible prefix Log::GC would pick for a given 'min_op_idx' (with the full
@@ -323,7 +339,9 @@ class Log : public RefCountedThreadSafe<Log> {
   // it only reads the passed segment's footer and this Log's atomics, never the live segment
   // state, so callers (e.g. remote bootstrap) can apply the policy to a frozen segment snapshot
   // without racing against concurrent GC.
-  bool SegmentAgedOutOfTimeRetention(const ReadableLogSegment& segment) const;
+  bool SegmentAgedOutOfTimeRetention(const ReadableLogSegment& segment,
+                                     const uint32_t* cached_wal_retention_secs = nullptr,
+                                     std::string* retention_details = nullptr) const;
 
   // Waits until specified op id is added to log.
   // Returns current op id after waiting, which could be greater than or equal to specified op id.
@@ -377,9 +395,11 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Minimum replicate index that xrepl (CDCSDK + xCluster) still requires the source to retain --
   // the same boundary GetSegmentsToGCUnlocked() applies on top of the caller-supplied min_op_idx
-  // (see the cdc_max_replicated_index argument of LogReader::GetSegmentPrefixNotIncluding). Returns
-  // std::numeric_limits<int64_t>::max() when no xrepl consumer constrains retention.
-  int64_t GetXReplMinReplicatedIndex() const;
+  // (see the cdc_min_replicated_index argument of LogReader::GetSegmentPrefixNotIncluding).
+  // Returns std::numeric_limits<int64_t>::max() when no xrepl consumer constrains retention.
+  // If 'factors_detail' is set, the cdc_min_replicated_index_/xcluster_min_index_to_retain
+  // components it took the min of are written to it.
+  int64_t GetXReplMinReplicatedIndex(std::string* factors_detail = nullptr) const;
 
   // Copies log to a new dir. Expects dest_wal_dir to be absent.
   // If max_included_op_id is specified - only part of the log up to and including
@@ -520,21 +540,28 @@ class Log : public RefCountedThreadSafe<Log> {
   // Calls ::DoSync and resets fsync_task_in_queue_.
   void DoSyncAndResetTaskInQueue() EXCLUDES(active_segment_mutex_);
 
-  Status Sync() EXCLUDES(active_segment_mutex_);
+  // Submits DoSyncAndResetTaskInQueue() on background_sync_threadpool_token_ unless one is
+  // already queued or running, and returns whether it submitted. Never blocks on the fsync
+  // itself. Shared by the append path (::Sync) and by ::MaybeSyncInBackground.
+  bool SubmitBackgroundSync() EXCLUDES(background_sync_token_mutex_);
+
+  Status Sync() EXCLUDES(active_segment_mutex_, background_sync_token_mutex_);
 
   // Updates the reader on how far it can read the active segment. Called from ::Sync()
   Status UpdateSegmentReadableOffset() EXCLUDES(active_segment_mutex_);
 
   // Helper method to get the segment sequence to GC based on the provided retention floors.
   Status GetSegmentsToGCUnlocked(const MinRetainLogIndexInfo& min_retain_log_index_info,
-                                 SegmentSequence* segments_to_gc) const
+                                 SegmentSequence* segments_to_gc,
+                                 std::string* retention_details = nullptr) const
       REQUIRES_SHARED(state_lock_);
   Status GetSegmentsToGC(
       const MinRetainLogIndexInfo& min_retain_log_index_info, SegmentSequence* segments_to_gc) const
       EXCLUDES(state_lock_);
 
   // Discards segments from 'segments_to_gc' if they have not yet met the minimim retention time.
-  void ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const;
+  void ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc,
+                                std::string* retention_details = nullptr) const;
 
   // Kick off an asynchronous task that pre-allocates a new log-segment, setting
   // 'allocation_status_'. To wait for the result of the task, use allocation_status_.Get().
@@ -668,8 +695,13 @@ class Log : public RefCountedThreadSafe<Log> {
   // A thread pool for asynchronously pre-allocating new log segments.
   std::unique_ptr<ThreadPoolToken> allocation_token_;
 
+  // Protects the reset of background_sync_threadpool_token_ (::Close) from its access
+  // (::MaybeSyncInBackground), as they can happen on different threads.
+  mutable rw_spinlock background_sync_token_mutex_;
+
   // A thread pool for performing log fsync operations.
-  std::unique_ptr<ThreadPoolToken> background_sync_threadpool_token_;
+  std::unique_ptr<ThreadPoolToken> background_sync_threadpool_token_
+      GUARDED_BY(background_sync_token_mutex_);
 
   // If true, sync on all appends.
   bool durable_wal_write_;
@@ -681,7 +713,7 @@ class Log : public RefCountedThreadSafe<Log> {
   int32_t bytes_durable_wal_write_mb_;
 
   // Keeps track of oldest entry which needs to be synced.
-  MonoTime periodic_sync_earliest_unsync_entry_time_ = MonoTime::kMin;
+  std::atomic<MonoTime> periodic_sync_earliest_unsync_entry_time_{MonoTime::kMin};
 
   // For periodic sync, indicates if there are entries to be sync'ed.
   std::atomic<bool> periodic_sync_needed_ = {false};
@@ -696,7 +728,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // If true, ignore the 'durable_wal_write_' flags above.  This is used to disable fsync during
   // bootstrap.
-  bool sync_disabled_;
+  std::atomic<bool> sync_disabled_;
 
   // The status of the most recent log-allocation action.
   Promise<Status> allocation_status_;

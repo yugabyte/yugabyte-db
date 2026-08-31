@@ -720,6 +720,41 @@ public class PlacementInfoUtil {
                   pAz.tsStsIndex = pAz.tsStsIndex > 8 ? 0 : pAz.tsStsIndex + 1;
                 }
               });
+      // The per-partition placements are the source of truth for getOverallPlacement(), which is
+      // used to compute master addresses and pod names (e.g. during a K8s full move). Propagate the
+      // updated statefulset indices from the cluster placement into every partition placement, so
+      // they don't retain stale indices and generate incorrect master addresses.
+      syncK8sStsIndicesToPartitions(cluster);
+    }
+  }
+
+  /**
+   * Copies the master/tserver statefulset indices from the cluster's placementInfo into each
+   * partition's placement. AZs are disjoint across partitions, so each AZ maps to exactly one
+   * partition placement entry. This keeps getOverallPlacement() (rebuilt from partitions) in sync
+   * with the incremented cluster placement.
+   *
+   * @param cluster the cluster whose partition placements should be synced
+   */
+  public static void syncK8sStsIndicesToPartitions(Cluster cluster) {
+    if (cluster.placementInfo == null || CollectionUtils.isEmpty(cluster.getPartitions())) {
+      return;
+    }
+    for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+      PlacementInfo partitionPlacement = partition.getPlacement();
+      if (partitionPlacement == null) {
+        continue;
+      }
+      partitionPlacement
+          .azStream()
+          .forEach(
+              partAz -> {
+                PlacementAZ clusterAz = cluster.placementInfo.findByAZUUID(partAz.uuid);
+                if (clusterAz != null) {
+                  partAz.masterStsIndex = clusterAz.masterStsIndex;
+                  partAz.tsStsIndex = clusterAz.tsStsIndex;
+                }
+              });
     }
   }
 

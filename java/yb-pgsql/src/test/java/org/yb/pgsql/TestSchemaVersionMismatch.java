@@ -52,7 +52,7 @@ public class TestSchemaVersionMismatch extends BasePgSQLTest {
       "  RETURNING * " +
       ") " +
       "SELECT pg_sleep(1), * FROM updated;";
-  
+
   private static final String updateSqlWithPlaceholder = String.format(updateSqlTemplate, "?");
   private static final String updateSqlWithUuid = String.format(updateSqlTemplate, "'" + uuid + "'");
 
@@ -84,10 +84,10 @@ public class TestSchemaVersionMismatch extends BasePgSQLTest {
     // Insert test data
     StringBuilder insertBuilder = new StringBuilder();
     insertBuilder.append("INSERT INTO todo (id, task, status) VALUES ");
-    
+
     // Add the row that will be updated in the test first
     insertBuilder.append(String.format("('%s', 'task 1', false)", uuid));
-    
+
     // Add additional random test data
     for (int i = 0; i < 100; i++) {
       insertBuilder.append(",");
@@ -295,9 +295,15 @@ public class TestSchemaVersionMismatch extends BasePgSQLTest {
     // The 0A000 error code ("cached plan must not change result type") is expected
     // in testSchemaVersionMismatch when the result tuple descriptor of the prepared
     // statement changes.
+    // "bind message has N result formats but query has M columns" (08P01) is the
+    // same staleness surfacing through the wire protocol: the driver derives the
+    // per-column result format codes of a Bind from the RowDescription of an earlier
+    // execution, so when the DDL thread changes the result shape after that
+    // description but before the statement is re-parsed, the counts disagree.
     if ("40001".equals(e.getSQLState()) ||
         "25P02".equals(e.getSQLState()) ||
         "0A000".equals(e.getSQLState()) ||
+        e.getMessage().contains("result formats but query has") ||
         e.getMessage().contains("Invalid column number") ||
         e.getMessage().contains("marked for deletion")) {
       numExpectedErrors.incrementAndGet();

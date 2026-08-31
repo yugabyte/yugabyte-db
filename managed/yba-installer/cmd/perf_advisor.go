@@ -5,24 +5,32 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/fluxcd/pkg/tar"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
 )
 
 type perfAdvisorDirectories struct {
-	SystemdFileLocation         string
-	templateFileName            string
-	ConfFileLocation            string
-	MetricExportConfLocation    string
-	PABin                       string
-	PALogDir                    string
-	DataDir                     string
+	SystemdFileLocation      string
+	templateFileName         string
+	ConfFileLocation         string
+	MetricExportConfLocation string
+	PABin                    string
+	PALogDir                 string
+	DataDir                  string
+	// YsqlDumpPath and YsqlDumpLibPath are rendered into the Perf Advisor config and its systemd
+	// unit. ysql_dump is dynamically linked against YugabyteDB's own C++ runtime, so the library
+	// path is not optional - without it the binary is present but will not start.
+	YsqlDumpPath    string
+	YsqlDumpLibPath string
 }
 
 type PerfAdvisor struct {
@@ -34,14 +42,16 @@ type PerfAdvisor struct {
 // newPerfAdvisorDirectories initializes and returns the perfAdvisorDirectories struct with default paths.
 func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 	return perfAdvisorDirectories{
-		SystemdFileLocation: common.SystemdDir + "/yb-perf-advisor.service",
-		ConfFileLocation:    common.GetSoftwareRoot() + "/perf-advisor/conf/overrides.properties",
+		SystemdFileLocation:      common.SystemdDir + "/yb-perf-advisor.service",
+		ConfFileLocation:         common.GetSoftwareRoot() + "/perf-advisor/conf/overrides.properties",
 		MetricExportConfLocation: common.GetSoftwareRoot() + "/perf-advisor/conf/metrics-export.yml",
-		templateFileName:    "yb-installer-perf-advisor.yml",
+		templateFileName:         "yb-installer-perf-advisor.yml",
 		// GetSoftwareRoot returns /opt/yugabyte/software/
-		PABin:    common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
-		PALogDir: common.GetBaseInstall() + "/data",
-		DataDir:  common.GetBaseInstall() + "/data/perf-advisor",
+		PABin:           common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
+		PALogDir:        common.GetBaseInstall() + "/data",
+		DataDir:         common.GetBaseInstall() + "/data/perf-advisor",
+		YsqlDumpPath:    filepath.Join(ybdbClientDir(), "postgres/bin/ysql_dump"),
+		YsqlDumpLibPath: strings.Join(ysqlDumpLibDirs(), ":"),
 	}
 }
 
@@ -74,9 +84,13 @@ func (perf PerfAdvisor) Version() string {
 	return perf.version
 }
 
-// Initialize starts the Perf Advisor service and logs the initialization process.
+// Initialize builds the TLS keystore and starts the Perf Advisor service.
 func (perf PerfAdvisor) Initialize() error {
 	log.Info("Starting Perf Advisor initialize")
+
+	if err := ensurePerfAdvisorTLSKeystore(); err != nil {
+		return fmt.Errorf("ensure Perf Advisor TLS keystore: %w", err)
+	}
 
 	if err := perf.Start(); err != nil {
 		return err
@@ -204,6 +218,71 @@ func (perf PerfAdvisor) createSoftwareDirectories() error {
 	return common.CreateDirs(dirs)
 }
 
+// ybdbClientDir is where the ysql_dump client bundle is extracted. The layout matches
+// pa-installer's so the two deployments resolve ysql_dump at the same relative path.
+func ybdbClientDir() string {
+	return filepath.Join(common.GetSoftwareRoot(), "ybdb")
+}
+
+// ysqlDumpLibDirs lists the directories inside the bundle that hold the libraries ysql_dump loads
+// by soname, most specific first.
+func ysqlDumpLibDirs() []string {
+	dir := ybdbClientDir()
+	return []string{
+		filepath.Join(dir, "tserver/lib/yb-thirdparty"),
+		filepath.Join(dir, "tserver/lib/postgres"),
+		filepath.Join(dir, "tserver/lib"),
+	}
+}
+
+// ensureYsqlDumpAvailable extracts the ysql_dump client bundle so Perf Advisor can collect table
+// DDL. Nothing else on this host provides ysql_dump - the bundled Postgres is upstream PostgreSQL,
+// which has pg_dump but not ysql_dump, and <softwareRoot>/ybdb exists only when ybdb backs YBA.
+func (perf PerfAdvisor) ensureYsqlDumpAvailable() error {
+	installDir := ybdbClientDir()
+	if ysqlDumpUsable(perf.YsqlDumpPath) {
+		log.Debug("ysql_dump already present at " + perf.YsqlDumpPath)
+		return nil
+	}
+
+	bundlePath := common.GetYsqlDumpClientBundlePath()
+	if err := os.MkdirAll(installDir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed creating %s: %w", installDir, err)
+	}
+	// Not tar.Untar: the library directories are full of soname symlinks, which it rejects
+	// outright, and ysql_dump loads its libraries by soname.
+	if out := shell.Run("tar", "-zxf", bundlePath, "-C", installDir); !out.SucceededOrLog() {
+		return fmt.Errorf("failed to extract %s: %w", bundlePath, out.Error)
+	}
+
+	if common.HasSudoAccess() {
+		userName := viper.GetString("service_username")
+		if err := common.Chown(installDir, userName, userName, true); err != nil {
+			return fmt.Errorf("failed changing ownership of %s: %w", installDir, err)
+		}
+	}
+
+	// Present but unable to start is the failure worth catching here rather than at collection
+	// time, when it surfaces as a DDL error per node on every cycle.
+	if !ysqlDumpUsable(perf.YsqlDumpPath) {
+		return fmt.Errorf("ysql_dump at %s is not runnable after extracting %s",
+			perf.YsqlDumpPath, bundlePath)
+	}
+	log.Info("Extracted ysql_dump client bundle to " + installDir)
+	return nil
+}
+
+// ysqlDumpUsable reports whether the binary exists and actually runs, with the same library path
+// the systemd unit gives Perf Advisor.
+func ysqlDumpUsable(ysqlDumpPath string) bool {
+	if _, err := os.Stat(ysqlDumpPath); err != nil {
+		return false
+	}
+	cmd := exec.Command(ysqlDumpPath, "--version")
+	cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+strings.Join(ysqlDumpLibDirs(), ":"))
+	return cmd.Run() == nil
+}
+
 func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 	// Get the absolute path to the perf_advisor tarball with version in the filename
 	paPath := common.GetPACollectorPackagePath()
@@ -244,9 +323,6 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 
 func (perf PerfAdvisor) Install() error {
 	log.Info("Starting Perf Advisor install")
-	if err := ensurePerfAdvisorTLSKeystore(); err != nil {
-		return fmt.Errorf("ensure Perf Advisor TLS keystore: %w", err)
-	}
 	template.GenerateTemplate(perf)
 	if err := ensurePerfAdvisorConfigOwnership(); err != nil {
 		return fmt.Errorf("set perf-advisor config ownership: %w", err)
@@ -257,6 +333,10 @@ func (perf PerfAdvisor) Install() error {
 	}
 
 	if err := perf.untarAndSetupPerfAdvisorPackages(); err != nil {
+		return err
+	}
+
+	if err := perf.ensureYsqlDumpAvailable(); err != nil {
 		return err
 	}
 
@@ -293,8 +373,10 @@ func (perf PerfAdvisor) MigrateFromReplicated() error   { return nil }
 func (perf PerfAdvisor) FinishReplicatedMigrate() error { return nil }
 func (perf PerfAdvisor) PreUpgrade() error              { return nil }
 
-// Upgrade will upgrade the perf advisor and install it into the alt install directory.
-// Upgrade will NOT restart the service, the old version is expected to still be running
+// Upgrade installs the bundled perf advisor into the new software directory and generates its
+// config. It also serves as the first install when perfAdvisor.enabled was turned on since the
+// previous upgrade, so it must not depend on a prior install. It does not restart a running old
+// version; the caller does.
 func (perf PerfAdvisor) Upgrade() error {
 	log.Info("Starting Perf Advisor upgrade")
 	perf.perfAdvisorDirectories = newPerfAdvisorDirectories(perf.version)
@@ -307,6 +389,10 @@ func (perf PerfAdvisor) Upgrade() error {
 	if err := perf.untarAndSetupPerfAdvisorPackages(); err != nil {
 		return err
 	}
+	// The software root is version scoped, so an upgrade starts with an empty ybdb directory.
+	if err := perf.ensureYsqlDumpAvailable(); err != nil {
+		return err
+	}
 
 	if common.HasSudoAccess() {
 		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
@@ -315,6 +401,9 @@ func (perf PerfAdvisor) Upgrade() error {
 			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
 			return err
 		}
+	}
+	if err := ensurePerfAdvisorTLSKeystore(); err != nil {
+		return fmt.Errorf("ensure Perf Advisor TLS keystore: %w", err)
 	}
 	err := perf.Start()
 	log.Info("Finished Perf Advisor upgrade")

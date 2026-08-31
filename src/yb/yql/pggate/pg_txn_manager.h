@@ -40,6 +40,7 @@
 #include "yb/yql/pggate/pg_callbacks.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
@@ -56,12 +57,12 @@ YB_DEFINE_ENUM(PgIsolationLevel,
 YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 YB_STRONGLY_TYPED_BOOL(IsLocalObjectLockOp);
 YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
+YB_STRONGLY_TYPED_BOOL(SkipReadTimeOptions);
+YB_STRONGLY_TYPED_BOOL(IsCatalogSnapshot);
 
 struct TxnReadPoint {
   uint64_t txn; // Transaction serial number
   uint64_t read_time_serial_no; // Read time serial number
-  bool is_clamped; // Whether the uncertainty window is clamped
-  std::optional<uint64_t> follower_read_staleness_ms; // Follower read time staleness
 };
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
@@ -124,9 +125,26 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   }
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
+  // Users can request the deferrable mode via:
+  // (1) DEFERRABLE READ ONLY setting in transaction blocks
+  // (2) SET yb_read_after_commit_visibility = 'deferred';
+  //
+  // The feature doesn't apply for non read-only serializable isolation txns and fast-path
+  // transactions because:
+  // (1) Serializable isolation txns don't face read restart errors because
+  //    they use the latest timestamp for reading.
+  // (2) Fast-path txns don't face read restart errors because
+  //    they pick a read time after conflict resolution.
+  bool ShouldDeferReadPoint() const {
+    return (read_only_ && deferrable_) ||
+           yb_read_after_commit_visibility == YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY;
+  }
+
   Status SetupPerformOptions(SetupPerformOptionsAccessorTag tag,
       tserver::PgPerformOptionsPB& options, NonTransactionalWrites ops_has_non_transactional_writes,
-      std::optional<ReadTimeAction> read_time_action = {});
+      std::optional<ReadTimeAction> read_time_action = {},
+      SkipReadTimeOptions skip_read_time_options = SkipReadTimeOptions::kFalse,
+      IsCatalogSnapshot is_catalog_snapshot = IsCatalogSnapshot::kFalse);
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
@@ -181,7 +199,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool ShouldEnableTableLocking() const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
-  void ResetFollowerReadTime() { follower_read_staleness_ms_ = std::nullopt; }
 
  private:
   class SerialNo {
@@ -223,14 +240,19 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status SetupReadTimeOptions(
       tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
       std::optional<ReadTimeAction> read_time_action,
-      NonTransactionalWrites ops_has_non_transactional_writes);
+      NonTransactionalWrites ops_has_non_transactional_writes,
+      SkipReadTimeOptions skip_read_time_options,
+      IsCatalogSnapshot is_catalog_snapshot);
   bool ShouldResetReadTime(std::optional<ReadTimeAction> read_time_action) const;
   bool ShouldClamp() const;
+  void ClampCatalogReadTime(
+      tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options) const;
   Status CheckConflictsAcrossReadTimeOptions(
       const tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
       std::optional<ReadTimeAction> read_time_action,
       tserver::ReadTimeManipulation manipulation,
-      NonTransactionalWrites ops_has_non_transactional_writes) const;
+      NonTransactionalWrites ops_has_non_transactional_writes,
+      bool need_defer_read_point) const;
 
   bool UsesFollowerReads() const;
 
@@ -248,7 +270,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>& commit_info);
 
-  Status CheckConflictWithCrossTxnSnapshotTime() const;
+  Status CheckConflictWithCrossTxnSnapshotTime(
+      std::optional<ReadTimeAction> read_time_action = {},
+      NonTransactionalWrites ops_has_non_transactional_writes = NonTransactionalWrites::kFalse,
+      bool has_read_time = false, bool restart_transaction = false) const;
 
   // ----------------------------------------------------------------------------------------------
 
@@ -259,7 +284,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   SerialNo serial_no_;
   SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
   bool need_restart_ = false;
-  bool need_defer_read_point_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   bool in_txn_blk_ = false;
   bool read_only_stmt_ = false;

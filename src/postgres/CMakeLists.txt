@@ -95,10 +95,6 @@ if(IS_GCC)
 endif()
 
 if(IS_CLANG)
-  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "14.0.0")
-    add_pg_c_cxx_flags(-Wno-error=unused-but-set-variable)
-  endif()
-
   if(("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "15.0.0") OR
      (IS_APPLE_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "14.0.3"))
     add_pg_c_cxx_flags(-Wno-error=deprecated-non-prototype)
@@ -277,4 +273,4 @@ add_dependencies(postgres configure_postgres postgres_genbki)
 # ------------------------------------------------------------------------------------------------
 
 # Libraries that we link into the postgres binary.
-add_dependencies(postgres yb_pggate server_process yb_pggate_webserver ysql_bench_metrics_handler hdr_histogram yb_pgresult_util)
+add_dependencies(postgres yb_pggate server_process yb_pggate_webserver ysql_bench_metrics_handler hdr_histogram)

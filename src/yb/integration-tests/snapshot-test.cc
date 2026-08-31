@@ -10,6 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
+#include <atomic>
+
 #include <gtest/gtest.h>
 
 #include "yb/client/snapshot_test_util.h"
@@ -60,15 +63,18 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
 
+DECLARE_bool(enable_async_snapshot_directory_cleanup);
 DECLARE_bool(enable_ysql);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint32(default_snapshot_retention_hours);
+DECLARE_bool(TEST_pause_after_tombstoning_snapshot);
 DECLARE_bool(TEST_tablet_verify_flushed_frontier_after_modifying);
 DECLARE_bool(TEST_treat_hours_as_milliseconds_for_snapshot_expiry);
 DECLARE_bool(TEST_fail_tserver_snapshot_op);
@@ -298,13 +304,16 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
   }
 
   TxnSnapshotId CreateSnapshot(
+      const vector<YBTableName>& table_names,
       std::optional<int32_t> retention_duration_hours = std::nullopt,
       std::optional<bool> imported = std::nullopt) {
     CreateSnapshotRequestPB req;
     CreateSnapshotResponsePB resp;
-    TableIdentifierPB* const table = req.mutable_tables()->Add();
-    table->set_table_name(kTableName.table_name());
-    table->mutable_namespace_()->set_name(kTableName.namespace_name());
+    for (const auto& table_name : table_names) {
+      TableIdentifierPB* const table = req.mutable_tables()->Add();
+      table->set_table_name(table_name.table_name());
+      table->mutable_namespace_()->set_name(table_name.namespace_name());
+    }
     if (retention_duration_hours) {
       req.set_retention_duration_hours(*retention_duration_hours);
     }
@@ -329,6 +338,12 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
     EXPECT_OK(CheckAllSnapshots({{ snapshot_id, SysSnapshotEntryPB::COMPLETE }}));
 
     return snapshot_id;
+  }
+
+  TxnSnapshotId CreateSnapshot(
+      std::optional<int32_t> retention_duration_hours = std::nullopt,
+      std::optional<bool> imported = std::nullopt) {
+    return CreateSnapshot({kTableName}, retention_duration_hours, imported);
   }
 
   Status DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
@@ -560,9 +575,89 @@ TEST_F(SnapshotTest, CreateSnapshot) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
+// Verifies that snapshot deletion completes once the snapshot directory is tombstoned, without
+// waiting for physical cleanup, and that the tombstones are cleaned up once cleanup is unpaused.
+TEST_F(SnapshotTest, DeleteSnapshotTombstoneCompletedBeforePhysicalCleanup) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = true;
+  auto workload = SetupWorkload();
+  const auto snapshot_id = CreateSnapshot();
+  ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = true;
+  TestThreadHolder delete_thread_holder;
+  Status delete_status;
+  std::atomic<bool> delete_finished = false;
+  delete_thread_holder.AddThreadFunctor([&] {
+    delete_status = DeleteSnapshotAndWait(snapshot_id);
+    delete_finished.store(true, std::memory_order_release);
+  });
+  auto unblock_deletion = ScopeExit([&] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = false;
+    delete_thread_holder.JoinAll();
+  });
+
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    MiniTabletServer* const ts = cluster_->mini_tablet_server(i);
+    for (const auto& tablet_peer : ts->server()->tablet_manager()->GetTabletPeers()) {
+      const auto top_snapshots_dir = tablet_peer->tablet_metadata()->snapshots_dir();
+      const auto snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id.ToString());
+      auto* const env = tablet_peer->tablet_metadata()->fs_manager()->env();
+      ASSERT_OK(WaitFor([&] {
+        if (env->FileExists(snapshot_dir)) {
+          return false;
+        }
+        const auto children = env->GetChildren(top_snapshots_dir, ExcludeDots::kTrue);
+        if (!children.ok()) {
+          return false;
+        }
+        return std::any_of(children->begin(), children->end(), [&](const auto& child) {
+          return child.starts_with(snapshot_id.ToString()) &&
+                 tablet::TabletSnapshots::IsDeletedSnapshotDir(child);
+        });
+      }, 15s, Format("Wait for snapshot $0 to be tombstoned", snapshot_id)));
+    }
+  }
+
+  // Raft apply is complete while the bounded cleanup workers are paused. This is the externally
+  // visible best-effort contract: physical deletion must not hold up deleting the snapshot.
+  ASSERT_OK(WaitFor(
+      [&] { return delete_finished.load(std::memory_order_acquire); }, 15s,
+      "Wait for logical snapshot deletion to complete"));
+  ASSERT_OK(delete_status);
+
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+  ASSERT_GE(workload.rows_inserted(), 100);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = false;
+  delete_thread_holder.JoinAll();
+
+  // Close the loop: with physical cleanup unpaused, both the active snapshot directory and its
+  // tombstone are removed.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    MiniTabletServer* const ts = cluster_->mini_tablet_server(i);
+    for (const auto& tablet_peer : ts->server()->tablet_manager()->GetTabletPeers()) {
+      const auto top_snapshots_dir = tablet_peer->tablet_metadata()->snapshots_dir();
+      const auto snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id.ToString());
+      auto* const env = tablet_peer->tablet_metadata()->fs_manager()->env();
+      ASSERT_OK(WaitFor([&] {
+        if (env->FileExists(snapshot_dir)) {
+          return false;
+        }
+        const auto children = env->GetChildren(top_snapshots_dir, ExcludeDots::kTrue);
+        if (!children.ok()) {
+          return false;
+        }
+        return std::none_of(children->begin(), children->end(), [&](const auto& child) {
+          return child.starts_with(snapshot_id.ToString());
+        });
+      }, 15s, Format("Wait for snapshot $0 tombstones to be cleaned up", snapshot_id)));
+    }
+  }
+}
+
 // Tests that a non-imported snapshot hides a table that is dropped subsequently.
-// Until the snapshot is deleted, the table is hidden and once the
-// snapshot gets deleted, the table is subsequently deleted.
 TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
   auto workload = SetupWorkload(); // Used to create table
@@ -596,6 +691,56 @@ TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
   ASSERT_NOK(SnapshotCoversTablets(snapshot_id, table->id()));
   ASSERT_OK(WaitFor(
       std::bind(&SnapshotTest::IsTableDropped, this, table->id()), 120s, "IsTableDropped"));
+}
+
+TEST_F(SnapshotTest, CleanupHiddenTabletsInTabletIdOrder) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
+  const vector<YBTableName> table_names = {
+      kTableName,
+      YBTableName(YQL_DATABASE_CQL, kTableName.namespace_name(), "snapshot_test_table_2"),
+  };
+  for (const auto& table_name : table_names) {
+    auto workload = CreateDefaultWorkload();
+    workload.set_table_name(table_name);
+    workload.set_num_tablets(1);
+    workload.Setup();
+  }
+
+  struct TableData {
+    YBTableName name;
+    TableId id;
+    TabletId tablet_id;
+  };
+  vector<TableData> tables;
+  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  for (const auto& table_name : table_names) {
+    auto table = master_leader->catalog_manager_impl().GetTableInfoFromNamespaceNameAndTableName(
+        table_name.namespace_type(), table_name.namespace_name(), table_name.table_name());
+    ASSERT_NE(table, nullptr);
+    auto tablets = ASSERT_RESULT(table->GetTabletsIncludeInactive());
+    ASSERT_EQ(tablets.size(), 1);
+    tables.push_back({table_name, table->id(), tablets.front()->tablet_id()});
+  }
+
+  const auto snapshot_id = CreateSnapshot(table_names);
+  for (const auto& table : tables) {
+    ASSERT_OK(SnapshotCoversTablets(snapshot_id, table.id));
+  }
+
+  std::sort(tables.begin(), tables.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.tablet_id > rhs.tablet_id;
+  });
+  for (const auto& table : tables) {
+    ASSERT_OK(client_->DeleteTable(table.name, true));
+    ASSERT_OK(TableHidden(table.id));
+  }
+
+  ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
+  for (const auto& table : tables) {
+    ASSERT_OK(WaitFor(
+        std::bind(&SnapshotTest::IsTableDropped, this, table.id), 120s,
+        Format("IsTableDropped: $0", table.id)));
+  }
 }
 
 TEST_F(SnapshotTest, ImportedSnapshotsDoNotBlockCleanup) {
@@ -1131,17 +1276,26 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
 
     // Give some time for process to exit in case of crash.
     SleepFor(500ms * kTimeMultiplier);
-    ASSERT_OK(RestartIfNotAlive(ts1, log_prefix));
 
     // Wait for local bootstrap to complete and pending operations to be applied.
+    // A fault injected just before the flag was reset could still be tearing the process down, so
+    // restart ts1 whenever it is found dead and retry until it stays up and answers.
     ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
     auto* ts1_details = ts_map[ts1->uuid()].get();
-    for (const auto& tablet_id : tablet_ids) {
-      ASSERT_OK(WaitUntilTabletRunning(ts1_details, tablet_id, kTimeout));
-      ASSERT_OK(WaitForServerToBeQuiet(
-          kTimeout, {ts1_details}, tablet_id,
-          /* last_logged_opid = */ nullptr, itest::MustBeCommitted::kTrue));
-    }
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          RETURN_NOT_OK(RestartIfNotAlive(ts1, log_prefix));
+          for (const auto& tablet_id : tablet_ids) {
+            if (!WaitUntilTabletRunning(ts1_details, tablet_id, 2s * kTimeMultiplier).ok() ||
+                !WaitForServerToBeQuiet(
+                     2s * kTimeMultiplier, {ts1_details}, tablet_id,
+                     /* last_logged_opid = */ nullptr, itest::MustBeCommitted::kTrue).ok()) {
+              return false;
+            }
+          }
+          return ts1->IsProcessAlive();
+        },
+        kTimeout * 3, log_prefix + "Wait for ts1 tablets to be running and quiet"));
 
     ClusterVerifier cluster_verifier(cluster_.get());
     cluster_verifier.SetVerificationTimeout(kTimeout);

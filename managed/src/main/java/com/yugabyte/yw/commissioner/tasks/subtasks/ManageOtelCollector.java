@@ -30,7 +30,10 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ManageOtelCollector extends NodeTaskBase {
 
-  public static String OtelCollectorVersion = "0.90.0";
+  // Version of the YugabyteDB unified otel collector build consumed from ybm-package-store. This
+  // feeds the artifact filename built in NodeAgentRpcPayload#getOtelCollectorPackagePath, so it
+  // must stay in step with the URLs in support/thirdparty-dependencies.txt.
+  public static String OtelCollectorVersion = "0.145.0";
   public static String OtelCollectorPlatform = "linux";
 
   private final NodeAgentRpcPayload nodeAgentRpcPayload;
