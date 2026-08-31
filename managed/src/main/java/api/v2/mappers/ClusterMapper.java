@@ -124,19 +124,23 @@ public interface ClusterMapper {
     return v1Clusters;
   }
 
+  // Used when RR/async clusters inherit unset fields from primary. Placement, partitions, and
+  // nodeSpec (incl. AZ instance-type overrides) stay cluster-specific and must not be copied.
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   @Mapping(target = "placementSpec", ignore = true)
   @Mapping(target = "partitionsSpec", ignore = true)
-  ClusterSpec deepCopyClusterSpecWithoutPlacementSpec(
-      ClusterSpec source, @MappingTarget ClusterSpec target);
+  @Mapping(target = "nodeSpec", ignore = true)
+  ClusterSpec deepCopyInheritableClusterSpec(ClusterSpec source, @MappingTarget ClusterSpec target);
 
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   ClusterSpec deepCopyClusterSpec(ClusterSpec source, @MappingTarget ClusterSpec target);
 
+  // Same exclusions as deepCopyInheritableClusterSpec for edit-path inheritance.
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   @Mapping(target = "placementSpec", ignore = true)
   @Mapping(target = "partitionsSpec", ignore = true)
-  ClusterEditSpec deepCopyClusterEditSpecWithoutPlacementSpec(
+  @Mapping(target = "nodeSpec", ignore = true)
+  ClusterEditSpec deepCopyInheritableClusterEditSpec(
       ClusterSpec source, @MappingTarget ClusterEditSpec target);
 
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)

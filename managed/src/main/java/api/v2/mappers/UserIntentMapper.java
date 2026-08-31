@@ -932,7 +932,7 @@ public interface UserIntentMapper {
     return userIntent;
   }
 
-  // Used by ClusterMapper.deepCopyClusterEditSpecWithoutPlacementSpec when inheriting
+  // Used by ClusterMapper.deepCopyInheritableClusterEditSpec when inheriting
   // primary ClusterSpec networking into ClusterEditSpec.
   default ClusterNetworkingEditSpec toClusterNetworkingEditSpec(ClusterNetworkingSpec source) {
     if (source == null) {

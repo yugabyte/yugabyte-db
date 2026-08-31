@@ -305,7 +305,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         continue;
       }
       ClusterEditSpec merged = new ClusterEditSpec();
-      ClusterMapper.INSTANCE.deepCopyClusterEditSpecWithoutPlacementSpec(primaryCluster, merged);
+      ClusterMapper.INSTANCE.deepCopyInheritableClusterEditSpec(primaryCluster, merged);
       ClusterMapper.INSTANCE.deepCopyClusterEditSpec(cluster, merged);
       clusters.add(merged);
     }
@@ -326,7 +326,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Map<UUID, Map<UUID, K8sStsIndices>> savedK8sStsIndices = captureK8sStsIndices(dbUniverse);
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
-    // inherit RR cluster properties from primary cluster in given edit spec
+    // Inherit unset RR properties from primary (excludes placement, partitions, nodeSpec).
     UniverseSpec v2Universe =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseSpec(
             dbUniverse.getUniverseDetails());
