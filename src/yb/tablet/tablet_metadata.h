@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -364,6 +365,16 @@ struct IndexBackfillOrderingGeneration {
   friend bool operator==(
       const IndexBackfillOrderingGeneration&, const IndexBackfillOrderingGeneration&) = default;
 
+  // Age of a retention barrier relative to `now`, clamped at zero: the barrier derives from a
+  // master-chosen read time, which clock skew can put slightly ahead of this server's clock
+  // right after activation. Requires a valid barrier.
+  static int64_t BarrierAgeMs(HybridTime barrier, HybridTime now) {
+    return std::max<int64_t>(now.PhysicalDiff(barrier).ToMilliseconds(), 0);
+  }
+  int64_t RetentionBarrierAgeMs(HybridTime now) const {
+    return BarrierAgeMs(retention_barrier_ht, now);
+  }
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(active, table_id, base_op_index, retention_barrier_ht,
                                write_id_floor_version);
@@ -556,6 +567,22 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       HybridTime retention_barrier_ht, uint32_t write_id_floor_version);
 
   IndexBackfillOrderingGeneration index_backfill_ordering_generation() const;
+
+  // Observer for ordering-generation changes, installed by the tablet manager so its registry
+  // of active generations is event-driven. Invoked under data_mutex_ with the new state from
+  // every mutation path (replicated apply, bootstrap replay, the validator's local heal, the
+  // setter above) and once at installation with the current state, so registry and metadata
+  // never disagree outside the listener's own critical section. It runs under a spinlock on
+  // the Raft apply path: keep it to a map update.
+  using IndexBackfillOrderingGenerationListener =
+      std::function<void(const TabletId&, const IndexBackfillOrderingGeneration&)>;
+  void SetIndexBackfillOrderingGenerationListener(
+      IndexBackfillOrderingGenerationListener listener);
+
+  // Runs fn with the current generation under data_mutex_: no concurrent mutation (and no
+  // listener call) can slip between reading the generation and acting on it.
+  void WithIndexBackfillOrderingGeneration(
+      const std::function<void(const IndexBackfillOrderingGeneration&)>& fn) const;
 
   bool is_under_cdc_sdk_replication() const;
 
@@ -1022,6 +1049,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   HybridTime cdc_sdk_safe_time_ GUARDED_BY(data_mutex_);
 
   IndexBackfillOrderingGeneration index_backfill_ordering_generation_ GUARDED_BY(data_mutex_);
+  IndexBackfillOrderingGenerationListener index_backfill_ordering_generation_listener_
+      GUARDED_BY(data_mutex_);
+  void NotifyIndexBackfillOrderingGenerationListenerUnlocked() REQUIRES(data_mutex_);
 
   bool is_under_xcluster_replication_ GUARDED_BY(data_mutex_) = false;
 
