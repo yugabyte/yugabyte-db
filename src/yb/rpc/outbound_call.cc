@@ -277,7 +277,6 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
   IncrementCounter(rpc_metrics_->outbound_calls_created);
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
 
-  // Guarded so that with tracing off the span name below is never formatted.
   if (dist_trace::HasActiveContext()) {
     trace_parent_ = dist_trace::GetActiveSpanContext();
 
