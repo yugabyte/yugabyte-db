@@ -1889,7 +1889,8 @@ Status RaftGroupMetadata::set_all_cdc_retention_barriers(
 
 Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
-    bool require_history_cutoff, bool initial_retention_barrier) {
+    bool require_history_cutoff, bool initial_retention_barrier,
+    CDCRetentionBarrierMoveSelector barrier_move_selector) {
 
   bool set_cdc_min_replicated_index_check = false;
   bool set_cdc_min_checkpoint_op_id_check = false;
@@ -1897,7 +1898,8 @@ Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
   // WAL retention
   //  cdc_min_replicated_index : indicates if a WAL segment is being used by CDC
   //                             and thus impacts GC of the WAL segments
-  if (!initial_retention_barrier || cdc_min_replicated_index() > cdc_wal_index) {
+  if (barrier_move_selector.move_cdc_min_replicated_index &&
+      (!initial_retention_barrier || cdc_min_replicated_index() > cdc_wal_index)) {
     VLOG_WITH_PREFIX(1) << "Setting cdc_min_replicated index WAL retention barrier to "
                         << cdc_wal_index;
     set_cdc_min_replicated_index_check = true;
@@ -1908,7 +1910,7 @@ Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
   }
 
   // History Retention
-  if (require_history_cutoff) {
+  if (require_history_cutoff && barrier_move_selector.move_cdc_sdk_safe_time) {
     if (!initial_retention_barrier ||
         cdc_sdk_safe_time() == HybridTime::kInvalid ||
         cdc_sdk_safe_time() > cdc_sdk_history_cutoff) {
@@ -1923,9 +1925,10 @@ Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
 
   // Intents Retention
   //  set_cdc_sdk_min_checkpoint_op_id - opid beyond which GC will not happen
-  if (!initial_retention_barrier ||
-      cdc_sdk_min_checkpoint_op_id() == OpId::Invalid() ||
-      cdc_sdk_min_checkpoint_op_id() > cdc_sdk_intents_op_id) {
+  if (barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id &&
+      (!initial_retention_barrier ||
+       cdc_sdk_min_checkpoint_op_id() == OpId::Invalid() ||
+       cdc_sdk_min_checkpoint_op_id() > cdc_sdk_intents_op_id)) {
     VLOG_WITH_PREFIX(1) << "Setting intents retention barrier to " << cdc_sdk_intents_op_id;
     set_cdc_min_checkpoint_op_id_check = true;
   } else {
@@ -2255,6 +2258,57 @@ Status RaftGroupMetadata::CheckColocationPacking(
   return packing.status();
 }
 
+// Apply path: table tombstone written for this colocation id, invalidate its tombstone-time cache.
+void RaftGroupMetadata::NotifyTableTombstoneWritten(
+    ColocationId colocation_id, HybridTime write_ht) {
+  auto table_info = GetTableInfo(colocation_id);
+  if (!table_info.ok()) {
+    // Table may have been dropped; nothing to invalidate.
+    return;
+  }
+  if ((*table_info)->doc_read_context) {
+    (*table_info)->doc_read_context->OnTableTombstoneWritten(write_ht);
+  }
+}
+
+// Cotable-id overload of the apply-path cache invalidate. Does nothing today: reads consult the
+// cache only when the schema has a colocation_id, and only those contexts are armed. Kept so this
+// is not missed if cotable-keyed tables (sys catalog, YCQL) ever use the cache.
+void RaftGroupMetadata::NotifyTableTombstoneWritten(const Uuid& cotable_id, HybridTime write_ht) {
+  if (cotable_id.IsNil()) {
+    return;
+  }
+  auto table_info = GetTableInfo(cotable_id.ToHexString());
+  if (!table_info.ok()) {
+    return;
+  }
+  if ((*table_info)->doc_read_context) {
+    (*table_info)->doc_read_context->OnTableTombstoneWritten(write_ht);
+  }
+}
+
+// Turn on colocated tombstone-time caches at serve-ready SafeTime (watermark was kMax / off).
+// Walks every colocated TableInfo on this tablet, so an ALTER of one table also re-arms (and
+// bumps generation on) the others - a known cost in multi-table colocated databases.
+//
+// Fresh contexts start unarmed; skipping this only disables the cache (fail-closed). That claim
+// does not cover RestoreCheckpoint, which can swap the regular DB under an already-armed context
+// that still holds a warm value: there the gap is a content change with no invalidation (tracked
+// follow-up), not a missing arm.
+void RaftGroupMetadata::ArmColocatedTombstoneCaches(HybridTime safe_time) {
+  // kMin.is_valid() is true and would make every read eligible; require a real HT so unarmed
+  // stays fail-closed by construction (last_replicated_ defaults to kMin on an empty tablet).
+  if (!safe_time.is_valid() || safe_time == HybridTime::kMax ||
+      safe_time < HybridTime::kInitial) {
+    return;
+  }
+  for (const auto& table_info : GetColocatedTableInfos()) {
+    if (table_info->doc_read_context && table_info->schema().has_colocation_id()) {
+      table_info->doc_read_context->AdvanceTombstoneCacheWatermark(safe_time);
+    }
+  }
+}
+
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {
   std::lock_guard lock(data_mutex_);
   return JoinPathSegments(DirName(wal_dir_), MakeTabletDirName(raft_group_id));
@@ -2577,19 +2631,22 @@ OpId RaftGroupMetadata::MinUnflushedChangeMetadataOpId() const {
   return min_unflushed_change_metadata_op_id_;
 }
 
-Status RaftGroupMetadata::OnBackfillDone(const TableId& table_id) {
+Status RaftGroupMetadata::OnBackfillDone(
+    const TableId& table_id, uint64_t birth_time) {
   std::lock_guard lock(data_mutex_);
-  return OnBackfillDoneUnlocked(table_id);
+  return OnBackfillDoneUnlocked(table_id, birth_time);
 }
 
-Status RaftGroupMetadata::OnBackfillDone(const OpId& op_id, const TableId& table_id) {
+Status RaftGroupMetadata::OnBackfillDone(
+    const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
   std::lock_guard lock(data_mutex_);
-  RETURN_NOT_OK(OnBackfillDoneUnlocked(table_id));
+  RETURN_NOT_OK(OnBackfillDoneUnlocked(table_id, birth_time));
   OnChangeMetadataOperationAppliedUnlocked(op_id);
   return Status::OK();
 }
 
-Status RaftGroupMetadata::OnBackfillDoneUnlocked(const TableId& table_id) {
+Status RaftGroupMetadata::OnBackfillDoneUnlocked(
+    const TableId& table_id, uint64_t birth_time) {
   if (FLAGS_TEST_skip_metadata_backfill_done) {
     LOG_WITH_PREFIX(INFO) << "Skipping RaftGroupMetadata::OnBackfillDoneUnlocked()";
     return Status::OK();
@@ -2605,6 +2662,13 @@ Status RaftGroupMetadata::OnBackfillDoneUnlocked(const TableId& table_id) {
   new_schema.SetRetainDeleteMarkers(false);
 
   TableInfoPtr new_table_info = std::make_shared<TableInfo>(*it->second, new_schema);
+  // Persist the index birth time in the index_info if provided.
+  if (birth_time != 0 && new_table_info->index_info) {
+    IndexInfoPB index_info_pb;
+    new_table_info->index_info->ToPB(&index_info_pb);
+    index_info_pb.set_birth_time(birth_time);
+    new_table_info->index_info.reset(new qlexpr::IndexInfo(index_info_pb));
+  }
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
                       << " to Schema version " << new_table_info->schema_version
                       << " from \n" << AsString(it->second)

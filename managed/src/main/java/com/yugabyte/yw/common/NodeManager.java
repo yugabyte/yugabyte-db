@@ -97,6 +97,7 @@ import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.S3Config;
@@ -1758,6 +1759,10 @@ public class NodeManager extends DevopsBase {
         ReplaceRootVolume.Params rrvParams = (ReplaceRootVolume.Params) nodeTaskParam;
         commandArgs.add("--replacement_disk");
         commandArgs.add(rrvParams.replacementDisk);
+        if (rrvParams.capacityReservation != null) {
+          commandArgs.add("--capacity_reservation");
+          commandArgs.add(rrvParams.capacityReservation);
+        }
         commandArgs.addAll(getAccessKeySpecificCommand(rrvParams, provider, type));
         if (Common.CloudType.aws == provider.getCloudCode()) {
           if (StringUtils.isNotBlank(rrvParams.rootDeviceName)) {
@@ -1834,10 +1839,17 @@ public class NodeManager extends DevopsBase {
               bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
             }
 
-            // Instance template feature is currently only implemented for GCP.
+            // Instance template: GCP global template name, or OCI Instance Configuration OCID.
             if (Common.CloudType.gcp == provider.getCloudCode()) {
               GCPRegionCloudInfo g = CloudInfoInterface.get(taskParam.getRegion());
               String instanceTemplate = g.getInstanceTemplate();
+              if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
+                commandArgs.add("--instance_template");
+                commandArgs.add(instanceTemplate);
+              }
+            } else if (Common.CloudType.oci == provider.getCloudCode()) {
+              OCIRegionCloudInfo o = CloudInfoInterface.get(taskParam.getRegion());
+              String instanceTemplate = o.getInstanceTemplate();
               if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
                 commandArgs.add("--instance_template");
                 commandArgs.add(instanceTemplate);

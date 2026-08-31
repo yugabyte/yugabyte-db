@@ -648,13 +648,15 @@ public interface UserIntentMapper {
       }
       perProcess.put(ServerType.TSERVER, tserverOverrides);
     }
+    // When az_node_spec is present, fully replace existing AZ overrides (same semantics as
+    // az_gflags). Omitting the field leaves existing overrides unchanged; an empty map clears them.
     if (clusterNodeSpec.getAzNodeSpec() != null) {
+      UserIntentOverrides overrides = getOrCreateUserIntentOverrides(userIntent);
+      Map<UUID, AZOverrides> azOverridesMap = new HashMap<>();
       clusterNodeSpec
           .getAzNodeSpec()
           .forEach(
               (azUuid, azNode) -> {
-                UserIntentOverrides overrides = getOrCreateUserIntentOverrides(userIntent);
-                Map<UUID, AZOverrides> azOverridesMap = getOrCreateAzOverrides(overrides);
                 AZOverrides azOverrides = new AZOverrides();
                 azOverrides.setInstanceType(azNode.getInstanceType());
                 azOverrides.setDeviceInfo(storageSpecToDeviceInfo(azNode.getStorageSpec()));
@@ -675,6 +677,7 @@ public interface UserIntentMapper {
                 }
                 azOverridesMap.put(UUID.fromString(azUuid), azOverrides);
               });
+      overrides.setAzOverrides(azOverridesMap);
     }
     return userIntent;
   }

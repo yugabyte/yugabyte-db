@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"node-agent/model"
 	"os"
 	"path/filepath"
 	"time"
@@ -26,32 +27,53 @@ type Claims struct {
 }
 
 // Saves the cert and key to the certs directory.
-func SaveCerts(ctx context.Context, config *Config, cert string, key string, subDir string) error {
+func SaveCerts(
+	ctx context.Context,
+	config *Config,
+	nodeAgentConfig *model.NodeAgentConfig,
+	subDir string,
+) error {
 	certsDir := filepath.Join(CertsDir(), subDir)
 	err := os.MkdirAll(certsDir, os.ModePerm)
 	if err != nil {
 		FileLogger().Errorf(ctx, "Error while creating current certs dir %s", certsDir)
 		return err
 	}
-	certFilepath := filepath.Join(certsDir, NodeAgentCertFile)
-	err = os.WriteFile(
-		certFilepath,
-		[]byte(cert),
-		0644,
-	)
-	if err != nil {
-		FileLogger().Errorf(ctx, "Error while saving certs to %s", certFilepath)
-		return err
+	// List of sources to save the certs to the certs directory.
+	sources := []struct {
+		localFilename string
+		responseValue string
+		isPath        bool
+	}{
+		{NodeAgentCertFile, nodeAgentConfig.ServerCert, false},
+		{NodeAgentKeyFile, nodeAgentConfig.ServerKey, false},
+		{SignerPublicKeyFile, nodeAgentConfig.SignerPublicKey, false},
+		{SignerPrivateKeyFile, nodeAgentConfig.SignerPrivateKey, false},
+		{NodeAgentCertFile, nodeAgentConfig.ServerCertLocalPath, true},
+		{NodeAgentKeyFile, nodeAgentConfig.ServerKeyLocalPath, true},
 	}
-	keyFilepath := filepath.Join(certsDir, NodeAgentKeyFile)
-	err = os.WriteFile(
-		keyFilepath,
-		[]byte(key),
-		0644,
-	)
-	if err != nil {
-		FileLogger().Errorf(ctx, "Error while saving key to %s", keyFilepath)
-		return err
+	for _, src := range sources {
+		if src.responseValue == "" {
+			continue
+		}
+		var content []byte
+		if src.isPath {
+			// This is a local path to a file.
+			content, err = os.ReadFile(src.responseValue)
+			if err != nil {
+				FileLogger().Errorf(ctx, "Error while reading %s from %s", src.localFilename, src.responseValue)
+				return err
+			}
+			FileLogger().Infof(ctx, "Read %s from %s", src.localFilename, src.responseValue)
+		} else {
+			content = []byte(src.responseValue)
+		}
+		fileFilepath := filepath.Join(certsDir, src.localFilename)
+		err = os.WriteFile(fileFilepath, content, 0644)
+		if err != nil {
+			FileLogger().Errorf(ctx, "Error while saving %s to %s", src.localFilename, fileFilepath)
+			return err
+		}
 	}
 	FileLogger().Infof(ctx, "Saved new certs to %s", certsDir)
 	return nil
@@ -118,6 +140,7 @@ func DeleteRelease(ctx context.Context, release string) error {
 	return err
 }
 
+// ServerCertPath returns the path for the server certificate.
 func ServerCertPath(config *Config) string {
 	return filepath.Join(
 		CertsDir(),
@@ -128,22 +151,20 @@ func ServerCertPath(config *Config) string {
 
 // ServerCertPaths returns both old and new paths.
 func ServerCertPaths(config *Config) []string {
-	certPaths := []string{}
-	keys := []string{PlatformCertsKey, PlatformCertsUpgradeKey}
-	for _, key := range keys {
-		val := config.String(key)
-		if val == "" {
-			continue
-		}
-		path := filepath.Join(CertsDir(), val, NodeAgentCertFile)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			continue
-		}
-		certPaths = append(certPaths, path)
-	}
-	return certPaths
+	return CertFilePaths(config, NodeAgentCertFile)
 }
 
+// SignerPublicKeyPaths returns the paths for the signer public keys including the old and new paths.
+func SignerPublicKeyPaths(config *Config) []string {
+	return CertFilePaths(config, SignerPublicKeyFile)
+}
+
+// SignerPrivateKeyPaths returns the paths for the signer private keys including the old and new paths.
+func SignerPrivateKeyPaths(config *Config) []string {
+	return CertFilePaths(config, SignerPrivateKeyFile)
+}
+
+// ServerKeyPath returns the path for the server key.
 func ServerKeyPath(config *Config) string {
 	return filepath.Join(
 		CertsDir(),
@@ -152,10 +173,37 @@ func ServerKeyPath(config *Config) string {
 	)
 }
 
+// SignerPrivateKeyPath returns the path for the signer private key.
+func SignerPrivateKeyPath(config *Config) string {
+	return filepath.Join(
+		CertsDir(),
+		config.String(PlatformCertsKey),
+		SignerPrivateKeyFile,
+	)
+}
+
+// CertFilePaths returns the paths for the cert related files.
+func CertFilePaths(config *Config, filename string) []string {
+	paths := []string{}
+	keys := []string{PlatformCertsKey, PlatformCertsUpgradeKey}
+	for _, key := range keys {
+		val := config.String(key)
+		if val == "" {
+			continue
+		}
+		path := filepath.Join(CertsDir(), val, filename)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	return paths
+}
+
 // Creates a new JWT with the required claims: Node Id and User Id.
 // The JWT is signed using the key in the certs directory.
 func GenerateJWT(ctx context.Context, config *Config) (string, error) {
-	keyFilepath := ServerKeyPath(config)
+	keyFilepath := SignerPrivateKeyPath(config)
 	privateKey, err := os.ReadFile(keyFilepath)
 	if err != nil {
 		FileLogger().Errorf(ctx, "Error while reading the private key: %s", err.Error())
@@ -181,6 +229,21 @@ func GenerateJWT(ctx context.Context, config *Config) (string, error) {
 	return token.SignedString(key)
 }
 
+// PublicKeyFromFile extracts an RSA public key from a PEM public key file.
+func PublicKeyFromFile(ctx context.Context, keyFilepath string) (crypto.PublicKey, error) {
+	bytes, err := os.ReadFile(keyFilepath)
+	if err != nil {
+		FileLogger().Errorf(ctx, "Error while reading the public key: %s", err.Error())
+		return nil, err
+	}
+	key, err := jwt.ParseRSAPublicKeyFromPEM(bytes)
+	if err != nil {
+		FileLogger().Errorf(ctx, "Error while parsing the public key: %s", err.Error())
+		return nil, err
+	}
+	return key, nil
+}
+
 // PublicKeyFromCert extracts public key from a cert.
 func PublicKeyFromCert(ctx context.Context, certFilepath string) (crypto.PublicKey, error) {
 	bytes, err := os.ReadFile(certFilepath)
@@ -189,6 +252,11 @@ func PublicKeyFromCert(ctx context.Context, certFilepath string) (crypto.PublicK
 		return nil, err
 	}
 	block, _ := pem.Decode(bytes)
+	if block == nil {
+		err = errors.New("Failed to decode PEM block from certificate")
+		FileLogger().Errorf(ctx, "Error - %s", err.Error())
+		return nil, err
+	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		FileLogger().Errorf(ctx, "Error while parsing the certificate: %s", err.Error())
@@ -207,18 +275,33 @@ func PublicKey(ctx context.Context, config *Config) (crypto.PublicKey, error) {
 	return PublicKeyFromCert(ctx, ServerCertPath(config))
 }
 
-// PublicKey returns all the public keys including the new one.
-func PublicKeys(ctx context.Context, config *Config) ([]crypto.PublicKey, error) {
+// SignerPublicKeys returns all the signer public keys.
+func SignerPublicKeys(ctx context.Context, config *Config) []crypto.PublicKey {
 	keys := []crypto.PublicKey{}
-	paths := ServerCertPaths(config)
-	for _, path := range paths {
-		key, err := PublicKeyFromCert(ctx, path)
+	for _, path := range SignerPublicKeyPaths(config) {
+		key, err := PublicKeyFromFile(ctx, path)
 		if err != nil {
-			return keys, err
+			FileLogger().Errorf(ctx, "Error in getting the signer public key from file: %s", err.Error())
+			continue
 		}
 		keys = append(keys, key)
 	}
-	return keys, nil
+	return keys
+}
+
+// CertPublicKeys returns all the public keys from the cert files including the old and new paths.
+func CertPublicKeys(ctx context.Context, config *Config) []crypto.PublicKey {
+	keys := []crypto.PublicKey{}
+	for _, path := range ServerCertPaths(config) {
+		key, err := PublicKeyFromCert(ctx, path)
+		if err != nil {
+			// Ignore the error for backward compatibility.
+			FileLogger().Errorf(ctx, "Error in getting the public key from cert: %s", err.Error())
+			continue
+		}
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 // IntFromClaims returns the int value for key in the map claims.
@@ -267,12 +350,26 @@ func ExtractClaims(ctx context.Context, config *Config, authToken string) (*jwt.
 
 // VerifyJWT verifies the JWT and returns the claims.
 func VerifyJWT(ctx context.Context, config *Config, authToken string) (*jwt.MapClaims, error) {
-	publicKeys, err := PublicKeys(ctx, config)
-	if err != nil {
-		FileLogger().Errorf(ctx, "Error in getting the public key: %s", err.Error())
-		return nil, err
+	publicKeys := SignerPublicKeys(ctx, config)
+	claims, err := verifyJWTWithKeys(ctx, authToken, publicKeys)
+	if err == nil {
+		return claims, nil
 	}
-	for idx, publicKey := range publicKeys {
+	// Backward compatibility.
+	publicKeys = CertPublicKeys(ctx, config)
+	claims, err = verifyJWTWithKeys(ctx, authToken, publicKeys)
+	if err == nil {
+		return claims, nil
+	}
+	return nil, fmt.Errorf("Invalid token")
+}
+
+func verifyJWTWithKeys(
+	ctx context.Context,
+	authToken string,
+	publicKeys []crypto.PublicKey,
+) (*jwt.MapClaims, error) {
+	for _, signerPublicKey := range publicKeys {
 		token, err := jwt.ParseWithClaims(
 			authToken,
 			&jwt.MapClaims{},
@@ -281,15 +378,11 @@ func VerifyJWT(ctx context.Context, config *Config, authToken string) (*jwt.MapC
 				if !ok {
 					return nil, fmt.Errorf("Unexpected token signing method")
 				}
-				return publicKey, nil
+				return signerPublicKey, nil
 			},
 		)
 		if err == nil {
 			return token.Claims.(*jwt.MapClaims), nil
-		}
-		if idx == len(publicKeys)-1 {
-			// All keys are exhausted.
-			FileLogger().Errorf(ctx, "Failed to validate claim - %s", err.Error())
 		}
 	}
 	return nil, fmt.Errorf("Invalid token")
@@ -313,4 +406,13 @@ func TlsConfig(certs []tls.Certificate, nextProtos []string) *tls.Config {
 		tlsConfig.NextProtos = nextProtos
 	}
 	return tlsConfig
+}
+
+// CertExpirySecs returns the expiry seconds for the certificate.
+func CertExpirySecs(cert *tls.Certificate) (int64, error) {
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return 0, err
+	}
+	return leaf.NotAfter.Unix(), nil
 }

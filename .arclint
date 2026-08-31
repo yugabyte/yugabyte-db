@@ -84,6 +84,19 @@
       "script-and-regex.regex":
         "/(?P<message>.*)/is"
     },
+    "eslint-ui": {
+      "type": "script-and-regex",
+      "include": "(^managed/ui/src/.*[.](js|jsx|ts|tsx)$)",
+      "exclude": [
+        "(^managed/ui/src/redesign/.*[.]tsx?$)",
+        "(^managed/ui/src/redesign/types/)",
+        "(^managed/ui/src/v2/api/)"
+      ],
+      "script-and-regex.script":
+      "managed/lint/lint-ui.sh",
+      "script-and-regex.regex":
+        "/^ +(?<line>[0-9]+):(?<number>[0-9]+) +(?<message>.*) +(?<name>[a-zA-Z_-]+)$/m"
+    },
     "text": {
       "type": "text",
       "text.max-line-length": 100,
@@ -164,6 +177,18 @@
         "(.*)": "error"
       }
     },
+    "pg_catalog_dat": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/src/include/catalog/[^/]+[.]dat$)"
+      ],
+      "exclude": [
+        "(^src/postgres/src/include/catalog/pg_yb_migration[.]dat$)"
+      ],
+      "script-and-regex.script": "src/lint/pg_catalog_dat.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d*):(?P<original>.*)/m"
+    },
     "postgres": {
       "type": "script-and-regex",
       "exclude": [
@@ -242,6 +267,15 @@
       "script-and-regex.script": "src/lint/yql_extern_c.sh",
       "script-and-regex.regex":
         "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "ysql_migration": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/yb/yql/pgwrapper/ysql_migrations/[^/]+[.]sql$)"
+      ],
+      "script-and-regex.script": "src/lint/ysql_migration.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d*):(?P<original>.*)/m"
     },
     "client-version-check": {
       "type": "script-and-regex",

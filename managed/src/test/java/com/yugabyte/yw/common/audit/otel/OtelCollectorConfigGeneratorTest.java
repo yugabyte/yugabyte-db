@@ -567,6 +567,89 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   // Helper method to generate config file and assert result
+
+  @Test
+  public void generateOtelColConfigDropsLegacyAttributesWhenFlagIsOff() {
+    mutableConfigFactory
+        .forUniverse(universe)
+        .setValue("yb.universe.telemetry.emit_legacy_export_attributes", "false");
+
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    when(mockTelemetryProviderService.getOrBadRequest(telemetryProvider.getUuid()))
+        .thenReturn(telemetryProvider);
+
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+
+    String result = generateConfig(null, null, metricsExportConfig);
+
+    for (ExportLabel label : ExportLabel.values()) {
+      // node_identifier is onprem-only and this universe is on AWS.
+      if (label != ExportLabel.NODE_IDENTIFIER) {
+        assertThat(result, containsString("key: " + label.getAttributeName()));
+      }
+      if (label.getLegacyAttributeName() != null) {
+        assertThat(result, not(containsString("key: " + label.getLegacyAttributeName())));
+      }
+    }
+  }
+
+  @Test
+  public void generateOtelColConfigEmitsBothSetsByDefault() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    when(mockTelemetryProviderService.getOrBadRequest(telemetryProvider.getUuid()))
+        .thenReturn(telemetryProvider);
+
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+
+    String result = generateConfig(null, null, metricsExportConfig);
+
+    for (ExportLabel label : ExportLabel.values()) {
+      // node_identifier is onprem-only and this universe is on AWS.
+      if (label != ExportLabel.NODE_IDENTIFIER) {
+        assertThat(result, containsString("key: " + label.getAttributeName()));
+      }
+      if (label.getLegacyAttributeName() != null) {
+        assertThat(result, containsString("key: " + label.getLegacyAttributeName()));
+      }
+    }
+  }
+
+  private String generateConfig(
+      AuditLogConfig auditLogConfig,
+      QueryLogConfig queryLogConfig,
+      MetricsExportConfig metricsExportConfig) {
+    try {
+      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
+      file.createNewFile();
+      generator.generateConfigFile(
+          nodeTaskParams,
+          provider,
+          null,
+          TelemetryConfig.of(auditLogConfig, queryLogConfig, metricsExportConfig),
+          "%t | %u%d : ",
+          file.toPath(),
+          NodeManager.getOtelColMetricsPort(nodeTaskParams),
+          null);
+      return FileUtils.readFileToString(file, Charset.defaultCharset());
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   private void generateAndAssertConfig(
       AuditLogConfig auditLogConfig,
       QueryLogConfig queryLogConfig,
@@ -1271,6 +1354,47 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   @Test
+  public void getOtelColConfigK8sGoldenFile() {
+    // Golden file for the K8s collector config. The K8s and VM paths share one generator but pin
+    // their collector versions independently - a Java constant here, a Helm image tag in the charts
+    // repo - so a change valid on one side can silently be rejected by the other. Only the VM
+    // output was golden-tested, which is how the awss3 s3_partition -> s3_partition_format rename
+    // reached the K8s path unnoticed. S3 and metrics export are covered here specifically because
+    // they carry the keys that moved: s3_partition_format and service::telemetry::metrics::readers.
+    S3Config s3Config = new S3Config();
+    s3Config.setType(ProviderType.S3);
+    s3Config.setBucket("bucket");
+    s3Config.setAccessKey("access_key");
+    s3Config.setSecretKey("secret_key");
+    s3Config.setRegion("us-west2");
+
+    TelemetryProvider s3Tp =
+        createTelemetryProvider(new UUID(0, 0), "S3", ImmutableMap.of("tag", "value"), s3Config);
+    when(mockTelemetryProviderService.getOrBadRequest(s3Tp.getUuid())).thenReturn(s3Tp);
+
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            s3Tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"));
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            s3Tp.getUuid(), ImmutableMap.of("env", "prod"), 15, 10, MetricCollectionLevel.NORMAL);
+
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder()
+                .auditLogConfig(auditLogConfig)
+                .metricsExportConfig(metricsExportConfig)
+                .build(),
+            null,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    assertThat(result.getConfig(), equalTo(TestUtils.readResource("audit/k8s_otel_config.yml")));
+  }
+
+  @Test
   public void getOtelColConfigK8sTserverLogs() {
     TelemetryProvider awsTp =
         createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of(), awsCloudWatch());
@@ -1327,6 +1451,57 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     assertThat(config, not(containsString("filelog/tserver")));
     assertThat(config, containsString("mTag"));
     assertThat(config, not(containsString("!!com.yugabyte")));
+  }
+
+  // K8s log pipelines must carry the same node identity / placement / purpose attributes as the
+  // metrics pipelines - downstream consumers filter log records on universe_uuid and purpose.
+  @Test
+  public void getOtelColConfigK8sLogsCarryCommonRequiredAttributes() {
+    TelemetryProvider awsTp =
+        createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of(), awsCloudWatch());
+    TServerLogConfig tserverLogConfig =
+        createTserverLogConfig(awsTp.getUuid(), ImmutableMap.of("tTag", "tVal"));
+
+    OtelCollectorConfigGenerator.K8sPodPlacement podPlacement =
+        new OtelCollectorConfigGenerator.K8sPodPlacement(
+            "kubernetes",
+            "us-west1",
+            "us-west1-a",
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().tserverLogConfig(tserverLogConfig).build(),
+            podPlacement,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    String config = result.getConfig();
+    assertThat(config, containsString("{key: host, value: '${POD_NAME}', action: upsert}"));
+    assertThat(
+        config, containsString("{key: yugabyte.node_name, value: '${POD_NAME}', action: upsert}"));
+    assertThat(
+        config,
+        containsString(
+            "{key: yugabyte.universe_uuid, value: "
+                + universe.getUniverseUUID()
+                + ", action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.cloud, value: kubernetes, action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.region, value: us-west1, action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.zone, value: us-west1-a, action: upsert}"));
+    assertThat(config, containsString("{key: yugabyte.node_type, value: PRIMARY, action: upsert}"));
+    assertThat(
+        config,
+        containsString(
+            "{key: yugabyte.purpose, value: AWS_CLOUDWATCH_TSERVER_LOG_EXPORT, action: upsert}"));
+    // Backward compat: host keeps its pre-existing position after the tag actions, so a tag keyed
+    // "host" still loses to ${POD_NAME}.
+    assertThat(
+        config,
+        containsString(
+            "- {key: tTag, value: tVal, action: upsert}\n"
+                + "    - {key: host, value: '${POD_NAME}', action: upsert}"));
   }
 
   @Test
@@ -1479,6 +1654,10 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     config.setType(ProviderType.OTLP);
     config.setEndpoint("http://otlp:3100");
     config.setAuthType(AuthType.NoAuth);
+    // Per-signal endpoints are HTTP-only - the gRPC exporter has no logs_endpoint/metrics_endpoint
+    // fields and rejects a config carrying them. OTLPConfig#validateConfigFields enforces this, so
+    // leaving the default gRPC protocol here would build a combination the API cannot produce.
+    config.setProtocol(OTLPConfig.Protocol.HTTP);
     config.setLogsEndpoint("http://otlp:3000/logs");
     config.setMetricsEndpoint("http://otlp:3000/metrics");
 

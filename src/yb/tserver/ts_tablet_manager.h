@@ -194,6 +194,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  ThreadPool* snapshot_cleanup_pool() const { return snapshot_cleanup_pool_.get(); }
   rpc::ThreadPool* raft_notifications_pool() const {
     return raft_notifications_pool_.get();
   }
@@ -481,6 +482,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
+  friend class ComputeDbHistoryRetentionPinCutoffTest;
   friend class ::yb::XClusterSafeTimeTest;
 
   // Flag specified when registering a TabletPeer.
@@ -506,6 +508,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
     uint32_t change_seq;
   };
   typedef std::unordered_map<std::string, TabletReportState> DirtyMap;
+
+  // Bounds a per-database history cutoff derived from the cluster-global history retention pin.
+  // The returned cutoff is the timestamp below which history is compactable (history at or
+  // after it is retained). It is bounded so that:
+  //   * we never compact history newer than the minimum safety window (cutoff <= safety_window)
+  //   * we always allow compaction of history older than the hard cap (cutoff >= hard_cap), so a
+  //     single long-running transaction cannot block history retention forever.
+  // When there is no pin, only the safety window applies.
+  HybridTime ComputeDbHistoryRetentionPinCutoff(
+    HybridTime now, uint32_t db_oid, tablet::RaftGroupMetadata* metadata) const;
 
   // Returns Status::OK() iff state_ == MANAGER_RUNNING.
   Status CheckRunningUnlocked(std::optional<TabletServerErrorPB::Code>* error_code) const
@@ -805,6 +817,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Thread pool for Raft replication callback operations.
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
+
+  // Bounded process-wide pool for physical tablet snapshot directory cleanup.
+  std::unique_ptr<ThreadPool> snapshot_cleanup_pool_;
 
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;

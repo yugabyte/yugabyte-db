@@ -90,7 +90,11 @@ class ResetStaleRetentionBarriersOp : public MaintenanceOp {
  private:
   TabletPtr tablet_;
   TabletPeer* const tablet_peer_;
-  MonoTime op_last_successful_run_time_;
+  // Last time this op released the WAL/intent barrier group and the history barrier, tracked
+  // separately so that releasing one group does not suppress releasing the other once it goes
+  // stale (the two groups advance on independent clocks).
+  MonoTime wal_intent_barrier_last_reset_time_;
+  MonoTime history_barrier_last_reset_time_;
   scoped_refptr<EventStats> cdcsdk_reset_retention_barriers_op_duration_;
   scoped_refptr<AtomicGauge<uint32_t> > cdcsdk_reset_retention_barriers_ops_running_;
   mutable Semaphore sem_;

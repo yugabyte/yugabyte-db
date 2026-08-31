@@ -15,6 +15,7 @@
 
 #include "yb/client/client.h"
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_flags.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/dockv/key_bytes.h"
@@ -23,11 +24,30 @@
 #include "yb/dockv/reader_projection.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/qlexpr/ql_expr.h"
+#include "yb/server/clock.h"
+#include "yb/tserver/tserver_error.h"
+#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
+
+DEFINE_RUNTIME_uint32(dump_tablet_data_max_read_time_wait_ms,
+    kDumpTabletDataMaxReadTimeWaitMsDefault,
+    "How long a tablet dump may wait for safe time to reach an explicitly requested read time "
+    "before failing with READ_TIME_NOT_REACHED. yb-ts-cli and yb-admin always send their own "
+    "bound, so this governs only callers that do not, such as an older CLI against a newer "
+    "tserver. The wait never extends past the RPC deadline.");
+
+DEFINE_RUNTIME_uint32(dump_tablet_data_deadline_margin_ms, 1000,
+    "How much of the RPC deadline a tablet dump reserves for responding, so the caller sees "
+    "READ_TIME_NOT_REACHED instead of a generic RPC timeout.");
+
+DEFINE_RUNTIME_uint32(dump_tablet_data_max_read_time_ahead_ms, 60000,
+    "How far ahead of this server's clock an explicitly requested tablet dump read time may be. "
+    "Past this the dump fails with InvalidArgument instead of waiting.");
 
 namespace yb::tablet {
 
 namespace {
+
 void XorHash(const QLValuePB& value, uint64_t& xor_hash) {
   auto size = value.ByteSizeLong();
   faststring buffer;
@@ -116,12 +136,96 @@ Status AppendToFile(WritableFile* file, std::optional<std::ostringstream>& strin
   return file->Append(str);
 }
 
+Status ReadTimeNotReachedStatus(HybridTime read_time, HybridTime safe_time, MonoDelta waited) {
+  return STATUS_EC_FORMAT(
+      TryAgain,
+      tserver::TabletServerError(tserver::TabletServerErrorPB::READ_TIME_NOT_REACHED),
+      "Requested read time $0 is not yet safe on this replica: safe time $1, behind by $2, "
+      "waited $3",
+      read_time, safe_time, read_time.PhysicalDiff(safe_time).ToPrettyString(),
+      waited.ToPrettyString());
+}
+
+// Resolves the hybrid time to scan at. This replica must have caught up to it.
+//
+// Scanning below safe time would report a partially applied state as the state at read_ht, making a
+// lagging replica look like a diverged one.
+Result<HybridTime> ResolveReadTime(
+    Tablet& tablet, uint64_t read_ht, std::optional<MonoDelta> max_read_time_wait,
+    CoarseTimePoint deadline) {
+  // The tablet's own safe time needs no waiting for.
+  if (!read_ht) {
+    return tablet.SafeTime(RequireLease::kFalse);
+  }
+
+  HybridTime read_time;
+  RETURN_NOT_OK(read_time.FromUint64(read_ht));
+
+  // Non-blocking: the default min_allowed of kMin is satisfied immediately.
+  auto safe_time = VERIFY_RESULT(tablet.SafeTime(RequireLease::kFalse));
+  if (safe_time >= read_time) {
+    return read_time;
+  }
+
+  const auto start = CoarseMonoClock::Now();
+  const auto max_wait = max_read_time_wait
+      ? std::chrono::microseconds(max_read_time_wait->ToMicroseconds())
+      : std::chrono::microseconds(
+            std::chrono::milliseconds(FLAGS_dump_tablet_data_max_read_time_wait_ms));
+  // Stop a margin short of the deadline, so the error below reaches the caller instead of the RPC
+  // timing out first. A margin wider than the time left puts wait_deadline in the past, which fails
+  // fast.
+  const auto wait_deadline = std::min(
+      start + max_wait,
+      deadline - std::chrono::milliseconds(FLAGS_dump_tablet_data_deadline_margin_ms));
+
+  const auto clock_now = tablet.clock()->Now();
+  if (read_time > clock_now) {
+    const auto ahead = read_time.PhysicalDiff(clock_now);
+    // Too far out for any wait to rescue: read_ht is a raw hybrid time, so a units mistake lands
+    // here. Judged on the gap alone, so the same mistake is never retryable under a longer wait.
+    if (ahead > MonoDelta::FromMilliseconds(FLAGS_dump_tablet_data_max_read_time_ahead_ms)) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Requested read time $0 is $1 ahead of this server's clock ($2)",
+          read_time, ahead.ToPrettyString(), clock_now);
+    }
+    // Safe time never runs ahead of the clock, so a read time past wait_deadline cannot become safe
+    // before we give up.
+    if (std::chrono::microseconds(ahead.ToMicroseconds()) > wait_deadline - start) {
+      return ReadTimeNotReachedStatus(read_time, safe_time, MonoDelta::kZero);
+    }
+  }
+
+  auto wait_result = tablet.SafeTime(RequireLease::kFalse, read_time, wait_deadline);
+  if (wait_result.ok()) {
+    return read_time;
+  }
+  // Anything else (a tablet shutting down, say) is not about lagging behind the read time.
+  if (!wait_result.status().IsTimedOut()) {
+    return wait_result.status();
+  }
+
+  // Re-probe so the error reports where the replica stood when we gave up, not when we started.
+  safe_time = VERIFY_RESULT(tablet.SafeTime(RequireLease::kFalse));
+  // The wait and this probe take the MVCC lock separately, so safe time can reach read_time in
+  // between.
+  if (safe_time >= read_time) {
+    return read_time;
+  }
+
+  const auto waited = MonoDelta::FromMicroseconds(
+      std::chrono::duration_cast<std::chrono::microseconds>(CoarseMonoClock::Now() - start)
+          .count());
+  return ReadTimeNotReachedStatus(read_time, safe_time, waited);
+}
+
 }  // namespace
 
 Status DumpTabletData(
     Tablet& tablet, std::shared_future<client::YBClient*> client_future, WritableFile* file,
-    uint64_t read_ht, CoarseTimePoint deadline, uint64_t& xor_hash, uint64_t& row_count,
-    const TableId& target_table_id, Slice start_partition_key, Slice end_partition_key) {
+    uint64_t read_ht, std::optional<MonoDelta> max_read_time_wait, CoarseTimePoint deadline,
+    uint64_t& xor_hash, uint64_t& row_count, const TableId& target_table_id,
+    Slice start_partition_key, Slice end_partition_key) {
   xor_hash = 0;
   row_count = 0;
 
@@ -138,12 +242,8 @@ Status DumpTabletData(
       "get_table_hash with a key range requires a single target table; pass a concrete table id "
       "(not a colocation parent id)");
 
-  HybridTime read_hybrid_time;
-  if (read_ht) {
-    RETURN_NOT_OK(read_hybrid_time.FromUint64(read_ht));
-  } else {
-    read_hybrid_time = VERIFY_RESULT(tablet.SafeTime(RequireLease::kFalse));
-  }
+  const auto read_hybrid_time =
+      VERIFY_RESULT(ResolveReadTime(tablet, read_ht, max_read_time_wait, deadline));
 
   // Register the read time with the retention policy, like any normal read. This rejects a too-old
   // read_ht with SnapshotTooOld (instead of scanning a compacted view) and pins the history cutoff

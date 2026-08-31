@@ -262,8 +262,7 @@ KIWI_API static inline int kiwi_fe_read_yb_server_keyhash(char *data, uint32_t s
 	if (kiwi_unlikely(rc != 0))
 		return -1;
 	if (kiwi_unlikely(header->type != YB_BE_PARSE_PREPARE_ERROR_RESPONSE) &&
-		kiwi_unlikely(header->type != YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME) &&
-		kiwi_unlikely(header->type != YB_BE_FORCE_PARSE_COMPLETE))
+	    kiwi_unlikely(header->type != YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME))
 		return -1;
 	uint32_t pos_size = len;
 	char *pos = kiwi_header_data(header);
@@ -273,6 +272,49 @@ KIWI_API static inline int kiwi_fe_read_yb_server_keyhash(char *data, uint32_t s
 	if (kiwi_unlikely(rc == -1))
 		return -1;
 	*keyhash_len = pos - *keyhash;
+	return 0;
+}
+
+KIWI_API static inline int
+kiwi_fe_read_yb_parse_complete(char *data, uint32_t size, char *yb_parse_type,
+			       char **stmt_hash, char **description,
+			       uint32_t *description_len, char **stmt_name,
+			       uint32_t *stmt_name_len)
+{
+	kiwi_header_t *header = (kiwi_header_t *)data;
+	uint32_t len;
+	int rc = kiwi_read(&len, &data, &size);
+	if (kiwi_unlikely(rc != 0))
+		return -1;
+	if (kiwi_unlikely(header->type != YB_BE_YB_PARSE_COMPLETE))
+		return -1;
+	uint32_t pos_size = len;
+	char *pos = kiwi_header_data(header);
+	rc = kiwi_read8(yb_parse_type, &pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	*stmt_hash = pos;
+	rc = kiwi_readsz(&pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	*description = pos;
+	rc = kiwi_readsz(&pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	uint16_t typec;
+	rc = kiwi_read16(&typec, &pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	if (kiwi_unlikely((uint32_t)typec * sizeof(uint32_t) > pos_size))
+		return -1;
+	pos += typec * sizeof(uint32_t);
+	pos_size -= typec * sizeof(uint32_t);
+	*description_len = pos - *description;
+	*stmt_name = pos;
+	rc = kiwi_readsz(&pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	*stmt_name_len = pos - *stmt_name;
 	return 0;
 }
 

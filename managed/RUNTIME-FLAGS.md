@@ -62,6 +62,9 @@
 | "Configure Clockbound when using cloud providers" | "yb.provider.configure_clockbound_cloud_provisioning" | "PROVIDER" | "Configure clockbound when creating cloud provider based Universes" | "Boolean" |
 | "GCP Connection Draining Timeout" | "yb.gcp.operations.connection_draining_timeout" | "PROVIDER" | "Set the connection draining timeout for the GCP load balancer." | "Duration" |
 | "Enable cgroup configuration" | "yb.node_agent.enable_cgroup_configuration" | "PROVIDER" | "When true, TServer CPU cgroup isolation is configured during provisioning and configure-server. Only effective when user-level systemd is in use." | "Boolean" |
+| "YNP provisioning timeout" | "yb.node_agent.ynp_provision_timeout" | "PROVIDER" | "Maximum time the YNP provisioning command may run on a node before it is aborted. Without a bound, a provisioning step that hangs on the node (a package manager waiting on a lock, an unanswered metadata request) holds the whole universe task open indefinitely. Raise it for slow images or air-gapped repositories." | "Duration" |
+| "YNP setup timeout" | "yb.node_agent.ynp_setup_timeout" | "PROVIDER" | "Maximum time the YNP setup step (uploading and extracting the node-agent package) may run on a node before it is aborted." | "Duration" |
+| "Use Universe Certificates in Node Agent Installation" | "yb.node_agent.use_universe_certificates_on_install" | "PROVIDER" | "Use universe certificates in new node agent installation instead of the default certificates. Existing node agents will not be affected until they are reinstalled during tasks like OS Image Upgrade, Reprovisioning node etc" | "Boolean" |
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |
@@ -105,6 +108,7 @@
 | "Max Size of each log message" | "yb.logs.max_msg_size" | "GLOBAL" | "We limit the length of each log line as sometimes we dump entire output of script. If you want to debug something specific and the script output isgetting truncated in application log then increase this limit" | "Bytes" |
 | "KMS Refresh Interval" | "yb.kms.refresh_interval" | "GLOBAL" | "Default refresh interval for the KMS providers." | "Duration" |
 | "Allow CipherTrust KMS" | "yb.kms.allow_ciphertrust" | "GLOBAL" | "Allow the usage of CipherTrust KMS." | "Boolean" |
+| "Allow Loki Exporter in Telemetry Provider" | "yb.telemetry.allow_loki" | "GLOBAL" | "Allow the usage of Loki Exporter in Telemetry Provider." | "Boolean" |
 | "Allow OTLP Exporter in Telemetry Provider" | "yb.telemetry.allow_otlp" | "GLOBAL" | "Allow the usage of OTLP Exporter in Telemetry Provider." | "Boolean" |
 | "Skip connectivity validations while creating Telemetry Provider" | "yb.telemetry.skip_connectivity_validations" | "GLOBAL" | "Skip connectivity and permission validations while creating Telemetry Provider." | "Boolean" |
 | "Percentage of Hashicorp vault TTL to renew the token after" | "yb.kms.hcv_token_renew_percent" | "GLOBAL" | "HashiCorp Vault tokens expire when their TTL is reached. This setting renews the token after it has used the specified percentage of its original TTL. Default: 70%." | "Integer" |
@@ -167,6 +171,7 @@
 | "OIDC Refresh Access Token Interval" | "yb.security.oidcRefreshTokenInterval" | "GLOBAL" | "If configured, YBA will refresh the access token at the specified duration, defaulted to 5 minutes." | "Duration" |
 | "Allow Editing of in-use Linux Versions" | "yb.edit_provider.new.allow_used_bundle_edit" | "GLOBAL" | "Caution: If enabled, YBA will blindly allow editing the name/AMI associated with the bundle, without propagating it to the in-use Universes" | "Boolean" |
 | "Enable DB Audit Logging" | "yb.universe.audit_logging_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable DB audit logging on universes." | "Boolean" |
+| "Enable Query Logging" | "yb.universe.query_logging_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable YSQL query logging on universes." | "Boolean" |
 | "Enable Metrics Export" | "yb.universe.metrics_export_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable metrics export on universes." | "Boolean" |
 | "Allow users to enable or disable connection pooling" | "yb.universe.allow_connection_pooling" | "GLOBAL" | "If this flag is enabled, user will be able to enable/disable connection pooling on universes." | "Boolean" |
 | "XCluster Sync Scheduler Interval" | "yb.xcluster.xcluster_sync_scheduler_interval" | "GLOBAL" | "Interval at which the XCluster Sync Scheduler runs" | "Duration" |
@@ -214,9 +219,11 @@
 | "Allow Duplicates in Existing AZs" | "yb.provider.allow_existing_duplicate_az" | "GLOBAL" | "Allow duplicates in already existing availability zones" | "Boolean" |
 | "Disable YNP Node Preflight Check" | "yb.node_agent.disable_ynp_node_preflight_check" | "GLOBAL" | "Disable preflight check in YNP node agent provision" | "Boolean" |
 | "Enable YNP Version Check" | "yb.node_agent.enable_ynp_version_check" | "GLOBAL" | "Enable YNP version check when adding nodes to a universe. When enabled, the node's YNP major version must match the expected version." | "Boolean" |
+| "Enable new Universe experience" | "yb.ui.feature_flags.enable_new_universe_experience" | "GLOBAL" | "Enable new Universe experience in UI" | "Boolean" |
 | "Memory per node for advanced observability" | "yb.pa.memory_per_node_advanced_observability_mb" | "GLOBAL" | "Estimated memory usage per node when advanced observability is enabled (in MB). Used to precheck YBA node memory headroom before enabling advanced observability." | "Integer" |
 | "Memory per node for PA collector" | "yb.pa.memory_per_node_pa_collector_mb" | "GLOBAL" | "Estimated memory usage per node when PA collector is enabled without advanced observability (in MB). Used to precheck YBA node memory headroom before enabling PA collection." | "Integer" |
 | "Skip PA Collector memory validation" | "yb.pa.skip_memory_validation" | "GLOBAL" | "Skip memory availability validation when enabling Performance Advisor Collection" | "Boolean" |
+| "Whether to enable new universe experience for all users" | "yb.ui.enable_new_universe_experience_for_all_users" | "GLOBAL" | "Whether to enable new universe experience for all users" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -248,6 +255,7 @@
 | "Max Thread Count" | "yb.perf_advisor.max_threads" | "UNIVERSE" | "Max number of threads to support parallel querying of nodes" | "Integer" |
 | "Allow Scheduled YBC Upgrades" | "ybc.upgrade.allow_scheduled_upgrade" | "UNIVERSE" | "Enable Scheduled upgrade of ybc on the universe" | "Boolean" |
 | "Allow User Gflags Override" | "yb.gflags.allow_user_override" | "UNIVERSE" | "Allow users to override default Gflags values" | "Boolean" |
+| "Skip Prechecks for Non-Rolling GFlags Upgrade" | "yb.gflags.skip_prechecks_for_non_rolling_upgrade" | "UNIVERSE" | "Skip cluster consistency, node data directory disk space, consistency table, and ValidateGFlags checks during a non-rolling gflags upgrade" | "Boolean" |
 | "Enable Trigger API" | "yb.health.trigger_api.enabled" | "UNIVERSE" | "Allow trigger_health_check API to be called" | "Boolean" |
 | "Verbose Backup Log" | "yb.backup.log.verbose" | "UNIVERSE" | "Enable verbose backup logging" | "Boolean" |
 | "Wait for LB for Added Nodes" | "yb.wait_for_lb_for_added_nodes" | "UNIVERSE" | "Wait for Load Balancer for added nodes" | "Boolean" |
@@ -395,7 +403,6 @@
 | "Upgrade TServer Sleep Time Per AZ" | "yb.upgrade.upgrade_tserver_stage_pause_duration_ms" | "UNIVERSE" | "Time to sleep after upgrading tservers in each AZ" | "Long" |
 | "Delay between master restarts in rolling operations" | "yb.upgrade.sleep_after_master_restart_ms" | "UNIVERSE" | "Default delay (ms) between master restarts in rolling operations (Delay Between Servers). Used when task params do not override." | "Integer" |
 | "Delay between tserver restarts in rolling operations" | "yb.upgrade.sleep_after_tserver_restart_ms" | "UNIVERSE" | "Default delay (ms) between tserver restarts in rolling operations (Delay Between Servers). Used when task params do not override." | "Integer" |
-| "Enables new Performance Monitoring UI via Performance Tab if universe is registered with Perf Advisor Service" | "yb.ui.feature_flags.enable_new_perf_advisor_ui" | "UNIVERSE" | "Enables new Performance Monitoring UI via Performance Tab" | "Boolean" |
 | "Enable All Nodes Script APIs" | "yb.node_script.enabled" | "UNIVERSE" | "Enables the all node script APIs for this universe" | "Boolean" |
 | "Enable Canary Upgrade" | "yb.upgrade.enable_canary_upgrade" | "UNIVERSE" | "Enable canary upgrade for the universe" | "Boolean" |
 | "Number of nodes to move in a given batch during full move" | "yb.task.full_move.roll_batch_size" | "UNIVERSE" | "Set numer of nodes to move in a given batch during full move. Default is 0 which means no batching, i.e. move all pods in a single go" | "Long" |

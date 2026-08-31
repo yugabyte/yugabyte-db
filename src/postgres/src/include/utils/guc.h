@@ -422,8 +422,6 @@ extern void InitializeGUCOptions(void);
 extern void InitializeWalConsistencyChecking(void);
 extern bool SelectConfigFiles(const char *userDoption, const char *progname);
 extern void ResetAllOptions();
-extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
-extern void YbResetYsqlConnMgrGucDefaults(void);
 extern void AtStart_GUC(void);
 extern int	NewGUCNestLevel(void);
 extern void AtEOXact_GUC(bool isCommit, int nestLevel);
@@ -467,8 +465,6 @@ extern ArrayType *GUCArrayReset(ArrayType *array);
 extern void write_nondefault_variables(GucContext context);
 extern void read_nondefault_variables(void);
 #endif
-
-extern void YbSetParallelWorker();
 
 /* GUC serialization */
 extern Size EstimateGUCStateSpace(void);
@@ -518,5 +514,11 @@ extern void assign_xlog_sync_method(int new_sync_method, void *extra);
 /* in access/transam/xlogprefetcher.c */
 extern bool check_recovery_prefetch(int *new_value, void **extra, GucSource source);
 extern void assign_recovery_prefetch(int new_value, void *extra);
+
+/* YB declarations */
+extern void YbValidateConfigFile(const char *config_file);
+extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
+extern void YbResetYsqlConnMgrGucDefaults(void);
+extern void YbSetParallelWorker();
 
 #endif							/* GUC_H */

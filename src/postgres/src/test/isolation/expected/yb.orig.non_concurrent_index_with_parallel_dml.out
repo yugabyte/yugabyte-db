@@ -29,8 +29,7 @@ step s2commit: COMMIT;
 step s2indexcheck: SELECT yb_index_check('idx_test'::regclass);
 yb_index_check
 --------------
-              
-(1 row)
+(0 rows)
 
 
 starting permutation: s1begin s1update s2begin s2select s2indexcreate s1commit s2select s2commit s2indexcheck
@@ -77,8 +76,7 @@ step s2commit: COMMIT;
 step s2indexcheck: SELECT yb_index_check('idx_test'::regclass);
 yb_index_check
 --------------
-              
-(1 row)
+(0 rows)
 
 
 starting permutation: s1begin s1update s2begin s2update s2indexcreate s1commit s2select s2commit s2indexcheck
@@ -98,7 +96,7 @@ step s2select: SELECT * FROM test ORDER BY k;
  1|  1
  2|  2
  3|  3
- 4|100
+ 4|  4
  5|200
  6|  6
  7|  7
@@ -111,6 +109,5 @@ step s2commit: COMMIT;
 step s2indexcheck: SELECT yb_index_check('idx_test'::regclass);
 yb_index_check
 --------------
-              
-(1 row)
+(0 rows)
 

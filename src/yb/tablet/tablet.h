@@ -90,6 +90,10 @@ DECLARE_bool(TEST_docdb_log_write_batches);
 namespace yb {
 
 class Cgroup;
+
+namespace rpc {
+class Scheduler;
+}
 class FsManager;
 class MetricEntity;
 
@@ -519,7 +523,8 @@ class Tablet : public AbstractTablet,
 
   // Used to update the tablets on the index table that the index has been backfilled.
   // This means that full compactions can now garbage collect delete markers.
-  Status MarkBackfillDone(const OpId& op_id, const TableId& table_id = "");
+  Status MarkBackfillDone(
+      const OpId& op_id, const TableId& table_id = "", uint64_t birth_time = 0);
 
   // Change wal_retention_secs in the metadata.
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
@@ -812,7 +817,9 @@ class Tablet : public AbstractTablet,
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 
-  void SetCleanupPool(ThreadPool* thread_pool);
+  void SetCleanupPool(
+      ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler,
+      ThreadPool* intent_cleanup_pool);
 
   TabletSnapshots& snapshots() {
     return *snapshots_;
@@ -840,11 +847,13 @@ class Tablet : public AbstractTablet,
   Status SetAllCDCRetentionBarriersUnlocked(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
       HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
-      bool initial_retention_barrier, HybridTime min_start_ht_cdc_unstreamed_txns);
+      bool initial_retention_barrier, HybridTime min_start_ht_cdc_unstreamed_txns,
+      CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   Status SetAllInitialCDCRetentionBarriers(
       log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
-      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+      CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   Status SetAllInitialCDCSDKRetentionBarriers(
       log::Log* log, OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff,
@@ -853,7 +862,7 @@ class Tablet : public AbstractTablet,
   Result<bool> MoveForwardAllCDCRetentionBarriers(
       log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
       MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
-      bool require_history_cutoff);
+      bool require_history_cutoff, CDCRetentionBarrierMoveSelector barrier_move_selector = {});
 
   HybridTime GetMinStartHTCDCUnstreamedTxns(log::Log* log) const;
 
@@ -1121,6 +1130,13 @@ class Tablet : public AbstractTablet,
 
   void DocDBDebugDump(std::vector<std::string>* lines);
 
+  // Enable the colocated table-tombstone caches of this tablet's DocReadContexts, which are
+  // constructed unarmed (watermark kMax, cache off). Call after any path that builds new contexts.
+  // Skipping it only costs the optimization for those fresh contexts - never correctness. That
+  // does not describe RestoreCheckpoint, which can leave an already-armed warm cache over swapped
+  // RocksDB data (separate follow-up: unarm/re-arm at end of restore).
+  void ArmColocatedTombstoneCaches();
+
   Status WriteTransactionalBatch(
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
@@ -1363,6 +1379,26 @@ class Tablet : public AbstractTablet,
 
   std::atomic<int64_t> last_committed_write_index_{0};
 
+  // Whether MayModifyIntentsDbFlushedOpId may force-advance the intents DB flushed frontier to the
+  // regular DB's.
+  //
+  // An external (xCluster target) batch is applied as two RocksDB writes: the regular DB first,
+  // which fills the intents write batch as a side effect, then the intents DB. A regular DB flush
+  // completing in between sees an empty intents memtable, so the force-advance would persist an
+  // intents frontier covering an op whose external intents are still only in memory. An ungraceful
+  // crash then drops them, tablet bootstrap skips the op, and the replicated rows are silently lost
+  // on this replica (GH#32694).
+  //
+  // NonTransactionalBatchWriter clears this at the end of Apply(), by then the intents write batch
+  // has been filled and the data has been written to regular db memtable. Apply() runs inside the
+  // regular DB's write thread and a memtable switch needs that same thread, so the clear always
+  // happens before any regular DB flush can cover the op.
+  //
+  // Nothing sets it back for now except restarting tserver. TODO: It may be safe to reset the
+  // variable to true right after the intents write -- by then those intents are in the intents
+  // memtable, so GetFlushAbility() reports kHasNewData and the force-advance is skipped.
+  std::atomic<bool> can_advance_intents_flush_op_id_{true};
+
   HybridTimeLeaseProvider ht_lease_provider_;
 
   Result<HybridTime> DoGetSafeTime(
@@ -1468,6 +1504,10 @@ class Tablet : public AbstractTablet,
   // Function to get min schema version for a table needed for xCluster.
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
+
+  // Used to schedule retain_delete_markers validation when colocated indexes are added
+  // to an already-open tablet.
+  std::function<void(const RaftGroupMetadata&)> schedule_tablet_metadata_validation_;
 
   simple_spinlock operation_filters_mutex_;
 

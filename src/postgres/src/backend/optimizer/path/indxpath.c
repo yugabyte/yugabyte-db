@@ -36,7 +36,8 @@
 #include "utils/selfuncs.h"
 
 /* YB includes */
-#include "access/yb_scan.h"
+#include "access/table.h"
+#include "access/yb_cost.h"
 #include "catalog/pg_proc.h"
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"

@@ -36,6 +36,8 @@ class OciCloud(AbstractCloud):
     def __init__(self):
         super(OciCloud, self).__init__("oci")
         self.admin = None
+        self._wait_for_startup_script_command = \
+            "until test -e /var/lib/cloud/instance/boot-finished ; do sleep 1 ; done"
 
     def get_admin(self):
         if self.admin is None:
@@ -174,7 +176,8 @@ class OciCloud(AbstractCloud):
             volume_type=getattr(args, 'volume_type', OCI_VOLUME_TYPE_STANDARD),
             ocpus=ocpus,
             memory_in_gbs=memory_in_gbs,
-            node_uuid=getattr(args, 'node_uuid', None)
+            node_uuid=getattr(args, 'node_uuid', None),
+            instance_template=getattr(args, 'instance_template', None)
         )
         return host_info
 
@@ -217,7 +220,7 @@ class OciCloud(AbstractCloud):
         return ["sd{}".format(chr(ord('b') + i))
                 for i in range(args.num_volumes)]
 
-    def start_instance(self, host_info, server_ports):
+    def start_instance(self, host_info, server_ports, capacity_reservation=None):
         instance_id = host_info['id']
         instance = self.get_admin().get_instance(instance_id)
 

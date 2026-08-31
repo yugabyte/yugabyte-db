@@ -14,7 +14,6 @@
 
 #include "yb/yql/pggate/pg_read_range.h"
 
-#include "yb/client/yb_op.h"
 #include "yb/common/schema.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
@@ -69,6 +68,25 @@ bool PgReadRange::Intersects(const PgReadRange& other) const {
   return true;
 }
 
+std::optional<uint16_t> PgReadRange::DecodeEncodedHashPartitionKeyBound(Slice bound) {
+  dockv::DocKeyDecoder decoder(bound);
+  uint16_t hash_code;
+  auto result = decoder.DecodeHashCode(&hash_code);
+  if (!result.ok() || !*result) {
+    return std::nullopt;
+  }
+  // The entry type is kInvalid if the left input is empty.
+  const auto next_key_entry_type = dockv::DecodeKeyEntryType(decoder.left_input());
+  if (next_key_entry_type == dockv::KeyEntryType::kInvalid ||
+      next_key_entry_type == dockv::KeyEntryType::kLowest) {
+    return hash_code;
+  } else if (hash_code < UINT16_MAX &&
+             next_key_entry_type == dockv::KeyEntryType::kHighest) {
+    return hash_code + 1;
+  }
+  return std::nullopt;
+}
+
 void PgReadRange::SetHashCodeBound(uint16_t hash_code, bool is_inclusive, bool is_lower) {
   if (!is_inclusive) {
     if (is_lower) {
@@ -79,12 +97,33 @@ void PgReadRange::SetHashCodeBound(uint16_t hash_code, bool is_inclusive, bool i
       --hash_code;
     }
   }
+  // Edge cases when the respective bound is empty and hence does not change the range.
+  if ((is_lower && hash_code == 0) || (!is_lower && hash_code == UINT16_MAX)) {
+    return;
+  }
   SetBound(HashCodeToBound(hash_code, is_lower), false /* is_inclusive */, is_lower);
 }
 
 template <class T>
 void PgReadRange::SetDocKeyBound(const T& doc_key, bool is_inclusive, bool is_lower) {
-  SetBound(ToKeyBytes(doc_key), is_inclusive, is_lower);
+  auto key_bytes = ToKeyBytes(doc_key);
+  if (table_->schema().num_hash_key_columns() > 0) {
+    auto opt_hash_code = DecodeEncodedHashPartitionKeyBound(key_bytes);
+    if (opt_hash_code) {
+      // If the document key is found to be a hash partition key, original is_inclusive value
+      // does not matter, as valid document key can't be equal to a hash partition key.
+      // Conventionally, lower hash code bound is inclusive, and upper hash code bound is exclusive.
+      // Specially handle zero upper bound hash code. It may be a legit doc key making an empty
+      // range, but SetHashCodeBound would treat it as error.
+      if (*opt_hash_code == 0 && !is_lower) {
+        empty_ = true;
+      } else {
+        SetHashCodeBound(*opt_hash_code, /* is_inclusive = */ is_lower, is_lower);
+      }
+      return;
+    }
+  }
+  SetBound(std::move(key_bytes), is_inclusive, is_lower);
 }
 
 void PgReadRange::SetPartitionBounds(size_t partition) {
@@ -141,6 +180,11 @@ bool PgReadRange::ApplyBounds(LWPgsqlReadRequestPB& req) const {
 }
 
 Status PgReadRange::ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req) {
+  constexpr auto kErrorMessage =
+      "The request's $0 bound ($1) does not appear to be a correctly encoded hash code. "
+      "The auto flag 'yb_allow_dockey_bounds' is likely false. "
+      "This typically happens during an upgrade to the version that introduced this flag. "
+      "Please re-try after the upgrade is complete and the AutoFlag is set to true.";
   DCHECK(!yb_allow_dockey_bounds);
 
   // If the bounds are empty, there is nothing to do.
@@ -151,9 +195,12 @@ Status PgReadRange::ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req) {
   // Skip if the bound is a hash code bound already.
   if (req.has_lower_bound() &&
       !dockv::PartitionSchema::IsValidHashPartitionKeyBound(req.lower_bound().key())) {
-    RETURN_NOT_OK(CheckBoundDerivedFromHashCode(req.lower_bound().key(), /* is_lower = */ true));
-    const auto hash_code = VERIFY_RESULT(dockv::DocKey::DecodeHash(req.lower_bound().key()));
-    const auto& bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+    auto hash_code = DecodeEncodedHashPartitionKeyBound(req.lower_bound().key());
+    if (!hash_code) {
+      return STATUS_FORMAT(
+          RuntimeError, kErrorMessage, "lower", req.lower_bound().key().ToDebugString());
+    }
+    const auto bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(*hash_code);
     req.mutable_lower_bound()->dup_key(bound);
     req.mutable_lower_bound()->set_is_inclusive(true);
   }
@@ -161,41 +208,19 @@ Status PgReadRange::ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req) {
   // Skip if the bound is a hash code bound already.
   if (req.has_upper_bound() &&
       !dockv::PartitionSchema::IsValidHashPartitionKeyBound(req.upper_bound().key())) {
-    RETURN_NOT_OK(CheckBoundDerivedFromHashCode(req.upper_bound().key(), /* is_lower = */ false));
-    const auto hash_code = VERIFY_RESULT(dockv::DocKey::DecodeHash(req.upper_bound().key()));
-    const auto& bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+    auto hash_code = DecodeEncodedHashPartitionKeyBound(req.upper_bound().key());
+    if (!hash_code || *hash_code == 0) {
+      return STATUS_FORMAT(
+          RuntimeError, kErrorMessage, "upper", req.upper_bound().key().ToDebugString());
+    }
+    // Upper bound partition key is exclusive, but request's hash code upper bound is inclusive.
+    const auto bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(*hash_code - 1);
     req.mutable_upper_bound()->dup_key(bound);
     req.mutable_upper_bound()->set_is_inclusive(true);
   }
   return Status::OK();
 }
 
-// Make sure the bound matches the format produced by the HashCodeToBound function below,
-// and therefore represents a bare hash code bound.
-Status PgReadRange::CheckBoundDerivedFromHashCode(Slice bound, bool is_lower) {
-  dockv::DocKey dockey;
-  RETURN_NOT_OK(
-      dockey.DecodeFrom(bound, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
-  const auto& hashed_components = dockey.hashed_group();
-  const auto& range_components = dockey.range_group();
-
-  const auto expected_type =
-      is_lower ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest;
-
-  if (hashed_components.size() != 1 || hashed_components[0].type() != expected_type ||
-      range_components.size() != 1 || range_components[0].type() != expected_type) {
-    return STATUS(
-        RuntimeError,
-        "This feature is not supported because the AutoFlag 'yb_allow_dockey_bounds' is false. "
-        "This typically happends during an upgrade to the version that introduced this flag. "
-        "Please re-try after the upgrade is complete and the AutoFlag is set to true.");
-  }
-  return Status::OK();
-}
-
-// The format produced by this function must be recognized by the CheckBoundDerivedFromHashCode
-// function above. If modified, the CheckBoundDerivedFromHashCode function must be updated
-// accordingly.
 dockv::KeyBytes PgReadRange::HashCodeToBound(uint16_t hash_code, bool is_lower) const {
   static const dockv::KeyEntryValues kLowest{dockv::KeyEntryValue{dockv::KeyEntryType::kLowest}};
   static const dockv::KeyEntryValues kHighest{dockv::KeyEntryValue{dockv::KeyEntryType::kHighest}};
@@ -256,9 +281,11 @@ void PgReadRange::ApplyLowerBound(LWPgsqlReadRequestPB& req) const {
       return;
     }
 
-    if (diff == 0 && !lower_bound_is_inclusive_) {
-      // The bound may be already exclusive, but assignment won't hurt.
-      req.mutable_lower_bound()->set_is_inclusive(false);
+    if (diff == 0) {
+      // Keys are equal, update only inclusivity if necessary.
+      if (!lower_bound_is_inclusive_) {
+        req.mutable_lower_bound()->set_is_inclusive(false);
+      }
       return;
     }
   }
@@ -282,9 +309,11 @@ void PgReadRange::ApplyUpperBound(LWPgsqlReadRequestPB& req) const {
       return;
     }
 
-    if (diff == 0 && !upper_bound_is_inclusive_) {
-      // The bound may be already exclusive, but assignment won't hurt.
-      req.mutable_upper_bound()->set_is_inclusive(false);
+    if (diff == 0) {
+      // Keys are equal, update only inclusivity if necessary.
+      if (!upper_bound_is_inclusive_) {
+        req.mutable_upper_bound()->set_is_inclusive(false);
+      }
       return;
     }
   }

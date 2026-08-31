@@ -56,6 +56,7 @@ export const RuntimeConfigKey = {
   ENABLE_DEDICATED_NODES: 'yb.ui.enable_dedicated_nodes',
   GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled',
   ENABLE_PA_COLLECTOR: 'yb.ui.feature_flags.enable_pa_collector',
+  ENABLE_PA_ONLINE_MODE: 'yb.ui.feature_flags.enable_pa_online_mode',
   AWS_COOLDOWN_HOURS: 'yb.aws.disk_resize_cooldown_hours',
   BLOCK_K8_OPERATOR: 'yb.kubernetes.operator.block_api_operator_owned_resources',
   BATCH_ROLLING_UPGRADE_FEATURE_FLAG: 'yb.task.upgrade.batch_roll_enabled',
@@ -89,7 +90,7 @@ export const RuntimeConfigKey = {
   ENABLE_EBS_VOLUME: 'yb.universe.allow_cloud_volume_encryption',
   CONTINUOUS_PLATFORM_BACKUPS_UI: 'yb.ui.feature_flags.continuous_platform_backups',
   METRICS_EXPORT_FEATURE_FLAG: 'yb.universe.metrics_export_enabled',
-  ENABLE_V2_EDIT_UNIVERSE_UI: 'yb.ui.feature_flags.edit_universe_v2_ui_enabled',
+  ENABLE_V2_EDIT_UNIVERSE_UI: 'yb.ui.feature_flags.enable_new_universe_experience',
   ENABLE_NEW_PERF_ADVISOR_UI: 'yb.ui.feature_flags.enable_new_perf_advisor_ui',
   ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION:
     'yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option',
@@ -97,6 +98,9 @@ export const RuntimeConfigKey = {
   ENABLE_CANARY_UPGRADE: 'yb.upgrade.enable_canary_upgrade',
   SKIP_XCLUSTER_SNAPSHOT_SCHEDULES: 'yb.xcluster.db_scoped.skip_snapshot_schedules'
 } as const;
+
+/** Query param to open Edit Config after navigating to /admin/advanced/global-config. */
+export const EDIT_RUNTIME_CONFIG_QUERY_PARAM = 'editRuntimeConfigKey';
 
 /**
  * Toast notification duration in milliseconds.

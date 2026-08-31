@@ -104,6 +104,8 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   const RemoteTablet& tablet() const { return *tablet_invoker_.tablet(); }
   const InFlightOps& ops() const { return ops_; }
 
+  const ash::WaitStateInfoPtr& wait_state() const { return wait_state_; }
+
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy() const { return ts_proxy_; }
 
  protected:
@@ -227,7 +229,8 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
   // original parent for tracking purposes.
   WaitForAsyncWriteRpc(
       const BatcherPtr& batcher, TabletId tracking_tablet_id, PartitionKey partition_key,
-      const std::shared_ptr<const YBTable>& table, const OpId& op_id);
+      const std::shared_ptr<const YBTable>& table, const OpId& op_id,
+      const ash::WaitStateInfoPtr& issuing_wait_state);
 
   ~WaitForAsyncWriteRpc() = default;
 
@@ -247,7 +250,7 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
 
  private:
   void OnKeyLookup(const Result<internal::RemoteTabletPtr>& result);
-  void FinishOrRetry(Status&& status);
+  void FinishOrRetry(Status&& status, bool allow_retry = true);
 
   const TabletId tracking_tablet_id_;
   const PartitionKey partition_key_;
@@ -257,6 +260,9 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
   TabletInvoker tablet_invoker_;
   tserver::WaitForAsyncWriteRequestPB req_;
   tserver::WaitForAsyncWriteResponsePB resp_;
+
+  // Owns a copy of the issuing statement's ASH metadata, so we can adopt it when we send this RPC.
+  ash::WaitStateInfoPtr wait_state_;
 
   rpc::RpcCommandPtr retained_self_;
 };

@@ -1,17 +1,23 @@
-import { FC } from 'react';
+import { FC, MouseEvent } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { YBButton, YBModal, mui, YBProductTour } from '@yugabyte-ui-library/core';
+import { browserHistory } from 'react-router';
+import { useSelector } from 'react-redux';
+import { YBButton, YBModal, mui } from '@yugabyte-ui-library/core';
 
 import BoltIcon from '@app/redesign/assets/what-changed/bolt.svg';
 import MapPinIcon from '@app/redesign/assets/what-changed/map-pin.svg';
 import BulletIcon from '@app/redesign/assets/what-changed/bullet.svg';
 import NavArrowIcon from '@app/redesign/assets/what-changed/nav-arrow.svg';
 import SortIcon from '@app/redesign/assets/what-changed/sort.svg';
+import UserGroupIcon from '@app/redesign/assets/user-group.svg';
+import { EDIT_RUNTIME_CONFIG_QUERY_PARAM, RuntimeConfigKey } from '@app/redesign/helpers/constants';
+import { isCurrentUserSuperAdmin } from '../helper-methods';
 import {
   ArrowWrap,
   BoltWrap,
   BulletWrap,
   DEFAULT_RELEASE_NOTES_URL,
+  NEW_EXPERIENCE_DOCS_URL,
   FeatureList,
   FeatureRow,
   FooterActions,
@@ -21,15 +27,23 @@ import {
   MapWrap,
   ModalBody,
   RelocationTable,
+  RolloutBanner,
+  RuntimeConfigTag,
   SectionCard,
   SectionTitle,
   TableHeader,
-  TableRow
+  TableRow,
+  UserGroupWrap
 } from './HelperComponent';
 
 const { Box, Typography } = mui;
 
-export const WHAT_CHANGED_MODAL_DISMISS_KEY = 'yb_what_changed_modal_dismissed';
+/** Figma node 17666:10129 */
+const MODAL_WIDTH_PX = 800;
+const MODAL_HEIGHT_PX = 'auto';
+const SECTION_CARD_GAP_PX = 24;
+const FIND_OUT_MORE_BG = '#7879F1';
+const GLOBAL_RUNTIME_CONFIG_PATH = '/admin/advanced/global-config';
 
 interface WhatChangedModalProps {
   open: boolean;
@@ -98,14 +112,25 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
   const { t } = useTranslation('translation', {
     keyPrefix: 'onBoarding.whatChangedModal'
   });
+  const currentUserInfo = useSelector((state: any) => state.customer.currentUser.data);
+  const isSuperAdmin = isCurrentUserSuperAdmin(currentUserInfo?.role);
 
   const handleFindOutMore = () => {
     if (onFindOutMore) {
       onFindOutMore();
       return;
     }
-    window.open(releaseNotesUrl, '_blank', 'noopener,noreferrer');
+    window.open(NEW_EXPERIENCE_DOCS_URL, '_blank', 'noopener,noreferrer');
     onClose();
+  };
+
+  const handleOpenGlobalRuntimeConfig = (event: MouseEvent) => {
+    event.preventDefault();
+    onClose();
+    const editKey = encodeURIComponent(RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI);
+    browserHistory.push(
+      `${GLOBAL_RUNTIME_CONFIG_PATH}?${EDIT_RUNTIME_CONFIG_QUERY_PARAM}=${editKey}`
+    );
   };
 
   return (
@@ -115,8 +140,8 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
       title={t('title')}
       titleSeparator
       size="xl"
-      overrideWidth={800}
-      overrideHeight="auto"
+      overrideWidth={MODAL_WIDTH_PX}
+      overrideHeight={MODAL_HEIGHT_PX}
       hideCloseBtn={false}
       // Above OnBoardingBanner (2100) and HighlightedStatsPanel (2040).
       sx={{ zIndex: 2300 }}
@@ -141,10 +166,18 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
             {t('close')}
           </YBButton>
           <YBButton
-            variant="gradient"
+            variant="primary"
             size="large"
             onClick={handleFindOutMore}
             dataTestId="what-changed-modal-find-out-more"
+            sx={{
+              backgroundColor: FIND_OUT_MORE_BG,
+              borderColor: FIND_OUT_MORE_BG,
+              '&:hover, &:focus': {
+                backgroundColor: FIND_OUT_MORE_BG,
+                borderColor: FIND_OUT_MORE_BG
+              }
+            }}
           >
             {t('findOutMore')}
           </YBButton>
@@ -152,7 +185,7 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
       }
     >
       <ModalBody>
-        <SectionCard>
+        <SectionCard sx={{ gap: `${SECTION_CARD_GAP_PX}px` }}>
           <Box sx={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <BoltWrap>
               <BoltIcon />
@@ -169,20 +202,22 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
                   <Typography
                     sx={{
+                      fontFamily: 'Inter',
                       fontSize: '13px',
                       fontWeight: 600,
                       lineHeight: '16px',
-                      color: 'grey.900'
+                      color: '#0B1117'
                     }}
                   >
                     {t(item.titleKey)}
                   </Typography>
                   <Typography
                     sx={{
+                      fontFamily: 'Inter',
                       fontSize: '13px',
                       fontWeight: 400,
                       lineHeight: '16px',
-                      color: 'grey.700'
+                      color: '#4E5F6D'
                     }}
                   >
                     <Trans
@@ -207,10 +242,11 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
           <Box sx={{ pl: '40px' }}>
             <Typography
               sx={{
+                fontFamily: 'Inter',
                 fontSize: '13px',
                 fontWeight: 400,
                 lineHeight: '16px',
-                color: 'grey.700'
+                color: '#4E5F6D'
               }}
             >
               <Trans
@@ -230,24 +266,12 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
           </Box>
         </SectionCard>
 
-        <SectionCard>
-          <Box sx={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+        <SectionCard sx={{ gap: `${SECTION_CARD_GAP_PX}px` }}>
+          <Box sx={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <MapWrap>
               <MapPinIcon />
             </MapWrap>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <SectionTitle>{t('whereDidFeaturesMove')}</SectionTitle>
-              <Typography
-                sx={{
-                  fontSize: '13px',
-                  fontWeight: 400,
-                  lineHeight: '16px',
-                  color: 'grey.700'
-                }}
-              >
-                {t('whereDidFeaturesMoveDescription')}
-              </Typography>
-            </Box>
+            <SectionTitle>{t('sameFeaturesNewHome')}</SectionTitle>
           </Box>
 
           <RelocationTable>
@@ -263,19 +287,29 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
               </HeaderLabel>
             </TableHeader>
             {RELOCATION_ROWS.map((row) => (
-              <TableRow key={`${row.thenKey}-${row.nowPathKey}`}>
+              <TableRow key={`${row.thenKey}-${row.nowPathKey}-${row.thenDetailKey ?? ''}`}>
                 <Typography
                   sx={{
+                    fontFamily: 'Inter',
                     fontSize: '13px',
                     fontWeight: 400,
                     lineHeight: '32px',
-                    color: 'grey.900',
+                    color: '#0B1117',
                     whiteSpace: 'nowrap'
                   }}
                 >
                   {t(row.thenKey)}
                   {row.thenDetailKey ? (
-                    <Box component="span" sx={{ color: 'grey.700', fontSize: '11.5px', ml: '8px' }}>
+                    <Box
+                      component="span"
+                      sx={{
+                        color: '#4E5F6D',
+                        fontSize: '11.5px',
+                        fontWeight: 400,
+                        lineHeight: '32px',
+                        ml: '8px'
+                      }}
+                    >
                       {t(row.thenDetailKey)}
                     </Box>
                   ) : null}
@@ -285,22 +319,72 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
                 </ArrowWrap>
                 <Typography
                   sx={{
+                    fontFamily: 'Inter',
                     fontSize: '13px',
                     fontWeight: 400,
                     lineHeight: '32px',
-                    color: 'grey.900',
+                    color: '#0B1117',
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  <Box component="span" sx={{ color: '#6D7C88' }}>
+                  <Box component="span" sx={{ color: '#6D7C88', fontWeight: 400 }}>
                     {t('settings')}
                   </Box>
-                  {`  /  ${t(row.nowPathKey)}`}
+                  <Box component="span" sx={{ color: '#0B1117', fontWeight: 600 }}>
+                    {`  /  ${t(row.nowPathKey)}`}
+                  </Box>
                 </Typography>
               </TableRow>
             ))}
           </RelocationTable>
         </SectionCard>
+
+        {isSuperAdmin && (
+          <RolloutBanner>
+            <Box sx={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <UserGroupWrap>
+                <UserGroupIcon />
+              </UserGroupWrap>
+              <Typography
+                sx={{
+                  fontFamily: 'Inter',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  lineHeight: '16px',
+                  color: '#4E5F6D'
+                }}
+              >
+                {t('rolloutTitle')}
+              </Typography>
+            </Box>
+            <Typography
+              sx={{
+                fontFamily: 'Inter',
+                fontSize: '13px',
+                fontWeight: 400,
+                lineHeight: '18px',
+                color: '#4E5F6D'
+              }}
+            >
+              <Trans
+                t={t}
+                i18nKey="rolloutBody"
+                values={{ runtimeConfig: RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI }}
+                components={{
+                  configTag: <RuntimeConfigTag component="span" />
+                  // globalConfigLink: (
+                  //   <LearnMoreLink
+                  //     href={`${GLOBAL_RUNTIME_CONFIG_PATH}?${EDIT_RUNTIME_CONFIG_QUERY_PARAM}=${encodeURIComponent(
+                  //       RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI
+                  //     )}`}
+                  //     onClick={handleOpenGlobalRuntimeConfig}
+                  //   />
+                  // )
+                }}
+              />
+            </Typography>
+          </RolloutBanner>
+        )}
       </ModalBody>
     </YBModal>
   );

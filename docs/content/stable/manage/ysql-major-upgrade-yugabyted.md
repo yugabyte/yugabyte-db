@@ -240,6 +240,5 @@ yugabyted does not currently support rollback.
 
 ## Limitations
 
-- Expression pushdown is not available. {{<issue 24730>}}
-- Upgrading with extensions is not yet supported. {{<issue 24733>}}
+- Expression pushdown is partially available. {{<issue 24730>}}
 - Any backups that are taken in the monitoring phase can only be restored on a PG15 compatible universe (that is, backups cannot be restored if rollback is performed).

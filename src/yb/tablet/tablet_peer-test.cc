@@ -232,6 +232,7 @@ class TabletPeerTest : public YBTabletTest {
                                            table_metric_entity_,
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
+                                           raft_pool_.get() /* snapshot_cleanup_pool */,
                                            raft_notifications_pool_.get(),
                                            tablet_prepare_pool_.get(),
                                            &retryable_requests,

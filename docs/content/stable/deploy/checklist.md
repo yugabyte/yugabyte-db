@@ -8,6 +8,8 @@ menu:
     identifier: checklist
     parent: deploy
     weight: 10
+rightNav:
+  hideH4: true
 type: docs
 ---
 

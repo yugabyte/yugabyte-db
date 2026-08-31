@@ -37,7 +37,7 @@
  * - the query vector
  * - the prefetch size (how many nearest neighbours we expect to return)
  */
-static void bindAnnSearchKeys(YbScanDesc yb_scan, IndexScanDesc scan,
+static void bindAnnSearchKeys(YbOpaque yb_scan, IndexScanDesc scan,
 							  Relation rel, int nkeys, int norderbys,
 							  YbVectorScanOpaque so)
 {
@@ -96,7 +96,7 @@ ybvectorrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
 	if (!so->first)
 		ybc_free_ybscan(so->yb_scan_desc);
 
-	YbScanDesc	ybScan = YbBeginScan(scan->heapRelation,
+	YbOpaque	ybScan = YbBeginScan(scan->heapRelation,
 									 scan->indexRelation,
 									 scan->xs_want_itup,
 									 nscankeys,
@@ -135,7 +135,7 @@ ybvectorgettuple(IndexScanDesc scan, ScanDirection dir)
 {
 	YbVectorScanOpaque so = (YbVectorScanOpaque) scan->opaque;
 	so->first = false;
-	YbScanDesc ybscan = so->yb_scan_desc;
+	YbOpaque ybscan = so->yb_scan_desc;
 	ybscan->exec_params = scan->yb_exec_params;
 	Assert(ybscan->exec_params != NULL);
 	ybscan->exec_params->work_mem = work_mem;

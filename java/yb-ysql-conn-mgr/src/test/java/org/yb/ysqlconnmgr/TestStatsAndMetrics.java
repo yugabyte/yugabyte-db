@@ -103,7 +103,7 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     pool = getPool(db_name, user_name);
     int avgWaitTimeNs1 = 0;
     if (pool != null)
-      pool.get("avg_wait_time_ns").getAsInt();
+      avgWaitTimeNs1 = pool.get("avg_wait_time_ns").getAsInt();
 
     Thread.sleep(stats_update_interval_ms);
     pool = getPool(db_name, user_name);

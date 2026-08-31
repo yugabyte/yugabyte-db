@@ -703,7 +703,10 @@ void MiniCluster::Shutdown() {
   }
   yb_controller_servers_.clear();
 
-  messenger_->Shutdown();
+  // The messenger is created last in Start, so it is missing when startup failed before that.
+  if (messenger_) {
+    messenger_->Shutdown();
+  }
 
   running_ = false;
 }

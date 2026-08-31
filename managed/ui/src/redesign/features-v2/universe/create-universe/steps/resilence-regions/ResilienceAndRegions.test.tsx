@@ -16,6 +16,7 @@ import { createRef } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { ResilienceAndRegions } from './ResilienceAndRegions';
+import { ResilienceAndRegionsSchema } from './ValidationSchema';
 import {
   CreateUniverseContext,
   initialCreateUniverseFormState,
@@ -52,8 +53,9 @@ vi.mock(
     useGuidedExpertModePopover: () => ({
       open: false,
       anchorRef: { current: null },
-      handleGuidedExpertModeClick: () => undefined,
-      handleClose: () => undefined
+      handleOpen: () => undefined,
+      handleClose: () => undefined,
+      handleClickAway: () => undefined
     })
   })
 );
@@ -88,13 +90,8 @@ function makeRegion(code: string, zoneCount = 0): RegionLike {
 }
 
 /** Build N regions; optionally each with zonesPerRegion zones (for AZ_LEVEL). */
-function makeRegions(
-  count: number,
-  zonesPerRegion: number = 0
-): RegionLike[] {
-  return Array.from({ length: count }, (_, i) =>
-    makeRegion(`r${i}`, zonesPerRegion)
-  );
+function makeRegions(count: number, zonesPerRegion: number = 0): RegionLike[] {
+  return Array.from({ length: count }, (_, i) => makeRegion(`r${i}`, zonesPerRegion));
 }
 
 /** Regions with total AZ count = totalZones (one region with that many zones). */
@@ -130,10 +127,8 @@ function getContextValue(overrides?: {
     {
       ...methods,
       moveToNextPage: () => mockMoveToNextPage(),
-      saveResilienceAndRegionsSettings: (data: any) =>
-        mockSaveResilienceAndRegionsSettings(data),
-      saveNodesAvailabilitySettings: (data: any) =>
-        mockSaveNodesAvailabilitySettings(data),
+      saveResilienceAndRegionsSettings: (data: any) => mockSaveResilienceAndRegionsSettings(data),
+      saveNodesAvailabilitySettings: (data: any) => mockSaveNodesAvailabilitySettings(data),
       moveToPreviousPage: () => mockMoveToPreviousPage(),
       setResilienceType: (t: ResilienceType) => mockSetResilienceType(t)
     }
@@ -345,15 +340,20 @@ describe('ResilienceAndRegions', () => {
   });
 
   describe('Nodes (NODE_LEVEL)', () => {
-    it('shows node error for NODE_LEVEL with 2 regions', async () => {
-      renderResilienceAndTriggerNext(
-        getContextValue({
-          faultToleranceType: FaultToleranceType.NODE_LEVEL,
-          regions: makeRegions(2)
+    // UI auto-trims NODE_LEVEL to one region (ResilienceAndRegions effect), so multi-region
+    // nodeErr is covered at the schema layer rather than via mount + Next.
+    it('schema rejects NODE_LEVEL with more than one region (errMsg.nodeErr)', async () => {
+      const schema = ResilienceAndRegionsSchema(((key: string) => key) as any);
+      await expect(
+        schema.validate({
+          ...initialCreateUniverseFormState.resilienceAndRegionsSettings!,
+          [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
+          [RESILIENCE_FACTOR]: 1,
+          [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED,
+          [REGIONS_FIELD]: makeRegions(2)
         })
-      );
-      await waitFor(() => {
-        expect(screen.getByText('errMsg.nodeErr')).toBeInTheDocument();
+      ).rejects.toMatchObject({
+        inner: expect.arrayContaining([expect.objectContaining({ message: 'errMsg.nodeErr' })])
       });
     });
 
@@ -668,7 +668,10 @@ describe('ResilienceAndRegions', () => {
     });
 
     it.each([
-      ['rf', (ref: { setValue: (n: string, v: unknown) => void }) => ref.setValue(RESILIENCE_FACTOR, 2)],
+      [
+        'rf',
+        (ref: { setValue: (n: string, v: unknown) => void }) => ref.setValue(RESILIENCE_FACTOR, 2)
+      ],
       [
         'regions',
         (ref: { setValue: (n: string, v: unknown) => void }) =>

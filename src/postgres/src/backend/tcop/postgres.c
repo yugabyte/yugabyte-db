@@ -88,6 +88,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "commands/portalcmds.h"
 #include "commands/variable.h"
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/spi.h"
 #include "libpq/auth.h"
 #include "libpq/yb_pqcomm_extensions.h"
@@ -456,8 +457,7 @@ SocketBackend(StringInfo inBuf)
 			ignore_till_sync = false;
 			break;
 
-		case 'n':				/* YB: no-op but return ParseComplete */
-		case 'p':				/* YB: parse without ParseComplete */
+		case 'p':				/* YB: YbParse */
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -1718,6 +1718,16 @@ exec_simple_query(const char *query_string)
 	debug_query_string = NULL;
 }
 
+static void
+yb_send_yb_parse_complete(const char *yb_echo, int yb_echo_len)
+{
+	StringInfoData buf;
+
+	pq_beginmessage(&buf, '6');
+	pq_sendbytes(&buf, yb_echo, yb_echo_len);
+	pq_endmessage(&buf);
+}
+
 /*
  * exec_parse_message
  *
@@ -1729,7 +1739,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 				   Oid *paramTypes, /* parameter types */
 				   int numParams,	/* number of parameters */
 				   CommandDest yb_output_dest, /* where to send output */
-				   char yb_firstchar) /* 'p' or 'n' or 'P' */
+				   const char *yb_echo,
+				   int yb_echo_len)
 {
 	MemoryContext unnamed_stmt_context = NULL;
 	MemoryContext oldcontext;
@@ -1952,21 +1963,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	if (yb_output_dest == DestRemote)
 	{
 		if (YbIsClientYsqlConnMgr())
-		{
-			if (yb_firstchar == 'n')
-				pq_puttextmessage('6', stmt_name);
-			else if (yb_firstchar == 'p')
-				pq_putemptymessage('7');
-			else if (yb_firstchar == 'P')
-				pq_putemptymessage('1');
-			else
-			{
-				ereport(ERROR,
-					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					 errmsg("unexpected message type %c for Parse sent by Connection Manager",
-							yb_firstchar)));
-			}
-		}
+			yb_send_yb_parse_complete(yb_echo, yb_echo_len);
 		else
 			pq_putemptymessage('1');
 	}
@@ -7116,9 +7113,7 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'n':			/* YB: Force Parse, return YBForceParseComplete */
-				yb_switch_fallthrough();
-			case 'p':			/* YB: parse without ParseComplete */
+			case 'p':			/* YB: YbParse */
 				if (!YbIsClientYsqlConnMgr())
 					ereport(FATAL,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -7132,27 +7127,45 @@ PostgresMain(const char *dbname, const char *username)
 					int			numParams;
 					Oid		   *paramTypes = NULL;
 
+					/* YB: Extra info passed in YbParse packet */
+					int			yb_parse_type = -1;
+					const char *yb_echo = NULL;
+					int			yb_echo_len = 0;
+
 					forbidden_in_wal_sender(firstchar);
 
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
 
-					/* YB: The stmt_name is read here for all of 'n'/'p'/'P'. */
+					/* YB: Get info from YbParse packet */
+					if (firstchar == 'p')
+					{
+						yb_parse_type = pq_getmsgbyte(&input_message);
+						yb_echo = input_message.data;
+						yb_echo_len = input_message.len;
+					}
+					else if (YbIsClientYsqlConnMgr())
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+								 errmsg("invalid frontend message type %d",
+										firstchar)));
+
+					/* YB: The stmt_name is read here for both 'p' and 'P'. */
 					stmt_name = pq_getmsgstring(&input_message);
 
-					if (firstchar == 'n')
+					if (yb_parse_type == YB_PARSE_FORCE)
 					{
 						/*
 						 * YB: If the prepared statement already exists on the backend,
-						 * parsing is a no-op: return YBForceParseComplete and skip re-parsing.
+						 * parsing is a no-op: return YbParseComplete and skip re-parsing.
 						 * Otherwise fall through to (re-)create it and return
-						 * YBForceParseComplete.
+						 * YbParseComplete.
 						 */
 						if (FetchPreparedStatement(stmt_name, false) != NULL)
 						{
 							if (whereToSendOutput == DestRemote)
 							{
-								pq_puttextmessage('6', stmt_name);
+								yb_send_yb_parse_complete(yb_echo, yb_echo_len);
 								pq_flush();
 							}
 							break;
@@ -7169,6 +7182,12 @@ PostgresMain(const char *dbname, const char *username)
 						for (int i = 0; i < numParams; i++)
 							paramTypes[i] = pq_getmsgint(&input_message, 4);
 					}
+					/*
+					 * YB: Discard orig_name sent by ConnMgr in YbParse packet.
+					 * This is echo'd back to ConnMgr through yb_echo
+					 */
+					if (firstchar == 'p')
+						(void) pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
 					MemoryContext yb_oldcontext = CurrentMemoryContext;
@@ -7178,8 +7197,7 @@ PostgresMain(const char *dbname, const char *username)
 						exec_parse_message(query_string, stmt_name,
 										   paramTypes, numParams,
 										   whereToSendOutput,
-										   firstchar); /* YB: from
-																 * yb_switch_fallthrough() */
+										   yb_echo, yb_echo_len);
 					}
 					PG_CATCH();
 					{
@@ -7333,7 +7351,8 @@ PostgresMain(const char *dbname, const char *username)
 												   NULL /* param_types */ ,
 												   0 /* num_params */ ,
 												   DestNone,
-												   'P');
+												   NULL /* yb_echo */ ,
+												   0 /* yb_echo_len */ );
 
 								/* 2. Redo the Bind step */
 								Portal		portal;
@@ -7494,19 +7513,10 @@ PostgresMain(const char *dbname, const char *username)
 											 errmsg("ForceClose of unnamed prep statement is not supported")));
 
 								/*
-								 * Since this is force close, we disable
-								 * selective deallocation
-								 */
-								bool		yb_conn_mgr_selective_deallocate_saved;
-
-								yb_conn_mgr_selective_deallocate_saved = yb_conn_mgr_selective_deallocate;
-								yb_conn_mgr_selective_deallocate = false;
-								/*
 								 * YB: Force Close does not access catalog cache and hence starting
 								 * a transaction is not required here.
 								 */
-								DropPreparedStatement(close_target, false, false);
-								yb_conn_mgr_selective_deallocate = yb_conn_mgr_selective_deallocate_saved;
+								YbForceDropPreparedStatement(FetchPreparedStatement(close_target, false));
 
 								yb_skip_close_complete = true;
 								break;
@@ -8303,10 +8313,38 @@ YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag)
 	return redactedStr;
 }
 
-void
-YBCheckForInterrupts()
+/*
+ * YBHasProcessableAbortInterrupt:
+ *
+ * Checks for pending interrupts which might abort execution and there are no blockers
+ * to process them.
+ * See ProcessInterrupts(), INTERRUPTS_CAN_BE_PROCESSED() for details.
+ */
+bool
+YBHasProcessableAbortInterrupt()
 {
-	CHECK_FOR_INTERRUPTS();
+	if (!INTERRUPTS_PENDING_CONDITION())
+		return false;
+
+	if (InterruptHoldoffCount != 0 || CritSectionCount != 0)
+		return false;
+
+	if (ProcDiePending)
+		return true;
+
+	if (ClientConnectionLost)
+		return true;
+
+	if (QueryCancelPending && QueryCancelHoldoffCount == 0)
+		return true;
+
+	if (IdleInTransactionSessionTimeoutPending && IdleInTransactionSessionTimeout > 0)
+		return true;
+
+	if (IdleSessionTimeoutPending && IdleSessionTimeout > 0)
+		return true;
+
+	return false;
 }
 
 long

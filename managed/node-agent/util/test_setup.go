@@ -58,11 +58,16 @@ func setUp() {
 	config.Update(NodeAgentGrpcLoggerKey, "grpc_test.log")
 	config.Update(PlatformCertsKey, "test")
 	private, public := GetPublicAndPrivateKey()
+	signerPrivate, signerPublic := GetSignerPublicAndPrivateKey()
 	SaveCerts(
 		context.TODO(),
 		config,
-		string(public),
-		string(private),
+		&model.NodeAgentConfig{
+			ServerCert:       string(public),
+			ServerKey:        string(private),
+			SignerPublicKey:  string(signerPublic),
+			SignerPrivateKey: string(signerPrivate),
+		},
 		config.String(PlatformCertsKey),
 	)
 }
@@ -244,7 +249,7 @@ func GetPublicAndPrivateKey() ([]byte, []byte) {
 	// Encode private key to PEM.
 	keyPEM := pem.EncodeToMemory(
 		&pem.Block{
-			Type:  "RSA PRIVATE KEY",
+			Type:  "PRIVATE KEY",
 			Bytes: privateKey,
 		},
 	)
@@ -256,4 +261,29 @@ func GetPublicAndPrivateKey() ([]byte, []byte) {
 		},
 	)
 	return keyPEM, pubPEM
+}
+
+// GetSignerPublicAndPrivateKey returns PEM-encoded RSA signer key pair (private, public).
+func GetSignerPublicAndPrivateKey() ([]byte, []byte) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		panic(err)
+	}
+	privateKeyPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: x509.MarshalPKCS1PrivateKey(key),
+		},
+	)
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		panic(err)
+	}
+	publicKeyPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: publicKeyBytes,
+		},
+	)
+	return privateKeyPEM, publicKeyPEM
 }

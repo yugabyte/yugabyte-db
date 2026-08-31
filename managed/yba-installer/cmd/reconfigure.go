@@ -4,23 +4,31 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 var reconfigureCmd = &cobra.Command{
-	Use: "reconfigure",
+	Use: "reconfigure [serviceName]",
 	Short: "The reconfigure command is used to apply changes made to yba-ctl.yml to running " +
 		"YugabyteDB Anywhere services.",
-	Args: cobra.NoArgs,
+	Args: cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
+	// postgres is excluded: yb-platform and yb-perf-advisor depend on it.
+	ValidArgs: []string{YbPlatformServiceName, PrometheusServiceName, PerfAdvisorServiceName,
+		ByocApiProxyServiceName},
 	Long: `
-    The reconfigure command is used to apply changes made to yba-ctl.yml to running
-	YugabyteDB Anywhere services. The process involves restarting all associated services.`,
+    The reconfigure command applies changes made to yba-ctl.yml to the running YugabyteDB
+    Anywhere services. Without arguments it restarts every service. With a service name it
+    restarts only that service and leaves the others running. Changes to the server certificate
+    settings need a full reconfigure.`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if !common.RunFromInstalled() {
 			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
@@ -38,57 +46,107 @@ var reconfigureCmd = &cobra.Command{
 			log.Fatal("invalid reconfigure: " + err.Error())
 		}
 
-		handleEnabledFlagChange(PerfAdvisorServiceName, state.Services.PerfAdvisor,
-			viper.GetBool("perfAdvisor.enabled"))
-		handleEnabledFlagChange("node-exporter", state.Services.NodeExporter,
-			viper.GetBool("nodeExporter.enabled"))
-		handleEnabledFlagChange(ByocApiProxyServiceName, state.Services.ByocApiProxy,
-			viper.GetBool("byocApiProxy.enabled"))
-
-		if err := handleCertReconfig(state); err != nil {
-			log.Fatal("failed to handle cert reconfig: " + err.Error())
+		// Validate the edited config before anything is applied to the running install.
+		results := preflight.Run(preflight.ReconfigureChecks, skippedPreflightChecks...)
+		if preflight.ShouldFail(results) {
+			preflight.PrintPreflightResults(results)
+			log.Fatal("Preflight checks failed. To skip (not recommended), " +
+				"rerun the command with --skip_preflight <check name1>,<check name2>")
 		}
 
-		// Always regenerate the server.pem file
-		if err := createPemFormatKeyAndCert(); err != nil {
-			log.Fatal("failed to create server.pem: " + err.Error())
+		var services []components.Service
+		if len(args) == 1 {
+			services = prepareServiceReconfigure(args[0], state)
+		} else {
+			services = prepareFullReconfigure(state)
+		}
+		// An optional service that was just disabled is uninstalled and leaves nothing to restart.
+		if len(services) > 0 {
+			reconfigureServices(services)
+			getAndPrintStatus(state, services)
 		}
 
-		for service := range serviceManager.Services() {
-			log.Info("Stopping service " + service.Name())
-			service.Stop()
-		}
-
-		// Change into the dir we are in so that we can specify paths relative to ourselves
-		// TODO(minor): probably not a good idea in the long run
-		os.Chdir(common.GetBinaryDir())
-
-		for service := range serviceManager.Services() {
-			if err := service.Reconfigure(); err != nil {
-				log.Fatal("Failed to reconfigure service " + service.Name() + ": " + err.Error())
-			}
-			// Set permissions to be safe
-			if err := common.SetAllPermissions(); err != nil {
-				log.Fatal("error updating permissions for data and software directories: " + err.Error())
-			}
-			log.Info("Starting service " + service.Name())
-			service.Start()
-		}
-
-		if err := common.WaitForYBAReady(ybaCtl.Version()); err != nil {
-			log.Fatal(err.Error())
-		}
-
-		getAndPrintStatus(state)
-
-		// Update state to reflect current service configuration
-		state.Services.PerfAdvisor = viper.GetBool("perfAdvisor.enabled")
-		state.Services.NodeExporter = viper.GetBool("nodeExporter.enabled")
-		state.Services.ByocApiProxy = viper.GetBool("byocApiProxy.enabled")
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("failed to write state: " + err.Error())
 		}
 	},
+}
+
+// prepareFullReconfigure installs or uninstalls the optional services whose enabled flag changed,
+// applies server certificate changes, and returns every service in the install for restart.
+func prepareFullReconfigure(state *ybactlstate.State) []components.Service {
+	for _, opt := range optionalServices {
+		handleEnabledFlagChange(opt.name, opt.installed(state), opt.enabled())
+		opt.setInstalled(state, opt.enabled())
+	}
+	if err := handleCertReconfig(state); err != nil {
+		log.Fatal("failed to handle cert reconfig: " + err.Error())
+	}
+	return slices.Collect(serviceManager.Services())
+}
+
+// prepareServiceReconfigure is prepareFullReconfigure for a single service. It refuses server
+// certificate changes: yb-platform, prometheus, yb-perf-advisor and node-exporter all serve the
+// certificate, so a change has to reach every one of them.
+func prepareServiceReconfigure(name string, state *ybactlstate.State) []components.Service {
+	if certConfigChanged(state) {
+		log.Fatal("server certificate settings in " + common.InputFile() + " changed; run " +
+			"'yba-ctl reconfigure' without a service name to apply them to every service")
+	}
+	if opt := optionalServiceByName(name); opt != nil {
+		wasInstalled, enabled := opt.installed(state), opt.enabled()
+		handleEnabledFlagChange(name, wasInstalled, enabled)
+		opt.setInstalled(state, enabled)
+		if wasInstalled && !enabled {
+			return nil
+		}
+	}
+	if !serviceManager.Enabled(name) {
+		log.Fatal(name + " is not enabled in " + common.InputFile())
+	}
+	return []components.Service{serviceManager.ServiceByName(name)}
+}
+
+// reconfigureServices stops the given services, regenerates their configuration from yba-ctl.yml
+// and starts them again. Every service is stopped before any is started.
+func reconfigureServices(services []components.Service) {
+	// Always regenerate the server.pem file
+	if err := createPemFormatKeyAndCert(); err != nil {
+		log.Fatal("failed to create server.pem: " + err.Error())
+	}
+
+	for _, service := range services {
+		log.Info("Stopping service " + service.Name())
+		if err := service.Stop(); err != nil {
+			log.Fatal("Failed to stop service " + service.Name() + ": " + err.Error())
+		}
+	}
+
+	// Change into the dir we are in so that we can specify paths relative to ourselves
+	// TODO(minor): probably not a good idea in the long run
+	os.Chdir(common.GetBinaryDir())
+
+	for _, service := range services {
+		if err := service.Reconfigure(); err != nil {
+			log.Fatal("Failed to reconfigure service " + service.Name() + ": " + err.Error())
+		}
+		// Set permissions to be safe
+		if err := common.SetAllPermissions(); err != nil {
+			log.Fatal("error updating permissions for data and software directories: " + err.Error())
+		}
+		log.Info("Starting service " + service.Name())
+		if err := service.Start(); err != nil {
+			log.Fatal("Failed to start service " + service.Name() + ": " + err.Error())
+		}
+	}
+
+	for _, service := range services {
+		if service.Name() == YbPlatformServiceName {
+			if err := common.WaitForYBAReady(ybaCtl.Version()); err != nil {
+				log.Fatal(err.Error())
+			}
+		}
+	}
 }
 
 func handleEnabledFlagChange(serviceName string, wasEnabled, nowEnabled bool) {
@@ -119,7 +177,7 @@ func handleEnabledFlagChange(serviceName string, wasEnabled, nowEnabled bool) {
 func handleCertReconfig(state *ybactlstate.State) error {
 	hasStateChange := false
 	if isMoveToSelfSignedCert(state) {
-		log.Info("Generating new self-signed server certificates")
+		log.Info("Moving to self signed certs, generating new self-signed server certificates")
 		hasStateChange = true
 		state.Config.SelfSignedCert = true
 		if err := common.GenerateSelfSignedCerts(); err != nil {
@@ -127,11 +185,12 @@ func handleCertReconfig(state *ybactlstate.State) error {
 		}
 	}
 	if isMoveToCustomCert(state) {
+		log.Info("Moving to custom certs")
 		hasStateChange = true
 		state.Config.SelfSignedCert = false
 	}
 	if isSelfSignedHostnameChange(state) {
-		log.Info("Regenerating self signed certs for hostname change")
+		log.Info("Hostname has changed, regenerating self signed certs")
 		hasStateChange = true
 		state.Config.Hostname = viper.GetString("host")
 		if err := common.RegenerateSelfSignedCerts(); err != nil {
@@ -148,35 +207,30 @@ func handleCertReconfig(state *ybactlstate.State) error {
 	return nil
 }
 
+// certConfigChanged reports whether yba-ctl.yml moved between self-signed and custom server
+// certificates, or changed the hostname a self-signed certificate is issued for.
+func certConfigChanged(state *ybactlstate.State) bool {
+	return isMoveToSelfSignedCert(state) || isMoveToCustomCert(state) ||
+		isSelfSignedHostnameChange(state)
+}
+
 func isMoveToSelfSignedCert(state *ybactlstate.State) bool {
 	// Check if the server_cert_path and server_key_path are empty and state shows self signed is true
-	if len(viper.GetString("server_cert_path")) == 0 &&
+	return len(viper.GetString("server_cert_path")) == 0 &&
 		len(viper.GetString("server_key_path")) == 0 &&
-		!state.Config.SelfSignedCert {
-		log.Info("Moving to self signed certs")
-		return true
-	}
-	return false
+		!state.Config.SelfSignedCert
 }
 
 func isSelfSignedHostnameChange(state *ybactlstate.State) bool {
 	// Check if the hostname has changed and state shows self signed is true
-	if state.Config.Hostname != viper.GetString("host") && state.Config.SelfSignedCert {
-		log.Info("Hostname has changed")
-		return true
-	}
-	return false
+	return state.Config.Hostname != viper.GetString("host") && state.Config.SelfSignedCert
 }
 
 func isMoveToCustomCert(state *ybactlstate.State) bool {
 	// Check if the server_cert_path and server_key_path are not empty and state shows self signed is false
-	if len(viper.GetString("server_cert_path")) != 0 &&
+	return len(viper.GetString("server_cert_path")) != 0 &&
 		len(viper.GetString("server_key_path")) != 0 &&
-		state.Config.SelfSignedCert {
-		log.Info("Moving to custom certs")
-		return true
-	}
-	return false
+		state.Config.SelfSignedCert
 }
 
 var configGenCmd = &cobra.Command{
@@ -198,4 +252,6 @@ var configGenCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(reconfigureCmd, configGenCmd)
+	reconfigureCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
+		[]string{}, "Preflight checks to skip by name")
 }

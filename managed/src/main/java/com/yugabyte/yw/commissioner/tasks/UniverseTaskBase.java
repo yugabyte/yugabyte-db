@@ -90,6 +90,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -124,6 +125,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -267,6 +269,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ResizeNode,
           TaskType.KubernetesOverridesUpgrade,
           TaskType.GFlagsKubernetesUpgrade,
+          TaskType.UpdateProxyConfig,
           TaskType.SoftwareKubernetesUpgrade,
           TaskType.SoftwareKubernetesUpgradeYB,
           TaskType.EditKubernetesUniverse,
@@ -279,6 +282,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.FinalizeKubernetesUpgrade,
           TaskType.RollbackUpgrade,
           TaskType.RollbackKubernetesUpgrade,
+          TaskType.RollbackEditUniverse,
           TaskType.RestartUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
@@ -323,6 +327,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ReinstallNodeAgent,
           TaskType.ProvisionUniverseNodes,
           TaskType.CreateSupportBundle,
+          TaskType.CreateSupportBundleV2,
           TaskType.CreateBackupSchedule,
           TaskType.CreateBackupScheduleKubernetes,
           TaskType.EditBackupSchedule,
@@ -340,6 +345,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.CreateBackupScheduleKubernetes,
           TaskType.CreateKubernetesUniverse,
           TaskType.CreateSupportBundle,
+          TaskType.CreateSupportBundleV2,
           TaskType.CreateUniverse,
           TaskType.BackupUniverse,
           TaskType.DeleteBackupSchedule,
@@ -367,6 +373,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.VMImageUpgrade,
           TaskType.GFlagsKubernetesUpgrade,
           TaskType.KubernetesOverridesUpgrade,
+          TaskType.UpdateProxyConfig,
           TaskType.EditKubernetesUniverse /* Partially allowing this for resource spec changes */,
           TaskType.PauseUniverse /* TODO Validate this, added for YBM only */,
           TaskType.ResumeUniverse /* TODO Validate this, added for YBM only */,
@@ -629,6 +636,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       builder.taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
       if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
         builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
+      }
+      // 1:1 with EditUniverseRollbackComputer / TaskType.EditUniverse.
+      if (lockedTaskType == TaskType.EditUniverse) {
+        builder.taskTypes(ImmutableSet.of(TaskType.RollbackEditUniverse));
       }
       if (RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
         builder.rerun(true);
@@ -1264,6 +1275,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     universe.setStateTransitionDetails(new StateTransitionDetails(true, delta));
   }
 
+  /**
+   * Whether freeze should write {@code state_transition_details}. Rollback tasks must return {@code
+   * false} so they do not overwrite the failed task's delta (needed to restore {@code before} and
+   * enumerate nodes to destroy).
+   */
+  protected boolean shouldCaptureStateTransitionDelta() {
+    return true;
+  }
+
   private void initAndAddPrecheckTasks(Universe universe) {
     createPrecheckTasks(universe);
     ExecutionContext context = getOrCreateExecutionContext();
@@ -1272,6 +1292,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       getRunnableTask().addSubTaskGroup(precheckTaskGroup);
       context.precheckTaskGroup = null;
     }
+  }
+
+  protected boolean isSkipUpdateConsistencyCheck() {
+    return false;
   }
 
   /**
@@ -1328,7 +1352,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Universe universeBeforePrechecks = Universe.getOrBadRequest(universeUuid);
       initAndAddPrecheckTasks(universe);
       TaskType taskType = getTaskExecutor().getTaskType(getClass());
-      if (!SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
+      if (!isSkipUpdateConsistencyCheck()
+          && !SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
           && confGetter.getConfForScope(universe, UniverseConfKeys.enableConsistencyCheck)) {
         log.info("Creating consistency check task for task {}", taskType);
         checkAndCreateConsistencyCheckTableTask(universe.getUniverseDetails().getPrimaryCluster());
@@ -1373,8 +1398,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.setExecutionContext(getOrCreateExecutionContext());
     // Compute target after the freeze callback so taskParams() are finalized. EditUniverse
     // already finalizes params in precheck; this keeps the generic path correct for other tasks.
-    if (isFirstTry()) {
-      UniverseDefinitionTaskParams beforeDetails = universe.getUniverseDetails();
+    // Deep-copy before so a freeze callback that mutates universe details cannot alias the
+    // snapshot used for the delta (otherwise new nodes look like REPLACE, not ADD).
+    if (isFirstTry() && shouldCaptureStateTransitionDelta()) {
+      UniverseDefinitionTaskParams beforeDetails =
+          Json.fromJson(
+              Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
       Consumer<Universe> originalCallback = callback;
       callback =
           univ -> {
@@ -2395,12 +2424,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createInstallNodeAgentTasks(
       Universe universe, Collection<NodeDetails> nodes) {
-    return createInstallNodeAgentTasks(universe, nodes, false);
+    return createInstallNodeAgentTasks(universe, nodes, false /* reinstall */);
   }
 
   public SubTaskGroup createInstallNodeAgentTasks(
       Universe universe, Collection<NodeDetails> nodes, boolean reinstall) {
-    Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(InstallNodeAgent.class.getSimpleName(), SubTaskGroupType.Provisioning);
     String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
@@ -2412,12 +2440,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     getInstanceOf(NodeAgentEnabler.class).cancelForUniverse(universe.getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
+    AtomicReference<CertificateInfo> certificateInfoRef = new AtomicReference<>();
     Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     filterNodesForInstallNodeAgent(universe, nodes, reinstall /* includeOnPremManual */)
         .forEach(
             n -> {
               InstallNodeAgent.Params params = new InstallNodeAgent.Params();
               Provider provider = providerGetter.apply(n);
+              CertificateInfo certificateInfo = null;
+              if (confGetter.getConfForScope(
+                  provider, ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall)) {
+                certificateInfo =
+                    certificateInfoRef.updateAndGet(
+                        info -> info == null ? universe.getCertificateInfoNodeToNode() : info);
+              }
+              params.certificateUuid = certificateInfo == null ? null : certificateInfo.getUuid();
               params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
               params.airgap = provider.getAirGapInstall();
               params.nodeName = n.nodeName;
@@ -2441,6 +2478,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               task.initialize(params);
               subTaskGroup.addSubTask(task);
             });
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates tasks to perform upgrade of node agents. Optionally, only the certs can be replaced
+   * without upgrading the node agent binary.
+   *
+   * @param universe the universe to which the nodes belong.
+   * @param nodes the nodes in the universe.
+   * @param certificateUuid the optional certificate to be used for the node agent.
+   * @param certsOnly if true, only the certs are replaced when the node agent version already
+   *     matches YBA; otherwise a full upgrade is performed so RPC stays compatible.
+   * @return the subtask group.
+   */
+  public SubTaskGroup createRunUpgradeNodeAgentTasks(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      @Nullable UUID certificateUuid,
+      boolean certsOnly) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            RunUpgradeNodeAgent.class.getSimpleName(), SubTaskGroupType.Provisioning);
+    getInstanceOf(NodeAgentEnabler.class).cancelForUniverse(universe.getUniverseUUID());
+    for (NodeDetails node : nodes) {
+      RunUpgradeNodeAgent.Params params = new RunUpgradeNodeAgent.Params();
+      params.nodeIp = node.cloudInfo.private_ip;
+      params.certificateUuid = certificateUuid;
+      params.certsOnly = certsOnly;
+      params.azUuid = node.azUuid;
+      params.placementUuid = node.placementUuid;
+      params.setUniverseUUID(universe.getUniverseUUID());
+      RunUpgradeNodeAgent task = createTask(RunUpgradeNodeAgent.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }

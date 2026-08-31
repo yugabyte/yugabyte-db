@@ -42,5 +42,6 @@ permutation s2_insert_base s1_begin s1_refresh s2_select_mv s1_commit
 
 # REFRESH CONCURRENTLY does not block against a plain SELECT of an open
 # transaction; the reader's next statement (READ COMMITTED) observes the
-# refreshed data.
-permutation s2_insert_base s1_begin s1_select_mv s2_refresh_conc s1_select_mv s1_commit
+# refreshed data.  It runs a long sequence of catalog operations, so it can
+# outlast the assume-session-is-blocked heuristic without ever waiting.
+permutation s2_insert_base s1_begin s1_select_mv s2_refresh_conc(yb_never_waits) s1_select_mv s1_commit

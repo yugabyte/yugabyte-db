@@ -91,6 +91,8 @@ int yb_walsender_poll_sleep_duration_nonempty_ms = 1;
 
 int yb_walsender_poll_sleep_duration_empty_ms = 10;
 
+int yb_reorderbuffer_max_memory_kb = 4096;
+
 int yb_reorderbuffer_max_changes_in_memory = 4096;
 
 int yb_explicit_row_locking_batch_size = 1;
@@ -102,6 +104,8 @@ bool yb_is_read_time_ht = false;
 bool yb_disable_catalog_version_check = false;
 
 int yb_read_after_commit_visibility = 0;
+
+int yb_db_history_retention_pin_mode = YB_DB_HISTORY_RETENTION_PIN_MODE_DDL_ONLY;
 
 bool yb_allow_block_based_sampling_algorithm = true;
 

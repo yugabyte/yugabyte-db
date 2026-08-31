@@ -46,6 +46,7 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_bool(TEST_pause_get_lock_status);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 using namespace std::literals;
 using std::string;
@@ -1001,6 +1002,8 @@ class PgGetLockStatusTestDisableObjectLocks : public PgLocksTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = false;
     PgLocksTestBase::SetUp();
   }
 };
@@ -1392,6 +1395,11 @@ TEST_F_EX(
   SleepFor(FLAGS_heartbeat_interval_ms * 2ms * kTimeMultiplier);
   ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksDistTxnsQuery)), 1);
 
+  // Wait for the cluster balancer to finish adding replicas to the tservers that registered after
+  // the initial tablets were created. A tserver shut down while it still hosts PRE_VOTER peers
+  // keeps the balancer non-idle forever, since those peers can never be promoted.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kTimeoutSecs)));
+
   const auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTable));
   auto leader_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
   ASSERT_EQ(leader_peers.size(), 1);
@@ -1404,13 +1412,18 @@ TEST_F_EX(
   }
   ASSERT_NE(leader_ts, cluster_->mini_tablet_server(kPgTsIndex));
   leader_ts->Shutdown();
-  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kTimeoutSecs)));
   ASSERT_OK(WaitForTableLeaders(
       cluster_.get(), ASSERT_RESULT(GetTableIDFromTableName("transactions")), kTimeoutSecs * 1s,
       RequireLeaderIsReady::kTrue));
   ASSERT_OK(WaitForTableLeaders(
       cluster_.get(), table_id, kTimeoutSecs * 1s, RequireLeaderIsReady::kTrue));
-  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksDistTxnsQuery)), 1);
+  // The coordinator only learns a txn's start time from a heartbeat handled at the leader, and
+  // GetOldTransactions skips txns with no start time. So the new status tablet leader reports no
+  // old txns until it acquires a lease and the client heartbeat lands on it.
+  ASSERT_OK(WaitFor([&setup_conn] {
+    auto res = setup_conn.FetchRow<int64>(kPgLocksDistTxnsQuery);
+    return res.ok() && *res == 1;
+  }, kTimeoutSecs * 1s, "pg_locks reports the distributed txn"));
 }
 
 } // namespace pgwrapper

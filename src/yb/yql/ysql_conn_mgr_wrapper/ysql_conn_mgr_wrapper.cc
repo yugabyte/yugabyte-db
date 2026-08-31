@@ -31,6 +31,7 @@ DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
 DECLARE_string(TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 DECLARE_bool(ysql_conn_mgr_superuser_sticky);
+DECLARE_bool(ysql_conn_mgr_use_auth_backend);
 DECLARE_bool(ysql_conn_mgr_version_matching);
 DECLARE_bool(ysql_conn_mgr_version_matching_connect_higher_version);
 DECLARE_int32(ysql_conn_mgr_max_query_size);
@@ -91,16 +92,9 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, max_prepared_statements, 100,
 
 DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "Comma-separated list of log settings for Ysql Connection Manger, which may include "
-    "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
-    "log settings present in this string will be enabled. Omitted settings will remain disabled.");
-
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, false,
-    "Enable the use of the auth-backend for authentication of logical connections. "
-    "When false, the auth-passthrough implementation is used. Auth Backend mode involves "
-    "spawning a fresh PG backend to perform authentication for each incoming auth request."
-    "Auth Passthrough mode allows reusing spawned 'control backends' to authenticate clients "
-    "and thus is faster as it skips needing to spawn a new backend process each time."
-    );
+    "'log_debug', 'log_session', 'log_query', and 'log_stats'. Only the log settings present "
+    "in this string will be enabled. Omitted settings will remain disabled. 'log_config' is "
+    "accepted for backward compatibility but has no effect, as config logging is always on.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_auth_msg_timeout, 15000,
     "Maximum time (in milliseconds) to wait for each startup & auth message from client. "
@@ -239,9 +233,9 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
+  // 'log_config' is accepted but ignored: config logging is unconditionally enabled.
   const std::unordered_set<std::string> valid_settings = {
-    "log_debug", "log_config", "log_session", "log_query", "log_stats"
-  };
+      "log_debug", "log_session", "log_query", "log_stats"};
 
   std::stringstream ss(value);
   std::string setting;
@@ -253,10 +247,17 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
     if (setting.empty()) {
       continue;
     }
+
+    if (setting == "log_config") {
+      LOG(WARNING) << "'log_config' in " << flag_name << " has no effect: config logging is "
+                   << "unconditionally enabled.";
+      continue;
+    }
+
     if (valid_settings.find(setting) == valid_settings.end()) {
       LOG_FLAG_VALIDATION_ERROR(flag_name, value)
           << "Invalid log setting '" << setting << "'. Valid options are: "
-          << "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'.";
+          << "'log_debug', 'log_session', 'log_query', and 'log_stats'.";
       return false;
     }
   }

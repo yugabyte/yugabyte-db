@@ -363,6 +363,18 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
   private UUID paCollectorUuid = null;
 
+  /**
+   * The Perf Advisor Endpoint this universe's collected data is forwarded to, set only for an
+   * ONLINE registration. Kept here rather than read back from the collector so the sync loop can
+   * work out what each collector needs without a round trip, and so an endpoint still in use cannot
+   * be deleted while its collector is unreachable.
+   */
+  @Getter
+  @Setter
+  @ApiModelProperty(value = "YbaApi Internal. Perf Advisor Endpoint UUID")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  private UUID paEndpointUuid = null;
+
   @Data
   public static class UniverseSettings {
     @ApiModelProperty public boolean expertMode = false;
@@ -853,8 +865,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               .forEach(
                   az -> {
                     int rf = partition.isDefaultPartition() ? az.replicationFactor : 0;
-                    PlacementInfoUtil.addPlacementZone(
-                        az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                    PlacementInfo.PlacementAZ mergedAz =
+                        PlacementInfoUtil.addPlacementZone(
+                            az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                    // AZs are disjoint across partitions, so each AZ is added exactly once
+                    // and it is safe to copy the K8s statefulset indices directly. These
+                    // indices must be preserved: master addresses and pod names computed
+                    // from the overall placement (e.g. during a K8s full move) rely on them,
+                    // and dropping them would generate stale/incorrect master addresses.
+                    mergedAz.masterStsIndex = az.masterStsIndex;
+                    mergedAz.tsStsIndex = az.tsStsIndex;
                   });
         }
         return result;
@@ -1893,10 +1913,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       OverridenDetails overridenDetails =
           getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
       if (overridenDetails.getDeviceInfo() != null) {
-        log.debug(
-            "Getting overriden device info {} for az {}",
-            Json.toJson(overridenDetails.getDeviceInfo()),
-            azUUID);
+        if (log.isTraceEnabled()) {
+          log.trace(
+              "Getting overriden device info {} for az {}",
+              Json.toJson(overridenDetails.getDeviceInfo()),
+              azUUID);
+        }
         return mergeDeviceInfos(deviceInfo, overridenDetails.getDeviceInfo());
       }
       return deviceInfo;
@@ -1912,9 +1934,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       JsonNode original = Json.toJson(deviceInfo);
       JsonNode overriden = Json.toJson(overridenDeviceInfo);
-      log.debug("Merging device info {} with {}", original, overriden);
+      log.trace("Merging device info {} with {}", original, overriden);
       CommonUtils.deepMerge(original, overriden, true);
-      log.debug("Device info after merging {}", original);
+      log.trace("Device info after merging {}", original);
       return Json.fromJson(original, DeviceInfo.class);
     }
 

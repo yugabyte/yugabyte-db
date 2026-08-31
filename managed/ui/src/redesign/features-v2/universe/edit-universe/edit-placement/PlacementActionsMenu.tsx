@@ -10,7 +10,7 @@ import AddIcon from '@app/redesign/assets/add.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
-import { useIsUniverseReady } from '../EditUniverseUtils';
+import { useIsUniverseReady, withUniverseResource } from '../EditUniverseUtils';
 import {
   AdvancedPlacementPopover,
   useAdvancedPlacementPopover
@@ -54,14 +54,20 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
   const isUniverseReady = useIsUniverseReady();
   const showAddReadReplica = !readReplicaAlreadyPresent;
+  const hasMenuItems =
+    !!onEditMasterAllocationClick || showAddReadReplica || showAddGeoPartition;
   // Only show tip for the default "Advanced Placement options" trigger (Placement tab).
-  const showAdvancedPlacementTip = !triggerLabelKey;
+  const showAdvancedPlacementTip = !triggerLabelKey && hasMenuItems;
   const {
     open: isAdvancedPlacementPopoverOpen,
     anchorRef: advancedPlacementAnchorRef,
-    handleAdvancedPlacementClick,
-    handleClose: handleAdvancedPlacementPopoverClose
+    handleClose: handleAdvancedPlacementPopoverClose,
+    handleClickAway: handleAdvancedPlacementPopoverClickAway
   } = useAdvancedPlacementPopover(showAdvancedPlacementTip);
+
+  if (!hasMenuItems) {
+    return null;
+  }
 
   const triggerButton = (
     <YBButton
@@ -75,15 +81,19 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
     </YBButton>
   );
 
+  // if it is k8's and read replica is already present, then we remove the actions menu as there are no actions to show
+  if(!showAddReadReplica && !onEditMasterAllocationClick) {
+    return null;
+  }
   return (
     <>
       <span
         ref={showAdvancedPlacementTip ? advancedPlacementAnchorRef : undefined}
         style={{ display: 'inline-block' }}
-        onClickCapture={showAdvancedPlacementTip ? handleAdvancedPlacementClick : undefined}
       >
         <YBDropdown
           dataTestId="edit-placement-actions"
+          disableScrollLock
           slotProps={{
             paper: {
               sx: { width: '340px' }
@@ -93,7 +103,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
         >
           {onEditMasterAllocationClick ? (
             <>
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUuid)} isControl>
                 {useDedicatedNodes ? (
                   <MenuItem
                     data-test-id="edit-placement-clear-affinities"
@@ -163,7 +173,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
           {showAddReadReplica ? (
             <>
               {onEditMasterAllocationClick ? <Divider /> : null}
-              <RbacValidator accessRequiredOn={ApiPermissionMap.ADD_V2_READ_REPLICA} isControl>
+              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.ADD_V2_READ_REPLICA, universeUuid)} isControl>
                 <MenuItem
                   data-test-id="add-read-replica"
                   sx={{ height: 'auto' }}
@@ -215,7 +225,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
           {showAddGeoPartition && (
             <>
               {(onEditMasterAllocationClick !== undefined || showAddReadReplica) && <Divider />}
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUuid)} isControl>
                 <MenuItem
                   data-test-id="add-geo-partition"
                   sx={{ height: 'auto' }}
@@ -262,6 +272,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
           open={isAdvancedPlacementPopoverOpen}
           anchorRef={advancedPlacementAnchorRef}
           onClose={handleAdvancedPlacementPopoverClose}
+          onClickAway={handleAdvancedPlacementPopoverClickAway}
         />
       )}
     </>

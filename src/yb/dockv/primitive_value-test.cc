@@ -28,6 +28,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/decimal.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
@@ -35,6 +36,7 @@
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/varint.h"
 
 using std::map;
 using std::string;
@@ -590,12 +592,16 @@ TEST(PrimitiveValueTest, TestAllTypesComparisons) {
       KeyEntryValue::Float(RandomUniformReal<float>()));
 
   ComparePrimitiveValues(
-      KeyEntryValue::Decimal(std::to_string(RandomUniformReal<double>()), SortOrder::kAscending),
-      KeyEntryValue::Decimal(std::to_string(RandomUniformReal<double>()), SortOrder::kAscending));
+      KeyEntryValue::Decimal(
+          util::Decimal(RandomUniformReal<double>()).EncodeToComparable(), SortOrder::kAscending),
+      KeyEntryValue::Decimal(
+          util::Decimal(RandomUniformReal<double>()).EncodeToComparable(), SortOrder::kAscending));
 
   ComparePrimitiveValues(
-      KeyEntryValue::VarInt(std::to_string(RandomUniformInt<uint64_t>()), SortOrder::kAscending),
-      KeyEntryValue::VarInt(std::to_string(RandomUniformInt<uint64_t>()), SortOrder::kAscending));
+      KeyEntryValue::VarInt(
+          yb::VarInt(RandomUniformInt<int64_t>()).EncodeToComparable(), SortOrder::kAscending),
+      KeyEntryValue::VarInt(
+          yb::VarInt(RandomUniformInt<int64_t>()).EncodeToComparable(), SortOrder::kAscending));
 
   ComparePrimitiveValues(
       KeyEntryValue::Int32(RandomUniformInt<int32_t>()),

@@ -59,7 +59,7 @@ public class RestoreMapperTest extends FakeDBApplication {
     assertEquals(target.getUniverseUUID(), info.getUniverseUuid());
     assertEquals(source.getUniverseUUID(), info.getSourceUniverseUuid());
     assertEquals("source-univ", info.getSourceUniverseName());
-    assertEquals(RestoreState.Completed, info.getState());
+    assertEquals(RestoreState.RestoreCompleted, info.getState());
     // backup_type now resolves to the shared api.v2.models.TableType enum.
     assertEquals(TableType.PGSQL_TABLE_TYPE, info.getBackupType());
     assertEquals(123_456L, info.getRestoreSizeInBytes().longValue());
@@ -89,7 +89,7 @@ public class RestoreMapperTest extends FakeDBApplication {
 
     assertEquals("", info.getUniverseName());
     assertFalse(info.getIsSourceUniversePresent());
-    assertEquals(RestoreState.InProgress, info.getState());
+    assertEquals(RestoreState.RestoreInProgress, info.getState());
     assertEquals(TableType.YQL_TABLE_TYPE, info.getBackupType());
   }
 
@@ -126,6 +126,6 @@ public class RestoreMapperTest extends FakeDBApplication {
     assertEquals("tgt_ks", info.getTargetKeyspace());
     assertEquals("s3://bucket/ks", info.getStorageLocation());
     assertEquals(List.of("t1", "t2"), info.getTableNameList());
-    assertEquals(RestoreState.Completed, info.getState());
+    assertEquals(RestoreState.RestoreCompleted, info.getState());
   }
 }

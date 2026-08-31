@@ -8,6 +8,7 @@ import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperation
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -15,6 +16,7 @@ import com.google.common.collect.Streams;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -98,6 +100,62 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
     verifyPayload();
+  }
+
+  @Test
+  public void testExpandFailThenRollbackEditUniverse() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    int nodesBefore = universe.getUniverseDetails().nodeDetailsSet.size();
+
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.enable_edit_auto_rollback", "false");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_edit_universe_rollback", "true");
+    settableRuntimeConfigFactory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    settableRuntimeConfigFactory
+        .forUniverse(universe)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+
+    // Fail Create during expand so we stay pre-MarkRollbackUnsafe and rollback-eligible.
+    localNodeManager.setFailureInjection(
+        pair -> pair.getFirst() == NodeManager.NodeCommandType.Create);
+
+    changeNumberOfNodesInPrimary(universe, 2);
+    UUID editTaskId =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo failedEdit = waitForTask(editTaskId, universe);
+    assertEquals(TaskInfo.State.Failure, failedEdit.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertTrue(commissioner.canTaskRollbackDetailed(failedEdit));
+    assertNotNull(universe.getStateTransitionDetails());
+    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+
+    localNodeManager.setFailureInjection(null);
+
+    UniverseDefinitionTaskParams rollbackParams =
+        Json.fromJson(failedEdit.getTaskParams(), UniverseDefinitionTaskParams.class);
+    rollbackParams.setUniverseUUID(universe.getUniverseUUID());
+    rollbackParams.expectedUniverseVersion = -1;
+    TaskInfo rollbackInfo =
+        waitForTask(commissioner.submit(TaskType.RollbackEditUniverse, rollbackParams), universe);
+    assertEquals(TaskInfo.State.Success, rollbackInfo.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(nodesBefore, universe.getUniverseDetails().nodeDetailsSet.size());
+    assertNull(universe.getStateTransitionDetails());
+    assertTrue(universe.getUniverseDetails().updateSucceeded);
+    verifyUniverseState(universe);
+    verifyYSQL(universe);
   }
 
   @Test

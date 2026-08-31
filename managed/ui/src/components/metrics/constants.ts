@@ -136,7 +136,8 @@ export const MetricTypesWithOperations = {
       'tserver_yb_rpc_connections',
       'tserver_live_tablet_peers',
       'raft_leader',
-      'tserver_max_follower_lag'
+      'tserver_max_follower_lag',
+      'docdb_keys_found'
     ]
   },
   master: {
@@ -288,6 +289,7 @@ export const MetricTypesWithOperations = {
       'table_rocksdb_stalls',
       'table_rocksdb_flush_size',
       'table_docdb_transaction',
+      'table_docdb_keys_found',
       'table_block_cache_hit_miss',
       'table_rocksdb_blooms_checked_and_useful',
       'table_mem_tracker_db_memtable',
@@ -316,6 +318,7 @@ export const MetricTypesWithOperations = {
       'table_rocksdb_stalls',
       'table_rocksdb_flush_size',
       'table_docdb_transaction',
+      'table_docdb_keys_found',
       'table_rocksdb_total_sst_per_node',
       'table_block_cache_hit_miss',
       'table_rocksdb_blooms_checked_and_useful',

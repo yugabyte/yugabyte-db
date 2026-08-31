@@ -26,13 +26,8 @@ typedef enum {
 	/* YB */
 	KIWI_FE_AUTH = 'A',
 	KIWI_FE_SET_SESSION_PARAMETER = 's',
-	/* send Parse to server, instructing server to not return ParseComplete */
-	YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE = 'p',
-	/*
-	 * Prepare stmt on backend if not exists and returns YBForceParseComplete packet
-	 * with name of the prepared statement.
-	 */
-	YB_KIWI_FE_FORCE_PARSE = 'n',
+	/* YB: send Parse to server, which always returns YbParseComplete */
+	YB_KIWI_FE_YB_PARSE = 'p',
 	/* Set custom GUC defaults from YSQL Connection Manager */
 	KIWI_FE_SET_GUC_DEFAULTS = 'G',
 	/* RESET ALL including resetting GUC defaults to original values */
@@ -88,8 +83,7 @@ typedef enum {
 	YB_CONN_MGR_PARAMETER_STATUS = 'r',
 	YB_BE_PARSE_PREPARE_ERROR_RESPONSE = '4',
 	YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME = '5',
-	YB_BE_FORCE_PARSE_COMPLETE = '6',
-	YB_BE_PARSE_NO_PARSE_COMPLETE = '7',
+	YB_BE_YB_PARSE_COMPLETE = '6',
 	YB_BE_SYNC_ACK = 'Y',
 } kiwi_be_type_t;
 
@@ -199,10 +193,8 @@ static inline char *kiwi_be_type_to_string(int type)
 		return "YBParsePrepareErrorResponse";
 	case YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME:
 		return "YBCloseCompletePrepStmtName";
-	case YB_BE_FORCE_PARSE_COMPLETE:
-		return "YBForceParseComplete";
-	case YB_BE_PARSE_NO_PARSE_COMPLETE:
-		return "YBParseNoParseComplete";
+	case YB_BE_YB_PARSE_COMPLETE:
+		return "YbParseComplete";
 	case YB_BE_SYNC_ACK:
 		return "YBSyncAck";
 	}

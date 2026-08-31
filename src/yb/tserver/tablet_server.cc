@@ -87,6 +87,7 @@
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client_service.h"
+#include "yb/tserver/thin_client_service.h"
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
@@ -161,6 +162,11 @@ DEFINE_NON_RUNTIME_int32(pg_client_svc_queue_length,
              yb::tserver::TabletServer::kDefaultSvcQueueLength,
              "RPC queue length for the Pg Client service.");
 TAG_FLAG(pg_client_svc_queue_length, advanced);
+
+DEFINE_NON_RUNTIME_int32(thin_client_svc_queue_length,
+             yb::tserver::TabletServer::kDefaultSvcQueueLength,
+             "RPC queue length for the Thin Client service.");
+TAG_FLAG(thin_client_svc_queue_length, advanced);
 
 DEFINE_NON_RUNTIME_bool(enable_direct_local_tablet_server_call,
             true,
@@ -267,6 +273,8 @@ DEFINE_RUNTIME_int32(min_invalidation_message_retention_time_secs, 60,
     "Minimal time at which a catalog version with invalidation message is retained.");
 TAG_FLAG(min_invalidation_message_retention_time_secs, advanced);
 
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_qos);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_bool(enable_update_local_peer_min_index);
@@ -383,14 +391,18 @@ bool MinimalRetentionTimePassed(CoarseTimePoint message_time, CoarseTimePoint no
   return message_time + FLAGS_min_invalidation_message_retention_time_secs * 1s < now;
 }
 
+bool ObjectLockFastpathEnabled() {
+  return FLAGS_enable_object_lock_fastpath && FLAGS_enable_object_locking_for_table_locks;
+}
+
 }  // namespace
 
 struct TabletServer::PgClientServiceHolder {
   template <class... Args>
   explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}
 
-  PgClientServiceImpl impl;
   std::optional<PgClientServiceMockImpl> mock;
+  PgClientServiceImpl impl;
 };
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
@@ -405,7 +417,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       xcluster_context_(new TserverXClusterContext()),
       object_lock_tracker_(std::make_shared<ObjectLockTracker>()),
       object_lock_shared_state_manager_(
-          new docdb::ObjectLockSharedStateManager(object_lock_tracker_))
+          new docdb::ObjectLockSharedStateManager(object_lock_tracker_, metric_entity()))
 #ifdef __linux__
       ,
       cgroup_manager_(FLAGS_enable_qos ? new TServerCgroupManager() : nullptr)
@@ -627,8 +639,8 @@ Status TabletServer::Init() {
   shared->SetTserverUuid(fs_manager()->uuid());
 
   shared_mem_manager_->SetReadyCallback([this] {
-    if (auto* object_lock_state = shared_mem_manager_->SharedData()->object_lock_state()) {
-      object_lock_shared_state_manager_->SetupShared(*object_lock_state);
+    if (ObjectLockFastpathEnabled()) {
+      object_lock_shared_state_manager_->SetupShared(shared_mem_manager_->allocator());
     }
   });
 
@@ -833,6 +845,7 @@ Status TabletServer::RegisterServices() {
   if (PREDICT_FALSE(FLAGS_TEST_enable_pg_client_mock)) {
     pg_client_service_holder->mock.emplace(metric_entity(), pg_client_service_if);
     pg_client_service_if = &pg_client_service_holder->mock.value();
+    pg_client_service_holder->impl.TEST_SetMockService(&pg_client_service_holder->mock.value());
     LOG(INFO) << "Mock created for yb::tserver::PgClientServiceImpl";
   }
 
@@ -840,6 +853,13 @@ Status TabletServer::RegisterServices() {
   RETURN_NOT_OK(RegisterService(
       FLAGS_pg_client_svc_queue_length, std::shared_ptr<PgClientServiceIf>(
           std::move(pg_client_service_holder), pg_client_service_if)));
+
+  auto thin_client_service = std::make_shared<ThinClientServiceImpl>(
+      tablet_manager_->client_future(), clock(), metric_entity(), messenger(),
+      &pg_node_level_mutation_counter_);
+  LOG(INFO) << "yb::tserver::ThinClientServiceImpl created at " << thin_client_service.get();
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_thin_client_svc_queue_length, std::move(thin_client_service)));
 
   if (FLAGS_TEST_echo_service_enabled) {
     auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
@@ -2557,6 +2577,8 @@ Status TabletServer::StartYSQLLeaseRefresher() {
   return ysql_lease_manager_->StartYSQLLeaseRefresher();
 }
 
+void TabletServer::ShutdownYSQLLeaseManager() { ysql_lease_manager_->Shutdown(); }
+
 Status TabletServer::SetCDCServiceEnabled() {
   if (!cdc_service_) {
     LOG(WARNING) << "CDC Service Not Registered";
@@ -2755,6 +2777,34 @@ Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLoc
   return pg_client_service->impl.GetLocalPgTxnSnapshot(snapshot_id);
 }
 
+master::DbOidToHybridTimeMap TabletServer::GetYsqlDbOldestPinnedReadTimes() {
+  auto pg_client_service = pg_client_service_.lock();
+  if (!pg_client_service) {
+    return {};
+  }
+  return pg_client_service->impl.GetDatabasePins();
+}
+
+void TabletServer::UpdateClusterYsqlDbOldestPinnedReadTimes(
+  const master::TSHeartbeatResponsePB& resp) {
+  master::DbOidToHybridTimeMap pins;
+  pins.reserve(resp.cluster_ysql_db_oldest_pinned_read_times().size());
+  for (const auto& [db_oid, db_pins] : resp.cluster_ysql_db_oldest_pinned_read_times()) {
+    auto pin = HybridTime::FromPB(db_pins.db_level_oldest_read_time());
+    if (pin.is_valid()) {
+      pins.emplace(static_cast<PgOid>(db_oid), pin);
+    }
+  }
+  std::lock_guard lock(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+  cluster_ysql_db_oldest_pinned_read_times_ = std::move(pins);
+}
+
+HybridTime TabletServer::GetClusterYsqlDbOldestPinnedReadTime(PgOid db_oid) const {
+  SharedLock l(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+  auto it = cluster_ysql_db_oldest_pinned_read_times_.find(db_oid);
+  return it != cluster_ysql_db_oldest_pinned_read_times_.end() ? it->second : HybridTime::kInvalid;
+}
+
 Result<std::string> TabletServer::GetUniverseUuid() const {
   return fs_manager_->GetUniverseUuidFromTserverInstanceMetadata();
 }
@@ -2767,6 +2817,18 @@ PgClientServiceImpl* TabletServer::TEST_GetPgClientService() {
 PgClientServiceMockImpl* TabletServer::TEST_GetPgClientServiceMock() {
   auto holder = pg_client_service_.lock();
   return holder && holder->mock.has_value() ? &holder->mock.value() : nullptr;
+}
+
+std::optional<docdb::ObjectLockSharedStateHolder>
+TabletServer::AllocateObjectLockSharedState() const {
+  if (ObjectLockFastpathEnabled()) {
+    auto result = object_lock_shared_state_manager_->AllocateShared();
+    if (result.ok()) {
+      return std::move(*result);
+    }
+    LOG(DFATAL) << "Failed to allocate new object lock shared state: " << result.status();
+  }
+  return std::nullopt;
 }
 
 ConnectivityStateResponsePB TabletServer::ConnectivityState() {

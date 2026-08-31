@@ -162,6 +162,22 @@ class TSManager {
 
   size_t NumLiveDescriptors() const;
 
+  // Iterates over all live TSDescriptors and returns the oldest read HybridTime pin for each
+  // database with at least one live transaction on any live tserver.
+  //
+  // Once every live tserver has reported its pins to the master at least once, each database's
+  // aggregated pin advances monotonically. Before that initial round of heartbeats is complete,
+  // the pin may move in either direction as additional tservers report their state. In practice,
+  // this should not affect compaction: heartbeats arrive every second, while the unconditional
+  // history-retention window is 15 minutes (timestamp_history_retention_interval_sec), giving
+  // each live tserver plenty of time to report or be considered dead before compaction can
+  // discard relevant history.
+  //
+  // Given these conditions, a tserver should never compact history away, and then receive an
+  // earlier pin that requires the discarded history: the global pins should stabilize long
+  // before the minimum retention window allows that history to be compacted.
+  DbOidToHybridTimeMap GetClusterYsqlDbOldestPinnedReadTimes() const;
+
   // Find TServers that are currently in the state LIVE but have not heartbeated for a long time.
   // Transition all such TServers into the UNRESPONSIVE state.
   Status MarkUnresponsiveTServers(const LeaderEpoch& epoch);

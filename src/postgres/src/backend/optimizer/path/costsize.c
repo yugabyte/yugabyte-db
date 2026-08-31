@@ -8699,6 +8699,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		adjusted_index_tuples = index->tuples / parallel_divisor;
 		num_seeks = ceil(num_seeks / parallel_divisor);
 		num_nexts_prevs = ceil(num_nexts_prevs / parallel_divisor);
+		path->path.rows = clamp_row_est(path->path.rows / parallel_divisor);
 	}
 
 	/* Add cost of first seek to startup cost */

@@ -13,14 +13,16 @@
 
 #pragma once
 
-#include <boost/atomic/atomic_ref.hpp>
-
 #include "yb/common/common.pb.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/dockv/schema_packing.h"
+
+#include "yb/util/locks.h"
 
 namespace yb::docdb {
 
@@ -34,6 +36,11 @@ struct DocReadContext {
   DocReadContext(
       const std::string& log_prefix, TableType table_type, Index is_index,
       dockv::SchemaPackingRegistryPtr registry, const Schema& schema, SchemaVersion schema_version);
+
+  // Copies schema/packing identity only. Tombstone-cache fields are reset to construction
+  // defaults (unarmed watermark, empty cache) so same-schema-version TableInfo rebuilds fail
+  // closed instead of carrying a warm cache into the new context.
+  DocReadContext(const DocReadContext& rhs);
 
   DocReadContext(const DocReadContext& rhs, const Schema& schema, SchemaVersion schema_version);
 
@@ -89,8 +96,66 @@ struct DocReadContext {
   // Tombstone time cache is valid only for colocated tables.
   std::optional<DocHybridTime> table_tombstone_time() const;
 
-  // Tombstone time cache is valid only for colocated tables.
-  void set_table_tombstone_time(DocHybridTime table_tombstone_time) const;
+  // Cache a DocDB lookup result.
+  // Pass the generation from before the lookup. If truncate bumped the generation while we
+  // were looking, stamping with the new generation would make an old no tombstone entry
+  // look current. A valid tombstone whose hybrid time is above the current watermark is also
+  // rejected: otherwise a concurrent read with watermark <= read_ht < tombstone_ht would stay
+  // eligible, hit the entry, and hide every row for a snapshot that predates the truncate.
+  void set_table_tombstone_time(
+      DocHybridTime table_tombstone_time, uint64_t entry_generation) const;
+
+  // Clear the cached tombstone time (reset to uncached).
+  void clear_table_tombstone_time() const;
+
+  // HybridTime below which the tombstone cache must not be consumed or populated.
+  // Default kMax = unarmed (cache fully disabled / fail-closed).
+  // See AdvanceTombstoneCacheWatermark.
+  HybridTime tombstone_cache_watermark() const;
+
+  // Global cache epoch; bumped when Advance actually raises the watermark.
+  uint64_t tombstone_cache_generation() const;
+
+  // Monotone watermark advance. kMax is an "unarmed" sentinel (not a numeric max): the first
+  // advance replaces it with ht; later advances take max(current, ht). Used to arm at SafeTime
+  // and to bump on table-tombstone apply. Bumps tombstone_cache_generation_ so any previously
+  // stored cache entry is treated as a miss. Does not clear the cache slot by itself.
+  void AdvanceTombstoneCacheWatermark(HybridTime ht) const;
+
+  // Called when a table tombstone is applied to this replica. Always bumps the generation and
+  // clears the cache slot; raises the watermark when write_ht is higher. Safe to call more than
+  // once for the same write_ht (e.g. pre-write + post-WriteToRocksDB on the xCluster path): the
+  // second call still clears and bumps generation so a poison populate in between cannot stick.
+  //
+  // Residual window (local transactional apply): SafeTime does not wait for intent apply, so a
+  // read above commit_ht can run while APPLY (and this notify) is still in flight. Until then a
+  // warm pre-truncate "no tombstone" entry stays generation-valid and can resurrect rows. Bounded
+  // by apply latency (wider on followers / apply backlog / large txns) - much better than the
+  // unbounded staleness this call removes, but a real residual.
+  //
+  // That window has a second polarity without the store-side watermark check: a miss at
+  // read_ht >= T can cache tombstone T while the watermark is still below T; a concurrent read
+  // with watermark <= read_ht < T would then hit it and see an empty table.
+  // set_table_tombstone_time rejects tombstone_ht > watermark so that cannot land.
+  //
+  // Cold lookups in the local window stay correct because GetTableTombstoneTime is intent-aware
+  // (IntentAwareIterator; txn context even for non-txn YSQL reads) and sees the committed intent.
+  // That is why notify-before-WriteToRocksDB is safe locally. It is NOT safe alone for xCluster
+  // external intents (keyed by external txn id, invisible to DecodeIntentKey): those need a
+  // post-WriteToRocksDB re-notify so a miss that observed "no tombstone" before the memtable
+  // publish cannot repopulate under the already-raised watermark.
+  //
+  // Non-transactional raft apply is tighter: ops apply serially and safe time during apply of H
+  // stays below H, so eligible reads cannot interleave past write_ht mid-apply.
+  void OnTableTombstoneWritten(HybridTime write_ht) const;
+
+  // True when read_ht is allowed to consume or populate the tombstone cache.
+  bool IsTombstoneCacheEligible(HybridTime read_ht) const;
+
+  // Eligibility check + cache consume under one lock. Prefer this over calling
+  // IsTombstoneCacheEligible then table_tombstone_time separately: those take and
+  // release the mutex independently, so a truncate can land between them.
+  std::optional<DocHybridTime> GetCachedTableTombstoneTime(HybridTime read_ht) const;
 
   Slice upperbound() const {
     return Slice(upperbound_buffer_.data(), upperbound_len_);
@@ -100,7 +165,17 @@ struct DocReadContext {
     return Slice(shared_key_prefix_buffer_.data(), table_key_prefix_len_);
   }
 
-  Result<bool> HaveEqualBloomFilterKey(Slice lhs, Slice rhs) const;
+  // Returns the user key whose bloom filter key is shared by every key a scan bounded by
+  // [lower, upper] can return, so data sources may be filtered out using it
+  // (BloomFilterMode::kFixed). Returns nullopt when there is no such key, in particular when a
+  // bound carries no components a bloom filter key could be derived from (e.g. the encoded empty
+  // DocKey used as the lower bound of an unbounded scan) - the bounds then constrain nothing, so
+  // the keys the scan returns have many different bloom filter keys. Note that such a bound still
+  // has a bloom filter key of its own, it is just not shared by what the scan returns.
+  //
+  // The result is a user key and not a bloom filter key: the bloom filter key is derived from it by
+  // the filter policy of each data source, which differs between filter policy versions.
+  Result<std::optional<Slice>> UserKeyForFixedBloomFilter(Slice lower, Slice upper) const;
   size_t NumColumnsUsedByBloomFilterKey() const;
 
   dockv::VectorValueFormat vector_value_format() const;
@@ -109,7 +184,8 @@ struct DocReadContext {
     schema_.SetDefaultTimeToLive(ttl_msec);
   }
 
-  // Should account for every field in DocReadContext.
+  // Schema/packing identity only: tombstone-cache fields are deliberately excluded (they are
+  // ephemeral per-replica read-path state and must not affect equality of rebuilt contexts).
   static bool TEST_Equals(const DocReadContext& lhs, const DocReadContext& rhs) {
     return Schema::TEST_Equals(lhs.schema_, rhs.schema_) &&
            lhs.schema_packing_storage.TEST_Equals(rhs.schema_packing_storage);
@@ -161,18 +237,29 @@ struct DocReadContext {
 
   std::string log_prefix_;
 
-  // Cached tombstone time for the colocated table, initialized on the first read.
-  // The cache avoids repeated RocksDB tombstone lookups, improving bulk update performance.
-  // An initial value of kMax means the tombstone time is not yet cached.
-  //
-  // In the short window between writing a new tombstone (drop start) and completing the drop,
-  // a leader that has already read and cached the old tombstone time will not see the new mark,
-  // while a follower (with no cached value) will. This inconsistency can already occur today,
-  // since the tombstone write is replicated before the actual drop, meaning a leader read
-  // might see no rows while a follower can. Ideally, tombstone write and drop would be atomic
-  // to prevent users from seeing an empty table before it is fully dropped.
-  alignas(boost::atomic_ref<DocHybridTime>::required_alignment)
+  // Serializes tombstone-cache field updates. A hit saves an IntentAwareIterator construction per
+  // scan (GetTableTombstoneTime runs once when the doc reader is created), so an uncontended
+  // spinlock is cheap next to that. Without it, set_table_tombstone_time's two stores can
+  // interleave with OnTableTombstoneWritten and pair a stale value with the current generation.
+  mutable simple_spinlock tombstone_cache_mutex_;
+
+  // Cached colocated-table tombstone time (kMax = uncached). Consume/populate gated by
+  // tombstone_cache_watermark_ (see IsTombstoneCacheEligible).
   mutable DocHybridTime table_tombstone_time_ = DocHybridTime::kMax;
+
+  // Generation stamped with the cached value. Hits require a match with
+  // tombstone_cache_generation_. Kept even under the spinlock: the RocksDB lookup still runs
+  // outside the lock, and the generation rejects a populate that raced a truncate during that
+  // window (watermark alone cannot reject a "no tombstone" stamp).
+  mutable uint64_t tombstone_cache_entry_generation_ = 0;
+
+  // Global epoch bumped when Advance actually raises the watermark, and on every
+  // OnTableTombstoneWritten (including same-ht re-notify).
+  mutable uint64_t tombstone_cache_generation_ = 0;
+
+  // Default kMax = unarmed: both gates reject, so an unarmed context is cache-off (correct
+  // cold-path behavior). Forgotten construction sites therefore fail closed (perf only).
+  mutable HybridTime tombstone_cache_watermark_ = HybridTime::kMax;
 };
 
 } // namespace yb::docdb

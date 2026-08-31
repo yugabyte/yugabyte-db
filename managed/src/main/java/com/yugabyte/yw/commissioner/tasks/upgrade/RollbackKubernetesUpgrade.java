@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -100,6 +101,20 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             createRollbackAutoFlagTask(taskParams().getUniverseUUID(), autoFlagConfigVersion);
           }
 
+          // Only a rollback that crosses the non-root default flip needs the pg_data ownership
+          // reconcile: the forward migration left the data directory owned by 10001, and the older
+          // chart brings PostgreSQL up as root, which then refuses to start.
+          boolean reconcilePgDataOwnership =
+              KubernetesUtil.isNonRootDbByDefault(currentVersion)
+                  && !KubernetesUtil.isNonRootDbByDefault(targetVersion);
+          if (reconcilePgDataOwnership) {
+            log.info(
+                "Rollback from {} to {} moves the database from a non-root user back to root;"
+                    + " pg_data ownership will be reconciled by a root init container",
+                currentVersion,
+                targetVersion);
+          }
+
           if (ysqlMajorVersionUpgrade) {
             // Set the flag ysql_yb_major_version_upgrade_compatibility as major version upgrade is
             // rolled back.
@@ -125,7 +140,8 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                   targetVersion,
                   ysqlMajorVersionUpgrade
                       ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS
-                      : null));
+                      : null,
+                  reconcilePgDataOwnership));
 
           if (ysqlMajorVersionUpgrade
               && prevYBSoftwareConfig != null
@@ -148,7 +164,8 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                   targetVersion,
                   ysqlMajorVersionUpgrade
                       ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS
-                      : null));
+                      : null,
+                  reconcilePgDataOwnership));
 
           if (ysqlMajorVersionUpgrade) {
             // Un-set the flag ysql_yb_major_version_upgrade_compatibility as major version upgrade
@@ -177,7 +194,9 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   private UpgradeContext getRollbackUpgradeContext(
-      String targetSoftwareVersion, YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+      String targetSoftwareVersion,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      boolean reconcilePgDataOwnershipToRoot) {
     return UpgradeContext.builder()
         .reconfigureMaster(false)
         .runBeforeStopping(false)
@@ -185,6 +204,7 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
         .processTServersFirst(true)
         .targetSoftwareVersion(targetSoftwareVersion)
         .ysqlMajorVersionUpgradeState(ysqlMajorVersionUpgradeState)
+        .reconcilePgDataOwnershipToRoot(reconcilePgDataOwnershipToRoot)
         .build();
   }
 }

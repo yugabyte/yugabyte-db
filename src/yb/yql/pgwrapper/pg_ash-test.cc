@@ -154,6 +154,20 @@ class PgAshMinRunningHybridTimeTest : public PgAshSingleNode {
   }
 };
 
+class PgAshWritePipeliningTest : public PgAshTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--allowed_preview_flags_csv=ysql_enable_write_pipelining");
+    options->extra_tserver_flags.push_back("--ysql_enable_write_pipelining=true");
+    // Slow the follower ack so the WaitForAsyncWrite RPC actually parks; otherwise the write is
+    // usually replicated before it even arrives.
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_delay_update_consensus_requests_ms=$0", 2 * kTimeMultiplier * kSamplingIntervalMs));
+  }
+};
+
 class YbAshV2Test : public PgAshSingleNode {
  public:
   YbAshV2Test() : circular_buffer_size_kb_(16 * 1024) {}
@@ -278,8 +292,14 @@ const Configuration kIndexRPCs{
     ash::PggateRPC::kGetIndexBackfillProgress,
     ash::PggateRPC::kWaitForBackendsCatalogVersion},
   .tserver_flags = {
-    "--ysql_yb_test_block_index_phase=postbackfill",
-    "--ysql_disable_index_backfill=false"}};
+    "--ysql_yb_test_block_index_phase=indisvalid",
+    "--ysql_disable_index_backfill=false",
+    "--enable_object_locking_for_table_locks=false",
+    "--ysql_yb_ddl_transaction_block_enabled=false",
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    "--ysql_yb_enable_ddl_savepoint_support=false",
+    "--allowed_preview_flags_csv=ysql_enable_concurrent_ddl",
+    "--ysql_enable_concurrent_ddl=false"}};
 
 // Test for RPCs which are fired with queries related to replication slots
 const Configuration kReplicationRPCs{
@@ -1670,6 +1690,60 @@ TEST_F_EX(PgAshTest, VectorIndexSearch, PgAshVectorIndexTest) {
   ASSERT_GT(count, 0)
       << "ASH recorded no VectorIndex_Search samples carrying the search query_id; the wait "
       << "event was either not entered or not attributed to the originating query.";
+}
+
+// With write pipelining the write is acked before Raft replication. Check that the tracking
+// WaitForAsyncWrite RPC and the deferred commit both attribute their waits to the issuing
+// statement instead of landing at query_id 0.
+TEST_F_EX(PgAshTest, WritePipeliningWaitAttributedToStatement, PgAshWritePipeliningTest) {
+  static constexpr auto kTableName = "pipelined_tbl";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+
+  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int i = 0; !stop; i += 2) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 VALUES ($1, 0), ($2, 0)", kTableName, i, i + 1));
+      ASSERT_OK(conn.CommitTransaction());
+    }
+  });
+
+  // Let ASH take several samples.
+  SleepFor(kSamplingIntervalMs * 40ms * kTimeMultiplier);
+  thread_holder_.Stop();
+
+  const auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO $0%'", kTableName)));
+
+  // yb_active_session_history is node-local, so aggregate across all tservers.
+  int64_t attributed = 0;
+  int64_t drained = 0;
+  for (auto* ts : cluster_->tserver_daemons()) {
+    auto conn = ASSERT_RESULT(ConnectToTs(*ts));
+    attributed += ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM yb_active_session_history "
+        "WHERE wait_event = 'Raft_WaitingForPipelinedReplication' AND query_id = $0", query_id)));
+    // Also make sure we aren't seeing any unattributed Raft_WaitingForReplication events.
+    const auto unattributed = ASSERT_RESULT((conn.FetchRows<std::string, int64_t>(
+        "SELECT wait_event, COUNT(*) FROM yb_active_session_history "
+        "WHERE query_id = 0 AND wait_event IN "
+        "('Raft_WaitingForPipelinedReplication', 'YBClient_WaitingForPipelinedWrites', "
+        "'Raft_WaitingForReplication') "
+        "GROUP BY 1 ORDER BY 2 DESC")));
+    for (const auto& [event, count] : unattributed) {
+      ADD_FAILURE() << count << " " << event << " samples with query_id=0 on tserver "
+                    << ts->uuid() << "; pipelining is dropping ASH metadata.";
+    }
+    drained += ASSERT_RESULT(conn.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM yb_active_session_history "
+        "WHERE wait_event = 'YBClient_WaitingForPipelinedWrites' AND query_id != 0"));
+  }
+  ASSERT_GT(attributed, 0) << "No Raft_WaitingForPipelinedReplication samples carrying the "
+                           << "INSERT's query_id; not entered, or not attributed.";
+  ASSERT_GT(drained, 0) << "No attributed YBClient_WaitingForPipelinedWrites samples; the commit "
+                        << "was not deferred behind the async writes, or the drain is not "
+                        << "instrumented.";
 }
 
 } // namespace yb::pgwrapper

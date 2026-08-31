@@ -103,7 +103,16 @@ public class TestTcmallocGC extends BaseYsqlConnMgr {
 
     final int tserverIndex = 1;
     final String tserverHost = getPgHost(tserverIndex);
+    final HostAndPort tserver = miniCluster.getTabletServers().keySet().stream()
+        .filter(hp -> hp.getHost().equals(tserverHost)).findFirst()
+        .orElseThrow(() -> new IllegalStateException(
+            "No tserver found for host " + tserverHost));
     final int odysseyPid = getOdysseyPidForHost(tserverHost);
+
+    // Keep the GC off for the whole burst so nothing is released while the
+    // connections drain.
+    setServerFlag(tserver, "ysql_conn_mgr_tcmalloc_gc_interval", "0");
+
     long odysseyRSSStart = getRssForPid(odysseyPid);
     long odysseyRSSPeak = createLoadToRecordPeakRss(odysseyPid);
     assertTrue(String.format("Odyssey RSS should have increased from %d" +
@@ -111,19 +120,30 @@ public class TestTcmallocGC extends BaseYsqlConnMgr {
         odysseyRSSStart < odysseyRSSPeak);
 
     Thread.sleep(500);
-    long odysseyRSSEnd = getRssForPid(odysseyPid);
+    // RSS once the burst has drained, with the freed pages still held by
+    // tcmalloc because the GC is disabled.
+    long odysseyRSSBeforeGc = getRssForPid(odysseyPid);
 
     ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, tserverIndex);
     tailer.skipToEnd();
 
+    // Re-enabling releases everything accumulated above in one shot.
+    setServerFlag(tserver, "ysql_conn_mgr_tcmalloc_gc_interval",
+        String.valueOf(TEST_GC_INTERVAL_SECS));
     String released = tailer.waitForLogRegex(
-        "released pageheap free memory to OS", (2), TimeUnit.SECONDS);
+        "released pageheap free memory to OS", (10), TimeUnit.SECONDS);
     assertNotNull(
         "Expected cron to log 'released pageheap free memory to OS' ",
         released);
 
+    // Sampled after the release, so it reflects what the GC gave back.
+    long odysseyRSSEnd = getRssForPid(odysseyPid);
+    for (int i = 0; i < 20 && odysseyRSSEnd >= odysseyRSSBeforeGc; ++i) {
+      Thread.sleep(100);
+      odysseyRSSEnd = getRssForPid(odysseyPid);
+    }
     assertTrue(String.format("Odyssey RSS should have released from %d KB to %d KB",
-        odysseyRSSPeak, odysseyRSSEnd), odysseyRSSPeak > odysseyRSSEnd);
+        odysseyRSSBeforeGc, odysseyRSSEnd), odysseyRSSBeforeGc > odysseyRSSEnd);
   }
 
   // Validates ysql_conn_mgr_tcmalloc_gc_interval can be set correctly at runtime

@@ -248,7 +248,8 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
   Status GetChangesWithRetries(
       cdc::CDCServiceProxy* cdc_proxy, const cdc::GetChangesRequestPB& change_req,
       cdc::GetChangesResponsePB* change_resp) {
-    // Retry on LeaderNotReadyToServe errors.
+    // Retry on LeaderNotReadyToServe errors, and on the NotFound errors that GetChanges returns
+    // when the tablet leader changes while it is serving the request.
     return WaitFor(
         [&]() -> Result<bool> {
           rpc::RpcController rpc;
@@ -258,7 +259,7 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
             status = StatusFromPB(change_resp->error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe()) {
+          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
             return false;
           }
 

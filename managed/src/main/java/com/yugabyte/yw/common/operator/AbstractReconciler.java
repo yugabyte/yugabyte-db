@@ -5,6 +5,7 @@ import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.Customer;
+import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.CustomResource;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -33,14 +34,6 @@ public abstract class AbstractReconciler<T extends CustomResource<?, ?>>
   protected final Integer reconcileExceptionBackoffMS = 5000;
 
   protected final ResourceTracker resourceTracker = new ResourceTracker();
-
-  // The resource currently being reconciled. Set before calling create/update/noOp handlers
-  // so that child classes can associate dependent resources (e.g. secrets) with the correct owner.
-  protected KubernetesResourceDetails currentReconcileResource;
-
-  // The local PlatformInstance UUID for the current reconcile cycle, set at the start of
-  // reconcile(). Null when HA is not configured.
-  protected UUID currentLocalInstanceUuid;
 
   public AbstractReconciler(
       KubernetesClient client,
@@ -76,6 +69,20 @@ public abstract class AbstractReconciler<T extends CustomResource<?, ?>>
 
   public ResourceTracker getResourceTracker() {
     return resourceTracker;
+  }
+
+  /**
+   * Tracks {@code dependency} (typically a Secret) as a dependency of the resource being
+   * reconciled, so that HA failover restores and cleans up the two together.
+   *
+   * @param owner the resource being reconciled, which the dependency was read for
+   * @param dependency the resource {@code owner} depends on
+   */
+  protected void trackDependency(T owner, HasMetadata dependency) {
+    resourceTracker.trackDependency(
+        KubernetesResourceDetails.fromResource(owner),
+        dependency,
+        operatorUtils.getLocalPlatformInstanceUuid().orElse(null));
   }
 
   // Implemented methods
@@ -168,9 +175,7 @@ public abstract class AbstractReconciler<T extends CustomResource<?, ?>>
     try {
       Customer cust = operatorUtils.getOperatorCustomer();
       KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(resource);
-      currentReconcileResource = resourceDetails;
       UUID localInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
-      currentLocalInstanceUuid = localInstanceUuid;
 
       // checking to see if the resource was deleted.
       if (action == OperatorWorkQueue.ResourceAction.DELETE

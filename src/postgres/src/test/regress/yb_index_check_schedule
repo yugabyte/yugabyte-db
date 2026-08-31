@@ -1,7 +1,7 @@
 # src/test/regress/yb_index_check_schedule
 #
 ################################################################################
-# YB index consistency checker tests.
+# YB index consistency checker tests (single-snapshot mode).
 ################################################################################
 
 test: yb.orig.yb_index_check

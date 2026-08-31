@@ -53,7 +53,9 @@ service TabletServerService {
     option (yb.rpc.send_metadata) = true;
     option (yb.rpc.lightweight_method).sides = BOTH;
   }
-  rpc WaitForAsyncWrite(WaitForAsyncWriteRequestPB) returns (WaitForAsyncWriteResponsePB);
+  rpc WaitForAsyncWrite(WaitForAsyncWriteRequestPB) returns (WaitForAsyncWriteResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc Read(ReadRequestPB) returns (ReadResponsePB) {
     option (yb.rpc.send_metadata) = true;
     option (yb.rpc.lightweight_method).sides = BOTH;
@@ -695,6 +697,12 @@ message DumpTabletDataRequestPB {
   // requires a concrete table_id (not the colocation parent id).
   optional bytes start_key = 5;
   optional bytes end_key = 6;
+
+  // How long to wait for safe time to reach read_ht, before failing with READ_TIME_NOT_REACHED.
+  // 0 fails immediately. Unset uses FLAGS_dump_tablet_data_max_read_time_wait_ms. Capped at the
+  // RPC deadline.
+  // A tserver that predates this field ignores it and answers at whatever it has applied.
+  optional uint32 max_wait_ms = 7;
 }
 
 message DumpTabletDataResponsePB {
@@ -743,8 +751,21 @@ message PgRemoteExecRequestPB {
 
 message PgRemoteExecResponsePB {
   optional TabletServerErrorPB error = 1;
-  optional PgResultPB pg_result = 2;
+
+  // Deprecated pg_result (PgResultPB): rows now travel in the sidecar below.
+  reserved 2;
+
   optional bool reached_size_limit = 3;
+
+  // Error from executing the query on the remote PG.
+  optional string error_message = 4;
+
+  // Index of the sidecar with row data (format: yb/yql/pggate/pg_global_view_read.h).
+  optional uint32 rows_sidecar = 5;
+  // Set on every successful response, so an unset num_rows means the tserver
+  // predates the sidecar encoding.
+  optional int32 num_rows = 6;
+  optional int32 num_cols = 7;
 }
 
 message CollectYsqlCallHomeStatsRequestPB {

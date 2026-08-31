@@ -322,7 +322,7 @@ export const ReviewHardwareChangesModal = ({
   }, [strategy, canRolling, canMigrate]);
 
   const parsedDelaySeconds = useMemo(() => Number(delaySecondsInput), [delaySecondsInput]);
-  const needsDelay = strategy === 'rolling' && !nonRestart && !isRf1;
+  const needsDelay = strategy === 'rolling';
   const isDelayValid = !needsDelay || (Number.isFinite(parsedDelaySeconds) && parsedDelaySeconds > 0);
   const hasValidStrategy =
     (strategy === 'rolling' && canRolling) || (strategy === 'migrate' && canMigrate);

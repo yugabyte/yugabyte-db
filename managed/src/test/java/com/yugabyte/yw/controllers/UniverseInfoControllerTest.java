@@ -50,6 +50,8 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -498,5 +500,33 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     log.info("Parsed duration: {}", d);
 
     assertTrue(d.toMinutes() < 60);
+  }
+
+  @Test
+  public void testHealthCheckWithLimit() throws InterruptedException {
+    Universe u = createUniverse(customer.getId());
+    UUID universeUUID = u.getUniverseUUID();
+    for (int i = 0; i < 3; i++) {
+      Thread.sleep(10);
+      HealthCheck.addAndPrune(universeUUID, customer.getId(), new Details());
+    }
+
+    String baseUrl =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/health_check";
+
+    Result allResult = doRequestWithAuthToken("GET", baseUrl, authToken);
+    assertOk(allResult);
+    JsonNode allJson = Json.parse(contentAsString(allResult));
+    assertEquals(3, allJson.size());
+
+    Result limitedResult = doRequestWithAuthToken("GET", baseUrl + "?limit=1", authToken);
+    assertOk(limitedResult);
+    JsonNode limitedJson = Json.parse(contentAsString(limitedResult));
+    assertEquals(1, limitedJson.size());
+
+    Result badResult =
+        assertPlatformException(
+            () -> doRequestWithAuthToken("GET", baseUrl + "?limit=0", authToken));
+    assertEquals(play.mvc.Http.Status.BAD_REQUEST, badResult.status());
   }
 }

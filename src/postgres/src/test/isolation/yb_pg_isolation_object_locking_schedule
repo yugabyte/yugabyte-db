@@ -7,4 +7,4 @@ test: alter-table-4
 test: yb.port.sequence-ddl
 test: yb.port.vacuum-concurrent-drop
 test: partition-concurrent-attach
-test: truncate-conflict
+test: yb.port.truncate-conflict

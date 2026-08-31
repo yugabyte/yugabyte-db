@@ -29,10 +29,14 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
+
+#include "yb/docdb/doc_read_context.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 
@@ -61,12 +65,14 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/metrics.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
@@ -94,8 +100,11 @@ DECLARE_bool(TEST_fail_batcher_rpc);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_no_schedule_remove_intents);
 DECLARE_bool(TEST_request_unknown_tables_during_perform);
+DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_tablet_pause_apply_write_ops);
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_colocated_table_tombstone_cache);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(flush_rocksdb_on_shutdown);
@@ -115,9 +124,12 @@ DECLARE_double(TEST_transaction_ignore_applying_probability);
 
 DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(gzip_stream_compression_level);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(sampled_trace_1_in_n);
+DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(stream_compression_algo);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
@@ -127,6 +139,7 @@ DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_yb_ash_sample_size);
+DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_uint32(yb_max_recursion_depth);
 
 DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
@@ -262,7 +275,14 @@ TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCl
   }
   auto* client_service =
       cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
-  ASSERT_EQ(connections.size() + kAshConnection, client_service->TEST_SessionsCount());
+  // The first Connect() to a fresh DB spawns an internal libpq backend
+  // (TriggerRelcacheInitConnection) whose session lingers in sessions_
+  // for the platform's ListenConnectionShutdown delay (up to 250ms on
+  // macOS, 1s under sanitizers). Poll until it drains instead of
+  // asserting immediately.
+  ASSERT_OK(WaitFor([client_service, expected_count = connections.size() + kAshConnection]() {
+    return client_service->TEST_SessionsCount() == expected_count;
+  }, 5s, "relcache-init session cleanup"));
 
   connections.erase(connections.begin() + connections.size() / 2, connections.end());
   ASSERT_OK(WaitFor([client_service, expected_count = connections.size() + kAshConnection]() {
@@ -575,6 +595,9 @@ class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterfac
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
+    // Disable probabilistic tracing. Otherwise a sampled trace of an unrelated background RPC
+    // (e.g. a slow remote bootstrap) is dumped into the log and counted by the test's log sink.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sampled_trace_1_in_n) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = GetParam();
     // Disable auto analyze because it introduces flakiness for query plans and metrics.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
@@ -588,7 +611,12 @@ TEST_P(PgMiniTestTracing, Tracing) {
     void send(
         google::LogSeverity severity, const char* full_filename, const char* base_filename,
         int line, const struct ::tm* tm_time, const char* message, size_t message_len) {
-      if (strcmp(base_filename, "trace.cc") == 0) {
+      // Count only traces of PG session RPCs. Traces of unrelated background RPCs (e.g. a slow
+      // remote bootstrap of a system tablet) are dumped to the same log and would otherwise be
+      // attributed to the queries below.
+      if (strcmp(base_filename, "trace.cc") == 0 &&
+          std::string_view(message, message_len).find("pg_client_session.cc") !=
+              std::string_view::npos) {
         last_logged_bytes_ = message_len;
       }
     }
@@ -862,6 +890,73 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSerializableDefer
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSnapshot),
           PgMiniLargeClockSkewTest) {
   TestReadRestart(false /* deferrable */);
+}
+
+class PgMiniSingleTserverTest : public PgMiniTest {
+ public:
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+// Reproduces https://github.com/yugabyte/yugabyte-db/issues/33107.
+// When the read time is picked on the tserver and the read is restarted in place because of an
+// intent of a transaction committed above the picked read time, the retried read must not be
+// performed until the tablet safe time reaches the restart read time.
+// Otherwise it can miss a write that is replicated but not yet applied, even though this write
+// has a hybrid time below the restart read time. The restart read time is returned as
+// used_read_time and becomes the transaction read point, so the next statement of the same
+// transaction sees this write appear at the same read point - a repeatable read violation.
+TEST_F_EX(PgMiniTest, ReadRestartWaitsForSafeTime, PgMiniSingleTserverTest) {
+  auto txn_conn = ASSERT_RESULT(Connect());
+  auto write_conn = ASSERT_RESULT(Connect());
+  auto read_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  // Warm up catalog caches, so the read below does not need any writes.
+  ASSERT_RESULT((read_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t")));
+
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(txn_conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+  // Keep intents of the committed transaction in intents db, so the read below resolves its
+  // commit time via the transaction status path and gets restarted.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = true;
+  // Pause write apply after replication, pinning the tablet safe time below the write hybrid
+  // time.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_pause_apply_write_ops) = true;
+
+  TestThreadHolder thread_holder;
+  StringWaiterLogSink pause_log_sink("Pausing due to flag TEST_tablet_pause_apply_write_ops");
+  thread_holder.AddThreadFunctor([&write_conn] {
+    ASSERT_OK(write_conn.Execute("INSERT INTO t VALUES (2, 2)"));
+  });
+  ASSERT_OK(pause_log_sink.WaitFor(60s * kTimeMultiplier));
+
+  // The paused write already has a hybrid time, so the transaction commit time is above it.
+  ASSERT_OK(txn_conn.CommitTransaction());
+
+  // Keep the apply paused long enough for the read below to pick its read time and restart
+  // while the safe time is still pinned below the paused write.
+  thread_holder.AddThreadFunctor([] {
+    SleepFor(3s * kTimeMultiplier);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_pause_apply_write_ops) = false;
+  });
+
+  // The read picks read time = safe time, which is below the hybrid time of the paused write,
+  // then hits the intent committed above it and restarts in place at the commit time.
+  // Run it as the first statement of a repeatable read transaction, so the restart read time
+  // becomes the transaction read point.
+  ASSERT_OK(read_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  const auto rows = ASSERT_RESULT(
+      (read_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t ORDER BY k")));
+  // Wait for the paused write to complete.
+  thread_holder.JoinAll();
+  // Re-read at the same read point, the result must be the same.
+  const auto reread_rows = ASSERT_RESULT(
+      (read_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t ORDER BY k")));
+  ASSERT_OK(read_conn.CommitTransaction());
+
+  ASSERT_EQ(rows, reread_rows);
 }
 
 TEST_F_EX(PgMiniTest, SerializableReadOnly, PgMiniTestFailOnConflict) {
@@ -1358,7 +1453,10 @@ void PgMiniTest::TestBigInsert(bool restart) {
       auto res = connection.FetchRow<PGUint64>("SELECT SUM(a) FROM t");
       if (!res.ok()) {
         auto msg = res.status().message().ToBuffer();
-        ASSERT_TRUE(msg.find("server closed the connection unexpectedly") != std::string::npos)
+        // With object locking enabled the tserver shuts its object lock manager down before
+        // stopping PG, so an in-flight query may be rejected before the connection is closed.
+        ASSERT_TRUE(msg.find("server closed the connection unexpectedly") != std::string::npos ||
+                    msg.find("Object Lock Manager Shutdown") != std::string::npos)
             << res.status();
         while (!restarted.load() && !stop.load()) {
           std::this_thread::sleep_for(10ms);
@@ -1656,6 +1754,562 @@ TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
   ASSERT_FALSE(tombstone_time.has_value());
 }
 
+namespace {
+
+// Returns true if the DocDB dump contains a table-level tombstone (a DEL at the bare
+// colocation doc key) for the given colocation id.
+bool DumpHasTableTombstone(const std::string& dump, int colocation_id) {
+  const auto prefix = Format("DocKey(ColocationId=$0, [], [])", colocation_id);
+  size_t pos = 0;
+  while ((pos = dump.find(prefix, pos)) != std::string::npos) {
+    auto eol = dump.find('\n', pos);
+    if (eol == std::string::npos) {
+      eol = dump.size();
+    }
+    if (dump.substr(pos, eol - pos).find("-> DEL") != std::string::npos) {
+      return true;
+    }
+    pos = eol;
+  }
+  return false;
+}
+
+} // namespace
+
+// Regression test for the colocated-table tombstone-time cache never being invalidated on
+// TRUNCATE (flag enable_colocated_table_tombstone_cache, default on). An "unsafe" TRUNCATE
+// (yb_enable_alter_table_rewrite = false) deletes a colocated table's data by writing one
+// table-level tombstone over the table's colocation prefix, and reads filter rows against
+// that tombstone time. The per-DocReadContext cache of that lookup is populated on the first
+// read and has no invalidation edge, and the tombstone-based TRUNCATE does not replace the
+// DocReadContext, so a node that cached the pre-truncate value keeps serving every truncated
+// row as live; an INSERT after the TRUNCATE mixes the new row with resurrected ones. With
+// RF > 1 a replica with a cold cache correctly sees the table as empty while the stale-cache
+// node resurrects the rows - divergent results for the same query - but RF1 is enough to
+// demonstrate the mechanism.
+// With the #32724 fix, the final assertions below must pass (they failed before
+// TRUNCATE invalidated / refreshed the cached tombstone time).
+TEST_F_EX(PgMiniTest, TruncateVisibleThroughTombstoneCache, PgMiniTestSingleNode) {
+  const std::string kDbName = "testdb";
+  const std::string kTableName = "truncate_cache_test";
+  const int kColocationId = 20001;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (110), (111), (112)", kTableName));
+
+  // Populate the cache: the first read stores the (absent) tombstone time in the
+  // DocReadContext.
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 3);
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(peers.size(), 1);
+  auto peer = peers.front();
+  auto read_cached_tombstone_time = [&]() {
+    auto table_info = CHECK_RESULT(peer->tablet_metadata()->GetTableInfo(kColocationId));
+    CHECK(table_info && table_info->doc_read_context);
+    return table_info->doc_read_context->table_tombstone_time();
+  };
+  auto doc_read_context_ptr = [&]() -> const void* {
+    auto table_info = CHECK_RESULT(peer->tablet_metadata()->GetTableInfo(kColocationId));
+    return table_info->doc_read_context.get();
+  };
+
+  // Trigger guard 1: the read above populated the cache; for a never-truncated table the
+  // cached value is kInvalid ("no tombstone").
+  auto cache_before = read_cached_tombstone_time();
+  ASSERT_TRUE(cache_before.has_value());
+  ASSERT_FALSE(cache_before->is_valid());
+  const auto* context_before = doc_read_context_ptr();
+
+  // The unsafe (non-rewrite) TRUNCATE: writes a table-level tombstone at the colocation
+  // prefix instead of switching to a new relfilenode.
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  // Trigger guard 2: prove the TRUNCATE took the tombstone path. The bytes on disk are
+  // correct - this is a read-path bug - so the dump (not a SELECT) is the right probe for
+  // this guard; do not "simplify" the wrongness assertions below to use the dump.
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
+  auto dump = tablet->TEST_DocDBDumpStr();
+  ASSERT_TRUE(DumpHasTableTombstone(dump, kColocationId))
+      << "TRUNCATE did not write a table-level tombstone (rewrite path taken?). Dump:\n" << dump;
+
+  // The stale read, served through the cached pre-truncate tombstone time.
+  auto count_after_truncate = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+  auto cache_after = read_cached_tombstone_time();
+  const auto* context_after = doc_read_context_ptr();
+
+  // Compounding evidence: an INSERT after the TRUNCATE mixes the new row with resurrected
+  // ones.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1000)", kTableName));
+  auto count_mixed = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+
+  // Causation control (passes today and after the fix): with the RUNTIME flag off the read
+  // bypasses the cache, sees the tombstone, and returns only the post-truncate row.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_colocated_table_tombstone_cache) = false;
+  auto count_uncached = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_colocated_table_tombstone_cache) = true;
+  ASSERT_EQ(count_uncached, 1)
+      << "uncached read after TRUNCATE + one INSERT must see exactly the new row";
+
+  // Correctness assertions for the warm-cache + legacy-TRUNCATE path.
+  ASSERT_EQ(count_after_truncate, 0)
+      << "TOMBSTONE-CACHE RESURRECTION: post-TRUNCATE read served " << count_after_truncate
+      << " deleted rows from the stale cached tombstone time."
+      << " Cached tombstone time before TRUNCATE: "
+      << (cache_before ? cache_before->ToString() : "<not cached>")
+      << ", after: " << (cache_after ? cache_after->ToString() : "<not cached>")
+      << " (unchanged => no invalidation edge)."
+      << " DocReadContext instance replaced: " << (context_before != context_after ? "yes" : "no")
+      << ". Count after post-TRUNCATE INSERT: " << count_mixed
+      << " (new row mixed with resurrected rows)."
+      << " Uncached (flag-off) count: " << count_uncached << ".";
+  ASSERT_EQ(count_mixed, 1)
+      << "post-TRUNCATE INSERT followed by count must see exactly the new row";
+}
+
+// Control for TruncateVisibleThroughTombstoneCache (passes today): with the default
+// yb_enable_alter_table_rewrite = true, TRUNCATE takes the rewrite path (new relfilenode,
+// fresh metadata), so reads are correct even with the tombstone-time cache populated. This
+// pins the wrongness above to the unsafe-truncate (table-tombstone) path.
+TEST_F_EX(PgMiniTest, TruncateRewritePathControl, PgMiniTestSingleNode) {
+  const std::string kDbName = "testdb";
+  const std::string kTableName = "truncate_cache_test";
+  const int kColocationId = 20001;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (110), (111), (112)", kTableName));
+
+  // Populate the tombstone-time cache before the TRUNCATE, like the repro does.
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 3);
+
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 0);
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1000)", kTableName));
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 1);
+}
+
+// Control for TruncateVisibleThroughTombstoneCache (passes today): a restart rebuilds every
+// DocReadContext from the superblock, so the stale cached tombstone time does not survive
+// it - the resurrection lasts only until the node restarts.
+TEST_F_EX(PgMiniTest, TruncateTombstoneCacheHealedByRestart, PgMiniTestSingleNode) {
+  const std::string kDbName = "testdb";
+  const std::string kTableName = "truncate_cache_test";
+  const int kColocationId = 20001;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (110), (111), (112)", kTableName));
+
+  // Populate the tombstone-time cache, then truncate through the tombstone path.
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 3);
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  {
+    auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    ASSERT_EQ(peers.size(), 1);
+    auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+    ASSERT_TRUE(DumpHasTableTombstone(tablet->TEST_DocDBDumpStr(), kColocationId))
+        << "TRUNCATE did not write a table-level tombstone (rewrite path taken?)";
+  }
+
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 0);
+}
+
+// Regression for #32724: legacy colocated TRUNCATE (yb_enable_alter_table_rewrite=false) must
+// invalidate the colocated tombstone-time cache so subsequent reads see an empty table.
+TEST_F_EX(PgMiniTest, TruncateColocatedInvalidatesTombstoneCache, PgMiniTestSingleNode) {
+  const std::string kDbName = "truncate_tombstone_db";
+  const std::string kTableName = "t";
+  const int kColocationId = 20002;
+  const std::vector<int> kInitialData = {1, 2, 3};
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES ($1), ($2), ($3)",
+      kTableName, kInitialData[0], kInitialData[1], kInitialData[2]));
+
+  // Warm the tombstone-time cache (caches "no tombstone").
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, kInitialData.size());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_FALSE(peers.empty());
+  auto peer = peers.front();
+  auto doc_read_context = [&]() -> Result<std::shared_ptr<docdb::DocReadContext>> {
+    // Always re-fetch: a TableInfo (and with it the DocReadContext) can be rebuilt underneath us,
+    // and asserting on a detached copy would not describe what reads actually see.
+    auto table_info = VERIFY_RESULT(peer->tablet_metadata()->GetTableInfo(kColocationId));
+    SCHECK(table_info && table_info->doc_read_context, IllegalState, "No DocReadContext");
+    return table_info->doc_read_context;
+  };
+  {
+    auto ctx = ASSERT_RESULT(doc_read_context());
+    auto cached = ctx->table_tombstone_time();
+    ASSERT_TRUE(cached.has_value());
+    ASSERT_FALSE(cached->is_valid());
+    // Serve-ready / AddTable should have armed the watermark (not left at kMax).
+    ASSERT_NE(ctx->tombstone_cache_watermark(), HybridTime::kMax);
+  }
+
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 0);
+
+  // Cache should now hold a real tombstone time (re-populated by the post-truncate read).
+  {
+    auto ctx = ASSERT_RESULT(doc_read_context());
+    auto cached_after = ctx->table_tombstone_time();
+    ASSERT_TRUE(cached_after.has_value());
+    ASSERT_TRUE(cached_after->is_valid());
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (4)", kTableName));
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 1);
+}
+
+// #32724 (a): a pinned read at R < truncate-HT must not re-poison the cache so that a later
+// current-time read resurrects truncated rows.
+TEST_F_EX(
+    PgMiniTest, TruncateColocatedPinnedReadDoesNotRePoisonTombstoneCache, PgMiniTestSingleNode) {
+  const std::string kDbName = "truncate_tombstone_pinned_db";
+  const std::string kTableName = "t";
+  const int kColocationId = 20003;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2), (3)", kTableName));
+
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 3);
+
+  auto pinned_us = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  // Pinned-old read: rows still visible as of pre-truncate time (cold path / below watermark).
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", pinned_us));
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 3);
+
+  // Current read must stay empty: pinned read must not have re-cached "absence" under the old
+  // watermark into the post-truncate epoch.
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 0);
+}
+
+// #32724 (b): successive legacy truncates keep the single cache slot + watermark coherent.
+TEST_F_EX(PgMiniTest, TruncateColocatedMultipleTruncates, PgMiniTestSingleNode) {
+  const std::string kDbName = "truncate_tombstone_multi_db";
+  const std::string kTableName = "t";
+  const int kColocationId = 20004;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2)", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 2);
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3), (4), (5)", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_FALSE(peers.empty());
+  auto table_info = ASSERT_RESULT(peers.front()->tablet_metadata()->GetTableInfo(kColocationId));
+  auto cached = table_info->doc_read_context->table_tombstone_time();
+  ASSERT_TRUE(cached.has_value());
+  ASSERT_TRUE(cached->is_valid());
+  // The invariant is only that the watermark covers the cached tombstone. Anything else that arms
+  // the context (schema rebuild, ADD_TABLE replay) may push the watermark past the last truncate,
+  // so requiring equality here would make this test fail on unrelated re-arms.
+  ASSERT_GE(table_info->doc_read_context->tombstone_cache_watermark(), cached->hybrid_time());
+}
+
+// #32724 (c): after truncate + schema rebuild (ALTER arms a fresh context), pinned then current
+// reads stay correct (no kMin-init / unarmed-after-rebuild resurrection).
+TEST_F_EX(PgMiniTest, TruncateColocatedAfterAlterSchema, PgMiniTestSingleNode) {
+  const std::string kDbName = "truncate_tombstone_alter_db";
+  const std::string kTableName = "t";
+  const int kColocationId = 20005;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2), (3)", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
+
+  auto pinned_us = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+
+  // Rebuild DocReadContext (copy resets watermark to kMax) then AlterSchema re-arms at SafeTime.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN extra int", kTableName));
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_FALSE(peers.empty());
+  auto table_info = ASSERT_RESULT(peers.front()->tablet_metadata()->GetTableInfo(kColocationId));
+  ASSERT_NE(table_info->doc_read_context->tombstone_cache_watermark(), HybridTime::kMax);
+
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", pinned_us));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
+
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+}
+
+// #32724 (d): an unarmed DocReadContext (watermark kMax) fails closed: cache ineligible.
+TEST(DocReadContextTombstoneCacheTest, UnarmedWatermarkFailsClosed) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddKeyColumn("k", DataType::INT32));
+  auto schema = builder.Build();
+  schema.set_colocation_id(42);
+  auto ctx = docdb::DocReadContext::TEST_Create(schema);
+  ASSERT_EQ(ctx.tombstone_cache_watermark(), HybridTime::kMax);
+  ASSERT_FALSE(ctx.table_tombstone_time().has_value());
+
+  // kMax is an "unarmed" sentinel, not a numeric bound, so no read_ht may be eligible, including
+  // read_ht == kMax, which a naive read_ht >= watermark test would let through.
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::kInvalid));
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::kMin));
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::FromMicros(1)));
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::kMax));
+
+  // A populated entry must stay invisible while unarmed: the guard cannot rely on the slot being
+  // empty, since anything that arms and then re-unarms would leave a stale value behind. Assert the
+  // populate took effect first, otherwise the ineligibility below would hold trivially.
+  ctx.set_table_tombstone_time(DocHybridTime::kInvalid, ctx.tombstone_cache_generation());
+  ASSERT_TRUE(ctx.table_tombstone_time().has_value());
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::kMax));
+
+  // Arming makes it eligible again, which pins the assertions above to the watermark and not to
+  // some unrelated reason for rejecting every read.
+  ctx.AdvanceTombstoneCacheWatermark(HybridTime::FromMicros(100));
+  ASSERT_TRUE(ctx.IsTombstoneCacheEligible(HybridTime::FromMicros(100)));
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::FromMicros(99)));
+}
+
+// #32724 (e): set must stamp the caller's pre-fetch generation, not the post-truncate epoch.
+TEST(DocReadContextTombstoneCacheTest, SetStampsCallerGeneration) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddKeyColumn("k", DataType::INT32));
+  auto schema = builder.Build();
+  schema.set_colocation_id(42);
+  auto ctx = docdb::DocReadContext::TEST_Create(schema);
+
+  ctx.AdvanceTombstoneCacheWatermark(HybridTime::FromMicros(100));
+  const auto gen_before = ctx.tombstone_cache_generation();
+
+  // Truncate advances generation after the fetch, before set.
+  ctx.OnTableTombstoneWritten(HybridTime::FromMicros(200));
+  const auto gen_after = ctx.tombstone_cache_generation();
+  ASSERT_NE(gen_before, gen_after);
+
+  // Stamping absence under the pre-truncate epoch must miss for current readers.
+  ctx.set_table_tombstone_time(DocHybridTime::kInvalid, gen_before);
+  ASSERT_FALSE(ctx.table_tombstone_time().has_value());
+
+  // Stamping under the current epoch is visible (sanity check of the hit path).
+  ctx.set_table_tombstone_time(DocHybridTime::kInvalid, gen_after);
+  ASSERT_TRUE(ctx.table_tombstone_time().has_value());
+  ASSERT_EQ(*ctx.table_tombstone_time(), DocHybridTime::kInvalid);
+}
+
+// #32724: a tombstone HT above the watermark must not land in the cache (empty-table polarity
+// in the commit-to-apply window). Absence (kInvalid) has no HT to compare and remains storable.
+TEST(DocReadContextTombstoneCacheTest, RejectTombstoneAboveWatermark) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddKeyColumn("k", DataType::INT32));
+  auto schema = builder.Build();
+  schema.set_colocation_id(42);
+  auto ctx = docdb::DocReadContext::TEST_Create(schema);
+
+  ctx.AdvanceTombstoneCacheWatermark(HybridTime::FromMicros(100));
+  const auto gen = ctx.tombstone_cache_generation();
+
+  // Tombstone T > watermark: reject (would hide rows for watermark <= read_ht < T).
+  ctx.set_table_tombstone_time(
+      DocHybridTime(HybridTime::FromMicros(200), /*write_id=*/1), gen);
+  ASSERT_FALSE(ctx.table_tombstone_time().has_value());
+
+  // Tombstone at the watermark: accept.
+  ctx.set_table_tombstone_time(
+      DocHybridTime(HybridTime::FromMicros(100), /*write_id=*/1), gen);
+  ASSERT_TRUE(ctx.table_tombstone_time().has_value());
+  ASSERT_EQ(ctx.table_tombstone_time()->hybrid_time(), HybridTime::FromMicros(100));
+
+  ctx.clear_table_tombstone_time();
+  // Absence remains storable regardless of watermark.
+  ctx.set_table_tombstone_time(DocHybridTime::kInvalid, gen);
+  ASSERT_TRUE(ctx.table_tombstone_time().has_value());
+  ASSERT_EQ(*ctx.table_tombstone_time(), DocHybridTime::kInvalid);
+}
+
+// #32724 (f): RF3. A replica that held a warm cache while it was a follower must still see the
+// legacy TRUNCATE. Followers never run ApplyTruncateColocated (leader-side batch assembly), so
+// only the apply-path notify invalidates them; without it, moving leadership onto such a replica
+// (or a follower read) resurrects the truncated rows. Every single-node test above passes even
+// when the invalidation is leader-only, so this is the one that pins the fix to the apply path.
+TEST_F(PgMiniTest, TruncateColocatedInvalidatesTombstoneCacheOnFollower) {
+  const std::string kDbName = "truncate_tombstone_rf3_db";
+  const std::string kTableName = "t";
+  const int kColocationId = 20006;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2), (3)", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  auto peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
+  ASSERT_EQ(peers.size(), NumTabletServers());
+  const auto tablet_id = peers.front()->tablet_id();
+
+  auto doc_read_context = [&](const tablet::TabletPeerPtr& peer) {
+    auto table_info = CHECK_RESULT(peer->tablet_metadata()->GetTableInfo(kColocationId));
+    CHECK(table_info && table_info->doc_read_context);
+    return table_info->doc_read_context;
+  };
+
+  // Warm every replica with the pre-truncate "no tombstone" answer. The SELECT above only warmed
+  // the leader, and the replicas this test is about are the ones that are followers at apply time;
+  // stamping directly is the deterministic way to put them in that state.
+  for (const auto& peer : peers) {
+    auto ctx = doc_read_context(peer);
+    ASSERT_NE(ctx->tombstone_cache_watermark(), HybridTime::kMax)
+        << "replica " << peer->permanent_uuid() << " was never armed, so it cannot go stale and "
+        << "this test would not exercise anything";
+    ctx->set_table_tombstone_time(DocHybridTime::kInvalid, ctx->tombstone_cache_generation());
+    ASSERT_TRUE(ctx->table_tombstone_time().has_value());
+  }
+
+  const auto leader_uuid =
+      ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id))->permanent_uuid();
+
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  // The tombstone is transactional: commit returns before APPLY finishes on every participant, so
+  // a replica may still hold the DocHybridTime::kInvalid stamp we planted until apply runs. Wait
+  // until every replica has dropped that "no tombstone" entry (cleared or replaced with a real
+  // tombstone HT). Leadership transfer below does not need a similar wait: UpdateTxnOperation uses
+  // MVCC, so safe time on the new leader cannot reach `now` until apply completes.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& peer : peers) {
+          auto cached = doc_read_context(peer)->table_tombstone_time();
+          if (cached.has_value() && !cached->is_valid()) {
+            return false;
+          }
+        }
+        return true;
+      },
+      30s * kTimeMultiplier,
+      "Every replica dropped the planted \"no tombstone\" cache entry after TRUNCATE"));
+
+  for (const auto& peer : peers) {
+    auto cached = doc_read_context(peer)->table_tombstone_time();
+    ASSERT_TRUE(!cached.has_value() || cached->is_valid())
+        << "replica " << peer->permanent_uuid()
+        << (peer->permanent_uuid() == leader_uuid ? " (leader)" : " (follower)")
+        << " kept a cached \"no tombstone\" entry across the TRUNCATE";
+  }
+
+  // Now serve reads from a replica that was a follower when the tombstone applied.
+  tablet::TabletPeerPtr new_leader;
+  for (const auto& peer : peers) {
+    if (peer->permanent_uuid() != leader_uuid) {
+      new_leader = peer;
+      break;
+    }
+  }
+  ASSERT_TRUE(new_leader != nullptr);
+  ASSERT_OK(TransferLeadership(cluster_.get(), tablet_id, new_leader->permanent_uuid()));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto leader = VERIFY_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
+        return leader->permanent_uuid() == new_leader->permanent_uuid();
+      },
+      30s * kTimeMultiplier, "Leadership moved to the former follower"));
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (4)", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 1);
+}
 
 TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
   // Setup test data.
@@ -3014,12 +3668,33 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
   ASSERT_OK(tablet_server->Restart());
   ASSERT_OK(tablet_server->WaitStarted());
 
-  ASSERT_OK(conn1.CommitTransaction());
-  ASSERT_OK(conn2.CommitTransaction());
-  ASSERT_OK(conn3.CommitTransaction());
+  // The recently applied transactions map only retains a staircase of (first_write_ht,
+  // apply_op_id) pairs, so an apply landing out of first write order subsumes the entry of an
+  // earlier transaction. Applies are asynchronous with respect to commit, so let each transaction
+  // apply, i.e. leave the participant, before committing the next one.
+  const auto& tablet_id = tablet_peer->tablet_id();
+  auto commit_and_wait_apply = [this, tablet_id, kApplyWait](
+      PGConn* conn, size_t expected_running) -> Status {
+    RETURN_NOT_OK(conn->CommitTransaction());
+    return WaitFor([this, &tablet_id, expected_running]() -> Result<bool> {
+      size_t running = 0;
+      for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+        if (peer->tablet_id() != tablet_id) {
+          continue;
+        }
+        auto peer_tablet = peer->shared_tablet_maybe_null();
+        if (!peer_tablet) {
+          return false;
+        }
+        running += peer_tablet->transaction_participant()->GetNumRunningTransactions();
+      }
+      return running <= expected_running;
+    }, kApplyWait, Format("$0 running transactions left", expected_running));
+  };
 
-  // Wait for apply.
-  SleepFor(kApplyWait);
+  ASSERT_OK(commit_and_wait_apply(&conn1, 6));
+  ASSERT_OK(commit_and_wait_apply(&conn2, 3));
+  ASSERT_OK(commit_and_wait_apply(&conn3, 0));
 
   std::unordered_map<std::string, uint64_t> metric_values;
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
@@ -3041,7 +3716,7 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
 
 Status MockAbortFailure(
     const yb::tserver::PgFinishTransactionRequestPB* req,
-    yb::tserver::PgFinishTransactionResponsePB* resp, yb::rpc::RpcContext* context) {
+    yb::tserver::PgFinishTransactionResponsePB* resp, tserver::PgClientMockCallContext* context) {
   // ASH collector takes session id 1.
   // If --ysql_enable_relcache_init_optimization=false, then the subsequent connections
   // take 2 and 3.
@@ -3065,7 +3740,7 @@ Status MockAbortFailure(
 Status MockRollbackToSubtransactionFailure(
     const yb::tserver::PgRollbackToSubTransactionRequestPB* req,
     yb::tserver::PgRollbackToSubTransactionResponsePB* resp,
-    rpc::RpcContext* context) {
+    tserver::PgClientMockCallContext* context) {
 
   LOG(INFO) << Format("Requested rollback to subtransaction: $0", req->sub_transaction_id());
   return STATUS(NetworkError, "Mocking network failure on RollbackToSubtransaction");
@@ -3177,7 +3852,7 @@ static CoarseTimePoint kFailureStart = CoarseTimePoint();
 
 Status MockHeartbeatFailure(
     const yb::tserver::PgHeartbeatRequestPB* req,
-    yb::tserver::PgHeartbeatResponsePB* resp, yb::rpc::RpcContext* context) {
+    yb::tserver::PgHeartbeatResponsePB* resp, tserver::PgClientMockCallContext* context) {
   LOG(INFO) << "Heartbeat called for session: " << req->session_id();
   if (kFailureStart == CoarseTimePoint()) {
     kFailureStart = CoarseMonoClock::Now();
@@ -3232,6 +3907,478 @@ TEST_F(PgHeartbeatFailureTest, MockTransientHeartbeatFailure) {
   auto nrows = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t1"));
   ASSERT_EQ(nrows, 1);
 }
+
+class PggateTimeoutTest : public PgMiniTestSingleNode {
+ public:
+  static inline MonoDelta sleep_time;
+  static inline std::atomic<uint> mocked_rpcs;
+  static inline bool ignore_client_timeout;
+
+  static void ClearMockState() {
+    sleep_time = MonoDelta();
+    ignore_client_timeout = false;
+    mocked_rpcs.store(0, std::memory_order_release);
+  }
+
+  void SetUp() override {
+    ClearMockState();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_pg_client_mock) = true;
+    // Set the "extra" timeout to a small value in order to make the test run faster.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_extra_timeout_ms) = kPgClientExtraTimeout;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rpc_timeout_sec) = kAlterTableTimeout;
+    PgMiniTest::SetUp();
+  }
+
+  template <class F>
+  tserver::PgClientServiceMockImpl::Handle MockPerformBefore(const F& before) {
+    auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
+    return client->MockPerformBefore(before);
+  }
+
+  template <class F>
+  tserver::PgClientServiceMockImpl::Handle MockPerformAfter(const F& after) {
+    auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
+    return client->MockPerformAfter(after);
+  }
+
+  template <class F>
+  tserver::PgClientServiceMockImpl::Handle MockAlterTableBefore(const F& before) {
+    auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
+    return client->MockAlterTableBefore(before);
+  }
+
+  Result<PGConn> SetupCommonTestConnection() {
+    PGConn conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE t1 (k INT, v1 INT UNIQUE, v2 INT)"));
+
+    // Run all queries once to warm up the cache
+    RETURN_NOT_OK(conn.Execute("INSERT INTO t1 (SELECT i, i, i FROM generate_series(1, 10) AS i)"));
+    VERIFY_RESULT(conn.Fetch("SELECT * FROM t1 WHERE v1 = 1"));
+    VERIFY_RESULT(conn.Fetch("SELECT * FROM t1 WHERE k <= 10"));
+
+    // Set up GUCs for easy debugging
+    RETURN_NOT_OK(conn.Execute("SET log_min_messages TO 'DEBUG2'"));
+    RETURN_NOT_OK(conn.Execute("SET log_min_duration_statement TO 0"));
+    RETURN_NOT_OK(conn.Execute("SET yb_debug_log_docdb_requests TO true"));
+
+    return conn;
+  }
+
+  // Runs `query` and returns whether it hit a statement-timeout cancel. On timeout, wall-clock
+  // latency must fall within:
+  //   strict:     (0.9 * timeout_ms, 1.3 * timeout_ms)
+  //   non-strict: (0.9 * timeout_ms, 1.3 * (timeout_ms + kPgClientExtraTimeout))
+  // Non-strict covers paths where the client waits until the Perform RPC deadline (network)
+  // or returns close to (or slightly after) the statement timer (shared memory)).
+  Result<bool> ExpectStatementTimeout(
+      PGConn& conn, string query, uint timeout_ms, bool use_fetch = true,
+      bool strict = true) {
+    mocked_rpcs.store(0, std::memory_order_release);
+
+    auto start_time = CoarseMonoClock::Now();
+    Status status = Status::OK();
+    if (use_fetch) {
+      auto res = conn.Fetch(query);
+      if (!res.ok()) {
+        status = res.status();
+      }
+    } else {
+      status = conn.Execute(query);
+    }
+    int64_t duration_ms = ToMilliseconds(CoarseMonoClock::Now() - start_time);
+
+    if (!status.ok()) {
+      auto msg = status.message().ToBuffer();
+      if (msg.find("canceling statement due to statement timeout") == std::string::npos) {
+        return status;
+      }
+
+      LOG(INFO) << "Statement timed out after " << duration_ms << " ms";
+
+      const uint upper_ref_ms = strict ? timeout_ms : timeout_ms + kPgClientExtraTimeout;
+      int64_t lowerbound_ms = timeout_ms * 0.90;
+      int64_t upperbound_ms = upper_ref_ms * 1.30;
+      if (!(duration_ms > lowerbound_ms && duration_ms < upperbound_ms)) {
+        return STATUS(NetworkError,
+                      Format("Expected $0 ms < query latency < $1 ms. Received $2 ms",
+                             lowerbound_ms, upperbound_ms, duration_ms));
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+  Result<bool> ValidateStatementTimeout(
+      PGConn& conn, string query, uint timeout_ms, bool use_fetch = true, bool strict = true) {
+    RETURN_NOT_OK(conn.ExecuteFormat("SET statement_timeout TO '$0ms'", timeout_ms));
+    auto result = ExpectStatementTimeout(conn, std::move(query), timeout_ms, use_fetch, strict);
+    RETURN_NOT_OK(conn.Execute("RESET statement_timeout"));
+    return result;
+  }
+
+  static const int32 kAlterTableTimeout = 3; /* in seconds */
+  // Large enough that the Perform wait outlasts Postgres' statement-timeout SIGALRM.
+  static const int32 kPgClientExtraTimeout = 1000; /* in ms */
+  static constexpr auto kPerformMockWorkEstimate = 200ms;
+};
+
+// The server_work_estimate is how long the RPC is expected to take after this mock returns. It is
+// subtracted from the remaining client deadline so the operation can finish without timing out.
+void DoServerSideSleep(
+    const tserver::PgClientMockCallContext* context,
+    MonoDelta server_work_estimate = MonoDelta::kZero) {
+
+  // Increment before sleeping so the client can time out while the mock is still running.
+  const uint rpc_index = PggateTimeoutTest::mocked_rpcs.fetch_add(1, std::memory_order_acq_rel) + 1;
+
+  MonoDelta sleep_for = PggateTimeoutTest::sleep_time.Initialized() ?
+      PggateTimeoutTest::sleep_time :
+      MonoDelta::kZero;
+
+  if (!PggateTimeoutTest::ignore_client_timeout) {
+    const auto remaining =
+        context->GetClientDeadline() - CoarseMonoClock::Now() - server_work_estimate;
+    sleep_for = std::min(sleep_for, std::max(remaining, MonoDelta::kZero));
+  }
+
+  LOG(INFO) << "Mock invoked for RPC " << rpc_index << ". Sleeping for " << sleep_for;
+  SleepFor(sleep_for);
+}
+
+Result<bool> IsPerformOpOnCatalogTable(const yb::tserver::PgPerformRequestMsg* req) {
+  if (req->ops().empty()) {
+    return STATUS(IllegalState, "No operations in Perform request");
+  }
+
+  const auto& first_op = req->ops().front();
+  string table_id = first_op.has_read() ? first_op.read().table_id().ToBuffer()
+                                        : first_op.write().table_id().ToBuffer();
+
+  const auto table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+  if (table_oid < kPgFirstNormalObjectId) {
+    return true;
+  }
+
+  return false;
+}
+
+Status MockPerformBeforeFunc(
+    const yb::tserver::PgPerformRequestMsg* req,
+    yb::tserver::PgPerformResponseMsg* resp, tserver::PgClientMockCallContext* context) {
+
+  // Skip sleeping before catalog ops.
+  if (VERIFY_RESULT(IsPerformOpOnCatalogTable(req))) {
+    return Status::OK();
+  }
+
+  DoServerSideSleep(context, PggateTimeoutTest::kPerformMockWorkEstimate * kTimeMultiplier);
+  return Status::OK();
+}
+
+Status MockAlterTableBeforeFunc(
+    const yb::tserver::PgAlterTableRequestPB* req,
+    yb::tserver::PgAlterTableResponsePB* resp, tserver::PgClientMockCallContext* context) {
+
+  DoServerSideSleep(context, 150ms * kTimeMultiplier);
+  return Status::OK();
+}
+
+// In some cases, it is beneficial for the Perform mock to run after the Perform response is
+// constructed. The "after" mock is invoked after FlushAsync / session unlock, and hence does not
+// HOL-block follow-up Perform RPCs in the same session. A frequent source of such RPCs are
+// catalog lookups that happen after a statement timeout.
+Status MockPerformAfterFunc(
+    const yb::tserver::PgPerformRequestMsg* req,
+    yb::tserver::PgPerformResponseMsg* resp, tserver::PgClientMockCallContext* context) {
+
+  // Skip sleeping before catalog ops.
+  if (VERIFY_RESULT(IsPerformOpOnCatalogTable(req))) {
+    return Status::OK();
+  }
+
+  DoServerSideSleep(context);
+  return Status::OK();
+}
+
+TEST_F(PggateTimeoutTest, YB_DISABLE_TEST_IN_SANITIZERS(MockLongRPC)) {
+  PGConn conn = ASSERT_RESULT(SetupCommonTestConnection());
+  sleep_time = 550ms;
+  auto _ = MockPerformBefore(MockPerformBeforeFunc);
+  bool timed_out = false;
+  uint stmt_timeout_ms = 500;
+  std::string query;
+
+  // A single RPC takes longer than the statement timeout.
+  query = "INSERT INTO t1 VALUES (11, 11, 11)";
+  timed_out = ASSERT_RESULT(ValidateStatementTimeout(conn, query, stmt_timeout_ms));
+  ASSERT_TRUE(timed_out);
+  ASSERT_EQ(mocked_rpcs.load(), 1);
+
+  query = "SELECT * FROM t1 WHERE v1 = 11";
+  timed_out = ASSERT_RESULT(ValidateStatementTimeout(conn, query, stmt_timeout_ms));
+  ASSERT_TRUE(timed_out);
+  ASSERT_EQ(mocked_rpcs.load(), 1);
+
+  // Multiple RPCs that cumulatively take longer than the statement timeout.
+  // RPC 1: starts = 0ms,           ends = 110ms + delta
+  // RPC 2: starts = 110ms + delta, ends = 220ms + delta
+  // RPC 3: starts = 220ms + delta, ends = 330ms + delta
+  // RPC 4: starts = 330ms + delta, ends = 440ms + delta
+  // RPC 5: starts = 440ms + delta, ends = 500ms + delta
+  sleep_time = 110ms;
+  ASSERT_OK(conn.Execute("SET yb_fetch_row_limit TO 1"));
+  query = "SELECT * FROM t1 WHERE k <= 10";
+  timed_out = ASSERT_RESULT(ValidateStatementTimeout(conn, query, stmt_timeout_ms));
+  ASSERT_TRUE(timed_out);
+  ASSERT_EQ(mocked_rpcs.load(), 5);
+
+  // Validate that an RPC is not scheduled while in the "extra timeout" period.
+  // RPC 1: starts = 0ms,           ends = 125ms + delta
+  // RPC 2: starts = 125ms + delta, ends = 250ms + delta
+  // RPC 3: starts = 250ms + delta, ends = 375ms + delta
+  // RPC 4: starts = 375ms + delta, ends = 500ms + delta
+  // RPC 5: not started as 500 < start time < 500 + extra timeout
+  sleep_time = 125ms;
+  timed_out = ASSERT_RESULT(ValidateStatementTimeout(conn, query, stmt_timeout_ms));
+  ASSERT_TRUE(timed_out);
+  ASSERT_EQ(mocked_rpcs.load(), 4);
+}
+
+TEST_F(PggateTimeoutTest, YB_DISABLE_TEST_IN_SANITIZERS(RPCTimeoutShorterThanClientTimeout)) {
+  PGConn conn = ASSERT_RESULT(SetupCommonTestConnection());
+
+  // Validate that an RPC's explicit timeout is respected.
+  // The AlterTable RPC is modified to have an explicit timeout of 3s.
+  // A statement timeout of 3.5s is also set.
+  // The expected behavior is that the AlterTable RPC completes within 3s and the statement timer
+  // does not fire.
+  auto _1 = MockAlterTableBefore(MockAlterTableBeforeFunc);
+  bool timed_out = false;
+  uint stmt_timeout_ms = 3500;
+  sleep_time = 3500ms;
+  std::string query = "ALTER TABLE t1 RENAME TO t1_modified";
+  timed_out = ASSERT_RESULT(ValidateStatementTimeout(
+      conn, query, stmt_timeout_ms, false /* use_fetch */));
+  ASSERT_FALSE(timed_out);
+  ASSERT_EQ(mocked_rpcs.load(), 1);
+
+  // Repeating the above test with the statement timeout lower than the RPC timeout should cause
+  // the statement timer to fire.
+  stmt_timeout_ms = 2500;
+  ignore_client_timeout = true;
+  query = "ALTER TABLE t1_modified RENAME TO t1";
+  timed_out = ASSERT_RESULT(ValidateStatementTimeout(
+    conn, query, stmt_timeout_ms, false /* use_fetch */));
+  ASSERT_TRUE(timed_out);
+  ASSERT_EQ(mocked_rpcs.load(), 1);
+}
+
+TEST_F(PggateTimeoutTest, YB_DISABLE_TEST_IN_SANITIZERS(StatementTimeoutInTxn)) {
+  PGConn conn = ASSERT_RESULT(SetupCommonTestConnection());
+
+  auto _1 = MockPerformBefore(MockPerformBeforeFunc);
+  bool timed_out = false;
+  uint stmt_timeout_ms = 500;
+  sleep_time = 550ms;
+  std::string query = "SELECT * FROM t1 WHERE k <= 10";
+
+  // Validate that a statement timeout set within a txn is reset once the txn completes.
+  ASSERT_OK(conn.StartTransaction(READ_COMMITTED));
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout TO '$0ms'", stmt_timeout_ms));
+  timed_out = ASSERT_RESULT(ExpectStatementTimeout(conn, query, stmt_timeout_ms));
+  ASSERT_TRUE(timed_out);
+  ASSERT_EQ(mocked_rpcs.load(), 1);
+  ASSERT_OK(conn.RollbackTransaction());
+  mocked_rpcs.store(0, std::memory_order_release);
+  ASSERT_OK(conn.Fetch(query));
+  ASSERT_EQ(mocked_rpcs.load(), 1);
+
+  // Similarly, validate that rolling back to a subtransaction or resetting the statement timeout
+  // also has the intended effect.
+  ASSERT_OK(conn.StartTransaction(READ_COMMITTED));
+  // No statement timeout
+  ASSERT_OK(conn.Fetch(query));
+  ASSERT_OK(conn.Execute("SAVEPOINT S1")); // S1 has no statement timeout
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout TO '$0ms'", stmt_timeout_ms));
+  timed_out = ASSERT_RESULT(ExpectStatementTimeout(conn, query, stmt_timeout_ms));
+  ASSERT_TRUE(timed_out);
+
+  ASSERT_OK(conn.Execute("ROLLBACK TO S1"));
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout TO '$0ms'", stmt_timeout_ms));
+  ASSERT_OK(conn.Execute("SAVEPOINT S2")); // S2 has statement timeout
+
+  // The statement timeout should still work
+  timed_out = ASSERT_RESULT(ExpectStatementTimeout(conn, query, stmt_timeout_ms));
+  ASSERT_TRUE(timed_out);
+
+  ASSERT_OK(conn.Execute("ROLLBACK TO S2"));
+  ASSERT_OK(conn.Execute("RESET statement_timeout"));
+  ASSERT_OK(conn.Fetch(query));
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout TO '$0ms'", stmt_timeout_ms));
+  ASSERT_OK(conn.Execute("ROLLBACK TO S1"));
+  ASSERT_OK(conn.Fetch(query));
+}
+
+TEST_F(PggateTimeoutTest, YB_DISABLE_TEST_IN_SANITIZERS(PostgresFeatures)) {
+  PGConn conn = ASSERT_RESULT(SetupCommonTestConnection());
+
+  auto _ = MockPerformBefore(MockPerformBeforeFunc);
+  bool timed_out = false;
+  uint stmt_timeout_ms = 500;
+  std::string query = "SELECT pg_sleep(1) /* 1s */";
+
+  // Validate that statement timeout is respected even when RPCs are not involved.
+  timed_out = ASSERT_RESULT(ValidateStatementTimeout(conn, query, stmt_timeout_ms));
+  ASSERT_TRUE(timed_out);
+  ASSERT_EQ(mocked_rpcs.load(), 0);
+
+  // Validate that statement timeout is applied correctly to cursors.
+  ASSERT_OK(conn.StartTransaction(READ_COMMITTED));
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout TO '$0ms'", stmt_timeout_ms));
+  // Declare two cursors and fetch one row at a time.
+  ASSERT_OK(conn.Execute("SET yb_fetch_row_limit TO 1"));
+  ASSERT_OK(conn.Execute("DECLARE c1 CURSOR FOR SELECT * FROM t1 WHERE k <= 10"));
+  ASSERT_OK(conn.Execute("DECLARE c2 CURSOR FOR SELECT * FROM t1 WHERE k <= 10"));
+
+  uint num_rows = 5;
+  query = "FETCH FORWARD 1 FROM c1";
+  sleep_time = 0ms;
+  for (uint i = 0; i < num_rows; ++i) {
+    ASSERT_OK(conn.Fetch(query));
+  }
+
+  // Time between queries on an active cursor should not be counted towards statement timeout.
+  LOG(INFO) << "Sleeping before executing queries on cursor c1";
+  SleepFor(1s);
+  ASSERT_OK(conn.Fetch(query));
+
+  // Similarly, time between queries across cursors should not have an effect on statement timeout.
+  LOG(INFO) << "Sleeping between executing queries on cursor c1 and c2";
+  SleepFor(1s);
+  query = "FETCH FORWARD 1 FROM c2";
+  ASSERT_OK(conn.Fetch(query));
+
+  ASSERT_OK(conn.CommitTransaction());
+
+  // Statement timeouts should still apply on the same connection after cursor activity.
+  query = "SELECT * FROM t1 WHERE k <= 10";
+  sleep_time = 550ms;
+  timed_out = ASSERT_RESULT(ValidateStatementTimeout(conn, query, stmt_timeout_ms));
+  ASSERT_TRUE(timed_out);
+  ASSERT_EQ(mocked_rpcs.load(), 1);
+}
+
+// Test to validate that a client is usable after a statement timeout even if the tserver is still
+// working on the previous RPC.
+TEST_F(PggateTimeoutTest, YB_DISABLE_TEST_IN_SANITIZERS(ClientAbortWhileServerWorking)) {
+  PGConn conn = ASSERT_RESULT(SetupCommonTestConnection());
+
+  // After-mock sleep runs after flush (session lock already released) so the client can abort at
+  // the RPC deadline while server-side work is still in flight, without HOL-blocking follow-up
+  // catalog Performs the way a Before sleep would.
+  sleep_time = 2000ms;
+  ignore_client_timeout = true;
+
+  const uint stmt_timeout_ms = 500;
+  // Network may wait until the Perform RPC deadline (stmt + extra); SHM can surface the
+  // statement timeout closer to the timer itself. Accept either (strict=false).
+  const std::string query = "SELECT * FROM t1 WHERE k <= 10";
+
+  auto after_mock = std::optional(MockPerformAfter(MockPerformAfterFunc));
+  bool timed_out = ASSERT_RESULT(ValidateStatementTimeout(
+      conn, query, stmt_timeout_ms, true /* use_fetch */, false /* strict */));
+  ASSERT_TRUE(timed_out);
+  // Client returned well before the mock's sleep finishes; wait it out before
+  // reusing the connection.
+  SleepFor(sleep_time);
+  after_mock.reset();
+
+  ASSERT_OK(conn.Fetch(query));
+  auto nrows = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t1"));
+  ASSERT_EQ(nrows, 10);
+}
+
+// Test to verify that interrupts are processed between RPCs even if control does not return back to
+// Postgres.
+TEST_F(PggateTimeoutTest, YB_DISABLE_TEST_IN_SANITIZERS(InterruptBetweenPggateRpcs)) {
+  // Needle-in-a-haystack query where the needle (key value) is not found.
+  // Multi tablets belonging to the table are scanned, and control does not
+  // return back to Postgres between RPCs. The statement times out between
+  // RPC 1 and 2.
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE mt (k INT PRIMARY KEY, v INT) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO mt SELECT i, i FROM generate_series(1, 30) i"));
+  ASSERT_OK(conn.Execute("SET log_min_messages TO 'DEBUG2'"));
+  ASSERT_OK(conn.Execute("SET yb_debug_log_docdb_requests TO true"));
+
+  auto mock_handle = std::optional(MockPerformBefore(MockPerformBeforeFunc));
+  sleep_time = 1s;
+  ignore_client_timeout = false;
+  const uint stmt_timeout_ms = 300;
+  const std::string query = "SELECT * FROM mt WHERE v = -1";
+
+  bool timed_out = ASSERT_RESULT(ValidateStatementTimeout(
+      conn, query, stmt_timeout_ms, true /* use_fetch */, false /* strict */));
+  ASSERT_TRUE(timed_out);
+  ASSERT_EQ(mocked_rpcs.load(), 1);
+  mock_handle.reset();
+
+  // Similar to the above, a statement cancellation arrives while the server is
+  // working on RPC 2 and the query is cancelled between RPCs 2 and 3.
+  ClearMockState();
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE p1 (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE p2 (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE p3 (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE child ("
+      "  k INT PRIMARY KEY,"
+      "  a INT REFERENCES p1(k),"
+      "  b INT REFERENCES p2(k),"
+      "  c INT REFERENCES p3(k))"));
+  ASSERT_OK(conn.Execute("INSERT INTO p1 VALUES (1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO p2 VALUES (1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO p3 VALUES (1)"));
+  // Warm pggate table cache so the INSERT under test does not issue OpenTable RPCs.
+  ASSERT_OK(conn.Execute("SET ysql_session_max_batch_size = 1"));
+  ASSERT_OK(conn.Execute("INSERT INTO child VALUES (0, 1, 1, 1)"));
+  ASSERT_OK(conn.Execute("DELETE FROM child WHERE k = 0"));
+
+  const auto pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  PGConn aux_conn = ASSERT_RESULT(Connect());
+
+  mock_handle = MockPerformBefore(MockPerformBeforeFunc);
+  // Uniform per-RPC sleep. Cancel mid-RPC2; one more RPC-length wait would allow a 3rd
+  // Perform to start if the interrupt were not processed between RPCs.
+  sleep_time = 200ms * kTimeMultiplier;
+  ignore_client_timeout = true;
+
+  Status insert_status;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThread([&conn, &insert_status] {
+    insert_status = conn.Execute("INSERT INTO child VALUES (1, 1, 1, 1)");
+  });
+
+  // Wait until we're sure that the server is working on RPC 2.
+  SleepFor(sleep_time + sleep_time / 2);
+  ASSERT_TRUE(ASSERT_RESULT(
+      aux_conn.FetchRow<bool>(Format("SELECT pg_cancel_backend($0)", pid))));
+
+  // Ensure that the client has had enough time to send further RPCs in case the
+  // the interrupt was not processed. This will ensure that the test fails if
+  // the interrupt was not processed between RPCs.
+  SleepFor(sleep_time);
+  ASSERT_EQ(mocked_rpcs.load(), 2);
+
+  thread_holder.JoinAll();
+  ASSERT_NOK(insert_status);
+  const auto msg = insert_status.message().ToBuffer();
+  ASSERT_NE(msg.find("canceling statement due to user request"), std::string::npos) << msg;
+}
+
 
 TEST_F(PgMiniTest, KillPGInTheMiddleOfBatcherOperation) {
   const std::string kTableName = "test_table";
@@ -3491,11 +4638,14 @@ TEST_F(PgMiniTest, TabletMetadataStateColumn) {
   ASSERT_EQ(peers.size(), 1);
   auto deleted_tablet_id = peers[0]->tablet_id();
 
+  // CleanUpDeletedTables marks the table DELETED on one cycle and erases it from tablet_map_ on
+  // the next, so DELETED is observable for a single cycle only. Stretch the cycle so that window
+  // outlives DROP, whose PG-side commit work is slow under sanitizers.
+  const auto bg_task_wait_ms = FLAGS_catalog_manager_bg_task_wait_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 5000 * kTimeMultiplier;
+
   ASSERT_OK(pg_conn.Execute("DROP TABLE delete_test"));
 
-  // DROP returns once the tablets are deleted, but the master keeps the tablet in
-  // tablet_map_ in DELETED state until the background CleanUpDeletedTables task erases
-  // it on its next cycle. Poll within that window to observe the DELETED state.
   ASSERT_OK(LoggedWaitFor(
       [&pg_conn, &deleted_tablet_id]() -> Result<bool> {
         auto count = VERIFY_RESULT(pg_conn.FetchRow<int64_t>(Format(
@@ -3505,6 +4655,8 @@ TEST_F(PgMiniTest, TabletMetadataStateColumn) {
       },
       30s * kTimeMultiplier, "Wait for DELETED tablet state after DROP TABLE"));
   LOG(INFO) << "DELETED state verified for tablet " << deleted_tablet_id;
+  // The REPLACED phase below needs the background task back at its normal cadence.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = bg_task_wait_ms;
 
   // ======== REPLACED via creation timeout ========
   // Set a very low creation timeout, shut down 2 of 3 tservers so new tablets can't

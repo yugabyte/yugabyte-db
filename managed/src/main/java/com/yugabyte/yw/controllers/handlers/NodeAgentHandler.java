@@ -17,8 +17,10 @@ import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.forms.NodeAgentResp;
 import com.yugabyte.yw.forms.ReinstallNodeAgentForm;
 import com.yugabyte.yw.forms.paging.NodeAgentPagedApiResponse;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
+import com.yugabyte.yw.models.NodeAgent.DeployContext;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.filters.NodeAgentFilter;
@@ -117,7 +119,14 @@ public class NodeAgentHandler {
         throw new PlatformServiceException(Status.BAD_REQUEST, msg);
       }
     }
-    return nodeAgentManager.create(nodeAgent, true);
+    UUID certificateUuid = null;
+    if (StringUtils.isNotBlank(payload.certificateName)) {
+      certificateUuid =
+          CertificateInfo.getOrBadRequest(customerUuid, payload.certificateName).getUuid();
+    }
+    nodeAgent.setCertificateUuid(certificateUuid);
+    DeployContext deployContext = DeployContext.builder().certificateUuid(certificateUuid).build();
+    return nodeAgentManager.create(nodeAgent, deployContext, true);
   }
 
   private List<NodeAgentResp> transformNodeAgentResponse(

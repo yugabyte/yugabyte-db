@@ -41,8 +41,10 @@ shift $((OPTIND - 1))
 
 # Detect if we are passing a UBI base image and give some advice if so
 # BASE_IMAGE=registry.access.redhat.com/ubi
-if [[ "$@" == *"BASE_IMAGE=registry.access.redhat.com/ubi"* ]]; then
-  if [[ "$@" != *"USER="* ]]; then
+base_img_pattern="BASE_IMAGE=(\S+?)"
+if [[ "$@" =~ $base_img_pattern ]] ; then
+  ubi_pattern="ubi|rfcurated"
+  if [[ "${BASH_REMATCH[1]}" =~ $ubi_pattern ]] && [[ "$@" != *"USER="* ]]; then
     echo "It is recommended that '--build-arg USER=yugabyte' be used in conjunction with a UBI \
       base image"
     echo "Hit <ctrl-c> now to exit and add the parameter or wait 5 seconds to continue"

@@ -91,6 +91,7 @@ import com.yugabyte.yw.common.operator.YBInformerFactory;
 import com.yugabyte.yw.common.operator.YBReconcilerFactory;
 import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.TelemetryProviderCrConverter;
 import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
@@ -344,6 +345,7 @@ public class MainModule extends AbstractModule {
     bind(KubernetesClientFactory.class).asEagerSingleton();
     bind(UniverseImporter.class).asEagerSingleton();
     bind(OperatorResourceRestorer.class).asEagerSingleton();
+    bind(TelemetryProviderCrConverter.class).asEagerSingleton();
 
     // Destroy current session on SSO logout.
     final LogoutController logoutController = new LogoutController();

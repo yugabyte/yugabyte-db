@@ -56,6 +56,7 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/jwt_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/signal_util.h"
 #include "yb/util/slice.h"
@@ -1492,8 +1493,7 @@ YbcStatus YBCPgDmlApplyParallelRange(YbcPgStatement handle,
                                      const char *lower_bound, size_t lower_bound_len,
                                      const char *upper_bound, size_t upper_bound_len) {
   return ToYBCStatus(pgapi->DmlApplyParallelRange(
-    handle, Slice(lower_bound, lower_bound_len), true,
-            Slice(upper_bound, upper_bound_len), false));
+    handle, Slice(lower_bound, lower_bound_len), Slice(upper_bound, upper_bound_len)));
 }
 
 YbcStatus YBCPgDmlSetMergeSortKeys(YbcPgStatement handle, int num_keys,
@@ -1579,11 +1579,11 @@ YbcStatus YBCPgDecodePKColumnsFromBasectid(
 
 YbcStatus YBCPgNewSample(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid,
-    YbcPgTableLocalityInfo locality_info, bool skip_intents_read,
+    YbcPgTableLocalityInfo locality_info, YbcPgSkipIntentsOptimizationInfo skip_intents_info,
     int targrows, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1,
     YbcPgStatement *handle) {
   return ToYBCStatus(pgapi->NewSample(
-      {database_oid, table_relfilenode_oid}, locality_info, skip_intents_read,
+      {database_oid, table_relfilenode_oid}, locality_info, skip_intents_info,
       targrows, {.w = rstate_w, .s0 = rand_state_s0, .s1 = rand_state_s1},
       handle));
 }
@@ -1613,10 +1613,10 @@ YbcStatus YBCPgNewInsertBlock(
     YbcPgOid table_oid,
     YbcPgTableLocalityInfo locality_info,
     YbcPgTransactionSetting transaction_setting,
-    bool skip_intents_write,
+    YbcPgSkipIntentsOptimizationInfo skip_intents_info,
     YbcPgStatement *handle) {
   auto result = pgapi->NewInsertBlock(
-      PgObjectId(database_oid, table_oid), locality_info, transaction_setting, skip_intents_write);
+      PgObjectId(database_oid, table_oid), locality_info, transaction_setting, skip_intents_info);
   if (result.ok()) {
     *handle = *result;
     return nullptr;
@@ -1628,11 +1628,11 @@ YbcStatus YBCPgNewInsert(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewInsert(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle) {
@@ -1662,11 +1662,11 @@ YbcStatus YBCPgNewUpdate(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewUpdate(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle) {
@@ -1678,11 +1678,11 @@ YbcStatus YBCPgNewDelete(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewDelete(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle) {
@@ -1711,11 +1711,12 @@ YbcStatus YBCPgExecTruncateColocated(YbcPgStatement handle) {
 // SELECT Operations -------------------------------------------------------------------------------
 YbcStatus YBCPgNewSelect(
     YbcPgOid database_oid, YbcPgOid table_relfilenode_oid, const YbcPgPrepareParameters* params,
-    YbcPgTableLocalityInfo locality_info, bool skip_intents_read, YbcPgStatement* handle) {
+    YbcPgTableLocalityInfo locality_info,
+    YbcPgSkipIntentsOptimizationInfo skip_intents_info, YbcPgStatement* handle) {
   return ToYBCStatus(pgapi->NewSelect(
       PgObjectId{database_oid, table_relfilenode_oid},
       PgObjectId{database_oid, params ? params->index_relfilenode_oid : kInvalidOid},
-      params, locality_info, skip_intents_read, handle));
+      params, locality_info, skip_intents_info, handle));
 }
 
 YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan) {
@@ -2347,16 +2348,9 @@ void YBCClearTimeout() {
   pgapi->ClearTimeout();
 }
 
-void YBCCheckForInterrupts() {
-  LOG_IF(FATAL, !is_main_thread())
-      << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
-
-  // If we're in the midst of shutting down, do not bother checking for interrupts.
-  if (!pgapi) {
-    return;
-  }
-
-  pgapi->pg_callbacks()->CheckForInterrupts();
+bool YBCHasProcessableAbortInterrupt() {
+  return PREDICT_FALSE(!pgapi)
+      ? false : pgapi->pg_callbacks()->HasProcessableAbortInterrupt();
 }
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle) {
@@ -3342,6 +3336,12 @@ YbcStatus YBCPgRegisterSnapshotReadTime(
       pgapi->RegisterSnapshotReadTime(read_time, use_read_time), handle ? handle : &tmp_handle);
 }
 
+void YBCPgPublishOldestReadPointHandle(YbcReadPointHandle handle) {
+  if (pgapi) {
+    pgapi->PublishOldestReadPointSerialNo(handle);
+  }
+}
+
 void YBCRecordTempRelationDDL() {
   if (YBCRecordTempRelationDDL_hook) {
     YBCRecordTempRelationDDL_hook();
@@ -3484,10 +3484,14 @@ void YBCPgGlobalViewReadSetParams(
   DCHECK_NOTNULL(handle)->SetParams(std::span{param_values, param_values + num_params});
 }
 
-YbcPgResultPB YBCPgGlobalViewReadExecScan(
+YbcPgGvScanResult YBCPgGlobalViewReadExecScan(
     YbcPgGlobalViewRead handle, const char *database_name, const char *query,
     const char *tserver_uuid) {
   return pgapi->ExecGlobalViewScan(handle, database_name, query, tserver_uuid);
+}
+
+bool YBCPgGlobalViewReadNextRow(YbcPgGlobalViewRead handle, const char **values) {
+  return DCHECK_NOTNULL(handle)->NextRow(values);
 }
 
 const char* YBCPgGlobalViewReadGetError(YbcPgGlobalViewRead handle) {

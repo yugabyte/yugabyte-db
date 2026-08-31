@@ -10,10 +10,22 @@ export type NodesAvailabilityProps = {
   isGeoPartition?: boolean;
   /** Hide the dedicated-nodes toggle (e.g. Edit Placement — dedicated nodes are not editable there). */
   hideDedicatedNodes?: boolean;
+
+  baselineRegionCodes?: string[];
+  /** Original universe zone UUIDs per region code (edit placement); used for NEW AZ badge. */
+  baselineZoneUuidsByRegion?: Record<string, string[]>;
 };
 
 export const NodesAvailability = forwardRef<StepsRef, NodesAvailabilityProps>(
-  function NodesAvailability({ isGeoPartition = false, hideDedicatedNodes = false }, ref) {
+  function NodesAvailability(
+    {
+      isGeoPartition = false,
+      hideDedicatedNodes = false,
+      baselineRegionCodes,
+      baselineZoneUuidsByRegion
+    },
+    ref
+  ) {
   const step = useNodesAvailabilityStep(ref, { isGeoPartition });
   const mode = step.resilienceAndRegionsSettings?.resilienceFormMode ?? ResilienceFormMode.GUIDED;
 
@@ -32,6 +44,8 @@ export const NodesAvailability = forwardRef<StepsRef, NodesAvailabilityProps>(
           resilienceAndRegionsSettings={step.resilienceAndRegionsSettings}
           isGeoPartition={isGeoPartition}
           hideDedicatedNodes={hideDedicatedNodes}
+          baselineRegionCodes={baselineRegionCodes}
+          baselineZoneUuidsByRegion={baselineZoneUuidsByRegion}
         />
       ) : (
         <NodesAvailabilityGuidedBody
@@ -44,6 +58,8 @@ export const NodesAvailability = forwardRef<StepsRef, NodesAvailabilityProps>(
           resilienceAndRegionsSettings={step.resilienceAndRegionsSettings}
           isGeoPartition={isGeoPartition}
           hideDedicatedNodes={hideDedicatedNodes}
+          baselineRegionCodes={baselineRegionCodes}
+          baselineZoneUuidsByRegion={baselineZoneUuidsByRegion}
         />
       )}
     </FormProvider>

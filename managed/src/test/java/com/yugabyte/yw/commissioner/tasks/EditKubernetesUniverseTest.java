@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -226,6 +227,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.WaitForServer,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.HandleKubernetesNamespacedServices,
           TaskType.KubernetesCommandExecutor,
@@ -246,6 +248,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -258,6 +261,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
           TaskType.HandleKubernetesNamespacedServices,
@@ -281,6 +285,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
         Json.toJson(ImmutableMap.of()),
@@ -297,6 +302,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.HandleKubernetesNamespacedServices,
           TaskType.CheckUnderReplicatedTablets,
@@ -330,6 +336,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedChangeInstaceTypeResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -498,7 +505,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -582,7 +590,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(2))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -672,7 +681,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());

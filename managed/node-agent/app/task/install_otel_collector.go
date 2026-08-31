@@ -15,6 +15,17 @@ import (
 
 const OtelCollectorService = "otel-collector.service"
 
+const (
+	// Name of the executable inside the published archive. The YugabyteDB unified collector is a
+	// custom ocb distribution rather than the upstream contrib one, so it does not ship under the
+	// contrib name.
+	otelCollectorPackagedBinary = "otelcol-unified"
+	// Name the executable is installed under on the node. This becomes the running process name,
+	// which the systemd unit, the health check's `ps -C` lookup and the `process` label on the
+	// per-process metrics all key off, so it must stay stable across collector version changes.
+	otelCollectorInstalledBinary = "otelcol-contrib"
+)
+
 type InstallOtelCollector struct {
 	shellTask *ShellTask
 	param     *pb.InstallOtelCollectorInput
@@ -85,6 +96,15 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 
+	// Runs ahead of the stop in 4) and the config swap in 5) so a rejected config leaves the
+	// running collector and its existing config.yml untouched.
+	if h.param.GetOtelColConfigFile() != "" {
+		if err = h.validateOtelCollectorConfig(ctx, h.param.GetYbHomeDir()); err != nil {
+			util.FileLogger().Error(ctx, err.Error())
+			return nil, err
+		}
+	}
+
 	// 3) Place the otel-collector.service at desired location.
 	otelColMaxMemory := h.param.GetOtelColMaxMemory()
 	if otelColMaxMemory == 0 {
@@ -94,6 +114,10 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		"user_name":           h.username,
 		"yb_home_dir":         h.param.GetYbHomeDir(),
 		"otel_col_max_memory": otelColMaxMemory,
+		// Must mirror the conditions the setup steps use to write these credentials.
+		"otel_col_aws_creds_present": h.param.GetOtelColAwsAccessKey() != "" &&
+			h.param.GetOtelColAwsSecretKey() != "",
+		"otel_col_gcp_creds_present": h.param.GetOtelColGcpCredsFile() != "",
 	}
 
 	// Copy otel-collector.service
@@ -145,8 +169,32 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		if err = module.EnableSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
 			return nil, err
 		}
+		// start/enable both return 0 over a collector that died parsing its config.
+		if err = module.VerifySystemdServiceStarted(
+			ctx, h.username, OtelCollectorService, h.logOut,
+		); err != nil {
+			return nil, err
+		}
 	}
 	return nil, nil
+}
+
+// Covers config unmarshalling and Validate() only - components are not constructed until the
+// service runs, so an exporter that fails to build still has to be caught after start.
+func (h *InstallOtelCollector) validateOtelCollectorConfig(
+	ctx context.Context,
+	ybHome string,
+) error {
+	cmd := fmt.Sprintf(
+		"%s validate --config=file:%s",
+		filepath.Join(ybHome, "otel-collector", otelCollectorInstalledBinary),
+		h.param.GetOtelColConfigFile(),
+	)
+	if _, err := module.RunShellCmd(
+		ctx, h.username, "ValidateOtelCollectorConfig", cmd, h.logOut); err != nil {
+		return fmt.Errorf("otel-collector config was rejected: %w", err)
+	}
+	return nil
 }
 
 // GetOtelCollectorSetupSteps returns the sequence of steps needed for configuring the otel collector.
@@ -183,10 +231,20 @@ func (h *InstallOtelCollector) execOtelCollectorSetupSteps(
 			),
 		},
 		{
-			"ensure 755 permission for otelcol-contrib",
+			// mv rather than cp: rename(2) succeeds even when the previous binary is still mapped
+			// by a running collector, which overwriting in place would not (ETXTBSY).
+			"rename-otel-collector-binary",
+			fmt.Sprintf(
+				"mv -f %s %s",
+				filepath.Join(otelCollectorDirectory, otelCollectorPackagedBinary),
+				filepath.Join(otelCollectorDirectory, otelCollectorInstalledBinary),
+			),
+		},
+		{
+			fmt.Sprintf("ensure 755 permission for %s", otelCollectorInstalledBinary),
 			fmt.Sprintf(
 				"chmod -R 755 %s",
-				filepath.Join(otelCollectorDirectory, "otelcol-contrib"),
+				filepath.Join(otelCollectorDirectory, otelCollectorInstalledBinary),
 			),
 		},
 		{

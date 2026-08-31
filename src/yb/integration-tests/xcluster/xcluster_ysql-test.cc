@@ -2839,6 +2839,40 @@ TEST_F(XClusterYsqlTest, TestTableRewriteOperations) {
   }
 }
 
+// Test that an ALTER COLUMN TYPE that recreate index is blocked, even when the main
+// table itself is not rewritten.
+TEST_F(XClusterYsqlTest, TestAlterColumnTypeIndexRewrite) {
+  ASSERT_OK(SetUpWithParams({1}, {1}, 3, 1));
+  const auto table_name = producer_table_->name().table_name();
+
+  // Create the indexes on both universes before setting up replication
+  for (auto* cluster : {&producer_cluster_, &consumer_cluster_}) {
+    auto conn = ASSERT_RESULT(cluster->ConnectToDB(namespace_name));
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER TABLE $0 ADD COLUMN c1 varchar(50), ADD COLUMN c2 varchar(50)", table_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX expr_idx ON $0 ((lower(c1)))", table_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX plain_idx ON $0 (c2)", table_name));
+  }
+
+  // Replicate the table along with its indexes.
+  auto tables = producer_tables_;
+  for (const auto& index_name : {"expr_idx", "plain_idx"}) {
+    const auto index_table_name =
+        ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "public", index_name));
+    ASSERT_OK(producer_client()->OpenTable(index_table_name, &tables.emplace_back()));
+  }
+  ASSERT_OK(SetupUniverseReplication(tables));
+
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  // The type change rewrites the index (but not the main table), so it must be
+  // blocked.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN c1 TYPE text", table_name),
+      "Cannot rewrite a table that is a part of non-automatic mode XCluster replication.");
+  // The plain index is reused in place without a rewrite, so this should succeed.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN c2 TYPE varchar(255)", table_name));
+}
+
 TEST_F(XClusterYsqlTest, RandomFailuresAfterApply) {
   // Fail one third of the Applies.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_random_failure_after_apply) = 0.3;

@@ -120,6 +120,10 @@ HybridTime TabletRetentionPolicy::ProposedHistoryCutoff() {
   std::lock_guard lock(mutex_);
   // TODO(Sanket): Since this is only for statistics collection, for the master
   // there will be some imprecision which should be followed up in a diff.
+
+  // TODO: (Github issue #33033) ProposedHistoryCutoff is pure clock based and ignores the
+  // allowed-history-cutoff provider, which triggers compaction frequently when snapshots
+  // are being retained (by xCluster, PITR, long running DDLs, etc). Follow-up needed.
   return FLAGS_enable_history_cutoff_propagation
       ? committed_history_cutoff_information_.primary_cutoff_ht :
         ClockBasedHistoryCutoff(clock_.get());

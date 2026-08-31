@@ -92,6 +92,12 @@ public final class PgWireProtocol {
   // ---- Wire helpers: building frontend messages -----------------------------
 
   public static byte[] buildStartupMessage(String user, String database) throws IOException {
+    return buildStartupMessage(user, database, null, null);
+  }
+
+  public static byte[] buildStartupMessage(
+      String user, String database, String parameterName, String parameterValue)
+      throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
     d.writeInt(0); // placeholder for length
@@ -100,6 +106,10 @@ public final class PgWireProtocol {
     writeString(d, user);
     writeString(d, "database");
     writeString(d, database);
+    if (parameterName != null) {
+      writeString(d, parameterName);
+      writeString(d, parameterValue);
+    }
     d.writeByte(0); // terminator
     d.flush();
     byte[] msg = buf.toByteArray();

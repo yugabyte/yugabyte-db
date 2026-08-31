@@ -58,11 +58,15 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
 
@@ -74,6 +78,7 @@ DECLARE_bool(ycql_enable_packed_row);
 DECLARE_bool(advance_intents_flushed_op_id_to_match_regular);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 
 namespace yb {
 
@@ -279,6 +284,205 @@ class XClusterExternalApplyBootstrapTest : public YBMiniClusterTestBase<MiniClus
     return *value;
   }
 
+  // Returns the value of column "v" for the row with key `key`, or nullopt if the row does not
+  // exist. Full scan for the same hash-routing reason as ReadSingleRowValue.
+  Result<std::optional<QLValue>> ReadRowValue(const string& key) {
+    std::optional<QLValue> value;
+    for (const auto& row : client::TableRange(table_)) {
+      if (row.column(0).string_value() == key) {
+        SCHECK(!value.has_value(), IllegalState, "Duplicate row");
+        value = row.column(1);
+      }
+    }
+    return value;
+  }
+
+  // Shared choreography for the intents-frontier force-advance scenario (see the test
+  // comment blocks below for the mechanism):
+  //   1. Send W1 - ONE Raft op carrying an UNFUSED external-intent write pair (no apply block, so
+  //      the intent must land in the intents DB) plus one plain external-HT regular record (which
+  //      guarantees regular-DB content, so the in-window regular flush stamps the regular
+  //      frontier with W1's own index).
+  //   2. Pause W1's apply at the sync point between its regular-DB write and its intents-DB
+  //      write; in that window, flush the regular DB from the test thread.
+  //   3. Assert the intents frontier stays behind the regular one, in both modes. Without the fix
+  //      and with advance_frontier, that flush's listener sees an empty intents memtable and
+  //      persists intents == regular >= W1; with the fix it finds the flag cleared and leaves the
+  //      intents frontier alone.
+  //   4. Release the apply; W1's external intents land in the intents memtable. Without the fix
+  //      they are already covered by the persisted frontier but not durable; with it they are
+  //      still uncovered. Optionally flush the intents DB.
+  //   5. Ungraceful restart (no flush on shutdown) -> bootstrap replays the WAL.
+  //   6. Post-restart: the external intents must exist; after the source transaction's APPLY, the
+  //      row must read the source value.
+  void RunFrontierAdvanceCrashScenario(bool advance_frontier, bool flush_intents_before_crash) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_advance_intents_flushed_op_id_to_match_regular) =
+        advance_frontier;
+
+    const auto kCommitHybridTime = 1000_usec_ht;         // External txn T's commit hybrid time.
+    const auto kRegularRecordHybridTime = 900_usec_ht;   // W1's plain regular record.
+
+    auto peer = ASSERT_RESULT(FindLeaderPeer());
+    const auto tablet_id = peer->tablet_id();
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+
+    const auto txn_id = ASSERT_RESULT(FullyDecodeTransactionId(kTxnId));
+    const auto involved_tablet = ASSERT_RESULT(Uuid::FromString(kInvolvedTablet));
+    const auto value_column_id = GetValueColumnId(*tablet);
+    const DocKey row_doc_key(0, MakeKeyEntryValues("row1"));
+
+    const auto baseline = ASSERT_RESULT(tablet->MaxPersistentOpId(false));
+
+    // One-shot rendezvous at the sync point inside the two-DB write window. Only a non-empty
+    // intents batch reaches it, i.e. only W1 on this fresh cluster - but gate anyway and assert
+    // it fired exactly once.
+    CountDownLatch reached(1);
+    CountDownLatch go(1);
+    std::atomic<int> fire_count{0};
+    auto* sync_point = SyncPoint::GetInstance();
+    sync_point->SetCallBack(
+        "Tablet::ApplyKeyValueRowOperations:BeforeIntentsWrite",
+        [&reached, &go, &fire_count](void*) {
+          if (fire_count.fetch_add(1) == 0) {
+            reached.CountDown();
+            go.Wait();
+          }
+        });
+    sync_point->EnableProcessing();
+
+    // W1 (mixed batch, one Raft op).
+    QLValuePB src_val;
+    src_val.set_string_value("SRC");
+    const auto packed_src = ASSERT_RESULT(EncodePackedRowValue(tablet.get(), src_val));
+    auto [intent_key, intent_value] = EncodeExternalIntent(
+        txn_id, kMinSubTransactionId, row_doc_key.Encode(), packed_src, involved_tablet);
+
+    tserver::WriteRequestPB w1;
+    w1.set_tablet_id(tablet_id);
+    w1.set_external_hybrid_time(kRegularRecordHybridTime.ToUint64());
+    {
+      auto* write_pair = w1.mutable_write_batch()->add_write_pairs();
+      write_pair->set_key(intent_key);
+      write_pair->set_value(intent_value);
+    }
+    {
+      KeyBytes column_key(DocKey(0, MakeKeyEntryValues("warm")).Encode());
+      KeyEntryValue::MakeColumnId(value_column_id).AppendToKey(&column_key);
+      QLValuePB warm_val;
+      warm_val.set_string_value("WARM");
+      string column_value;
+      dockv::AppendEncodedValue(warm_val, &column_value);
+      auto* write_pair = w1.mutable_write_batch()->add_write_pairs();
+      write_pair->set_key(column_key.AsSlice().cdata(), column_key.AsSlice().size());
+      write_pair->set_value(column_value);
+    }
+
+    // The apply blocks at the sync point, so the RPC must run on its own thread.
+    TestThreadHolder threads;
+    threads.AddThreadFunctor([this, w1] { ASSERT_OK(SendExternalWrite(w1)); });
+    // Always release the paused apply and disarm the sync point, even if an assertion below returns
+    // early - otherwise the parked apply thread would hang TestThreadHolder's JoinAll().
+    auto apply_cleanup = ScopeExit([&go, sync_point] {
+      go.CountDown();
+      sync_point->DisableProcessing();
+      sync_point->ClearAllCallBacks();
+    });
+    ASSERT_TRUE(reached.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier))
+        << "W1's apply never reached the two-DB write window";
+
+    // THE WINDOW: W1's regular write has landed, its intents write is pending, the intents
+    // memtable is empty. Flush the regular DB (test thread - never inside the callback).
+    ASSERT_OK(tablet->Flush(
+        tablet::FlushMode::kSync, tablet::FlushFlags::kRegular, rocksdb::FlushReason::kTestOnly));
+
+    auto flushed = ASSERT_RESULT(tablet->MaxPersistentOpId(false));
+    ASSERT_GT(flushed.regular.index, baseline.regular.index);
+    ASSERT_LT(flushed.intents.index, flushed.regular.index);
+
+    const auto flushed_in_window = ASSERT_RESULT(tablet->MaxPersistentOpId(false));
+    LOG(INFO) << "In-window flushed OpIds: regular=" << flushed_in_window.regular
+              << " intents=" << flushed_in_window.intents;
+
+    // Release the apply; W1 completes and its external intents land in the intents memtable.
+    go.CountDown();
+    threads.JoinAll();
+    ASSERT_EQ(fire_count.load(), 1) << "The sync point must fire exactly once";
+
+    // W1's external intents are now in the intents memtable, and the persisted intents frontier
+    // must still not cover them - the state the crash below turns on.
+    ASSERT_GT(ASSERT_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kIntents)), 0);
+    if (advance_frontier) {
+      auto flushed = ASSERT_RESULT(tablet->MaxPersistentOpId(false));
+      ASSERT_EQ(flushed.intents.index, flushed_in_window.intents.index);
+    }
+
+    if (flush_intents_before_crash) {
+      ASSERT_OK(tablet->Flush(
+          tablet::FlushMode::kSync, tablet::FlushFlags::kIntents,
+          rocksdb::FlushReason::kTestOnly));
+    }
+
+    // Disarm the sync point BEFORE the restart: bootstrap must run clean, and restarting with a
+    // paused apply would wedge the shutdown.
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+
+    // Ungraceful crash: memtables dropped; SSTs + Raft WAL + MANIFEST intact.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+    tablet.reset();
+    peer.reset();
+    ASSERT_OK(cluster_->RestartSync());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = true;
+    ASSERT_OK(WaitFor(
+        [this, &tablet_id]() -> Result<bool> {
+          auto peer = cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(
+              tablet_id);
+          return peer && peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+        },
+        MonoDelta::FromSeconds(60) * kTimeMultiplier, "tablet leader ready after restart"));
+
+    peer = ASSERT_RESULT(FindLeaderPeer());
+    tablet = ASSERT_RESULT(peer->shared_tablet());
+    const auto flushed_after = ASSERT_RESULT(tablet->MaxPersistentOpId(false));
+    const auto intents_count_after_bootstrap =
+        ASSERT_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kIntents));
+    const auto dump_after = tablet->TEST_DocDBDumpStr(docdb::IncludeIntents::kTrue);
+    LOG(INFO) << "After restart, flushed OpIds: regular=" << flushed_after.regular
+              << " intents=" << flushed_after.intents
+              << ", intents records: " << intents_count_after_bootstrap
+              << ", DocDB dump:\n" << dump_after;
+
+    // The consequence step: send the source transaction T's APPLY, then read the row. Gather
+    // the outcome BEFORE the primary assert so a failing run carries the full evidence.
+    tserver::WriteRequestPB apply_req;
+    apply_req.set_tablet_id(tablet_id);
+    apply_req.set_external_hybrid_time(kCommitHybridTime.ToUint64());
+    auto* apply = apply_req.mutable_write_batch()->add_apply_external_transactions();
+    apply->set_transaction_id(txn_id.AsSlice().cdata(), txn_id.AsSlice().size());
+    apply->set_commit_hybrid_time(kCommitHybridTime.ToUint64());
+    apply->set_filter_range_encoded(true);  // Empty start/end keys -> apply everything.
+    ASSERT_OK(SendExternalWrite(apply_req));
+    const auto row_value = ASSERT_RESULT(ReadRowValue("row1"));
+
+    // THE assertion: bootstrap must have replayed W1's external intents - the durable fact the
+    // whole scenario turns on.
+    ASSERT_GT(intents_count_after_bootstrap, 0)
+        << "FORCE-ADVANCE LOSS: bootstrap skipped the external-intent op - the persisted "
+        << "intents frontier (" << flushed_after.intents << ") covers it while the intents DB "
+        << "is empty; the min-gate in ShouldReplayOperation dropped the op before the "
+        << "external-write replay branch could see it. After the source transaction's APPLY "
+        << "the committed source row reads: "
+        << (row_value ? row_value->ToString() : string("<row missing>"))
+        << " - committed source-cluster data silently missing on this target replica. "
+        << "In-window frontiers: regular=" << flushed_in_window.regular
+        << " intents=" << flushed_in_window.intents << ". DocDB dump after restart:\n"
+        << dump_after;
+
+    // The consequence assert: the committed source row is visible after APPLY.
+    ASSERT_TRUE(row_value.has_value()) << "Committed source row missing after APPLY";
+    ASSERT_EQ(row_value->string_value(), "SRC");
+  }
+
   std::unique_ptr<client::YBClient> client_;
   client::TableHandle table_;
 };
@@ -409,6 +613,44 @@ TEST_F(XClusterExternalApplyBootstrapTest, ExternalApplyReplayedAfterRestartShad
   ASSERT_FALSE(value_after.IsNull())
       << "Column update lost: v reads NULL after the bootstrap replay re-applied W1.";
   ASSERT_EQ(value_after.string_value(), "CONST");
+}
+
+// ================================================================================================
+// On an xCluster target, an external batch is applied as ONE Raft op writing to TWO rocksdbs
+// sequentially: regular first, then intents. The flush-completion listener's force-advance
+// (FLAGS_advance_intents_flushed_op_id_to_match_regular, default TRUE): on every regular-DB
+// flush, if the intents memtable is EMPTY, persist intents flushed frontier = regular flushed
+// OpId into the MANIFEST. The defect is a TOCTOU across the two-phase pair: a regular flush
+// completing between the op's regular and intents writes sees an empty intents memtable and
+// durably covers the op; its external intents then land in the memtable already "covered" but
+// not durable. An ungraceful crash loses them, and on bootstrap ShouldReplayOperation's min-gate
+// (index <= min(regular, intents) -> skip) drops the op BEFORE the external-write replay branch
+// (added by the GH#31899 fix) is ever consulted - that branch sits below the min-gate, which is
+// why this survives on a master containing that fix. The source transaction's APPLY later finds
+// no intents: committed source rows silently missing on this target replica.
+//
+// The regression test for that defect: it passes with the fix, and fails on a tree without it.
+TEST_F(XClusterExternalApplyBootstrapTest, ExternalIntentsSurviveFrontierAdvance) {
+  RunFrontierAdvanceCrashScenario(
+      /* advance_frontier = */ true, /* flush_intents_before_crash = */ false);
+}
+
+// Control: identical choreography with
+// advance_intents_flushed_op_id_to_match_regular = false (the setting the GH#31899 test itself
+// uses to protect its scenario from this force-advance). The intents frontier stays behind, the
+// min-gate lets the op through, bootstrap replays the external intents - proving the loss above
+// is the force-advance and nothing else in the choreography.
+TEST_F(XClusterExternalApplyBootstrapTest, ExternalIntentsSurviveWithoutFrontierAdvance) {
+  RunFrontierAdvanceCrashScenario(
+      /* advance_frontier = */ false, /* flush_intents_before_crash = */ false);
+}
+
+// Control: identical choreography (force-advance ON) but the intents DB is flushed before the
+// crash - the intents are durable in SSTs, so no loss regardless of the frontier. Proves the
+// crash window is the other necessary conjunct.
+TEST_F(XClusterExternalApplyBootstrapTest, ExternalIntentsSurviveFrontierAdvanceWithIntentsFlush) {
+  RunFrontierAdvanceCrashScenario(
+      /* advance_frontier = */ true, /* flush_intents_before_crash = */ true);
 }
 
 }  // namespace yb

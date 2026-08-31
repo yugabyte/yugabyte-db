@@ -107,6 +107,17 @@ the user.
   ask whether to proceed.
 - If the output is clean, continue to the next step.
 
+### Step 2.5: PG code style pass (only when src/postgres files changed)
+
+If the branch changes anything under `src/postgres`, load the
+`pg-code-style-guide` skill and check the diff against it (yb prefixes,
+YB marker blocks, upstream lines untouched, regress test rules).  Fix
+violations now -- this is the last point where cleanup is free; after
+publishing they come back as review comments.
+
+Commit any resulting fixes on the branch -- amend Step 1's commit or add
+a new one -- before Step 6, and re-run the linter (Step 2).
+
 ### Step 3: Determine tracker reference
 
 You will need a GitHub or JIRA issue describing the issue this diff is
@@ -176,6 +187,22 @@ Based on the files changed on the branch, decide the default subscriber:
 
 Confirm the subscriber list with the user before creating the diff.
 
+### Step 5.5: Cut the prose the branch added
+
+Re-read the **text** the branch adds — comments, `architecture/` docs,
+agent docs — and apply [`AGENTS.md` Prose
+discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
+It is a gate here because it is easy to hold at the start of a task and
+gone by the end of one, and this is the last point where cutting is
+free.
+
+```
+git diff <base>...HEAD -- '*.md'   # doc prose; also skim added comments in the code diff
+```
+
+Commit any resulting edits on the branch before Step 6, and re-run the
+linter (Step 2).
+
 ### Step 6: Create the diff with `arc diff --create`
 
 **Confidentiality — final scrub before publishing.** Phorge is treated
@@ -209,8 +236,14 @@ arc diff --create --message-file <path> --reviewers <reviewers> --cc <subscriber
 Pre-fill the message file with:
 
 - **Title**: the constructed title from step 4
-- **Summary**: a short description of the change (derive from branch commits)
-- **Test Plan**: ask the user for one if not obvious from the branch
+- **Summary**: derived from the branch commits.  Say **why**, always —
+  a reviewer who has to reverse-engineer the motivation is the
+  expensive case — then what changed, and whatever the reader must *act*
+  on (new gflags, upgrade/rollback consequences, migration steps).  Not
+  a narration of the diff.  See [`AGENTS.md` Prose
+  discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
+- **Test Plan**: ask the user for one if not obvious from the branch.
+  Keep it to what was actually run — it is not a place for prose.
 - **Reviewers**: (as provided)
 - **Subscribers**: `ybase` and/or `yugaware` per Step 4
 

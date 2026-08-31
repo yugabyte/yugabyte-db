@@ -15,6 +15,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.nimbusds.oauth2.sdk.util.MapUtils;
@@ -42,6 +43,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.common.helm.PgDataOwnershipPostRenderer;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
@@ -67,6 +69,7 @@ import io.fabric8.kubernetes.api.model.Service;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -83,6 +86,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.bouncycastle.asn1.x509.GeneralName;
@@ -188,6 +192,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   private final FileHelperService fileHelperService;
   private final YbcManager ybcManager;
   private final OtelCollectorConfigGenerator otelCollectorConfigGenerator;
+  private final PgDataOwnershipPostRenderer pgDataOwnershipPostRenderer;
 
   @Inject
   protected KubernetesCommandExecutor(
@@ -195,12 +200,14 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       KubernetesManagerFactory kubernetesManagerFactory,
       FileHelperService fileHelperService,
       YbcManager ybcManager,
-      OtelCollectorConfigGenerator otelCollectorConfigGenerator) {
+      OtelCollectorConfigGenerator otelCollectorConfigGenerator,
+      PgDataOwnershipPostRenderer pgDataOwnershipPostRenderer) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.fileHelperService = fileHelperService;
     this.ybcManager = ybcManager;
     this.otelCollectorConfigGenerator = otelCollectorConfigGenerator;
+    this.pgDataOwnershipPostRenderer = pgDataOwnershipPostRenderer;
   }
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
@@ -283,6 +290,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public FullMoveParams fullMoveParams = null;
     // Use if populated
     public Integer oldTsDiskSize, oldMasterDiskSize;
+    public boolean reconcilePgDataOwnershipToRoot = false;
 
     public String getTaskDetails() {
       String details = String.format("Command: %s", commandType);
@@ -433,15 +441,25 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case HELM_UPGRADE:
         handleHelmUpgradeAutoRecovery();
         overridesFile = this.generateHelmOverride();
-        kubernetesManagerFactory
-            .getManager()
-            .helmUpgrade(
-                taskParams().getUniverseUUID(),
-                taskParams().ybSoftwareVersion,
-                config,
-                taskParams().helmReleaseName,
-                taskParams().namespace,
-                overridesFile);
+        // Only required for specific upgrade rollback task
+        PgDataOwnershipPostRenderer.PostRenderer postRenderer =
+            maybeCreatePgDataOwnershipPostRenderer(overridesFile);
+        try {
+          kubernetesManagerFactory
+              .getManager()
+              .helmUpgrade(
+                  taskParams().getUniverseUUID(),
+                  taskParams().ybSoftwareVersion,
+                  config,
+                  taskParams().helmReleaseName,
+                  taskParams().namespace,
+                  overridesFile,
+                  postRenderer != null ? postRenderer.getScriptPath() : null);
+        } finally {
+          if (postRenderer != null) {
+            postRenderer.cleanup();
+          }
+        }
         break;
       case UPDATE_NUM_NODES:
         int numNodes = this.getNumNodes();
@@ -1500,11 +1518,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // chart must also inject the collector sidecar into yb-master pods when either metrics
         // export or master log export is active.
         otelOverrides.put(
-            "runOnMaster",
-            OtelCollectorUtil.isMetricsExportEnabledInUniverse(
-                    telemetryConfig.getMetricsExportConfig())
-                || OtelCollectorUtil.isMasterLogExportEnabledInUniverse(
-                    telemetryConfig.getMasterLogConfig()));
+            "runOnMaster", OtelCollectorUtil.isOtelSidecarNeededOnK8sMasterPods(telemetryConfig));
       } else {
         // Older charts assemble the config themselves from structured Helm values.
         otelOverrides =
@@ -2046,6 +2060,112 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       // do not allow selfsignedBootstrap to be enabled ever from YBA
       preventBootstrapCA(values);
     }
+  }
+
+  private Map<String, Object> buildMergedHelmValues(String overridesFile) {
+    String defaultValuesStr =
+        kubernetesManagerFactory
+            .getManager()
+            .helmShowValues(taskParams().ybSoftwareVersion, getConfig());
+    if (defaultValuesStr == null) {
+      return null;
+    }
+    Map<String, Object> values = new Yaml().load(defaultValuesStr);
+    try {
+      Map<String, Object> overrides =
+          HelmUtils.convertYamlToMap(Files.readString(Path.of(overridesFile)));
+      if (overrides != null) {
+        HelmUtils.mergeYaml(values, overrides);
+      }
+    } catch (IOException e) {
+      log.error("Could not read the generated helm overrides {}", overridesFile, e);
+      return null;
+    }
+    return values;
+  }
+
+  @VisibleForTesting
+  @Nullable
+  PgDataOwnershipPostRenderer.PostRenderer maybeCreatePgDataOwnershipPostRenderer(
+      String overridesFile) {
+    if (!taskParams().reconcilePgDataOwnershipToRoot) {
+      return null;
+    }
+    // pg_data only exists on the tserver pods, so the master StatefulSet needs nothing.
+    if (taskParams().serverType != ServerType.TSERVER) {
+      return null;
+    }
+    Map<String, Object> mergedValues = buildMergedHelmValues(overridesFile);
+    if (mergedValues == null) {
+      log.warn(
+          "Could not read the chart values for {}; skipping the pg_data ownership reconcile."
+              + " If the rolled back pods fail to start YSQL, this is why.",
+          taskParams().ybSoftwareVersion);
+      return null;
+    }
+    // The remaining skips are logged at info: each is a decision not to fix an ownership mismatch,
+    // and a wrong diagnosis only surfaces later as a PostgreSQL FATAL.
+    Integer effectiveRunAsUser = KubernetesUtil.getEffectiveDbRunAsUser(mergedValues);
+    if (!Integer.valueOf(0).equals(effectiveRunAsUser)) {
+      log.info(
+          "Rollback target {} runs the DB as {}, not root; skipping the pg_data ownership"
+              + " reconcile",
+          taskParams().ybSoftwareVersion,
+          effectiveRunAsUser);
+      return null;
+    }
+    if (isEphemeralStorage(mergedValues)) {
+      log.info("Storage is ephemeral; skipping the pg_data ownership reconcile");
+      return null;
+    }
+    log.info(
+        "Injecting the pg_data root ownership reconcile into the yb-tserver pods of release {}",
+        taskParams().helmReleaseName);
+    return pgDataOwnershipPostRenderer.create(
+        taskParams().universeDetails.useNewHelmNamingStyle,
+        getDbImage(mergedValues),
+        getImagePullPolicy(mergedValues),
+        KubernetesUtil.getDataVolumeName(
+            taskParams().helmReleaseName, taskParams().universeDetails.useNewHelmNamingStyle));
+  }
+
+  @SuppressWarnings("unchecked")
+  private boolean isEphemeralStorage(Map<String, Object> mergedValues) {
+    Object storage = mergedValues.get("storage");
+    return storage instanceof Map
+        && Boolean.TRUE.equals(((Map<String, Object>) storage).get("ephemeral"));
+  }
+
+  // Use the image the rolled back pods will themselves run, so pull secrets and air-gapped
+  // registries keep working for the init container.
+  private String getDbImage(Map<String, Object> mergedValues) {
+    Map<String, Object> image = getImageValues(mergedValues);
+    Object repository = image.get("repository");
+    Object tag = image.get("tag");
+    if (repository == null || tag == null) {
+      throw new RuntimeException(
+          String.format(
+              "Could not resolve the database image for release %s from the %s chart values"
+                  + " (Image.repository=%s, Image.tag=%s, Image keys=%s); cannot reconcile pg_data"
+                  + " ownership for the rollback.",
+              taskParams().helmReleaseName,
+              taskParams().ybSoftwareVersion,
+              repository,
+              tag,
+              image.keySet()));
+    }
+    return String.format("%s:%s", repository, tag);
+  }
+
+  private String getImagePullPolicy(Map<String, Object> mergedValues) {
+    Object pullPolicy = getImageValues(mergedValues).get("pullPolicy");
+    return pullPolicy == null ? "IfNotPresent" : String.valueOf(pullPolicy);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> getImageValues(Map<String, Object> mergedValues) {
+    Object image = mergedValues.get("Image");
+    return image instanceof Map ? (Map<String, Object>) image : Collections.emptyMap();
   }
 
   /*

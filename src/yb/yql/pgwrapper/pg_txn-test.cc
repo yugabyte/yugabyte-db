@@ -1011,4 +1011,111 @@ TEST_F(PgTxnTest, RepackDisabledPreservesPackedRow) {
   ASSERT_EQ(res, "1, 3, 42");
 }
 
+// Regression test for the column-tombstone GC hole. A column tombstone (from
+// UPDATE ... SET col = NULL on a column with no missing value) can shadow a value that lives
+// inside a packed row rather than in a standalone entry. Compaction only effects that delete by
+// merging the tombstone into the packed row, and the merge is skipped when packed row is
+// unavailable to the compaction -- notably when ysql_enable_packed_row is false at compaction
+// time. The tombstone garbage-collection check in DocDBCompactionFeed::Feed used to run
+// regardless, dropping the delete while the packed row it shadows was forwarded unchanged, which
+// durably resurrected the pre-delete column value.
+TEST_F(PgTxnTest, ColumnTombstoneSurvivesCompactionWithPackingDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT, value INT, PRIMARY KEY((key) HASH)) SPLIT INTO 1 TABLETS"));
+  // Packed row carrying value=23.
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 23)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // 'value' has no missing value, so setting it to NULL writes a column tombstone.
+  ASSERT_OK(conn.Execute("UPDATE test SET value = NULL WHERE key = 1"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // Turn packing off before compacting. The compaction can no longer merge the tombstone into the
+  // packed row, while the packed row itself is still forwarded to the output.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));
+
+  auto dump = ASSERT_RESULT(DumpTableLeadersDocDB(cluster_.get(), "test"));
+  LOG(INFO) << "DocDB after compaction with packing disabled:\n" << dump;
+
+  // The delete must survive the compaction: the tombstone is kept alongside the packed row.
+  ASSERT_NE(dump.find("DEL"), std::string::npos);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test")), "1, NULL");
+
+  // A kept tombstone is not permanent garbage: once packing is available again, the next full
+  // compaction merges it into the packed row and collects it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));
+
+  dump = ASSERT_RESULT(DumpTableLeadersDocDB(cluster_.get(), "test"));
+  LOG(INFO) << "DocDB after compaction with packing re-enabled:\n" << dump;
+
+  ASSERT_EQ(dump.find("DEL"), std::string::npos);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test")), "1, NULL");
+}
+
+// Control for the test above: with packing left enabled the tombstone is merged into the packed
+// row, so the delete survives on every build. Keeping both makes the packed-row flag state at
+// compaction time the only difference between a passing and a failing run.
+TEST_F(PgTxnTest, ColumnTombstoneSurvivesCompactionWithPackingEnabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT, value INT, PRIMARY KEY((key) HASH)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 23)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ASSERT_OK(conn.Execute("UPDATE test SET value = NULL WHERE key = 1"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test")), "1, NULL");
+}
+
+// A column tombstone that is OLDER than the packed row for the same key (the row was deleted and
+// re-inserted after the column delete) is shadowed by that packed row, not shadowing it. Such a
+// tombstone must still be garbage-collected even while packing is off: the overwrite handling in
+// DocDBCompactionFeed::Feed drops it before the tombstone GC check runs, because the newer packed
+// row put its own write time on the overwrite stack at the doc key level. This pins the ordering
+// guarantee that makes the keep-check above safe without an explicit write time comparison, and
+// verifies that keeping unmerged tombstones does not turn overwritten ones into permanent garbage.
+TEST_F(PgTxnTest, ColumnTombstoneOlderThanPackedRowIsCollected) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT, value INT, PRIMARY KEY((key) HASH)) SPLIT INTO 1 TABLETS"));
+  // Packed row carrying value=23.
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 23)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // Column tombstone over the packed row.
+  ASSERT_OK(conn.Execute("UPDATE test SET value = NULL WHERE key = 1"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // Delete the row and re-insert it: the new packed row is newer than the column tombstone.
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE key = 1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 42)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));
+
+  auto dump = ASSERT_RESULT(DumpTableLeadersDocDB(cluster_.get(), "test"));
+  LOG(INFO) << "DocDB after compaction:\n" << dump;
+
+  // Everything below the new packed row is overwritten and must be gone: the old packed row, the
+  // row tombstone, and the column tombstone. Only the new packed row remains.
+  ASSERT_EQ(dump.find("DEL"), std::string::npos);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test")), "1, 42");
+}
+
 } // namespace yb::pgwrapper

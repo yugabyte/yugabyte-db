@@ -73,6 +73,12 @@ const PROMETHEUS_EXPORT_METHOD_OPTIONS = [
   { value: PROMETHEUS_EXPORT_METHOD.PROMQL, label: 'PromQL' }
 ];
 
+const REMOTE_READ_BATCH_DURATION_MINS = 60;
+const PROMQL_BATCH_DURATION_MINS = 15;
+
+const getDefaultBatchDurationMins = (useRemoteRead) =>
+  useRemoteRead ? REMOTE_READ_BATCH_DURATION_MINS : PROMQL_BATCH_DURATION_MINS;
+
 const filterTypes = [
   { label: 'Last 24 hrs', type: 'days', value: '1' },
   { label: 'Last 3 days', type: 'days', value: '3' },
@@ -152,7 +158,7 @@ export const DEFAULT_PROMETHEUS_METRICS_PARAMS = {
   promDumpDateType: filterTypePromDump[0],
   prometheusQueries: [],
   useRemoteRead: true,
-  promMetricsFormat: PerfAdvisorMetricsFormat.PROMQL_JSON,
+  promMetricsFormat: PerfAdvisorMetricsFormat.PROM_CHUNK,
   promDumpDownSample: true,
   stepPromDumpSecs: null,
   batchDurationPromDumpMins: null
@@ -485,7 +491,7 @@ export const SecondStep = ({
     onOptionsChange(changedOptions);
   };
 
-  // Sync "Perf Advisor Metadata" option with isPerfAdvisorRegistered prop: add when true, remove when false.
+  // Sync "Perf Advisor metrics" option with isPerfAdvisorRegistered prop: add when true, remove when false.
   // Keeps selectionOptions (and selectionOptionsValue) in sync and notifies parent via handleOptionsChange.
   useEffect(() => {
     const perfAdvisorIndex = selectionOptions.findIndex((e) => e.value === 'PerfAdvisor');
@@ -493,7 +499,7 @@ export const SecondStep = ({
     if (isPerfAdvisorRegistered) {
       // Add Perf Advisor option only if not already present (avoids duplicates on re-run).
       if (perfAdvisorIndex === -1) {
-        selectionOptions.push({ label: 'Perf Advisor Metadata', value: 'PerfAdvisor' });
+        selectionOptions.push({ label: 'Perf Advisor metrics', value: 'PerfAdvisor' });
         const nextValue = [...currentSelectionValues, true];
         setSelectionOptionsValue(nextValue);
         handleOptionsChange(
@@ -1192,11 +1198,17 @@ export const SecondStep = ({
                             onSelect={() => {
                               const useRemoteRead =
                                 option.value === PROMETHEUS_EXPORT_METHOD.REMOTE_READ;
+                              // Deliberately do NOT touch batchDurationPromDumpMins here: it's
+                              // an implicit-default field (null means "use the method's default"
+                              // and the input placeholder recomputes on each render from
+                              // getDefaultBatchDurationMins(useRemoteRead)). Once the operator
+                              // has typed a value we keep it across Remote Read <-> PromQL flips,
+                              // matching the Step (seconds) field's behaviour.
                               const updatedObj = {
                                 ...prometheusMetricsParams,
                                 useRemoteRead,
                                 ...(useRemoteRead && {
-                                  promMetricsFormat: PerfAdvisorMetricsFormat.PROMQL_JSON
+                                  promMetricsFormat: PerfAdvisorMetricsFormat.PROM_CHUNK
                                 })
                               };
                               setPrometheusMetricsParams(updatedObj);
@@ -1221,6 +1233,11 @@ export const SecondStep = ({
                           </MenuItem>
                         ))}
                       </DropdownButton>
+                      &nbsp;&nbsp;
+                      <YBInfoTip
+                        content="Remote Read is faster and allows any batch size and raw metrics export (no downsampling). PromQL allows custom query filtering."
+                        title="Remote Read vs PromQL"
+                      />
                     </Box>
                     {prometheusMetricsParams.useRemoteRead && (
                       <Box display="flex" alignItems="center" mb={1}>
@@ -1231,7 +1248,7 @@ export const SecondStep = ({
                               {
                                 METRIC_FORMAT_OPTIONS.find(
                                   (o) => o.value === prometheusMetricsParams.promMetricsFormat
-                                )?.label ?? 'JSON'
+                                )?.label ?? 'Binary'
                               }
                             </span>
                           }
@@ -1268,6 +1285,11 @@ export const SecondStep = ({
                             </MenuItem>
                           ))}
                         </DropdownButton>
+                        &nbsp;&nbsp;
+                        <YBInfoTip
+                          content="Binary produces a smaller bundle and is faster to export/import than JSON, so it is the recommended default."
+                          title="Metrics format"
+                        />
                       </Box>
                     )}
                     {prometheusMetricsOptions.map((prometheusMetricsOption, i) => (
@@ -1414,7 +1436,9 @@ export const SecondStep = ({
                             <YBInput
                               type="number"
                               min={1}
-                              placeholder="e.g. 15 (default)"
+                              placeholder={`e.g. ${getDefaultBatchDurationMins(
+                                prometheusMetricsParams.useRemoteRead
+                              )} (default)`}
                               value={prometheusMetricsParams.batchDurationPromDumpMins ?? ''}
                               onChange={(e) => {
                                 const val = e.target.value === '' ? null : parseInt(e.target.value, 10);
@@ -1594,7 +1618,7 @@ export const SecondStep = ({
                       </DropdownButton>
                       &nbsp;&nbsp;
                       <YBInfoTip
-                        content="Adjusts the global start and end times of the support bundle specifically for perf advisor metadata dump"
+                        content="Adjusts the global start and end times of the support bundle specifically for perf advisor metrics dump"
                         title="Perf Advisor dump start & end points"
                       />
                     </div>

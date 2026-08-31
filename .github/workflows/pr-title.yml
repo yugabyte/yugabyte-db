@@ -8,19 +8,22 @@ on:
     paths-ignore:
       - README.md
       - 'docs/**'
+      - '.github/vale-styles/**'
 
 jobs:
   pr-title:
     runs-on: ubuntu-latest
     steps:
       - name: Check PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           TITLE_RE='^(\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\])?'
           TITLE_RE+='\[((#[0-9]+(,#[0-9]+)*)|([A-Z]+-[0-9]+(,[A-Z]+-[0-9]+)*))\]'
-          TITLE_RE+=' [a-zA-Z0-9_-]+(,[[a-zA-Z0-9_]-]+)*:'
+          TITLE_RE+=' [a-zA-Z0-9_-]+(,[a-zA-Z0-9_-]+)*:'
           TITLE_RE+=' \S.{8,98}\S$'
 
-          if [[ ! "${{ github.event.pull_request.title }}" =~ $TITLE_RE ]]; then
+          if [[ ! "$PR_TITLE" =~ $TITLE_RE ]]; then
             echo "::error ::Pull Request title must include issue ID, code area,"
             echo "::error ::  and a short description, with no extra whitespace."
             echo "::error ::Issue referenced must be a github issue or YB-internal Jira ID."
@@ -33,20 +36,23 @@ jobs:
           fi
           echo "Pull Request title is valid."
       - name: Check Backport title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           BACKPORT_RE='^\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\]'
-          if [[ "${{ github.base_ref }}" == "master" ]]; then
-            if [[ "${{ github.event.pull_request.title }}" =~ $BACKPORT_RE ]]; then
+          if [[ "$BASE_REF" == "master" ]]; then
+            if [[ "$PR_TITLE" =~ $BACKPORT_RE ]]; then
               echo "::error ::Pull Request title should not specify target branch for master."
               exit 1
             fi
             echo "Pull Request title is valid for master branch."
           else
-            if [[ "${{ github.event.pull_request.title }}" =~ $BACKPORT_RE ]]; then
+            if [[ "$PR_TITLE" =~ $BACKPORT_RE ]]; then
               BACKPORT_BRANCH="${BASH_REMATCH[2]}"
-              if [[ "${BACKPORT_BRANCH}" != "${{ github.base_ref }}" ]]; then
+              if [[ "${BACKPORT_BRANCH}" != "$BASE_REF" ]]; then
                 echo "::error ::Backport branch in title (${BACKPORT_BRANCH}) does not match"
-                echo "::error :: Pull Request base ref (${{ github.base_ref }})."
+                echo "::error :: Pull Request base ref ($BASE_REF)."
                 exit 1
               fi
               echo "Pull Request title branch reference ($BACKPORT_BRANCH) matches base reference."
@@ -59,11 +65,14 @@ jobs:
             fi
           fi
       - name: Check Backport references
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           BACKPORT_RE='^\[BACKPORT ([0-9]+(\.[0-9]+)+)\]'
           # Check for true backport, not just target branch in title.
-          if [[ "${{ github.event.pull_request.title }}" =~ $BACKPORT_RE ]]; then
-            body="${{ github.event.pull_request.body }}"
+          if [[ "$PR_TITLE" =~ $BACKPORT_RE ]]; then
+            body="$PR_BODY"
             bp_error=0
             COMMIT_HDR_RE=($'\n'\|^)'Original commit(s)?:'
             COMMIT_LIST_RE='(- )?[0-9a-f]+ / [#D][0-9]+'

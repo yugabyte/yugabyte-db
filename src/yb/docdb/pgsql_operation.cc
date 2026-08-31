@@ -706,7 +706,14 @@ struct IndexState {
   Status delayed_failure;
 };
 
-Result<FetchResult> FetchTableRow(
+struct TableRowFetch {
+  FetchResult result;
+  // Whether an index row was read.  Only a scan driven by a colocated index reads one, and it
+  // reads none once the index is exhausted.
+  bool read_index_row;
+};
+
+Result<TableRowFetch> FetchTableRow(
     TableIdView table_id, FilteringIterator* table_iter,
     IndexState* index, dockv::PgTableRow* row) {
   Slice tuple_id;
@@ -714,13 +721,11 @@ Result<FetchResult> FetchTableRow(
     auto& index_row = index->row;
     switch(VERIFY_RESULT(index->iter.FetchNext(&index_row))) {
       case FetchResult::NotFound:
-        return FetchResult::NotFound;
+        return TableRowFetch{FetchResult::NotFound, false};
       case FetchResult::FilteredOut:
         VLOG(1) << "Row filtered out by colocated index condition";
-        ++index->scanned_rows;
-        return FetchResult::FilteredOut;
+        return TableRowFetch{FetchResult::FilteredOut, true};
       case FetchResult::Found:
-        ++index->scanned_rows;
         break;
     }
 
@@ -750,7 +755,7 @@ Result<FetchResult> FetchTableRow(
     case FetchResult::Found:
       break;
   }
-  return fetch_result;
+  return TableRowFetch{fetch_result, index != nullptr};
 }
 
 struct RowPackerData {
@@ -2856,14 +2861,18 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
   dockv::PgTableRow row(doc_projection);
   const auto& table_id = request_.index_request().table_id();
   do {
-    const auto fetch_result = VERIFY_RESULT(FetchTableRow(
+    const auto fetch = VERIFY_RESULT(FetchTableRow(
         table_id, &table_iter, index_state ? &*index_state : nullptr, &row));
     // If changing this code, see also PgsqlReadOperation::ExecuteBatchKeys.
-    if (fetch_result == FetchResult::NotFound) {
+    if (fetch.result == FetchResult::NotFound) {
+      // The scan ends here.  An index row that points at a row missing from the table was read
+      // all the same, so account for it before leaving.
+      if (fetch.read_index_row) {
+        ++index_state->scanned_rows;
+      }
       break;
     }
-    ++scanned_table_rows_;
-    if (fetch_result == FetchResult::Found) {
+    if (fetch.result == FetchResult::Found) {
       ++match_count;
       if (request_.is_aggregate()) {
         RETURN_NOT_OK(EvalAggregate(row));
@@ -2873,12 +2882,16 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
         if (fetched_rows > 0 && result_buffer_->size() > response_size_limit) {
           RETURN_NOT_OK(result_buffer_->Truncate(row_start));
           fetch_limit = FetchLimit::kExceeded;
-          // skips the fetched_rows increment and the other limit's check, which may change
-          // the fetch_limit value
+          // Break before the limit check at the end of the loop.  It would replace kExceeded
+          // with kReached, and the next request would then resume after this row, skipping it.
           break;
         }
         ++fetched_rows;
       }
+    }
+    ++scanned_table_rows_;
+    if (fetch.read_index_row) {
+      ++index_state->scanned_rows;
     }
     scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
     if (scan_time_exceeded ||
@@ -2979,7 +2992,8 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
     }
 
     // If changing this code, see also PgsqlReadOperation::ExecuteScalar.
-    switch (VERIFY_RESULT(iter->FetchTuple(key, &row))) {
+    const auto fetch_result = VERIFY_RESULT(iter->FetchTuple(key, &row));
+    switch (fetch_result) {
       case FetchResult::NotFound:
         ++not_found_rows;
         // rebuild iterator on next iteration
@@ -2987,11 +3001,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
         break;
       case FetchResult::FilteredOut:
         ++filtered_rows;
-        ++scanned_table_rows_;
         break;
       case FetchResult::Found:
         ++found_rows;
-        ++scanned_table_rows_;
         if (request_.is_aggregate()) {
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
@@ -3004,6 +3016,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
                     << "Response buffer size: " << result_buffer_->size()
                     << ", response size limit: " << response_size_limit;
             RETURN_NOT_OK(result_buffer_->Truncate(row_start));
+            // This key is not counted in batch_arg_count, so the client resends it and the
+            // request it is resent with accounts for its row.  Returns before the accounting
+            // below.
             // TODO GHI #25788, for now fail instead of returning incomplete results
             RSTATUS_DCHECK(!request_.batch_arguments().empty(),
                            IllegalState, "Pagination is required, but not supported");
@@ -3015,6 +3030,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
           ++fetched_rows;
         }
         break;
+    }
+    if (fetch_result != FetchResult::NotFound) {
+      ++scanned_table_rows_;
     }
     ++processed_keys;
   }

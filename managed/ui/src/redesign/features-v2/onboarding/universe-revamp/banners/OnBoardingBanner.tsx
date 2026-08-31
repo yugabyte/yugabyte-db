@@ -2,22 +2,31 @@ import { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
-import { mui, YBPromotionalBanner, YBToggle, YBTooltip } from '@yugabyte-ui-library/core';
+import { toast } from 'react-toastify';
+import {
+  AlertVariant,
+  mui,
+  YBAlert,
+  YBPromotionalBanner,
+  YBToggle,
+  YBTooltip
+} from '@yugabyte-ui-library/core';
 
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '@app/actions/customers';
 import { api, runtimeConfigQueryKey } from '@app/redesign/helpers/api';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
 import {
-  ONBOARDING_BANNER_DISMISS_KEY,
   isCurrentUserSuperAdmin,
   isOnboardingNewExperienceEnabled,
   setOnboardingNewExperienceEnabled,
   useOnboardingFullscreenOverlayOpen,
   useOnboardingNewExperienceEnabled
 } from '../helper-methods';
+import { TourStep, dismissTourStep, isTourProgressReady, isTourStepDismissed } from '../tour-progress';
 import { DEFAULT_RELEASE_NOTES_URL } from '../modals/HelperComponent';
-import { WhatChangedModal, WHAT_CHANGED_MODAL_DISMISS_KEY } from '../modals/WhatChangedModal';
+import { UnsupportedFeatureWarningModal } from '../modals/UnsupportedFeatureWarningModal';
+import { WhatChangedModal } from '../modals/WhatChangedModal';
 import {
   BeforeNewExperiencePopover,
   isBeforeNewExperiencePopoverDismissed,
@@ -39,11 +48,10 @@ const ONBOARDING_BANNER_BODY_CLASS = 'onboarding-banner-visible';
 /** Delay before auto-opening tip popovers after the banner is shown. */
 const TIP_AUTO_OPEN_DELAY_MS = 1400;
 
-const isOnboardingBannerDismissed = (): boolean =>
-  localStorage.getItem(ONBOARDING_BANNER_DISMISS_KEY) === 'true';
+const isOnboardingBannerDismissed = (): boolean => isTourStepDismissed(TourStep.Banner);
 
 const dismissOnboardingBanner = (): void => {
-  localStorage.setItem(ONBOARDING_BANNER_DISMISS_KEY, 'true');
+  dismissTourStep(TourStep.Banner);
 };
 
 const BannerGradientText = styled(Typography)(() => ({
@@ -184,6 +192,7 @@ export const OnBoardingBanner: FC = () => {
 
   const enabled = useOnboardingNewExperienceEnabled();
   const [showWhatChangedModal, setShowWhatChangedModal] = useState(false);
+  const [isUnsupportedFeatureWarningOpen, setUnsupportedFeatureWarningOpen] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(isOnboardingBannerDismissed);
   const isFullscreenOverlayOpen = useOnboardingFullscreenOverlayOpen();
   const afterTipTimerRef = useRef<number>();
@@ -192,13 +201,15 @@ export const OnBoardingBanner: FC = () => {
     open: isBeforePopoverOpen,
     setOpen: setBeforePopoverOpen,
     anchorRef: seeWhatsChangedAnchorRef,
-    handleClose: handleBeforePopoverClose
+    handleClose: handleBeforePopoverClose,
+    handleClickAway: handleBeforePopoverClickAway
   } = useBeforeNewExperiencePopover();
 
   const {
     open: isAfterPopoverOpen,
     setOpen: setAfterPopoverOpen,
-    handleClose: handleAfterPopoverClose
+    handleClose: handleAfterPopoverClose,
+    handleClickAway: handleAfterPopoverClickAway
   } = useAfterNewExperiencePopover();
 
   const clearAfterTipTimer = useCallback(() => {
@@ -222,6 +233,11 @@ export const OnBoardingBanner: FC = () => {
 
   const currentUserInfo = useSelector((state: any) => state.customer.currentUser.data);
   const isSuperAdmin = isCurrentUserSuperAdmin(currentUserInfo?.role);
+
+  // Sync banner dismissed UI when tour progress hydrates from profile.
+  useEffect(() => {
+    setIsBannerDismissed(isOnboardingBannerDismissed());
+  }, [currentUserInfo?.uuid, currentUserInfo?.settings, currentUserInfo?.newUniverseUiTourCompleted]);
 
   const globalRuntimeConfigQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
     api.fetchRuntimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE)
@@ -251,7 +267,12 @@ export const OnBoardingBanner: FC = () => {
 
   // V2 on (all users, including SuperAdmin): After tip after delay.
   useEffect(() => {
-    if (!isVisible || !isV2Enabled || isAfterNewExperiencePopoverDismissed()) {
+    if (
+      !isTourProgressReady() ||
+      !isVisible ||
+      !isV2Enabled ||
+      isAfterNewExperiencePopoverDismissed()
+    ) {
       return;
     }
     setBeforePopoverOpen(false);
@@ -261,11 +282,23 @@ export const OnBoardingBanner: FC = () => {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [isVisible, isV2Enabled, setBeforePopoverOpen, setAfterPopoverOpen]);
+  }, [
+    isVisible,
+    isV2Enabled,
+    setBeforePopoverOpen,
+    setAfterPopoverOpen,
+    currentUserInfo?.uuid
+  ]);
 
   // V2 off + SuperAdmin, toggle off: Before tip after delay on load.
   useEffect(() => {
-    if (!isVisible || isV2Enabled || enabled || isBeforeNewExperiencePopoverDismissed()) {
+    if (
+      !isTourProgressReady() ||
+      !isVisible ||
+      isV2Enabled ||
+      enabled ||
+      isBeforeNewExperiencePopoverDismissed()
+    ) {
       return;
     }
     clearAfterTipTimer();
@@ -282,48 +315,70 @@ export const OnBoardingBanner: FC = () => {
     enabled,
     clearAfterTipTimer,
     setBeforePopoverOpen,
-    setAfterPopoverOpen
+    setAfterPopoverOpen,
+    currentUserInfo?.uuid
   ]);
 
   // V2 off + SuperAdmin, toggle already on at first paint: After tip after delay.
   // Toggle flips while mounted are handled only in handleToggle (avoids effect cleanup
   // cancelling the timer when `enabled` updates).
   useEffect(() => {
-    if (!isVisible || isV2Enabled || !isOnboardingNewExperienceEnabled()) {
+    if (
+      !isTourProgressReady() ||
+      !isVisible ||
+      isV2Enabled ||
+      !isOnboardingNewExperienceEnabled()
+    ) {
       return;
     }
     scheduleAfterTipOpen();
     return clearAfterTipTimer;
-  }, [isVisible, isV2Enabled, scheduleAfterTipOpen, clearAfterTipTimer]);
+  }, [isVisible, isV2Enabled, scheduleAfterTipOpen, clearAfterTipTimer, currentUserInfo?.uuid]);
 
   const handleToggle = useCallback(
     (_event: unknown, checked: boolean) => {
-      setOnboardingNewExperienceEnabled(checked);
-      if (checked) {
-        scheduleAfterTipOpen();
-      } else {
-        clearAfterTipTimer();
-        setAfterPopoverOpen(false);
-        if (!isBeforeNewExperiencePopoverDismissed()) {
-          setBeforePopoverOpen(true);
-        }
+      if (!checked) {
+        setUnsupportedFeatureWarningOpen(true);
+        return;
       }
+
+      setOnboardingNewExperienceEnabled(true);
+      toast(
+        ({ closeToast }) => (
+          <YBAlert
+            open
+            text={t('switchedToNewExperience')}
+            variant={AlertVariant.Success}
+            onClose={closeToast}
+          />
+        ),
+        {
+          closeButton: false,
+          hideProgressBar: true,
+          style: { background: 'transparent', boxShadow: 'none', padding: 0 }
+        }
+      );
+      scheduleAfterTipOpen();
     },
-    [
-      clearAfterTipTimer,
-      scheduleAfterTipOpen,
-      setAfterPopoverOpen,
-      setBeforePopoverOpen
-    ]
+    [scheduleAfterTipOpen, t]
   );
 
+  const handleSwitchBackConfirm = useCallback(() => {
+    setUnsupportedFeatureWarningOpen(false);
+    setOnboardingNewExperienceEnabled(false);
+    clearAfterTipTimer();
+    setAfterPopoverOpen(false);
+    if (!isBeforeNewExperiencePopoverDismissed()) {
+      setBeforePopoverOpen(true);
+    }
+  }, [clearAfterTipTimer, setAfterPopoverOpen, setBeforePopoverOpen]);
+
   const handleSeeWhatsChanged = useCallback(() => {
-    localStorage.removeItem(WHAT_CHANGED_MODAL_DISMISS_KEY);
     setShowWhatChangedModal(true);
   }, []);
 
   const handleWhatChangedClose = useCallback(() => {
-    localStorage.setItem(WHAT_CHANGED_MODAL_DISMISS_KEY, 'true');
+    dismissTourStep(TourStep.WhatChanged);
     setShowWhatChangedModal(false);
   }, []);
 
@@ -345,12 +400,11 @@ export const OnBoardingBanner: FC = () => {
             dismissable={false}
             onClose={handleBannerClose}
             minHeight={48}
-            zIndex={2100}
             dataTestId="onboarding-banner"
             sx={{
               px: 2,
               py: 1.5,
-              boxShadow: '0px 2px 2px 0px rgba(11, 17, 23, 0.1)'
+              boxShadow: '0px 2px 4px 0px rgba(11, 17, 23, 0.1)'
             }}
           >
             <BannerRow sx={{ justifyContent: 'space-between', gap: 2 }}>
@@ -384,7 +438,6 @@ export const OnBoardingBanner: FC = () => {
             open
             minHeight={48}
             dismissable={false}
-            zIndex={2100}
             dataTestId="onboarding-banner"
             sx={{
               px: 2,
@@ -505,6 +558,7 @@ export const OnBoardingBanner: FC = () => {
           open={isBeforePopoverOpen}
           anchorRef={seeWhatsChangedAnchorRef}
           onClose={handleBeforePopoverClose}
+          onClickAway={handleBeforePopoverClickAway}
           onSeeWhatsChanged={handleSeeWhatsChanged}
         />
       )}
@@ -513,10 +567,16 @@ export const OnBoardingBanner: FC = () => {
           open={isAfterPopoverOpen}
           anchorRef={seeWhatsChangedAnchorRef}
           onClose={handleAfterPopoverClose}
+          onClickAway={handleAfterPopoverClickAway}
           onSeeWhatsChanged={handleSeeWhatsChanged}
         />
       )}
       <WhatChangedModal open={showWhatChangedModal} onClose={handleWhatChangedClose} />
+      <UnsupportedFeatureWarningModal
+        open={isUnsupportedFeatureWarningOpen}
+        onClose={() => setUnsupportedFeatureWarningOpen(false)}
+        onSwitchBack={handleSwitchBackConfirm}
+      />
     </>
   );
 };

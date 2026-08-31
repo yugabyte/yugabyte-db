@@ -654,7 +654,7 @@ public class NodeAgentClient {
   }
 
   public static String getNodeAgentJWT(NodeAgent nodeAgent, Duration tokenLifetime) {
-    PrivateKey privateKey = nodeAgent.getPrivateKey();
+    PrivateKey privateKey = nodeAgent.getSignerPrivateKey();
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject("Platform")
@@ -707,7 +707,7 @@ public class NodeAgentClient {
       log.debug("Node agent {} is not in active state", nodeAgent);
       return Optional.empty();
     }
-    if (nodeAgentPollerProvider.get().upgradeNodeAgent(nodeAgent.getUuid(), true)) {
+    if (nodeAgentPollerProvider.get().upgradeNodeAgent(nodeAgent.getUuid())) {
       nodeAgent.refresh();
     }
     return optional;

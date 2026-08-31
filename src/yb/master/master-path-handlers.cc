@@ -2659,7 +2659,10 @@ Result<vector<UnderReplicatedTabletInfo>> GetUnderReplicatedTablets(Master* mast
   auto* catalog_mgr = master->catalog_manager();
 
   catalog_mgr->AssertLeaderLockAcquiredForReading();
-  auto tables = catalog_mgr->GetTables(GetTablesMode::kRunning);
+  // Skip colocated children: they share the parent tablegroup's tablets, and tablespace lookup
+  // always fails for those children so GetTableReplicationInfoWithDefault would use the cluster
+  // spec and report false under-replication for tablets that follow a custom tablespace.
+  auto tables = catalog_mgr->GetTables(GetTablesMode::kRunning, PrimaryTablesOnly::kTrue);
 
   vector<UnderReplicatedTabletInfo> underreplicated_tablets;
   for (const auto& table : tables) {

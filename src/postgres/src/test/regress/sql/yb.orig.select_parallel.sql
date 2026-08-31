@@ -138,6 +138,7 @@ reset enable_bitmapscan;
 -- test parallel merge join path.
 set enable_hashjoin to off;
 set enable_nestloop to off;
+set yb_bnl_batch_size to 1;
 
 explain (costs off)
 	select  count(*) from tenk1, tenk2 where tenk1.unique1 = tenk2.unique1;
@@ -145,6 +146,7 @@ select  count(*) from tenk1, tenk2 where tenk1.unique1 = tenk2.unique1;
 
 reset enable_hashjoin;
 reset enable_nestloop;
+reset yb_bnl_batch_size;
 
 -- test gather merge
 set enable_hashagg = false;

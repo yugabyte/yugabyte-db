@@ -83,7 +83,7 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
   }
 
   Result<Slice> Fetch(Slice key) override {
-    return std::get<docdb::IntentAwareIteratorPtr>(iter_holder_)->FetchValue(key);
+    return iter_holder_.iter->FetchValue(key);
   }
 
  private:
@@ -542,14 +542,18 @@ Status TabletVectorIndexes::Backfill(
   LOG_WITH_PREFIX_AND_FUNC(INFO)
       << "Backfilled " << AsString(*vector_index) << " in " << helper.num_chunks() << " chunks";
 
-  // The backfill task holds only a non-blocking ScopedRWOperation, so RocksDB shutdown may already
-  // have started by the time we reach the final regular DB flush. Acquire a blocking operation here
-  // ourselves: if it fails, shutdown is in progress and we abort the backfill gracefully (the
-  // ScheduleBackfill handler treats ShutdownInProgress as expected) instead of hitting the DFATAL
-  // inside Tablet::Flush. On success, hold it across the flush and skip Flush's own scoped
-  // operation via kNoScopedOperation.
+  // Hold a blocking operation across both flushes below. Tablet::Flush releases its own one before
+  // the vector index flush, so acquire it here and pass kNoScopedOperation.
   auto flush_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
-  RETURN_NOT_OK(flush_op);
+  if (!flush_op.ok()) {
+    // Only StartShutdownStorages disables blocking operations, and it holds the pause while
+    // draining the non-blocking operation this task holds, so waiting here would block that drain.
+    // The storages are going away in any case, so abort the backfill like on shutdown.
+    auto status = flush_op.CreateStatus();
+    return status.IsTryAgain()
+        ? STATUS_FORMAT(ShutdownInProgress, "Storages are being replaced: $0", status)
+        : status;
+  }
   // TODO(vector_index) Need to handle scenario when regular db was not flushed before restart.
   RETURN_NOT_OK_PREPEND(
       Flush(FlushMode::kSync, FlushFlags::kRegular | FlushFlags::kNoScopedOperation,

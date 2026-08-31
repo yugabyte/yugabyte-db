@@ -1968,8 +1968,7 @@ UPDATE t_unique_key_update SET b = NULL WHERE h = 1 AND r = 4;
 SELECT yb_index_check('t_unique_key_update_uq'::regclass);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT * FROM t_unique_key_update ORDER BY h, r, k;
  h | r | k | a  | b  | active 
@@ -2082,8 +2081,7 @@ UPDATE t_unique_key_update_nnd SET b = NULL WHERE h = 2 AND r = 4;
 SELECT yb_index_check('t_unique_key_update_nnd_uq'::regclass);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT * FROM t_unique_key_update_nnd ORDER BY h, r, k;
  h | r | k | a  | b  | active 
@@ -2198,8 +2196,7 @@ UPDATE t_unique_expr_update SET c = NULL WHERE h = 3 AND r = 4;
 SELECT yb_index_check('t_unique_expr_update_uq'::regclass);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT * FROM t_unique_expr_update ORDER BY h, r, k;
  h | r | k | a  | b  | c | d | active 
@@ -2314,8 +2311,7 @@ UPDATE t_unique_expr_update_nnd SET c = NULL WHERE h = 4 AND r = 4;
 SELECT yb_index_check('t_unique_expr_update_nnd_uq'::regclass);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT * FROM t_unique_expr_update_nnd ORDER BY h, r, k;
  h | r | k | a  | b  | c | d | active 
@@ -2451,8 +2447,7 @@ UPDATE t_partial_unique_expr_update SET k = 1, active = true WHERE h = 5 AND r =
 SELECT yb_index_check('t_partial_unique_expr_update_uq'::regclass);
  yb_index_check 
 ----------------
- 
-(1 row)
+(0 rows)
 
 SELECT * FROM t_partial_unique_expr_update ORDER BY h, r, k;
  h | r | k | a  | b  | c | d | active 

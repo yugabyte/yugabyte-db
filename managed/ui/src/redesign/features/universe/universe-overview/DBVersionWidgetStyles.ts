@@ -10,6 +10,17 @@ export const dbVersionWidgetStyles = makeStyles((theme) => ({
     fontSize: '12px',
     fontWeight: 500
   },
+  upgradeLinkDisabled: {
+    cursor: 'not-allowed',
+    pointerEvents: 'none'
+  },
+  upgradeAvailableLinkTarget: {
+    display: 'inline-flex',
+    alignItems: 'center'
+  },
+  upgradeAvailableLinkTargetDisabled: {
+    cursor: 'not-allowed'
+  },
   text: {
     color: theme.palette.ybacolors.primary4
   },
