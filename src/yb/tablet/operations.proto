@@ -107,6 +107,9 @@ message WritePB {
   optional uint64 start_time_micros = 21;
 
   optional uint32 xrepl_origin_id = 22;
+
+  // Earliest PgsqlWriteRequestPB.ignore_after_hybrid_time over this batch; 0 means no fence.
+  optional fixed64 ignore_after_hybrid_time = 24;
 }
 
 message ChangeMetadataRequestPB {

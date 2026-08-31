@@ -1344,6 +1344,26 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   return status;
 }
 
+Status RaftConsensus::CheckWriteFenceUnlocked(const ConsensusRoundPtr& round) {
+  const auto& msg = *round->replicate_msg();
+  if (msg.op_type() != OperationType::WRITE_OP) {
+    return Status::OK();
+  }
+  const auto fence = HybridTime::FromPB(msg.write().ignore_after_hybrid_time());
+  if (!fence) {
+    return Status::OK();
+  }
+  // clock_, not the op's own hybrid time, which AddLeaderPending has not assigned yet. Nor
+  // state_->Clock(), which is the coarse clock and not in the fence's time domain.
+  const auto now = clock_->Now();
+  if (fence > now) {
+    return Status::OK();
+  }
+  return STATUS_EC_FORMAT(
+      Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
+      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, now);
+}
+
 Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     const ConsensusRounds& rounds, size_t* processed_rounds,
     std::vector<ReplicateMsgPtr>* replicate_msgs) {
@@ -1351,6 +1371,15 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
 
   for (const auto& round : rounds) {
     ++*processed_rounds;
+
+    // Must precede RegisterRetryableRequest, whose entry is only ever removed by
+    // ReplicationFinished -- which this rejection does not reach -- and NotifyAddedToLeader, whose
+    // side effects rolling back the op id does not undo.
+    if (auto s = CheckWriteFenceUnlocked(round); !s.ok()) {
+      round->NotifyReplicationFinished(s, round->bound_term(), /* applied_op_ids = */ nullptr);
+      round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
+      continue;
+    }
 
     if (round->replicate_msg()->op_type() == OperationType::WRITE_OP) {
       DCHECK_EQ(state_->GetActiveRoleUnlocked(), PeerRole::LEADER);

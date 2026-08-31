@@ -407,6 +407,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
         const ConsensusRounds& rounds, size_t* processed_rounds,
         std::vector<ReplicateMsgPtr>* replicate_msgs);
 
+  // Rejects a write whose WritePB::ignore_after_hybrid_time has already passed, letting a client
+  // with a time-bounded lease stop its writes landing once the lease is gone. Must run before the
+  // round is registered or added as pending -- see the call site.
+  Status CheckWriteFenceUnlocked(const ConsensusRoundPtr& round);
+
   // Control whether printing of log messages should be done for a particular
   // function call.
   enum AllowLogging {
