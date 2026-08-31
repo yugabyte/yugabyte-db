@@ -24,7 +24,13 @@ interface RegionCardProps {
   addAzTooltip: string;
   addAzTooltipKey?: string;
   addAzTooltipValues?: Record<string, unknown>;
+  /** True when the region was not in the original universe placement. */
   isNewRegion?: boolean;
+  /**
+   * Original universe zone UUIDs for this region (edit placement).
+   * Omit / undefined when not in edit-placement baseline mode.
+   */
+  baselineZoneUuids?: string[];
 }
 
 const { styled, Typography, Box, Link, useTheme } = mui;
@@ -73,7 +79,8 @@ export const RegionCard: FC<RegionCardProps> = ({
   addAzTooltip,
   addAzTooltipKey,
   addAzTooltipValues,
-  isNewRegion = false
+  isNewRegion = false,
+  baselineZoneUuids
 }) => {
   const {
     control,
@@ -95,6 +102,12 @@ export const RegionCard: FC<RegionCardProps> = ({
     showErrorsAfterSubmit,
     (errors as any)?.lesserNodes?.message
   );
+
+  const isNewAz = (zone: ZoneType | undefined) => {
+    if (baselineZoneUuids === undefined || isNewRegion) return false;
+    if (!zone?.uuid) return true;
+    return !baselineZoneUuids.includes(zone.uuid);
+  };
   const addAvailabilityZone = () => {
     const azToAdd = region.zones.find((zone) => !az.find((a) => a.name === zone.name));
     if (!azToAdd) return;
@@ -133,7 +146,7 @@ export const RegionCard: FC<RegionCardProps> = ({
     <StyledRegionCard>
       {isNewRegion ? (
         <Box sx={{ px: 3, pt: 1.25, pb: 0, mb: -1 }} data-testid={`region-card-new-badge-${index}`}>
-          <YBTag size="small" variant="light" color='success' customSx={{ color: '#13A768'}}>
+          <YBTag size="small" variant="light" color="gradient">
             {t('newRegionBadge')}
           </YBTag>
         </Box>
@@ -166,24 +179,35 @@ export const RegionCard: FC<RegionCardProps> = ({
           gap: '24px'
         }}
       >
-        {az.map((_, i) => (
-          <Zone
-            key={i}
-            control={control}
-            setValue={setValue}
-            index={i}
-            region={region}
-            regionIndex={index}
-            showNodesCountError={showNodesCountError}
-            remove={() => {
-              const updatedAz = az.filter((_, index) => index !== i);
-              const updatedPreferredRank = updatePreferredRanks(updatedAz, az[i].preffered);
-              setValue(`availabilityZones.${region.code}`, updatedPreferredRank, {
-                shouldValidate: true,
-                shouldDirty: true
-              });
-            }}
-          />
+        {(az ?? []).map((zone, i) => (
+          <Box key={i} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {isNewAz(zone) ? (
+              <Box
+                sx={{ ml: '34px' }}
+                data-testid={`region-card-new-az-badge-${index}-${i}`}
+              >
+                <YBTag size="small" variant="light" color="gradient">
+                  {t('newRegionBadge')}
+                </YBTag>
+              </Box>
+            ) : null}
+            <Zone
+              control={control}
+              setValue={setValue}
+              index={i}
+              region={region}
+              regionIndex={index}
+              showNodesCountError={showNodesCountError}
+              remove={() => {
+                const updatedAz = az.filter((_, index) => index !== i);
+                const updatedPreferredRank = updatePreferredRanks(updatedAz, az[i].preffered);
+                setValue(`availabilityZones.${region.code}`, updatedPreferredRank, {
+                  shouldValidate: true,
+                  shouldDirty: true
+                });
+              }}
+            />
+          </Box>
         ))}
         {showAddAzButton && (
           <YBTooltip

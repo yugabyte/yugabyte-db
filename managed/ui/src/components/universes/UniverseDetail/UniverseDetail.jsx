@@ -94,10 +94,13 @@ import {
   isUniverseRevampExperienceEnabled
 } from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
 import { SettingsTabTitleWithPopover } from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/DetailSettingsPopover';
+import { BeforeProceedWithNewModal } from '@app/redesign/features-v2/onboarding/universe-revamp/modals/BeforeProceedWithNewModal';
 import {
-  BeforeProceedWithNewModal,
-  BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY
-} from '@app/redesign/features-v2/onboarding/universe-revamp/modals/BeforeProceedWithNewModal';
+  TourStep,
+  dismissTourStep,
+  isTourProgressReady,
+  isTourStepDismissed
+} from '@app/redesign/features-v2/onboarding/universe-revamp/tour-progress';
 import {
   getCurrentVersion,
   isVersionPGSupported,
@@ -173,8 +176,7 @@ class UniverseDetail extends Component {
       showAlert: false,
       actionsDropdownOpen: false,
       refetchedUniverseDetails: false,
-      showBeforeProceedModal:
-        localStorage.getItem(BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY) !== 'true',
+      showBeforeProceedModal: true,
       isOnboardingExperienceEnabled: isOnboardingNewExperienceEnabled()
     };
   }
@@ -494,6 +496,7 @@ class UniverseDetail extends Component {
     );
     const useSystemd = primaryCluster?.userIntent?.useSystemd;
     const isYSQLEnabledInUniverse = primaryCluster?.userIntent?.enableYSQL;
+    const isYCQLEnabledInUniverse = primaryCluster?.userIntent?.enableYCQL;
     const isEncryptionAtTransitEnabled = !!(
       primaryCluster?.userIntent?.enableNodeToNodeEncrypt ||
       primaryCluster?.userIntent.enableClientToNodeEncrypt
@@ -576,6 +579,15 @@ class UniverseDetail extends Component {
       isPACollectorEnabled &&
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
+      )?.value === 'true';
+
+    // Online mode is gated by its own flag. enable_new_perf_advisor_ui covers advanced
+    // observability and the Performance tab, which online mode is neither part of - a universe
+    // forwarding everything to an external Perf Advisor has no local data behind that tab.
+    const isPaOnlineModeEnabled =
+      isPACollectorEnabled &&
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.ENABLE_PA_ONLINE_MODE
       )?.value === 'true';
 
     // Performance Tab should be shown only if Perf Advisor is enabled for the universe with advanced observability
@@ -726,12 +738,13 @@ class UniverseDetail extends Component {
       : isReadReplicaAsymmetricBlocked
         ? ASYMMETRIC_CLUSTER_EDIT_REASON
         : '';
+    const hasReadReplica = this.hasReadReplica(universeInfo);
     const isReadReplicaDisabled =
       isUniverseStatusPending ||
       isReadReplicaAsymmetricBlocked ||
       isActionFrozen(
         allowedTasks,
-        this.hasReadReplica(universeInfo) ? UNIVERSE_TASKS.EDIT_RR : UNIVERSE_TASKS.ADD_RR
+        hasReadReplica ? UNIVERSE_TASKS.EDIT_RR : UNIVERSE_TASKS.ADD_RR
       ) ||
       isK8ActionsDisabled;
     const isSampleAppsDisabled = isUniverseStatusPending && !backupRestoreInProgress;
@@ -1463,12 +1476,14 @@ class UniverseDetail extends Component {
                     </RbacValidator>
                   )}
 
-                  {!isReadOnlyUniverse && !universePaused && (
+                  {!isReadOnlyUniverse &&
+                    !universePaused &&
+                    !(isV2EditUniverseUIEnabled && hasReadReplica) && (
                     <RbacValidator
                       isControl
                       accessRequiredOn={{
                         onResource: uuid,
-                        ...(this.hasReadReplica(universeInfo)
+                        ...(hasReadReplica
                           ? ApiPermissionMap.GET_UNIVERSES_BY_ID
                           : ApiPermissionMap.CREATE_READ_REPLICA)
                       }}
@@ -1478,12 +1493,11 @@ class UniverseDetail extends Component {
                         <YBMenuItem
                           disabled={isReadReplicaDisabled}
                           to={
-                            isV2EditUniverseUIEnabled ? getAddReadReplicaRoute(uuid) : 
-                            this.isNewUIEnabled()
-                              ? `/universes/${uuid}/${
-                                  this.hasReadReplica(universeInfo) ? 'edit' : 'create'
-                                }/async`
-                              : `/universes/${uuid}/edit/async`
+                            isV2EditUniverseUIEnabled
+                              ? getAddReadReplicaRoute(uuid)
+                              : this.isNewUIEnabled()
+                                ? `/universes/${uuid}/${hasReadReplica ? 'edit' : 'create'}/async`
+                                : `/universes/${uuid}/edit/async`
                           }
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -1491,7 +1505,7 @@ class UniverseDetail extends Component {
                           )}
                         >
                           <YBLabelWithIcon icon="fa fa-copy fa-fw">
-                            {this.hasReadReplica(universeInfo) ? 'Edit' : 'Add'} Read Replica
+                            {hasReadReplica ? 'Edit' : 'Add'} Read Replica
                           </YBLabelWithIcon>
                         </YBMenuItem>
                       )}
@@ -1838,7 +1852,9 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                            ...(isUniverseRegisteredToPa
+                              ? ApiPermissionMap.UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR
+                              : ApiPermissionMap.REGISTER_UNIVERSE_TO_PERF_ADVISOR)
                           }}
                         >
                           <YBMenuItem
@@ -1861,7 +1877,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                            ...ApiPermissionMap.REGISTER_UNIVERSE_TO_PERF_ADVISOR
                           }}
                         >
                           <YBMenuItem
@@ -1882,7 +1898,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                            ...ApiPermissionMap.REGISTER_UNIVERSE_TO_PERF_ADVISOR
                           }}
                         >
                           <YBMenuItem
@@ -2156,6 +2172,7 @@ class UniverseDetail extends Component {
             }
           }}
           isEmbeddedPAEnabled={isEmbeddedPAEnabled}
+          isPaOnlineModeEnabled={isPaOnlineModeEnabled}
           paUuid={ybaToPaServiceDetails?.data?.[0]?.uuid}
           universeData={currentUniverse.data}
           perfAdvisorStatus={universePaRegistrationStatus}
@@ -2229,9 +2246,13 @@ class UniverseDetail extends Component {
         </Measure>
         {isV2EditUniverseUIEnabled && (
           <BeforeProceedWithNewModal
-            open={this.state.showBeforeProceedModal}
+            open={
+              isTourProgressReady() &&
+              this.state.showBeforeProceedModal &&
+              !isTourStepDismissed(TourStep.BeforeProceed)
+            }
             onClose={() => {
-              localStorage.setItem(BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY, 'true');
+              dismissTourStep(TourStep.BeforeProceed);
               this.setState({ showBeforeProceedModal: false });
             }}
           />

@@ -65,10 +65,10 @@ export function buildRRInstanceSettingsFromCluster(
     imageBundleUUID: cluster.provider_spec?.image_bundle_uuid ?? null,
     instanceType: cluster.node_spec?.instance_type ?? null,
     useSpotInstance: cluster.use_spot_instance ?? false,
-        deviceInfo: storageSpec
+    deviceInfo: storageSpec
       ? ({
-          volumeSize: storageSpec.volume_size ?? null,
-          numVolumes: storageSpec.num_volumes ?? null,
+          volumeSize: storageSpec.volume_size,
+          numVolumes: storageSpec.num_volumes,
           diskIops: storageSpec.disk_iops ?? null,
           throughput: storageSpec.throughput ?? null,
           storageClass: storageSpec.storage_class ?? 'standard',

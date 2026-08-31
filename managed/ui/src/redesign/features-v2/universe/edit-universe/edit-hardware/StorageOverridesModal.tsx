@@ -1,5 +1,5 @@
 import { ReactElement, useEffect, useMemo } from 'react';
-import { mui, yba, YBButton, YBInput, YBLabel, YBSelect } from '@yugabyte-ui-library/core';
+import { mui, yba, YBButton, YBInput, YBSelect } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { useYBToast } from '../../create-universe/helpers/ToastUtils';
@@ -8,10 +8,7 @@ import { ClusterSpec, ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywh
 import { createErrorMessage } from '@app/utils/ObjectUtils';
 import TrashIcon from '@app/redesign/assets/delete2.svg';
 import AddCircleIcon from '@app/redesign/assets/add-circle-blue.svg';
-import {
-  getClusterByType,
-  useEditUniverseContext
-} from '../EditUniverseUtils';
+import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import {
   AzOption,
@@ -106,6 +103,7 @@ interface StorageOverridesModalProps {
   onClose: () => void;
   azList: AzOption[];
   initialRows: StorageOverrideRowFormValue[];
+  hasReadReplica?: boolean;
 }
 
 interface ProcessFieldsProps {
@@ -199,7 +197,8 @@ export const StorageOverridesModal = ({
   onClose,
   azList,
   initialRows,
-  cluster
+  cluster,
+  hasReadReplica = false
 }: StorageOverridesModalProps): ReactElement => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'editUniverse.hardware.storageOverrides'
@@ -208,6 +207,14 @@ export const StorageOverridesModal = ({
   const editUniverse = useEditUniverse();
   const universeUUID = universeData?.info?.universe_uuid;
   const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
+
+  // Read replica clusters have TServer nodes only — no Master process.
+  const isReadReplica = cluster.cluster_type === ClusterSpecClusterType.ASYNC;
+  const modalTitle = !hasReadReplica
+    ? t('modalTitle')
+    : isReadReplica
+      ? t('asyncClusterTitle')
+      : t('primaryClusterTitle');
 
   const defaultValues: StorageOverridesFormValue = useMemo(
     () => ({
@@ -243,7 +250,9 @@ export const StorageOverridesModal = ({
     }
 
     const values = getValues();
-    const azNodeSpec = rowsToAzNodeSpec(values.overrides ?? []);
+    const azNodeSpec = rowsToAzNodeSpec(values.overrides ?? [], {
+      includeMaster: !isReadReplica
+    });
     const nodeSpec = buildNodeSpecWithAzOverrides(cluster.node_spec, azNodeSpec);
 
     editUniverse.mutate(
@@ -281,7 +290,7 @@ export const StorageOverridesModal = ({
       open={open}
       size="lg"
       overrideHeight="fit-content"
-      title={t('modalTitle')}
+      title={modalTitle}
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       submitLabel={t('save', { keyPrefix: 'common' })}
       cancelTestId="StorageOverridesModal-CancelButton"
@@ -358,14 +367,16 @@ export const StorageOverridesModal = ({
                 setValue={setValue}
                 t={t}
               />
-              <ProcessStorageFields
-                index={index}
-                process="master"
-                label={t('masterServer')}
-                watch={watch}
-                setValue={setValue}
-                t={t}
-              />
+              {!isReadReplica && (
+                <ProcessStorageFields
+                  index={index}
+                  process="master"
+                  label={t('masterServer')}
+                  watch={watch}
+                  setValue={setValue}
+                  t={t}
+                />
+              )}
             </ServerConfigPanel>
           </AzCard>
         ))}
