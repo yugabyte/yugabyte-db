@@ -27,7 +27,7 @@ Point-in-time (PIT) recovery in YugabyteDB is a set of capabilities for recoveri
 
 These scenarios are different from hardware failure or disk corruption. Failed or corrupted disks typically require a full [backup and restore](../), which moves large amounts of data and can involve significant downtime. PIT recovery instead aims to get you back to a known-good state quickly, often with little or no data movement and without taking the cluster offline for a bulk restore.
 
-You recover to a user-specified moment (up to microsecond precision) within a configured retention window. To use most of these capabilities, you first [enable PITR](enable-pitr/) by creating a snapshot schedule for the database or keyspace.
+You recover to a user-specified moment (up to microsecond precision) inside a configured retention window. To use most of these capabilities, you first [enable PITR](enable-pitr/) by creating a snapshot schedule for the database or keyspace.
 
 ## The PIT recovery family
 
@@ -35,16 +35,16 @@ YugabyteDB provides four complementary ways to work with a point in time:
 
 | Capability | What it does | Best when |
 | :--- | :--- | :--- |
-| [Inspect at PIT](inspect/) | Query the database as it existed at an earlier time (read-only). | You need to find when or what went wrong, or recover a small amount of data surgically on the production database. |
-| [Clone to PIT](clone/) | Create a fast, lightweight, writable copy (or branch) of the database as of a point in time on the same cluster. | Recent writes must be preserved; you can perform forensic search and extract/merge on the original cluster. |
+| [Inspect at PIT](inspect/) | Query the database as it existed at an earlier time (read-only). Also referred to as time travel queries. | You need to find when or what went wrong, or recover a small amount of data surgically on the production database. |
+| [Clone to PIT](clone/) | Create a fast, lightweight, writable copy (or branch) of the database as of a point in time on the same cluster. Also referred to as database branching. | Recent writes must be preserved; you can perform forensic search and extract/merge on the original cluster. |
 | [Rewind to PIT](rewind/) | Rewind the original database to an earlier point in time. Intervening writes are discarded. | There were no important writes after the error, or those writes can be discarded or replayed from an external log. |
 | [Restore to PIT](restore/) | Restore from a snapshot or backup to a chosen point in time, on the original or an alternate cluster. | Policy requires recovery off the production cluster, or you need a longer retention window on cheaper backup storage. |
 
 ### Choosing an approach
 
-- Start with [Inspect at PIT](inspect/) when you need to determine *when* the error occurred or *what* data changed. Also referred to as time travel query.
+- Start with [Inspect at PIT](inspect/) when you need to determine *when* the error occurred or *what* data changed.
 - Use [Rewind to PIT](rewind/) when intervening writes can be discarded (or replayed from an external application log).
-- Use [Clone to PIT](clone/) when intervening writes must be preserved and forensic recovery is allowed on the production cluster. Also referred to as branching.
+- Use [Clone to PIT](clone/) when intervening writes must be preserved and forensic recovery is allowed on the production cluster.
 - Use [Restore to PIT](restore/) when recovery must happen on an alternate cluster, or you need a longer retention window from backup storage.
 
 Use the following comparison when deciding:
@@ -58,6 +58,33 @@ Use the following comparison when deciding:
 | Typical retention | Hours (primary storage) | Hours to days (primary storage) | Hours to days (primary storage) | Hours to months (backup storage) |
 | APIs | YSQL | YSQL and YCQL | YSQL and YCQL | YSQL and YCQL |
 
+### Availability
+
+PITR features are available in YugabyteDB Anywhere and Aeon as follows:
+
+|      | Inspect at PIT | Clone to PIT | Rewind to PIT | Restore to PIT |
+| :--- | :------------- | :----------- | :------------ | :------------- |
+| YugabyteDB Anywhere| SQL | Not in UI | Yes | Yes |
+| YugabyteDB Aeon| SQL | Yes | No | No |
+
+#### YugabyteDB Anywhere
+
+YugabyteDB Anywhere supports the following PITR features:
+
+- [Inspect at PIT](inspect/). Supported in SQL. You can use Inspect on YugabyteDB Anywhere-deployed universes as you would on any YugabyteDB universe.
+- [Clone to PIT](clone/). You can clone a PITR-enabled database using SQL (YSQL) or yb-admin (YCQL), but you cannot manage clones in the UI. For recovery, Rewind and Restore are recommended.
+- [Rewind to PIT](../../../yugabyte-platform/back-up-restore-universes/pitr/). Enable and manage Rewind using the YugabyteDB Anywhere UI.
+- [Restore to PIT](../../../yugabyte-platform/back-up-restore-universes/restore-universe-data/). Enable and manage Restore using the YugabyteDB Anywhere UI.
+
+Note that if you use the yb-admin CLI to change the PITR configuration of a universe managed by YugabyteDB Anywhere (that is, to create schedules and snapshots), your changes are not reflected in YugabyteDB Anywhere.
+
+#### YugabyteDB Aeon
+
+YugabyteDB Aeon supports the following PITR features:
+
+- [Inspect at PIT](inspect/). Supported in SQL. YugabyteDB Aeon clusters use the default history retention interval of 15 minutes.
+- [Clone to PIT](../../../yugabyte-cloud/cloud-clusters/aeon-pitr/). Enable and manage Clone using the YugabyteDB Aeon UI.
+
 ## How it works
 
 PIT capabilities rely on retained change history, typically provided by:
@@ -66,7 +93,7 @@ PIT capabilities rely on retained change history, typically provided by:
 
 1. **Periodic distributed snapshots**: [Distributed snapshots](../snapshot-ysql/) capture a lightweight copy of database data files. A [snapshot schedule](enable-pitr/) takes snapshots periodically and retains them for a configured duration, extending the continuous history window beyond a single flashback interval.
 
-For example, if your overall retention target is three days, you can take snapshots daily and retain each for three days. That configuration keeps a continuous change history for the last three days. When you rewind or restore to a point in time, YugabyteDB selects the closest suitable snapshot and uses flashback within that snapshot.
+For example, if your overall retention target is three days, you can take snapshots daily, and retain each for three days. That configuration keeps a continuous change history for the last three days. When you rewind or restore to a point in time, YugabyteDB selects the closest suitable snapshot and uses flashback in that snapshot.
 
 ![Point-In-Time Recovery](/images/manage/backup-restore/pitr.png)
 

@@ -99,7 +99,3 @@ By default, the history retention period is controlled by the [history retention
 When PITR is enabled for a particular database or keyspace, the per-database retention period is the maximum of the global history retention period and the snapshot interval specified when PITR is configured for the database or keyspace.
 
 For example, if the global history retention period is 8 hours, but PITR is configured for a particular database to take snapshots every 4 hours, then a snapshot taken at time t0 will have all data from (time t0 - 8h to time t0), even if that means two snapshots have overlapping and duplicate copies of the same detailed change data.
-
-## YugabyteDB Anywhere
-
-YugabyteDB Anywhere [supports enabling PITR](../../../../yugabyte-platform/back-up-restore-universes/pitr/) from the UI. If you use the yb-admin CLI to change the PITR configuration of a universe managed by YugabyteDB Anywhere, including creating schedules and snapshots, your changes are not reflected in YugabyteDB Anywhere.

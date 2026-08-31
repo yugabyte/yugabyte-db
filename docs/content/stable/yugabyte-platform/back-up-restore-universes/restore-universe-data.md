@@ -3,7 +3,7 @@ title: Restore universe data
 headerTitle: Restore universe data
 linkTitle: Restore universe data
 description: Use YugabyteDB Anywhere to restore data.
-headContent: Restore from full or incremental backups
+headContent: Restore from full or incremental backups, or to a point in time
 aliases:
   - /stable/back-up-restore-universes/restore-universe-data/ycql/
   - /stable/back-up-restore-universes/restore-universe-data/ysql/
