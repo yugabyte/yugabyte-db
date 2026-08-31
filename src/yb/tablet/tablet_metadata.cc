@@ -2131,6 +2131,7 @@ Status RaftGroupMetadata::set_index_backfill_ordering_generation(
     std::lock_guard lock(data_mutex_);
     index_backfill_ordering_generation_ =
         generation.active ? generation : IndexBackfillOrderingGeneration();
+    NotifyIndexBackfillOrderingGenerationListenerUnlocked();
   }
   return Flush();
 }
@@ -2138,6 +2139,27 @@ Status RaftGroupMetadata::set_index_backfill_ordering_generation(
 IndexBackfillOrderingGeneration RaftGroupMetadata::index_backfill_ordering_generation() const {
   std::lock_guard lock(data_mutex_);
   return index_backfill_ordering_generation_;
+}
+
+void RaftGroupMetadata::SetIndexBackfillOrderingGenerationListener(
+    IndexBackfillOrderingGenerationListener listener) {
+  std::lock_guard lock(data_mutex_);
+  index_backfill_ordering_generation_listener_ = std::move(listener);
+  // Seeding under the same lock as every mutation is what makes installation window-free.
+  NotifyIndexBackfillOrderingGenerationListenerUnlocked();
+}
+
+void RaftGroupMetadata::WithIndexBackfillOrderingGeneration(
+    const std::function<void(const IndexBackfillOrderingGeneration&)>& fn) const {
+  std::lock_guard lock(data_mutex_);
+  fn(index_backfill_ordering_generation_);
+}
+
+void RaftGroupMetadata::NotifyIndexBackfillOrderingGenerationListenerUnlocked() {
+  if (index_backfill_ordering_generation_listener_) {
+    index_backfill_ordering_generation_listener_(
+        raft_group_id_, index_backfill_ordering_generation_);
+  }
 }
 
 Status RaftGroupMetadata::set_all_cdc_retention_barriers(
@@ -2984,6 +3006,7 @@ Status RaftGroupMetadata::ApplyIndexBackfillOrderingGenerationOp(
   } else {
     index_backfill_ordering_generation_ = IndexBackfillOrderingGeneration();
   }
+  NotifyIndexBackfillOrderingGenerationListenerUnlocked();
   // Advance the change-metadata replay marker with the flush below (mirrors OnBackfillDone);
   // without it the op would replay on every bootstrap until some later ChangeMetadata flush.
   OnChangeMetadataOperationAppliedUnlocked(op_id);

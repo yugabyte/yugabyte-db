@@ -55,6 +55,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/arena.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
@@ -64,9 +65,15 @@
 using namespace std::chrono_literals;
 
 DECLARE_bool(enable_load_balancing);
+DECLARE_int32(index_backfill_generation_registry_reconcile_interval_sec);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 
 namespace yb {
+
+namespace tserver {
+METRIC_DECLARE_gauge_uint32(ts_index_backfill_retention_barrier_tablets);
+METRIC_DECLARE_gauge_uint64(ts_index_backfill_oldest_retention_barrier_age_ms);
+}  // namespace tserver
 
 using dockv::DocKey;
 using dockv::MakeKeyEntryValues;
@@ -100,6 +107,10 @@ class FixedHybridTimeWriteIdITest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Keep tablet leadership where the test puts it.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    // Run the generation-registry backstop constantly: any drift it repairs is a DFATAL, so
+    // the generation churn in these tests doubles as a check that the registry is exact.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_backfill_generation_registry_reconcile_interval_sec) =
+        1;
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
@@ -578,6 +589,81 @@ TEST_F(FixedHybridTimeWriteIdITest, MissingBarrierBlocksAllHistoryGC) {
           << "on " << peer->permanent_uuid();
     }
   }
+}
+
+// Retention-barrier observability: the ts_index_backfill_* gauges surface active
+// generations (held-tablet count) and the oldest barrier's age, so a stuck barrier is
+// findable without reading superblocks. The gauges read the tablet manager's generation
+// registry, which each tablet's metadata updates synchronously, so every setter call below is
+// visible as soon as it returns. Each tserver hosts one replica of the single tablet here, so
+// the per-server count is 0 or 1. The reconcile pass is also run after every step: it must find
+// nothing to repair (a repair is a DFATAL in debug builds).
+TEST_F(FixedHybridTimeWriteIdITest, RetentionBarrierMetricsTrackActiveGenerations) {
+  auto leaders = ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(
+      cluster_.get(), table_.table()->id(), /* num_active_leaders= */ 1));
+  const auto tablet_id = leaders.front()->tablet_id();
+
+  const auto barrier_tablets = [this](size_t ts_idx) -> Result<uint32_t> {
+    const auto metric =
+        cluster_->mini_tablet_server(ts_idx)->metric_entity().FindOrNull<FunctionGauge<uint32_t>>(
+            tserver::METRIC_ts_index_backfill_retention_barrier_tablets);
+    SCHECK_NOTNULL(metric.get());
+    return metric->value();
+  };
+  const auto oldest_age_ms = [this](size_t ts_idx) -> Result<uint64_t> {
+    const auto metric =
+        cluster_->mini_tablet_server(ts_idx)->metric_entity().FindOrNull<FunctionGauge<uint64_t>>(
+            tserver::METRIC_ts_index_backfill_oldest_retention_barrier_age_ms);
+    SCHECK_NOTNULL(metric.get());
+    return metric->value();
+  };
+  const auto expect_registry_consistent = [this]() {
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      ASSERT_EQ(
+          0, cluster_->mini_tablet_server(i)
+                 ->server()
+                 ->tablet_manager()
+                 ->ReconcileIndexBackfillGenerationRegistry())
+          << "registry drift on ts-" << i;
+    }
+  };
+
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_EQ(0, ASSERT_RESULT(barrier_tablets(i)));
+    ASSERT_EQ(0, ASSERT_RESULT(oldest_age_ms(i)));
+  }
+  ASSERT_NO_FATALS(expect_registry_consistent());
+
+  // Activate with a barrier chosen in the past: the reported age must be at least that far
+  // back (minus generous slack for coarse clock steps).
+  constexpr int kBarrierAgeSec = 5;
+  const auto barrier =
+      cluster_->mini_tablet_server(0)->server()->Clock()->Now().AddSeconds(-kBarrierAgeSec);
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(
+      tablet_id, MakeActiveOrderingGeneration(barrier)));
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_EQ(1, ASSERT_RESULT(barrier_tablets(i)));
+    ASSERT_GE(ASSERT_RESULT(oldest_age_ms(i)), kBarrierAgeSec * 1000ULL - 500);
+  }
+  ASSERT_NO_FATALS(expect_registry_consistent());
+
+  // Active without a barrier still counts as held (it blocks all history GC) but
+  // contributes no age -- the documented missing-barrier edge.
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(tablet_id, MakeActiveOrderingGeneration()));
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_EQ(1, ASSERT_RESULT(barrier_tablets(i)));
+    ASSERT_EQ(0, ASSERT_RESULT(oldest_age_ms(i)));
+  }
+  ASSERT_NO_FATALS(expect_registry_consistent());
+
+  // Release: both gauges return to zero.
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(
+      tablet_id, tablet::IndexBackfillOrderingGeneration()));
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_EQ(0, ASSERT_RESULT(barrier_tablets(i)));
+    ASSERT_EQ(0, ASSERT_RESULT(oldest_age_ms(i)));
+  }
+  ASSERT_NO_FATALS(expect_registry_consistent());
 }
 
 }  // namespace yb
