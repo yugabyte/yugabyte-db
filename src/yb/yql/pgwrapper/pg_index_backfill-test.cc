@@ -25,6 +25,7 @@
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/external_mini_cluster_validator.h"
@@ -1410,6 +1411,61 @@ TEST_P(PgIndexBackfillRaftOrderingActivation, MarkerReachesRaftIndexValidation) 
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
 }
 
+// The master activates the ordering generation on the index tablets before launching backfill
+// chunks and releases it in the terminal funnel -- both observable as replicated
+// ChangeMetadataOperations applying on the tservers.
+TEST_P(PgIndexBackfillSkipAllRaftOrdering, OrderingGenerationActivatedAndReleased) {
+  std::vector<ExternalDaemon*> tserver_daemons;
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    tserver_daemons.push_back(tserver);
+  }
+  // An ExternalDaemon holds a single log listener, so the two waiters must watch different
+  // daemons: the master logs the activation fan-out, the tservers log the release applying.
+  auto activation_waiter =
+      cluster_->GetMasterLogWaiter("Activating index-backfill ordering generation on");
+  LogWaiter release_waiter(
+      tserver_daemons, "Releasing index-backfill ordering generation");
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 100) g", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+
+  ASSERT_OK(activation_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
+  // The release is fire-and-forget from the terminal funnel, so it may land shortly after
+  // CREATE INDEX returns.
+  ASSERT_OK(release_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
+}
+
+class PgIndexBackfillSkipAllActivationFailure : public PgIndexBackfillSkipAllRaftOrdering {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillSkipAllRaftOrdering::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--TEST_fail_index_backfill_ordering_generation_update=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillSkipAllActivationFailure, ::testing::Bool());
+
+// Partial activation fails the job before any backfill write: CREATE INDEX errors cleanly
+// (no hang, no crash) and the base table remains fully usable.
+TEST_P(PgIndexBackfillSkipAllActivationFailure, ActivationFailureFailsCreateIndexCleanly) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+
+  const auto status = conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName);
+  ASSERT_NOK(status);
+
+  // The base table is unaffected; the failed (invalid) index can be dropped.
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (2, 2)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (3, 3)", kTableName));
+}
+
 // Override the index backfill test to have slower backfill-related operations
 class PgIndexBackfillSlow : public PgIndexBackfillTest {
  public:
@@ -1460,6 +1516,141 @@ class PgIndexBackfillBlockDoBackfill : public PgIndexBackfillTest {
 };
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillBlockDoBackfill, ::testing::Bool());
+
+// The tserver-side backstop for a release the master never delivers: the metadata validator
+// re-validates tablets whose ordering generation has been active longer than the re-check
+// age, asks the master for the index's backfill status (bypassing its cache), and releases the
+// generation once the backfill is confirmed complete. Hold the master in the funnel before the
+// release so the generation is genuinely stranded, and expect every replica to release it on
+// its own within a few validation periods.
+class PgIndexBackfillSkipAllStrandedRelease : public PgIndexBackfillSkipAllRaftOrdering {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillSkipAllRaftOrdering::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_pause_index_backfill_ordering_generation_release=true");
+    options->extra_tserver_flags.push_back(
+        "--tablet_validator_retain_delete_markers_validation_period_sec=1");
+    options->extra_tserver_flags.push_back(
+        "--tablet_validator_index_backfill_generation_recheck_sec=1");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillSkipAllStrandedRelease, ::testing::Bool());
+
+TEST_P(PgIndexBackfillSkipAllStrandedRelease, ValidatorReleasesStrandedGeneration) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+
+  std::vector<ExternalDaemon*> tservers;
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    tservers.push_back(tserver);
+  }
+  LogWaiter validator_release_waiter(
+      tservers, "releasing index-backfill ordering generation for");
+
+  // CREATE INDEX returns once the permissions are READ_WRITE_AND_DELETE; the master then sits
+  // paused before the release, leaving every replica's generation active.
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+
+  ASSERT_OK(validator_release_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+
+  // Let the paused master finish: its release lands on already-released tablets (idempotent)
+  // and the job is cleared.
+  auto release_waiter =
+      cluster_->GetMasterLogWaiter("Ordering generation released on all index tablets");
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_pause_index_backfill_ordering_generation_release", "false"));
+  ASSERT_OK(release_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
+}
+
+// Index-tablet splitting stays enabled while marked backfill writes are flowing: split children
+// continue the parent's Raft sequence and inherit the ordering generation, so per-key write-ID
+// uniqueness survives the split and the children accept marked writes under the inherited
+// record. Only the verification scan (a later part) needs a stable tablet set.
+class PgIndexBackfillSkipAllSlowBuild : public PgIndexBackfillSkipAllRaftOrdering {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillSkipAllRaftOrdering::UpdateMiniClusterOptions(options);
+    // Throttle the build to ~20 rows/s in batches of 10: a multi-second window of continuous
+    // marked writes to split into.
+    options->extra_tserver_flags.push_back("--backfill_index_write_batch_size=10");
+    options->extra_tserver_flags.push_back("--backfill_index_rate_rows_per_sec=20");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillSkipAllSlowBuild, ::testing::Bool());
+
+TEST_P(PgIndexBackfillSkipAllSlowBuild, SplitAllowedDuringBackfill) {
+  // The rate limit is per indexed tablet: one base tablet makes 400 rows at 20 rows/s a
+  // ~20 s window of marked writes.
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (a int PRIMARY KEY, b int) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 400) g", kTableName));
+
+  // One log listener per daemon: scope the waiters so they never overlap.
+  {
+    auto activation_waiter =
+        cluster_->GetMasterLogWaiter("Ordering generation active on all index tablets");
+    thread_holder_.AddThreadFunctor([this] {
+      auto create_conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(create_conn.ExecuteFormat(
+          "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+    });
+    ASSERT_OK(activation_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+  }
+  auto release_waiter =
+      cluster_->GetMasterLogWaiter("Ordering generation released on all index tablets");
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto index_table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kDatabaseName, kIndexName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client->GetTabletsFromTableId(index_table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto parent_tablet_id = tablets.Get(0).tablet_id();
+
+  // Marked writes are flowing (the generation is active and the build is throttled). Let a
+  // few seconds of them land, flush so the split has SST data for a middle key, then split
+  // through the master: no fence refuses it.
+  SleepFor(MonoDelta::FromSeconds(5) * kTimeMultiplier);
+  ASSERT_OK(cluster_->CallYbAdmin(
+      {"flush_table", Format("ysql.$0", kDatabaseName), kIndexName, "30"}));
+  {
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
+    master::SplitTabletRequestPB req;
+    req.set_tablet_id(parent_tablet_id);
+    master::SplitTabletResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(30) * kTimeMultiplier);
+    ASSERT_OK(proxy.SplitTablet(req, &resp, &rpc));
+    ASSERT_FALSE(resp.has_error()) << StatusFromPB(resp.error().status());
+  }
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        google::protobuf::RepeatedPtrField<master::TabletLocationsPB> current;
+        RETURN_NOT_OK(client->GetTabletsFromTableId(index_table_id, 0, &current));
+        if (current.size() != 2) {
+          return false;
+        }
+        for (const auto& tablet : current) {
+          if (tablet.tablet_id() == parent_tablet_id) {
+            return false;
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(120) * kTimeMultiplier, "index tablet to split during backfill"));
+
+  // The build finishes against the children and the index is consistent; release reaches
+  // every child (the parent is retired, which counts as released).
+  thread_holder_.JoinAll();
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
+  ASSERT_OK(release_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+}
 
 class PgIndexBackfillBlockIndisready : public PgIndexBackfillTest {
  public:
@@ -2756,6 +2947,69 @@ TEST_P(PgIndexBackfillMultiMaster, UniqueCheckModePersistedAcrossMasterFailover)
     ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   });
   thread_holder_.JoinAll();
+}
+
+// The persisted job owns the ordering-generation release: the funnel updates the index
+// permissions, then releases the generation on every index tablet and only clears the job once
+// every tablet acknowledged. Pause the leader between the permission update and the release,
+// fail it over, and the new leader must resume the job, re-drive the release, and clear the
+// job -- no tablet is left holding its retention barrier.
+TEST_P(PgIndexBackfillMultiMaster, OrderingGenerationReleaseResumesAcrossMasterFailover) {
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_ysql_index_backfill_unique_check_mode", "skip_all"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g FROM generate_series(1, 50) g", kTableName));
+
+  // Pause only the current leader: the next leader must not inherit the pause.
+  auto* leader = cluster_->GetLeaderMaster();
+  ASSERT_OK(cluster_->SetFlag(
+      leader, "TEST_pause_index_backfill_ordering_generation_release", "true"));
+  LogWaiter paused_waiter(
+      leader, "Pausing due to flag TEST_pause_index_backfill_ordering_generation_release");
+
+  thread_holder_.AddThreadFunctor([this] {
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_conn.ExecuteFormat(
+        "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  });
+  // The fixture blocks DoBackfill; this test wants the build to run and pause at the release.
+  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  ASSERT_OK(paused_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+
+  // Permissions are already READ_WRITE_AND_DELETE, so CREATE INDEX returns; the job is still
+  // persisted because release has not happened.
+  thread_holder_.JoinAll();
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
+      client.get(), kYBTableName.namespace_name(), kYBTableName.table_name()));
+  ASSERT_OK(GetBackfillJobs(cluster_.get(), table_id));
+
+  std::vector<ExternalDaemon*> other_masters;
+  for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+    if (cluster_->master(i) != leader) {
+      other_masters.push_back(cluster_->master(i));
+    }
+  }
+  // One log listener per daemon: the release line is only reachable through the resumed job
+  // ("All job indexes already backfilled; resuming the completion phase"), so waiting for it
+  // covers both.
+  LogWaiter released_waiter(other_masters, "Ordering generation released on all index tablets");
+
+  tserver::TabletServerErrorPB::Code error_code;
+  ASSERT_OK(cluster_->StepDownMasterLeader(&error_code));
+
+  // The new leader resumes the persisted job with nothing left to backfill, re-drives the
+  // release, and clears the job.
+  ASSERT_OK(released_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto job = GetBackfillJobs(cluster_.get(), table_id);
+        return !job.ok() && job.status().IsNotFound();
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier, "backfill job to be cleared after release"));
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
 }
 
 // Override the index backfill test class to use colocated tables.
