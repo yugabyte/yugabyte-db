@@ -1198,6 +1198,11 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     if (!last_logged_opid.empty()) {
       tombstone_last_logged_opid_ = last_logged_opid;
     }
+    // The data this generation protected is gone with the DBs; a tombstoned peer keeps its
+    // superblock, and a lingering active record would hold a retention barrier (and report a
+    // stuck one) for data that no longer exists.
+    index_backfill_ordering_generation_ = IndexBackfillOrderingGeneration();
+    NotifyIndexBackfillOrderingGenerationListenerUnlocked();
   }
 
   rocksdb::Options rocksdb_options;
@@ -1468,6 +1473,9 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       // replacement), so an absent field must clear any previous generation.
       index_backfill_ordering_generation_ = IndexBackfillOrderingGeneration();
     }
+    // Same reason: on a superblock replacement the listener (the tserver's generation
+    // registry) is already installed and must see the loaded state.
+    NotifyIndexBackfillOrderingGenerationListenerUnlocked();
     is_under_xcluster_replication_ = superblock.is_under_xcluster_replication();
     hidden_ = superblock.hidden();
     auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
@@ -2131,6 +2139,7 @@ Status RaftGroupMetadata::set_index_backfill_ordering_generation(
     std::lock_guard lock(data_mutex_);
     index_backfill_ordering_generation_ =
         generation.active ? generation : IndexBackfillOrderingGeneration();
+    NotifyIndexBackfillOrderingGenerationListenerUnlocked();
   }
   return Flush();
 }
@@ -2138,6 +2147,27 @@ Status RaftGroupMetadata::set_index_backfill_ordering_generation(
 IndexBackfillOrderingGeneration RaftGroupMetadata::index_backfill_ordering_generation() const {
   std::lock_guard lock(data_mutex_);
   return index_backfill_ordering_generation_;
+}
+
+void RaftGroupMetadata::SetIndexBackfillOrderingGenerationListener(
+    IndexBackfillOrderingGenerationListener listener) {
+  std::lock_guard lock(data_mutex_);
+  index_backfill_ordering_generation_listener_ = std::move(listener);
+  // Seeding under the same lock as every mutation is what makes installation window-free.
+  NotifyIndexBackfillOrderingGenerationListenerUnlocked();
+}
+
+void RaftGroupMetadata::WithIndexBackfillOrderingGeneration(
+    const std::function<void(const IndexBackfillOrderingGeneration&)>& fn) const {
+  std::lock_guard lock(data_mutex_);
+  fn(index_backfill_ordering_generation_);
+}
+
+void RaftGroupMetadata::NotifyIndexBackfillOrderingGenerationListenerUnlocked() {
+  if (index_backfill_ordering_generation_listener_) {
+    index_backfill_ordering_generation_listener_(
+        raft_group_id_, index_backfill_ordering_generation_);
+  }
 }
 
 Status RaftGroupMetadata::set_all_cdc_retention_barriers(
@@ -2984,6 +3014,7 @@ Status RaftGroupMetadata::ApplyIndexBackfillOrderingGenerationOp(
   } else {
     index_backfill_ordering_generation_ = IndexBackfillOrderingGeneration();
   }
+  NotifyIndexBackfillOrderingGenerationListenerUnlocked();
   // Advance the change-metadata replay marker with the flush below (mirrors OnBackfillDone);
   // without it the op would replay on every bootstrap until some later ChangeMetadata flush.
   OnChangeMetadataOperationAppliedUnlocked(op_id);

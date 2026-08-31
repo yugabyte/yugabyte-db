@@ -462,11 +462,18 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   TabletServer* server() const { return server_; }
 
   // Invokes fn for every tablet whose index-backfill ordering generation is active. Consumers:
-  // the tablet metadata validator's straggler re-check (and, later, the retention-barrier
-  // observability). The metadata reference is valid for the duration of the call only.
+  // the tablet metadata validator's straggler re-check and the retention-barrier gauges.
+  // Driven by the generation registry, so it costs one lookup per held tablet rather than a
+  // walk over every tablet's metadata. The metadata reference is valid for the call only.
   void ForEachActiveIndexBackfillGeneration(
       const std::function<void(
           const tablet::RaftGroupMetadata&, const tablet::IndexBackfillOrderingGeneration&)>& fn);
+
+  // Rebuilds the generation registry from tablet metadata and returns how many entries
+  // disagreed. The registry is event-driven and must never drift, so each disagreement is a
+  // DFATAL; the periodic pass (index_backfill_generation_registry_reconcile_interval_sec) is
+  // the backstop that also repairs it in release builds.
+  size_t ReconcileIndexBackfillGenerationRegistry();
 
   MemoryMonitor* memory_monitor() { return tablet_options_.memory_monitor.get(); }
 
@@ -490,6 +497,18 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Background task that emits metrics.
   void EmitMetrics();
+
+  // Generation registry maintenance. The listener is installed on each registered tablet's
+  // metadata (and seeded with its current state) by RegisterTabletUnlocked; Forget clears it
+  // again when the peer leaves the map, so a replaced or deleted peer's metadata can no longer
+  // touch the entry.
+  void OnIndexBackfillOrderingGenerationChanged(
+      const TabletId& tablet_id, const tablet::IndexBackfillOrderingGeneration& generation);
+  void InstallIndexBackfillGenerationListener(const tablet::RaftGroupMetadataPtr& metadata);
+  void ForgetIndexBackfillGeneration(
+      const TabletId& tablet_id, const tablet::RaftGroupMetadataPtr& metadata);
+  uint32_t IndexBackfillRetentionBarrierTablets() const;
+  uint64_t OldestIndexBackfillRetentionBarrierAgeMs() const;
 
   // Background task that Retires old metrics.
   void CleanupOldMetrics();
@@ -973,6 +992,21 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Gauge tracking number of peers on this tserver actively undergoing RBS.
   scoped_refptr<yb::AtomicGauge<uint64_t>> num_tablet_peers_undergoing_rbs_;
+
+  // Index-backfill ordering generations active on this server's tablets, keyed by tablet id
+  // (deferred unique-index verification, #33444). Event-driven through the metadata listener;
+  // backs the ts_index_backfill_* gauges and the validator's straggler re-check. Peers in any
+  // state count: the barrier is on-disk metadata, not runtime state.
+  struct ActiveIndexBackfillGeneration {
+    TableId table_id;
+    HybridTime retention_barrier_ht;
+  };
+  mutable simple_spinlock index_backfill_generations_mutex_;
+  std::unordered_map<TabletId, ActiveIndexBackfillGeneration> active_index_backfill_generations_
+      GUARDED_BY(index_backfill_generations_mutex_);
+  std::unique_ptr<rpc::Poller> index_backfill_generation_registry_reconciler_;
+  // Declared after the registry: the function gauges read it until this detaches them.
+  std::shared_ptr<void> index_backfill_metrics_detacher_;
 
   struct SnapshotScheduleInfo {
     HybridTime last_snapshot_ht;

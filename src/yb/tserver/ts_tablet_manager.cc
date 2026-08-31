@@ -261,6 +261,12 @@ DEFINE_NON_RUNTIME_int32(data_size_metric_updater_interval_sec, 60,
              "The interval time for the data size metric updater background task. "
              "If set to 0, it disables the background task.");
 
+DEFINE_NON_RUNTIME_int32(index_backfill_generation_registry_reconcile_interval_sec, 600,
+    "Interval of the backstop pass that rebuilds the tserver's registry of active "
+    "index-backfill ordering generations from tablet metadata and reports any drift. The "
+    "registry is maintained event-driven; this pass only repairs it if an update was missed. "
+    "0 disables the pass.");
+
 DEFINE_NON_RUNTIME_int32(docdb_sst_stats_resync_interval_sec, 300,
              "The interval at which each tablet's DocDB SST statistics aggregate is recomputed "
              "from its whole live file set, correcting for file-set changes that produce no "
@@ -435,6 +441,20 @@ METRIC_DEFINE_gauge_uint64(server, num_tablet_peers_undergoing_rbs,
     "Number of Tablet Peers on the TServer undergoing remote bootstrap", MetricUnit::kUnits,
     "Number of Tablet Peers on the TServer undergoing remote bootstrap i.e actively RBSing peers.");
 
+METRIC_DEFINE_gauge_uint32(server, ts_index_backfill_retention_barrier_tablets,
+    "Tablets Held by an Index-Backfill Retention Barrier", MetricUnit::kUnits,
+    "Number of tablet peers on this TServer whose history GC is held by an active "
+    "index-backfill ordering generation (deferred unique-index verification). Nonzero only "
+    "while a SKIP_ALL unique-index build or its verification is in flight; a value that "
+    "persists after backfills finish indicates a stuck retention barrier.");
+
+METRIC_DEFINE_gauge_uint64(server, ts_index_backfill_oldest_retention_barrier_age_ms,
+    "Oldest Index-Backfill Retention Barrier Age", MetricUnit::kMilliseconds,
+    "Age of the oldest active index-backfill retention barrier on this TServer -- an upper "
+    "bound on how much extra history the most-held-back tablet is retaining. 0 when no "
+    "generation is active or no active generation carries a barrier hybrid time (the "
+    "missing-barrier state blocks all history GC on its tablet and logs a warning).");
+
 THREAD_POOL_METRICS_DEFINE(server, admin_triggered_compaction_pool,
     "Thread pool for admin-triggered tablet compaction jobs.");
 
@@ -557,16 +577,173 @@ void TSTabletManager::EmitMetrics() {
   ts_supportable_tablet_peers_metric_->set_value(GetNumSupportableTabletPeers());
 }
 
+// Retention-barrier observability (#33444): with the verification barrier enforced in
+// AllowedHistoryCutoff, an orphaned active generation pins all history GC on its tablet, so a
+// stuck barrier must be findable without reading superblocks. The gauges read the registry;
+// the registry is fed by each tablet's metadata listener.
+void TSTabletManager::OnIndexBackfillOrderingGenerationChanged(
+    const TabletId& tablet_id, const tablet::IndexBackfillOrderingGeneration& generation) {
+  std::lock_guard lock(index_backfill_generations_mutex_);
+  if (generation.active) {
+    active_index_backfill_generations_[tablet_id] = {
+        .table_id = generation.table_id,
+        .retention_barrier_ht = generation.retention_barrier_ht,
+    };
+  } else {
+    active_index_backfill_generations_.erase(tablet_id);
+  }
+}
+
+void TSTabletManager::InstallIndexBackfillGenerationListener(
+    const tablet::RaftGroupMetadataPtr& metadata) {
+  // Seeds the entry from the metadata's current state under the metadata lock, so a tablet
+  // registered while bootstrap is still replaying generation ops ends up with the replayed
+  // state either way.
+  metadata->SetIndexBackfillOrderingGenerationListener(
+      [this](const TabletId& tablet_id,
+             const tablet::IndexBackfillOrderingGeneration& generation) {
+        OnIndexBackfillOrderingGenerationChanged(tablet_id, generation);
+      });
+}
+
+void TSTabletManager::ForgetIndexBackfillGeneration(
+    const TabletId& tablet_id, const tablet::RaftGroupMetadataPtr& metadata) {
+  if (metadata) {
+    metadata->SetIndexBackfillOrderingGenerationListener(nullptr);
+  }
+  std::lock_guard lock(index_backfill_generations_mutex_);
+  active_index_backfill_generations_.erase(tablet_id);
+}
+
+uint32_t TSTabletManager::IndexBackfillRetentionBarrierTablets() const {
+  std::lock_guard lock(index_backfill_generations_mutex_);
+  return narrow_cast<uint32_t>(active_index_backfill_generations_.size());
+}
+
+uint64_t TSTabletManager::OldestIndexBackfillRetentionBarrierAgeMs() const {
+  // 0 when nothing is held or no held generation carries a barrier (that state blocks all
+  // history GC on its tablet and already logs a warning every 30s).
+  HybridTime oldest;
+  {
+    std::lock_guard lock(index_backfill_generations_mutex_);
+    for (const auto& [_, entry] : active_index_backfill_generations_) {
+      if (entry.retention_barrier_ht && (!oldest || entry.retention_barrier_ht < oldest)) {
+        oldest = entry.retention_barrier_ht;
+      }
+    }
+  }
+  return oldest ? static_cast<uint64_t>(tablet::IndexBackfillOrderingGeneration::BarrierAgeMs(
+                      oldest, server_->Clock()->Now()))
+                : 0;
+}
+
 void TSTabletManager::ForEachActiveIndexBackfillGeneration(
     const std::function<void(
         const tablet::RaftGroupMetadata&, const tablet::IndexBackfillOrderingGeneration&)>& fn) {
-  for (const auto& peer : GetTabletPeers()) {
+  std::vector<TabletId> tablet_ids;
+  {
+    std::lock_guard lock(index_backfill_generations_mutex_);
+    tablet_ids.reserve(active_index_backfill_generations_.size());
+    for (const auto& [tablet_id, _] : active_index_backfill_generations_) {
+      tablet_ids.push_back(tablet_id);
+    }
+  }
+  for (const auto& tablet_id : tablet_ids) {
+    const auto peer = LookupTablet(tablet_id);
+    if (!peer) {
+      continue;
+    }
+    // The metadata stays authoritative; the registry only says where to look.
     const auto metadata = peer->tablet_metadata();
     const auto generation = metadata->index_backfill_ordering_generation();
     if (generation.active) {
       fn(*metadata, generation);
     }
   }
+}
+
+size_t TSTabletManager::ReconcileIndexBackfillGenerationRegistry() {
+  size_t drift = 0;
+  const auto report = [&drift](const TabletId& tablet_id, const char* what) {
+    ++drift;
+    LOG(DFATAL) << "Index-backfill generation registry drift for tablet " << tablet_id << ": "
+                << what;
+  };
+  // Compares one tablet's metadata with its entry, under the metadata lock (so no listener
+  // call can interleave), and repairs the entry. Returns false if they disagreed.
+  const auto check = [&](const TabletId& tablet_id, const tablet::RaftGroupMetadata& metadata,
+                         bool repair) {
+    bool agree = true;
+    metadata.WithIndexBackfillOrderingGeneration(
+        [&](const tablet::IndexBackfillOrderingGeneration& generation) {
+          std::lock_guard lock(index_backfill_generations_mutex_);
+          auto it = active_index_backfill_generations_.find(tablet_id);
+          const bool registered = it != active_index_backfill_generations_.end();
+          if (generation.active) {
+            agree = registered && it->second.table_id == generation.table_id &&
+                    it->second.retention_barrier_ht == generation.retention_barrier_ht;
+            if (!agree && repair) {
+              active_index_backfill_generations_[tablet_id] = {
+                  .table_id = generation.table_id,
+                  .retention_barrier_ht = generation.retention_barrier_ht,
+              };
+            }
+          } else {
+            agree = !registered;
+            if (!agree && repair) {
+              active_index_backfill_generations_.erase(it);
+            }
+          }
+        });
+    return agree;
+  };
+
+  // Tablets registered with the manager must have matching entries. Peers whose data is not
+  // READY (tombstoned, mid-deletion, or a remote bootstrap still copying) are skipped: their
+  // metadata is in transition and DeleteTabletData clears the generation itself.
+  std::unordered_set<TabletId> seen;
+  for (const auto& peer : GetTabletPeers()) {
+    const auto& tablet_id = peer->tablet_id();
+    seen.insert(tablet_id);
+    if (peer->tablet_metadata()->tablet_data_state() != tablet::TABLET_DATA_READY) {
+      continue;
+    }
+    if (check(tablet_id, *peer->tablet_metadata(), /* repair= */ false)) {
+      continue;
+    }
+    // A peer deleted (and its entry dropped) after the snapshot above still reads as active
+    // through the reference we hold; only a disagreement for a still-registered peer is drift.
+    SharedLock<RWMutex> shared_lock(mutex_);
+    if (LookupTabletUnlocked(tablet_id) != peer) {
+      continue;
+    }
+    if (!check(tablet_id, *peer->tablet_metadata(), /* repair= */ true)) {
+      report(tablet_id, "metadata and registry entry disagree");
+    }
+  }
+
+  // Entries must belong to tablets the manager still knows. A tablet registered after the
+  // snapshot (a split child, a remote bootstrap) legitimately has an entry and no snapshot peer.
+  std::vector<TabletId> unseen;
+  {
+    std::lock_guard lock(index_backfill_generations_mutex_);
+    for (const auto& [tablet_id, _] : active_index_backfill_generations_) {
+      if (!seen.contains(tablet_id)) {
+        unseen.push_back(tablet_id);
+      }
+    }
+  }
+  for (const auto& tablet_id : unseen) {
+    SharedLock<RWMutex> shared_lock(mutex_);
+    if (LookupTabletUnlocked(tablet_id)) {
+      continue;
+    }
+    std::lock_guard lock(index_backfill_generations_mutex_);
+    if (active_index_backfill_generations_.erase(tablet_id) > 0) {
+      report(tablet_id, "entry for a tablet this server no longer hosts");
+    }
+  }
+  return drift;
 }
 
 void TSTabletManager::CleanupOldMetrics() {
@@ -698,6 +875,16 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   ts_data_size_metrics_ = std::make_unique<TsDataSizeMetrics>(this);
   num_tablet_peers_undergoing_rbs_ = METRIC_num_tablet_peers_undergoing_rbs.Instantiate(
       server->metric_entity(), 0);
+  METRIC_ts_index_backfill_retention_barrier_tablets
+      .InstantiateFunctionGauge(
+          server_->metric_entity(),
+          Bind(&TSTabletManager::IndexBackfillRetentionBarrierTablets, Unretained(this)))
+      ->AutoDetach(&index_backfill_metrics_detacher_);
+  METRIC_ts_index_backfill_oldest_retention_barrier_age_ms
+      .InstantiateFunctionGauge(
+          server_->metric_entity(),
+          Bind(&TSTabletManager::OldestIndexBackfillRetentionBarrierAgeMs, Unretained(this)))
+      ->AutoDetach(&index_backfill_metrics_detacher_);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
@@ -1030,6 +1217,9 @@ Status TSTabletManager::Init() {
   metrics_emitter_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::EmitMetrics, this));
 
+  index_backfill_generation_registry_reconciler_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), [this]() { ReconcileIndexBackfillGenerationRegistry(); });
+
   metrics_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupOldMetrics, this));
 
@@ -1115,6 +1305,10 @@ Status TSTabletManager::Start() {
   StartScheduledTask(
       data_size_metric_updater_.get(), "Data size metric updater",
       FLAGS_data_size_metric_updater_interval_sec * 1s);
+  StartScheduledTask(
+      index_backfill_generation_registry_reconciler_.get(),
+      "Index-backfill generation registry reconcile",
+      FLAGS_index_backfill_generation_registry_reconcile_interval_sec * 1s);
   if (sst_stats_resync_poller_) {
     StartScheduledTask(
         sst_stats_resync_poller_.get(), "SST statistics resync",
@@ -2288,6 +2482,7 @@ Status TSTabletManager::DeleteTablet(
     CHECK_EQ(1, tablet_map_.erase(tablet_id)) << tablet_id;
     dirty_tablets_.erase(tablet_id);
     deleted_tablet_ids_.insert(tablet_id);
+    ForgetIndexBackfillGeneration(tablet_id, meta);
   }
 
   // We unregister TOMBSTONED tablets in addition to DELETED tablets because they do not have
@@ -2810,6 +3005,8 @@ void TSTabletManager::StartShutdown() {
 
   data_size_metric_updater_->Shutdown();
 
+  index_backfill_generation_registry_reconciler_->Shutdown();
+
   if (sst_stats_resync_poller_) {
     sst_stats_resync_poller_->Shutdown();
   }
@@ -2923,6 +3120,11 @@ void TSTabletManager::CompleteShutdown() {
 
   {
     std::lock_guard l(mutex_);
+    // The generation listeners capture this manager; metadata objects can outlive it through
+    // references held elsewhere (tests, late callbacks).
+    for (const auto& [tablet_id, peer] : tablet_map_) {
+      ForgetIndexBackfillGeneration(tablet_id, peer->tablet_metadata());
+    }
     tablet_map_.clear();
     dirty_tablets_.clear();
 
@@ -2991,11 +3193,16 @@ Status TSTabletManager::RegisterTabletUnlocked(const TabletId& tablet_id,
   }
 
   // If we are replacing a tablet peer, we delete the existing one first.
-  if (mode == REPLACEMENT_PEER && tablet_map_.erase(tablet_id) != 1) {
-    auto result = STATUS_FORMAT(
-        NotFound, "Unable to remove previous tablet peer $0: not registered", tablet_id);
-    LOG(WARNING) << result;
-    return result;
+  if (mode == REPLACEMENT_PEER) {
+    auto it = tablet_map_.find(tablet_id);
+    if (it == tablet_map_.end()) {
+      auto result = STATUS_FORMAT(
+          NotFound, "Unable to remove previous tablet peer $0: not registered", tablet_id);
+      LOG(WARNING) << result;
+      return result;
+    }
+    ForgetIndexBackfillGeneration(tablet_id, it->second->tablet_metadata());
+    tablet_map_.erase(it);
   }
   if (!InsertIfNotPresent(&tablet_map_, tablet_id, tablet_peer)) {
     auto result = STATUS_FORMAT(
@@ -3003,6 +3210,7 @@ Status TSTabletManager::RegisterTabletUnlocked(const TabletId& tablet_id,
     LOG(WARNING) << result;
     return result;
   }
+  InstallIndexBackfillGenerationListener(tablet_peer->tablet_metadata());
 
   LOG_WITH_PREFIX(INFO) << "Registered tablet " << tablet_id;
 
