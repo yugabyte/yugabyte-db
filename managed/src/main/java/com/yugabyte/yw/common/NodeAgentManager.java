@@ -544,15 +544,13 @@ public class NodeAgentManager {
         .setServerCertExpirySecs(
             Instant.now().plus(NodeAgent.INITIAL_SERVER_CERT_EXPIRY).getEpochSecond());
     nodeAgent.setState(State.REGISTERING);
+    CertificateInfo certificateInfo = null;
     if (deployContext.isCustomCerts()) {
       nodeAgent.setCertificateUuid(deployContext.getCertificateUuid());
+      certificateInfo = CertificateInfo.getOrBadRequest(deployContext.getCertificateUuid());
     }
     nodeAgent.insert();
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
-    CertificateInfo certificateInfo =
-        deployContext.isCustomCerts()
-            ? CertificateInfo.getOrBadRequest(deployContext.getCertificateUuid())
-            : null;
     GenerateCertsResponse response =
         generateNodeAgentCerts(nodeAgent, certDirPath, certificateInfo);
     Pair<X509Certificate, KeyPair> serverPair = response.serverCertKeyPair;
