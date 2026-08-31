@@ -29,9 +29,11 @@ static od_log_syslog_facility_t od_log_syslog_facilities[] = {
 	{ NULL, 0 }
 };
 
-static int od_log_syslog_level[] = { LOG_INFO, LOG_ERR, LOG_DEBUG, LOG_CRIT };
+static int od_log_syslog_level[] = { LOG_INFO, LOG_ERR, LOG_DEBUG, LOG_CRIT,
+				     LOG_DEBUG, LOG_DEBUG };
 
-static char *od_log_level[] = { "info", "error", "debug", "fatal" };
+static char *od_log_level[] = { "info", "error", "debug", "fatal", "debug",
+				"debug" };
 
 od_retcode_t od_logger_init(od_logger_t *logger, od_pid_t *pid)
 {

@@ -1142,14 +1142,14 @@ static inline int od_backend_connect_to(od_server_t *server, char *context,
 	/* log server connection */
 	if (instance->config.log_session) {
 		if (host) {
-			od_log(&instance->logger, context, server->client,
+			yb_od_session(&instance->logger, context, server->client,
 			       server,
 			       "new server connection %s:%d (connect time: %d usec, "
 			       "resolve time: %d usec)",
 			       host, port, (int)time_connect,
 			       (int)time_resolve);
 		} else {
-			od_log(&instance->logger, context, server->client,
+			yb_od_session(&instance->logger, context, server->client,
 			       server,
 			       "new server connection %s (connect time: %d usec, resolve "
 			       "time: %d usec)",
