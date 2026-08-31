@@ -176,13 +176,15 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
     uint64_t last_breaking_version;
     // The above Write is async, so delay a bit to hopefully read the newly written values.  If the
     // delay was not sufficient, it's not a big deal since this is just for logging.
+    // The lookups below can also legitimately fail while the sys catalog is being restored by
+    // PITR, so they must not be fatal.
     SleepFor(100ms);
     if (!db_oids.empty()) {
       for (const auto db_oid : db_oids) {
         if (!master_->catalog_manager()->GetYsqlDBCatalogVersion(db_oid, &catalog_version,
                                                                  &last_breaking_version).ok()) {
-          LOG_WITH_FUNC(DFATAL) << "failed to get db catalog version for "
-                                << db_oid << ", ignoring";
+          LOG_WITH_FUNC(WARNING) << "failed to get db catalog version for "
+                                 << db_oid << ", ignoring";
         } else {
           LOG_WITH_FUNC(INFO) << "db catalog version for " << db_oid << ": "
                               << catalog_version << ", breaking version: "
@@ -192,7 +194,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
     } else {
       if (!master_->catalog_manager()->GetYsqlCatalogVersion(&catalog_version,
                                                              &last_breaking_version).ok()) {
-        LOG_WITH_FUNC(DFATAL) << "failed to get catalog version, ignoring";
+        LOG_WITH_FUNC(WARNING) << "failed to get catalog version, ignoring";
       } else {
         LOG_WITH_FUNC(INFO) << "catalog version: " << catalog_version << ", breaking version: "
                             << last_breaking_version;
