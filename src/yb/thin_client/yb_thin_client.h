@@ -48,6 +48,7 @@ typedef enum {
   YBTHIN_READ_RESTART = 4, // restart_read_time: caller restarts the scan
   YBTHIN_SCHEMA = 5,       // schema-version mismatch -- reopen the table
   YBTHIN_OTHER = 6,        // anything else -- fatal
+  YBTHIN_FENCED = 7,       // ignore_after_hybrid_time had passed; the write did NOT take effect
 } ybthin_status_code;
 
 // `message` is owned (free with ybthin_string_free) and NULL when code == YBTHIN_OK.
@@ -225,6 +226,11 @@ typedef struct {
   const int32_t* value_ids;
   const ybthin_bind* values;
   size_t n_values;
+  // Fences this row against a lease the caller holds: the leader rejects the write with
+  // YBTHIN_FENCED if this hybrid time has already passed by the time the op is assigned its own.
+  // 0 means no fence. Judged per tablet, so a batch straddling the boundary can be partly applied.
+  // Build it from a physical time; the logical component is always 0 here.
+  uint64_t ignore_after_hybrid_time;
 } ybthin_upsert_row;
 
 // Completion callbacks may run on a YB reactor thread, so they MUST be cheap and non-blocking
