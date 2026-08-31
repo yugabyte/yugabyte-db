@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -415,6 +416,20 @@ METRIC_DEFINE_gauge_uint64(server, num_tablet_peers_undergoing_rbs,
     "Number of Tablet Peers on the TServer undergoing remote bootstrap", MetricUnit::kUnits,
     "Number of Tablet Peers on the TServer undergoing remote bootstrap i.e actively RBSing peers.");
 
+METRIC_DEFINE_gauge_uint32(server, ts_index_backfill_retention_barrier_tablets,
+    "Tablets Held by an Index-Backfill Retention Barrier", MetricUnit::kUnits,
+    "Number of tablet peers on this TServer whose history GC is held by an active "
+    "index-backfill ordering generation (deferred unique-index verification). Nonzero only "
+    "while a SKIP_ALL unique-index build or its verification is in flight; a value that "
+    "persists after backfills finish indicates a stuck retention barrier.");
+
+METRIC_DEFINE_gauge_uint64(server, ts_index_backfill_oldest_retention_barrier_age_ms,
+    "Oldest Index-Backfill Retention Barrier Age", MetricUnit::kMilliseconds,
+    "Age of the oldest active index-backfill retention barrier on this TServer -- an upper "
+    "bound on how much extra history the most-held-back tablet is retaining. 0 when no "
+    "generation is active or no active generation carries a barrier hybrid time (the "
+    "missing-barrier state blocks all history GC on its tablet and logs a warning).");
+
 THREAD_POOL_METRICS_DEFINE(server, admin_triggered_compaction_pool,
     "Thread pool for admin-triggered tablet compaction jobs.");
 
@@ -502,6 +517,31 @@ void TSTabletManager::VerifyTabletData() {
 void TSTabletManager::EmitMetrics() {
   ts_live_tablet_peers_metric_->set_value(GetNumLiveTablets());
   ts_supportable_tablet_peers_metric_->set_value(GetNumSupportableTabletPeers());
+  EmitIndexBackfillRetentionMetrics();
+}
+
+// Retention-barrier observability (#33444): with the verification barrier enforced in
+// AllowedHistoryCutoff, an orphaned active generation pins all history GC on its tablet, so a
+// stuck barrier must be findable without reading superblocks. Counts every peer with an active
+// generation regardless of peer state -- the barrier is on-disk metadata, not runtime state.
+void TSTabletManager::EmitIndexBackfillRetentionMetrics() {
+  uint32_t barrier_tablets = 0;
+  std::optional<tablet::IndexBackfillOrderingGeneration> oldest;
+  for (const auto& peer : GetTabletPeers()) {
+    auto generation = peer->tablet_metadata()->index_backfill_ordering_generation();
+    if (!generation.active) {
+      continue;
+    }
+    ++barrier_tablets;
+    if (generation.retention_barrier_ht &&
+        (!oldest || generation.retention_barrier_ht < oldest->retention_barrier_ht)) {
+      oldest = std::move(generation);
+    }
+  }
+  index_backfill_retention_barrier_tablets_metric_->set_value(barrier_tablets);
+  index_backfill_oldest_barrier_age_ms_metric_->set_value(
+      oldest ? static_cast<uint64_t>(oldest->RetentionBarrierAgeMs(server_->Clock()->Now()))
+             : 0);
 }
 
 void TSTabletManager::CleanupOldMetrics() {
@@ -634,6 +674,11 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   ts_data_size_metrics_ = std::make_unique<TsDataSizeMetrics>(this);
   num_tablet_peers_undergoing_rbs_ = METRIC_num_tablet_peers_undergoing_rbs.Instantiate(
       server->metric_entity(), 0);
+  index_backfill_retention_barrier_tablets_metric_ =
+      METRIC_ts_index_backfill_retention_barrier_tablets.Instantiate(server_->metric_entity(), 0);
+  index_backfill_oldest_barrier_age_ms_metric_ =
+      METRIC_ts_index_backfill_oldest_retention_barrier_age_ms.Instantiate(
+          server_->metric_entity(), 0);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
