@@ -283,12 +283,53 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   Status Abort(bool from_liveness = false);
 
+  // Join point for waited ordering-generation activation: called by
+  // UpdateOrderingGenerationForTablet once per index tablet. Any failure aborts the job;
+  // the last success re-enables index-table splitting and launches the backfill chunks.
+  void OrderingGenerationUpdateDone(const Status& status, const TabletId& tablet_id);
+
+  // Join point for the waited release: called by UpdateOrderingGenerationForTablet once per
+  // index tablet. A tablet that no longer exists counts as released; any other failure
+  // re-launches the release for that tablet after a delay, without bound -- the persisted job
+  // owns the release until every tablet acknowledges it. The last acknowledgement finishes the
+  // terminal funnel (FinishIndexPermissionUpdate).
+  void OrderingGenerationReleaseDone(
+      const Status& status, const TabletId& tablet_id, const TableId& index_table_id);
+
  private:
   void LaunchBackfillOrAbort();
   Status WaitForTabletSplitting();
   Status DoLaunchBackfill();
   Status LaunchComputeSafeTimeForRead() EXCLUDES(mutex_);
   Status DoBackfill();
+
+  // Resolves the unique-index tables of this job (activation/release targets). Missing tables
+  // (concurrent DROP INDEX) are skipped, matching AllowCompactionsToGCDeleteMarkers.
+  Result<std::vector<scoped_refptr<TableInfo>>> GetUniqueIndexTables(
+      RestrictToIndexesToBuild restrict_to_indexes_to_build) const;
+
+  // SKIP_ALL only: fences and drains index-table splitting, then fans out waited activation
+  // tasks over every tablet of every unique index in the job. The job continues into
+  // LaunchBackfillTablets through OrderingGenerationUpdateDone.
+  Status LaunchOrderingGenerationActivation();
+
+  // Launches the per-tablet backfill chunk drivers (the tail of the pre-activation DoBackfill).
+  Status LaunchBackfillTablets();
+
+  // SKIP_ALL only: fans out waited release tasks over every tablet of every unique index in
+  // the job (built or not: activation may have partially succeeded). Runs in the terminal
+  // funnel after the permission update and before the job is cleared, so a master that dies
+  // mid-release leaves a persisted job for the next leader to re-drive. Continues into
+  // FinishIndexPermissionUpdate through OrderingGenerationReleaseDone.
+  Status LaunchOrderingGenerationRelease();
+  Status RelaunchOrderingGenerationRelease(
+      const TabletId& tablet_id, const TableId& index_table_id);
+  void ScheduleOrderingGenerationReleaseRetry(
+      const TabletId& tablet_id, const TableId& index_table_id);
+
+  // The tail of the terminal funnel: clears the persisted job and the in-memory backfilling
+  // state, re-enables splitting, and sends the indexed table's alter request.
+  Status FinishIndexPermissionUpdate();
 
   Status MarkAllIndexesAsFailed();
   Status MarkAllIndexesAsSuccess();
@@ -341,6 +382,12 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   std::atomic_bool timestamp_chosen_{false};
   std::atomic<size_t> tablets_pending_;
   std::atomic<size_t> num_tablets_;
+  std::atomic<size_t> activation_tablets_pending_{0};
+  std::atomic_bool ordering_generation_activated_{false};
+  std::atomic<size_t> release_tablets_pending_{0};
+  // Outcome of the permission update, carried across the asynchronous release wait into
+  // FinishIndexPermissionUpdate (for the monitored task's terminal state and the final log).
+  std::atomic_bool funnel_all_success_{false};
   std::atomic_bool using_table_locks_{false};
   std::shared_ptr<BackfillTableJob> backfill_job_;
   mutable simple_spinlock mutex_;
@@ -497,6 +544,49 @@ class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
   const std::shared_ptr<BackfillTable> backfill_table_;
   const TabletInfoPtr tablet_;
   const HybridTime min_cutoff_;
+};
+
+// Activates or releases the index-backfill write-ID ordering generation on one index tablet
+// via the UpdateIndexBackfillOrderingGeneration admin RPC (a Raft-replicated
+// ChangeMetadataOperation on the tablet). Activation is waited: notify_backfill_table joins
+// back into BackfillTable::OrderingGenerationUpdateDone so the job proceeds only once every
+// index tablet acked, and fails otherwise. Release is fire-and-forget (idempotent,
+// self-healing backstops converge stragglers).
+class UpdateOrderingGenerationForTablet : public RetryingTSRpcTaskWithTable {
+ public:
+  UpdateOrderingGenerationForTablet(
+      std::shared_ptr<BackfillTable> backfill_table,
+      const TabletInfoPtr& tablet,
+      const TableId& index_table_id,
+      tablet::ActivateGeneration activate,
+      NotifyBackfillTable notify_backfill_table,
+      LeaderEpoch epoch);
+
+  Status Launch();
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kUpdateIndexBackfillOrderingGeneration;
+  }
+
+  std::string type_name() const override { return "Update index-backfill ordering generation"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override;
+
+  void HandleResponse(int attempt) override;
+
+  bool SendRequest(int attempt) override;
+
+  void UnregisterAsyncTaskCallback() override;
+
+  tserver::ChangeMetadataResponsePB resp_;
+  const std::shared_ptr<BackfillTable> backfill_table_;
+  const TabletInfoPtr tablet_;
+  const TableId index_table_id_;
+  const tablet::ActivateGeneration activate_;
+  const NotifyBackfillTable notify_backfill_table_;
 };
 
 // A background task which is responsible for backfilling rows in the partitions
