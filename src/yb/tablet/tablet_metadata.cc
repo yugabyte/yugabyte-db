@@ -2951,6 +2951,45 @@ Status RaftGroupMetadata::OnBackfillDone(
   return Status::OK();
 }
 
+Status RaftGroupMetadata::ApplyIndexBackfillOrderingGenerationOp(
+    const OpId& op_id, const TableId& table_id, ActivateGeneration activate,
+    HybridTime retention_barrier_ht, uint32_t write_id_floor_version) {
+  std::lock_guard lock(data_mutex_);
+  // Apply never rejects: a non-OK status from a replicated apply is fatal, and these ops are
+  // validated pre-Raft on the leader (the admin handler refuses an activation under a
+  // different table's active generation). A mismatch that still reaches apply -- two leaders'
+  // submissions racing, or a stale op -- is logged and left alone: the first owner keeps its
+  // generation, and the other index's marked writes fail the table check on their own path.
+  const auto& current = index_backfill_ordering_generation_;
+  if (current.active && current.table_id != table_id) {
+    LOG_WITH_PREFIX(WARNING)
+        << "Ignoring index-backfill ordering-generation " << (activate ? "activation" : "release")
+        << " for table " << table_id << ": the tablet holds an active generation for table "
+        << current.table_id << " (op " << op_id << ")";
+    OnChangeMetadataOperationAppliedUnlocked(op_id);
+    return Status::OK();
+  }
+  if (activate) {
+    // The base is the activation operation's own Raft index: replicas and WAL replay derive it
+    // identically, and every marked write appended after this op necessarily carries a higher
+    // index. Re-activation (e.g. a backfill job resumed after master failover) is idempotent --
+    // the base moves to the newer op's index, which only tightens the constraint.
+    index_backfill_ordering_generation_ = IndexBackfillOrderingGeneration {
+        .active = true,
+        .table_id = table_id,
+        .base_op_index = op_id.index,
+        .retention_barrier_ht = retention_barrier_ht,
+        .write_id_floor_version = write_id_floor_version,
+    };
+  } else {
+    index_backfill_ordering_generation_ = IndexBackfillOrderingGeneration();
+  }
+  // Advance the change-metadata replay marker with the flush below (mirrors OnBackfillDone);
+  // without it the op would replay on every bootstrap until some later ChangeMetadata flush.
+  OnChangeMetadataOperationAppliedUnlocked(op_id);
+  return Status::OK();
+}
+
 Status RaftGroupMetadata::OnBackfillDoneUnlocked(
     const TableId& table_id, uint64_t birth_time) {
   if (FLAGS_TEST_skip_metadata_backfill_done) {

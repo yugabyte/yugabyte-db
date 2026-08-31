@@ -557,6 +557,18 @@ void TSTabletManager::EmitMetrics() {
   ts_supportable_tablet_peers_metric_->set_value(GetNumSupportableTabletPeers());
 }
 
+void TSTabletManager::ForEachActiveIndexBackfillGeneration(
+    const std::function<void(
+        const tablet::RaftGroupMetadata&, const tablet::IndexBackfillOrderingGeneration&)>& fn) {
+  for (const auto& peer : GetTabletPeers()) {
+    const auto metadata = peer->tablet_metadata();
+    const auto generation = metadata->index_backfill_ordering_generation();
+    if (generation.active) {
+      fn(*metadata, generation);
+    }
+  }
+}
+
 void TSTabletManager::CleanupOldMetrics() {
   VLOG(2) << "Cleaning up old metrics";
   metric_registry_->RetireOldMetrics();

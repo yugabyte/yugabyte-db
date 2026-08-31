@@ -1726,6 +1726,24 @@ Status WriteQuery::MaybeMarkRaftIndexWriteIdBatch() {
       "A SKIP_ALL unique-index backfill write must be a non-transactional, all-backfill "
       "insert batch at a fixed hybrid time");
 
+  // The batch must target the index whose ordering generation this tablet holds. On a
+  // dedicated index tablet that is tautological; on a colocated tablet (out of scope for
+  // SKIP_ALL, but refused rather than assumed) it stops one index's marked writes from being
+  // admitted under another index's generation. TabletPeer::CheckReplicateAllowed re-checks
+  // activity and the base at append time; it cannot see the per-op table ids, so the table
+  // check lives here.
+  const auto generation =
+      VERIFY_RESULT(tablet_safe())->metadata()->index_backfill_ordering_generation();
+  SCHECK(
+      generation.active, IllegalState,
+      "SKIP_ALL unique-index backfill write without an active ordering generation");
+  for (const auto& pgsql_request : pgsql_batch) {
+    SCHECK_EQ(
+        pgsql_request.table_id(), generation.table_id, IllegalState,
+        "SKIP_ALL unique-index backfill write targets a table other than the one whose "
+        "ordering generation this tablet holds");
+  }
+
   request().mutable_write_batch()->set_use_raft_index_for_write_id(true);
   return Status::OK();
 }

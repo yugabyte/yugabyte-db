@@ -16,12 +16,14 @@
 #include <float.h>
 
 #include <chrono>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -283,12 +285,76 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   Status Abort(bool from_liveness = false);
 
+  // Join point for waited ordering-generation activation: called exactly once per
+  // UpdateOrderingGenerationForTablet, including aborted ones (an abort is a failure here). Any
+  // failure aborts the job; the last callback re-enables index-table splitting and launches the
+  // backfill chunks, or, if the terminal funnel ran meanwhile, launches the deferred release.
+  void OrderingGenerationUpdateDone(const Status& status, const TabletId& tablet_id);
+
+  // Join point for the waited release: called exactly once per UpdateOrderingGenerationForTablet.
+  // A tablet the master no longer lists for its index (deleted with the index, or a retired
+  // split parent) counts as released; any other failure -- including an abort, which here means
+  // a table teardown or a leadership change the epoch check in the retry path recognizes --
+  // re-launches the release for that tablet after a delay, without bound: the persisted job owns
+  // the release until every tablet acknowledges it. The last acknowledgement of a round starts
+  // the next one; the funnel finishes (FinishIndexPermissionUpdate) once a round finds no live
+  // tablet left to release.
+  void OrderingGenerationReleaseDone(
+      const Status& status, const TabletId& tablet_id, const TableId& index_table_id);
+
  private:
   void LaunchBackfillOrAbort();
   Status WaitForTabletSplitting();
   Status DoLaunchBackfill();
   Status LaunchComputeSafeTimeForRead() EXCLUDES(mutex_);
   Status DoBackfill();
+
+  // Resolves the unique-index tables of this job (activation/release targets). Missing tables
+  // (concurrent DROP INDEX) are skipped, matching AllowCompactionsToGCDeleteMarkers.
+  Result<std::vector<scoped_refptr<TableInfo>>> GetUniqueIndexTables(
+      RestrictToIndexesToBuild restrict_to_indexes_to_build) const;
+
+  // Fences splitting of `table` in the tablet-split manager and waits for in-flight splits to
+  // finish, so the tablet set is stable for whatever the caller does next (and the tablet-side
+  // pending-split rejection of CHANGE_METADATA_OP is not exercised). Bounded by
+  // index_backfill_tablet_split_completion_timeout_sec. The caller re-enables splitting.
+  Status DisableAndDrainSplitting(const TableInfo& table, const char* purpose);
+
+  // Fails unless this master still holds the leader epoch the job was launched in. Asynchronous
+  // continuations (release retries) stop on a stale epoch: the persisted job is re-driven by the
+  // new leader, and sys-catalog writes under the old epoch would be refused anyway.
+  Status CheckLeaderEpoch() const;
+
+  // SKIP_ALL only: fences and drains index-table splitting, then fans out waited activation
+  // tasks over every tablet of every unique index in the job. The job continues into
+  // LaunchBackfillTablets through OrderingGenerationUpdateDone. Skipped once the terminal
+  // funnel has requested the release, so no activation can land after it.
+  Status LaunchOrderingGenerationActivation();
+
+  // Launches the per-tablet backfill chunk drivers (the tail of the pre-activation DoBackfill).
+  Status LaunchBackfillTablets();
+
+  // SKIP_ALL only: one release round -- fans out waited release tasks over every live tablet of
+  // every unique index in the job (built or not: activation may have partially succeeded) that
+  // has not acknowledged yet, and finishes the funnel when none is left. Rounds repeat until the
+  // live set is covered, so split children created during the release are reached too. Runs in
+  // the terminal funnel after the permission update and before the job is cleared, so a master
+  // that dies mid-release leaves a persisted job for the next leader to re-drive.
+  Status LaunchOrderingGenerationRelease();
+  // Re-sends the release to one tablet whose previous attempt failed (scheduled by
+  // OrderingGenerationReleaseDone only, so each failing tablet has exactly one retry chain).
+  Status RelaunchOrderingGenerationRelease(
+      const TabletId& tablet_id, const TableId& index_table_id);
+  void ScheduleOrderingGenerationReleaseRetry(
+      const TabletId& tablet_id, const TableId& index_table_id);
+  // Whether the master no longer lists `tablet_id` as a live tablet of its index: deleted with
+  // the index, or retired by a split. Decided from the catalog only -- a tserver NotFound means
+  // "not on this server", which a leader move explains.
+  bool IndexTabletGone(const TabletId& tablet_id, const TableId& index_table_id) const;
+
+  // The tail of the terminal funnel: clears the persisted job and the in-memory backfilling
+  // state, re-enables splitting, and sends the indexed table's alter request.
+  Status FinishIndexPermissionUpdate();
 
   Status MarkAllIndexesAsFailed();
   Status MarkAllIndexesAsSuccess();
@@ -341,6 +407,22 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   std::atomic_bool timestamp_chosen_{false};
   std::atomic<size_t> tablets_pending_;
   std::atomic<size_t> num_tablets_;
+  std::atomic_bool ordering_generation_activated_{false};
+  // Ordering-generation fan-out bookkeeping (SKIP_ALL). The activation and release joins run on
+  // task callback threads concurrently with the terminal funnel, so the counters and the
+  // hand-off flags are guarded together: the funnel requests the release under the lock, and
+  // either sees no activation in flight (launches it) or leaves it to the last activation
+  // callback; activation fan-out checks the request under the same lock, so no activation can
+  // start after the release was requested.
+  mutable std::mutex generation_mutex_;
+  size_t activation_tablets_pending_ GUARDED_BY(generation_mutex_) = 0;
+  bool release_requested_ GUARDED_BY(generation_mutex_) = false;
+  bool release_launched_ GUARDED_BY(generation_mutex_) = false;
+  size_t release_tablets_pending_ GUARDED_BY(generation_mutex_) = 0;
+  std::unordered_set<TabletId> release_acked_tablets_ GUARDED_BY(generation_mutex_);
+  // Outcome of the permission update, carried across the asynchronous release wait into
+  // FinishIndexPermissionUpdate (for the monitored task's terminal state and the final log).
+  std::atomic_bool funnel_all_success_{false};
   std::atomic_bool using_table_locks_{false};
   std::shared_ptr<BackfillTableJob> backfill_job_;
   mutable simple_spinlock mutex_;
@@ -497,6 +579,49 @@ class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
   const std::shared_ptr<BackfillTable> backfill_table_;
   const TabletInfoPtr tablet_;
   const HybridTime min_cutoff_;
+};
+
+// Activates or releases the index-backfill write-ID ordering generation on one index tablet
+// via the UpdateIndexBackfillOrderingGeneration admin RPC (a Raft-replicated
+// ChangeMetadataOperation on the tablet). Activation is waited: notify_backfill_table joins
+// back into BackfillTable::OrderingGenerationUpdateDone so the job proceeds only once every
+// index tablet acked, and fails otherwise. Release is fire-and-forget (idempotent,
+// self-healing backstops converge stragglers).
+class UpdateOrderingGenerationForTablet : public RetryingTSRpcTaskWithTable {
+ public:
+  UpdateOrderingGenerationForTablet(
+      std::shared_ptr<BackfillTable> backfill_table,
+      const TabletInfoPtr& tablet,
+      const TableId& index_table_id,
+      tablet::ActivateGeneration activate,
+      NotifyBackfillTable notify_backfill_table,
+      LeaderEpoch epoch);
+
+  Status Launch();
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kUpdateIndexBackfillOrderingGeneration;
+  }
+
+  std::string type_name() const override { return "Update index-backfill ordering generation"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override;
+
+  void HandleResponse(int attempt) override;
+
+  bool SendRequest(int attempt) override;
+
+  void UnregisterAsyncTaskCallback() override;
+
+  tserver::ChangeMetadataResponsePB resp_;
+  const std::shared_ptr<BackfillTable> backfill_table_;
+  const TabletInfoPtr tablet_;
+  const TableId index_table_id_;
+  const tablet::ActivateGeneration activate_;
+  const NotifyBackfillTable notify_backfill_table_;
 };
 
 // A background task which is responsible for backfilling rows in the partitions

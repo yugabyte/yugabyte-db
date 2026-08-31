@@ -970,11 +970,14 @@ IndexStatusPB::BackfillStatus GetBackfillStatus(IndexPermissions permissions) {
     case INDEX_PERM_DELETE_ONLY:                     [[fallthrough]];
     case INDEX_PERM_WRITE_AND_DELETE:                [[fallthrough]];
     case INDEX_PERM_DO_BACKFILL:                     [[fallthrough]];
-    case INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING: [[fallthrough]];
-    case INDEX_PERM_DELETE_ONLY_WHILE_REMOVING:      [[fallthrough]];
-    case INDEX_PERM_INDEX_UNUSED:                    [[fallthrough]];
     case INDEX_PERM_NOT_USED:
       return IndexStatusPB::BACKFILL_UNKNOWN;
+    // Removal-path permissions: a failed or dropped index can never reach
+    // READ_WRITE_AND_DELETE, so report the backfill as terminally failed.
+    case INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING: [[fallthrough]];
+    case INDEX_PERM_DELETE_ONLY_WHILE_REMOVING:      [[fallthrough]];
+    case INDEX_PERM_INDEX_UNUSED:
+      return IndexStatusPB::BACKFILL_FAILED;
   }
   FATAL_INVALID_ENUM_VALUE(IndexPermissions, permissions);
 }

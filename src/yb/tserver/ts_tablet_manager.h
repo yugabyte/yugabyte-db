@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -459,6 +460,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   bool IsTabletInTransition(const TabletId& tablet_id) const;
 
   TabletServer* server() const { return server_; }
+
+  // Invokes fn for every tablet whose index-backfill ordering generation is active. Consumers:
+  // the tablet metadata validator's straggler re-check (and, later, the retention-barrier
+  // observability). The metadata reference is valid for the duration of the call only.
+  void ForEachActiveIndexBackfillGeneration(
+      const std::function<void(
+          const tablet::RaftGroupMetadata&, const tablet::IndexBackfillOrderingGeneration&)>& fn);
 
   MemoryMonitor* memory_monitor() { return tablet_options_.memory_monitor.get(); }
 

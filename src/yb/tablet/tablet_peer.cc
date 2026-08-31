@@ -520,14 +520,17 @@ Status CheckWriteFence(const consensus::LWReplicateMsg& msg) {
 // Rejects a marked unique-index backfill write (KeyValueWriteBatchPB::use_raft_index_for_write_id)
 // whose assigned Raft index cannot be turned into a write ID: the stored ID is
 // kBackfillWriteIdFloor | index, and indexes above kBackfillWriteIdIndexMax would collide with
-// the reserved kMaxWriteId sentinel. While an ordering generation is active the index must also
-// be strictly above the generation base (the activation op's own index): an index at or below it
-// cannot belong to this generation and indicates misrouting or replay of a foreign sequence.
-// (Rejecting marked writes when no generation is active arrives with the master activation
-// flow; until then marked writes remain test-only.) Judged here, per round, so the rejection
-// fails only this write and never the foreground writes the Preparer batched with it; Raft rolls
-// the index back for reuse. InvalidArgument: all replicas share the index space and the
-// generation, so there is nothing to retry against.
+// the reserved kMaxWriteId sentinel. Marked writes are only legal under an active ordering
+// generation -- it records the backfill's ordering state (base, retention barrier, floor
+// version) for verification, so a marked write with no generation would store versions nothing
+// tracks or releases; the master activates the generation on every index tablet before
+// launching SKIP_ALL chunks, so this is reachable only by misrouted or stale requests (a chunk
+// retry arriving after the job released). The index must also be strictly above the generation
+// base (the activation op's own index): an index at or below it cannot belong to this generation
+// and indicates misrouting or replay of a foreign sequence. Judged here, per round, so the
+// rejection fails only this write and never the foreground writes the Preparer batched with it;
+// Raft rolls the index back for reuse. InvalidArgument: all replicas share the index space and
+// the generation, so there is nothing to retry against.
 Status CheckBackfillWriteIdAllowed(
     const consensus::LWReplicateMsg& msg, const RaftGroupMetadata& metadata) {
   if (msg.op_type() != consensus::OperationType::WRITE_OP ||
@@ -546,12 +549,13 @@ Status CheckBackfillWriteIdAllowed(
       op_id.index, static_cast<int64_t>(FLAGS_TEST_backfill_write_id_index_max), InvalidArgument,
       "TEST: Raft operation index exceeded the injected backfill write ID ceiling");
   const auto generation = metadata.index_backfill_ordering_generation();
-  if (generation.active) {
-    SCHECK_GT(
-        op_id.index, generation.base_op_index, InvalidArgument,
-        "Marked backfill write carries a Raft index at or below the active ordering generation "
-        "base");
-  }
+  SCHECK(
+      generation.active, InvalidArgument,
+      "Marked backfill write without an active ordering generation");
+  SCHECK_GT(
+      op_id.index, generation.base_op_index, InvalidArgument,
+      "Marked backfill write carries a Raft index at or below the active ordering generation "
+      "base");
   return Status::OK();
 }
 

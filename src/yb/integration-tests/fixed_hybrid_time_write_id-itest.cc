@@ -284,6 +284,7 @@ TEST_F(FixedHybridTimeWriteIdITest, LeaderChangePreservesDistinctWriteIds) {
   ASSERT_OK(WaitUntilTabletHasLeader(
       cluster_.get(), tablet_id, CoarseMonoClock::Now() + 10s * kTimeMultiplier,
       RequireLeaderIsReady::kTrue));
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(tablet_id, MakeActiveOrderingGeneration()));
 
   // W1 under the original leader: two distinct keys in one marked op share the op's Raft-index
   // write ID ("dup" is the key W2 collides with later; "stable" pins the shared-ID property).
@@ -345,9 +346,9 @@ TEST_F(FixedHybridTimeWriteIdITest, OrderingGenerationSurvivesRemoteBootstrap) {
       cluster_.get(), tablet_id, CoarseMonoClock::Now() + 10s * kTimeMultiplier,
       RequireLeaderIsReady::kTrue));
 
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(tablet_id, MakeActiveOrderingGeneration()));
   const auto op_id = ASSERT_RESULT(SendMarkedWrite(tablet_id, kWriteHT, {{"row", "value"}}));
   ASSERT_OK(WaitAllReplicasApplied(tablet_id, op_id));
-  ASSERT_OK(SetOrderingGenerationOnAllReplicas(tablet_id, MakeActiveOrderingGeneration()));
 
   // Tombstone one follower; it stays in the Raft config, so the leader remote-bootstraps it
   // back. The recovered replica's superblock comes from the leader and must carry the
@@ -413,13 +414,13 @@ TEST_F(FixedHybridTimeWriteIdITest, SplitPreservesPerKeyWriteIdUniqueness) {
   ASSERT_OK(WaitUntilTabletHasLeader(
       cluster_.get(), tablet_id, CoarseMonoClock::Now() + 10s * kTimeMultiplier,
       RequireLeaderIsReady::kTrue));
+  ASSERT_OK(SetOrderingGenerationOnAllReplicas(tablet_id, MakeActiveOrderingGeneration()));
 
   const auto op_id = ASSERT_RESULT(
       SendMarkedWriteSpreadHashes(tablet_id, kWriteHT, /* num_keys= */ 256));
   ASSERT_OK(WaitAllReplicasApplied(tablet_id, op_id));
   ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(WaitForAnySstFiles(cluster_.get(), tablet_id));
-  ASSERT_OK(SetOrderingGenerationOnAllReplicas(tablet_id, MakeActiveOrderingGeneration()));
 
   const auto table_id = table_.table()->id();
   ASSERT_OK(InvokeSplitTabletRpc(
