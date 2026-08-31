@@ -129,7 +129,7 @@ else
 ' upstream_repositories.csv. The corresponding commit in'\
 ' upstream_repositories.csv should exist either locally in ~/code/<repo_name>'\
 ' or remotely in the corresponding remote repository (and you need internet'\
-' access in that case).:1:'"$(head -1)"
+' access in that case).:1:'"$(head -1 "$1")"
   else
     grep -inE '(yb|yugabyte) includes' "$1" \
       | grep -vE '^[0-9]+:/\* YB includes \*/$' \
