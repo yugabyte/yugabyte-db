@@ -443,7 +443,12 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
     HybridTime verify_upper_ht;
     std::deque<TabletInfoPtr> pending_tablets;
     size_t in_flight = 0;
-    bool terminal = false;  // Current index reached an outcome; late responses are ignored.
+    bool terminal = false;  // The phase reached an outcome; late responses are ignored.
+    // Scan accounting for the job's verification phase, aggregated from per-tablet responses
+    // and logged with the recorded outcome. Resets when the phase (re)starts.
+    uint64_t dockey_groups_scanned = 0;
+    uint64_t versions_scanned = 0;
+    uint64_t fallback_groups = 0;
   };
   ShadowVerificationState shadow_verification_ GUARDED_BY(mutex_);
   std::atomic_bool using_table_locks_{false};

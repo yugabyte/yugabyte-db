@@ -1581,6 +1581,9 @@ Status BackfillTable::StartShadowVerification(const scoped_refptr<TableInfo>& in
     sv.pending_tablets.clear();
     sv.in_flight = 0;
     sv.terminal = false;
+    sv.dockey_groups_scanned = 0;
+    sv.versions_scanned = 0;
+    sv.fallback_groups = 0;
   }
 
   // The window's upper bound is chosen ONCE, from cluster hybrid time (never wall clock),
@@ -1722,6 +1725,13 @@ void BackfillTable::ShadowVerificationTabletDone(
   const bool clean = status.ok() &&
                      resp.outcome() == tserver::VerifyUniqueIndexTabletResponsePB::CLEAN;
 
+  if (status.ok()) {
+    // Cluster-wide scan accounting counts every completed scan segment's work, including
+    // late responses dropped by the single-winner guard below -- the scan happened.
+    master_->catalog_manager_impl()->RecordUniqueIndexVerificationScan(
+        resp.versions_scanned(), resp.fallback_groups());
+  }
+
   // Single-winner protocol: the terminal check and the launch-next / done decision are one
   // critical section, so a CLEAN callback racing a short-circuiting VIOLATION can neither
   // overwrite the recorded outcome nor double-finish the phase. Exactly one callback performs
@@ -1734,6 +1744,11 @@ void BackfillTable::ShadowVerificationTabletDone(
     auto& sv = shadow_verification_;
     if (sv.terminal || !sv.index_table) {
       return;  // A winner already recorded the outcome; late responses are ignored.
+    }
+    if (status.ok()) {
+      sv.dockey_groups_scanned += resp.dockey_groups_scanned();
+      sv.versions_scanned += resp.versions_scanned();
+      sv.fallback_groups += resp.fallback_groups();
     }
     if (clean && resp.has_resume_key()) {
       action = Action::kResume;  // Pagination: same tablet continues; join counts untouched.
@@ -1857,6 +1872,15 @@ void BackfillTable::ShadowVerificationPhaseFailed(
 
 Status BackfillTable::RecordShadowVerificationOutcome(
     UniqueIndexVerificationStatePB::State state, const std::string& reason) {
+  uint64_t dockey_groups_scanned = 0;
+  uint64_t versions_scanned = 0;
+  uint64_t fallback_groups = 0;
+  {
+    std::lock_guard l(mutex_);
+    dockey_groups_scanned = shadow_verification_.dockey_groups_scanned;
+    versions_scanned = shadow_verification_.versions_scanned;
+    fallback_groups = shadow_verification_.fallback_groups;
+  }
   RETURN_NOT_OK(MutateVerificationState(
       [state, &reason](UniqueIndexVerificationStatePB* state_pb) {
         state_pb->set_state(state);
@@ -1864,6 +1888,7 @@ Status BackfillTable::RecordShadowVerificationOutcome(
           state_pb->set_reason(reason);
         }
       }));
+  master_->catalog_manager_impl()->RecordUniqueIndexVerificationOutcome(state);
   const bool gating = verification_gates_publication();
   // The job has exactly one index. The phase's table pointer is null only when the phase
   // failed before resolving it; the job's index info names it either way.
@@ -1884,7 +1909,10 @@ Status BackfillTable::RecordShadowVerificationOutcome(
                         << ": " << severity_prefix
                         << UniqueIndexVerificationStatePB::State_Name(state)
                         << (reason.empty() ? "" : Format(" ($0)", reason))
-                        << (gating ? " [gating]" : " [observational]");
+                        << (gating ? " [gating]" : " [observational]")
+                        << Format(
+                               " (dockey_groups=$0, versions=$1, fallback_groups=$2)",
+                               dockey_groups_scanned, versions_scanned, fallback_groups);
   if (!gating) {
     // Observational: the outcome is recorded and logged, never enforced.
     return Status::OK();
