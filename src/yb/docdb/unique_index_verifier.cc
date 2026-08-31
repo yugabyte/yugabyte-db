@@ -199,7 +199,7 @@ class Verifier {
     while (iter_.Valid() && iter_.key().starts_with(group_prefix)) {
       // The forward pass visits every physical version of the group exactly once, whichever
       // replay path runs, so it owns the versions_scanned accounting; the reverse walk's
-      // re-visits are deliberately not re-counted.
+      // re-visits are deliberately not re-counted (fallback_groups records that extra work).
       ++result_.versions_scanned;
       auto record = VERIFY_RESULT(DecodeRecord(iter_.key(), iter_.value()));
       if (result_.outcome == UniqueIndexVerificationOutcome::kInconclusive) {
@@ -245,6 +245,7 @@ class Verifier {
     if (buffering) {
       return ReplayBuffered(std::move(sections));
     }
+    ++result_.fallback_groups;
     return ReverseWalkGroup(group_prefix, value_columns);
   }
 
@@ -705,7 +706,7 @@ std::string UniqueIndexVerificationResult::ToString() const {
   // The resume key is an index key (user data): report its presence and size only.
   const auto resume_from_dockey_size = resume_from_dockey.size();
   return YB_STRUCT_TO_STRING(outcome, reason, dockey_groups_scanned, versions_scanned,
-                             resume_from_dockey_size);
+                             fallback_groups, resume_from_dockey_size);
 }
 
 Result<UniqueIndexVerificationResult> VerifyUniqueIndexTablet(
