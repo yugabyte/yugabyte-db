@@ -198,9 +198,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
-          TaskType.SetNodeState, // to Adding
-          TaskType.SetNodeStatus, // to Adding for 'To Be Added'
-          TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks,
           TaskType.SetupYNP,
@@ -229,9 +226,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Adding")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -265,9 +259,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
-          TaskType.SetNodeState, // to Adding
-          TaskType.SetNodeStatus, // to Adding for 'To Be Added'
-          TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks,
           TaskType.SetupYNP,
@@ -295,9 +286,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Adding")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -329,7 +317,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.PreflightNodeCheck,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
-          TaskType.SetNodeState,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
@@ -376,7 +363,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
@@ -393,9 +379,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
-          TaskType.SetNodeState,
-          TaskType.SetNodeStatus,
-          TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks,
           TaskType.SetupYNP,
@@ -434,9 +417,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Adding")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -563,7 +543,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -575,7 +555,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       // number of invocations of saveUniverseDetails, so it can vary but the
       // important thing is that it is much more than the other case.
       // 7 version increments + 1 modify blacklist + 1 from YugawareMetadata init.
-      verify(mockClient, times(15)).changeMasterClusterConfig(any());
+      verify(mockClient, times(12)).changeMasterClusterConfig(any());
     } else {
       verify(mockClient, times(1)).changeMasterClusterConfig(any());
     }
@@ -588,7 +568,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         submitTask(onPremUniverse.getUniverseUUID(), onPremProvider, DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -652,7 +632,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
 
     // 5 calls for setting up the server and then 6 calls for setting the conf files.
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -685,7 +665,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     TaskInfo taskInfo = submitTask(universe.getUniverseUUID(), DEFAULT_NODE_NAME, 4);
     assertEquals(Failure, taskInfo.getTaskState());
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -713,7 +693,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     TaskInfo taskInfo = submitTask(universe.getUniverseUUID(), "yb-tserver-0", 5);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));

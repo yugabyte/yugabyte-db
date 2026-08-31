@@ -440,8 +440,8 @@ class AzureCloudAdmin():
     def network(self, per_region_meta={}):
         return AzureBootstrapClient(per_region_meta, self.network_client, self.metadata)
 
-    def append_disk(self, vm, vm_name, disk_name, size, lun, zone, vol_type, region, tags,
-                    disk_iops, disk_throughput, disk_custom):
+    def build_data_disk_params(self, size, zone, vol_type, region, tags,
+                               disk_iops, disk_throughput, disk_custom):
         disk_params = {
             "location": region,
             "disk_size_gb": size,
@@ -465,29 +465,47 @@ class AzureCloudAdmin():
 
         if disk_custom and len(disk_custom) > 0:
             merge(disk_params, disk_custom)
-        data_disk = self.compute_client.disks.begin_create_or_update(
-            RESOURCE_GROUP,
-            disk_name,
-            disk_params
-        ).result()
+        return disk_params
 
-        vm.storage_profile.data_disks.append({
-            "lun": lun,
-            "name": disk_name,
-            "create_option": DiskCreateOption.attach,
-            "managed_disk": {
-                "storageAccountType": AZURE_SKU_FORMAT[vol_type],
-                "id": data_disk.id
-            }})
+    def create_data_disks(self, disk_names, size, zone, vol_type, region, tags,
+                          disk_iops, disk_throughput, disk_custom):
+        """Create the managed disk resources for a VM concurrently. Returns disk name to id."""
+        maybe_fault_injected()
+        disk_params = self.build_data_disk_params(size, zone, vol_type, region, tags,
+                                                  disk_iops, disk_throughput, disk_custom)
+        creations = OrderedDict()
+        try:
+            for disk_name in disk_names:
+                logging.info("[app] Creating data disk {}".format(disk_name))
+                creations[disk_name] = self.compute_client.disks.begin_create_or_update(
+                    RESOURCE_GROUP,
+                    disk_name,
+                    disk_params
+                )
+            return OrderedDict(
+                (disk_name, poller.result().id) for disk_name, poller in creations.items())
+        except Exception as e:
+            logging.error("Failed to create data disks {}. Failed with error {}."
+                          .format(list(disk_names), e))
+            self.delete_data_disks(creations.keys())
+            raise
 
-        async_disk_attach = self.compute_client.virtual_machines.begin_create_or_update(
-            RESOURCE_GROUP,
-            vm_name,
-            vm
-        )
-
-        async_disk_attach.wait()
-        return async_disk_attach.result()
+    def delete_data_disks(self, disk_names):
+        """Best effort data disk removal, to avoid leaking disks when creation fails."""
+        deletions = OrderedDict()
+        for disk_name in disk_names:
+            try:
+                deletions[disk_name] = self.delete_disk(disk_name)
+            except Exception as e:
+                logging.warning("[app] Could not delete disk {}. Failed with error {}."
+                                .format(disk_name, e))
+        for disk_name, deletion in deletions.items():
+            try:
+                deletion.wait()
+                logging.info("[app] Deleted disk {}".format(disk_name))
+            except Exception as e:
+                logging.warning("[app] Could not delete disk {}. Failed with error {}."
+                                .format(disk_name, e))
 
     def update_disk(self, vm_name, disk_size):
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
@@ -591,32 +609,6 @@ class AzureCloudAdmin():
                     disk_del = self.delete_disk(disk.name)
                     disk_del.wait()
                     logging.info("[app] Deleted disk {}".format(disk.name))
-
-    def tag_disks(self, vm, tags):
-        # Updating requires Disk as input rather than OSDisk. Retrieve Disk class with OSDisk name.
-        disk = self.compute_client.disks.get(
-            RESOURCE_GROUP,
-            vm.storage_profile.os_disk.name
-        )
-        disk.tags = tags
-        self.compute_client.disks.begin_create_or_update(
-            RESOURCE_GROUP,
-            disk.name,
-            disk
-        )
-
-        for disk in vm.storage_profile.data_disks:
-            # The data disk returned from vm.storage_profile can't be deserialized properly.
-            disk = self.compute_client.disks.get(
-                RESOURCE_GROUP,
-                disk.name
-            )
-            disk.tags = tags
-            self.compute_client.disks.begin_create_or_update(
-                RESOURCE_GROUP,
-                disk.name,
-                disk
-            )
 
     def get_public_ip_name(self, vm_name):
         return vm_name + '-IP'
@@ -900,7 +892,7 @@ class AzureCloudAdmin():
     def create_or_update_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
                             instance_type, ssh_user, image, vol_type, server_type,
                             region, nic_id, tags, disk_iops, disk_throughput, spot_price,
-                            use_spot_instance, vm_custom, disk_custom, use_plan, is_edit=False,
+                            use_spot_instance, vm_custom, disk_custom, use_plan,
                             json_output=True, capacity_reservation=None,
                             cloud_instance_types=[], boot_script=None):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
@@ -1064,6 +1056,27 @@ class AzureCloudAdmin():
         if vm_custom and len(vm_custom) > 0:
             merge(vm_parameters, vm_custom)
 
+        # The data disks are part of the VM creation call so that a VM can never exist without
+        # them. Attaching them afterwards left a window in which a YBA restart resumed the task,
+        # saw the VM already created, and brought up a node whose data directories were on the root
+        # disk. The disks are created first so that they carry the universe and node tags from the
+        # moment they exist: an inline disk is untagged until a follow up call, and a crash in that
+        # gap leaves a volume that no orphan sweep can find. Set after the vm_custom merge because
+        # merge() only merges element 0 of a list.
+        disk_ids = self.create_data_disks(disk_names, volume_size, zone, vol_type, region,
+                                          tags, disk_iops, disk_throughput, disk_custom)
+        created_disk_names = list(disk_ids.keys())
+        if vm_parameters["storage_profile"].get("dataDisks"):
+            logging.warning("[app] Overriding dataDisks supplied through custom VM params.")
+        vm_parameters["storage_profile"]["dataDisks"] = [{
+            "lun": lun,
+            "name": disk_name,
+            "createOption": DiskCreateOption.attach,
+            "managedDisk": {
+                "storageAccountType": AZURE_SKU_FORMAT[vol_type],
+                "id": disk_ids[disk_name]
+            }} for lun, disk_name in enumerate(disk_names)]
+
         def create_fnc(instance_type):
             vm_parameters["hardware_profile"] = {
                 "vm_size": instance_type
@@ -1073,27 +1086,28 @@ class AzureCloudAdmin():
                 vm_name,
                 vm_parameters
             )
-        creation_result = self._create_instance(create_fnc, instance_type, cloud_instance_types)
-        creation_result.result()
+        try:
+            # Injectable boundary for the interleaving that caused the original incident: dying
+            # here must not leave a half provisioned node behind.
+            maybe_fault_injected()
+            creation_result = self._create_instance(create_fnc, instance_type,
+                                                    cloud_instance_types)
+            creation_result.result()
+        except Exception:
+            # AnsibleCreateServer.onFailure only cleans up when the VM exists, so a failed VM
+            # creation would otherwise leak the data disks.
+            self.delete_data_disks(created_disk_names)
+            raise
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
 
-        # Attach disks
-        if is_edit:
-            self.tag_disks(vm, vm_parameters["tags"])
-        else:
-            num_disks_attached = len(vm.storage_profile.data_disks)
-            lun_indexes = []
-            for idx, disk_name in enumerate(disk_names):
-                # "Logical Unit Number" - where the data disk will be inserted. Add our disks
-                # after any existing ones.
-                lun = num_disks_attached + idx
-                self.append_disk(
-                    vm, vm_name, disk_name, volume_size, lun, zone, vol_type, region, tags,
-                    disk_iops, disk_throughput, disk_custom)
-                lun_indexes.append(lun)
+        lun_indexes = sorted(disk.lun for disk in vm.storage_profile.data_disks)
+        if lun_indexes != list(range(num_vols)):
+            raise YBOpsRuntimeError(
+                "VM {} was created with data disks at LUNs {}, expected {}".format(
+                    vm_name, lun_indexes, list(range(num_vols))))
 
-            if json_output:
-                return {"lun_indexes": lun_indexes}
+        if json_output:
+            return {"lun_indexes": lun_indexes}
 
     def query_vpc(self):
         """

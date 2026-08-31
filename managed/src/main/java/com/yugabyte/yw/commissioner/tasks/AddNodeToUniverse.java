@@ -151,6 +151,15 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
     if (addMaster) {
       universeNode.masterState = MasterState.ToStart;
     }
+    // The starting state has to be set here rather than through a SetNodeState subtask, because
+    // createCreateNodeTasks selects its subtasks from the persisted state while the plan is being
+    // built, before any subtask runs. A Removed node still has its instance, so it resumes from
+    // InstanceCreated; a Decommissioned node has none, so it goes through the full create.
+    if (universeNode.state == NodeState.Removed) {
+      universeNode.state = NodeState.InstanceCreated;
+    } else if (universeNode.state == NodeState.Decommissioned) {
+      universeNode.state = NodeState.ToBeAdded;
+    }
     // Confirm the node on hold.
     commitReservedNodes();
   }
@@ -203,20 +212,14 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       Set<NodeDetails> nodeSet = Collections.singleton(currentNode);
 
-      // Update Node State to being added if it is not in one of the intermediate states.
-      // We must be successful in setting node state to Adding on initial state, even on retry.
-      if (currentNode.state == NodeState.Removed || currentNode.state == NodeState.Decommissioned) {
-        createSetNodeStateTask(currentNode, NodeState.Adding)
-            .setSubTaskGroupType(SubTaskGroupType.StartingNode);
-      }
-
-      // First spawn an instance for Decommissioned node.
-      // ignore node status is true because generic callee checks for node state To Be Added.
+      // The starting state was already set in freezeUniverseInTxn, which runs before this plan is
+      // built. Node status is honoured rather than ignored so that a Removed node's existing
+      // instance is not recreated; only a Decommissioned node gets a new one.
       boolean isNextFallThrough =
           createCreateNodeTasks(
               universe,
               nodeSet,
-              true /* ignoreNodeStatus */,
+              false /* ignoreNodeStatus */,
               setupServerParams -> {
                 setupServerParams.rebootNodeAllowed = true;
               });

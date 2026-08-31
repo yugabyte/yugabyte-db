@@ -113,6 +113,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
+          TaskType.AnsibleDestroyServer,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks,
@@ -476,7 +478,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                 Map.of("1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        18,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -511,7 +513,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        18,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -564,7 +566,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     }
 
     verifyNodeInteractionsCapacityReservation(
-        14,
+        18,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(zoneToName.get("az-1"), Arrays.asList("host-n4", "host-n5")));
