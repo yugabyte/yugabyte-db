@@ -153,7 +153,6 @@ RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
 
 RpcContext::RpcContext(std::shared_ptr<LocalYBInboundCall> call)
     : call_(call), params_(call.get(), boost::null_deleter()) {
-  // Inbound (server-side) span for this local call.
   if (auto outbound_call = call->outbound_call(); outbound_call) {
     call_->CreateServerSpan(outbound_call->otel_span_context());
   }
