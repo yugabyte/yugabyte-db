@@ -3,11 +3,13 @@
 #
 # when selectors:
 #   change - run by default for DB changes
-#   sanitize - optional addition for DB changes
 #   full - run for full official build
 #
-# To request optional build/test on PR, include "Jenkins: jobs: <selector-keyword>"
+# To request optional build/test on PR, include Jenkins: directives
 # in the description.
+# Examples:
+#   Jenkins: build type: tsan
+#   Jenkins: jobs: full
 
 jobs:
   - os: alma9
@@ -15,7 +17,7 @@ jobs:
     build_type: asan
     release_artifact: false
     when:
-     - sanitize
+     - change
      - full
 
   - os: alma8
@@ -23,7 +25,6 @@ jobs:
     build_type: tsan
     release_artifact: false
     when:
-     - sanitize
      - full
 
   - os: alma8
@@ -41,6 +42,7 @@ jobs:
     build_opts: YB_LINKING_TYPE=full-lto YB_PGO_BOLT=1
     release_artifact: true
     when:
+     - change
      - full
 
   - os: alma8
@@ -50,7 +52,6 @@ jobs:
     build_opts: YB_LINKING_TYPE=full-lto YB_PGO_BOLT=1
     release_artifact: true
     when:
-     - change
      - full
 
   - os: mac14
