@@ -13,6 +13,8 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include <signal.h>
+
 #include <string>
 
 #include <boost/interprocess/mapped_region.hpp>
@@ -24,6 +26,8 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -34,6 +38,7 @@ DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(TEST_pg_client_crash_on_shared_memory_send);
 DECLARE_bool(TEST_skip_remove_tserver_shared_memory_object);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
+DECLARE_uint64(io_thread_pool_size);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(TEST_transactional_read_delay_ms);
 DECLARE_uint64(big_shared_memory_segment_expiration_time_ms);
@@ -329,6 +334,72 @@ TEST_F_EX(PgSharedMemTest, BigDataOverflow, PgSharedMemBigSegmentOverflowTest) {
         FLAGS_big_shared_memory_segment_expiration_time_ms * 2ms,
         "Big shared memory segment cleaned up"));
   }
+}
+
+class PgSharedMemSchedulerBlockTest : public PgSharedMemTest {
+ protected:
+  void SetUp() override {
+    // A single IO thread makes one blocked session destructor stall the whole scheduler.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_io_thread_pool_size) = 1;
+    PgSharedMemTest::SetUp();
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+
+  static constexpr int kReadDelayMs = RegularBuildVsSanitizers(10000, 30000);
+};
+
+// Reproduces GH #33616. PgSessionSharedMemoryManager::Impl destructor waits without a deadline
+// for the shared exchange to become idle. Expired sessions are destroyed on an RPC scheduler
+// thread from the messenger IO thread pool, so the wait blocks scheduler tasks, including all
+// periodic timers (e.g. Raft heartbeats). The test keeps a request busy in the tserver with a
+// delayed transactional read and kills the PG backend so its session is destroyed mid-request.
+// While the destructor blocks the only IO thread, no scheduler task can run, which is observed
+// naturally: a bystander connection closed during that window does not get its session cleaned
+// up in time, since session cleanup runs on the same scheduler.
+TEST_F_EX(PgSharedMemTest, SessionShutdownBlocksScheduler, PgSharedMemSchedulerBlockTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  const auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  std::optional<PGConn> bystander = ASSERT_RESULT(Connect());
+
+  auto* client_service =
+      cluster_->mini_tablet_server(kPgTsIndex)->server()->TEST_GetPgClientService();
+  const auto num_sessions = client_service->TEST_SessionsCount();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transactional_read_delay_ms) = kReadDelayMs;
+  auto reset_delay = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transactional_read_delay_ms) = 0;
+  });
+
+  // The INSERT makes the transaction real, so the SELECT takes the delayed transactional read
+  // path: it hangs in the tserver keeping the shared exchange busy, and fails when the backend
+  // is killed below.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn] {
+    ASSERT_NOK(conn.Fetch("SELECT * FROM t"));
+  });
+  // Let the read reach the tserver and mark the exchange busy.
+  SleepFor(1s * kTimeMultiplier);
+
+  ASSERT_EQ(kill(backend_pid, SIGKILL), 0);
+  thread_holder.JoinAll();
+
+  // The dead backend's session expires and its destructor runs on the scheduler IO thread.
+  ASSERT_OK(WaitFor([client_service, num_sessions] {
+    return client_service->TEST_SessionsCount() < num_sessions;
+  }, 10s * kTimeMultiplier, "Killed backend session expired"));
+  // Give the destructor time to start waiting on the busy exchange.
+  SleepFor(2s * kTimeMultiplier);
+
+  bystander.reset();
+  ASSERT_OK(WaitFor([client_service, num_sessions] {
+    return client_service->TEST_SessionsCount() <= num_sessions - 2;
+  }, MonoDelta::FromMilliseconds(kReadDelayMs / 4), "Bystander session cleaned up"));
 }
 
 } // namespace yb::pgwrapper

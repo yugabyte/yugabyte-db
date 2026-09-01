@@ -462,6 +462,10 @@ void SharedExchange::ResetBusy() {
   return header_.ResetBusy();
 }
 
+bool SharedExchange::busy() const {
+  return header_.busy();
+}
+
 void SharedExchange::Respond(size_t size) {
   header_.Respond(size);
 }
@@ -523,7 +527,9 @@ void SharedExchangeRunnable::CompleteShutdown() {
 }
 
 bool SharedExchangeRunnable::ReadyToShutdown() const {
-  return !stop_future_.valid() || stop_future_.wait_for(0s) == std::future_status::ready;
+  // Busy means an in-flight request; do not destroy the session under it (GH #33616).
+  return (!stop_future_.valid() || stop_future_.wait_for(0s) == std::future_status::ready) &&
+         !exchange_.busy();
 }
 
 class PgSessionSharedMemoryManager::Impl {
