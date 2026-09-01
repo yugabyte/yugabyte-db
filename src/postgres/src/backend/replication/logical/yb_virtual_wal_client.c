@@ -47,6 +47,8 @@ static size_t cached_records_last_sent_row_idx = 0;
 static bool last_getconsistentchanges_response_empty = false;
 static TimestampTz last_getconsistentchanges_response_receipt_time;
 static XLogRecPtr last_txn_begin_lsn = InvalidXLogRecPtr;
+/* Commit LSN of the latest transaction filtered by the decoder. */
+static XLogRecPtr last_filtered_commit_lsn = InvalidXLogRecPtr;
 
 /*
  * Marker to refresh publication's tables list. If set to true call
@@ -107,6 +109,7 @@ static void InitVirtualWal(List *publication_names,
 static void PreProcessBeforeFetchingNextBatch();
 
 static void TrackUnackedTransaction(YbVirtualWalRecord *record);
+static void AckFilteredTransactions(void);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
@@ -161,6 +164,7 @@ YBCInitVirtualWal(List *yb_publication_names)
 	last_getconsistentchanges_response_empty = false;
 	last_getconsistentchanges_response_receipt_time = 0;
 	last_txn_begin_lsn = InvalidXLogRecPtr;
+	last_filtered_commit_lsn = InvalidXLogRecPtr;
 
 	needs_publication_table_list_refresh = false;
 	if (yb_enable_consistent_replication_from_hash_range &&
@@ -182,6 +186,7 @@ YBCDestroyVirtualWal()
 	if (virtual_wal_context)
 		MemoryContextDelete(virtual_wal_context);
 
+	last_filtered_commit_lsn = InvalidXLogRecPtr;
 	needs_publication_table_list_refresh = false;
 }
 
@@ -464,6 +469,8 @@ YBCReadRecord(List *publication_names)
 			needs_publication_table_list_refresh = false;
 		}
 
+		AckFilteredTransactions();
+
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
 								   &cached_records, &GetDynamicTypeEntity);
 
@@ -620,6 +627,56 @@ TrackUnackedTransaction(YbVirtualWalRecord *record)
 	}
 
 	MemoryContextSwitchTo(caller_context);
+}
+
+/*
+ * Remember the commit_lsn of the last transaction that the decoder filtered
+ * out. This will be acked to the Virtual WAL before the next
+ * GetConsistentChanges call.
+ */
+void
+YBCTrackFilteredTransaction(XLogRecPtr commit_lsn)
+{
+	last_filtered_commit_lsn = commit_lsn;
+}
+
+/*
+ * Acknowledge the transactions dropped by the decoder since the last
+ * GetConsistentChanges call.
+ */
+static void
+AckFilteredTransactions(void)
+{
+	XLogRecPtr	confirmed_flush;
+	XLogRecPtr	restart_lsn;
+
+	if (last_filtered_commit_lsn == InvalidXLogRecPtr)
+		return;
+
+	SpinLockAcquire(&MyReplicationSlot->mutex);
+	confirmed_flush = MyReplicationSlot->data.confirmed_flush;
+	SpinLockRelease(&MyReplicationSlot->mutex);
+
+	confirmed_flush = Max(confirmed_flush, last_filtered_commit_lsn);
+
+	elog(DEBUG1,
+		 "Acking transactions filtered by the decoder upto commit_lsn %lu "
+		 "using confirmed_flush %lu",
+		 last_filtered_commit_lsn, confirmed_flush);
+
+	restart_lsn = YBCCalculatePersistAndGetRestartLSN(confirmed_flush);
+
+	SpinLockAcquire(&MyReplicationSlot->mutex);
+	MyReplicationSlot->data.confirmed_flush = confirmed_flush;
+	if (restart_lsn != InvalidXLogRecPtr)
+		MyReplicationSlot->data.restart_lsn = restart_lsn;
+	SpinLockRelease(&MyReplicationSlot->mutex);
+
+	/*
+	 * Reset the last filtered commit_lsn to prevent unncessary rpcs to VWAL
+	 * when nothing was filtered.
+	 */
+	last_filtered_commit_lsn = InvalidXLogRecPtr;
 }
 
 XLogRecPtr
