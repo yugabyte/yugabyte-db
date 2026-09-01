@@ -1672,7 +1672,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     return createTaskParams(ybUniverse, customerUUID, provider);
   }
 
-  private UserIntent createUserIntent(
+  @VisibleForTesting
+  protected UserIntent createUserIntent(
       YBUniverse ybUniverse, UUID customerUUID, boolean isCreate, Provider provider) {
     Optional<Universe> optUniverse = Optional.empty();
     if (!isCreate) {
@@ -1783,31 +1784,35 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       }
 
       // Handle Passwords
+      // enableYSQLAuth/enableYCQLAuth in the spec decide whether auth is enabled - the password
+      // secret only carries the password itself. On create the two must agree, and the secret must
+      // hold a password. On edit the secret is not read at all, so dropping the password from the
+      // spec, or pointing it at a secret that is empty or deleted, is a no-op rather than a silent
+      // change to the stored intent or a failed reconcile of everything else in the spec.
       YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
-      if (ysqlPassword != null) {
-        Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
-        trackDependency(ybUniverse, ysqlSecret);
-        String password = parseSecretForKey(ysqlSecret, YSQL_PASSWORD_SECRET_KEY);
-        if (password == null) {
-          log.error("could not find ysqlPassword in secret {}", ysqlPassword.getSecretName());
-          throw new RuntimeException(
-              "could not find ysqlPassword in secret " + ysqlPassword.getSecretName());
-        }
-        userIntent.enableYSQLAuth = true;
-        userIntent.ysqlPassword = password;
-      }
       YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
-      if (ycqlPassword != null) {
-        Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
-        trackDependency(ybUniverse, ycqlSecret);
-        String password = parseSecretForKey(ycqlSecret, YCQL_PASSWORD_SECRET_KEY);
-        if (password == null) {
-          log.error("could not find ycqlPassword in secret {}", ycqlPassword.getSecretName());
-          throw new RuntimeException(
-              "could not find ycqlPassword in secret " + ycqlPassword.getSecretName());
+      String ysqlSecretName = ysqlPassword != null ? ysqlPassword.getSecretName() : null;
+      String ycqlSecretName = ycqlPassword != null ? ycqlPassword.getSecretName() : null;
+      if (isCreate) {
+        userIntent.enableYSQLAuth = ybUniverse.getSpec().getEnableYSQLAuth();
+        validateAuthSpec(userIntent.enableYSQLAuth, ysqlSecretName != null, "YSQL", "ysqlPassword");
+        if (ysqlSecretName != null) {
+          userIntent.ysqlPassword =
+              getPasswordFromSecret(ybUniverse, ysqlSecretName, YSQL_PASSWORD_SECRET_KEY);
         }
-        userIntent.enableYCQLAuth = true;
-        userIntent.ycqlPassword = password;
+        userIntent.enableYCQLAuth = ybUniverse.getSpec().getEnableYCQLAuth();
+        validateAuthSpec(userIntent.enableYCQLAuth, ycqlSecretName != null, "YCQL", "ycqlPassword");
+        if (ycqlSecretName != null) {
+          userIntent.ycqlPassword =
+              getPasswordFromSecret(ybUniverse, ycqlSecretName, YCQL_PASSWORD_SECRET_KEY);
+        }
+      } else {
+        // TODO: PLAT-22298 to actually add support for password rotation.
+        // This will need to call into UniverseYbDbAdminController.setDatabaseCredentials ONLY when
+        // the password is actually being changed, and should happen directly in the edit call
+        // when a new secret is provided.
+        userIntent.enableYSQLAuth = ybUniverse.getSpec().getEnableYSQLAuth();
+        userIntent.enableYCQLAuth = ybUniverse.getSpec().getEnableYCQLAuth();
       }
       userIntent.specificGFlags = operatorUtils.getGFlagsFromSpec(ybUniverse, provider);
 
@@ -2514,15 +2519,63 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
   // parseSecretForKey checks secret data for the key. If not found, it will then check stringData.
   // Returns null if the key is not found at all.
-  // Also handles null secret.
+  // Also handles null secret, and secrets holding neither data nor stringData.
   private String parseSecretForKey(Secret secret, String key) {
     if (secret == null) {
       return null;
     }
-    if (secret.getData().get(key) != null) {
+    if (secret.getData() != null && secret.getData().get(key) != null) {
       return new String(Base64.getDecoder().decode(secret.getData().get(key)));
     }
-    return secret.getStringData().get(key);
+    return secret.getStringData() != null ? secret.getStringData().get(key) : null;
+  }
+
+  // trackAndParsePasswordSecret tracks the named secret as a dependency of the universe being
+  // reconciled, so that a later change to the secret triggers a reconcile, and returns the password
+  // it holds. Returns null if no secret is referenced, the secret does not exist, or it does not
+  // hold the key - callers decide whether that is fatal.
+  private String trackAndParsePasswordSecret(
+      YBUniverse ybUniverse, @Nullable String secretName, String passwordKey) {
+    if (secretName == null) {
+      return null;
+    }
+    Secret secret = getSecret(secretName);
+    if (secret == null) {
+      log.warn("secret {} referenced for {} not found", secretName, passwordKey);
+      return null;
+    }
+    trackDependency(ybUniverse, secret);
+    return parseSecretForKey(secret, passwordKey);
+  }
+
+  // getPasswordFromSecret returns the password held by the named secret, failing if the secret is
+  // missing or holds no password. Only used when creating a universe - on edit a secret that cannot
+  // be read is ignored, see the note on passwords in createUserIntent.
+  private String getPasswordFromSecret(
+      YBUniverse ybUniverse, String secretName, String passwordKey) {
+    String password = trackAndParsePasswordSecret(ybUniverse, secretName, passwordKey);
+    if (StringUtils.isBlank(password)) {
+      log.error("could not find {} in secret {}", passwordKey, secretName);
+      throw new RuntimeException(
+          String.format("could not find %s in secret %s", passwordKey, secretName));
+    }
+    return password;
+  }
+
+  // validateAuthSpec fails if the spec's auth flag and its password secret reference disagree.
+  // Auth cannot be turned on without a password to set it to, and a password is meaningless
+  // without auth. Only enforced when creating a universe: a universe imported into the operator
+  // can have auth enabled with no secret to reference, since YBA does not retain the password.
+  private void validateAuthSpec(
+      boolean authEnabled, boolean passwordSet, String apiName, String specFieldName) {
+    if (authEnabled && !passwordSet) {
+      throw new RuntimeException(
+          String.format("%s must be set when enable%sAuth is true", specFieldName, apiName));
+    }
+    if (!authEnabled && passwordSet) {
+      throw new RuntimeException(
+          String.format("enable%sAuth must be true when %s is set", apiName, specFieldName));
+    }
   }
 
   private void createAutoProviderCR(YBUniverse ybUniverse, String providerName, UUID customerUUID) {
