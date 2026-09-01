@@ -2,6 +2,8 @@
 -- YSQL database dump
 --
 
+\restrict test
+
 -- Dumped from database version 15.12-YB-2.31.0.0-b0
 -- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
 
@@ -26,16 +28,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 --
 -- Name: rename_owner_src_db; Type: DATABASE; Schema: -; Owner: rename_owner_src_role
@@ -44,16 +50,26 @@ SET row_security = off;
 CREATE DATABASE rename_owner_src_db WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_tgt_role') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DATABASE rename_owner_src_db OWNER TO rename_owner_tgt_role;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' rename_owner_tgt_role
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \connect rename_owner_src_db
+\restrict test
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -92,14 +108,22 @@ CREATE FUNCTION public.fn_other() RETURNS integer
     AS $$SELECT 2$$;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_other_role') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER FUNCTION public.fn_other() OWNER TO rename_owner_other_role;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' rename_owner_other_role
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: fn_src(); Type: FUNCTION; Schema: public; Owner: rename_owner_src_role
@@ -110,14 +134,22 @@ CREATE FUNCTION public.fn_src() RETURNS integer
     AS $$SELECT 1$$;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_tgt_role') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER FUNCTION public.fn_src() OWNER TO rename_owner_tgt_role;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' rename_owner_tgt_role
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: seq_other; Type: SEQUENCE; Schema: public; Owner: rename_owner_other_role
@@ -136,14 +168,22 @@ CREATE SEQUENCE public.seq_other
     CACHE 1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_other_role') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.seq_other OWNER TO rename_owner_other_role;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' rename_owner_other_role
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: seq_src; Type: SEQUENCE; Schema: public; Owner: rename_owner_src_role
@@ -162,18 +202,30 @@ CREATE SEQUENCE public.seq_src
     CACHE 1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_tgt_role') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.seq_src OWNER TO rename_owner_tgt_role;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' rename_owner_tgt_role
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = '';
+\unrestrict test
 \endif
+\restrict test
 
 SET default_table_access_method = heap;
 
@@ -207,14 +259,22 @@ WITH (yb_presplit='3')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_other_role') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.t_other OWNER TO rename_owner_other_role;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' rename_owner_other_role
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: t_src; Type: TABLE; Schema: public; Owner: rename_owner_src_role
@@ -246,14 +306,22 @@ WITH (yb_presplit='3')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rename_owner_tgt_role') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.t_src OWNER TO rename_owner_tgt_role;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' rename_owner_tgt_role
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Data for Name: t_other; Type: TABLE DATA; Schema: public; Owner: rename_owner_other_role
@@ -317,33 +385,45 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
@@ -377,4 +457,6 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 

@@ -243,7 +243,8 @@ public class TestYbBackup extends BasePgSQLTest {
       "-d", restoreDbName,
       "-f", actual.toString(),
       "--no-tablespaces",
-      "--include-yb-metadata"
+      "--include-yb-metadata",
+      "--restrict-key=" + TestYsqlDump.RESTRICT_KEY
       ));
     ProcessUtil.executeSimple(args, "ysql_dump (" + testName + ")" );
     TestYsqlDump.assertOutputFile(expected, actual);
@@ -2404,7 +2405,7 @@ public class TestYbBackup extends BasePgSQLTest {
     //
     // The restore generates a ysql_dump in binary-upgrade mode that emits
     // `DROP EXTENSION IF EXISTS mage;` before recreating an empty extension
-    // shell. 
+    // shell.
     //
     // The test deliberately installs the extension *without* creating a graph.
     // create_graph() materializes per-graph vertex/edge tables whose snapshot
