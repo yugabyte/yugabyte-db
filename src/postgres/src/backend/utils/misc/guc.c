@@ -3605,7 +3605,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_index_backfill_scan_optimization,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
