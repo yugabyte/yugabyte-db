@@ -122,6 +122,7 @@ import java.util.stream.Collectors;
 import javax.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 import play.mvc.Http.Request;
@@ -226,6 +227,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
     JsonNode dbUniverseJson = Json.toJson(dbUniverse);
+    // Must be captured here, before the edit spec is mapped below: that mapping uses
+    // dbUniverse.getUniverseDetails() as its @MappingTarget, i.e. it overwrites the in-memory
+    // persisted placement with the requested one. Anything read from dbUniverse after that point
+    // reflects the request, not what is deployed.
+    Map<UUID, Map<UUID, K8sStsIndices>> savedK8sStsIndices = captureK8sStsIndices(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     // inherit RR cluster properties from primary cluster in given edit spec
     UniverseSpec v2Universe =
@@ -297,9 +303,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       // Note: userIntent volume overrides are already generated per-cluster inside configure() for
       // EDIT (see UniverseCRUDHandler.configure), and they are keyed only on the AZ set, not on the
       // statefulset index, so there is no need to regenerate them here.
-      applyK8sPlacementFinalization(dbUniverse, v1Params, primaryCluster);
+      applyK8sPlacementFinalization(savedK8sStsIndices, v1Params, primaryCluster);
       if (isRREdited && !v1Params.getReadOnlyClusters().isEmpty()) {
-        applyK8sPlacementFinalization(dbUniverse, v1Params, v1Params.getReadOnlyClusters().get(0));
+        applyK8sPlacementFinalization(
+            savedK8sStsIndices, v1Params, v1Params.getReadOnlyClusters().get(0));
       }
     } else {
       universeCRUDHandler.mergeNodeExporterInfo(dbUniverse, v1Params);
@@ -333,29 +340,75 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 
+  /** Per-AZ Kubernetes statefulset indices as persisted on the universe. */
+  private static class K8sStsIndices {
+    private final int masterStsIndex;
+    private final int tsStsIndex;
+
+    K8sStsIndices(PlacementInfo.PlacementAZ az) {
+      this.masterStsIndex = az.masterStsIndex;
+      this.tsStsIndex = az.tsStsIndex;
+    }
+  }
+
+  /**
+   * Snapshots the server-managed Kubernetes statefulset indices ({@code masterStsIndex} / {@code
+   * tsStsIndex}) of the persisted universe, keyed by cluster UUID and then AZ UUID.
+   *
+   * <p>This must be called before the v2 edit spec is mapped onto {@code
+   * dbUniverse.getUniverseDetails()}: that mapping is done in place (the details object is the
+   * MapStruct {@code @MappingTarget}), so afterwards the "existing" universe object already carries
+   * the requested placement and is no longer a source of truth for these indices.
+   *
+   * @param dbUniverse the existing universe, before any edit-spec mapping is applied
+   */
+  private static Map<UUID, Map<UUID, K8sStsIndices>> captureK8sStsIndices(Universe dbUniverse) {
+    Map<UUID, Map<UUID, K8sStsIndices>> stsIndicesPerCluster = new HashMap<>();
+    for (Cluster dbCluster : dbUniverse.getUniverseDetails().clusters) {
+      // EditKubernetesUniverse compares against cluster.placementInfo, so prefer that; fall back to
+      // the partition-derived placement when it is not set.
+      PlacementInfo dbPlacement =
+          dbCluster.placementInfo != null
+              ? dbCluster.placementInfo
+              : dbCluster.getOverallPlacement();
+      if (dbPlacement == null) {
+        continue;
+      }
+      Map<UUID, K8sStsIndices> stsIndicesPerAz = new HashMap<>();
+      dbPlacement
+          .azStream()
+          .forEach(az -> stsIndicesPerAz.putIfAbsent(az.uuid, new K8sStsIndices(az)));
+      stsIndicesPerCluster.put(dbCluster.uuid, stsIndicesPerAz);
+    }
+    return stsIndicesPerCluster;
+  }
+
   /**
    * Finalizes a Kubernetes cluster's placement before submitting an edit task, mirroring the
    * K8s-specific handling in {@code UniverseCRUDHandler.updatePrimaryCluster()} / {@code
    * updateCluster()}. This is required because the v2 edit path submits the task directly rather
    * than routing through {@code UniverseCRUDHandler.update()}.
    *
-   * <p>First, the persisted per-AZ statefulset indices are re-hydrated from the existing universe
-   * (see {@link #reconcileK8sStsIndicesFromExisting}). This is required because the v2 API is
-   * spec-based and the placement schema ({@code PlacementAZ.yaml}) does not carry these
-   * server-managed indices; any edit that reconstructs the placement (or partition placements) from
-   * the spec would otherwise reset them to 0 and diverge from the deployed statefulset generation.
+   * <p>First, the persisted per-AZ statefulset indices are re-hydrated from the snapshot taken
+   * before the edit spec was mapped (see {@link #reconcileK8sStsIndicesFromExisting}). This is
+   * required because the v2 API is spec-based and the placement schema ({@code PlacementAZ.yaml})
+   * does not carry these server-managed indices; any edit that reconstructs the placement (or
+   * partition placements) from the spec would otherwise reset them to 0 and diverge from the
+   * deployed statefulset generation.
    *
    * <p>Then {@link PlacementInfoUtil#applyK8sStsIndexIncrement} bumps the per-AZ statefulset index
    * for AZs undergoing a full move (nodes both ToBeAdded and ToBeRemoved), which is the signal
    * {@code EditKubernetesUniverse} uses (via getPodsToAdd/getPodsToRemove) to trigger a full move.
    *
-   * @param dbUniverse the existing universe, source of truth for the current statefulset indices
+   * @param savedK8sStsIndices statefulset indices captured from the universe before edit mapping
    * @param taskParams the configured v1 edit params
    * @param cluster the Kubernetes cluster (primary or read-replica) to finalize
    */
   private void applyK8sPlacementFinalization(
-      Universe dbUniverse, UniverseDefinitionTaskParams taskParams, Cluster cluster) {
-    reconcileK8sStsIndicesFromExisting(dbUniverse, cluster);
+      Map<UUID, Map<UUID, K8sStsIndices>> savedK8sStsIndices,
+      UniverseDefinitionTaskParams taskParams,
+      Cluster cluster) {
+    reconcileK8sStsIndicesFromExisting(savedK8sStsIndices, cluster);
     PlacementInfoUtil.applyK8sStsIndexIncrement(
         cluster, taskParams.getNodesInCluster(cluster.uuid));
   }
@@ -363,7 +416,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   /**
    * Restores the server-managed Kubernetes statefulset indices ({@code masterStsIndex} / {@code
    * tsStsIndex}) onto the configured cluster placement (and every partition placement) from the
-   * existing universe, matched by AZ UUID.
+   * snapshot of the existing universe, matched by AZ UUID.
    *
    * <p>These indices are internal bookkeeping that must stay in sync with the physically-deployed
    * statefulsets, and they are deliberately absent from the v2 API schema. Since a v2 edit may
@@ -373,21 +426,16 @@ public class UniverseManagementHandler extends ApiControllerUtils {
    * full moves. AZs absent from the existing placement (newly added) correctly retain the default
    * 0.
    *
-   * @param dbUniverse the existing universe, source of truth for the current statefulset indices
+   * @param savedK8sStsIndices statefulset indices captured from the universe before edit mapping
    * @param cluster the configured cluster whose placement/partitions should be reconciled
    */
-  private void reconcileK8sStsIndicesFromExisting(Universe dbUniverse, Cluster cluster) {
-    Cluster dbCluster = dbUniverse.getUniverseDetails().getClusterByUuid(cluster.uuid);
-    if (dbCluster == null) {
+  private void reconcileK8sStsIndicesFromExisting(
+      Map<UUID, Map<UUID, K8sStsIndices>> savedK8sStsIndices, Cluster cluster) {
+    Map<UUID, K8sStsIndices> dbAzByUuid = savedK8sStsIndices.get(cluster.uuid);
+    if (MapUtils.isEmpty(dbAzByUuid)) {
       // Newly added cluster: there is no prior statefulset generation to preserve.
       return;
     }
-    PlacementInfo dbPlacement = dbCluster.getOverallPlacement();
-    if (dbPlacement == null) {
-      return;
-    }
-    Map<UUID, PlacementInfo.PlacementAZ> dbAzByUuid =
-        dbPlacement.azStream().collect(Collectors.toMap(az -> az.uuid, az -> az, (a, b) -> a));
     if (cluster.placementInfo != null) {
       restoreStsIndices(cluster.placementInfo, dbAzByUuid);
     }
@@ -401,12 +449,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   }
 
   private static void restoreStsIndices(
-      PlacementInfo placementInfo, Map<UUID, PlacementInfo.PlacementAZ> dbAzByUuid) {
+      PlacementInfo placementInfo, Map<UUID, K8sStsIndices> dbAzByUuid) {
     placementInfo
         .azStream()
         .forEach(
             az -> {
-              PlacementInfo.PlacementAZ dbAz = dbAzByUuid.get(az.uuid);
+              K8sStsIndices dbAz = dbAzByUuid.get(az.uuid);
               if (dbAz != null) {
                 az.masterStsIndex = dbAz.masterStsIndex;
                 az.tsStsIndex = dbAz.tsStsIndex;
