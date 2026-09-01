@@ -19,6 +19,7 @@
 #include "yb/util/tostring.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
+#include "yb/vector_index/vector_storage_kind.h"
 
 namespace hnswlib {
 
@@ -80,10 +81,16 @@ struct Header {
   size_t vector_data_amount_per_block;
   std::vector<LayerInfo> layers;
 
+  // Encoding of the coordinates stored in this file's vector data records. Determines
+  // vector_data_size and the scalar kind the metric must be built with. Absent from version-1
+  // footers, which are always float32.
+  vector_index::VectorStorageKind storage_kind = vector_index::VectorStorageKind::kFloat32;
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         dimensions, vector_data_size, entry, max_level, config, max_block_size,
-        max_vectors_per_non_base_block, vector_data_block, vector_data_amount_per_block, layers);
+        max_vectors_per_non_base_block, vector_data_block, vector_data_amount_per_block, layers,
+        storage_kind);
   }
 };
 

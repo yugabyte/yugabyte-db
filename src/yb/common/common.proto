@@ -141,11 +141,24 @@ enum HnswBackend {
   YB_HNSW_HNSWLIB = 3;
 };
 
+// Encoding of the coordinates a served vector index chunk stores on disk. Narrower encodings
+// shrink the chunk and let more of it stay resident in the block cache, at a small accuracy
+// cost; graph construction always runs at full precision regardless.
+enum VectorStorageType {
+  STORAGE_FLOAT32 = 0;
+  STORAGE_FLOAT16 = 1;
+}
+
 message HnswIndexOptionsPB {
   optional uint32 m = 1;
   optional uint32 m0 = 2;
   optional uint32 ef_construction = 3;
   optional HnswBackend backend = 4;
+
+  // Fixed when the index is created. Chunks record their own encoding, so this only governs
+  // chunks written from now on -- but keeping it in the catalog is what makes every replica of
+  // an index agree on the encoding instead of following each tserver's local flags.
+  optional VectorStorageType storage_type = 5 [ default = STORAGE_FLOAT32 ];
 }
 
 message PgVectorIdxOptionsPB {

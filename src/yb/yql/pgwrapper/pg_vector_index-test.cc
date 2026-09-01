@@ -11,7 +11,10 @@
 // under the License.
 //
 
+#include <cmath>
+#include <map>
 #include <queue>
+#include <set>
 
 #include "yb/client/client_error.h"
 #include "yb/client/client_fwd.h"
@@ -93,6 +96,7 @@ DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_string(vector_index_backend);
+DECLARE_string(vector_index_storage_coordinate_type);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_bool(vector_index_allow_parallel_compactions);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
@@ -4561,6 +4565,211 @@ TEST_P(PgVectorIndexTest, StatusResolutionDuringBootstrapBackfill) {
 
   // Reaching here without the tserver crashing means the fix holds.
   threads.Stop();
+}
+
+////////////////////////////////////////////////////////
+// Narrowed coordinate storage (float16)
+////////////////////////////////////////////////////////
+
+// Runs the default backend with the served chunks storing float16 coordinates. The graph is still
+// built at full precision, so what these tests cover is whether narrowed records survive the
+// round trip through flush, restart, compaction and the query path.
+class PgVectorIndexFloat16Test : public PgVectorIndexTestBase {
+ protected:
+  bool IsColocated() const override { return false; }
+  VectorIndexEngine Engine() const override { return VectorIndexEngine::kYbHnswHnswlib; }
+  PackingMode GetPackingMode() const override { return PackingMode::kV1; }
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_storage_coordinate_type) = "float16";
+    PgVectorIndexTestBase::SetUp();
+    // The base fixture forces brute-force search; these tests want the real graph walk over
+    // narrowed records.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+  }
+
+  // Ids of the `limit` nearest rows by exact float32 distance, computed from the vectors the test
+  // inserted rather than from anything the index stored.
+  std::vector<int64_t> ExactNearest(const FloatVector& query_vector, size_t limit) {
+    unum::usearch::metric_punned_t metric(
+        dimensions_, UsearchMetricKind(), unum::usearch::scalar_kind_t::f32_k);
+    std::vector<int64_t> ids(vectors_.size());
+    std::generate(ids.begin(), ids.end(), [n{0LL}]() mutable { return n++; });
+    std::sort(ids.begin(), ids.end(), [&](int64_t lhs, int64_t rhs) {
+      return metric(VectorToBytePtr(query_vector), VectorToBytePtr(vectors_[lhs])) <
+             metric(VectorToBytePtr(query_vector), VectorToBytePtr(vectors_[rhs]));
+    });
+    ids.resize(std::min(ids.size(), limit));
+    return ids;
+  }
+
+  // Fraction of the exact top-`limit` that the index actually returned, averaged over
+  // `iterations` random queries.
+  Result<double> MeasureRecall(PGConn& conn, size_t limit, size_t iterations) {
+    size_t found = 0;
+    for (size_t i = 0; i != iterations; ++i) {
+      auto query_vector = RandomVector();
+      auto rows = VERIFY_RESULT(conn.FetchRows<int64_t>(
+          "SELECT id FROM test" + IndexQuerySuffix(query_vector, limit)));
+      auto expected = ExactNearest(query_vector, limit);
+      std::set<int64_t> expected_set(expected.begin(), expected.end());
+      for (auto id : rows) {
+        found += expected_set.contains(id);
+      }
+    }
+    return static_cast<double>(found) / (limit * iterations);
+  }
+};
+
+// The encoding is fixed per index at creation time so every replica agrees on it. A tserver-local
+// setting would let replicas of the same tablet disagree about the accuracy of their answers.
+TEST_F(PgVectorIndexFloat16Test, StorageTypeIsRecordedInTheCatalog) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+
+  size_t checked = 0;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto indexes = tablet->vector_indexes().List();
+    ASSERT_TRUE(indexes);
+    for (const auto& index : *indexes) {
+      ASSERT_EQ(index->options().hnsw().storage_type(), VectorStorageType::STORAGE_FLOAT16);
+      ++checked;
+    }
+  }
+  ASSERT_GT(checked, 0);
+}
+
+// Narrowing changes which rows come back, not the distances the user sees. ybvectorgettuple
+// never populates xs_orderbyvals and sets xs_recheckorderby = false, so the executor evaluates
+// the `<->` expression itself, over the full-precision column value from the heap tuple.
+//
+// Note the two are not even the same quantity: pgvector's `<->` is sqrt(L2 squared), while the
+// index ranks on L2 squared. So if the index's distance ever leaked into the result, this would
+// fail by a wide margin rather than by a rounding error.
+TEST_F(PgVectorIndexFloat16Test, ReportedDistancesStayFullPrecision) {
+  constexpr size_t kNumRows = 500;
+  constexpr size_t kLimit = 10;
+
+  dimensions_ = 16;
+  auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  // Mirrors pgvector's l2_distance: float32 accumulation, then sqrt in double.
+  auto exact_l2_distance = [](const FloatVector& lhs, const FloatVector& rhs) {
+    float squared = 0.0f;
+    for (size_t i = 0; i != lhs.size(); ++i) {
+      const float diff = lhs[i] - rhs[i];
+      squared += diff * diff;
+    }
+    return std::sqrt(static_cast<double>(squared));
+  };
+
+  for (size_t i = 0; i != 10; ++i) {
+    auto query_vector = RandomVector();
+    auto rows = ASSERT_RESULT((conn.FetchRows<int64_t, double>(Format(
+        "SELECT id, $0 FROM test$1",
+        DistanceToQuery(query_vector), IndexQuerySuffix(query_vector, kLimit)))));
+    ASSERT_FALSE(rows.empty());
+
+    for (const auto& [id, reported] : rows) {
+      const auto exact = exact_l2_distance(query_vector, vectors_[id]);
+      // 1e-5 sits two orders of magnitude above float32 accumulation noise and two below the
+      // ~5e-4 relative error of a float16 distance, so it tells the two apart.
+      ASSERT_LE(std::fabs(reported - exact), 1e-5 * std::max<double>(exact, 1.0))
+          << "id: " << id << ", reported: " << reported << ", exact: " << exact;
+    }
+  }
+}
+
+TEST_F(PgVectorIndexFloat16Test, Recall) {
+  constexpr size_t kNumRows = 2000;
+  constexpr size_t kLimit = 10;
+  constexpr size_t kIterations = 20;
+
+  dimensions_ = 32;
+  auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto recall = ASSERT_RESULT(MeasureRecall(conn, kLimit, kIterations));
+  LOG(INFO) << "float16 recall@" << kLimit << ": " << recall;
+  ASSERT_GE(recall, 0.8);
+}
+
+// Flush turns the mutable chunk into a narrowed file, and restart reopens it through
+// YbHnsw::Init -- the path where the metric has to be rebuilt from the file's own footer.
+TEST_F(PgVectorIndexFloat16Test, SurvivesFlushAndRestart) {
+  constexpr size_t kNumRows = 1000;
+  constexpr size_t kLimit = 10;
+
+  dimensions_ = 16;
+  auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto before = ASSERT_RESULT(MeasureRecall(conn, kLimit, 10));
+
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+
+  auto after = ASSERT_RESULT(MeasureRecall(conn, kLimit, 10));
+  LOG(INFO) << "recall before restart: " << before << ", after: " << after;
+  ASSERT_GE(after, 0.8);
+}
+
+// Compaction reads source chunks back through YbHnswIterator, which has to decode narrowed
+// records rather than copy float32-wide out of them. Re-narrowing what it read is idempotent, so
+// recall should not decay across compactions either.
+TEST_F(PgVectorIndexFloat16Test, SurvivesCompaction) {
+  constexpr size_t kRowsPerChunk = 300;
+  constexpr size_t kNumChunks = 4;
+  constexpr size_t kLimit = 10;
+
+  dimensions_ = 16;
+  auto conn = ASSERT_RESULT(MakeIndex(dimensions_));
+  for (size_t chunk = 0; chunk != kNumChunks; ++chunk) {
+    ASSERT_OK(InsertRandomRows(conn, kRowsPerChunk));
+    ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+    ASSERT_OK(cluster_->FlushTablets());
+  }
+
+  auto before = ASSERT_RESULT(MeasureRecall(conn, kLimit, 10));
+
+  ASSERT_OK(cluster_->CompactTablets());
+  auto after = ASSERT_RESULT(MeasureRecall(conn, kLimit, 10));
+
+  LOG(INFO) << "recall before compaction: " << before << ", after: " << after;
+  ASSERT_GE(after, 0.8);
+}
+
+// A float16 index has to coexist with a float32 one in the same cluster: the encoding is a
+// per-index property, and each chunk records its own.
+TEST_F(PgVectorIndexFloat16Test, CoexistsWithFloat32Index) {
+  constexpr size_t kNumRows = 500;
+  constexpr size_t kLimit = 10;
+
+  dimensions_ = 16;
+  auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_storage_coordinate_type) = "float32";
+  ASSERT_OK(conn.Execute(
+      "CREATE INDEX vi_f32 ON test USING ybhnsw (embedding vector_l2_ops) WITH (m=16)"));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 60s * kTimeMultiplier));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  std::map<VectorStorageType, size_t> counts;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto indexes = tablet->vector_indexes().List();
+    ASSERT_TRUE(indexes);
+    for (const auto& index : *indexes) {
+      ++counts[index->options().hnsw().storage_type()];
+    }
+  }
+  LOG(INFO) << "indexes by storage type: " << AsString(counts);
+  ASSERT_GT(counts[VectorStorageType::STORAGE_FLOAT16], 0);
+  ASSERT_GT(counts[VectorStorageType::STORAGE_FLOAT32], 0);
+
+  ASSERT_GE(ASSERT_RESULT(MeasureRecall(conn, kLimit, 10)), 0.8);
 }
 
 }  // namespace yb::pgwrapper

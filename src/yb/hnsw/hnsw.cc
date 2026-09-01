@@ -25,6 +25,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 
+#include "yb/vector_index/coordinate_codec.h"
 #include "yb/vector_index/vector_index_if.h"
 
 using namespace yb::size_literals;
@@ -67,6 +68,10 @@ class YbHnswIndexAdapter {
   virtual void NodeCoordinates(size_t index, void* out) = 0;
   virtual NeighborsType Neighbors(size_t index, size_t level) = 0;
   virtual NeighborsType NeighborsBase(size_t index) = 0;
+
+  // Number of coordinates NodeCoordinates() could not represent in the target encoding and had
+  // to clamp. Zero for adapters that do not narrow.
+  virtual size_t NumClampedCoordinates() const { return 0; }
 
   virtual ~YbHnswIndexAdapter() = default;
 };
@@ -131,6 +136,10 @@ class YbHnswBuilder {
     RETURN_NOT_OK(out_->Close());
     out_.reset();
     RETURN_NOT_OK(block_cache_.env().RenameFile(tmp_path, path_));
+    LOG_IF(WARNING, inspector_.NumClampedCoordinates() != 0)
+        << "YbHnsw " << path_ << ": clamped " << inspector_.NumClampedCoordinates()
+        << " coordinate(s) that " << header_.storage_kind << " cannot represent; searches "
+        << "involving those vectors will be less accurate";
     std::unique_ptr<RandomAccessFile> file;
     RETURN_NOT_OK(block_cache_.env().NewRandomAccessFile(path_, &file));
     auto file_block_cache = std::make_unique<FileBlockCache>(
@@ -449,8 +458,18 @@ SearchCacheScope::SearchCacheScope(SearchCache& cache, const YbHnsw& hnsw) : cac
   cache.Bind(hnsw.header_, *hnsw.file_block_cache_);
 }
 
-YbHnsw::YbHnsw(MetricPtr&& metric, BlockCachePtr block_cache)
-    : metric_(std::move(metric)), block_cache_(std::move(block_cache)) {
+YbHnsw::YbHnsw(const UsearchMetric::Impl& metric, BlockCachePtr block_cache)
+    : YbHnsw(
+          [metric](size_t, vector_index::VectorStorageKind storage_kind) -> MetricPtr {
+            LOG_IF(DFATAL, storage_kind != vector_index::VectorStorageKind::kFloat32)
+                << "Fixed float32 metric cannot decode " << storage_kind << " records";
+            return std::make_unique<UsearchMetric>(metric);
+          },
+          std::move(block_cache)) {
+}
+
+YbHnsw::YbHnsw(MetricFactory metric_factory, BlockCachePtr block_cache)
+    : metric_factory_(std::move(metric_factory)), block_cache_(std::move(block_cache)) {
 }
 
 YbHnsw::~YbHnsw() = default;
@@ -460,14 +479,17 @@ Status YbHnsw::Import(
   YbHnswUsearchIndexAdapter inspector(index);
   YbHnswBuilder builder(inspector, *block_cache_, path);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
+  metric_ = metric_factory_(header_.dimensions, header_.storage_kind);
   return Status::OK();
 }
 
 class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
  public:
-  explicit YbHnswHnswlibIndexAdapter(
-      std::reference_wrapper<const HnswlibIndex<YbHnsw::DistanceType>> index)
-      : index_(index) {}
+  YbHnswHnswlibIndexAdapter(
+      std::reference_wrapper<const HnswlibIndex<YbHnsw::DistanceType>> index,
+      vector_index::VectorStorageKind storage_kind)
+      : index_(index), storage_kind_(storage_kind),
+        dimensions_(index.get().data_size_ / sizeof(YbHnswBuilder::CoordinateType)) {}
 
   size_t Size() override {
     return index_.getCurrentElementCount();
@@ -480,8 +502,10 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
   Header MakeHeader() override {
     Header result;
     result.max_block_size = FLAGS_yb_hnsw_max_block_size;
-    result.dimensions = index_.data_size_ / sizeof(YbHnswBuilder::CoordinateType);
-    result.vector_data_size = index_.data_size_ + sizeof(VectorData);
+    result.dimensions = dimensions_;
+    result.storage_kind = storage_kind_;
+    result.vector_data_size =
+        vector_index::CoordinateBytes(storage_kind_, dimensions_) + sizeof(VectorData);
     InitVectorDataAmountPerBlock(result, index_.getCurrentElementCount());
     result.max_level = index_.getMaxLevel();
     result.config.connectivity_base = index_.maxM_;
@@ -502,7 +526,18 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
   }
 
   void NodeCoordinates(size_t index, void* out) override {
-    memcpy(out, index_.getDataByInternalId(CastIndex(index)), index_.data_size_);
+    const auto* data = index_.getDataByInternalId(CastIndex(index));
+    if (storage_kind_ == vector_index::VectorStorageKind::kFloat32) {
+      memcpy(out, data, index_.data_size_);
+      return;
+    }
+    vector_index::NarrowCoordinates(
+        storage_kind_, pointer_cast<const YbHnswBuilder::CoordinateType*>(data), dimensions_, out,
+        &num_clamped_);
+  }
+
+  size_t NumClampedCoordinates() const override {
+    return num_clamped_;
   }
 
   NeighborsType Neighbors(size_t index, size_t level) override {
@@ -526,14 +561,19 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
   }
 
   const HnswlibIndex<YbHnsw::DistanceType>& index_;
+  const vector_index::VectorStorageKind storage_kind_;
+  const size_t dimensions_;
+  size_t num_clamped_ = 0;
 };
 
 Status YbHnsw::Import(
     const HnswlibIndex<DistanceType>& index,
-    const std::string& path) {
-  YbHnswHnswlibIndexAdapter inspector(index);
+    const std::string& path,
+    vector_index::VectorStorageKind storage_kind) {
+  YbHnswHnswlibIndexAdapter inspector(index, storage_kind);
   YbHnswBuilder builder(inspector, *block_cache_, path);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
+  metric_ = metric_factory_(header_.dimensions, header_.storage_kind);
   return Status::OK();
 }
 
@@ -542,6 +582,7 @@ Status YbHnsw::Init(const std::string& path) {
   RETURN_NOT_OK(block_cache_->env().NewRandomAccessFile(path, &file));
   file_block_cache_ = std::make_unique<FileBlockCache>(*block_cache_, std::move(file));
   header_ = VERIFY_RESULT(file_block_cache_->Load());
+  metric_ = metric_factory_(header_.dimensions, header_.storage_kind);
   return Status::OK();
 }
 
@@ -555,6 +596,19 @@ YbHnsw::SearchResult YbHnsw::Search(
       query_vector, context.search_cache);
   SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
   return MakeResult(options.max_num_results, context);
+}
+
+YbHnsw::SearchResult YbHnsw::Search(
+    const CoordinateType* query_vector, const vector_index::SearchOptions& options,
+    YbHnswSearchContext& context) const {
+  if (header_.storage_kind == vector_index::VectorStorageKind::kFloat32) {
+    return Search(pointer_cast<const std::byte*>(query_vector), options, context);
+  }
+  auto& buffer = context.narrowed_query;
+  buffer.resize(vector_index::CoordinateBytes(header_.storage_kind, header_.dimensions));
+  vector_index::NarrowCoordinates(
+      header_.storage_kind, query_vector, header_.dimensions, buffer.data());
+  return Search(buffer.data(), options, context);
 }
 
 YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext& context) const {
@@ -663,23 +717,15 @@ void YbHnsw::SearchInBaseLayer(
 }
 
 YbHnsw::DistanceType YbHnsw::Distance(const std::byte* lhs, const std::byte* rhs) const {
+  // metric_ is created by Init()/Import() from the encoding of the records it will decode, so
+  // there is no metric before one of them has run.
+  DCHECK(metric_) << "Distance requested before Init/Import";
   return metric_->Distance(lhs, rhs);
 }
 
 YbHnsw::DistanceType YbHnsw::Distance(
     const std::byte* lhs, size_t vector, SearchCache& cache) const {
   return Distance(lhs, cache.CoordinatesPtr(vector));
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::MakeCoordinates(
-    const std::byte* ptr) const {
-  auto start = MisalignedPtr<const CoordinateType>(ptr);
-  return boost::make_iterator_range(start, start + header_.dimensions);
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::Coordinates(
-    size_t vector, SearchCache& cache) const {
-  return MakeCoordinates(cache.CoordinatesPtr(vector));
 }
 
 const Header& YbHnsw::header() const {

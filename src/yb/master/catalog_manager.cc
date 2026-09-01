@@ -640,6 +640,22 @@ DEFINE_validator(vector_index_backend,
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
 
+static constexpr char kVectorStorageFloat32[] = "float32";
+static constexpr char kVectorStorageFloat16[] = "float16";
+
+DEFINE_RUNTIME_string(vector_index_storage_coordinate_type, kVectorStorageFloat32,
+    "Coordinate encoding for the on-disk chunks of newly created vector indexes. \"float32\" "
+    "stores full precision. \"float16\" halves the coordinate bytes of every served chunk, so "
+    "roughly twice as much of the index fits in the block cache, at a small recall cost; the "
+    "graph is still built at full precision. Recorded per index at creation time, so it never "
+    "changes for an existing index, and chunks written as float16 cannot be read by releases "
+    "that predate the encoding.");
+
+DEFINE_validator(vector_index_storage_coordinate_type,
+    FLAG_IN_SET_VALIDATOR(kVectorStorageFloat32, kVectorStorageFloat16));
+
+TAG_FLAG(vector_index_storage_coordinate_type, advanced);
+
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
     "Such tables write vector reverse mappings on row insert/update regardless of "
@@ -4683,6 +4699,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_USEARCH);
       } else if (backend == kYbHnswHnswlib) {
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_HNSWLIB);
+      }
+      if (FLAGS_vector_index_storage_coordinate_type == kVectorStorageFloat16) {
+        vector_index_options.mutable_hnsw()->set_storage_type(VectorStorageType::STORAGE_FLOAT16);
       }
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())

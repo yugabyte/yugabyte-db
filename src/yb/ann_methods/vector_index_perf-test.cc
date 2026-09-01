@@ -17,6 +17,7 @@
 #include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
 
+#include "yb/util/env.h"
 #include "yb/util/size_literals.h"
 
 namespace yb::ann_methods {
@@ -44,6 +45,11 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
     vector_index::HNSWOptions options = {
       .dimensions = dimensions_,
     };
+    // Same options apart from the on-disk encoding; the graph this builds in RAM is identical,
+    // so the pair isolates what narrowing the served records costs or saves.
+    auto float16_options = options;
+    float16_options.storage_kind = vector_index::VectorStorageKind::kFloat16;
+
     indexes_.emplace_back(
         "usearch",
         ASSERT_RESULT((CreateUsearchIndexTraits<Vector, DistanceResult>(
@@ -53,6 +59,11 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
         "hnswlib",
         ASSERT_RESULT((CreateHnswlibIndexTraits<Vector, DistanceResult>(
             block_cache_, options, HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_)))
+            ->Create(vector_index::FactoryMode::kCreate));
+    indexes_.emplace_back(
+        "hnswlib_f16_source",
+        ASSERT_RESULT((CreateHnswlibIndexTraits<Vector, DistanceResult>(
+            block_cache_, float16_options, HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_)))
             ->Create(vector_index::FactoryMode::kCreate));
     for (const auto& [_, index] : indexes_) {
       ASSERT_OK(index->Reserve(
@@ -66,11 +77,20 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
 
     indexes_.emplace_back(
         "yb_hnsw",
-        ASSERT_RESULT(indexes_.front().second->SaveToFile(GetTestPath("0.yb_hnsw"))));
+        ASSERT_RESULT(indexes_[0].second->SaveToFile(GetTestPath("0.yb_hnsw"))));
 
     indexes_.emplace_back(
         "yb_hnsw_hnswlib",
         ASSERT_RESULT(indexes_[1].second->SaveToFile(GetTestPath("1.yb_hnsw"))));
+
+    indexes_.emplace_back(
+        "yb_hnsw_hnswlib_f16",
+        ASSERT_RESULT(indexes_[2].second->SaveToFile(GetTestPath("2.yb_hnsw"))));
+
+    for (const auto& name : {"1.yb_hnsw", "2.yb_hnsw"}) {
+      LOG(INFO) << name << " size: "
+                << ASSERT_RESULT(Env::Default()->GetFileSize(GetTestPath(name)));
+    }
   }
 
   void InsertRandomVector(Vector& holder) {
@@ -128,6 +148,21 @@ TEST_F(VectorIndexPerfTest, Perf128Dims) {
 }
 
 TEST_F(VectorIndexPerfTest, Perf2048Dims) {
+  dimensions_ = 2048;
+  TestPerf();
+}
+
+// A cache large enough to hold everything hides the point of narrowing records: the win is a
+// higher hit rate against a cache that cannot hold the whole index, not a faster kernel. This
+// variant squeezes the cache so the f16/f32 ratio reflects that.
+class VectorIndexCacheConstrainedPerfTest : public VectorIndexPerfTest {
+ protected:
+  size_t BlockCacheCapacity() override {
+    return 8_MB;
+  }
+};
+
+TEST_F(VectorIndexCacheConstrainedPerfTest, Perf2048Dims) {
   dimensions_ = 2048;
   TestPerf();
 }

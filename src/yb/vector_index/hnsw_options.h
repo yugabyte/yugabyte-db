@@ -18,6 +18,7 @@
 #include <string>
 
 #include "yb/vector_index/distance.h"
+#include "yb/vector_index/vector_storage_kind.h"
 
 namespace unum::usearch {
 class metric_punned_t;
@@ -61,9 +62,22 @@ struct HNSWOptions {
 
   DistanceKind distance_kind = DistanceKind::kL2Squared;
 
+  // Encoding for coordinates written into immutable, file-backed chunks. Graph construction is
+  // unaffected: it always runs at the index's in-memory coordinate type.
+  VectorStorageKind storage_kind = VectorStorageKind::kFloat32;
+
   std::string ToString() const;
+
+  // Metric over the in-memory representation an index of `Vector` is built with, i.e. over
+  // Vector::value_type coordinates.
   template <class Vector>
-  unum::usearch::metric_punned_t CreateMetric() const;
+  unum::usearch::metric_punned_t CreateBuildMetric() const;
+
+  // Metric over stored records in the given encoding. Takes the encoding explicitly rather than
+  // reading storage_kind, because the caller that matters -- YbHnsw::Init -- must use the
+  // encoding recorded in the file it just opened, not whatever this options object says now.
+  unum::usearch::metric_punned_t CreateStoredMetric(
+      size_t dimensions, VectorStorageKind storage_kind) const;
 };
 
 }  // namespace yb::vector_index

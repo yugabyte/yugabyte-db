@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <functional>
 #include <queue>
 
 #include <boost/range/iterator_range.hpp>
@@ -105,6 +106,10 @@ struct YbHnswSearchContext {
   ExtraTop extra_top;
   NextQueue next;
   SearchCache search_cache;
+
+  // Holds the query narrowed to the file's storage encoding. Grown once per pooled context and
+  // reused; unused when the file stores float32 and the caller's buffer can be used directly.
+  std::vector<std::byte> narrowed_query;
 };
 
 class YbHnswMetric {
@@ -133,18 +138,27 @@ class YbHnsw {
   using MetricPtr = std::unique_ptr<Metric>;
   using SearchResult = std::vector<vector_index::VectorWithDistance<DistanceType>>;
 
-  YbHnsw(const UsearchMetric::Impl& metric, BlockCachePtr block_cache)
-      : YbHnsw(std::make_unique<UsearchMetric>(metric), block_cache) {
-  }
+  // Builds the metric for a given dimension count and coordinate encoding.
+  //
+  // The metric decodes stored records, so it has to agree with how they were written. Init()
+  // calls this with the encoding recorded in the file's own footer and Import() with the
+  // encoding it is about to write -- never with caller-supplied configuration, which can drift
+  // from what a chunk on disk actually contains.
+  using MetricFactory =
+      std::function<MetricPtr(size_t dimensions, vector_index::VectorStorageKind storage_kind)>;
 
-  YbHnsw(MetricPtr&& metric, BlockCachePtr block_cache);
+  // Convenience constructor for a fixed float32 metric.
+  YbHnsw(const UsearchMetric::Impl& metric, BlockCachePtr block_cache);
+
+  YbHnsw(MetricFactory metric_factory, BlockCachePtr block_cache);
   ~YbHnsw();
 
   // Imports specified index to YbHnsw structure, also storing this structure to disk.
   Status Import(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path);
   Status Import(
-    const HnswlibIndex<DistanceType>& index, const std::string& path);
+    const HnswlibIndex<DistanceType>& index, const std::string& path,
+    vector_index::VectorStorageKind storage_kind = vector_index::VectorStorageKind::kFloat32);
 
   // Initialize YbHnsw from specified file, using block_cache to cache blocks.
   Status Init(const std::string& path);
@@ -153,13 +167,14 @@ class YbHnsw {
       const std::byte* query_vector, const vector_index::SearchOptions& options,
       YbHnswSearchContext& context) const;
 
+  // Narrows the query to the file's storage encoding before searching, using the same conversion
+  // the stored records went through, then delegates to the overload above.
   SearchResult Search(
       const CoordinateType* query_vector, const vector_index::SearchOptions& options,
-      YbHnswSearchContext& context) const {
-    return Search(
-        pointer_cast<const std::byte*>(query_vector), options, context);
-  }
+      YbHnswSearchContext& context) const;
 
+  // Distance between two records already in this file's storage encoding. Callers holding
+  // full-precision vectors must narrow them first -- see NarrowCoordinates.
   DistanceType Distance(const std::byte* lhs, const std::byte* rhs) const;
 
   const Header& header() const;
@@ -175,13 +190,10 @@ class YbHnsw {
   SearchResult MakeResult(size_t max_results, YbHnswSearchContext& context) const;
 
   DistanceType Distance(const std::byte* lhs, size_t vector, SearchCache& cache) const;
-  boost::iterator_range<MisalignedPtr<const CoordinateType>> MakeCoordinates(
-      const std::byte* ptr) const;
-  boost::iterator_range<MisalignedPtr<const CoordinateType>> Coordinates(
-      size_t vector, SearchCache& cache) const;
 
-  MetricPtr metric_;
+  const MetricFactory metric_factory_;
   const BlockCachePtr block_cache_;
+  MetricPtr metric_;
 
   Header header_;
   FileBlockCachePtr file_block_cache_;
