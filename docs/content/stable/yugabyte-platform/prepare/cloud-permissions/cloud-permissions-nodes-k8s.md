@@ -6,7 +6,7 @@ description: Prepare your cloud for deploying universe nodes using a Kubernetes 
 headContent: Prepare your cloud for deploying YugabyteDB universe nodes
 menu:
   stable_yugabyte-platform:
-    identifier: cloud-permissions-nodes-5-k8s
+    identifier: cloud-permissions-nodes-6-k8s
     parent: cloud-permissions
     weight: 20
 type: docs

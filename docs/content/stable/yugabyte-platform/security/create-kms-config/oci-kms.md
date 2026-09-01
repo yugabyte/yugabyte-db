@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to create a KMS configuration for Oracle Cl
 menu:
   stable_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-6-oci-kms
+    identifier: create-kms-config-4-oci-kms
     weight: 50
 type: docs
 ---

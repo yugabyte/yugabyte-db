@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to create a KMS configuration for CipherTru
 menu:
   stable_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-5-ciphertrust-kms
+    identifier: create-kms-config-6-ciphertrust-kms
     weight: 50
 type: docs
 ---

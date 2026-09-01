@@ -6,7 +6,7 @@ description: Prepare your cloud for deploying universe nodes using an OCI provid
 headContent: Prepare your cloud for deploying YugabyteDB universe nodes
 menu:
   stable_yugabyte-platform:
-    identifier: cloud-permissions-nodes-4-oci
+    identifier: cloud-permissions-nodes-5-oci
     parent: cloud-permissions
     weight: 20
 type: docs
@@ -76,12 +76,6 @@ If you will use an Instance Configuration OCID when adding regions, also grant:
 Allow group yba-admins to read instance-configurations in compartment <compartment>
 ```
 
-If you will use OCI DNS (DNS Zone OCID on the provider), also grant:
-
-```properties
-Allow group yba-admins to manage dns in compartment <compartment>
-```
-
 For more information on writing policies, see [How Policies Work](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/policies.htm) in the OCI documentation.
 
 To grant the required access, you do one of the following:
@@ -127,11 +121,11 @@ In addition to OCI cloud permissions, to create VMs on OCI YBA needs access to t
 
 You must grant this access, and also accept any OS licensing terms manually before providing this access to YBA.
 
-By default, YBA requires access to the AlmaLinux OS 9 x86_64 Partner Image Catalog listing.
+By default, YBA requires access to the AlmaLinux OS 9 x86_64 and AArch64 Partner Image Catalog listings.
 
 #### Default case
 
-If you plan to use YBA defaults, then, while logged into the OCI Console, go to **Compute > Partner Images**, subscribe to AlmaLinux OS 9 (x86_64), and accept the terms.
+If you plan to use YBA defaults, then, while logged into the OCI Console, go to **Compute > Partner Images**, subscribe to AlmaLinux OS 9 for both x86_64 and AArch64, and accept the terms.
 
 If needed, be sure to do this in every region where you intend to deploy database clusters.
 

@@ -69,7 +69,6 @@ When deploying a universe, YugabyteDB Anywhere uses the provider configuration s
   - An API signing key for an OCI user with sufficient privileges. Required input: Tenancy OCID, User OCID, API key fingerprint, and PEM private key.
   - Instance principal, if YugabyteDB Anywhere is running on an OCI compute instance that belongs to a dynamic group with sufficient privileges.
 - An OCI VCN for each region, with a subnet in each availability domain where you will deploy nodes. Required input: for each region, a VCN OCID; for each availability domain, a Subnet OCID.
-- Optionally, an OCI DNS zone if you want YugabyteDB Anywhere to manage canonical names for universes. Required input: DNS Zone OCID.
 
 For more information on setting up OCI credentials, policies, and networking, refer to [Cloud permissions to deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes-oci/).
 
@@ -122,7 +121,7 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 **Default Region**. Region used as the default for OCI API calls (for example, `us-ashburn-1`).
 
-**DNS Zone OCID** (optional). Choose whether to use OCI DNS for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](/stable/develop/drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS server. YugabyteDB Anywhere can manage Canonical Name (CNAME) entries in an [OCI DNS](https://docs.oracle.com/en-us/iaas/Content/DNS/Concepts/dnszonemanagement.htm) zone and update the DNS entry as nodes get created, removed, or undergo maintenance.
+**DNS Zone OCID**. Leave this field empty. YugabyteDB Anywhere does not manage records in [OCI DNS](https://docs.oracle.com/en-us/iaas/Content/DNS/Concepts/dnszonemanagement.htm).
 
 ### Regions
 
@@ -207,6 +206,6 @@ For each availability domain in which you wish to be able to deploy in the regio
 
 If you use YBA-managed Linux versions, before you can proceed to creating a universe, verify that your tenancy can launch compute instances from the AlmaLinux OS 9 Partner Image Catalog listings.
 
-While logged into the OCI Console, go to **Compute > Partner Images** (or **Marketplace**), subscribe to AlmaLinux OS 9 for x86_64, and accept the terms. If you plan to deploy ARM (Ampere) shapes using a custom Linux version, also subscribe to the AArch64 listing.
+While logged into the OCI Console, go to **Compute > Partner Images** (or **Marketplace**), subscribe to AlmaLinux OS 9 for both x86_64 and AArch64, and accept the terms.
 
 Do this in every region where you intend to deploy database clusters.
