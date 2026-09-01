@@ -18,6 +18,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/tostring.h"
 
+#include "yb/vector_index/coordinate_codec.h"
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_storage_kind.h"
 
@@ -81,16 +82,33 @@ struct Header {
   size_t vector_data_amount_per_block;
   std::vector<LayerInfo> layers;
 
-  // Encoding of the coordinates stored in this file's vector data records. Determines
-  // vector_data_size and the scalar kind the metric must be built with. Absent from version-1
-  // footers, which are always float32.
+  // Encoding of the coordinates the graph traversal computes distances on, stored first in each
+  // vector data record. Determines the scalar kind the metric must be built with. Absent from
+  // version-1 footers, which are always float32.
   vector_index::VectorStorageKind storage_kind = vector_index::VectorStorageKind::kFloat32;
+
+  // Encoding of the rerank copy, stored immediately after the traversal coordinates in the same
+  // record. kNone means the record has no second copy and traversal distances are returned
+  // as-is. Absent from footers before version 3.
+  vector_index::RerankStorageKind rerank_kind = vector_index::RerankStorageKind::kNone;
+
+  // Quantization step for kInt8 traversal coordinates: stored = round(coordinate / scale).
+  // Derived from this chunk's own coordinates, so it differs between chunks of the same index and
+  // must always be read from the file rather than recomputed. Zero for encodings that do not
+  // quantize.
+  float quantization_scale = 0;
+
+  // Bytes of coordinates the traversal metric reads from a record, i.e. the offset of the rerank
+  // copy within it.
+  size_t coordinates_size() const {
+    return vector_index::CoordinateBytes(storage_kind, dimensions);
+  }
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         dimensions, vector_data_size, entry, max_level, config, max_block_size,
         max_vectors_per_non_base_block, vector_data_block, vector_data_amount_per_block, layers,
-        storage_kind);
+        storage_kind, rerank_kind, quantization_scale);
   }
 };
 

@@ -58,6 +58,10 @@ class SearchCache {
   vector_index::VectorId GetVectorData(size_t vector);
   const std::byte* CoordinatesPtr(size_t vector);
 
+  // Coordinates of the rerank copy, which follows the traversal coordinates in the same record.
+  // Only meaningful when the bound header has a rerank tier.
+  const std::byte* RerankCoordinatesPtr(size_t vector);
+
  private:
   Slice GetVectorDataSlice(size_t vector);
   const std::byte* BlockPtr(
@@ -110,6 +114,10 @@ struct YbHnswSearchContext {
   // Holds the query narrowed to the file's storage encoding. Grown once per pooled context and
   // reused; unused when the file stores float32 and the caller's buffer can be used directly.
   std::vector<std::byte> narrowed_query;
+
+  // Holds the query narrowed to the file's rerank encoding. Both buffers are live at once during
+  // a search over a chunk with a rerank tier, so they cannot share storage.
+  std::vector<std::byte> rerank_query;
 };
 
 class YbHnswMetric {
@@ -158,11 +166,16 @@ class YbHnsw {
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path);
   Status Import(
     const HnswlibIndex<DistanceType>& index, const std::string& path,
-    vector_index::VectorStorageKind storage_kind = vector_index::VectorStorageKind::kFloat32);
+    vector_index::VectorStorageKind storage_kind = vector_index::VectorStorageKind::kFloat32,
+    vector_index::RerankStorageKind rerank_kind = vector_index::RerankStorageKind::kNone);
 
   // Initialize YbHnsw from specified file, using block_cache to cache blocks.
   Status Init(const std::string& path);
 
+  // Searches with a query already in this file's storage encoding.
+  //
+  // Does not prepare context.rerank_query, so on a file with a rerank tier the caller must have
+  // filled it -- which in practice means going through the overload below rather than this one.
   SearchResult Search(
       const std::byte* query_vector, const vector_index::SearchOptions& options,
       YbHnswSearchContext& context) const;
@@ -176,6 +189,10 @@ class YbHnsw {
   // Distance between two records already in this file's storage encoding. Callers holding
   // full-precision vectors must narrow them first -- see NarrowCoordinates.
   DistanceType Distance(const std::byte* lhs, const std::byte* rhs) const;
+
+  // Distance between two records in this file's rerank encoding, i.e. in true metric units.
+  // Only valid when this file has a rerank tier.
+  DistanceType RerankDistance(const std::byte* lhs, const std::byte* rhs) const;
 
   const Header& header() const;
 
@@ -191,9 +208,20 @@ class YbHnsw {
 
   DistanceType Distance(const std::byte* lhs, size_t vector, SearchCache& cache) const;
 
+  // Builds metric_ and rerank_metric_ from header_, which must already be populated.
+  void InitMetrics();
+
+  // Candidates a search must retain so that reranking them yields the true top max_num_results.
+  // Equal to max_num_results when this file has no rerank tier, which keeps the search's heap
+  // limits identical to what they were before reranking existed.
+  size_t RerankCandidateCount(size_t max_num_results) const;
+
   const MetricFactory metric_factory_;
   const BlockCachePtr block_cache_;
   MetricPtr metric_;
+
+  // Metric over the rerank copy. Null when header_.rerank_kind is kNone.
+  MetricPtr rerank_metric_;
 
   Header header_;
   FileBlockCachePtr file_block_cache_;

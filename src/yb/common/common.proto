@@ -147,6 +147,9 @@ enum HnswBackend {
 enum VectorStorageType {
   STORAGE_FLOAT32 = 0;
   STORAGE_FLOAT16 = 1;
+  // int8 traversal coordinates plus a float16 rerank copy. Selects the pair, not just the
+  // traversal encoding: int8 alone loses recall no amount of ef recovers.
+  STORAGE_INT8 = 2;
 }
 
 message HnswIndexOptionsPB {

@@ -38,8 +38,7 @@ class YbHnswIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
   using Base = AbstractIterator<ValueType>;
 
   YbHnswIterator(const hnsw::YbHnsw& hnsw, size_t index)
-      : cache_scope_(cache_, hnsw), dimensions_(hnsw.header().dimensions),
-        storage_kind_(hnsw.header().storage_kind), index_(index) {
+      : cache_scope_(cache_, hnsw), header_(hnsw.header()), index_(index) {
   }
 
   void Next() override {
@@ -47,14 +46,27 @@ class YbHnswIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
   }
 
   ValueType Dereference() const override {
-    const auto* coordinates = cache_.CoordinatesPtr(index_);
     ValueType result;
     result.first = cache_.GetVectorData(index_);
-    result.second.resize(dimensions_);
+    result.second.resize(header_.dimensions);
     // Records may be narrower than Vector::value_type, so this has to decode rather than copy.
     // VectorLSM's compaction reads every source chunk through this iterator, which is why a
     // plain memcpy here would walk past the end of each record.
-    vector_index::WidenCoordinates(storage_kind_, coordinates, dimensions_, result.second.data());
+    //
+    // When the record carries a rerank copy, that copy -- not the traversal coordinates -- is
+    // what compaction has to read. The traversal encoding may be quantized against a scale the
+    // merged chunk will not reuse, so decoding it would feed already-quantized values into a
+    // fresh quantization and compound the error once per compaction. The rerank encodings round
+    // trip exactly, so reading them keeps a vector stable across arbitrarily many merges.
+    if (header_.rerank_kind != vector_index::RerankStorageKind::kNone) {
+      vector_index::WidenCoordinates(
+          vector_index::StorageKindForRerank(header_.rerank_kind),
+          cache_.RerankCoordinatesPtr(index_), header_.dimensions, result.second.data());
+    } else {
+      vector_index::WidenCoordinates(
+          header_.storage_kind, header_.quantization_scale, cache_.CoordinatesPtr(index_),
+          header_.dimensions, result.second.data());
+    }
     return result;
   }
 
@@ -66,8 +78,7 @@ class YbHnswIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
  private:
   mutable hnsw::SearchCache cache_;
   hnsw::SearchCacheScope cache_scope_;
-  const size_t dimensions_;
-  const VectorStorageKind storage_kind_;
+  const hnsw::Header& header_;
   size_t index_;
 };
 
@@ -96,11 +107,11 @@ class YbHnswIndex :
 
   Status Import(
       const hnsw::HnswlibIndex<DistanceResult>& index, const std::string& path,
-      VectorStorageKind storage_kind) {
+      VectorStorageKind storage_kind, vector_index::RerankStorageKind rerank_kind) {
     VLOG_WITH_FUNC(3)
         << "index: " << index.cur_element_count << ", path: " << path
-        << ", storage_kind: " << storage_kind;
-    return index_.Import(index, path, storage_kind);
+        << ", storage_kind: " << storage_kind << ", rerank_kind: " << rerank_kind;
+    return index_.Import(index, path, storage_kind, rerank_kind);
   }
 
   std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
@@ -138,19 +149,44 @@ class YbHnswIndex :
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
     const auto& header = index_.header();
+    // This result is compared against distances from other chunks -- VectorLSM scores the
+    // mutable chunk's in-flight vectors through it -- so it has to be in the metric's own units.
+    // Where there is a rerank tier that is the encoding to use, and the rerank metric with it:
+    // the traversal encoding may be quantized, which would yield a distance only comparable
+    // within this one chunk.
+    //
+    // Cold path -- reached from SearchExact and tests -- so a scratch allocation per call is
+    // fine.
+    if (header.rerank_kind != vector_index::RerankStorageKind::kNone) {
+      const auto kind = vector_index::StorageKindForRerank(header.rerank_kind);
+      if (kind == VectorStorageKind::kFloat32) {
+        return index_.RerankDistance(
+            pointer_cast<const std::byte*>(lhs.data()),
+            pointer_cast<const std::byte*>(rhs.data()));
+      }
+      // No rerank encoding quantizes, so none of them needs the scale.
+      const auto bytes = vector_index::CoordinateBytes(kind, header.dimensions);
+      std::vector<std::byte> buffer(bytes * 2);
+      vector_index::NarrowCoordinates(kind, lhs.data(), header.dimensions, buffer.data());
+      vector_index::NarrowCoordinates(
+          kind, rhs.data(), header.dimensions, buffer.data() + bytes);
+      return index_.RerankDistance(buffer.data(), buffer.data() + bytes);
+    }
+
     if (header.storage_kind == VectorStorageKind::kFloat32) {
       return index_.Distance(
           pointer_cast<const std::byte*>(lhs.data()), pointer_cast<const std::byte*>(rhs.data()));
     }
     // The metric decodes this file's encoding, so full-precision arguments have to go through
-    // the same narrowing the stored records did. Cold path -- reached only from SearchExact and
-    // tests -- so a scratch allocation per call is fine.
+    // the same narrowing the stored records did.
     const auto bytes = vector_index::CoordinateBytes(header.storage_kind, header.dimensions);
     std::vector<std::byte> buffer(bytes * 2);
     vector_index::NarrowCoordinates(
-        header.storage_kind, lhs.data(), header.dimensions, buffer.data());
+        header.storage_kind, header.quantization_scale, lhs.data(), header.dimensions,
+        buffer.data());
     vector_index::NarrowCoordinates(
-        header.storage_kind, rhs.data(), header.dimensions, buffer.data() + bytes);
+        header.storage_kind, header.quantization_scale, rhs.data(), header.dimensions,
+        buffer.data() + bytes);
     return index_.Distance(buffer.data(), buffer.data() + bytes);
   }
 
@@ -228,7 +264,7 @@ Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
     const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options) {
   auto result = std::make_shared<YbHnswIndex<Vector, DistanceResult>>(
       MakeMetricFactory(options), block_cache);
-  RETURN_NOT_OK(result->Import(index, path, options.storage_kind));
+  RETURN_NOT_OK(result->Import(index, path, options.storage_kind, options.rerank_kind));
   return result;
 }
 

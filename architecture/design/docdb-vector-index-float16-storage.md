@@ -271,7 +271,9 @@ indexed table has taken its share.
    The `vector` column makes the table roughly as large as the index.
 3. If the sum comfortably fits, the residency argument does not apply to you and the remaining
    gain is DRAM traffic per distance — real but modest, and partly cancelled by the kernel
-   asymmetry above. Measure before adopting.
+   asymmetry above. Measure before adopting, and see
+   [int8 vector index storage](docdb-vector-index-int8-storage.md), which is the encoding aimed at
+   this case: a quarter of the bytes per distance and a wider kernel, at a larger record.
 4. If the sum is near or above the cache, fp16 is doing real work and is worth adopting once
    recall checks out.
 5. On an AVX-512 host, evaluate `SIMSIMD_TARGET_SAPPHIRE` first — otherwise the fp16 measurement

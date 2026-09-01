@@ -104,6 +104,7 @@ DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
+DECLARE_uint32(vector_index_rerank_overfetch_factor);
 DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
@@ -4574,14 +4575,19 @@ TEST_P(PgVectorIndexTest, StatusResolutionDuringBootstrapBackfill) {
 // Runs the default backend with the served chunks storing float16 coordinates. The graph is still
 // built at full precision, so what these tests cover is whether narrowed records survive the
 // round trip through flush, restart, compaction and the query path.
-class PgVectorIndexFloat16Test : public PgVectorIndexTestBase {
+// Shared by the narrowed-storage fixtures below. Each subclass names the encoding, so the same
+// suite runs against every one of them and a regression in one shows up as the same test failing.
+class PgVectorIndexNarrowStorageTest : public PgVectorIndexTestBase {
  protected:
+  virtual std::string StorageCoordinateType() const = 0;
+
   bool IsColocated() const override { return false; }
   VectorIndexEngine Engine() const override { return VectorIndexEngine::kYbHnswHnswlib; }
   PackingMode GetPackingMode() const override { return PackingMode::kV1; }
 
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_storage_coordinate_type) = "float16";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_storage_coordinate_type) =
+        StorageCoordinateType();
     PgVectorIndexTestBase::SetUp();
     // The base fixture forces brute-force search; these tests want the real graph walk over
     // narrowed records.
@@ -4619,6 +4625,33 @@ class PgVectorIndexFloat16Test : public PgVectorIndexTestBase {
     }
     return static_cast<double>(found) / (limit * iterations);
   }
+
+  // Storage type recorded on every vector index this cluster is serving.
+  std::map<VectorStorageType, size_t> StorageTypeCounts() {
+    std::map<VectorStorageType, size_t> counts;
+    for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+      auto tablet = CHECK_RESULT(peer->shared_tablet());
+      auto indexes = tablet->vector_indexes().List();
+      CHECK(indexes);
+      for (const auto& index : *indexes) {
+        ++counts[index->options().hnsw().storage_type()];
+      }
+    }
+    return counts;
+  }
+};
+
+class PgVectorIndexFloat16Test : public PgVectorIndexNarrowStorageTest {
+ protected:
+  std::string StorageCoordinateType() const override { return "float16"; }
+};
+
+// int8 traversal coordinates with a float16 rerank copy. The rerank tier is what makes the
+// encoding usable: int8 alone loses recall that no amount of ef recovers, because the search
+// still keeps only max_num_results entries ranked by the quantized distance.
+class PgVectorIndexInt8Test : public PgVectorIndexNarrowStorageTest {
+ protected:
+  std::string StorageCoordinateType() const override { return "int8"; }
 };
 
 // The encoding is fixed per index at creation time so every replica agrees on it. A tserver-local
@@ -4756,16 +4789,191 @@ TEST_F(PgVectorIndexFloat16Test, CoexistsWithFloat32Index) {
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 60s * kTimeMultiplier));
   ASSERT_OK(cluster_->FlushTablets());
 
-  std::map<VectorStorageType, size_t> counts;
-  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
-    auto tablet = ASSERT_RESULT(peer->shared_tablet());
-    auto indexes = tablet->vector_indexes().List();
-    ASSERT_TRUE(indexes);
-    for (const auto& index : *indexes) {
-      ++counts[index->options().hnsw().storage_type()];
+  auto counts = StorageTypeCounts();
+  LOG(INFO) << "indexes by storage type: " << AsString(counts);
+  ASSERT_GT(counts[VectorStorageType::STORAGE_FLOAT16], 0);
+  ASSERT_GT(counts[VectorStorageType::STORAGE_FLOAT32], 0);
+
+  ASSERT_GE(ASSERT_RESULT(MeasureRecall(conn, kLimit, 10)), 0.8);
+}
+
+
+TEST_F(PgVectorIndexInt8Test, StorageTypeIsRecordedInTheCatalog) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+
+  auto counts = StorageTypeCounts();
+  LOG(INFO) << "indexes by storage type: " << AsString(counts);
+  ASSERT_GT(counts[VectorStorageType::STORAGE_INT8], 0);
+  ASSERT_EQ(counts[VectorStorageType::STORAGE_FLOAT32], 0);
+  ASSERT_EQ(counts[VectorStorageType::STORAGE_FLOAT16], 0);
+}
+
+// The reported distance is unaffected by the storage encoding, however lossy: ybvectorgettuple
+// leaves xs_orderbyvals unset and xs_recheckorderby false, so the executor evaluates `<->` over
+// the full-precision column value from the heap tuple. int8 is the strongest form of this test,
+// because a leaked index distance would be in quantized units and off by orders of magnitude.
+TEST_F(PgVectorIndexInt8Test, ReportedDistancesStayFullPrecision) {
+  constexpr size_t kNumRows = 500;
+  constexpr size_t kLimit = 10;
+
+  dimensions_ = 16;
+  auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  // Mirrors pgvector's l2_distance: float32 accumulation, then sqrt in double.
+  auto exact_l2_distance = [](const FloatVector& lhs, const FloatVector& rhs) {
+    float squared = 0.0f;
+    for (size_t i = 0; i != lhs.size(); ++i) {
+      const float diff = lhs[i] - rhs[i];
+      squared += diff * diff;
+    }
+    return std::sqrt(static_cast<double>(squared));
+  };
+
+  for (size_t i = 0; i != 10; ++i) {
+    auto query_vector = RandomVector();
+    auto rows = ASSERT_RESULT((conn.FetchRows<int64_t, double>(Format(
+        "SELECT id, $0 FROM test$1",
+        DistanceToQuery(query_vector), IndexQuerySuffix(query_vector, kLimit)))));
+    ASSERT_FALSE(rows.empty());
+
+    for (const auto& [id, reported] : rows) {
+      const auto exact = exact_l2_distance(query_vector, vectors_[id]);
+      ASSERT_LE(std::fabs(reported - exact), 1e-5 * std::max<double>(exact, 1.0))
+          << "id: " << id << ", reported: " << reported << ", exact: " << exact;
     }
   }
+}
+
+// The threshold matches the float16 suite's, which is the whole point: reranking should leave the
+// user-visible recall indistinguishable from storing float16 outright.
+TEST_F(PgVectorIndexInt8Test, Recall) {
+  constexpr size_t kNumRows = 2000;
+  constexpr size_t kLimit = 10;
+  constexpr size_t kIterations = 20;
+
+  dimensions_ = 32;
+  auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto recall = ASSERT_RESULT(MeasureRecall(conn, kLimit, kIterations));
+  LOG(INFO) << "int8 recall@" << kLimit << ": " << recall;
+  ASSERT_GE(recall, 0.8);
+}
+
+// End-to-end proof that the over-fetch flag reaches the search path: turning it off has to change
+// which rows come back. Recall is not the assertion -- the size of the gap depends on the data,
+// and the mechanism is pinned deterministically by the YbHnsw unit tests. What this adds is that
+// the tserver flag is wired through at all.
+TEST_F(PgVectorIndexInt8Test, OverFetchFlagReachesTheSearchPath) {
+  constexpr size_t kNumRows = 2000;
+  constexpr size_t kLimit = 10;
+  constexpr size_t kIterations = 30;
+
+  dimensions_ = 32;
+  auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  std::vector<FloatVector> queries;
+  for (size_t i = 0; i != kIterations; ++i) {
+    queries.push_back(RandomVector());
+  }
+
+  auto fetch_all = [this, &conn, &queries]() -> Result<std::vector<std::string>> {
+    std::vector<std::string> result;
+    for (const auto& query : queries) {
+      result.push_back(AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(
+          "SELECT id FROM test" + IndexQuerySuffix(query, kLimit)))));
+    }
+    return result;
+  };
+
+  auto with_overfetch = ASSERT_RESULT(fetch_all());
+  auto recall_with = ASSERT_RESULT(MeasureRecall(conn, kLimit, kIterations));
+
+  // Factor 1 retains exactly the requested count, so reranking can only reorder it. The flag is
+  // runtime-settable and the tservers share this process, so writing it here is enough.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_rerank_overfetch_factor) = 1;
+  auto without_overfetch = ASSERT_RESULT(fetch_all());
+  auto recall_without = ASSERT_RESULT(MeasureRecall(conn, kLimit, kIterations));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_rerank_overfetch_factor) = 2;
+
+  LOG(INFO) << "int8 recall@" << kLimit << " with over-fetch: " << recall_with
+            << ", without: " << recall_without;
+  ASSERT_NE(with_overfetch, without_overfetch)
+      << "disabling the over-fetch returned identical rows for all " << kIterations
+      << " queries, so the flag is not reaching the search";
+  ASSERT_GE(recall_with, recall_without);
+}
+
+// Flush writes the two-tier records, and restart reopens them through YbHnsw::Init -- the path
+// where both metrics and the quantization scale have to be rebuilt from the file's own footer.
+TEST_F(PgVectorIndexInt8Test, SurvivesFlushAndRestart) {
+  constexpr size_t kNumRows = 1000;
+  constexpr size_t kLimit = 10;
+
+  dimensions_ = 16;
+  auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto before = ASSERT_RESULT(MeasureRecall(conn, kLimit, 10));
+
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+
+  auto after = ASSERT_RESULT(MeasureRecall(conn, kLimit, 10));
+  LOG(INFO) << "recall before restart: " << before << ", after: " << after;
+  ASSERT_GE(after, 0.8);
+}
+
+// The hazard specific to a quantized encoding: each merged chunk derives its own scale, so if
+// compaction read the int8 coordinates instead of the rerank copy, error would compound once per
+// merge. Several chunks merged in sequence is what makes that visible.
+TEST_F(PgVectorIndexInt8Test, SurvivesRepeatedCompaction) {
+  constexpr size_t kRowsPerChunk = 300;
+  constexpr size_t kNumChunks = 4;
+  constexpr size_t kLimit = 10;
+
+  dimensions_ = 16;
+  auto conn = ASSERT_RESULT(MakeIndex(dimensions_));
+  for (size_t chunk = 0; chunk != kNumChunks; ++chunk) {
+    ASSERT_OK(InsertRandomRows(conn, kRowsPerChunk));
+    ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+    ASSERT_OK(cluster_->FlushTablets());
+  }
+
+  auto before = ASSERT_RESULT(MeasureRecall(conn, kLimit, 10));
+
+  for (size_t round = 0; round != 3; ++round) {
+    ASSERT_OK(cluster_->CompactTablets());
+    auto after = ASSERT_RESULT(MeasureRecall(conn, kLimit, 10));
+    LOG(INFO) << "recall after compaction round " << round << ": " << after
+              << " (before any compaction: " << before << ")";
+    ASSERT_GE(after, 0.8) << "recall decayed by compaction round " << round;
+  }
+}
+
+// All three encodings on one table. Each index records its own, and each chunk its own scale, so
+// nothing here may be cached across indexes.
+TEST_F(PgVectorIndexInt8Test, CoexistsWithOtherEncodings) {
+  constexpr size_t kNumRows = 500;
+  constexpr size_t kLimit = 10;
+
+  dimensions_ = 16;
+  auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+
+  for (auto [encoding, name] : {std::pair{"float32", "vi_f32"}, std::pair{"float16", "vi_f16"}}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_storage_coordinate_type) = encoding;
+    ASSERT_OK(conn.Execute(Format(
+        "CREATE INDEX $0 ON test USING ybhnsw (embedding vector_l2_ops) WITH (m=16)", name)));
+    ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 60s * kTimeMultiplier));
+  }
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto counts = StorageTypeCounts();
   LOG(INFO) << "indexes by storage type: " << AsString(counts);
+  ASSERT_GT(counts[VectorStorageType::STORAGE_INT8], 0);
   ASSERT_GT(counts[VectorStorageType::STORAGE_FLOAT16], 0);
   ASSERT_GT(counts[VectorStorageType::STORAGE_FLOAT32], 0);
 

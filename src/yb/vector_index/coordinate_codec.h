@@ -40,6 +40,11 @@ constexpr float kMaxFloat16 = 65504.0f;
 // Which is why fp16 is safe for distances but not for round-tripping arbitrary small floats.
 constexpr float kFloat16MinNormal = 6.103515625e-05f;
 
+// Largest magnitude kInt8 storage represents. 127 rather than 128 so the range is symmetric and
+// -128 never occurs, which keeps negation and the integer distance kernels free of a special
+// case.
+constexpr float kMaxInt8 = 127.0f;
+
 // Bytes occupied by `dimensions` coordinates stored as `kind`.
 size_t CoordinateBytes(VectorStorageKind kind, size_t dimensions);
 
@@ -55,10 +60,33 @@ void NarrowCoordinates(
     VectorStorageKind kind, const float* src, size_t dimensions, void* dst,
     size_t* num_clamped = nullptr);
 
+// As above, for encodings that quantize against a scale: stored = round(coordinate / scale).
+//
+// `scale` must be the one recorded in the header of the chunk whose records this encoding will be
+// compared against -- never a freshly computed one. It is derived per chunk from that chunk's own
+// coordinates, so two chunks of the same index hold different scales, and quantizing a query with
+// the wrong one silently degrades recall for that chunk alone.
+//
+// Ignored by encodings that do not quantize, so a caller that does not know the kind can always
+// pass the header's scale.
+void NarrowCoordinates(
+    VectorStorageKind kind, float scale, const float* src, size_t dimensions, void* dst,
+    size_t* num_clamped = nullptr);
+
 // Widens `dimensions` coordinates in the `kind` encoding at `src` back to float32 in `dst`.
-// `src` need not be aligned. Lossless for every kind, so narrow(widen(narrow(x))) equals
-// narrow(x) and precision does not drift as chunks are repeatedly compacted.
+// `src` need not be aligned.
+//
+// Exact for the float encodings. For kInt8 it recovers scale * stored, which is not the original
+// coordinate -- but narrow(widen(narrow(x))) still equals narrow(x) at a fixed scale, so a value
+// that has been through this once does not drift further. That fixed point does not hold across
+// chunk boundaries, because a merged chunk derives a new scale: see the note on the rerank tier
+// in vector_storage_kind.h for why compaction reads the rerank copy instead.
 void WidenCoordinates(
     VectorStorageKind kind, const void* src, size_t dimensions, float* dst);
+
+// As above, for encodings that quantize against a scale. See NarrowCoordinates for what `scale`
+// must be.
+void WidenCoordinates(
+    VectorStorageKind kind, float scale, const void* src, size_t dimensions, float* dst);
 
 }  // namespace yb::vector_index

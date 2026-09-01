@@ -38,6 +38,21 @@ std::vector<float> Widen(VectorStorageKind kind, const std::vector<std::byte>& i
   return out;
 }
 
+std::vector<std::byte> Narrow(
+    VectorStorageKind kind, float scale, const std::vector<float>& in,
+    size_t* clamped = nullptr) {
+  std::vector<std::byte> out(CoordinateBytes(kind, in.size()));
+  NarrowCoordinates(kind, scale, in.data(), in.size(), out.data(), clamped);
+  return out;
+}
+
+std::vector<float> Widen(
+    VectorStorageKind kind, float scale, const std::vector<std::byte>& in, size_t dims) {
+  std::vector<float> out(dims);
+  WidenCoordinates(kind, scale, in.data(), dims, out.data());
+  return out;
+}
+
 std::vector<float> RandomVector(size_t dimensions) {
   std::mt19937_64 rng(42);
   std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
@@ -164,18 +179,177 @@ TEST_F(CoordinateCodecTest, HandlesUnalignedBuffers) {
   constexpr size_t kDims = 37;
   auto in = RandomVector(kDims);
 
+  constexpr float kScale = 0.01f;
+
   for (size_t offset = 0; offset != 4; ++offset) {
-    for (auto kind : {VectorStorageKind::kFloat32, VectorStorageKind::kFloat16}) {
+    for (auto kind : {VectorStorageKind::kFloat32, VectorStorageKind::kFloat16,
+                      VectorStorageKind::kInt8}) {
       std::vector<std::byte> buffer(CoordinateBytes(kind, kDims) + offset);
-      NarrowCoordinates(kind, in.data(), kDims, buffer.data() + offset);
+      NarrowCoordinates(kind, kScale, in.data(), kDims, buffer.data() + offset);
 
       std::vector<float> back(kDims);
-      WidenCoordinates(kind, buffer.data() + offset, kDims, back.data());
+      WidenCoordinates(kind, kScale, buffer.data() + offset, kDims, back.data());
 
-      auto aligned = Widen(kind, Narrow(kind, in), kDims);
+      auto aligned = Widen(kind, kScale, Narrow(kind, kScale, in), kDims);
       ASSERT_EQ(aligned, back) << "kind: " << kind << ", offset: " << offset;
     }
   }
+}
+
+
+TEST_F(CoordinateCodecTest, Int8SizeMatchesScalarWidth) {
+  ASSERT_EQ(CoordinateBytes(VectorStorageKind::kInt8, 768), size_t{768});
+  ASSERT_EQ(CoordinateBytes(VectorStorageKind::kInt8, 0), size_t{0});
+}
+
+// Everything else in the design rests on this: a value that has been through the codec once must
+// re-encode to the same bytes, or repeated compaction walks a vector away from where it started.
+TEST_F(CoordinateCodecTest, Int8NarrowingIsIdempotent) {
+  constexpr size_t kDims = 97;
+  constexpr float kScale = 0.003f;
+  auto in = RandomVector(kDims);
+
+  auto once = Narrow(VectorStorageKind::kInt8, kScale, in);
+  auto widened = Widen(VectorStorageKind::kInt8, kScale, once, kDims);
+  auto twice = Narrow(VectorStorageKind::kInt8, kScale, widened);
+  ASSERT_EQ(once, twice);
+
+  auto widened_again = Widen(VectorStorageKind::kInt8, kScale, twice, kDims);
+  ASSERT_EQ(widened, widened_again);
+}
+
+// The writer and the query path both come through here, so the same input has to produce the same
+// bytes -- otherwise an indexed vector stops being at distance zero from itself.
+TEST_F(CoordinateCodecTest, Int8SameInputNarrowsToSameBytes) {
+  constexpr size_t kDims = 64;
+  constexpr float kScale = 0.007f;
+  auto in = RandomVector(kDims);
+  ASSERT_EQ(
+      Narrow(VectorStorageKind::kInt8, kScale, in),
+      Narrow(VectorStorageKind::kInt8, kScale, in));
+}
+
+// int8's guarantee is absolute, not relative: within half a quantization step everywhere in
+// range. That is the opposite shape from float16, whose bound is relative and collapses for
+// subnormals, and it is why the two encodings suit different jobs.
+TEST_F(CoordinateCodecTest, Int8ErrorIsWithinHalfAStep) {
+  constexpr size_t kDims = 512;
+  constexpr float kScale = 0.002f;
+
+  auto in = RandomVector(kDims);
+  // Include the exact boundaries and a value far below the step size.
+  in[0] = 0.0f;
+  in[1] = kScale;
+  in[2] = -kScale;
+  in[3] = kScale / 2;
+  in[4] = kScale * 126.5f;
+  in[5] = 1e-30f;
+
+  auto back = Widen(
+      VectorStorageKind::kInt8, kScale, Narrow(VectorStorageKind::kInt8, kScale, in), kDims);
+
+  float worst = 0;
+  for (size_t i = 0; i != kDims; ++i) {
+    worst = std::max(worst, std::fabs(back[i] - in[i]));
+  }
+  LOG(INFO) << "worst absolute int8 error: " << worst << ", half a step: " << kScale / 2;
+  ASSERT_LE(worst, kScale / 2 * 1.0001f);
+
+  // Zero is exact at any scale, which is what makes an all-zero vector's self-distance zero.
+  ASSERT_EQ(back[0], 0.0f);
+  ASSERT_EQ(back[1], kScale);
+  ASSERT_EQ(back[2], -kScale);
+}
+
+// float16 saturates an out-of-range magnitude to infinity; an out-of-range float -> int8_t
+// conversion is undefined behaviour instead. So the clamp here is not just protecting accuracy,
+// it is the only thing keeping the stored byte meaningful at all.
+TEST_F(CoordinateCodecTest, Int8ClampsValuesOutsideRange) {
+  constexpr float kScale = 0.01f;
+  size_t clamped = 0;
+  std::vector<float> in = {
+      0.0f,                      // exact
+      kScale * 127,              // the largest in-range value
+      -kScale * 127,             // and its negation
+      kScale * 128,              // one step past
+      1e9f,                      // far past
+      -1e9f,
+      std::numeric_limits<float>::quiet_NaN(),
+  };
+  auto out = Narrow(VectorStorageKind::kInt8, kScale, in, &clamped);
+  const auto* bytes = reinterpret_cast<const int8_t*>(out.data());
+
+  ASSERT_EQ(bytes[0], 0);
+  ASSERT_EQ(bytes[1], 127);
+  ASSERT_EQ(bytes[2], -127);
+  ASSERT_EQ(bytes[3], 127);
+  ASSERT_EQ(bytes[4], 127);
+  ASSERT_EQ(bytes[5], -127);
+  // NaN becomes zero rather than an arbitrary byte.
+  ASSERT_EQ(bytes[6], 0);
+
+  // kScale * 128, +-1e9 and NaN are out of range; 0 and +-kScale * 127 are not.
+  ASSERT_EQ(clamped, size_t{4});
+
+  // Every byte is a valid int8, which is the undefined behaviour the clamp prevents.
+  for (size_t i = 0; i != in.size(); ++i) {
+    ASSERT_GE(bytes[i], -127) << "index " << i;
+    ASSERT_LE(bytes[i], 127) << "index " << i;
+  }
+}
+
+TEST_F(CoordinateCodecTest, Int8ClampCounterAccumulates) {
+  constexpr float kScale = 0.01f;
+  size_t clamped = 0;
+  Narrow(VectorStorageKind::kInt8, kScale, {1e9f}, &clamped);
+  Narrow(VectorStorageKind::kInt8, kScale, {1e9f, -1e9f}, &clamped);
+  ASSERT_EQ(clamped, size_t{3});
+}
+
+// The two encodings sit back to back in one record, so writing the second must not disturb the
+// first and reading either must not stray into the other.
+TEST_F(CoordinateCodecTest, InterleavedEncodingsDoNotOverlap) {
+  constexpr size_t kDims = 97;
+  constexpr float kScale = 0.003f;
+  constexpr size_t kRecordHeader = 20;   // sizeof(YbHnswVectorData)
+  auto in = RandomVector(kDims);
+
+  const auto traversal_bytes = CoordinateBytes(VectorStorageKind::kInt8, kDims);
+  const auto rerank_bytes = CoordinateBytes(VectorStorageKind::kFloat16, kDims);
+  std::vector<std::byte> record(kRecordHeader + traversal_bytes + rerank_bytes);
+
+  NarrowCoordinates(
+      VectorStorageKind::kInt8, kScale, in.data(), kDims, record.data() + kRecordHeader);
+  NarrowCoordinates(
+      VectorStorageKind::kFloat16, in.data(), kDims,
+      record.data() + kRecordHeader + traversal_bytes);
+
+  std::vector<float> traversal(kDims), rerank(kDims);
+  WidenCoordinates(
+      VectorStorageKind::kInt8, kScale, record.data() + kRecordHeader, kDims, traversal.data());
+  WidenCoordinates(
+      VectorStorageKind::kFloat16, record.data() + kRecordHeader + traversal_bytes, kDims,
+      rerank.data());
+
+  ASSERT_EQ(traversal, Widen(
+      VectorStorageKind::kInt8, kScale, Narrow(VectorStorageKind::kInt8, kScale, in), kDims));
+  ASSERT_EQ(rerank, Widen(
+      VectorStorageKind::kFloat16, Narrow(VectorStorageKind::kFloat16, in), kDims));
+
+  // The rerank copy has to be materially closer to the original, or it cannot correct anything.
+  float traversal_worst = 0, rerank_worst = 0;
+  for (size_t i = 0; i != kDims; ++i) {
+    traversal_worst = std::max(traversal_worst, std::fabs(traversal[i] - in[i]));
+    rerank_worst = std::max(rerank_worst, std::fabs(rerank[i] - in[i]));
+  }
+  LOG(INFO) << "traversal worst error " << traversal_worst << ", rerank worst error "
+            << rerank_worst;
+  ASSERT_LT(rerank_worst, traversal_worst);
+}
+
+TEST_F(CoordinateCodecTest, StorageKindForRerankMapsEveryTier) {
+  ASSERT_EQ(StorageKindForRerank(RerankStorageKind::kFloat16), VectorStorageKind::kFloat16);
+  ASSERT_EQ(StorageKindForRerank(RerankStorageKind::kFloat32), VectorStorageKind::kFloat32);
 }
 
 }  // namespace yb::vector_index
