@@ -614,7 +614,10 @@ cash_pl(PG_FUNCTION_ARGS)
 	Cash		c2 = PG_GETARG_CASH(1);
 	Cash		result;
 
-	result = c1 + c2;
+	if (unlikely(pg_add_s64_overflow(c1, c2, &result)))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("money out of range")));
 
 	PG_RETURN_CASH(result);
 }
@@ -630,7 +633,10 @@ cash_mi(PG_FUNCTION_ARGS)
 	Cash		c2 = PG_GETARG_CASH(1);
 	Cash		result;
 
-	result = c1 - c2;
+	if (unlikely(pg_sub_s64_overflow(c1, c2, &result)))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("money out of range")));
 
 	PG_RETURN_CASH(result);
 }
