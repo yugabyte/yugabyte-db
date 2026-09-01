@@ -194,6 +194,11 @@ YB_DEFINE_ENUM(FlushReason,
   // modeled. Future lint may restrict use of this value to test-only translation units.
   // If the test code path mimics one of the above cases, use that reason instead.
   (kTestOnly)
+
+  // Index-backfill ordering-generation release: flushes marked writes below the flushed
+  // frontier so the downgrade fence's released_marked_write_watermark condition converges.
+  // (Appended at the end: nothing persists this enum, but ordinal stability costs nothing.)
+  (kIndexBackfillGenerationRelease)
 );
 
 struct TableFileDeletionInfo {

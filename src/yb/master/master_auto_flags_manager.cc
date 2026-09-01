@@ -13,13 +13,18 @@
 
 #include "yb/master/master_auto_flags_manager.h"
 
+#include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql/ysql_manager_if.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/util/enum_parse.h"
 #include "yb/util/scope_exit.h"
 
@@ -53,6 +58,8 @@ bool ValidateAutoFlagClass(const char* flag_name, int32_t value) {
 DEFINE_validator(limit_auto_flag_promote_for_new_universe, &ValidateAutoFlagClass);
 
 DECLARE_bool(disable_auto_flags_management);
+DECLARE_int32(follower_unavailable_considered_failed_sec);
+DECLARE_int32(master_ts_rpc_timeout_ms);
 
 namespace yb::master {
 
@@ -483,12 +490,108 @@ Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> MasterAutoFlagsManager::Pro
   return std::make_pair(new_config.config_version(), outcome);
 }
 
+namespace {
+
+// Demoting this flag re-admits binaries that replay marked backfill writes positionally
+// (byte divergence, #33444); the fence below refuses until the marked-write state drains.
+const char kDeferredUniqueIndexVerificationFlagName[] =
+    "ysql_enable_deferred_unique_index_verification";
+
+// Bound on table ids named in the fence's refusal message.
+constexpr size_t kMaxTablesToReport = 5;
+
+}  // namespace
+
+// The downgrade fence for deferred unique-index verification. Sound because generation
+// release persists released_marked_write_watermark and schedules a regular-DB flush: once
+// no job is active, no generation is active, and every released watermark is below its
+// tablet's flushed frontier, no marked WAL entry can replay on any binary.
+//
+// Residual window: a SKIP_ALL job created between this scan and the demoted config reaching
+// tservers is not seen here; its marked writes are then rejected by the write-time
+// capability check once the config propagates (seconds), but writes accepted inside the
+// window carry the usual hazard. Operators demote during drained maintenance, not while
+// concurrently issuing CREATE INDEX.
+Status MasterAutoFlagsManager::ValidateDeferredUniqueIndexVerificationDemotion() {
+  // (a) Active SKIP_ALL backfill jobs: chunks may still be appending marked writes.
+  std::vector<TableId> tables_with_jobs;
+  for (const auto& table : catalog_manager_->GetTables(GetTablesMode::kAll)) {
+    auto l = table->LockForRead();
+    for (const auto& job : l->pb.backfill_jobs()) {
+      if (job.unique_index_backfill_mode() ==
+          UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL) {
+        tables_with_jobs.push_back(table->id());
+        break;
+      }
+    }
+    if (tables_with_jobs.size() >= kMaxTablesToReport) {
+      break;
+    }
+  }
+  SCHECK_FORMAT(
+      tables_with_jobs.empty(), IllegalState,
+      "Cannot demote AutoFlag $0: table(s) $1 have active SKIP_ALL index-backfill jobs whose "
+      "marked writes an older binary would replay divergently. Wait for the CREATE INDEX "
+      "builds to finish (or abort them), then retry.",
+      kDeferredUniqueIndexVerificationFlagName, tables_with_jobs);
+
+  // (b) tserver probe: active ordering generations, or released ones whose marked WAL
+  // entries are not yet below the flushed frontier. Sequential synchronous fan-out: demotion
+  // is a rare admin operation. Every registered tserver is probed and an unreachable one
+  // FAILS the demotion (fail closed: a node dead for less than the eviction horizon still
+  // holds config-member replicas, possibly with unflushed marked WAL). The one exception is
+  // a tserver dead past follower_unavailable_considered_failed_sec: its replicas have been
+  // evicted and re-replicated, and if it ever returns on an old binary its stale local
+  // replay is confined to data that is tombstoned before serving.
+  const auto eviction_horizon =
+      MonoDelta::FromSeconds(FLAGS_follower_unavailable_considered_failed_sec);
+  for (const auto& desc : master_.ts_manager()->GetAllDescriptors()) {
+    if (!desc->IsLive() && desc->TimeSinceHeartbeat() > eviction_horizon) {
+      continue;
+    }
+    std::shared_ptr<tserver::TabletServerAdminServiceProxy> proxy;
+    RETURN_NOT_OK(desc->GetProxy(&proxy));
+    tserver::CheckIndexBackfillDowngradeSafetyRequestPB req;
+    req.set_dest_uuid(desc->permanent_uuid());
+    tserver::CheckIndexBackfillDowngradeSafetyResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
+    RETURN_NOT_OK_PREPEND(
+        proxy->CheckIndexBackfillDowngradeSafety(req, &resp, &controller),
+        Format(
+            "Cannot demote AutoFlag $0: tserver $1 is unreachable and may hold marked-write "
+            "state an older binary would replay divergently. Wait for it to return (or "
+            "decommission it), then retry",
+            kDeferredUniqueIndexVerificationFlagName, desc->permanent_uuid()));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    SCHECK_FORMAT(
+        resp.active_generation_tablets() == 0 && resp.unflushed_marked_wal_tablets() == 0,
+        IllegalState,
+        "Cannot demote AutoFlag $0: tserver $1 reports $2 tablet(s) with an active "
+        "index-backfill ordering generation and $3 with marked WAL entries not yet flushed. "
+        "An older binary would replay those writes divergently. Wait for the builds to "
+        "finish and the release flushes to converge (stragglers converge via the tablet "
+        "metadata validator), then retry.",
+        kDeferredUniqueIndexVerificationFlagName, desc->permanent_uuid(),
+        resp.active_generation_tablets(), resp.unflushed_marked_wal_tablets());
+  }
+  return Status::OK();
+}
+
 Result<std::pair<uint32_t, bool>> MasterAutoFlagsManager::DemoteSingleAutoFlag(
     const ProcessName& process_name, const std::string& flag_name) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
 
   // Make sure process and AutoFlag exists.
   RETURN_NOT_OK(GetFlagInfo(process_name, flag_name));
+
+  // Feature-state veto (promote-side precedent: the YSQL major-upgrade check above). This is
+  // deliberately not bypassable: every blocking condition drains on its own.
+  if (flag_name == kDeferredUniqueIndexVerificationFlagName) {
+    RETURN_NOT_OK(ValidateDeferredUniqueIndexVerificationDemotion());
+  }
 
   auto new_config = GetConfig();
   if (!VERIFY_RESULT(RemoveFlagFromConfig(process_name, flag_name, &new_config))) {
