@@ -32,7 +32,7 @@ The following ports need to be open.
 | Application | DB nodes | Open the following ports on database cluster nodes so that applications can connect via APIs. For universes with [Client-to-Node encryption in transit](../../security/enable-encryption-in-transit/), communication over these ports is encrypted. Universes can also be configured with database [authorization](../../security/authorization-platform/) and [authentication](../../security/authentication/) to manage access.<ul><li>5433 - YSQL server</li><li>9042 - YCQL server</li></ul> |
 | DB nodes | YBA&nbsp;node | Open the following port on the YugabyteDB Anywhere node so that node agents can communicate. This port is also used during node provisioning.<ul><li>443 - HTTPS</li></ul> |
 | Operator | YBA&nbsp;node | Open the following ports on the YugabyteDB Anywhere node so that administrators can access the YBA UI and monitor the system and node metrics. These ports are also used by standby YBA instances in [high availability](../../administer-yugabyte-platform/high-availability/) setups.<ul><li>443 - HTTPS</li><li>9090 - Served by Prometheus, for metrics</li></ul>Port 5432 serves a local PostgreSQL instance, and is not exposed outside of localhost.<br>Port 6433 serves built-in connection pooling (if enabled). |
-| DB nodes<br>YBA node | Storage | Database clusters must be allowed to contact backup storage (such as AWS S3, GCP GCS, Azure blob).<ul><li>443 - HTTPS</li></ul> |
+| DB nodes<br>YBA node | Storage | Database clusters must be allowed to contact backup storage (such as AWS S3, GCP GCS, Azure blob, OCI Object Storage).<ul><li>443 - HTTPS</li></ul> |
 
 ### Firewall changes for CIS hardened images
 

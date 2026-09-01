@@ -88,7 +88,7 @@ Specify the instance to use for the universe nodes:
 - Choose the **CPU Architecture**, either x86 (Intel) or AArch6 (ARM).
 - Choose the **Linux version** to be provisioned on the nodes of the universe.
 
-  This option only applies if you have selected an AWS, GCP, or Azure provider configuration. The available Linux versions are specified in the provider.
+  This option only applies if you have selected an AWS, GCP, Azure, or OCI provider configuration. The available Linux versions are specified in the provider.
 
   If you are performing an airgapped installation, you cannot use YBA-Managed Linux versions; you must use a custom image. Do the following before creating your universe:
 
@@ -113,6 +113,10 @@ Specify the instance to use for the universe nodes:
   You can use AWS EBS volume-level encryption and YugabyteDB Anywhere envelope [Encryption at rest](../../security/enable-encryption-at-rest/) (EAR) at the same time. Configure each one with its own KMS config; you cannot use the same KMS config for both.
 
   Currently, you cannot use EBS volume-level encryption for multi-region universe deployments, because an instance in one region cannot access the KMS key in another region.
+
+#### Additional OCI fields
+
+- Choose the OCI **Volume Type** between Balanced, Higher Performance, and Lower Cost. The default is Balanced.
 
 ### Security Configurations
 

@@ -1,12 +1,12 @@
 ---
-title: Create a KMS configuration using CipherTrust
+title: Create a KMS configuration using OCI Vault
 headerTitle: Create a KMS configuration
 linkTitle: Create a KMS configuration
-description: Use YugabyteDB Anywhere to create a KMS configuration for CipherTrust KMS.
+description: Use YugabyteDB Anywhere to create a KMS configuration for Oracle Cloud Infrastructure (OCI) Vault.
 menu:
   stable_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-5-ciphertrust-kms
+    identifier: create-kms-config-6-oci-kms
     weight: 50
 type: docs
 ---
@@ -35,7 +35,7 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
   </li>
 
   <li >
-    <a href="../oci-kms/" class="nav-link">
+    <a href="../oci-kms/" class="nav-link active">
       <i class="icon-oracle" aria-hidden="true"></i>
       OCI
     </a>
@@ -48,45 +48,31 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
   </li>
 
   <li >
-    <a href="../ciphertrust-kms/" class="nav-link active">
+    <a href="../ciphertrust-kms/" class="nav-link">
       CipherTrust
     </a>
   </li>
 
 </ul>
 
-Encryption at rest in YugabyteDB Anywhere supports the use of [CipherTrust KMS](https://thalesdocs.com/ctp/cm/latest/).
+Encryption at rest in YugabyteDB Anywhere supports the use of [OCI Vault](https://docs.oracle.com/en-us/iaas/Content/KeyManagement/Concepts/keyoverview.htm).
 
-## CipherTrust Manager prerequisites
+If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
 
-You must have a running CipherTrust Manager installation, and it must be accessible to YugabyteDB Anywhere.
+- The key should be in the Enabled state.
+- The purpose should be set to symmetric encryption (AES). YugabyteDB Anywhere uses AES-256.
 
-To create a KMS configuration, you need either the credentials of a CipherTrust user, or an authentication token.
+Note that YugabyteDB Anywhere does not manage the vault. Deleting the KMS configuration does not delete the vault, master key, or key versions on OCI Vault.
 
-- You can use a normal local user, or an LDAP-based user.
+## Prerequisites
 
-  The user or group that your user belongs to requires the following Key Access Properties:
-  - Read
-  - Use
-  - Encrypt
-  - Decrypt
+The OCI user or instance principal associated with a KMS configuration requires permissions to manage keys in the vault. See [To use encryption at rest with YugabyteDB Anywhere](../../../prepare/cloud-permissions/cloud-permissions-ear/).
 
-  For more information on managing users, refer to the [CipherTrust Administration](https://thalesdocs.com/ctp/cm/latest/admin/cm_admin/authentication/users/index.html) documentation.
-
-- If you use refresh tokens to authenticate, when the token expires you need to manually update the KMS configuration with the new token. For information on using authentication tokens, refer to [Authentication tokens](https://thalesdocs.com/ctp/cm/latest/admin/cm_admin/authentication/tokens/index.html#refresh-tokens) in the CipherTrust documentation.
-
-To use a pre-existing CipherTrust key, the key must have the following properties:
-
-- It must be Active.
-- Have the following Key Usage Permissions:
-  - Encrypt
-  - Decrypt
-
-YugabyteDB Anywhere can also create a CipherTrust key with the correct settings when creating a KMS configuration.
+Create the vault in the OCI Console before you create the KMS configuration. YugabyteDB Anywhere uses the vault you specify; it creates a key in that vault only if a key with the given display name does not already exist.
 
 ## Create a KMS configuration
 
-You can create a KMS configuration that uses CipherTrust, as follows:
+You can create a KMS configuration that uses OCI Vault, as follows:
 
 1. Navigate to **Integrations > Security > Encryption At Rest** to access the list of existing configurations.
 
@@ -95,14 +81,13 @@ You can create a KMS configuration that uses CipherTrust, as follows:
 1. Enter the following configuration details in the form:
 
     - **Configuration Name** — Enter a meaningful name for your configuration.
-    - **KMS Provider** — Select **CipherTrust KMS**.
-    - **CipherTrust Manager URL** — Enter the URL of your CipherTrust Manager deployment. This URL must be accessible to your YugabyteDB Anywhere instance.
-    - **Authentication type** — Choose **User Credentials** to provide a username and password, or **Refresh Token** to provide a token.
-    - **Key Name** — Enter the name of the key. If a key with the same name already exists, the existing key is used; otherwise, a new key is created automatically using the specified algorithm and size.
-    - **Key Algorithm** — Choose the encryption algorithm to use to create a new key.
-    - **Key Size** — Choose the key size for a new key.
-
-    ![CipherTrust KMS](/images/yp/security/kms-ciphertrust-config.png)
+    - **KMS Provider** — Select **OCI KMS**.
+    - **Authentication Type** — Choose **API Key** to supply OCI API signing key credentials, or **Instance Principal** to use the YBA host's instance identity without storing credentials.
+    - **User OCID**, **Tenancy OCID**, **Fingerprint**, and **Private Key** — Required when using API Key authentication. Upload the PEM private key file.
+    - **Region** — Select the OCI region where the vault and key are located. This setting does not need to match the region where the encrypted universe resides.
+    - **Compartment OCID** — OCID of the compartment where the key will be created (or already exists).
+    - **Vault OCID** — OCID of the vault that will contain the encryption key.
+    - **Key Name** — Display name of the OCI Vault key. If a key with this name exists, YugabyteDB Anywhere uses it; otherwise it creates one.
 
 1. Click **Save**.
 
@@ -112,13 +97,13 @@ You can create a KMS configuration that uses CipherTrust, as follows:
 
 ## Modify a KMS configuration
 
-You can modify the credentials to use to access your CipherTrust Manager as follows:
+You can modify an existing KMS configuration as follows:
 
 1. Navigate to **Integrations > Security > Encryption At Rest** to open a list of existing configurations.
 
 1. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
 
-1. Provide new values for the **Authentication** fields.
+1. You can update the API signing key credentials (User OCID, Tenancy OCID, Fingerprint, and Private Key) and the Compartment OCID. Authentication type, region, vault OCID, and key name cannot be changed.
 
 1. Click **Save**.
 

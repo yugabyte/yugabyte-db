@@ -35,6 +35,13 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
   </li>
 
   <li >
+    <a href="../oci-kms/" class="nav-link">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
+    </a>
+  </li>
+
+  <li >
     <a href="../hashicorp-kms/" class="nav-link active">
       HashiCorp
     </a>

@@ -37,6 +37,13 @@ type: docs
     </a>
   </li>
 
+  <li>
+    <a href="../oci/" class="nav-link">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
+    </a>
+  </li>
+
 </ul>
 
 Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
