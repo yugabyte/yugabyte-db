@@ -15973,7 +15973,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 			ybAppendUnrestrict(yb_use_roles_sql, dopt->restrict_key);
 			appendPQExpBufferStr(yb_use_roles_sql, "\\if :use_roles\n");
 			ybAppendRestrict(yb_use_roles_sql, dopt->restrict_key);
-			appendPQExpBufferStr(yb_use_roles_sql, sql->data);
+			ybAppendBracketedBlock(yb_use_roles_sql, sql->data,
+								   dopt->restrict_key);
 			ybAppendUnrestrict(yb_use_roles_sql, dopt->restrict_key);
 			appendPQExpBufferStr(yb_use_roles_sql, "\\endif\n");
 			ybAppendRestrict(yb_use_roles_sql, dopt->restrict_key);

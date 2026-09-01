@@ -27,7 +27,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'User_"_WITH_""_different''_''quotes'' and spaces') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' "User_""_WITH_""""_different'_'quotes' and spaces"
+    \echo 'Role already exists:' 'User_"_WITH_""_different''_''quotes'' and spaces'
 \else
 \restrict test
     CREATE ROLE "User_""_WITH_""""_different'_'quotes' and spaces";
@@ -42,7 +42,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' postgres
+    \echo 'Role already exists:' 'postgres'
 \else
 \restrict test
     CREATE ROLE postgres;
@@ -57,7 +57,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' regress_priv_user7
+    \echo 'Role already exists:' 'regress_priv_user7'
 \else
 \restrict test
     CREATE ROLE regress_priv_user7;
@@ -72,7 +72,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' regress_priv_user8
+    \echo 'Role already exists:' 'regress_priv_user8'
 \else
 \restrict test
     CREATE ROLE regress_priv_user8;
@@ -87,7 +87,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_db_admin') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_db_admin
+    \echo 'Role already exists:' 'yb_db_admin'
 \else
 \restrict test
     CREATE ROLE yb_db_admin;
@@ -102,7 +102,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_extension') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_extension
+    \echo 'Role already exists:' 'yb_extension'
 \else
 \restrict test
     CREATE ROLE yb_extension;
@@ -117,7 +117,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_fdw') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_fdw
+    \echo 'Role already exists:' 'yb_fdw'
 \else
 \restrict test
     CREATE ROLE yb_fdw;
@@ -132,7 +132,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_global_views_user') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_global_views_user
+    \echo 'Role already exists:' 'yb_global_views_user'
 \else
 \restrict test
     CREATE ROLE yb_global_views_user;
@@ -149,7 +149,7 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yugabyte_test
+    \echo 'Role already exists:' 'yugabyte_test'
 \else
 \restrict test
     CREATE ROLE yugabyte_test;
@@ -218,7 +218,7 @@ WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'regress_priv_user
     SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp1') AS tablespace_exists \gset
 \endif
 \if :tablespace_exists
-    \echo 'Tablespace tsp1 already exists.'
+    \echo 'Tablespace' 'tsp1' 'already exists.'
 \else
 \restrict test
     CREATE TABLESPACE tsp1 OWNER yugabyte_test LOCATION '';
@@ -232,7 +232,7 @@ WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'regress_priv_user
     SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp2') AS tablespace_exists \gset
 \endif
 \if :tablespace_exists
-    \echo 'Tablespace tsp2 already exists.'
+    \echo 'Tablespace' 'tsp2' 'already exists.'
 \else
 \restrict test
     CREATE TABLESPACE tsp2 OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
@@ -246,7 +246,7 @@ WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'regress_priv_user
     SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp_unused') AS tablespace_exists \gset
 \endif
 \if :tablespace_exists
-    \echo 'Tablespace tsp_unused already exists.'
+    \echo 'Tablespace' 'tsp_unused' 'already exists.'
 \else
 \restrict test
     CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"dc_unused","zone":"z_unused","min_num_replicas":1}]}');

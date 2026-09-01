@@ -27,7 +27,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' postgres
+    \echo 'Role already exists:' 'postgres'
 \else
 \restrict test
     CREATE ROLE postgres;
@@ -42,7 +42,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' test_user
+    \echo 'Role already exists:' 'test_user'
 \else
 \restrict test
     CREATE ROLE test_user;
@@ -57,7 +57,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user2') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' test_user2
+    \echo 'Role already exists:' 'test_user2'
 \else
 \restrict test
     CREATE ROLE test_user2;
@@ -72,7 +72,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user3') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' test_user3
+    \echo 'Role already exists:' 'test_user3'
 \else
 \restrict test
     CREATE ROLE test_user3;
@@ -87,7 +87,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_db_admin') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_db_admin
+    \echo 'Role already exists:' 'yb_db_admin'
 \else
 \restrict test
     CREATE ROLE yb_db_admin;
@@ -102,7 +102,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_extension') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_extension
+    \echo 'Role already exists:' 'yb_extension'
 \else
 \restrict test
     CREATE ROLE yb_extension;
@@ -117,7 +117,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_fdw') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_fdw
+    \echo 'Role already exists:' 'yb_fdw'
 \else
 \restrict test
     CREATE ROLE yb_fdw;
@@ -132,7 +132,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_global_views_user') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_global_views_user
+    \echo 'Role already exists:' 'yb_global_views_user'
 \else
 \restrict test
     CREATE ROLE yb_global_views_user;
@@ -149,7 +149,7 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yugabyte_test
+    \echo 'Role already exists:' 'yugabyte_test'
 \else
 \restrict test
     CREATE ROLE yugabyte_test;
