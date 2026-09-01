@@ -56,6 +56,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/disk_space_checker.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/promise.h"
@@ -798,10 +799,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // The callback guarantees that value returned would be a 'valid' Hybrid time.
   MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback_;
 
-  std::atomic<CoarseTimePoint> last_disk_space_check_time_{CoarseTimePoint::min()};
-  std::atomic<bool> has_free_disk_space_{false};
-  std::atomic<uint32> disk_space_frequent_check_interval_sec_{0};
-  std::shared_timed_mutex disk_space_mutex_;
+  DiskSpaceChecker disk_space_checker_;
 
   // Protect access to the get_xcluster_min_index_to_retain_.
   mutable PerCpuRwMutex get_xcluster_index_lock_;

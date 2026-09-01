@@ -332,16 +332,6 @@ DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
 DEFINE_test_flag(uint32, pause_remote_pg_query_execution_ms, 0,
     "Used in tests to sleep before executing a remote PG query.");
 
-#if defined ADDRESS_SANITIZER
-// ASAN tests run on machines with limited disk space, so disable disk full checks.
-constexpr bool kRejectWritesWhenDiskFullDefault = false;
-#else
-constexpr bool kRejectWritesWhenDiskFullDefault = true;
-#endif
-
-DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefault,
-    "Reject incoming writes to the tablet if we are running out of disk space.");
-
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_object_locking_infra);
 
@@ -2670,12 +2660,10 @@ Status TabletServiceImpl::PerformWrite(
     return Status::OK();
   }
 
-  if (FLAGS_reject_writes_when_disk_full) {
-    SCHECK(
-        tablet.peer->HasSufficientDiskSpaceForWrite(), IOError,
-        "Write to tablet $0 rejected. Node $1 has insufficient disk space", req->tablet_id(),
-        tablet.peer->tablet_metadata()->fs_manager()->uuid());
-  }
+  SCHECK(
+      tablet.peer->HasSufficientDiskSpaceForWrite(), IOError,
+      "Write to tablet $0 rejected. Node $1 has insufficient disk space", req->tablet_id(),
+      tablet.peer->tablet_metadata()->fs_manager()->uuid());
 
   // For postgres requests:
   // 1. For non-system catalog tablets: check that the request has a catalog version higher
