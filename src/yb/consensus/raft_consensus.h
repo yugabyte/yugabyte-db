@@ -407,8 +407,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
         std::vector<ReplicateMsgPtr>* replicate_msgs);
 
   // Rejects a write whose WritePB::ignore_after_hybrid_time has already passed, letting a client
-  // with a time-bounded lease stop its writes landing once the lease is gone. Must run before the
-  // round is registered or added as pending -- see the call site.
+  // with a time-bounded lease stop its writes landing once the lease is gone. Must run after the
+  // round is registered with retryable requests but before it is added as pending -- see the call
+  // site for both constraints.
   Status CheckWriteFenceUnlocked(const ConsensusRoundPtr& round);
 
   // Control whether printing of log messages should be done for a particular
