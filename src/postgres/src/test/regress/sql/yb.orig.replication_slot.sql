@@ -11,6 +11,14 @@ SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false)
 SELECT * FROM pg_create_logical_replication_slot('testslot2', 'pgoutput', false);
 SELECT * FROM pg_create_logical_replication_slot('testslot_test_decoding', 'test_decoding', false);
 SELECT * FROM pg_create_logical_replication_slot('testslot_hybrid_time', 'yboutput', false, false, 'HYBRID_TIME');
+-- explicit SEQUENCE lsn_type (default)
+SELECT * FROM pg_create_logical_replication_slot('testslot_sequence', 'pgoutput', false, false, 'SEQUENCE');
+-- explicit TRANSACTION ordering_mode (default)
+SELECT * FROM pg_create_logical_replication_slot('testslot_ordering_txn', 'pgoutput', false, false, 'SEQUENCE', 'TRANSACTION');
+-- ROW ordering_mode
+SELECT * FROM pg_create_logical_replication_slot('testslot_ordering_row', 'pgoutput', false, false, 'SEQUENCE', 'ROW');
+-- HYBRID_TIME lsn_type with ROW ordering_mode
+SELECT * FROM pg_create_logical_replication_slot('testslot_ht_row', 'pgoutput', false, false, 'HYBRID_TIME', 'ROW');
 
 -- Cannot do SELECT * since yb_stream_id, yb_restart_commit_ht changes across runs.
 SELECT slot_name, plugin, slot_type, database, temporary, active,
@@ -27,6 +35,9 @@ SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false)
 SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_plugin', 'unsupported_plugin', false);
 SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_temporary', 'pgoutput', true);
 SELECT * FROM pg_create_physical_replication_slot('testslot_unsupported_physical', true, false);
+-- invalid lsn_type and ordering_mode values.
+SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_lsn_type', 'pgoutput', false, false, 'INVALID');
+SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_ordering_mode', 'pgoutput', false, false, 'SEQUENCE', 'INVALID');
 
 -- creating replication slot with same name fails.
 SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
@@ -47,6 +58,10 @@ SELECT * FROM pg_drop_replication_slot('testslot2');
 SELECT * FROM pg_drop_replication_slot('testslot3');
 SELECT * FROM pg_drop_replication_slot('testslot_test_decoding');
 SELECT * FROM pg_drop_replication_slot('testslot_hybrid_time');
+SELECT * FROM pg_drop_replication_slot('testslot_sequence');
+SELECT * FROM pg_drop_replication_slot('testslot_ordering_txn');
+SELECT * FROM pg_drop_replication_slot('testslot_ordering_row');
+SELECT * FROM pg_drop_replication_slot('testslot_ht_row');
 SELECT slot_name, plugin, slot_type, database, temporary, active,
     active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn
 FROM pg_replication_slots;
