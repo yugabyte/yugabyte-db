@@ -2149,6 +2149,9 @@ TEST_P(PgIndexBackfillFailClosedVerification, ViolationFailsCreateIndex) {
   // Same SQLSTATE as a CHECK_ALL duplicate (and vanilla PostgreSQL): the verified violation is
   // a statement about the data, not an infrastructure failure.
   ASSERT_EQ(PgsqlError::ValueFromStatus(status), YBPgErrorCode::YB_PG_UNIQUE_VIOLATION) << status;
+  // The keyed violation fingerprint rides the reason into the CREATE INDEX error: a
+  // correlatable, non-reversible token in place of the (never-exposed) duplicate value.
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "fingerprint=");
 
   // Never published: the index exists but is invalid; the base table is unaffected and the
   // invalid index is droppable.
@@ -3625,6 +3628,25 @@ TEST_P(PgIndexBackfillMultiMaster, UniqueCheckModePersistedAcrossMasterFailover)
     auto job = ASSERT_RESULT(GetBackfillJobs(cluster_.get(), table_id));
     ASSERT_EQ(job.unique_index_backfill_mode(),
               UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL);
+    // SKIP_ALL jobs carry a fingerprint key, and GetBackfillJobs must scrub it: the key is
+    // a master/tserver secret, never handed to RPC callers -- not even the admin sys-catalog
+    // dump, which otherwise renders the table entry verbatim.
+    ASSERT_TRUE(job.verification_fingerprint_key().empty());
+    {
+      master::DumpSysCatalogEntriesRequestPB dump_req;
+      master::DumpSysCatalogEntriesResponsePB dump_resp;
+      dump_req.set_entry_type(master::SysRowEntryType::TABLE);
+      dump_req.set_entity_id_filter(table_id);
+      rpc::RpcController rpc;
+      rpc.set_timeout(MonoDelta::FromSeconds(30) * kTimeMultiplier);
+      ASSERT_OK(cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>().DumpSysCatalogEntries(
+          dump_req, &dump_resp, &rpc));
+      ASSERT_FALSE(dump_resp.has_error()) << dump_resp.error().ShortDebugString();
+      ASSERT_EQ(dump_resp.entries_size(), 1);
+      ASSERT_STR_CONTAINS(dump_resp.entries(0).pb_debug_string(), "backfill_jobs");
+      ASSERT_STR_NOT_CONTAINS(
+          dump_resp.entries(0).pb_debug_string(), "verification_fingerprint_key");
+    }
 
     // Clear the selection override everywhere before the failover, so a (wrong) re-selection
     // on the new leader would produce CHECK_ALL.

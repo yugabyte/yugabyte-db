@@ -762,6 +762,9 @@ Status CatalogManager::RepackSnapshotsForBackup(
           // version fields in the snapshotted SysTablesEntryPB.
           SysTablesEntryPB snapshotted_table_pb =
               VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+          // A backup file leaves the cluster: a snapshot taken during an index backfill must
+          // not export the job's fingerprint key with it.
+          bool modified = ScrubBackfillJobSecrets(&snapshotted_table_pb);
           const auto current_version = l->pb.version();
           const auto snapshotted_version = snapshotted_table_pb.version();
           if (current_version > snapshotted_version) {
@@ -770,6 +773,9 @@ Status CatalogManager::RepackSnapshotsForBackup(
                 "during snapshot repack for backup",
                 table_info->id(), snapshotted_version, current_version);
             snapshotted_table_pb.set_version(current_version);
+            modified = true;
+          }
+          if (modified) {
             std::string serialized;
             snapshotted_table_pb.AppendToString(&serialized);
             entry.set_data(serialized);
@@ -1613,7 +1619,8 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
                 IllegalState, "Table $0 is in altering state (cloning to a time when a DDL is in "
                 "progress is not supported yet. See GitHub issue #28814.)", id.ToBuffer());
           }
-          VLOG_WITH_FUNC(1) << "Included SysTablesEntryPB: " << pb.ShortDebugString();
+          VLOG_WITH_FUNC(1) << "Included SysTablesEntryPB: "
+                            << ScrubbedForOutput(pb).ShortDebugString();
           const auto id_str = id.ToBuffer();
           if (pb.colocated()) {
             if (IsColocationParentTableId(id_str)) {
@@ -1626,7 +1633,8 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
           tables_to_tablets.insert(std::make_pair(
               id_str, TableWithTabletsEntries(pb, SysTabletsEntriesWithIds())));
         } else {
-          VLOG_WITH_FUNC(2) << "Skipped SysTablesEntryPB: " << pb.ShortDebugString();
+          VLOG_WITH_FUNC(2) << "Skipped SysTablesEntryPB: "
+                            << ScrubbedForOutput(pb).ShortDebugString();
         }
         return Status::OK();
       }));
