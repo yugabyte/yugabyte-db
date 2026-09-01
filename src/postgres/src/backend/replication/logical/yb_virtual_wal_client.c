@@ -387,6 +387,7 @@ static const YbcPgTypeEntity *
 GetDynamicTypeEntity(int attr_num, Oid relid)
 {
 	bool		is_in_txn = IsTransactionOrTransactionBlock();
+	MemoryContext caller_context = CurrentMemoryContext;
 
 	if (!is_in_txn)
 		StartTransactionCommand();
@@ -401,7 +402,10 @@ GetDynamicTypeEntity(int attr_num, Oid relid)
 	const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
 
 	if (!is_in_txn)
+	{
 		AbortCurrentTransaction();
+		MemoryContextSwitchTo(caller_context);
+	}
 
 	return type_entity;
 }
@@ -476,6 +480,7 @@ YBCReadRecord(List *publication_names)
 			pfree(table_oids);
 			list_free(tables);
 			AbortCurrentTransaction();
+			MemoryContextSwitchTo(cached_records_context);
 
 			needs_publication_table_list_refresh = false;
 		}
