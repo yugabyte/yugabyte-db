@@ -1975,6 +1975,7 @@
           "matchingTableNoteDr": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the DR replica contain the same tables as in the DR primary.",
           "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
           "tablePill": {
+            "matview": "Materialized View",
             "unreplicatedTableInReplicatedNamespace": "Unreplicated",
             "droppedOnTarget": "Dropped on Target",
             "eligible": "Eligible",

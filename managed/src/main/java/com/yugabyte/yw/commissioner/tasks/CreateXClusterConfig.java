@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
@@ -105,7 +106,10 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     }
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-        getRequestedTableInfoList(Set.of(dbId), sourceTableInfoList);
+        getRequestedTableInfoList(
+            Set.of(dbId),
+            sourceTableInfoList,
+            XClusterUtil.isMatviewReplicationSupported(xClusterConfig));
     String namespaceName = requestedTableInfoList.get(0).getNamespace().getName();
 
     Map<String, String> sourceTableIdTargetTableIdMap =

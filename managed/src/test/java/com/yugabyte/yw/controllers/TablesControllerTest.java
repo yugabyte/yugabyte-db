@@ -81,6 +81,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -211,7 +212,13 @@ public class TablesControllerTest extends FakeDBApplication {
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), false, false, false, false); // modify mock
+            customer.getUuid(),
+            u1.getUniverseUUID(),
+            false,
+            false,
+            false,
+            false,
+            false); // modify mock
     JsonNode json = Json.parse(contentAsString(r));
     LOG.info("Fetched table list from universe, response: " + contentAsString(r));
     assertEquals(OK, r.status());
@@ -259,6 +266,7 @@ public class TablesControllerTest extends FakeDBApplication {
                         false,
                         false,
                         false,
+                        false,
                         false)) // modify mock
             .buildResult(fakeRequest);
     assertEquals(503, r.status());
@@ -284,6 +292,7 @@ public class TablesControllerTest extends FakeDBApplication {
                     tablesController.listTables(
                         customer.getUuid(),
                         u2.getUniverseUUID(),
+                        false,
                         false,
                         false,
                         false,
@@ -1258,7 +1267,7 @@ public class TablesControllerTest extends FakeDBApplication {
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), true, false, false, false);
+            customer.getUuid(), u1.getUniverseUUID(), true, false, false, false, false);
     JsonNode json = Json.parse(contentAsString(r));
 
     ObjectMapper objectMapper = new ObjectMapper();
@@ -1403,7 +1412,13 @@ public class TablesControllerTest extends FakeDBApplication {
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), true, false, false, false); // modify mock
+            customer.getUuid(),
+            u1.getUniverseUUID(),
+            true,
+            false,
+            false,
+            false,
+            false); // modify mock
     JsonNode json = Json.parse(contentAsString(r));
 
     ObjectMapper objectMapper = new ObjectMapper();
@@ -1472,7 +1487,7 @@ public class TablesControllerTest extends FakeDBApplication {
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), false, true, false, false);
+            customer.getUuid(), u1.getUniverseUUID(), false, true, false, false, false);
     JsonNode json = Json.parse(contentAsString(r));
     LOG.info("Fetched table list from universe, response: " + contentAsString(r));
     assertEquals(OK, r.status());
@@ -1513,7 +1528,7 @@ public class TablesControllerTest extends FakeDBApplication {
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), false, false, false, false);
+            customer.getUuid(), u1.getUniverseUUID(), false, false, false, false, false);
     JsonNode json = Json.parse(contentAsString(r));
     LOG.info("Fetched table list from universe, response: " + contentAsString(r));
     assertEquals(OK, r.status());
@@ -1573,7 +1588,7 @@ public class TablesControllerTest extends FakeDBApplication {
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), false, false, true, false);
+            customer.getUuid(), u1.getUniverseUUID(), false, false, true, false, false);
     JsonNode json = Json.parse(contentAsString(r));
     LOG.info("Fetched table list from universe, response: " + contentAsString(r));
     assertEquals(OK, r.status());
@@ -1649,7 +1664,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), false, false, true, true);
+            customer.getUuid(), u1.getUniverseUUID(), false, false, true, true, false);
     JsonNode json = Json.parse(contentAsString(r));
     assertEquals(OK, r.status());
     assertTrue(json.isArray());
@@ -1676,7 +1691,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), false, false, true, true);
+            customer.getUuid(), u1.getUniverseUUID(), false, false, true, true, false);
     JsonNode json = Json.parse(contentAsString(r));
     assertEquals(OK, r.status());
     assertTrue(json.isArray());
@@ -1790,6 +1805,71 @@ public class TablesControllerTest extends FakeDBApplication {
     tableInfoList.add(ti6);
     tableInfoList.add(ti7);
     return tableInfoList;
+  }
+
+  // Materialized views are xCluster supported only when the caller asks for them, which YBA does
+  // for replication configs in automatic DDL mode on YBDB versions that replicate them.
+  @Test
+  public void testXClusterOnlyListTablesExcludesMatviewByDefault() throws Exception {
+    Universe u1 = setUpUniverseForMatviewListTables();
+
+    Result r =
+        tablesController.listTables(
+            customer.getUuid(),
+            u1.getUniverseUUID(),
+            false,
+            false,
+            true,
+            true /* xClusterSupportedOnly */,
+            false /* includeMatviewTables */);
+
+    JsonNode json = Json.parse(contentAsString(r));
+    assertEquals(OK, r.status());
+    Set<String> tableNames = new HashSet<>();
+    json.elements().forEachRemaining(table -> tableNames.add(table.get("tableName").asText()));
+    assertEquals(Set.of("main_table"), tableNames);
+  }
+
+  @Test
+  public void testXClusterOnlyListTablesIncludesMatviewWhenRequested() throws Exception {
+    Universe u1 = setUpUniverseForMatviewListTables();
+
+    Result r =
+        tablesController.listTables(
+            customer.getUuid(),
+            u1.getUniverseUUID(),
+            false,
+            false,
+            true,
+            true /* xClusterSupportedOnly */,
+            true /* includeMatviewTables */);
+
+    JsonNode json = Json.parse(contentAsString(r));
+    assertEquals(OK, r.status());
+    Map<String, String> tableNameToRelationType = new HashMap<>();
+    json.elements()
+        .forEachRemaining(
+            table ->
+                tableNameToRelationType.put(
+                    table.get("tableName").asText(), table.get("relationType").asText()));
+    assertEquals(Set.of("main_table", "main_table_mv"), tableNameToRelationType.keySet());
+    assertEquals(
+        RelationType.MATVIEW_TABLE_RELATION.toString(),
+        tableNameToRelationType.get("main_table_mv"));
+  }
+
+  private Universe setUpUniverseForMatviewListTables() throws Exception {
+    List<TableInfo> mockTableInfoList = new ArrayList<>(getTableInfoWithIndexTables(false, false));
+    mockTableInfoList.add(
+        TableInfo.newBuilder()
+            .setName("main_table_mv")
+            .setId(ByteString.copyFromUtf8("000033c0000030008000000000004004"))
+            .setRelationType(RelationType.MATVIEW_TABLE_RELATION)
+            .build());
+    when(mockListTablesResponse.getTableInfoList()).thenReturn(mockTableInfoList);
+    when(mockClient.getTablesList(null, false, null)).thenReturn(mockListTablesResponse);
+    Universe u1 = createUniverse(customer.getId());
+    return Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
   }
 
   private List<TableInfo> getTableInfoWithIndexTables(
