@@ -3320,10 +3320,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     UserIntent storedIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     assertTrue("edit must not disable YSQL auth", storedIntent.enableYSQLAuth);
     assertTrue("edit must not disable YCQL auth", storedIntent.enableYCQLAuth);
-    // Not compared by value: YBA redacts passwords on save, which is why the operator cannot
-    // rotate one today. It only matters that the edit did not clear them.
-    assertNotNull("edit must not clear the stored YSQL password", storedIntent.ysqlPassword);
-    assertNotNull("edit must not clear the stored YCQL password", storedIntent.ycqlPassword);
+    assertEquals("stored-ysql-pass", storedIntent.ysqlPassword);
+    assertEquals("stored-ycql-pass", storedIntent.ycqlPassword);
   }
 
   @Test
@@ -3351,11 +3349,13 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   public void testEditUserIntentIgnoresUnreadablePasswordSecrets() throws Exception {
     YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-auth-edit-secret", defaultProvider);
     Universe universe = createUniverseWithAuthEnabled(ybUniverse);
-    // The spec still points at secrets that no longer resolve - one deleted, one emptied. The
-    // edit path never reads them, so no secret lookup is stubbed here on purpose: resolving one
-    // would fail the reconcile of everything else in the spec.
+    // The spec still points at secrets that no longer resolve - one deleted outright, one left
+    // without the password key. The edit path looks them up to keep the dependency rows current
+    // but never reads a password out of them, so neither may fail the reconcile.
     setYsqlAuthSpec(ybUniverse, true, "gone-secret");
     setYcqlAuthSpec(ybUniverse, true, "empty-secret");
+    mockSecretLookup("gone-secret", null);
+    mockSecretLookup("empty-secret", secretWithPassword("empty-secret", "ycqlPassword", null));
 
     UserIntent userIntent =
         ybUniverseReconciler.createUserIntent(

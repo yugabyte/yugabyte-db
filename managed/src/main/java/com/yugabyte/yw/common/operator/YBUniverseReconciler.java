@@ -90,7 +90,6 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -1813,6 +1812,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         // when a new secret is provided.
         userIntent.enableYSQLAuth = ybUniverse.getSpec().getEnableYSQLAuth();
         userIntent.enableYCQLAuth = ybUniverse.getSpec().getEnableYCQLAuth();
+        // The password itself is not read here, but the secrets stay registered as dependencies:
+        // this is the only pass that registers them for universes whose CRs predate
+        // operator_resource, and the rows drive HA restore and orphan cleanup.
+        trackPasswordSecret(ybUniverse, ysqlSecretName);
+        trackPasswordSecret(ybUniverse, ycqlSecretName);
       }
       userIntent.specificGFlags = operatorUtils.getGFlagsFromSpec(ybUniverse, provider);
 
@@ -2517,35 +2521,26 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     return client.secrets().inNamespace("default").withName(name).get();
   }
 
-  // parseSecretForKey checks secret data for the key. If not found, it will then check stringData.
-  // Returns null if the key is not found at all.
-  // Also handles null secret, and secrets holding neither data nor stringData.
-  private String parseSecretForKey(Secret secret, String key) {
-    if (secret == null) {
-      return null;
-    }
-    if (secret.getData() != null && secret.getData().get(key) != null) {
-      return new String(Base64.getDecoder().decode(secret.getData().get(key)));
-    }
-    return secret.getStringData() != null ? secret.getStringData().get(key) : null;
-  }
-
-  // trackAndParsePasswordSecret tracks the named secret as a dependency of the universe being
-  // reconciled, so that a later change to the secret triggers a reconcile, and returns the password
-  // it holds. Returns null if no secret is referenced, the secret does not exist, or it does not
-  // hold the key - callers decide whether that is fatal.
-  private String trackAndParsePasswordSecret(
-      YBUniverse ybUniverse, @Nullable String secretName, String passwordKey) {
+  // trackPasswordSecret registers the named secret as a dependency of the universe in
+  // operator_resource and returns it, without reading anything out of it. The dependency row is
+  // what HA failover restores the secret from and what marks it orphaned when the CR is deleted,
+  // so it has to be refreshed on every reconcile, including the ones that never read the password.
+  // A reference to a secret that does not exist is logged and ignored - it must not fail the
+  // reconcile of the rest of the spec.
+  private Secret trackPasswordSecret(YBUniverse ybUniverse, @Nullable String secretName) {
     if (secretName == null) {
       return null;
     }
     Secret secret = getSecret(secretName);
     if (secret == null) {
-      log.warn("secret {} referenced for {} not found", secretName, passwordKey);
+      log.warn(
+          "secret {} referenced by universe {} not found",
+          secretName,
+          ybUniverse.getMetadata().getName());
       return null;
     }
     trackDependency(ybUniverse, secret);
-    return parseSecretForKey(secret, passwordKey);
+    return secret;
   }
 
   // getPasswordFromSecret returns the password held by the named secret, failing if the secret is
@@ -2553,7 +2548,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   // be read is ignored, see the note on passwords in createUserIntent.
   private String getPasswordFromSecret(
       YBUniverse ybUniverse, String secretName, String passwordKey) {
-    String password = trackAndParsePasswordSecret(ybUniverse, secretName, passwordKey);
+    String password =
+        operatorUtils.parseSecretForKey(trackPasswordSecret(ybUniverse, secretName), passwordKey);
     if (StringUtils.isBlank(password)) {
       log.error("could not find {} in secret {}", passwordKey, secretName);
       throw new RuntimeException(
@@ -2565,7 +2561,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   // validateAuthSpec fails if the spec's auth flag and its password secret reference disagree.
   // Auth cannot be turned on without a password to set it to, and a password is meaningless
   // without auth. Only enforced when creating a universe: a universe imported into the operator
-  // can have auth enabled with no secret to reference, since YBA does not retain the password.
+  // by OperatorUtils.createUniverseCr has auth enabled with no secret to reference, because the
+  // import writes no Secret, so enforcing this on the edit path would break that flow.
   private void validateAuthSpec(
       boolean authEnabled, boolean passwordSet, String apiName, String specFieldName) {
     if (authEnabled && !passwordSet) {
