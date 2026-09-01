@@ -1,8 +1,12 @@
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
@@ -25,14 +29,18 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 public class CreateBackupScheduleKubernetesTest extends CommissionerBaseTest {
+  private static final String STABLE_YBC_VERSION = "2.0.0.0-b0";
+
   private Universe defaultUniverse;
   private CustomerConfig storageConfig;
   private Users defaultUser;
@@ -101,6 +109,7 @@ public class CreateBackupScheduleKubernetesTest extends CommissionerBaseTest {
     backupParams.enablePointInTimeRestore = enablePITRestore;
     backupParams.scheduleName = scheduleName;
     backupParams.backupType = TableType.PGSQL_TABLE_TYPE;
+    backupParams.customerUUID = defaultCustomer.getUuid();
     return backupParams;
   }
 
@@ -197,5 +206,52 @@ public class CreateBackupScheduleKubernetesTest extends CommissionerBaseTest {
         "Software version 2.23.0.0-b529 does not support Point In Time Recovery enabled backup"
             + " schedules",
         ex.getMessage());
+  }
+
+  private List<TaskType> getSubTaskTypes(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream().map(TaskInfo::getTaskType).collect(Collectors.toList());
+  }
+
+  @Test
+  public void testCreateScheduleBackupSkipsYbcUpgradeOnInbuiltYbc() {
+    when(mockYbcManager.getStableYbcVersion()).thenReturn(STABLE_YBC_VERSION);
+    // Universes toggled to inbuilt YBC before the fix have a null ybcSoftwareVersion persisted,
+    // which used to blow up on the version comparison in addAllCreateBackupScheduleTasks.
+    UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+          params.setYbcSoftwareVersion(null);
+          params.getPrimaryCluster().userIntent.setUseYbdbInbuiltYbc(true);
+          universe.setUniverseDetails(params);
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+
+    BackupRequestParams params =
+        createScheduleBackupParams(
+            10000000L, TimeUnit.HOURS, 0L, null, null, false, "test-inbuilt");
+    TaskInfo taskInfo = submitTask(params);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    assertFalse(getSubTaskTypes(taskInfo).contains(TaskType.InstallYbcSoftwareOnK8s));
+  }
+
+  @Test
+  public void testCreateScheduleBackupUpgradesYbcWithoutInbuiltYbc() {
+    when(mockYbcManager.getStableYbcVersion()).thenReturn(STABLE_YBC_VERSION);
+    UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+          params.setYbcSoftwareVersion("1.0.0.0-b0");
+          universe.setUniverseDetails(params);
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+
+    BackupRequestParams params =
+        createScheduleBackupParams(
+            10000000L, TimeUnit.HOURS, 0L, null, null, false, "test-mutable");
+    TaskInfo taskInfo = submitTask(params);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(getSubTaskTypes(taskInfo).contains(TaskType.InstallYbcSoftwareOnK8s));
   }
 }
