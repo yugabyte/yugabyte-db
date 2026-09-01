@@ -249,6 +249,11 @@ DEFINE_RUNTIME_bool(batch_tablet_metrics_update, true,
     "Batch update of rocksdb and tablet metrics to once per request rather than "
     "updating immediately.");
 
+DEFINE_test_flag(bool, skip_index_backfill_generation_release_flush, false,
+    "Skip the regular-DB flush scheduled by an ordering-generation release, keeping released "
+    "marked writes above the flushed frontier so tests can pin the downgrade fence's "
+    "unflushed-marked-WAL arm.");
+
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
     "If set > 0, slows down the backfill process by this amount.");
 
@@ -2166,6 +2171,22 @@ Status Tablet::ApplyOperation(
         raft_index, kBackfillWriteIdIndexMax, Corruption,
         "Raft operation index exhausted the fixed-hybrid-time write ID space");
     write_id_override = kBackfillWriteIdFloor | raft_index;
+    // Downgrade-fence watermark: the highest marked-write index this tablet has applied.
+    // Monotonic for the tablet's lifetime and re-seeded by bootstrap replay, which re-applies
+    // exactly the marked writes that are not yet below the flushed frontier -- the ones the
+    // fence still cares about.
+    auto old_max = max_marked_write_op_index_.load(std::memory_order_relaxed);
+    while (operation.op_id().index > old_max &&
+           !max_marked_write_op_index_.compare_exchange_weak(
+               old_max, operation.op_id().index, std::memory_order_acq_rel)) {
+    }
+    // A marked write appended after the release op but applied after it (the leader-side
+    // activity check sees the release only once it applies) sits above the watermark the
+    // release persisted; raise it so the fence keeps waiting for this write's flush.
+    if (metadata_->RaiseReleasedMarkedWriteWatermark(operation.op_id().index)) {
+      RETURN_NOT_OK(metadata_->Flush());
+      ScheduleIndexBackfillReleaseFlush();
+    }
   }
 
   return ApplyKeyValueRowOperations(
@@ -3360,8 +3381,24 @@ Status Tablet::UpdateIndexBackfillOrderingGeneration(
                         << " index-backfill ordering generation for table " << table_id
                         << " at " << op_id;
   RETURN_NOT_OK(metadata_->ApplyIndexBackfillOrderingGenerationOp(
-      op_id, table_id, activate, retention_barrier_ht, write_id_floor_version));
-  return metadata_->Flush();
+      op_id, table_id, activate, retention_barrier_ht, write_id_floor_version,
+      max_marked_write_op_index_.load(std::memory_order_acquire)));
+  RETURN_NOT_OK(metadata_->Flush());
+  if (!activate) {
+    ScheduleIndexBackfillReleaseFlush();
+  }
+  return Status::OK();
+}
+
+void Tablet::ScheduleIndexBackfillReleaseFlush() {
+  if (FLAGS_TEST_skip_index_backfill_generation_release_flush) {
+    return;
+  }
+  // Async: callers include the Raft apply path.
+  WARN_NOT_OK(
+      Flush(FlushMode::kAsync, FlushFlags::kRegular,
+            rocksdb::FlushReason::kIndexBackfillGenerationRelease),
+      "Failed to schedule flush after ordering-generation release");
 }
 
 Status Tablet::ValidateUniqueIndexVerificationRequest(
