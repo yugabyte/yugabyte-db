@@ -24,7 +24,7 @@ import java.util.function.Supplier;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.client.YBClient;
 
 @Slf4j
