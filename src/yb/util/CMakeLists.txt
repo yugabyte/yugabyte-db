@@ -162,6 +162,7 @@ set(UTIL_SRCS
   jsonwriter.cc
   jwt_util.cc
   jwtcpp_util.cc
+  keyed_fingerprint.cc
   locks.cc
   logging.cc
   malloc.cc
@@ -406,6 +407,7 @@ ADD_YB_TEST(inline_slice-test)
 ADD_YB_TEST(json_document-test)
 ADD_YB_TEST(jwt_util-test)
 ADD_YB_TEST(jwtcpp_util-test)
+ADD_YB_TEST(keyed_fingerprint-test)
 ADD_YB_TEST(lockfree-test)
 ADD_YB_TEST(logging-test)
 ADD_YB_TEST(lru_cache-test)

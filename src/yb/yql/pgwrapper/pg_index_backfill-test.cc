@@ -1949,6 +1949,9 @@ TEST_P(PgIndexBackfillFailClosedVerification, ViolationFailsCreateIndex) {
       "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.message().ToBuffer(), "verification");
+  // The keyed violation fingerprint rides the reason into the CREATE INDEX error: a
+  // correlatable, non-reversible token in place of the (never-exposed) duplicate value.
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "fingerprint=");
 
   // Never published: the index exists but is invalid; the base table is unaffected and the
   // invalid index is droppable.
@@ -3135,6 +3138,9 @@ TEST_P(PgIndexBackfillMultiMaster, UniqueCheckModePersistedAcrossMasterFailover)
     auto job = ASSERT_RESULT(GetBackfillJobs(cluster_.get(), table_id));
     ASSERT_EQ(job.unique_index_backfill_mode(),
               UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL);
+    // SKIP_ALL jobs carry a fingerprint key, and GetBackfillJobs must scrub it: the key is
+    // a master/tserver secret, never handed to RPC callers.
+    ASSERT_TRUE(job.verification_fingerprint_key().empty());
 
     // Clear the selection override everywhere before the failover, so a (wrong) re-selection
     // on the new leader would produce CHECK_ALL.

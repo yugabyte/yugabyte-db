@@ -30,6 +30,7 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_admin_util.h"
 
 #include "yb/common/common_util.h"
 #include "yb/common/doc_hybrid_time.h"
@@ -59,6 +60,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/keyed_fingerprint.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -743,12 +745,17 @@ BackfillTable::BackfillTable(
   if (pb.backfill_jobs_size() > 0) {
     unique_index_backfill_mode_ = pb.backfill_jobs(0).unique_index_backfill_mode();
     verification_gates_publication_ = pb.backfill_jobs(0).verification_gates_publication();
+    verification_fingerprint_key_ = pb.backfill_jobs(0).verification_fingerprint_key();
   } else {
     unique_index_backfill_mode_ = SelectUniqueIndexBackfillMode();
     verification_gates_publication_ =
         FLAGS_ysql_index_backfill_fail_closed_verification &&
         unique_index_backfill_mode_ == UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL &&
         pb.table_type() == TableType::PGSQL_TABLE_TYPE;
+    // Only SKIP_ALL jobs can run verification, so only they carry a fingerprint key.
+    if (unique_index_backfill_mode_ == UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL) {
+      verification_fingerprint_key_ = GenerateFingerprintKey();
+    }
   }
   if (pb.backfill_jobs_size() > 0 && pb.backfill_jobs(0).has_backfilling_timestamp() &&
       read_time_for_backfill_.FromUint64(pb.backfill_jobs(0).backfilling_timestamp()).ok()) {
@@ -819,6 +826,9 @@ Status BackfillTable::Launch() {
       }
       backfill_job->set_unique_index_backfill_mode(unique_index_backfill_mode_);
       backfill_job->set_verification_gates_publication(verification_gates_publication_);
+      if (!verification_fingerprint_key_.empty()) {
+        backfill_job->set_verification_fingerprint_key(verification_fingerprint_key_);
+      }
       LOG_WITH_PREFIX(INFO) << "Selected unique-index backfill mode "
                             << UniqueIndexBackfillMode_Name(unique_index_backfill_mode_)
                             << (verification_gates_publication_
@@ -1536,7 +1546,7 @@ void BackfillTable::ShadowVerificationTabletDone(
         outcome = UniqueIndexVerificationStatePB::VERIFY_INCONCLUSIVE;
         reason = "response without an outcome";
       }
-      auto s = RecordShadowVerificationOutcome(outcome, reason);
+      auto s = RecordShadowVerificationOutcome(outcome, reason, resp.violation_fingerprint());
       if (s.ok()) {
         s = StartShadowVerificationForNextIndex();
       }
@@ -1588,7 +1598,8 @@ void BackfillTable::ShadowVerificationPhaseFailed(
 }
 
 Status BackfillTable::RecordShadowVerificationOutcome(
-    UniqueIndexVerificationStatePB::State state, const std::string& reason) {
+    UniqueIndexVerificationStatePB::State state, const std::string& reason,
+    const std::string& violation_fingerprint) {
   TableId index_table_id;
   uint64_t dockey_groups_scanned = 0;
   uint64_t versions_scanned = 0;
@@ -1606,10 +1617,14 @@ Status BackfillTable::RecordShadowVerificationOutcome(
     fallback_groups = shadow_verification_.fallback_groups;
   }
   RETURN_NOT_OK(MutateVerificationState(
-      index_table_id, [state, &reason](UniqueIndexVerificationStatePB* state_pb) {
+      index_table_id,
+      [state, &reason, &violation_fingerprint](UniqueIndexVerificationStatePB* state_pb) {
         state_pb->set_state(state);
         if (!reason.empty()) {
           state_pb->set_reason(reason);
+        }
+        if (!violation_fingerprint.empty()) {
+          state_pb->set_violation_fingerprint(violation_fingerprint);
         }
       }));
   master_->catalog_manager_impl()->RecordUniqueIndexVerificationOutcome(state);
@@ -1758,8 +1773,11 @@ Status BackfillTable::MarkIndexesAsDesired(
     for (const auto& idx_id : index_ids_set) {
       auto iter = backfill_state_pb->find(idx_id);
       if (iter == backfill_state_pb->end()) {
+        // The fingerprint key is a secret; never log it.
+        auto job_for_log = indexed_table_pb.backfill_jobs(0);
+        job_for_log.clear_verification_fingerprint_key();
         LOG(INFO) << "Index " << idx_id << " is not being backfilled. Current backfill_job: "
-                  << indexed_table_pb.backfill_jobs(0).ShortDebugString();
+                  << job_for_log.ShortDebugString();
         return STATUS_FORMAT(InvalidArgument, "Index $0 is not being backfilled", idx_id);
       }
       backfill_state_pb->at(idx_id) = state;
@@ -2456,10 +2474,13 @@ bool VerifyUniqueIndexForTablet::SendRequest(int attempt) {
   if (FLAGS_index_backfill_shadow_verification_dockey_groups_per_rpc > 0) {
     req.set_max_dockey_groups(FLAGS_index_backfill_shadow_verification_dockey_groups_per_rpc);
   }
+  if (!backfill_table_->verification_fingerprint_key().empty()) {
+    req.set_verification_fingerprint_key(backfill_table_->verification_fingerprint_key());
+  }
 
   ts_admin_proxy_->VerifyUniqueIndexTabletAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send " << description() << " to " << permanent_uuid()
-          << " (attempt " << attempt << "):\n" << req.DebugString();
+          << " (attempt " << attempt << "):\n" << tserver::RedactedDebugString(req);
   return true;
 }
 

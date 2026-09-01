@@ -6823,6 +6823,11 @@ Status CatalogManager::GetBackfillJobs(
     auto l = indexed_table->LockForRead();
     resp->mutable_backfill_jobs()->CopyFrom(l->pb.backfill_jobs());
   }
+  // The fingerprint key is a master/tserver secret: without it, fingerprints are
+  // unconfirmable opaque tokens, which is their contract. Never hand it to RPC callers.
+  for (auto& job : *resp->mutable_backfill_jobs()) {
+    job.clear_verification_fingerprint_key();
+  }
   return Status::OK();
 }
 
