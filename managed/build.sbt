@@ -177,7 +177,7 @@ libraryDependencies ++= Seq(
   filters,
   guice,
   "org.postgresql" % "postgresql" % "42.7.13",
-  "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
+  "net.logstash.logback" % "logstash-logback-encoder" % "8.1",
   "ch.qos.logback" % "logback-classic" % "1.5.38",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.20.0",
@@ -1062,23 +1062,24 @@ libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "io.netty" % "netty-codec-haproxy" % "4.1.136.Final",
+  "io.netty" % "netty-codec-haproxy" % "4.1.137.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
 )
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.136.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.137.Final"
 // netty-all does not force these core modules, so they stay at the next-highest
-// requested version (4.1.130) and must be pinned explicitly to reach 4.1.136.
-dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-codec" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-common" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-handler" % "4.1.136.Final"
-dependencyOverrides += "io.netty" % "netty-transport" % "4.1.136.Final"
+// requested version (4.1.130) and must be pinned explicitly to reach 4.1.137.
+dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-codec" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-common" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-handler" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-transport" % "4.1.137.Final"
+dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.137.Final"
 
 // Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949.
 dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.1"
