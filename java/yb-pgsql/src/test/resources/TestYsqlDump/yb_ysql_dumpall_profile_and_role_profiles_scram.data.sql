@@ -27,7 +27,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' postgres
+    \echo 'Role already exists:' 'postgres'
 \else
 \restrict test
     CREATE ROLE postgres;
@@ -42,11 +42,11 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' test_user
+    \echo 'Role already exists:' 'test_user'
 \else
 \restrict test
     CREATE ROLE test_user;
-    ALTER ROLE test_user WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:*';
+    ALTER ROLE test_user WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:WutTfTl7x075Y3QvdzZzHQ==$eG5Pt4uu+7D4D0D4jbU5AOiSc/tPBYPcvgpGguHAf94=:On+i3Yn6QqIZm3JR9tJSMW5OnMRbvYACoonbZU8MurQ=';
 \unrestrict test
 \endif
 \restrict test
@@ -57,11 +57,11 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user2') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' test_user2
+    \echo 'Role already exists:' 'test_user2'
 \else
 \restrict test
     CREATE ROLE test_user2;
-    ALTER ROLE test_user2 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:*';
+    ALTER ROLE test_user2 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:Jcsztyl2crDFToD4K/KpbQ==$PywCVIr9SwmeG9dW+Yps4WreTDWXR88XotiX+2luCLo=:dP0UPEoG8/c0KofXf/nHqWv2WyLOSHTO14HJIE/m1iY=';
 \unrestrict test
 \endif
 \restrict test
@@ -72,11 +72,11 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user3') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' test_user3
+    \echo 'Role already exists:' 'test_user3'
 \else
 \restrict test
     CREATE ROLE test_user3;
-    ALTER ROLE test_user3 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:*';
+    ALTER ROLE test_user3 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:Gk3lolDRW0sHxZpHhNdUsg==$s4OoDUsJGiMIOF/G8qTFrKXbiNE3SFJJbBMXa1pHUDs=:2ToWGZGxGmO6UoY16JO0ylm+QHcNqb8oE5Rt3X1ILM0=';
 \unrestrict test
 \endif
 \restrict test
@@ -87,7 +87,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_db_admin') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_db_admin
+    \echo 'Role already exists:' 'yb_db_admin'
 \else
 \restrict test
     CREATE ROLE yb_db_admin;
@@ -102,7 +102,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_extension') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_extension
+    \echo 'Role already exists:' 'yb_extension'
 \else
 \restrict test
     CREATE ROLE yb_extension;
@@ -117,7 +117,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_fdw') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_fdw
+    \echo 'Role already exists:' 'yb_fdw'
 \else
 \restrict test
     CREATE ROLE yb_fdw;
@@ -132,7 +132,7 @@ SET standard_conforming_strings = on;
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_global_views_user') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_global_views_user
+    \echo 'Role already exists:' 'yb_global_views_user'
 \else
 \restrict test
     CREATE ROLE yb_global_views_user;
@@ -149,7 +149,7 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yugabyte_test
+    \echo 'Role already exists:' 'yugabyte_test'
 \else
 \restrict test
     CREATE ROLE yugabyte_test;
@@ -774,3 +774,4 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 --
 -- YSQL database cluster dump complete
 --
+

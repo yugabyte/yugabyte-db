@@ -81,7 +81,11 @@ extern void YBWwrapInRoleChecks(PGconn *conn,
 extern char *generate_restrict_key(void);
 extern bool valid_restrict_key(const char *restrict_key);
 
+/* YB declarations */
 extern void ybAppendUnrestrict(PQExpBuffer buf, const char *restrict_key);
 extern void ybAppendRestrict(PQExpBuffer buf, const char *restrict_key);
+extern void ybAppendBracketedBlock(PQExpBuffer buf, const char *block,
+								   const char *restrict_key);
+extern void ybAppendPsqlMetaLiteral(PQExpBuffer buf, const char *str);
 
 #endif							/* DUMPUTILS_H */

@@ -1046,8 +1046,9 @@ dumpRoles(PGconn *conn)
 								  ") AS role_exists \\gset\n"
 								  "\\endif\n"
 								  "\\if :role_exists\n"
-								  "%s\\echo 'Role already exists:' %s\n"
-								  "\\else\n", yb_indent, yb_frolename);
+								  "%s\\echo 'Role already exists:' ", yb_indent);
+				ybAppendPsqlMetaLiteral(buf, rolename);
+				appendPQExpBufferStr(buf, "\n\\else\n");
 				ybAppendRestrict(buf, restrict_key);
 			}
 
@@ -1400,15 +1401,19 @@ dumpTablespaces(PGconn *conn)
 		if (include_yb_metadata)
 		{
 			ybAppendUnrestrict(buf, restrict_key);
-			appendPQExpBuffer(buf,
-							  "\\set tablespace_exists false\n"
-							  "\\if :ignore_existing_tablespaces\n"
-							  "    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = '%s')"
-							  " AS tablespace_exists \\gset\n"
-							  "\\endif\n"
-							  "\\if :tablespace_exists\n"
-							  "    \\echo 'Tablespace %s already exists.'\n"
-							  "\\else\n", fspcname, fspcname);
+			appendPQExpBufferStr(buf,
+								 "\\set tablespace_exists false\n"
+								 "\\if :ignore_existing_tablespaces\n"
+								 "    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = ");
+			appendStringLiteralConn(buf, spcname, conn);
+			appendPQExpBufferStr(buf,
+								 ") AS tablespace_exists \\gset\n"
+								 "\\endif\n"
+								 "\\if :tablespace_exists\n"
+								 "    \\echo 'Tablespace' ");
+			ybAppendPsqlMetaLiteral(buf, spcname);
+			appendPQExpBufferStr(buf, " 'already exists.'\n"
+								 "\\else\n");
 			ybAppendRestrict(buf, restrict_key);
 			appendPQExpBufferStr(buf, "    ");
 		}

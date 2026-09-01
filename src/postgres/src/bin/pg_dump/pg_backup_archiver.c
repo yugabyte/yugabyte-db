@@ -3321,32 +3321,42 @@ _tocEntryIsACL(TocEntry *te)
 }
 
 /*
- * YB: ahprintf counterparts of dumputils.c's ybAppendUnrestrict and
- * ybAppendRestrict, for bracketing YB control-flow meta-commands written
- * straight to the archive output, like the \connect handling in
- * _printTocEntry.  Only YB-generated, properly escaped content may appear
- * between them.
+ * YB: the restrict key for the CVE-2025-8714 brackets around YB control-flow
+ * meta-commands, like the \connect handling in _printTocEntry.  Only
+ * YB-generated, properly escaped content may appear inside those brackets.
  *
- * The restrict key is always set here: these callers all require
- * --include-yb-metadata, which pg_dump accepts only for plain-text output,
- * and plain-text output always mints a key.
+ * The key is always set here: every caller requires --include-yb-metadata,
+ * which pg_dump accepts only for plain-text output, and plain-text output
+ * always mints a key.  A NULL key would silently emit a bare \if inside a
+ * restricted region and only fail at restore time on the user's machine, so
+ * catch it here instead.
  */
-static void
-ybAppendUnrestrictAH(ArchiveHandle *AH)
+static const char *
+ybRestrictKey(ArchiveHandle *AH)
 {
 	RestoreOptions *ropt = AH->public.ropt;
 
 	Assert(ropt->restrict_key);
-	ahprintf(AH, "\\unrestrict %s\n", ropt->restrict_key);
+	return ropt->restrict_key;
+}
+
+/*
+ * YB: ahprintf counterparts of dumputils.c's ybAppendUnrestrict and
+ * ybAppendRestrict, for callers with no adjacent bracket to cancel and so no
+ * need of a buffer.  Callers that do have such a seam build into a PQExpBuffer
+ * with the dumputils helpers and write it with a single ahprintf, the way
+ * _reconnectToDB does.
+ */
+static void
+ybAppendUnrestrictAH(ArchiveHandle *AH)
+{
+	ahprintf(AH, "\\unrestrict %s\n", ybRestrictKey(AH));
 }
 
 static void
 ybAppendRestrictAH(ArchiveHandle *AH)
 {
-	RestoreOptions *ropt = AH->public.ropt;
-
-	Assert(ropt->restrict_key);
-	ahprintf(AH, "\\restrict %s\n", ropt->restrict_key);
+	ahprintf(AH, "\\restrict %s\n", ybRestrictKey(AH));
 }
 
 /*
@@ -4093,34 +4103,42 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 
 			if (AH->public.dopt->include_yb_metadata)
 			{
-				ybAppendUnrestrictAH(AH);
-				ahprintf(AH, "\\if :use_roles\n");
-				ybAppendRestrictAH(AH);
+				PQExpBufferData yb_buf;
+				const char *yb_key = ybRestrictKey(AH);
+
+				initPQExpBuffer(&yb_buf);
+				ybAppendUnrestrict(&yb_buf, yb_key);
+				appendPQExpBufferStr(&yb_buf, "\\if :use_roles\n");
+				ybAppendRestrict(&yb_buf, yb_key);
 				if (AH->public.dopt->yb_dump_role_checks)
 				{
 					PQExpBuffer role_buf = createPQExpBuffer();
 
 					appendStringLiteralAHX(role_buf, eff_owner, AH);
-					ybAppendUnrestrictAH(AH);
-					ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
-							 ") AS role_exists \\gset\n"
-							 "\\if :role_exists\n", role_buf->data);
-					ybAppendRestrictAH(AH);
-					ahprintf(AH, "    %s\n", temp->data);
-					ybAppendUnrestrictAH(AH);
-					ahprintf(AH, "\\else\n"
-							 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
-							 "\\endif\n", fmtId(eff_owner));
-					ybAppendRestrictAH(AH);
+					ybAppendUnrestrict(&yb_buf, yb_key);
+					appendPQExpBuffer(&yb_buf,
+									  "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
+									  ") AS role_exists \\gset\n"
+									  "\\if :role_exists\n", role_buf->data);
+					ybAppendRestrict(&yb_buf, yb_key);
+					appendPQExpBuffer(&yb_buf, "    %s\n", temp->data);
+					ybAppendUnrestrict(&yb_buf, yb_key);
+					appendPQExpBufferStr(&yb_buf, "\\else\n"
+										 "    \\echo 'Skipping owner privilege due to missing role:' ");
+					ybAppendPsqlMetaLiteral(&yb_buf, eff_owner);
+					appendPQExpBufferStr(&yb_buf, "\n\\endif\n");
+					ybAppendRestrict(&yb_buf, yb_key);
 					destroyPQExpBuffer(role_buf);
 				}
 				else
-					ahprintf(AH, "    %s\n", temp->data);
+					appendPQExpBuffer(&yb_buf, "    %s\n", temp->data);
 
-				ybAppendUnrestrictAH(AH);
-				ahprintf(AH, "\\endif\n");
-				ybAppendRestrictAH(AH);
-				ahprintf(AH, "\n");
+				ybAppendUnrestrict(&yb_buf, yb_key);
+				appendPQExpBufferStr(&yb_buf, "\\endif\n");
+				ybAppendRestrict(&yb_buf, yb_key);
+				appendPQExpBufferChar(&yb_buf, '\n');
+				ahprintf(AH, "%s", yb_buf.data);
+				termPQExpBuffer(&yb_buf);
 			}
 			else
 				ahprintf(AH, "%s\n\n", temp->data);

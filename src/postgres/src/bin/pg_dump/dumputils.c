@@ -514,12 +514,19 @@ YBWwrapInRoleChecks(PGconn *conn,
 
 		ybAppendUnrestrict(result, yb_restrict_key);
 		appendPQExpBuffer(result, "\\else\n"
-						  "    \\echo 'Skipping %s due to missing role:' %s",
-						  op_name, fmtId(role1));
+						  "    \\echo 'Skipping %s due to missing role:' ",
+						  op_name);
+		ybAppendPsqlMetaLiteral(result, role1);
 		if (role2)
-			appendPQExpBuffer(result, " 'OR' %s", fmtId(role2));
+		{
+			appendPQExpBufferStr(result, " 'OR' ");
+			ybAppendPsqlMetaLiteral(result, role2);
+		}
 		if (role3)
-			appendPQExpBuffer(result, " 'OR' %s", fmtId(role3));
+		{
+			appendPQExpBufferStr(result, " 'OR' ");
+			ybAppendPsqlMetaLiteral(result, role3);
+		}
 
 		appendPQExpBufferStr(result, "\n\\endif\n");
 		ybAppendRestrict(result, yb_restrict_key);
@@ -1105,17 +1112,105 @@ valid_restrict_key(const char *restrict_key)
 }
 
 /*
+ * Drop a trailing "\restrict <restrict_key>\n" from buf and report whether one
+ * was there.  Trailing newlines after it are blank lines in the dump rather
+ * than part of the bracket, so they are skipped over and kept.
+ *
+ * Only an exact bracket line at column 0 matches, which dumped content cannot
+ * forge: YB indents the SQL it wraps in a bracket, and every statement pg_dump
+ * emits ends in a semicolon.
+ */
+static bool
+ybCancelTrailingRestrict(PQExpBuffer buf, const char *restrict_key)
+{
+	size_t		keylen = strlen(restrict_key);
+	/* Length of a "\restrict KEY\n" line; -1 drops the NUL, +1 the \n. */
+	size_t		closelen = sizeof("\\restrict ") - 1 + keylen + 1;
+	size_t		end = buf->len;
+	const char *tail;
+
+	/* Two newlines in a row means the last line is blank; step over it. */
+	while (end > closelen && buf->data[end - 1] == '\n' && buf->data[end - 2] == '\n')
+		end--;
+
+	if (end < closelen)
+		return false;
+
+	/*
+	 * tail is end-anchored, so the candidate is exactly the last closelen
+	 * bytes: the prefix, the key, then the newline.  Checking the newline's
+	 * position keeps the bytes removed to one complete bracket line.
+	 */
+	tail = buf->data + end - closelen;
+	if (strncmp(tail, "\\restrict ", sizeof("\\restrict ") - 1) != 0 ||
+		strncmp(tail + sizeof("\\restrict ") - 1, restrict_key, keylen) != 0 ||
+		tail[closelen - 1] != '\n')
+		return false;
+
+	memmove(buf->data + end - closelen, buf->data + end, buf->len - end);
+	buf->len -= closelen;
+	buf->data[buf->len] = '\0';
+	return true;
+}
+
+/*
+ * YB: append a YB block that already carries its own brackets, cancelling the
+ * pair at the seam.  Callers that build a bracketed block separately and splice
+ * it in cannot get that from ybAppendUnrestrict, which only sees the brackets
+ * it emits itself.
+ */
+void
+ybAppendBracketedBlock(PQExpBuffer buf, const char *block,
+					   const char *restrict_key)
+{
+	if (restrict_key)
+	{
+		size_t		keylen = strlen(restrict_key);
+		/* Line length, as closelen in ybCancelTrailingRestrict. */
+		size_t		openlen = sizeof("\\unrestrict ") - 1 + keylen + 1;
+
+		if (strncmp(block, "\\unrestrict ", sizeof("\\unrestrict ") - 1) == 0 &&
+			strncmp(block + sizeof("\\unrestrict ") - 1, restrict_key, keylen) == 0 &&
+			block[openlen - 1] == '\n' &&
+			ybCancelTrailingRestrict(buf, restrict_key))
+		{
+			appendPQExpBufferStr(buf, block + openlen);
+			return;
+		}
+	}
+
+	appendPQExpBufferStr(buf, block);
+}
+
+/*
  * YB: upstream (CVE-2025-8714) wraps plain-text dumps in psql restricted mode
  * (\restrict), which rejects all backslash meta-commands. YB's own control-flow
  * meta-commands (\if/\else/\endif/\set/\gset/\echo) must run outside
  * restricted mode; bracket each such block with these. No-op when there is no
  * restrict key. Shared by pg_dump and pg_dumpall.
+ *
+ * Callers may bracket adjacent blocks without checking whether the previous one
+ * just closed: ybAppendUnrestrict cancels the \restrict it would immediately
+ * undo.  That only works within one buffer, so a block that alternates SQL and
+ * meta-commands should build into a single PQExpBuffer.
  */
 void
 ybAppendUnrestrict(PQExpBuffer buf, const char *restrict_key)
 {
-	if (restrict_key)
-		appendPQExpBuffer(buf, "\\unrestrict %s\n", restrict_key);
+	if (!restrict_key)
+		return;
+
+	/*
+	 * Two YB blocks in a row leave a \restrict immediately followed by a
+	 * \unrestrict for the same key: two meta-command dispatches and ~150 bytes
+	 * that put the window back exactly where it was.  Cancel the pair instead.
+	 * The result is one wider window over the same YB-generated text, so it
+	 * cannot expose anything the two separate windows did not already expose.
+	 */
+	if (ybCancelTrailingRestrict(buf, restrict_key))
+		return;
+
+	appendPQExpBuffer(buf, "\\unrestrict %s\n", restrict_key);
 }
 
 void
@@ -1123,4 +1218,63 @@ ybAppendRestrict(PQExpBuffer buf, const char *restrict_key)
 {
 	if (restrict_key)
 		appendPQExpBuffer(buf, "\\restrict %s\n", restrict_key);
+}
+
+/*
+ * YB: append str as a single-quoted argument to a psql meta-command.
+ *
+ * fmtId quoting is not safe here. psql's slash-argument lexer cannot carry a
+ * quoted argument across a newline, so a newline in a dumped identifier ends
+ * the argument and the rest of the name is lexed as top-level psql input -
+ * inside an unrestricted window, that is the CVE-2025-8714 injection. The
+ * single-quoted argument state expands neither :variables nor backquotes, so
+ * escaping the quote, the backslash and the control characters is enough.
+ */
+void
+ybAppendPsqlMetaLiteral(PQExpBuffer buf, const char *str)
+{
+	appendPQExpBufferChar(buf, '\'');
+
+	for (const char *p = str; *p; p++)
+	{
+		unsigned char c = (unsigned char) *p;
+
+		switch (c)
+		{
+			case '\'':
+				appendPQExpBufferStr(buf, "''");
+				break;
+			case '\\':
+				appendPQExpBufferStr(buf, "\\\\");
+				break;
+			case '\n':
+				appendPQExpBufferStr(buf, "\\n");
+				break;
+			case '\r':
+				appendPQExpBufferStr(buf, "\\r");
+				break;
+			case '\t':
+				appendPQExpBufferStr(buf, "\\t");
+				break;
+			case '\b':
+				appendPQExpBufferStr(buf, "\\b");
+				break;
+			case '\f':
+				appendPQExpBufferStr(buf, "\\f");
+				break;
+			default:
+
+				/*
+				 * Always two hex digits: psql's escape matches at most two, so
+				 * a following hex digit cannot be absorbed into the escape.
+				 */
+				if (c < 0x20 || c == 0x7f)
+					appendPQExpBuffer(buf, "\\x%02x", c);
+				else
+					appendPQExpBufferChar(buf, c);
+				break;
+		}
+	}
+
+	appendPQExpBufferChar(buf, '\'');
 }
