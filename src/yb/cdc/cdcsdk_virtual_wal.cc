@@ -105,6 +105,9 @@ TAG_FLAG(cdcsdk_update_restart_time_when_nothing_to_stream, advanced);
 DEFINE_test_flag(uint32, cdcsdk_vwal_getchanges_rpc_delay_ms, 0,
     "Delay in milliseconds to simulate a slow GetChanges RPC call.");
 
+DEFINE_RUNTIME_bool(cdc_skip_unqualified_tables_for_polling, false,
+    "When enabled, VWAL will skip adding expired / not-of-interest tables to the polling list.");
+
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
@@ -459,6 +462,34 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
 
   for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
     auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
+    TabletStreamInfo tablet_info = {.stream_id = stream_id_, .tablet_id = tablet_id};
+    auto entry_opt = VERIFY_RESULT(cdc_service_->cdc_state_table_->TryFetchEntry(
+        {tablet_id, stream_id_}, CDCStateTableEntrySelector().IncludeActiveTime()));
+    RSTATUS_DCHECK(
+        entry_opt && entry_opt->active_time.has_value(), NotFound,
+        Format(
+            "Unexpectedly could not find active time in the state table entry for tablet: $0, "
+            "stream: $1",
+            tablet_id, stream_id_));
+
+    // Skip adding the tablet to the polling list if it is expired / not-of-interest, as this will
+    // render the slot useless.
+    if (cdc_service_->CheckTabletExpiredOrNotOfInterest(tablet_info, *entry_opt->active_time)) {
+      if (FLAGS_cdc_skip_unqualified_tables_for_polling) {
+        LOG(WARNING) << "Tablet: " << tablet_id
+                     << " is expired / not of interest for stream: " << stream_id_
+                     << ". Will not add it to the VWAL's polling list.";
+        continue;
+      } else {
+        return STATUS_FORMAT(
+            IllegalState, Format(
+                              "Cannot add tablet: $0 to the polling list as it has been "
+                              "unqualified for stream: $1. To skip adding this tablet and proceed "
+                              "enable the flag cdc_skip_unqualified_tables_for_polling.",
+                              tablet_id, stream_id_));
+      }
+    }
+
     if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range_) {
       DCHECK(tablet_checkpoint_pair.has_tablet_locations());
       DCHECK(tablet_checkpoint_pair.tablet_locations().has_partition());
