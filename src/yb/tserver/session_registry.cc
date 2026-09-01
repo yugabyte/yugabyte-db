@@ -14,6 +14,7 @@
 #include "yb/tserver/session_registry.h"
 
 #include <algorithm>
+#include <ranges>
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
@@ -115,19 +116,21 @@ size_t SessionRegistryBase::Count() {
 
 bool SessionRegistryBase::Shutdown() {
   std::vector<ClientSessionPtr> sessions;
+  size_t num_active_sessions = 0;
   {
     std::lock_guard lock(mutex_);
     if (shutting_down_) {
       return false;
     }
     shutting_down_ = true;
-    sessions.reserve(sessions_.size());
-    for (const auto& [_, session] : sessions_) {
-      sessions.push_back(session);
-    }
+    num_active_sessions = sessions_.size();
+    sessions.reserve(num_active_sessions + stopping_sessions_.size());
+    sessions.insert_range(sessions.end(), std::views::values(sessions_));
+    sessions.insert_range(sessions.end(), stopping_sessions_);
     sessions_.clear();
+    stopping_sessions_.clear();
   }
-  for (const auto& session : sessions) {
+  for (const auto& session : sessions | std::views::take(num_active_sessions)) {
     session->StartShutdown(/* service_shutting_down= */ true);
   }
   for (const auto& session : sessions) {
