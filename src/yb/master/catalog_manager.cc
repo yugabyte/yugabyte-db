@@ -7140,6 +7140,11 @@ Status CatalogManager::GetBackfillJobs(
     auto l = indexed_table->LockForRead();
     resp->mutable_backfill_jobs()->CopyFrom(l->pb.backfill_jobs());
   }
+  // The fingerprint key is a master/tserver secret: without it, fingerprints are
+  // unconfirmable opaque tokens, which is their contract. Never hand it to RPC callers.
+  for (auto& job : *resp->mutable_backfill_jobs()) {
+    job.clear_verification_fingerprint_key();
+  }
   return Status::OK();
 }
 
@@ -15346,6 +15351,14 @@ Result<std::vector<SysCatalogEntryDumpPB>> CatalogManager::FetchFromSysCatalog(
         }
 
         auto entry_pb = VERIFY_RESULT(SliceToCatalogEntityPB(type, data));
+        if (type == SysRowEntryType::TABLE) {
+          // The verification fingerprint key is a master/tserver secret (see GetBackfillJobs):
+          // it never leaves the process, not even in an admin dump.
+          auto* table_pb = static_cast<SysTablesEntryPB*>(entry_pb.get());
+          for (auto& job : *table_pb->mutable_backfill_jobs()) {
+            job.clear_verification_fingerprint_key();
+          }
+        }
         auto& entry = result.emplace_back();
         entry.set_entry_type(type);
         entry.set_entity_id(id.ToString());
