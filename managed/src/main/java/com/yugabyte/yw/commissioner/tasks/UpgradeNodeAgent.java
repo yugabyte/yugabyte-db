@@ -8,8 +8,10 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -57,6 +59,19 @@ public class UpgradeNodeAgent extends UniverseDefinitionTaskBase {
     List<NodeDetails> eligibleNodes = getEligibleNodesForUpgrade(universe);
     CertificateInfo certificateInfo = getCertificateInfoIfSpecified();
     if (certificateInfo != null) {
+      for (NodeDetails node : eligibleNodes) {
+        CloudType cloudType = universe.getCluster(node.placementUuid).getProviderCloudType(node);
+        if (cloudType != CloudType.onprem
+            && certificateInfo.getCertType() == CertConfigType.CustomCertHostPath) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "CustomCertHostPath type certificate is only supported for onprem provider");
+        }
+        if (!NodeAgentClient.isCloudTypeSupported(cloudType)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Node agent is not supported for provider type: " + cloudType);
+        }
+      }
       // Basic validation for the root CA with the node certs on the DB.
       createCheckCertificateConfigTask(
           universe.getUniverseDetails().clusters,

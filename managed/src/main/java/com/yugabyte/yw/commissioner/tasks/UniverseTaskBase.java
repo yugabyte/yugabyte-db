@@ -2456,14 +2456,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         info -> info == null ? universe.getCertificateInfoNodeToNode() : info);
               }
               if (certificateInfo != null) {
+                if (provider.getCloudCode() != CloudType.onprem
+                    && certificateInfo.getCertType() == CertConfigType.CustomCertHostPath) {
+                  throw new PlatformServiceException(
+                      BAD_REQUEST,
+                      "CustomCertHostPath type certificate is only supported for onprem provider"
+                          + " for node agent installation. Disable provider runtime config "
+                          + ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey()
+                          + " to not use universe certificates for node agent installation and"
+                          + " retry.");
+                }
                 if (certificateInfo.getCertType() != CertConfigType.CustomCertHostPath
                     && certificateInfo.getCertType() != CertConfigType.SelfSigned) {
                   throw new PlatformServiceException(
                       BAD_REQUEST,
                       "Only CustomCertHostPath or SelfSigned type certificate is supported for node"
-                          + " agent. Disable provider runtime config"
-                          + " yb.node_agent.use_universe_certificates_on_install to not use"
-                          + " universe certificates for node agent installation and retry.");
+                          + " agent. Disable provider runtime config "
+                          + ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey()
+                          + " to not use universe certificates for node agent installation and"
+                          + " retry.");
                 }
               }
               params.certificateUuid = certificateInfo == null ? null : certificateInfo.getUuid();

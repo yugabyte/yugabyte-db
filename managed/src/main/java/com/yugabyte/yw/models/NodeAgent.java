@@ -199,6 +199,13 @@ public class NodeAgent extends Model {
     private long serverCertExpirySecs;
   }
 
+  /** Deployment type for node agent deployment */
+  public enum DeployType {
+    FULL,
+    CERTS_ONLY,
+    BINARY_ONLY,
+  }
+
   @Builder(toBuilder = true)
   @Getter
   @ToString
@@ -206,10 +213,10 @@ public class NodeAgent extends Model {
   public static class DeployContext {
     // UUID of the certificate info for custom certs.
     private UUID certificateUuid;
-    private boolean certsOnly;
+    private DeployType deployType;
 
     @JsonIgnore
-    public boolean isCustomCerts() {
+    public boolean isCustomCert() {
       return certificateUuid != null;
     }
   }
@@ -435,6 +442,7 @@ public class NodeAgent extends Model {
         .append("state", getState())
         .append("home", getHome())
         .append("version", getVersion())
+        .append("certificate", getCertificateUuid())
         .build();
   }
 
@@ -624,6 +632,11 @@ public class NodeAgent extends Model {
   @JsonIgnore
   public boolean isActive() {
     return !INACTIVE_STATES.contains(getState());
+  }
+
+  @JsonIgnore
+  public boolean isCustomCert() {
+    return getCertificateUuid() != null;
   }
 
   public void updateCertDirPath(Path certDirPath) {
