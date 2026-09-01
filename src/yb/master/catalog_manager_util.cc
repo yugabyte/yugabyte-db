@@ -732,6 +732,23 @@ Status CatalogManagerUtil::FillTableLoadState(
   return Status::OK();
 }
 
+bool ScrubBackfillJobSecrets(SysTablesEntryPB* table) {
+  bool scrubbed = false;
+  for (auto& job : *table->mutable_backfill_jobs()) {
+    if (job.has_verification_fingerprint_key()) {
+      job.clear_verification_fingerprint_key();
+      scrubbed = true;
+    }
+  }
+  return scrubbed;
+}
+
+SysTablesEntryPB ScrubbedForOutput(const SysTablesEntryPB& table) {
+  SysTablesEntryPB copy = table;
+  ScrubBackfillJobSecrets(&copy);
+  return copy;
+}
+
 Status ValidateVectorIndexBackend(const TableId& table_id, const SysTablesEntryPB& table) {
   if (!table.has_index_info() || !table.index_info().has_vector_idx_options() ||
       table.index_info().vector_idx_options().idx_type() != PgVectorIndexType::HNSW) {

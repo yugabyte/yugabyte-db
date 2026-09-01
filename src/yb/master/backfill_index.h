@@ -273,6 +273,12 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
     return verification_gates_publication_;
   }
 
+  // Per-job secret for keyed violation fingerprints; latched and persisted like the mode.
+  // In-process use only (verification requests): it must never reach logs or RPC responses.
+  const std::string& verification_fingerprint_key() const {
+    return verification_fingerprint_key_;
+  }
+
   const std::unordered_set<TableId> indexes_to_build() const;
 
   const TableId& indexed_table_id() const { return indexed_table_->id(); }
@@ -384,7 +390,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status LaunchShadowVerificationTablet(
       const TabletInfoPtr& tablet, const std::string& start_key) EXCLUDES(mutex_);
   Status RecordShadowVerificationOutcome(
-      UniqueIndexVerificationStatePB::State state, const std::string& reason) EXCLUDES(mutex_);
+      UniqueIndexVerificationStatePB::State state, const std::string& reason,
+      const std::string& violation_fingerprint = std::string()) EXCLUDES(mutex_);
   // Gating mode: marks the job's unique index per the verification outcome -- SUCCESS for
   // VERIFY_CLEAN, FAILED (with a value-free reason; VIOLATION carries the unique-violation
   // code) otherwise. Filtered through indexes_to_build(), so an index already marked (a resume
@@ -460,6 +467,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   UniqueIndexBackfillMode unique_index_backfill_mode_ =
       UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_CHECK_ALL;
   bool verification_gates_publication_ = false;
+  std::string verification_fingerprint_key_;
 
   std::atomic<State> state_{State::kRunning};
   std::atomic_bool timestamp_chosen_{false};

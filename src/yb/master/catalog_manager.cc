@@ -4767,7 +4767,8 @@ Status CatalogManager::PersistNewTable(
       IsIndex(req) ? sys_catalog_->Upsert(epoch, table, tablets, indexed_table.info)
                    : sys_catalog_->Upsert(epoch, table, tablets),
       "An error occurred while inserting to sys-tablets");
-  VLOG(3) << "SysTablesEntryPB after CreateTable: " << table->metadata().dirty().pb.DebugString();
+  VLOG(3) << "SysTablesEntryPB after CreateTable: "
+          << ScrubbedForOutput(table->metadata().dirty().pb).DebugString();
   TRACE("Wrote table and tablets to system table");
 
   return Status::OK();
@@ -7138,7 +7139,9 @@ Status CatalogManager::GetBackfillJobs(
 
   {
     auto l = indexed_table->LockForRead();
-    resp->mutable_backfill_jobs()->CopyFrom(l->pb.backfill_jobs());
+    // The fingerprint key is a master/tserver secret: without it, fingerprints are
+    // unconfirmable opaque tokens, which is their contract. Never hand it to RPC callers.
+    resp->mutable_backfill_jobs()->CopyFrom(ScrubbedForOutput(l->pb).backfill_jobs());
   }
   return Status::OK();
 }
@@ -7691,7 +7694,8 @@ Status CatalogManager::DeleteTable(
     TRACE("Committing in-memory state as part of DeleteTable operation");
     VLOG_WITH_FUNC(3) << "SysCatalogPB for Table id: " << table->id()
                       << ", name: " << table->name()
-                      << " after the DeleteTable operation is: " << pb.DebugString();
+                      << " after the DeleteTable operation is: "
+                      << ScrubbedForOutput(pb).DebugString();
     l.Commit();
     if (!ysql_txn_verifier_state_present) {
       RETURN_NOT_OK(ScheduleYsqlTxnVerification(table, txn, epoch));
@@ -8928,7 +8932,8 @@ Status CatalogManager::AlterTableWithBatchTracker(
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   VLOG_WITH_FUNC(3) << "SysTablesEntryPB for " << table->id()
-                    << " after the after table operation is: " << table_pb.DebugString();
+                    << " after the after table operation is: "
+                    << ScrubbedForOutput(table_pb).DebugString();
   l.Commit();
 
   // The alter is committed. If a rename reserved a new name, that name is the table's live name
@@ -13681,7 +13686,7 @@ Status CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
       if (names_copy.erase({namespace_id, name}) != 1) {
         *out << "  [not present in by-name map]\n";
       }
-      *out << "  metadata: " << l->pb.ShortDebugString() << "\n";
+      *out << "  metadata: " << ScrubbedForOutput(l->pb).ShortDebugString() << "\n";
 
       *out << "  tablets:\n";
       table_tablets = VERIFY_RESULT(t->GetTablets());
@@ -15346,6 +15351,9 @@ Result<std::vector<SysCatalogEntryDumpPB>> CatalogManager::FetchFromSysCatalog(
         }
 
         auto entry_pb = VERIFY_RESULT(SliceToCatalogEntityPB(type, data));
+        if (type == SysRowEntryType::TABLE) {
+          ScrubBackfillJobSecrets(static_cast<SysTablesEntryPB*>(entry_pb.get()));
+        }
         auto& entry = result.emplace_back();
         entry.set_entry_type(type);
         entry.set_entity_id(id.ToString());

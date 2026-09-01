@@ -269,5 +269,14 @@ bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb);
 // is rejected before it changes the cluster.
 Status ValidateVectorIndexBackend(const TableId& table_id, const SysTablesEntryPB& table);
 
+// Removes the secrets a SysTablesEntryPB may carry before it leaves the process: the backfill
+// jobs' unique-index verification fingerprint key, which keys the violation fingerprints
+// reported to users and must never be derivable by them. Apply at every egress -- RPC
+// responses, admin dumps, log lines, snapshot exports. Returns true if anything was removed.
+bool ScrubBackfillJobSecrets(SysTablesEntryPB* table);
+
+// A copy of `table` with ScrubBackfillJobSecrets applied, for log and dump output.
+SysTablesEntryPB ScrubbedForOutput(const SysTablesEntryPB& table);
+
 } // namespace master
 } // namespace yb

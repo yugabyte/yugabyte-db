@@ -39,6 +39,7 @@
 
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/master/object_lock_info_manager.h"
@@ -186,7 +187,8 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 
   LOG(INFO) << "Loaded metadata for table " << table->ToString() << ", state: "
             << SysTablesEntryPB::State_Name(metadata.state());
-  VLOG(1) << "Metadata for table " << table->ToString() << ": " << metadata.ShortDebugString();
+  VLOG(1) << "Metadata for table " << table->ToString() << ": "
+          << ScrubbedForOutput(metadata).ShortDebugString();
 
   return Status::OK();
 }
