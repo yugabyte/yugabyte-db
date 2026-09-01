@@ -34,6 +34,84 @@ To install chrony, run:
 $ sudo yum install -y chrony
 ```
 
+### Configure chrony
+
+YugabyteDB shuts down a YB-TServer or YB-Master when it detects clock skew larger than `--max_clock_skew_usec` (500 ms by default). Configure chrony so that synchronization stays accurate, and so that it draws on time sources that are themselves highly available and accurate.
+
+On cloud service providers, use the provider's link-local time service. On-premises you can place a time service behind a virtual IP or router as those services do, or configure several independent sources in chrony. If you configure multiple sources, spread them across availability zones or regions.
+
+An example `chrony.conf` for an on-premises deployment with several time sources:
+
+```
+server ntp1.example.internal prefer iburst minpoll 4 maxpoll 4
+server ntp2.example.internal prefer iburst minpoll 4 maxpoll 4
+server ntp3.example.internal prefer iburst minpoll 4 maxpoll 4
+server ntp4.example.internal prefer iburst minpoll 4 maxpoll 4
+
+minsources 2
+maxdistance 0.1
+maxclockerror 50
+
+logchange 0.1
+logdir /var/log/chrony
+log measurements statistics tracking
+
+rtcsync
+
+# Sources from DHCP arrive without the minpoll and maxpoll options above.
+# sourcedir /run/chrony-dhcp
+```
+
+- `minpoll 4 maxpoll 4` fixes the polling interval at 16 seconds. This is required if you use ClockBound, and is recommended even otherwise.
+- `minsources` defaults to 1, letting one source steer the clock while every other source disagrees. Use at least 2, and more if you have more sources.
+- `maxdistance` defaults to 3 seconds, six times the default skew threshold, so it never rejects a source. Keep it well below `--max_clock_skew_usec`.
+- Use time servers that smear leap seconds.
+
+### Verify clock synchronization
+
+Use `chronyc tracking` to check how closely the node follows its source:
+
+```output
+Reference ID    : C0A80A0B (ntp1.example.internal)
+Stratum         : 3
+System time     : 0.000000241 seconds fast of NTP time
+Last offset     : -0.000001108 seconds
+Residual freq   : +0.000 ppm
+Root delay      : 0.000198441 seconds
+Root dispersion : 0.000387219 seconds
+Update interval : 16.0 seconds
+Leap status     : Normal
+```
+
+`Leap status` is `Normal`, the offsets are well under a millisecond, and `Update interval` matches the configured 16 seconds. The clock error - `Root dispersion`, plus half of `Root delay`, plus `System time` - is 0.49 ms. With ClockBound, clock error must also stay below `clockbound_clock_error_estimate_usec`.
+
+The same fields on a node that is not synchronized closely enough:
+
+```output
+System time     : 0.087412663 seconds slow of NTP time
+Residual freq   : -58.229 ppm
+Root delay      : 0.000241883 seconds
+Root dispersion : 0.104778310 seconds
+Update interval : 1024.0 seconds
+```
+
+Clock error is now 192 ms, over a third of the default 500 ms skew threshold, and the residual frequency is implausible for a stable clock. The 1024-second update interval also shows that `maxpoll` is not taking effect, usually because sources are being loaded from `sourcedir`, `confdir`, or `include`.
+
+Use `chronyc sources` to check the individual sources:
+
+```output
+MS Name/IP address         Stratum Poll Reach LastRx Last sample
+===============================================================================
+^* ntp1.example.internal         2   4   377     9   -142ns[ -160ns] +/-  412us
+^+ ntp2.example.internal         2   4   377    12  +2891ns[+2874ns] +/-  438us
+^x ntp3.example.internal         2   4   377     5   +487ms[ +487ms] +/- 6021us
+^+ ntp4.example.internal         2   4   377     7  -1067ns[-1049ns] +/-  447us
+```
+
+`ntp1` is selected (`*`), and `ntp2` and `ntp4` are combined with it (`+`); all three are reachable (`Reach 377`, meaning the last eight polls succeeded) and agree to within microseconds.
+
+`ntp3` is marked `x`: chrony has classified it a falseticker because it disagrees with the other sources by 487 ms. Correct or replace it.
+
 ### Configure Precision Time Protocol
 
 {{<tags/feature/tp>}} Precision Time Protocol (PTP) is a network protocol designed for highly accurate time synchronization across devices in a network. PTP provides microsecond-level accuracy. PTP relies on a PTP Hardware Clock (PHC), a dedicated physical clock device that enhances time synchronization accuracy.
