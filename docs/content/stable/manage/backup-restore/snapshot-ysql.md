@@ -39,7 +39,7 @@ Started snapshot creation: 0d4b4935-2c95-4523-95ab-9ead1e95e794
 
 You can then use this ID to check the status of the snapshot, [delete it](#delete-a-snapshot), or use it to [restore the database](#restore-a-snapshot).
 
-The `create_database_snapshot` command exits immediately, but the snapshot may take some time to complete.
+The `create_database_snapshot` command returns immediately, but the snapshot may take some time to complete.
 
 Before using the snapshot, verify its status by executing the [list_snapshots](../../../admin/yb-admin/#list-snapshots) command, as follows:
 
@@ -54,11 +54,11 @@ Snapshot UUID                           State       Creation Time
 0d4b4935-2c95-4523-95ab-9ead1e95e794    COMPLETE    2023-04-20 00:20:38.214201
 ```
 
-To create a schedule for taking snapshots at regular intervals, use the `create_snapshot_schedule` command. This also enables point-in-time-recovery features. For more information, refer to [Enable and disable point-in-time-recovery](../point-in-time-recovery/enable-pitr/).
+To take snapshots at regular intervals, use the [create_snapshot_schedule](../../../admin/yb-admin/#create-snapshot-schedule) command. Creating a schedule also enables [Rewind to PIT](../point-in-time-recovery/rewind/) and [Clone to PIT](../point-in-time-recovery/clone/) for that database. See [Enable and disable PITR](../point-in-time-recovery/enable-pitr/).
 
 ## Delete a snapshot
 
-Snapshots never expire and are retained as long as the cluster exists. If you no longer need a snapshot, you can delete it by executing the [`delete_snapshot`](../../../admin/yb-admin/#delete-snapshot) command, as follows:
+Snapshots never expire and are retained as long as the cluster exists. If you no longer need a snapshot, you can delete it by executing the [delete_snapshot](../../../admin/yb-admin/#delete-snapshot) command, as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> delete_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794

@@ -45,7 +45,7 @@ Started snapshot creation: 6e7e85b0-13ef-4073-9ab7-224cb77f22ef
 
 You can then use this ID to check the status of the snapshot, [delete it](#delete-a-snapshot), or use it to [restore the data](#restore-a-snapshot).
 
-Even though the `create_keyspace_snapshot` and `create_snapshot` commands exit immediately, the snapshot may take some time to complete. Before using the snapshot, verify its status with the [list_snapshots](../../../admin/yb-admin/#list-snapshots) command, as follows:
+Even though the `create_keyspace_snapshot` and `create_snapshot` commands return immediately, the snapshot may take some time to complete. Before using the snapshot, verify its status with the [list_snapshots](../../../admin/yb-admin/#list-snapshots) command, as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshots

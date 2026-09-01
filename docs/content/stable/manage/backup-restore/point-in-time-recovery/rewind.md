@@ -144,7 +144,13 @@ This limitation applies only to YSQL databases. YCQL is not affected.
 
 ### YugabyteDB Anywhere
 
-YugabyteDB Anywhere [supports Rewind via PITR](../../../../yugabyte-platform/back-up-restore-universes/pitr/). However, you must initiate and manage PITR using the YugabyteDB Anywhere UI. If you use the yb-admin CLI to make changes to the PITR configuration of a universe managed by YugabyteDB Anywhere, including creating schedules and snapshots, your changes are not reflected in YugabyteDB Anywhere.
+YugabyteDB Anywhere [supports Rewind via PITR](../../../../yugabyte-platform/back-up-restore-universes/pitr/).
+
+{{< warning title="Do not mix yb-admin and the YugabyteDB Anywhere UI" >}}
+
+A database or keyspace can have at most one snapshot schedule. On a universe managed by YugabyteDB Anywhere, manage PITR only from the YugabyteDB Anywhere UI. Using yb-admin and the UI together to manage snapshot schedules can cause conflicts and is strongly discouraged. Changes you make using yb-admin are not reflected in YugabyteDB Anywhere.
+
+{{< /warning >}}
 
 ### Other limitations
 

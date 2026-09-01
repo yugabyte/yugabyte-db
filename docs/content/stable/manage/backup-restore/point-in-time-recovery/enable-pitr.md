@@ -11,13 +11,13 @@ menu:
 type: docs
 ---
 
-YugabyteDB exposes point-in-time recovery through [snapshot schedule](../../../../admin/yb-admin/#backup-and-snapshot-commands) commands. A schedule automatically manages periodic snapshots for a YSQL database or a YCQL keyspace and enables PIT capabilities (such as [Rewind](../rewind/), [Clone](../clone/), and schedule-based recovery) for that database or keyspace.
+A snapshot schedule automatically takes periodic snapshots of a YSQL database or YCQL keyspace and retains them for a configured duration. Creating a schedule is what enables [Rewind to PIT](../rewind/) and [Clone to PIT](../clone/) for that database or keyspace. You cannot rewind unless you create a schedule first.
 
-Creating a snapshot schedule for a database or keyspace enables PITR for that database or keyspace. You cannot rewind to a point in time using a schedule unless you create one first. [Inspect at PIT](../inspect/) uses history retention flags and does not require a snapshot schedule, though a schedule can extend the useful retention window for other PIT operations.
+[Inspect at PIT](../inspect/) uses history retention flags and does not require a schedule. [Restore to PIT](../restore/) restores a specific snapshot and also does not require a schedule, though a schedule is one way to produce the snapshots you restore.
 
 ## Create a schedule
 
-To create a schedule and enable PITR, use the [create_snapshot_schedule](../../../../admin/yb-admin/#create-snapshot-schedule) command with the following parameters:
+To create a schedule, use the [create_snapshot_schedule](../../../../admin/yb-admin/#create-snapshot-schedule) command with the following parameters:
 
 - Interval between snapshots (in minutes).
 - Total retention time (in minutes).
@@ -47,7 +47,7 @@ You can use this ID to [delete the schedule](#delete-a-schedule) or [rewind to a
 
 ## Delete a schedule
 
-To delete a schedule and disable PITR, use the [delete_snapshot_schedule](../../../../admin/yb-admin/#delete-snapshot-schedule) command with the ID of the schedule to delete:
+To delete a schedule and disable Rewind and Clone for that database or keyspace, use the [delete_snapshot_schedule](../../../../admin/yb-admin/#delete-snapshot-schedule) command with the ID of the schedule to delete:
 
 ```sh
 ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
@@ -94,8 +94,8 @@ You can also use the same command to view information about a particular schedul
 
 ## Configuration details
 
-By default, the history retention period is controlled by the [history retention interval flag](../../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). This is a cluster-wide global flag that affects every YSQL database and YCQL keyspace while PITR is enabled.
+By default, the history retention period is controlled by the [history retention interval flag](../../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). This is a cluster-wide global flag that affects every YSQL database and YCQL keyspace, whether or not PITR is enabled.
 
-When PITR is enabled for a particular database or keyspace, the per-database retention period is the maximum of the global history retention period and the snapshot interval specified when PITR is configured for the database or keyspace.
+When a snapshot schedule is configured for a particular database or keyspace, the per-database retention period is the maximum of the global history retention period and the snapshot interval specified for that schedule.
 
-For example, if the global history retention period is 8 hours, but PITR is configured for a particular database to take snapshots every 4 hours, then a snapshot taken at time t0 will have all data from (time t0 - 8h to time t0), even if that means two snapshots have overlapping and duplicate copies of the same detailed change data.
+For example, if the global history retention period is 8 hours, but a schedule takes snapshots every 4 hours, then a snapshot taken at time t0 will have all data from (time t0 - 8h to time t0), even if that means two snapshots have overlapping and duplicate copies of the same detailed change data.

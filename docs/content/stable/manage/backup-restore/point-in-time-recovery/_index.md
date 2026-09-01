@@ -38,14 +38,14 @@ YugabyteDB provides four complementary ways to work with a point in time:
 | [Inspect at PIT](inspect/) | Query the database as it existed at an earlier time (read-only). Also referred to as time travel queries. | You need to find when or what went wrong, or recover a small amount of data surgically on the production database. |
 | [Clone to PIT](clone/) | Create a fast, lightweight, writable copy (or branch) of the database as of a point in time on the same cluster. Also referred to as database branching. | Recent writes must be preserved; you can perform forensic search and extract/merge on the original cluster. |
 | [Rewind to PIT](rewind/) | Rewind the original database to an earlier point in time. Intervening writes are discarded. | There were no important writes after the error, or those writes can be discarded or replayed from an external log. |
-| [Restore to PIT](restore/) | Restore from a snapshot or backup to a chosen point in time, on the original or an alternate cluster. | Policy requires recovery off the production cluster, or you need a longer retention window on cheaper backup storage. |
+| [Restore to PIT](restore/) | Restore from a snapshot or backup to a chosen point in time, on the original or an alternate cluster. | Policy requires recovery off the production cluster, or you need a longer retention window on cheaper backup storage. Supported in [YugabyteDB Anywhere](../../../yugabyte-platform/back-up-restore-universes/restore-universe-data/); the yb-admin path is advanced. |
 
 ### Choosing an approach
 
 - Start with [Inspect at PIT](inspect/) when you need to determine *when* the error occurred or *what* data changed.
 - Use [Rewind to PIT](rewind/) when intervening writes can be discarded (or replayed from an external application log).
 - Use [Clone to PIT](clone/) when intervening writes must be preserved and forensic recovery is allowed on the production cluster.
-- Use [Restore to PIT](restore/) when recovery must happen on an alternate cluster, or you need a longer retention window from backup storage.
+- Use [Restore to PIT](restore/) when recovery must happen on an alternate cluster, or you need a longer retention window from backup storage. On a manually managed cluster this is an advanced workflow; [YugabyteDB Anywhere](../../../yugabyte-platform/back-up-restore-universes/restore-universe-data/) is the supported path.
 
 Use the following comparison when deciding:
 
@@ -53,7 +53,7 @@ Use the following comparison when deciding:
 | :--- | :------------- | :----------- | :------------ | :------------- |
 | Target cluster | Original | Original | Original | Original or alternate |
 | Database affected | Original (read-only view) | New cloned database | Original database | Restored database |
-| Crosses DDL boundaries | No | Yes | Yes | No (current limitation) |
+| Crosses DDL boundaries | No | Yes | Yes | No |
 | Newest recoverable time | Seconds ago | Seconds ago | Seconds ago | Time of last [snapshot/backup](../snapshot-ysql/) |
 | Typical retention | Hours (primary storage) | Hours to days (primary storage) | Hours to days (primary storage) | Hours to months (backup storage) |
 | APIs | YSQL | YSQL and YCQL | YSQL and YCQL | YSQL and YCQL |
@@ -76,7 +76,11 @@ YugabyteDB Anywhere supports the following PITR features:
 - [Rewind to PIT](../../../yugabyte-platform/back-up-restore-universes/pitr/). Enable and manage Rewind using the YugabyteDB Anywhere UI.
 - [Restore to PIT](../../../yugabyte-platform/back-up-restore-universes/restore-universe-data/). Enable and manage Restore using the YugabyteDB Anywhere UI.
 
-Note that if you use the yb-admin CLI to change the PITR configuration of a universe managed by YugabyteDB Anywhere (that is, to create schedules and snapshots), your changes are not reflected in YugabyteDB Anywhere.
+{{< warning title="Do not mix yb-admin and the YugabyteDB Anywhere UI" >}}
+
+A database or keyspace can have at most one snapshot schedule. On a universe managed by YugabyteDB Anywhere, manage PITR strictly using YugabyteDB Anywhere. Using yb-admin and the UI together to manage snapshot schedules can cause conflicts. Changes you make using yb-admin are not reflected in YugabyteDB Anywhere.
+
+{{< /warning >}}
 
 #### YugabyteDB Aeon
 

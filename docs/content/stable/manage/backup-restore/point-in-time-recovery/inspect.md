@@ -205,4 +205,4 @@ In cases where the deletion affected many tables in the database, you can use In
 - Inspect at PIT is not supported for temporary tables.
 - You cannot inspect a time prior to the creation time of a database clone.
 - Inspect at PIT currently does not support [vector indexes](../../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing). {{<issue 20829>}}
-- You cannot query across a DDL boundary (for example, if a table was dropped at time t1, you cannot query that table as of a time before or after in a way that crosses that schema change).
+- You cannot query across a DDL boundary (for example, if a table was altered at time t1, you cannot query that table as of a time before t1).

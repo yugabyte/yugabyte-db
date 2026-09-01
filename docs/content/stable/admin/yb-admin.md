@@ -887,11 +887,11 @@ The following backup and snapshot commands are available:
 * [**clone_namespace**](#clone-namespace) clones a YSQL database or YCQL keyspace as of a point in time
 * [**list_clones**](#list-clones) lists clone operations for a source database or keyspace
 
-{{< note title="YugabyteDB Anywhere" >}}
+{{< warning title="YugabyteDB Anywhere" >}}
 
-If you are using YugabyteDB Anywhere to manage point-in-time-recovery (PITR) for a universe, you must initiate and manage PITR using the YugabyteDB Anywhere UI. If you use the yb-admin CLI to make changes to the PITR configuration of a universe managed by YugabyteDB Anywhere, including creating schedules and snapshots, your changes are not reflected in YugabyteDB Anywhere.
+A database or keyspace can have at most one snapshot schedule. If YugabyteDB Anywhere manages PITR for a universe, manage PITR only from the YugabyteDB Anywhere UI. Using yb-admin and the UI together to manage snapshot schedules can cause conflicts and is strongly discouraged. Changes you make using yb-admin are not reflected in YugabyteDB Anywhere.
 
-{{< /note >}}
+{{< /warning >}}
 
 #### create_database_snapshot
 
@@ -1075,19 +1075,31 @@ To see if the snapshot creation has finished, run the [yb-admin list_snapshots](
 
 #### restore_snapshot
 
-Restores the specified snapshot, including the tables and indexes. When the operation starts, a `restoration_id` is generated. To restore to a time other than the snapshot's creation time, see [Restore to PIT](../../manage/backup-restore/point-in-time-recovery/restore/).
+Restores the specified snapshot, including the tables and indexes. Optionally, you can restore to a point in time.
+
+To restore a distributed snapshot as part of a recovery workflow, see [Restore a snapshot](../../manage/backup-restore/snapshot-ysql/#restore-a-snapshot) or [Restore to PIT](../../manage/backup-restore/point-in-time-recovery/restore/). To rewind a live database to a point in time, use [Rewind to PIT](../../manage/backup-restore/point-in-time-recovery/rewind/) (`restore_snapshot_schedule`).
+
+When the operation starts, a `restoration_id` is generated.
+
+{{< warning title="Do not restore to a point before the most recent DDL" >}}
+
+`restore_snapshot` is a low-level command for sophisticated users building a custom backup and restore workflow. Most users should not use this command.
+
+Restoring to a time before a DDL change (for example, `CREATE TABLE`, `DROP TABLE`, or `ALTER TABLE`) can have unexpected effects (whether or not you supply *restore-target*).
+
+{{< /warning >}}
 
 **Syntax**
 
 ```sh
 yb-admin \
     --master_addresses <master-addresses> \
-    restore_snapshot <snapshot-id> <restore-target>
+    restore_snapshot <snapshot-id> [<restore-target>]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *snapshot-id*: The identifier (ID) for the snapshot.
-* *restore-target*: The time to which to restore the snapshot. This can be either an absolute Unix time, or a relative time such as `minus 5m` (to restore to 5 minutes ago). Optional; omit to restore to the given snapshot's creation time.
+* *restore-target*: Optional. A timestamp at or before the snapshot's creation time. Absolute Unix time, or a relative time such as `minus 5m`. Omit to restore to the snapshot's creation time.
 
 **Example**
 
@@ -1297,7 +1309,7 @@ yb-admin \
 
 #### create_snapshot_schedule
 
-Creates a snapshot schedule. A schedule consists of a list of objects to be included in a snapshot, a time interval at which to take snapshots for them, and a retention time. Creating a schedule [enables point-in-time recovery](../../manage/backup-restore/point-in-time-recovery/enable-pitr/) for the database or keyspace.
+Creates a snapshot schedule for a YSQL database or YCQL keyspace. A schedule takes snapshots at a set interval and retains them for a configured duration. Creating a schedule also enables [Rewind to PIT](../../manage/backup-restore/point-in-time-recovery/rewind/) and [Clone to PIT](../../manage/backup-restore/point-in-time-recovery/clone/) for that database or keyspace.
 
 Returns a schedule ID in JSON format.
 
@@ -1436,7 +1448,7 @@ Edit a snapshot schedule to take a snapshot once every 90 minutes, and retain ea
 
 #### restore_snapshot_schedule
 
-Schedules group a set of items into a single tracking object (the *schedule*). When you [rewind to a point in time](../../manage/backup-restore/point-in-time-recovery/rewind/), you choose a particular schedule and a point in time, and revert the state of all affected objects back to the chosen time.
+A snapshot schedule is defined for a particular YSQL database or YCQL keyspace. When you [rewind](../../manage/backup-restore/point-in-time-recovery/rewind/) that database or keyspace to a point in time, you choose the corresponding schedule and revert the state of all objects in it to the chosen time.
 
 **Syntax**
 
@@ -1447,8 +1459,8 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *schedule-id*: The identifier (ID) of the schedule to rewind.
-* *restore-target*: The time to which to rewind the snapshots in the schedule. This can be either an absolute Unix timestamp, or a relative time such as `minus 5m` (to rewind to 5 minutes ago).
+* *schedule-id*: The identifier (ID) of the schedule for the database or keyspace to rewind.
+* *restore-target*: The time to which to rewind the database or keyspace. This can be either an absolute Unix timestamp, or a relative time such as `minus 5m` (to rewind to 5 minutes ago).
 
 You can also use a [YSQL timestamp](../../api/ysql/datatypes/type_datetime/) or [YCQL timestamp](../../api/ycql/type_datetime/#timestamp) with the command, if you like.
 
