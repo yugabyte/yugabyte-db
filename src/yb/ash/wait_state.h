@@ -191,6 +191,8 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kBackfillIndex_WaitToBackfillTablet)
     (kXCluster_WaitForSafeTime)
     (kXCluster_RateLimiter)
+    (kUniqueIndexVerify_ResolveIntents)
+    (kUniqueIndexVerify_Scan)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
