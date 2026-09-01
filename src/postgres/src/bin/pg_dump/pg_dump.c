@@ -495,6 +495,7 @@ main(int argc, char **argv)
 		{"on-conflict-do-nothing", no_argument, &dopt.do_nothing, 1},
 		{"rows-per-insert", required_argument, NULL, 10},
 		{"include-foreign-data", required_argument, NULL, 11},
+		{"restrict-key", required_argument, NULL, 25},
 
 		/* YB: does not have short option letter */
 		{"no-serializable-deferrable", no_argument, &no_serializable_deferrable, 1},
@@ -755,6 +756,10 @@ main(int argc, char **argv)
 				with_statistics = true;
 				break;
 
+			case 25:
+				dopt.restrict_key = pg_strdup(optarg);
+				break;
+
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -871,7 +876,35 @@ main(int argc, char **argv)
 
 	/* archiveFormat specific setup */
 	if (archiveFormat == archNull)
+	{
 		plainText = 1;
+
+		/*
+		 * If you don't provide a restrict key, one will be appointed for you.
+		 */
+		if (!dopt.restrict_key)
+			dopt.restrict_key = generate_restrict_key();
+		if (!dopt.restrict_key)
+			pg_fatal("could not generate restrict key");
+		if (!valid_restrict_key(dopt.restrict_key))
+			pg_fatal("invalid restrict key");
+	}
+	else if (dopt.restrict_key)
+		pg_fatal("option --restrict-key can only be used with --format=plain");
+
+	/*
+	 * YB: --include-yb-metadata guards its statements with psql meta-commands
+	 * (\if, \else, \endif, \set, \gset, \echo).  Several are stored in a TOC
+	 * entry rather than written to the script, so a non-plain archive carries
+	 * them as text that pg_restore replays inside the restricted-mode region it
+	 * brackets the script with, where psql rejects them.  The brackets below
+	 * cannot help there, because pg_restore mints its own restrict key.
+	 *
+	 * This also covers --dump-role-checks, which the check above already
+	 * requires --include-yb-metadata for.
+	 */
+	if (dopt.include_yb_metadata && !plainText)
+		pg_fatal("option --include-yb-metadata can only be used with --format=plain");
 
 	/* Custom and directory formats are compressed by default, others not */
 	if (compressLevel == -1)
@@ -1151,6 +1184,7 @@ main(int argc, char **argv)
 	ropt->enable_row_security = dopt.enable_row_security;
 	ropt->sequence_data = dopt.sequence_data;
 	ropt->binary_upgrade = dopt.binary_upgrade;
+	ropt->restrict_key = dopt.restrict_key ? pg_strdup(dopt.restrict_key) : NULL;
 
 	if (compressLevel == -1)
 		ropt->compression = 0;
@@ -1240,7 +1274,8 @@ help(const char *progname)
 	printf(_("  --include-yb-metadata        include Yugabyte-specific metadata, uses extended\n"
 			 "                               YSQL syntax not compatible with PostgreSQL.\n"
 			 "                               (As of now, doesn't automatically include some things\n"
-			 "                               like SPLIT details).\n"));
+			 "                               like SPLIT details).\n"
+			 "                               Requires --format=plain.\n"));
 	printf(_("  --dump-role-checks           add to the dump additional checks if the used ROLE\n"
 			 "                               exists. The ROLE usage statements are skipped if\n"
 			 "                               the ROLE does not exist.\n"
@@ -1263,6 +1298,7 @@ help(const char *progname)
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
 	printf(_("  --read-time=TIMEPOINT        dump data/schema as of provided TIMEPOINT. Takes\n"
 			 "                               linux timestamp in microseconds\n"));
+	printf(_("  --restrict-key=RESTRICT_KEY  use provided string as psql \\restrict key\n"));
 	printf(_("  --rows-per-insert=NROWS      number of rows per INSERT; implies --inserts\n"));
 	printf(_("  --section=SECTION            dump named section (pre-data, data, or post-data)\n"));
 	printf(_("  --serializable-deferrable    wait until the dump can run without anomalies\n"));
@@ -3601,7 +3637,8 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 	for (int i = 0; i < PQntuples(res); i++)
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "DATABASE", dbname, NULL, NULL,
-							   yb_dopt->yb_dump_role_checks, outbuf);
+							   yb_dopt->yb_dump_role_checks,
+							   yb_dopt->restrict_key, outbuf);
 
 	PQclear(res);
 
@@ -3614,16 +3651,25 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 	res = ExecuteSqlQuery(AH, buf->data, PGRES_TUPLES_OK);
 
 	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
+	{
+		ybAppendUnrestrict(outbuf, yb_dopt->restrict_key);
 		appendPQExpBufferStr(outbuf, "\\if :use_roles\n");
+		ybAppendRestrict(outbuf, yb_dopt->restrict_key);
+	}
 
 	for (int i = 0; i < PQntuples(res); i++)
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 1),
 							   "ROLE", PQgetvalue(res, i, 0),
 							   "DATABASE", dbname,
-							   yb_dopt->yb_dump_role_checks, outbuf);
+							   yb_dopt->yb_dump_role_checks,
+							   yb_dopt->restrict_key, outbuf);
 
 	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
+	{
+		ybAppendUnrestrict(outbuf, yb_dopt->restrict_key);
 		appendPQExpBufferStr(outbuf, "\\endif\n");
+		ybAppendRestrict(outbuf, yb_dopt->restrict_key);
+	}
 
 	PQclear(res);
 
@@ -4217,7 +4263,9 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 		PQExpBuffer yb_source_sql = query;
 
 		query = createPQExpBuffer();
+		ybAppendUnrestrict(query, dopt->restrict_key);
 		appendPQExpBufferStr(query, "\\if :use_roles\n");
+		ybAppendRestrict(query, dopt->restrict_key);
 
 		if (dopt->yb_dump_role_checks)
 		{
@@ -4225,12 +4273,14 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 								polinfo->polroles,	/* role1 */
 								NULL,	/* role2 */
 								NULL,	/* role3 */
-								query);
+								query, dopt->restrict_key);
 		}
 		else
 			appendPQExpBufferStr(query, yb_source_sql->data);
 
+		ybAppendUnrestrict(query, dopt->restrict_key);
 		appendPQExpBufferStr(query, "\\endif\n");
+		ybAppendRestrict(query, dopt->restrict_key);
 		destroyPQExpBuffer(yb_source_sql);
 	}
 
@@ -15684,6 +15734,7 @@ dumpDefaultACL(Archive *fout, const DefaultACLInfo *daclinfo)
 								 daclinfo->defaclrole,
 								 fout->remoteVersion,
 								 dopt->yb_dump_role_checks,
+								 dopt->restrict_key,
 								 q))
 		pg_fatal("could not parse default ACL list (%s)",
 				 daclinfo->dacl.acl);
@@ -15784,7 +15835,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
 		if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 							  initprivs, acldefault, owner,
-							  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
+							  "", fout->remoteVersion, dopt->yb_dump_role_checks,
+							  dopt->restrict_key, sql))
 			pg_fatal("could not parse initial ACL list (%s) or default (%s) for object \"%s\" (%s)",
 					 initprivs, acldefault, name, type);
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
@@ -15809,7 +15861,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 
 	if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 						  acls, baseacls, owner,
-						  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
+						  "", fout->remoteVersion, dopt->yb_dump_role_checks,
+						  dopt->restrict_key, sql))
 		pg_fatal("could not parse ACL list (%s) or default (%s) for object \"%s\" (%s)",
 				 acls, baseacls, name, type);
 
@@ -15828,7 +15881,13 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		if (dopt->include_yb_metadata)
 		{
 			yb_use_roles_sql = createPQExpBuffer();
-			appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
+			ybAppendUnrestrict(yb_use_roles_sql, dopt->restrict_key);
+			appendPQExpBufferStr(yb_use_roles_sql, "\\if :use_roles\n");
+			ybAppendRestrict(yb_use_roles_sql, dopt->restrict_key);
+			appendPQExpBufferStr(yb_use_roles_sql, sql->data);
+			ybAppendUnrestrict(yb_use_roles_sql, dopt->restrict_key);
+			appendPQExpBufferStr(yb_use_roles_sql, "\\endif\n");
+			ybAppendRestrict(yb_use_roles_sql, dopt->restrict_key);
 		}
 
 		aclDeps[nDeps++] = objDumpId;

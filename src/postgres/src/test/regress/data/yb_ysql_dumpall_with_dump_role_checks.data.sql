@@ -2,6 +2,8 @@
 -- YSQL database cluster dump
 --
 
+\restrict test
+
 SET default_transaction_read_only = off;
 
 SET client_encoding = 'UTF8';
@@ -12,11 +14,14 @@ SET standard_conforming_strings = on;
 --
 
 -- Set variable ignore_existing_roles (if not already set)
+\unrestrict test
 \if :{?ignore_existing_roles}
 \else
 \set ignore_existing_roles false
 \endif
+\restrict test
 
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'User_"_WITH_""_different''_''quotes'' and spaces') AS role_exists \gset
@@ -24,10 +29,14 @@ SET standard_conforming_strings = on;
 \if :role_exists
     \echo 'Role already exists:' "User_""_WITH_""""_different'_'quotes' and spaces"
 \else
+\restrict test
     CREATE ROLE "User_""_WITH_""""_different'_'quotes' and spaces";
     ALTER ROLE "User_""_WITH_""""_different'_'quotes' and spaces" WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
@@ -35,10 +44,14 @@ SET standard_conforming_strings = on;
 \if :role_exists
     \echo 'Role already exists:' postgres
 \else
+\restrict test
     CREATE ROLE postgres;
     ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS role_exists \gset
@@ -46,10 +59,14 @@ SET standard_conforming_strings = on;
 \if :role_exists
     \echo 'Role already exists:' regress_priv_user7
 \else
+\restrict test
     CREATE ROLE regress_priv_user7;
     ALTER ROLE regress_priv_user7 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AS role_exists \gset
@@ -57,10 +74,14 @@ SET standard_conforming_strings = on;
 \if :role_exists
     \echo 'Role already exists:' regress_priv_user8
 \else
+\restrict test
     CREATE ROLE regress_priv_user8;
     ALTER ROLE regress_priv_user8 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_db_admin') AS role_exists \gset
@@ -68,10 +89,14 @@ SET standard_conforming_strings = on;
 \if :role_exists
     \echo 'Role already exists:' yb_db_admin
 \else
+\restrict test
     CREATE ROLE yb_db_admin;
     ALTER ROLE yb_db_admin WITH NOSUPERUSER NOINHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_extension') AS role_exists \gset
@@ -79,10 +104,14 @@ SET standard_conforming_strings = on;
 \if :role_exists
     \echo 'Role already exists:' yb_extension
 \else
+\restrict test
     CREATE ROLE yb_extension;
     ALTER ROLE yb_extension WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_fdw') AS role_exists \gset
@@ -90,12 +119,16 @@ SET standard_conforming_strings = on;
 \if :role_exists
     \echo 'Role already exists:' yb_fdw
 \else
+\restrict test
     CREATE ROLE yb_fdw;
     ALTER ROLE yb_fdw WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
+\unrestrict test
 \endif
+\restrict test
 
 ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'md52c2dc7d65d3e364f08b8addff5a54bf5';
 
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
@@ -103,9 +136,12 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 \if :role_exists
     \echo 'Role already exists:' yugabyte_test
 \else
+\restrict test
     CREATE ROLE yugabyte_test;
     ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPLICATION BYPASSRLS;
+\unrestrict test
 \endif
+\restrict test
 
 
 --
@@ -116,12 +152,16 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 -- User Config "regress_priv_user7"
 --
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER ROLE regress_priv_user7 SET log_min_messages TO 'LOG';
+\unrestrict test
 \else
     \echo 'Skipping alter role due to missing role:' regress_priv_user7
 \endif
+\restrict test
 
 
 
@@ -129,19 +169,27 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 -- Role memberships
 --
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION GRANTED BY yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' regress_priv_user8 'OR' yugabyte_test
 \endif
+\restrict test
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' regress_priv_user7 'OR' yugabyte_test
 \endif
+\restrict test
 
 
 
@@ -157,17 +205,21 @@ CREATE PROFILE profile_3_failed LIMIT FAILED_LOGIN_ATTEMPTS 3;
 -- YB Role-Profile Mappings
 --
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER ROLE regress_priv_user7 PROFILE profile_3_failed;
     UPDATE pg_catalog.pg_yb_role_profile
     SET rolprfstatus = 'o',
         rolprffailedloginattempts = 0
     WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'regress_priv_user7')
       AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = 'profile_3_failed');
+\unrestrict test
 \else
     \echo 'Skipping alter role due to missing role:' regress_priv_user7
 \endif
+\restrict test
 
 
 --
@@ -175,11 +227,14 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 --
 
 -- Set variable ignore_existing_tablespaces (if not already set)
+\unrestrict test
 \if :{?ignore_existing_tablespaces}
 \else
 \set ignore_existing_tablespaces false
 \endif
+\restrict test
 
+\unrestrict test
 \set tablespace_exists false
 \if :ignore_existing_tablespaces
     SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp1') AS tablespace_exists \gset
@@ -187,9 +242,13 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 \if :tablespace_exists
     \echo 'Tablespace tsp1 already exists.'
 \else
+\restrict test
     CREATE TABLESPACE tsp1 OWNER yugabyte_test LOCATION '';
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \set tablespace_exists false
 \if :ignore_existing_tablespaces
     SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp2') AS tablespace_exists \gset
@@ -197,9 +256,13 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 \if :tablespace_exists
     \echo 'Tablespace tsp2 already exists.'
 \else
+\restrict test
     CREATE TABLESPACE tsp2 OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \set tablespace_exists false
 \if :ignore_existing_tablespaces
     SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp_unused') AS tablespace_exists \gset
@@ -207,10 +270,15 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 \if :tablespace_exists
     \echo 'Tablespace tsp_unused already exists.'
 \else
+\restrict test
     CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"dc_unused","zone":"z_unused","min_num_replicas":1}]}');
+\unrestrict test
 \endif
+\restrict test
 
 
+
+\unrestrict test
 
 --
 -- Databases
@@ -225,6 +293,8 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 --
 -- YSQL database dump
 --
+
+\restrict test
 
 -- Dumped from database version 15.2-YB-2.25.0.0-b0
 -- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
@@ -250,16 +320,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
@@ -273,33 +347,45 @@ END $$;
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 -- YB: re-enable auto analyze after all catalog changes
@@ -313,6 +399,8 @@ END $$;
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 
 --
 -- Database "postgres" dump
@@ -324,6 +412,8 @@ END $$;
 -- YSQL database dump
 --
 
+\restrict test
+
 -- Dumped from database version 15.12-YB-2.25.2.0-b0
 -- Dumped by ysql_dump version 15.12-YB-2.25.2.0-b0
 
@@ -348,16 +438,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
@@ -371,33 +465,45 @@ END $$;
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 -- YB: re-enable auto analyze after all catalog changes
@@ -412,6 +518,8 @@ END $$;
 -- YSQL database dump complete
 --
 
+\unrestrict test
+
 --
 -- Database "system_platform" dump
 --
@@ -419,6 +527,8 @@ END $$;
 --
 -- YSQL database dump
 --
+
+\restrict test
 
 -- Dumped from database version 15.12-YB-2.25.2.0-b0
 -- Dumped by ysql_dump version 15.12-YB-2.25.2.0-b0
@@ -444,16 +554,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 --
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
@@ -462,16 +576,26 @@ SET row_security = off;
 CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DATABASE system_platform OWNER TO postgres;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' postgres
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \connect system_platform
+\restrict test
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -504,38 +628,52 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 
 --
 -- Database "yugabyte" dump
@@ -544,6 +682,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 --
 -- YSQL database dump
 --
+
+\restrict test
 
 -- Dumped from database version 15.12-YB-2.25.2.0-b0
 -- Dumped by ysql_dump version 15.12-YB-2.25.2.0-b0
@@ -569,16 +709,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 --
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
@@ -587,16 +731,26 @@ SET row_security = off;
 CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DATABASE yugabyte OWNER TO postgres;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' postgres
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \connect yugabyte
+\restrict test
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -629,18 +783,28 @@ COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 -- Name: yugabyte; Type: DATABASE PROPERTIES; Schema: -; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER ROLE regress_priv_user8 IN DATABASE yugabyte SET log_min_messages TO 'LOG';
+\unrestrict test
 \else
     \echo 'Skipping alter role due to missing role:' regress_priv_user8
 \endif
+\restrict test
 
+\unrestrict test
 \endif
+\restrict test
 
 
+\unrestrict test
 \connect yugabyte
+\restrict test
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -662,9 +826,13 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = tsp1;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test; Tablespace: tsp1
@@ -676,18 +844,30 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16393'::pg_catalog.oid
 CREATE TABLEGROUP grp_with_spc;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLEGROUP grp_with_spc OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = '';
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: grp_without_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test
@@ -699,18 +879,30 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16392'::pg_catalog.oid
 CREATE TABLEGROUP grp_without_spc;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLEGROUP grp_without_spc OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = tsp1;
+\unrestrict test
 \endif
+\restrict test
 
 SET default_table_access_method = heap;
 
@@ -737,18 +929,30 @@ CREATE TABLE public.table1 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.table1 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = tsp2;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: table2; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
@@ -773,18 +977,30 @@ CREATE TABLE public.table2 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.table2 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = '';
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl_with_grp_with_spc; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -810,14 +1026,22 @@ WITH (autovacuum_enabled='true', colocation_id='20001')
 TABLEGROUP grp_with_spc;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl_with_grp_with_spc OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Data for Name: table1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
@@ -843,9 +1067,13 @@ COPY public.tbl_with_grp_with_spc (a) FROM stdin;
 \.
 
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = tsp2;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: idx1; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
@@ -859,9 +1087,13 @@ SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16387'::pg_catalog.
 CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = tsp1;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: idx2; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp1
@@ -879,48 +1111,66 @@ CREATE INDEX NONCONCURRENTLY idx2 ON public.table2 USING lsm (name HASH) SPLIT I
 -- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 GRANT ALL ON SCHEMA public TO PUBLIC;
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 
 --
 -- YSQL database cluster dump complete

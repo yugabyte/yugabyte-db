@@ -99,6 +99,13 @@ public class TestYsqlDump extends BasePgSQLTest {
    * -- Dumped by ysql_dump version 11.2-YB-1.3.2.0-b0
    */
 
+  /**
+   * Fixed key for the psql restrict/unrestrict meta-commands that ysql_dump now emits
+   * around plain-text dumps. Without it a random key is generated per run and the dump
+   * can never match the expected file.
+   */
+  public static final String RESTRICT_KEY = "test";
+
   private static Pattern VERSION_NUMBER_PATTERN = Pattern.compile(
       " version [0-9]+[.][0-9]+-YB-([0-9]+[.]){3}[0-9]+-b[0-9]+");
 
@@ -564,6 +571,66 @@ public class TestYsqlDump extends BasePgSQLTest {
     LOG.info("ysql_dump correctly prioritized --host flag over PGHOST environment variable");
   }
 
+  /**
+   * The guards emitted under --include-yb-metadata are psql meta-commands, and
+   * several are built into a TOC entry rather than written to the script. A
+   * non-plain archive would store those as text that pg_restore replays inside
+   * the restricted-mode region it brackets the script with, where psql rejects
+   * them -- so ysql_dump must refuse the combination.
+   */
+  @Test
+  public void ysqlDumpYbMetadataRequiresPlainFormat() throws Exception {
+    for (String format : Arrays.asList("c", "d", "t")) {
+      String metaStderr = runYsqlDumpExpectingFailure(Arrays.asList(
+          "--include-yb-metadata",
+          "-F", format,
+          "-d", DEFAULT_PG_DATABASE));
+      assertTrue("Expected --include-yb-metadata to require --format=plain for -F" + format
+                 + ". Got: " + metaStderr,
+          metaStderr.contains("--include-yb-metadata can only be used with --format=plain"));
+
+      // --dump-role-checks requires --include-yb-metadata, so the same check
+      // catches it; the message names --include-yb-metadata either way.
+      String rolesStderr = runYsqlDumpExpectingFailure(Arrays.asList(
+          "--include-yb-metadata",
+          "--dump-role-checks",
+          "-F", format,
+          "-d", DEFAULT_PG_DATABASE));
+      assertTrue("Expected --dump-role-checks to require --format=plain for -F" + format
+                 + ". Got: " + rolesStderr,
+          rolesStderr.contains("--include-yb-metadata can only be used with --format=plain"));
+    }
+  }
+
+  /** Run ysql_dump expecting failure; return merged stdout+stderr. */
+  private String runYsqlDumpExpectingFailure(List<String> extraArgs) throws Exception {
+    int tserverIndex = 0;
+    File ysqlDumpExec = new File(PgRegressBuilder.getPgBinDir(), "ysql_dump");
+    List<String> args = new ArrayList<>(Arrays.asList(
+        ysqlDumpExec.toString(),
+        "-h", getPgHost(tserverIndex),
+        "-p", Integer.toString(getPgPort(tserverIndex)),
+        "-U", DEFAULT_PG_USER));
+    args.addAll(extraArgs);
+
+    ProcessBuilder pb = new ProcessBuilder(args);
+    pb.redirectErrorStream(true);
+    Process process = pb.start();
+
+    StringBuilder output = new StringBuilder();
+    try (BufferedReader reader = new BufferedReader(
+             new InputStreamReader(process.getInputStream()))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        output.append(line).append("\n");
+      }
+    }
+    process.waitFor(60, TimeUnit.SECONDS);
+    assertNotEquals("ysql_dump should have failed. Output: " + output,
+                    0, process.exitValue());
+    return output.toString();
+  }
+
   @Test
   public void ysqlDumpLegacyColocatedDB() throws Exception {
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
@@ -652,7 +719,8 @@ public class TestYsqlDump extends BasePgSQLTest {
       "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", DEFAULT_PG_USER,
-      "-f", actual.toString()
+      "-f", actual.toString(),
+      "--restrict-key=" + RESTRICT_KEY
     ));
     if (includeYbMetadata == IncludeYbMetadata.ON) {
       args.add("--include-yb-metadata");

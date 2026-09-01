@@ -2,6 +2,8 @@
 -- YSQL database dump
 --
 
+\restrict test
+
 -- Dumped from database version 15.2-YB-2.25.2.0-b0
 -- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
@@ -486,4 +488,6 @@ GRANT ALL ON SCHEMA public TO PUBLIC;
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 

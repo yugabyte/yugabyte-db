@@ -195,7 +195,8 @@ public class TestYbBackup extends BasePgSQLTest {
       "-d", restoreDbName,
       "-f", actual.toString(),
       "--no-tablespaces",
-      "--include-yb-metadata"
+      "--include-yb-metadata",
+      "--restrict-key=" + TestYsqlDump.RESTRICT_KEY
       ));
     ProcessUtil.executeSimple(args, "ysql_dump (" + testName + ")" );
     TestYsqlDump.assertOutputFile(expected, actual);
