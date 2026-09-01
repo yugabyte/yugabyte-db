@@ -1372,15 +1372,6 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
   for (const auto& round : rounds) {
     ++*processed_rounds;
 
-    // Must precede RegisterRetryableRequest, whose entry is only ever removed by
-    // ReplicationFinished -- which this rejection does not reach -- and NotifyAddedToLeader, whose
-    // side effects rolling back the op id does not undo.
-    if (auto s = CheckWriteFenceUnlocked(round); !s.ok()) {
-      round->NotifyReplicationFinished(s, round->bound_term(), /* applied_op_ids = */ nullptr);
-      round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
-      continue;
-    }
-
     if (round->replicate_msg()->op_type() == OperationType::WRITE_OP) {
       DCHECK_EQ(state_->GetActiveRoleUnlocked(), PeerRole::LEADER);
       auto result = state_->RegisterRetryableRequest(round);
@@ -1390,6 +1381,18 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
       }
       if (!result.ok() || !*result) {
         round->BindToTerm(OpId::kUnknownTerm); // Mark round as non replicating
+        continue;
+      }
+
+      // After RegisterRetryableRequest, so a resend of an already-replicated id answers
+      // AlreadyPresent -- that write committed inside its fence -- rather than a fence rejection.
+      // Before NotifyAddedToLeader, whose side effects rolling back the op id does not undo.
+      // Rejection goes through ReplicaState, not round->NotifyReplicationFinished, to undo the
+      // registration made just above.
+      if (auto s = CheckWriteFenceUnlocked(round); !s.ok()) {
+        state_->NotifyReplicationFinishedUnlocked(
+            round, s, OpId::kUnknownTerm, /* applied_op_ids = */ nullptr);
+        round->BindToTerm(OpId::kUnknownTerm);  // Mark round as non replicating.
         continue;
       }
     }

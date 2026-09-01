@@ -1284,9 +1284,80 @@ TEST_F(PgThinClientTest, AlreadyReplicatedWriteReportsSuccess) {
   ybthin_client_destroy(client);
 }
 
+// A fenced write that already replicated must still report success when the client's resend of the
+// same retryable request id arrives after the fence has passed. The already-replicated verdict is
+// about the FIRST attempt, which committed inside its fence; reporting the resend as YBTHIN_FENCED
+// ("did NOT take effect") would tell an incoming lease holder the row is absent while it is
+// durably present -- the exact inversion the fence exists to prevent. This is why RaftConsensus
+// consults the retryable-request registry before the fence.
+TEST_F(PgThinClientTest, ReplayOfReplicatedWriteWinsOverExpiredFence) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE dup_fenced (k int, v bytea, PRIMARY KEY(k ASC))"));
+
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT 'dup_fenced'::regclass::oid"));
+
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  const int32_t v_id = info.columns[1].id;
+
+  // Wide enough that the first attempt is comfortably admitted even on a slow build, short enough
+  // that the resend below arrives after it has passed.
+  constexpr int kFenceDelaySec = 10;
+  const auto fence = HybridTime::FromMicros(
+      static_cast<uint64_t>(GetCurrentTimeMicros()) + kFenceDelaySec * 1000000ULL).ToPB();
+
+  const std::string payload = "fenced-dup";
+  ybthin_bind key[] = {I32(11)};
+  ybthin_bind value[] = {Bytea(payload)};
+  int32_t value_ids[] = {v_id};
+  ybthin_upsert_row row = {table, key, 1, value_ids, value, 1, fence};
+
+  std::promise<WriteOutcome> promise;
+  auto future = promise.get_future();
+  // Replicate the write inside its fence, then make the client believe it timed out so it keeps
+  // resending the identical ops -- same retryable request id, same fence.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = true;
+  ybthin_upsert_batch_async(client, &row, 1, &OnWriteDone, &promise);
+  // Hold the flag until the fence is well past, so the resend that gets through carries an
+  // expired fence for an id the tablet has already replicated.
+  SleepFor((kFenceDelaySec + 5) * 1s);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = false;
+
+  auto out = future.get();
+  ASSERT_EQ(out.code, YBTHIN_OK)
+      << "a replayed already-replicated write must report success even though its fence has "
+      << "since passed; got: " << out.message;
+
+  ASSERT_EQ(1, ASSERT_RESULT(conn.FetchRow<PGUint64>(
+                   "SELECT count(*) FROM dup_fenced WHERE k = 11")));
+  ASSERT_EQ(payload, ASSERT_RESULT(conn.FetchRow<std::string>(
+                         "SELECT encode(v, 'escape') FROM dup_fenced WHERE k = 11")));
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
+}
+
 // A write whose fence has passed must be rejected AND must not take effect -- hence the assertions
 // on table contents, not just the status code. Also checks the rejection leaves no
-// retryable-request registration behind, which is why the fence is checked before registration.
+// retryable-request registration behind -- the rejection runs after registration (see
+// ReplayOfReplicatedWriteWinsOverExpiredFence for why) and must undo it.
 TEST_F(PgThinClientTest, WriteFencedByIgnoreAfterHybridTime) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE fenced (k int, v bytea, PRIMARY KEY(k ASC))"));
