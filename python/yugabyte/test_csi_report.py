@@ -159,11 +159,14 @@ def test_delay_grows_with_the_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------------------------
-# classify_execution: the retry_kind decision table. The four execution shapes are mutually
-# exclusive by construction (--fail_repetitions is rejected alongside --num_repetitions > 1),
-# and the kind attribute is what lets downstream consumers separate a fail-repetition (which
-# must never enter a first-attempt failure rate) from a Spark task resubmit (infra artifact)
-# and a plain repetition.
+# classify_execution: the retry_kind decision table. Only fail_repetition vs repetition is
+# exclusive by construction (--fail_repetitions is rejected alongside --num_repetitions > 1);
+# a Spark task resubmit (attempt > 0) can occur inside either job, and the branch order in
+# classify_execution resolves those overlaps: fail_repetition wins (the "first attempt failed"
+# implication must stay exact for consumers), then task_resubmit (needs the resubmit wait),
+# then repetition. The kind attribute is what lets downstream consumers separate a
+# fail-repetition (which must never enter a first-attempt failure rate) from a Spark task
+# resubmit (infra artifact) and a plain repetition.
 
 @pytest.mark.parametrize('rerun,attempt,reps,attempt_index,expected', [
     # expected = (retry, retry_kind, wait)
@@ -174,6 +177,9 @@ def test_delay_grows_with_the_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
     (False, 2, '1', 1, (True, 'task_resubmit', True)),
     (False, 0, '10', 1, (True, 'repetition', False)),      # first repetition may skip the wait
     (False, 0, '10', 3, (True, 'repetition', True)),
+    # Overlaps, resolved by precedence:
+    (True, 1, '1', 2, (True, 'fail_repetition', False)),   # resubmit inside the rerun job
+    (False, 1, '10', 3, (True, 'task_resubmit', True)),    # resubmit inside a repetitions job
 ])
 def test_classify_execution(rerun: bool, attempt: int, reps: str, attempt_index: int,
                             expected: Any) -> None:

@@ -215,18 +215,27 @@ def query_test(uniqueId: str, wait: bool) -> bool:
 
 # Classify one execution before reporting: the ReportPortal 'retry' flag, the 'retry_kind'
 # item attribute (why this is not a plain first attempt - the empty string for one), and
-# whether a previous-item query must wait. The kinds:
+# whether a previous-item query must wait. The kinds, in precedence order:
 #   fail_repetition - intentional re-run of a test that failed earlier (--fail_repetitions);
 #                     exists only after a first-attempt failure, so it must never enter a
 #                     first-attempt failure rate;
 #   task_resubmit   - Spark re-ran the task because a worker died; an infra artifact;
 #   repetition      - unconditional extra run (--num_repetitions).
+# The shapes overlap: a Spark task resubmit (attempt > 0) can happen inside the
+# fail-repetition job or inside a --num_repetitions job, since both dispatch through the same
+# task path. Only fail_repetition vs repetition is exclusive by construction. The order above
+# resolves the overlap on purpose: a resubmitted fail-repetition is still a run of a test whose
+# first attempt failed, so it keeps the fail_repetition tag (the "first attempt failed"
+# implication stays exact for consumers), and a resubmitted repetition reports task_resubmit
+# because it needs the resubmit wait semantics. Consequence: task_resubmit undercounts infra
+# resubmits by those that occur inside fail-repetition jobs; it is a best-effort signal.
 # Known gap: a driver-level Spark JOB resubmit starts a fresh task with attempt 0 and is
 # indistinguishable from a first attempt here.
 def classify_execution(rerun: bool, attempt: int, reps: str,
                        attempt_index: int) -> Tuple[bool, str, bool]:
     if rerun:
-        # Intentionally re-running a completed (failed) test; serial, no wait needed.
+        # Intentionally re-running a completed (failed) test; serial, no wait needed. Checked
+        # before attempt so a resubmit inside the rerun job keeps this kind (see above).
         return True, 'fail_repetition', False
     if attempt > 0:
         # Spark re-tries happen only if there is some failure, so attempts are serial.
