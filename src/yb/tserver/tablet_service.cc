@@ -859,6 +859,7 @@ void TabletServiceAdminImpl::VerifyUniqueIndexTablet(
   }
   auto* participant = tablet.tablet->transaction_participant();
   if (participant) {
+    SCOPED_WAIT_STATUS(UniqueIndexVerify_ResolveIntents);
     const auto resolve_status = participant->ResolveIntents(verify_upper_ht, deadline);
     if (!resolve_status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), resolve_status, &context);
@@ -866,6 +867,7 @@ void TabletServiceAdminImpl::VerifyUniqueIndexTablet(
     }
   }
 
+  SCOPED_WAIT_STATUS(UniqueIndexVerify_Scan);
   const auto result = tablet.tablet->VerifyUniqueIndex(*req, deadline);
   if (!result.ok()) {
     // Typed codes so callers do not burn a retry budget on deterministic failures:
