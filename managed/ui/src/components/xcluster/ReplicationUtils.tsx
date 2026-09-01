@@ -25,7 +25,9 @@ import {
   DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
   POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES,
   AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_PREVIEW,
-  AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_STABLE
+  AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_STABLE,
+  MATVIEW_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
+  MATVIEW_XCLUSTER_VERSION_THRESHOLD_STABLE
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -877,6 +879,47 @@ export const checkIsAutomaticDdlReplicationSupported = (ybSoftwareVersion: strin
     previewVersion: AUTOMATIC_DDL_REPLICATION_VERSION_THRESHOLD_PREVIEW,
     options: { suppressFormatError: true }
   }) > 0;
+
+/**
+ * Whether a universe runs a YBDB version that can replicate materialized views through xCluster.
+ *
+ * The comparison is inclusive of the threshold to match the backend
+ * (`XClusterUtil.supportsMatviewXCluster` uses `>= 0`).
+ */
+export const checkIsMatviewReplicationSupported = (ybSoftwareVersion: string) =>
+  compareYBSoftwareVersionsWithReleaseTrack({
+    version: ybSoftwareVersion,
+    stableVersion: MATVIEW_XCLUSTER_VERSION_THRESHOLD_STABLE,
+    previewVersion: MATVIEW_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
+    options: { suppressFormatError: true }
+  }) >= 0;
+
+/**
+ * Whether materialized views can be part of a replication config, mirroring
+ * `XClusterUtil.isMatviewReplicationSupported`: only configs in automatic DDL mode replicate
+ * materialized views, and only when both universes run a YBDB version that supports it.
+ *
+ * Returns false while either universe's software version is still unknown.
+ */
+export const getIsMatviewReplicationSupported = (
+  isAutomaticDdlMode: boolean,
+  sourceUniverse: Universe | undefined,
+  targetUniverse: Universe | undefined
+): boolean => {
+  if (!isAutomaticDdlMode || !sourceUniverse || !targetUniverse) {
+    return false;
+  }
+  const sourceYbSoftwareVersion = getPrimaryCluster(sourceUniverse.universeDetails.clusters)
+    ?.userIntent.ybSoftwareVersion;
+  const targetYbSoftwareVersion = getPrimaryCluster(targetUniverse.universeDetails.clusters)
+    ?.userIntent.ybSoftwareVersion;
+  return (
+    !!sourceYbSoftwareVersion &&
+    checkIsMatviewReplicationSupported(sourceYbSoftwareVersion) &&
+    !!targetYbSoftwareVersion &&
+    checkIsMatviewReplicationSupported(targetYbSoftwareVersion)
+  );
+};
 
 export const getLatestSchemaChangeModeSupported = (
   sourceUniverseVersion: string,

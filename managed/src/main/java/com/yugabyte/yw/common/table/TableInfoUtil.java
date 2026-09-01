@@ -28,6 +28,10 @@ public class TableInfoUtil {
     return table.getRelationType() == MasterTypes.RelationType.INDEX_TABLE_RELATION;
   }
 
+  public static boolean isMatviewTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
+    return table.getRelationType() == MasterTypes.RelationType.MATVIEW_TABLE_RELATION;
+  }
+
   public static boolean isYsqlTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
     return table.getTableType() == CommonTypes.TableType.PGSQL_TABLE_TYPE;
   }

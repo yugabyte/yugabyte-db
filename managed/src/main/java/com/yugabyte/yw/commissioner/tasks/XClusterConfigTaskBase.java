@@ -169,12 +169,32 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               XClusterNamespaceConfig.Status.Updating,
               XClusterNamespaceConfig.Status.Bootstrapping);
 
-  // XCluster setup is not supported for system and matview tables.
+  // XCluster setup is not supported for system tables.
   public static final Set<RelationType> X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET =
       ImmutableSet.of(
           RelationType.USER_TABLE_RELATION,
           RelationType.INDEX_TABLE_RELATION,
           RelationType.COLOCATED_PARENT_TABLE_RELATION);
+
+  // Matview tables are replicated only by xCluster configs in automatic DDL mode, and only on YBDB
+  // versions that support it. See XClusterUtil#isMatviewReplicationSupported.
+  public static final Set<RelationType> X_CLUSTER_MATVIEW_SUPPORTED_TABLE_RELATION_TYPE_SET =
+      ImmutableSet.<RelationType>builder()
+          .addAll(X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET)
+          .add(RelationType.MATVIEW_TABLE_RELATION)
+          .build();
+
+  /**
+   * Returns the relation types that may take part in replication for a specific config.
+   *
+   * @param matviewSupported whether materialized views may be part of the config; see {@link
+   *     com.yugabyte.yw.common.XClusterUtil#isMatviewReplicationSupported(XClusterConfig)}
+   */
+  public static Set<RelationType> getSupportedTableRelationTypes(boolean matviewSupported) {
+    return matviewSupported
+        ? X_CLUSTER_MATVIEW_SUPPORTED_TABLE_RELATION_TYPE_SET
+        : X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET;
+  }
 
   private static final Map<XClusterConfigStatusType, List<TaskType>> STATUS_TO_ALLOWED_TASKS =
       new HashMap<>();
@@ -299,8 +319,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST.contains(xClusterConfig.getStatus());
   }
 
+  /** Materialized views are not considered supported; see the overload taking matviewSupported. */
   public static boolean isXClusterSupported(
       MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo) {
+    return isXClusterSupported(tableInfo, false /* matviewSupported */);
+  }
+
+  public static boolean isXClusterSupported(
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo, boolean matviewSupported) {
     // Tables ddl_queue and sequences_data are supported for xCluster, although they are system
     // tables.
     if (tableInfo.getRelationType() == RelationType.SYSTEM_TABLE_RELATION
@@ -308,14 +334,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             || tableInfo.getName().equals("sequences_data"))) {
       return true;
     }
-    if (!X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET.contains(tableInfo.getRelationType())) {
+    if (!getSupportedTableRelationTypes(matviewSupported).contains(tableInfo.getRelationType())) {
       return false;
     }
     // We only pass colocated parent tables and not colocated child tables for xcluster.
     return !TableInfoUtil.isColocatedChildTable(tableInfo);
   }
 
+  /** Materialized views are not considered supported; see the overload taking matviewSupported. */
   public static boolean isXClusterSupported(TableInfoResp tableInfoResp) {
+    return isXClusterSupported(tableInfoResp, false /* matviewSupported */);
+  }
+
+  public static boolean isXClusterSupported(TableInfoResp tableInfoResp, boolean matviewSupported) {
     // Tables ddl_queue and sequences_data are supported for xCluster, although they are system
     // tables.
     if (tableInfoResp.relationType == RelationType.SYSTEM_TABLE_RELATION
@@ -323,7 +354,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             || tableInfoResp.tableName.equals("sequences_data"))) {
       return true;
     }
-    if (!X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET.contains(tableInfoResp.relationType)) {
+    if (!getSupportedTableRelationTypes(matviewSupported).contains(tableInfoResp.relationType)) {
       return false;
     }
     // We only pass colocated parent tables and not colocated child tables for xcluster.
@@ -334,11 +365,12 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   public static Map<Boolean, List<String>> getTableIdsPartitionedByIsXClusterSupported(
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
+      boolean matviewSupported) {
     return tableInfoList.stream()
         .collect(
             Collectors.partitioningBy(
-                XClusterConfigTaskBase::isXClusterSupported,
+                tableInfo -> isXClusterSupported(tableInfo, matviewSupported),
                 Collectors.mapping(XClusterConfigTaskBase::getTableId, Collectors.toList())));
   }
 
@@ -1758,10 +1790,13 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    *
    * @param sourceTableInfoList list of source universe table ids.
    * @param tableIdsInReplication table ids for source universe that are in xcluster replication.
+   * @param matviewSupported whether materialized views may be part of the config; see {@link
+   *     com.yugabyte.yw.common.XClusterUtil#isMatviewReplicationSupported(XClusterConfig)}
    */
   public static void validateSourceTablesInReplication(
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
-      Set<String> tableIdsInReplication) {
+      Set<String> tableIdsInReplication,
+      boolean matviewSupported) {
     XClusterConfigTaskBase.groupByNamespaceId(
             XClusterConfigTaskBase.filterTableInfoListByTableIds(
                 sourceTableInfoList, tableIdsInReplication))
@@ -1771,7 +1806,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                   sourceTableInfoList.stream()
                       .filter(
                           tableInfo ->
-                              XClusterConfigTaskBase.isXClusterSupported(tableInfo)
+                              XClusterConfigTaskBase.isXClusterSupported(
+                                      tableInfo, matviewSupported)
                                   && tableInfo
                                       .getNamespace()
                                       .getId()
@@ -1808,11 +1844,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @param targetTableInfoList list of traget universe table ids.
    * @param tableIdsInReplication table infos for target universe that are in xcluster replication.
    * @param taskType task to pre-check for.
+   * @param matviewSupported whether materialized views may be part of the config; see {@link
+   *     com.yugabyte.yw.common.XClusterUtil#isMatviewReplicationSupported(XClusterConfig)}
    */
   public static void validateTargetTablesInReplication(
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
       Set<String> tableIdsInReplication,
-      CustomerTask.TaskType taskType) {
+      CustomerTask.TaskType taskType,
+      boolean matviewSupported) {
     Set<String> filteredTableIdsInReplication =
         tableIdsInReplication.stream()
             .filter(tableId -> !isTableIdForSequencesDataTable(tableId))
@@ -1831,7 +1870,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                     targetTableInfoList.stream()
                         .filter(
                             tableInfo ->
-                                XClusterConfigTaskBase.isXClusterSupported(tableInfo)
+                                XClusterConfigTaskBase.isXClusterSupported(
+                                        tableInfo, matviewSupported)
                                     && tableInfo
                                         .getNamespace()
                                         .getId()
@@ -2873,6 +2913,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       @Nullable Set<MasterTypes.NamespaceIdentifierPB> sourceNamespaceInfoList,
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig) {
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    boolean matviewSupported = XClusterUtil.isMatviewReplicationSupported(xClusterConfig);
 
     List<TableInfoResp> sourceUniverseTableInfoRespList =
         tableHandler.getTableInfoRespFromTableInfo(
@@ -2882,7 +2923,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             false /* excludeColocatedTables */,
             true /* includeColocatedParentTables */,
             true /* xClusterSupportedOnly */,
-            true /* includePostgresSystemTables */);
+            true /* includePostgresSystemTables */,
+            matviewSupported);
     Map<String, TableInfoResp> sourceTableIdTableInfoRespMap =
         sourceUniverseTableInfoRespList.stream()
             .collect(Collectors.toMap(TableInfoResp::getTableId, Function.identity()));
@@ -2933,7 +2975,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             false /* excludeColocatedTables */,
             true /* includeColocatedParentTables */,
             true /* xClusterSupportedOnly */,
-            true /* includePostgresSystemTables */);
+            true /* includePostgresSystemTables */,
+            matviewSupported);
     Map<String, TableInfoResp> targetTableIdTableInfoRespMap =
         targetUniverseTableInfoRespList.stream()
             .collect(Collectors.toMap(TableInfoResp::getTableId, Function.identity()));
@@ -3168,10 +3211,11 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       // All the tables that is xCluster supported and belong to the namespace that is in
       // replication but not in the tablesIdsInReplication are the tables that are not in
       // replication.
+      boolean matviewSupported = XClusterUtil.isMatviewReplicationSupported(xClusterConfig);
       tableIdsNotInReplication =
           allTables.stream()
               .filter(tableInfo -> namespaceIdsInReplication.contains(getNamespaceId(tableInfo)))
-              .filter(tableInfo -> isXClusterSupported(tableInfo))
+              .filter(tableInfo -> isXClusterSupported(tableInfo, matviewSupported))
               .filter(tableInfo -> !tablesIdsInReplication.contains(getTableId(tableInfo)))
               .map(tableInfo -> getTableId(tableInfo))
               .collect(Collectors.toSet());
@@ -3345,14 +3389,23 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                 tableInfo -> getTableId(tableInfo), tableInfo -> tableInfo.getIndexedTableId()));
   }
 
+  /**
+   * Gathers the tables of the requested databases that can take part in replication.
+   *
+   * @param dbIds the source universe namespace ids whose tables are requested
+   * @param sourceTableInfoList all the table infos of the source universe
+   * @param matviewSupported whether materialized views may be part of the config; see {@link
+   *     com.yugabyte.yw.common.XClusterUtil#isMatviewReplicationSupported(XClusterConfig)}
+   */
   public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getRequestedTableInfoList(
       Set<String> dbIds,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList) {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
+      boolean matviewSupported) {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         sourceTableInfoList.stream()
             .filter(
                 tableInfo ->
-                    isXClusterSupported(tableInfo)
+                    isXClusterSupported(tableInfo, matviewSupported)
                         && dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
             .collect(Collectors.toList());
     Set<String> foundDbIds =

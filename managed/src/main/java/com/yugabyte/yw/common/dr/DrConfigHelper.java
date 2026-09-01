@@ -170,11 +170,24 @@ public class DrConfigHelper {
 
     validatePitrParams(createForm.pitrParams);
 
+    // Automatic DDL mode is enabled if the corresponding universe conf is set to true and the
+    // participating universes have the minimum required version.
+    boolean isAutomaticDdlMode =
+        isDbScoped
+            && confGetter.getConfForScope(
+                sourceUniverse, UniverseConfKeys.XClusterDbScopedAutomaticDdlCreationEnabled)
+            && XClusterUtil.supportsAutomaticDdl(sourceUniverse)
+            && XClusterUtil.supportsAutomaticDdl(targetUniverse);
+
     List<TableInfo> sourceTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
 
+    boolean matviewSupported =
+        XClusterUtil.isMatviewReplicationSupported(
+            isAutomaticDdlMode, sourceUniverse, targetUniverse);
+
     List<TableInfo> requestedTableInfoList =
-        getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
+        getRequestedTableInfoList(createForm.dbs, sourceTableInfoList, matviewSupported);
 
     List<TableInfo> targetTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
@@ -182,6 +195,7 @@ public class DrConfigHelper {
     xClusterCreatePrecheck.xClusterCreatePreChecks(
         requestedTableInfoList,
         isDbScoped ? ConfigType.Db : ConfigType.Txn,
+        isAutomaticDdlMode,
         sourceUniverse,
         sourceTableInfoList,
         targetUniverse,
@@ -203,7 +217,8 @@ public class DrConfigHelper {
         sourceTableIdTargetTableIdMap,
         ybService,
         bootstrapParams,
-        null /* currentReplicationGroupName */);
+        null /* currentReplicationGroupName */,
+        matviewSupported);
 
     if (createForm.dryRun) {
       return new DrConfigTaskResult(null, null, "The pre-checks are successful");
@@ -213,14 +228,6 @@ public class DrConfigHelper {
     DrConfigTaskParams taskParams;
 
     if (isDbScoped) {
-      // Automatic DDL mode is enabled if the corresponding universe conf is set to true and the
-      // participating universes have the minimum required version.
-      boolean isAutomaticDdlMode =
-          confGetter.getConfForScope(
-                  sourceUniverse, UniverseConfKeys.XClusterDbScopedAutomaticDdlCreationEnabled)
-              && XClusterUtil.supportsAutomaticDdl(sourceUniverse)
-              && XClusterUtil.supportsAutomaticDdl(targetUniverse);
-
       drConfig =
           DrConfig.create(
               createForm.name,
@@ -499,7 +506,10 @@ public class DrConfigHelper {
             sourceTableIdNewTargetTableIdMap,
             ybService,
             bootstrapParams,
-            null /* currentReplicationGroupName */);
+            null /* currentReplicationGroupName */,
+            // This branch only runs for configs that are not db scoped, which never replicate
+            // materialized views.
+            false /* matviewSupported */);
 
         newTargetXClusterConfig.updateTables(tableIds, tableIds /* tableIdsNeedBootstrap */);
         newTargetXClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(
@@ -588,7 +598,12 @@ public class DrConfigHelper {
           CollectionUtils.isEmpty(restartForm.dbs)
               ? xClusterConfig.getTableIds()
               : XClusterConfigTaskBase.getTableIds(
-                  getRequestedTableInfoList(restartForm.dbs, sourceTableInfoList));
+                  getRequestedTableInfoList(
+                      restartForm.dbs,
+                      sourceTableInfoList,
+                      // This branch only runs for configs that are not db scoped, which never
+                      // replicate materialized views.
+                      false /* matviewSupported */));
 
       taskParams =
           XClusterConfigController.getRestartTaskParams(
@@ -665,7 +680,7 @@ public class DrConfigHelper {
 
     if (xClusterConfig.getType() != ConfigType.Db) {
       XClusterConfigTaskBase.validateSourceTablesInReplication(
-          sourceTableInfoList, xClusterConfig.getTableIds());
+          sourceTableInfoList, xClusterConfig.getTableIds(), false /* matviewSupported */);
     }
 
     XClusterConfig xClusterConfigTemp = XClusterConfig.getOrBadRequest(xClusterConfig.getUuid());
@@ -802,7 +817,11 @@ public class DrConfigHelper {
           outboundReplicationResp,
           inboundReplicationResp,
           sourceTableInfoList,
-          targetTableInfoList);
+          targetTableInfoList,
+          XClusterUtil.isMatviewReplicationSupported(
+              Boolean.TRUE.equals(xClusterConfig.isAutomaticDdlMode()),
+              sourceUniverse,
+              targetUniverse));
 
       switchoverXClusterConfig.updateNamespaces(
           inboundReplicationResp.getDbScopedInfos().stream()
@@ -1187,7 +1206,10 @@ public class DrConfigHelper {
       XClusterConfigTaskBase.validateTargetTablesInReplication(
           targetTableInfoList,
           XClusterConfigTaskBase.getTableIds(requestedTableInfoList),
-          taskType);
+          taskType,
+          // This pre-check only runs for configs that are not db scoped, which never replicate
+          // materialized views.
+          false /* matviewSupported */);
     }
   }
 
@@ -1195,7 +1217,8 @@ public class DrConfigHelper {
       GetXClusterOutboundReplicationGroupInfoResponse outboundReplicationResp,
       GetUniverseReplicationInfoResponse inboundReplicationResp,
       List<TableInfo> sourceTableInfoList,
-      List<TableInfo> targetTableInfoList) {
+      List<TableInfo> targetTableInfoList,
+      boolean matviewSupported) {
 
     Map<String, String> inboundSourceToTargetTableId =
         inboundReplicationResp.getTableInfos().stream()
@@ -1212,11 +1235,12 @@ public class DrConfigHelper {
         outboundSourceTableIds, inboundSourceTableIds);
 
     XClusterConfigTaskBase.validateSourceTablesInReplication(
-        sourceTableInfoList, outboundSourceTableIds);
+        sourceTableInfoList, outboundSourceTableIds, matviewSupported);
     XClusterConfigTaskBase.validateTargetTablesInReplication(
         targetTableInfoList,
         new HashSet<>(inboundSourceToTargetTableId.values()),
-        CustomerTask.TaskType.Switchover);
+        CustomerTask.TaskType.Switchover,
+        matviewSupported);
   }
 
   public PagedList<DrConfig> getPagedDrConfigsForUniverse(

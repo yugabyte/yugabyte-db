@@ -40,6 +40,8 @@ import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -110,6 +112,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private String exampleTableID2;
   private String exampleStreamID2;
   private String exampleTable2Name;
+  private String exampleMatviewTableID;
+  private String exampleMatviewTableName;
   private Set<String> exampleTables;
   private HashMap<String, String> exampleTablesAndStreamIDs;
   private ObjectNode createRequest;
@@ -165,6 +169,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     exampleTableID2 = "000030af000030008000000000004001";
     exampleStreamID2 = "fea203ffca1f48349901e0de2b52c416";
     exampleTable2Name = "exampleTable2";
+    exampleMatviewTableID = "000030af000030008000000000004002";
+    exampleMatviewTableName = "exampleMatview1";
 
     exampleTables = new HashSet<>();
     exampleTables.add(exampleTableID1);
@@ -293,6 +299,13 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   public void initClientGetTablesList(CommonTypes.TableType tableType) throws Exception {
     ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
+    when(mockListTablesResponse.getTableInfoList()).thenReturn(buildTableInfoList(tableType));
+    when(mockClient.getTablesList(eq(null), anyBoolean(), eq(null)))
+        .thenReturn(mockListTablesResponse);
+  }
+
+  private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> buildTableInfoList(
+      CommonTypes.TableType tableType) {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();
     // Adding table 1.
     MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table1TableInfoBuilder =
@@ -319,9 +332,50 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             .build());
     tableInfoList.add(table2TableInfoBuilder.build());
 
+    return tableInfoList;
+  }
+
+  /**
+   * Same as {@link #initClientGetTablesList(CommonTypes.TableType)}, plus a materialized view in
+   * the same namespace, and the table schema mock the create/edit paths need for it.
+   */
+  public void initClientGetTablesListWithMatview(CommonTypes.TableType tableType) throws Exception {
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList =
+        buildTableInfoList(tableType);
+    tableInfoList.add(
+        MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder()
+            .setTableType(tableType)
+            .setId(ByteString.copyFromUtf8(exampleMatviewTableID))
+            .setName(exampleMatviewTableName)
+            .setRelationType(MasterTypes.RelationType.MATVIEW_TABLE_RELATION)
+            .setNamespace(
+                MasterTypes.NamespaceIdentifierPB.newBuilder()
+                    .setName(namespace1Name)
+                    .setId(ByteString.copyFromUtf8(namespace1Id))
+                    .build())
+            .build());
+
+    ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
     when(mockClient.getTablesList(eq(null), anyBoolean(), eq(null)))
         .thenReturn(mockListTablesResponse);
+
+    GetTableSchemaResponse mockMatviewSchemaResponse =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespace1Name,
+            exampleMatviewTableName,
+            exampleMatviewTableID,
+            null,
+            true,
+            tableType,
+            Collections.emptyList(),
+            false);
+    lenient()
+        .when(mockClient.getTableSchemaByUUID(exampleMatviewTableID))
+        .thenReturn(mockMatviewSchemaResponse);
   }
 
   private void mockDefaultInstanceClusterConfig() throws Exception {
@@ -1564,5 +1618,93 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
     xClusterConfig.delete();
     reverseConfig.delete();
+  }
+
+  @Test
+  public void testCreateXClusterConfigWithMatviewRejected() throws Exception {
+    mockTableSchemaResponse(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+    initClientGetTablesListWithMatview(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+    mockDefaultInstanceClusterConfig();
+
+    // Both universes are new enough for YBDB to replicate materialized views, but a basic (manual
+    // mode) config still cannot include them.
+    TestHelper.updateUniverseVersion(
+        Universe.getOrBadRequest(sourceUniverseUUID),
+        XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_STABLE);
+    TestHelper.updateUniverseVersion(
+        targetUniverse, XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_STABLE);
+
+    ArrayNode tablesWithMatview = Json.newArray();
+    tablesWithMatview.add(exampleTableID1);
+    tablesWithMatview.add(exampleTableID2);
+    tablesWithMatview.add(exampleMatviewTableID);
+    ObjectNode createRequestWithMatview = createRequest.deepCopy();
+    createRequestWithMatview.putArray("tables").addAll(tablesWithMatview);
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", apiEndpoint, user.createAuthToken(), createRequestWithMatview));
+    assertBadRequest(
+        result,
+        "Materialized views can be part of replication only for xCluster/DR configs in automatic"
+            + " DDL mode; the following requested tables are materialized views: ["
+            + exampleMatviewTableID
+            + "]");
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testCreateXClusterConfigWithoutMatviewStillSucceeds() throws Exception {
+    // A matview exists on the source universe but is not requested; creation is unaffected.
+    initClientGetTablesListWithMatview(CommonTypes.TableType.YQL_TABLE_TYPE);
+    mockDefaultInstanceClusterConfig();
+
+    Result result =
+        doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
+    assertOk(result);
+    assertNumXClusterConfigs(1);
+  }
+
+  @Test
+  public void testEditTablesWithMatviewRejected() throws Exception {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+
+    mockTableSchemaResponse(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+    initClientGetTablesListWithMatview(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+    mockDefaultInstanceClusterConfig();
+
+    TestHelper.updateUniverseVersion(
+        Universe.getOrBadRequest(sourceUniverseUUID),
+        XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_STABLE);
+    TestHelper.updateUniverseVersion(
+        targetUniverse, XClusterUtil.MINIMUM_VERSION_MATVIEW_XCLUSTER_SUPPORT_STABLE);
+
+    String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    ObjectNode editTablesRequest = Json.newObject();
+    editTablesRequest
+        .putArray("tables")
+        .add(exampleTableID1)
+        .add(exampleTableID2)
+        .add(exampleMatviewTableID);
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT", editAPIEndpoint, user.createAuthToken(), editTablesRequest));
+    assertBadRequest(
+        result,
+        "Materialized views can be part of replication only for xCluster/DR configs in automatic"
+            + " DDL mode; the following requested tables are materialized views: ["
+            + exampleMatviewTableID
+            + "]");
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+
+    xClusterConfig.delete();
   }
 }

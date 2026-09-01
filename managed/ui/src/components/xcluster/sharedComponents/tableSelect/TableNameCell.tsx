@@ -2,6 +2,7 @@ import { makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 
+import { YBTableRelationType } from '../../../../redesign/helpers/constants';
 import { usePillStyles } from '../../../../redesign/styles/styles';
 import { getTableName } from '../../../../utils/tableUtils';
 import { IndexTableReplicationCandidate, MainTableReplicationCandidate } from '../../XClusterTypes';
@@ -33,6 +34,9 @@ export const TableNameCell = ({ tableReplicationCandidate }: TableNameCellProps)
       <div className={classes.tableName}>{getTableName(tableReplicationCandidate)}</div>
       {shouldShowTableEligibilityPill(tableReplicationCandidate) && (
         <TableEligibilityPill eligibilityDetails={tableReplicationCandidate.eligibilityDetails} />
+      )}
+      {tableReplicationCandidate.relationType === YBTableRelationType.MATVIEW_TABLE_RELATION && (
+        <div className={pillClasses.pill}>{t('tablePill.matview')}</div>
       )}
       {tableReplicationCandidate.isUnreplicatedTableInReplicatedNamespace && (
         <div className={clsx(pillClasses.pill, pillClasses.warning)}>
