@@ -705,6 +705,19 @@ class Tablet : public AbstractTablet,
 
   std::atomic<int64_t>* monotonic_counter() { return &monotonic_counter_; }
 
+  // Highest marked-write Raft index applied by this tablet (0 = none); see the member note.
+  int64_t max_marked_write_op_index() const {
+    return max_marked_write_op_index_.load(std::memory_order_acquire);
+  }
+
+  // Schedules the regular-DB flush that pushes released marked writes below the flushed
+  // frontier, so the downgrade fence's per-tablet condition (frontier >=
+  // released_marked_write_watermark) converges without waiting for an organic flush. Every
+  // path that releases a generation or raises its watermark calls this, as does the fence
+  // probe when it finds the condition unmet. Best effort: the fence re-checks the frontier, so
+  // a lost flush only delays convergence.
+  void ScheduleIndexBackfillReleaseFlush();
+
   // Set the conter to at least 'value'.
   void UpdateMonotonicCounter(int64_t value);
 
@@ -1680,6 +1693,11 @@ class Tablet : public AbstractTablet,
   // variable to true right after the intents write -- by then those intents are in the intents
   // memtable, so GetFlushAbility() reports kHasNewData and the force-advance is skipped.
   std::atomic<bool> can_advance_intents_flush_op_id_{true};
+
+  // Highest marked-write (use_raft_index_for_write_id) Raft index this tablet has applied.
+  // Monotonic; re-seeded by bootstrap replay. Persisted into the generation record at
+  // release as the downgrade fence's flushed-frontier target.
+  std::atomic<int64_t> max_marked_write_op_index_{0};
 
   HybridTimeLeaseProvider ht_lease_provider_;
 

@@ -1900,6 +1900,120 @@ TEST_P(PgIndexBackfillVerifier, RetentionBarrierMetricsReflectHeldGeneration) {
   }
 }
 
+namespace {
+
+struct DowngradeSafetyCounts {
+  uint32_t active_generation_tablets = 0;
+  uint32_t unflushed_marked_wal_tablets = 0;
+};
+
+// Sums CheckIndexBackfillDowngradeSafety over every tserver: tablets still holding an active
+// ordering generation, and released tablets whose marked WAL entries are not yet below the
+// regular-DB flushed frontier. Both must be zero before a downgrade can be safe.
+Result<DowngradeSafetyCounts> ProbeIndexBackfillDowngradeSafety(ExternalMiniCluster* cluster) {
+  DowngradeSafetyCounts totals;
+  for (size_t i = 0; i < cluster->num_tablet_servers(); ++i) {
+    auto* ts = cluster->tablet_server(i);
+    auto proxy = cluster->GetProxy<tserver::TabletServerAdminServiceProxy>(ts);
+    tserver::CheckIndexBackfillDowngradeSafetyRequestPB req;
+    req.set_dest_uuid(ts->uuid());
+    tserver::CheckIndexBackfillDowngradeSafetyResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(30) * kTimeMultiplier);
+    RETURN_NOT_OK(proxy.CheckIndexBackfillDowngradeSafety(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    totals.active_generation_tablets += resp.active_generation_tablets();
+    totals.unflushed_marked_wal_tablets += resp.unflushed_marked_wal_tablets();
+  }
+  return totals;
+}
+
+}  // namespace
+
+// While any replica still holds an active ordering generation, the probe reports it: its
+// marked WAL entries would replay divergently on an older binary.
+TEST_P(PgIndexBackfillVerifier, DowngradeSafetyProbeReportsHeldGenerations) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+
+  // The fixture blocks the funnel's release: generations are held on every replica.
+  const auto counts = ASSERT_RESULT(ProbeIndexBackfillDowngradeSafety(cluster_.get()));
+  ASSERT_GT(counts.active_generation_tablets, 0);
+}
+
+// After the terminal funnel releases the generations and the release-triggered flush pushes
+// the marked writes below the flushed frontier, the probe converges to zero on both counts.
+TEST_P(PgIndexBackfillVerifierReleased, DowngradeSafetyProbeClearsAfterRelease) {
+  std::vector<ExternalDaemon*> tserver_daemons;
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    tserver_daemons.push_back(tserver);
+  }
+  LogWaiter release_waiter(
+      tserver_daemons, "Releasing index-backfill ordering generation");
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  ASSERT_OK(release_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
+
+  // The release flush converges within seconds.
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        const auto counts = VERIFY_RESULT(ProbeIndexBackfillDowngradeSafety(cluster_.get()));
+        LOG(INFO) << "Downgrade-safety probe: active=" << counts.active_generation_tablets
+                  << " unflushed=" << counts.unflushed_marked_wal_tablets;
+        return counts.active_generation_tablets == 0 &&
+               counts.unflushed_marked_wal_tablets == 0;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier, "downgrade-safety probe to clear"));
+}
+
+// The unflushed-marked-WAL arm, deterministically: with the release-triggered flush
+// disabled, released tablets keep their marked writes above the flushed frontier and the
+// probe must keep reporting them even though no generation is active any more.
+class PgIndexBackfillVerifierReleasedNoFlush : public PgIndexBackfillVerifierReleased {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillVerifierReleased::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--TEST_skip_index_backfill_generation_release_flush=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillVerifierReleasedNoFlush, ::testing::Bool());
+
+TEST_P(PgIndexBackfillVerifierReleasedNoFlush, DowngradeSafetyProbeReportsUnflushedMarkedWal) {
+  std::vector<ExternalDaemon*> tserver_daemons;
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    tserver_daemons.push_back(tserver);
+  }
+  LogWaiter release_waiter(
+      tserver_daemons, "Releasing index-backfill ordering generation");
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (b HASH) SPLIT INTO 1 TABLETS", kIndexName, kTableName));
+  ASSERT_OK(release_waiter.WaitFor(MonoDelta::FromSeconds(30) * kTimeMultiplier));
+
+  // Release is replicated; give every replica a moment to apply it before asserting that the
+  // remaining signal is the unflushed WAL, not a still-active generation.
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        const auto counts = VERIFY_RESULT(ProbeIndexBackfillDowngradeSafety(cluster_.get()));
+        return counts.active_generation_tablets == 0;
+      },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "generations to release on every replica"));
+  const auto counts = ASSERT_RESULT(ProbeIndexBackfillDowngradeSafety(cluster_.get()));
+  ASSERT_EQ(counts.active_generation_tablets, 0);
+  ASSERT_GT(counts.unflushed_marked_wal_tablets, 0);
+}
+
 TEST_P(PgIndexBackfillVerifierReleased, RetentionBarrierMetricsClearOnRelease) {
   std::vector<ExternalDaemon*> tserver_daemons;
   for (auto* tserver : cluster_->tserver_daemons()) {
