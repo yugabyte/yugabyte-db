@@ -4,15 +4,19 @@ package com.yugabyte.yw.commissioner;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
@@ -35,16 +39,19 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -123,6 +130,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
 
     mockedUtil = Mockito.mockStatic(Util.class);
     mockedUtil.when(() -> Util.getNodeHomeDir(any(), any())).thenReturn("/home/yugabyte");
+    mockedUtil.when(() -> Util.isKubernetesBasedUniverse(any(Universe.class))).thenCallRealMethod();
   }
 
   @After
@@ -510,5 +518,103 @@ public class YbcUpgradeTest extends FakeDBApplication {
         };
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
     assertFalse(ybcUpgrade.canUpgradeYBCOnK8s(defaultUniverse, NEW_YBC_VERSION));
+  }
+
+  @Test
+  public void testPollUpgradeTaskResultSkipsMasterOnlyNodes() {
+    String masterIp = "10.0.0.99";
+    addNode(defaultUniverse, "yb-master-0", masterIp, true /* isMaster */, false /* isTserver */);
+
+    UpgradeResultResponse upgradeResultResponse =
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
+    when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
+    when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
+    when(mockYbcClientService.getNewClient(eq(masterIp), anyInt(), any()))
+        .thenThrow(new AssertionError("must not poll YBC on master-only nodes"));
+
+    assertTrue(
+        ybcUpgrade.pollUpgradeTaskResult(
+            defaultUniverse.getUniverseUUID(), NEW_YBC_VERSION, true /* verbose */));
+    verify(mockYbcClientService, never()).getNewClient(eq(masterIp), anyInt(), any());
+  }
+
+  @Test
+  public void testPollUpgradeTaskResultDoesNotSkipStoppedNodes() {
+    String stoppedIp = "10.0.0.98";
+    addNode(
+        defaultUniverse, "yb-tserver-2", stoppedIp, false /* isMaster */, false /* isTserver */);
+
+    UpgradeResultResponse upgradeResultResponse =
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
+    when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
+    when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
+    when(mockYbcClient2.UpgradeResult(any())).thenReturn(null);
+    when(mockYbcClientService.getNewClient(eq(stoppedIp), anyInt(), any()))
+        .thenReturn(mockYbcClient2);
+
+    // Skipping it would stamp the universe while this node stays on the old version (PLAT-20970).
+    assertFalse(
+        ybcUpgrade.pollUpgradeTaskResult(
+            defaultUniverse.getUniverseUUID(), NEW_YBC_VERSION, true /* verbose */));
+    verify(mockYbcClientService).getNewClient(eq(stoppedIp), anyInt(), any());
+  }
+
+  @Test
+  public void testGetUniverseNodeYbcVersionsSkipsMasterOnlyNodes() {
+    addNode(
+        defaultUniverse, "yb-master-0", "10.0.0.99", true /* isMaster */, false /* isTserver */);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    String version = "2.0.0";
+    when(mockYbcClient.version(any()))
+        .thenReturn(VersionResponse.newBuilder().setServerVersion(version).build());
+    when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
+
+    List<String> ybcVersions = ybcUpgrade.getUniverseNodeYbcVersions(defaultUniverse, false);
+    assertEquals(2, ybcVersions.size());
+    assertEquals(version, ybcVersions.get(0));
+    assertEquals(version, ybcVersions.get(1));
+  }
+
+  @Test
+  public void testUpgradeYbcSkipsMasterOnlyNodesButNotStoppedNodes() throws Exception {
+    addNode(
+        defaultUniverse, "yb-master-0", "10.0.0.99", true /* isMaster */, false /* isTserver */);
+    addNode(
+        defaultUniverse, "yb-tserver-2", "10.0.0.98", false /* isMaster */, false /* isTserver */);
+
+    ybcUpgrade.upgradeYBC(defaultUniverse.getUniverseUUID(), NEW_YBC_VERSION, true /* force */);
+
+    ArgumentCaptor<NodeDetails> captor = ArgumentCaptor.forClass(NodeDetails.class);
+    verify(mockYbcManager, atLeastOnce())
+        .getAnsibleConfigureYbcServerTaskParams(any(), captor.capture(), any(), any(), any());
+    List<String> upgraded =
+        captor.getAllValues().stream().map(n -> n.nodeName).collect(Collectors.toList());
+    assertFalse(upgraded.contains("yb-master-0"));
+    // A stopped tserver has isTserver false too, but it must still be upgraded (PLAT-20970).
+    assertTrue(upgraded.contains("yb-tserver-2"));
+  }
+
+  private void addNode(
+      Universe universe, String nodeName, String ip, boolean isMaster, boolean isTserver) {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams params = u.getUniverseDetails();
+          NodeDetails node = new NodeDetails();
+          node.nodeName = nodeName;
+          node.nodeUuid = UUID.randomUUID();
+          node.cloudInfo = new CloudSpecificInfo();
+          node.cloudInfo.private_ip = ip;
+          node.isMaster = isMaster;
+          node.isTserver = isTserver;
+          node.placementUuid = params.getPrimaryCluster().uuid;
+          params.nodeDetailsSet.add(node);
+        };
+    Universe.saveDetails(universe.getUniverseUUID(), updater);
   }
 }
