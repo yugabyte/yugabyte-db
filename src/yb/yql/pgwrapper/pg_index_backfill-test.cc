@@ -395,6 +395,14 @@ TEST_P(PgIndexBackfillTest, Simple) {
 
 TEST_P(PgIndexBackfillTest, WaitForSplitsToComplete) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
+  // TODO(#32565): remove this override once backfill pins history at its read time.  The pgwrapper
+  // harness (PgWrapperTestBase) runs tservers with timestamp_history_retention_interval_sec=0.
+  // Under that default, the post-split compaction of the child tablets would commit a history
+  // cutoff at its own start time, past the backfill safe time picked moments earlier by the CREATE
+  // INDEX below, and the backfill read would then be rejected as SnapshotTooOld, failing the
+  // backfill terminally.  Restore the production retention interval so the backfill read time
+  // survives the compaction.
+  ASSERT_OK(cluster_->SetFlagOnTServers("timestamp_history_retention_interval_sec", "900"));
   constexpr int kTimeoutSec = 3;
   constexpr int kNumRows = 1000;
   // Use 1 tablet so we guarantee we have a middle key to split by.
