@@ -82,6 +82,12 @@ public class PAProxyController extends AuthenticatedController {
           "upgrade",
           "proxy-authorization",
           "proxy-authenticate",
+          // The browser sends Origin on every same-origin POST, and this hop is
+          // server-to-server: forwarding it makes Perf Advisor's CORS filter see a
+          // cross-origin request from an origin it cannot know about, and reject it 403
+          // before any handler runs. Being reachable same-origin is the whole point of
+          // proxying these calls through YBA.
+          "origin",
           TokenAuthenticator.AUTH_TOKEN_HEADER.toLowerCase(),
           TokenAuthenticator.API_TOKEN_HEADER.toLowerCase(),
           TokenAuthenticator.API_JWT_HEADER.toLowerCase(),
