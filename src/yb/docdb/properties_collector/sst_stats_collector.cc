@@ -28,7 +28,8 @@ DEFINE_NON_RUNTIME_bool(docdb_enable_sst_stats_collector, false,
 
 DEFINE_RUNTIME_bool(docdb_sst_stats_coprefix_subtotals, false,
     "Whether the DocDB SST statistics collector also records per-table (cotable / colocation id) "
-    "subtotals in colocated tablets. Applies to files built from then on.");
+    "subtotals. Only rows carrying a coprefix record subtotals, so plain (non-colocated) tablets "
+    "record none. Applies to files built from then on.");
 
 DEFINE_RUNTIME_uint32(sst_tombstone_mark_ratio_percent, 30,
     "Mark an SST file for compaction when at least this percentage of its entries are DocDB "

@@ -38,8 +38,9 @@ namespace yb::docdb {
 //                by bytes). ExponentialHistogram::Serialize() form.
 //   age bands    reclaimable entries and bytes by age of what makes them droppable (8 bands).
 //   colocation   per-coprefix subtotals, only when enabled by flag.
-// A typical file adds well under 1 KB (histograms are sparse); the fully dense worst case is about
-// 1.7 KB per histogram.
+// Size: the fixed keys alone are ~620 bytes, and the properties block stores keys unshared and
+// uncompressed, so even a near-empty file adds ~0.8 KB; a typical file with populated (sparse)
+// histograms adds ~1-1.5 KB, and the fully dense worst case is ~1.7 KB per histogram on top.
 struct SstStatsPropertyKeys {
   static constexpr std::string_view kCollectorVersion = "yb.docdb.collector_version";
   static constexpr std::string_view kTotalEntries = "yb.docdb.total_entries";

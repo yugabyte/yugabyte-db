@@ -28,14 +28,24 @@ namespace yb::docdb {
 class SstStatsCollectorTest : public YBTest {};
 
 TEST_F(SstStatsCollectorTest, PropertiesRoundTrip) {
-  const auto s = TrackerFixture(/* subtotals = */ true).Add(AnatomyStrip()).Finish();
+  auto fixture = TrackerFixture(/* subtotals = */ true);
+  // One colocated row (two versions) so the coprefix-subtotal property is exercised too: plain
+  // rows record no subtotals. The colocation-id prefix byte sorts before hash-partitioned keys,
+  // so these entries come first in file order.
+  const ColocationId colocation_id = 16385;
+  fixture.Add({RowKey(ColocatedRow(colocation_id, 1), 1 * kHour), PackedRow("new")});
+  fixture.Add({RowKey(ColocatedRow(colocation_id, 1), 2 * kHour), PackedRow("old")});
+  fixture.Add(AnatomyStrip());
+  const auto s = fixture.Finish();
   rocksdb::UserCollectedProperties properties;
   SstStatsToProperties(s, &properties);
   EXPECT_EQ(properties.at(std::string(SstStatsPropertyKeys::kCollectorVersion)),
             kSstStatsCollectorVersion);
-  EXPECT_EQ(properties.at(std::string(SstStatsPropertyKeys::kReclaimableEntries)), "6");
+  // The anatomy strip's 6 plus the shadowed colocated version.
+  EXPECT_EQ(properties.at(std::string(SstStatsPropertyKeys::kReclaimableEntries)), "7");
+  // The shadowed colocated version's overwriter is 1 h old: the lower edge of band 3 (1-6 h).
   EXPECT_EQ(properties.at(std::string(SstStatsPropertyKeys::kDroppableAgeEntries)),
-            "1,1,1,0,0,3,0,0");
+            "1,1,1,1,0,3,0,0");
 
   const auto parsed = ASSERT_RESULT(SstStatsFromProperties(properties));
   EXPECT_EQ(parsed.total_entries, s.total_entries);
@@ -62,7 +72,9 @@ TEST_F(SstStatsCollectorTest, PropertiesRoundTrip) {
   EXPECT_EQ(parsed.droppable_age_entries, s.droppable_age_entries);
   EXPECT_EQ(parsed.droppable_age_bytes, s.droppable_age_bytes);
   ASSERT_EQ(parsed.coprefix_subtotals.size(), 1);
-  EXPECT_EQ(parsed.coprefix_subtotals.begin()->second.rows, 2);
+  EXPECT_EQ(parsed.coprefix_subtotals.begin()->second.rows, 1);
+  EXPECT_EQ(parsed.coprefix_subtotals.begin()->second.entries, 2);
+  EXPECT_EQ(parsed.coprefix_subtotals.begin()->second.reclaimable_entries, 1);
 
   EXPECT_NOK(SstStatsFromProperties(rocksdb::UserCollectedProperties()));
 }
