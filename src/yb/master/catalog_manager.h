@@ -895,7 +895,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       uint64_t* catalog_version, uint64_t* last_breaking_version,
       bool use_cache = false) override;
   Status GetYsqlAllDBCatalogVersions(
-      bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) override
+      bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint,
+      HybridTime* out_read_ht = nullptr) override
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessages(bool use_cache) override
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
@@ -1928,17 +1929,51 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Helper function to refresh the tablespace info.
   Status DoRefreshTablespaceInfo(const LeaderEpoch& epoch);
 
-  void ResetCachedCatalogVersions()
-      EXCLUDES(refresh_pg_catalog_versions_cache_mutex_,
-               heartbeat_pg_catalog_versions_cache_mutex_);
+  void ResetCachedCatalogVersions() EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
 
-  // Refresh the in-memory map for YSQL pg_yb_catalog_version table. Serialized against
-  // concurrent refreshes / resets so a refresh that captured later disk state always
-  // swaps after a refresh that captured earlier disk state.
+  // Refresh the in-memory map for YSQL pg_yb_catalog_version table. Concurrent refreshes and
+  // resets are not serialized against each other: ordering is settled at install time by
+  // InstallPgCatalogVersionsSnapshot(), which drops a snapshot that is older than what is
+  // already cached, or that was read before a reset.
   // Returns true on success, false on failure (cache is left intact on failure).
-  bool RefreshPgCatalogVersionCache()
-      EXCLUDES(refresh_pg_catalog_versions_cache_mutex_,
-               heartbeat_pg_catalog_versions_cache_mutex_);
+  bool RefreshPgCatalogVersionCache() EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+
+  // Generation of the heartbeat catalog versions cache, bumped by every
+  // ResetCachedCatalogVersions(). Every caller captures this before reading a snapshot and hands
+  // it back to InstallPgCatalogVersionsSnapshot(), which declines the install if the cache was
+  // reset in between. See that function for why.
+  uint64_t GetPgCatalogVersionsCacheGeneration() const
+      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+
+  // Installs a full snapshot of pg_yb_catalog_version, read at 'read_ht', into the heartbeat
+  // cache. No-op if the cache already holds a snapshot taken at or after 'read_ht', or if the
+  // cache generation has moved on from 'generation'.
+  //
+  // Two paths publish catalog versions to tservers and both read a full snapshot: the periodic
+  // refresh (which feeds heartbeat responses) and the DDL-commit object lock release path (which
+  // broadcasts directly, bypassing this cache). If the cache could report a version older than
+  // one already broadcast, the tserver's staleness check treats the gap as divergence and
+  // crashes (tablet_server.cc, "new version too old"). Ordering installs by snapshot read time
+  // keeps the cache at the newest snapshot either path has read, so that cannot happen -- and it
+  // holds regardless of which path wins the race or where either takes its locks.
+  //
+  // 'update_messages' selects what happens to the invalidation messages cache: false leaves it
+  // untouched; true replaces it with 'messages', where std::nullopt marks the messages as
+  // unavailable so the next refresh re-reads them.
+  //
+  // 'generation' must come from a GetPgCatalogVersionsCacheGeneration() call made *before* the
+  // snapshot was read. A leader stepdown between that read and this install resets the cache, and
+  // without this check the install would repopulate it -- with pre-stepdown data that another
+  // master has since moved past. If leadership is then reacquired, heartbeats would serve that
+  // stale snapshot to tservers the other leader had already pushed forward, which is the exact
+  // divergence this cache-install exists to prevent.
+  //
+  // Returns true if the snapshot was installed.
+  bool InstallPgCatalogVersionsSnapshot(
+      uint64_t generation, HybridTime read_ht, DbOidToCatalogVersionMap versions,
+      uint64_t fingerprint, bool update_messages,
+      std::optional<DbOidVersionToMessageListMap> messages)
+      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
 
   Status GetYsqlYbSystemTableInfo(
       const GetYsqlYbSystemTableInfoRequestPB* req, GetYsqlYbSystemTableInfoResponsePB* resp,
@@ -3284,7 +3319,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status BumpVersionAndStoreClusterConfig(
       ClusterConfigInfo* cluster_config, ClusterConfigInfo::WriteLock* l);
 
-  Status GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions);
+  Status GetYsqlAllDBCatalogVersionsImpl(
+      DbOidToCatalogVersionMap* versions, HybridTime* out_read_ht = nullptr);
   Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessagesImpl();
 
   // Create the global transaction status table if needed (i.e. if it does not exist already).
@@ -3522,7 +3558,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
 
-  mutable MutexType refresh_pg_catalog_versions_cache_mutex_;
   // mutex on heartbeat_pg_catalog_versions_cache_
   mutable MutexType heartbeat_pg_catalog_versions_cache_mutex_;
   std::optional<DbOidToCatalogVersionMap> heartbeat_pg_catalog_versions_cache_
@@ -3534,6 +3569,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Set to nullopt when the value is stale.
   std::optional<DbOidVersionToMessageListMap> heartbeat_pg_inval_messages_cache_
     GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_);
+  // Hybrid time of the pg_yb_catalog_version read that produced the currently installed cache
+  // contents. Installs are rejected if they carry an older snapshot, which is what makes the
+  // cache monotonic across its two writers; see InstallPgCatalogVersionsSnapshot(). Invalid
+  // means nothing is installed.
+  HybridTime heartbeat_pg_catalog_versions_cache_read_ht_
+    GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_);
+  // Bumped by every ResetCachedCatalogVersions(), so that an install carrying a snapshot read
+  // before that reset can be recognised and declined.
+  uint64_t heartbeat_pg_catalog_versions_cache_generation_
+    GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_) = 0;
 
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
 
