@@ -26,8 +26,9 @@ set(PGGATE_UTIL_SRCS
     )
 
 set(PGGATE_UTIL_LIBS
-    yb_util
-    yb_common)
+    yb_ash
+    yb_common
+    yb_util)
 
 ADD_YB_LIBRARY(yb_pggate_util
                SRCS ${PGGATE_UTIL_SRCS}
