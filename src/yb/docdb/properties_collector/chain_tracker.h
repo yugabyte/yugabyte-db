@@ -116,6 +116,9 @@ struct SstStats {
 
   // Derived identities (meaningful only while chain_valid).
   uint64_t shadowed_entries() const { return chain_entries - num_subdoc_keys; }
+  // Heads beyond one per row: a repack-opportunity measure, not a garbage class. In a dead row
+  // these heads are also garbage and counted by reclaimable, so the two overlap there. Never a
+  // trigger input either way.
   uint64_t repackable_entries() const { return num_subdoc_keys - num_rows; }
   uint64_t collapsible_entries() const { return chain_entries - num_rows; }
 };
