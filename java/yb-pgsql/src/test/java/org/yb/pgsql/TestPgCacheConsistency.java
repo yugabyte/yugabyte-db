@@ -157,6 +157,13 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         );
       }
 
+      // A failed attempt only refreshes the catcache of the physical backend that served it.
+      // With ConnMgr the next statement of this logical connection can run on a different,
+      // still stale backend of the same node, and a DDL commit only waits for its own node's
+      // shared memory catalog version. So let the heartbeat deliver the new version to
+      // connection 2's node, which makes every backend there refresh before it parses.
+      waitForTServerHeartbeatIfConnMgrEnabled();
+
       // Second attempt should always succeed.
       statement2.execute("INSERT INTO cache_test2(a,b) VALUES (false, 12)");
       expectedRows.add(new Row(false, 12));

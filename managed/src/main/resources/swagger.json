@@ -968,6 +968,8 @@
             "HA_STANDBY_SYNC",
             "NODE_AGENT_DOWN",
             "NODE_AGENT_MISSING",
+            "NODE_AGENT_SERVER_CERT_EXPIRY",
+            "NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE",
             "UNIVERSE_RELEASE_FILES_STATUS",
             "HA_VERSION_MISMATCH",
             "TABLET_PEERS_GUARDRAIL",
@@ -1168,6 +1170,8 @@
             "HA_STANDBY_SYNC",
             "NODE_AGENT_DOWN",
             "NODE_AGENT_MISSING",
+            "NODE_AGENT_SERVER_CERT_EXPIRY",
+            "NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE",
             "UNIVERSE_RELEASE_FILES_STATUS",
             "HA_VERSION_MISMATCH",
             "TABLET_PEERS_GUARDRAIL",
@@ -1464,6 +1468,8 @@
             "HA_STANDBY_SYNC",
             "NODE_AGENT_DOWN",
             "NODE_AGENT_MISSING",
+            "NODE_AGENT_SERVER_CERT_EXPIRY",
+            "NODE_AGENT_SERVER_CERT_EXPIRY_NON_UNIVERSE",
             "UNIVERSE_RELEASE_FILES_STATUS",
             "HA_VERSION_MISMATCH",
             "TABLET_PEERS_GUARDRAIL",
@@ -2088,6 +2094,9 @@
             "DeletePACollectorConfig",
             "PACollectorRegister",
             "PACollectorUnregister",
+            "CreatePerfAdvisorEndpoint",
+            "EditPerfAdvisorEndpoint",
+            "DeletePerfAdvisorEndpoint",
             "UpgradeKubernetesOverrides",
             "UpgradeCerts",
             "UpgradeTLS",
@@ -2274,6 +2283,7 @@
             "SupportBundle",
             "TelemetryProvider",
             "PACollector",
+            "PerfAdvisorEndpoint",
             "GFlags",
             "Hook",
             "HookScope",
@@ -2496,6 +2506,11 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
         },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
@@ -2751,6 +2766,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -2797,6 +2813,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -2997,7 +3014,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -3876,6 +3894,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "parallelDBBackups" : {
           "description" : "Parallel DB backups",
           "format" : "int32",
@@ -4475,6 +4498,11 @@
           "description" : "User name of the current tables owner",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "parallelism" : {
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
@@ -4838,6 +4866,11 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "platformUrl" : {
@@ -5512,6 +5545,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -5772,6 +5810,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -5818,6 +5857,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -6018,7 +6058,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -6148,6 +6189,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "pitrConfigUUID" : {
           "description" : "PITR Config UUID",
           "format" : "uuid",
@@ -6249,6 +6295,10 @@
         },
         "cloud" : {
           "description" : "The node's cloud provider",
+          "type" : "string"
+        },
+        "id" : {
+          "description" : "The cloud provider's instance identifier",
           "type" : "string"
         },
         "instance_type" : {
@@ -6748,9 +6798,6 @@
         "compressor" : {
           "type" : "string"
         },
-        "offloadable" : {
-          "type" : "boolean"
-        },
         "serverCert" : {
           "type" : "string"
         },
@@ -6758,7 +6805,13 @@
           "format" : "int64",
           "type" : "integer"
         },
+        "serverCertLocalPath" : {
+          "type" : "string"
+        },
         "serverKey" : {
+          "type" : "string"
+        },
+        "serverKeyLocalPath" : {
           "type" : "string"
         },
         "signerPrivateKey" : {
@@ -6771,10 +6824,11 @@
       "required" : [
         "certPath",
         "compressor",
-        "offloadable",
         "serverCert",
         "serverCertExpirySecs",
+        "serverCertLocalPath",
         "serverKey",
+        "serverKeyLocalPath",
         "signerPrivateKey",
         "signerPublicKey"
       ],
@@ -6918,6 +6972,11 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "platformUrl" : {
@@ -7597,6 +7656,12 @@
         "id" : {
           "description" : "Customer task UUID",
           "format" : "uuid",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state), if any",
+          "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         },
         "percentComplete" : {
@@ -8719,6 +8784,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -8973,6 +9043,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -9019,6 +9090,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -9219,7 +9291,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -9556,6 +9629,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -9816,6 +9894,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -9862,6 +9941,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -10062,7 +10142,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -11109,6 +11190,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -11366,6 +11452,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -11412,6 +11499,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -11612,7 +11700,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -11876,6 +11965,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -12130,6 +12224,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -12176,6 +12271,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -12376,7 +12472,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -13245,6 +13342,11 @@
           "description" : "User name of the current tables owner",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "parallelism" : {
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
@@ -13557,6 +13659,12 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "certificateUuid" : {
+          "description" : "WARNING: This is a preview API that could change. Custom certificate UUID.",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "config" : {
           "$ref" : "#/definitions/Config",
           "description" : "Node agent configuration",
@@ -13768,6 +13876,12 @@
             "ARM64",
             "AMD64"
           ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "certificateUuid" : {
+          "description" : "WARNING: This is a preview API that could change. Custom certificate UUID.",
+          "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         },
@@ -14828,7 +14942,7 @@
           "type" : "string"
         },
         "embedded" : {
-          "description" : "True when this collector is the embedded PA managed by EmbeddedCollectorInitializer",
+          "description" : "True when this collector is the embedded PA managed by PACollectorSync",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -14894,19 +15008,23 @@
           "description" : "Whether advanced observability (metrics export) is enabled",
           "type" : "boolean"
         },
-        "dataMountPoints" : {
-          "description" : "Data mount points",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
+        "mode" : {
+          "description" : "How the universe is registered with the collector",
+          "enum" : [
+            "BASIC",
+            "ADVANCED",
+            "ONLINE"
+          ],
+          "type" : "string"
         },
-        "otherMountPoints" : {
-          "description" : "Other mount points",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
+        "paEndpointName" : {
+          "description" : "Perf Advisor Endpoint name, set for ONLINE mode only",
+          "type" : "string"
+        },
+        "paEndpointUuid" : {
+          "description" : "Perf Advisor Endpoint UUID, set for ONLINE mode only",
+          "format" : "uuid",
+          "type" : "string"
         },
         "universeName" : {
           "description" : "Universe name (from YBA, or null if universe was deleted)",
@@ -14925,6 +15043,24 @@
         "advancedObservability" : {
           "description" : "Whether advanced observability (metrics export to Prometheus) is enabled",
           "type" : "boolean"
+        },
+        "mode" : {
+          "description" : "How the universe is registered with the collector",
+          "enum" : [
+            "BASIC",
+            "ADVANCED",
+            "ONLINE"
+          ],
+          "type" : "string"
+        },
+        "paEndpointName" : {
+          "description" : "Perf Advisor Endpoint name, set for ONLINE mode only",
+          "type" : "string"
+        },
+        "paEndpointUuid" : {
+          "description" : "Perf Advisor Endpoint UUID, set for ONLINE mode only",
+          "format" : "uuid",
+          "type" : "string"
         },
         "success" : {
           "description" : "Whether the universe is registered with PA Collector",
@@ -14947,7 +15083,7 @@
           "type" : "string"
         },
         "embedded" : {
-          "description" : "True when this collector is the embedded PA managed by EmbeddedCollectorInitializer",
+          "description" : "True when this collector is the embedded PA managed by PACollectorSync",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -16731,6 +16867,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -16985,6 +17126,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17031,6 +17173,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -17231,7 +17374,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -17437,6 +17581,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -17691,6 +17840,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17737,6 +17887,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -17937,7 +18088,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -18535,6 +18687,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -18795,6 +18952,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -18841,6 +18999,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -19041,7 +19200,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -19403,6 +19563,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -19657,6 +19822,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -19703,6 +19869,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -19903,7 +20070,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -20140,6 +20308,11 @@
         },
         "nodeIp" : {
           "description" : "Node IP",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "parallelism" : {
@@ -20549,6 +20722,11 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "pitrConfigUUID" : {
@@ -20971,6 +21149,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -21225,6 +21408,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -21271,6 +21455,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -21471,7 +21656,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -21919,6 +22105,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -21965,6 +22152,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -22165,7 +22353,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -22351,6 +22540,7 @@
               "OperatorImportUniverse",
               "RegisterUniverseWithPACollector",
               "UnregisterUniverseFromPACollector",
+              "UpgradeNodeAgent",
               "KubernetesCheckVolumeExpansion",
               "KubernetesPostExpansionCheckVolume",
               "NodeCertReloadTask",
@@ -22397,6 +22587,7 @@
               "SwamperTargetsFileUpdate",
               "UniverseUpdateSucceeded",
               "RegisterUniverseWithPaCollector",
+              "PushPaExportConfig",
               "UnregisterUniverseFromPaCollector",
               "UpdateAndPersistGFlags",
               "UpdateAndPersistKubernetesOverrides",
@@ -22597,7 +22788,8 @@
               "OperatorImportResource",
               "UpdateParentTaskParams",
               "SaveSoftwareUpgradeProgress",
-              "CheckDuplicateInstance"
+              "CheckDuplicateInstance",
+              "RunUpgradeNodeAgent"
             ],
             "type" : "string"
           },
@@ -22937,6 +23129,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22983,6 +23176,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -23183,7 +23377,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -23481,6 +23676,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -23735,6 +23935,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -23781,6 +23982,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -23981,7 +24183,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -24665,6 +24868,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -24919,6 +25127,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24965,6 +25174,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -25165,7 +25375,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -25264,6 +25475,11 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
           "type" : "string"
         },
         "platformUrl" : {
@@ -26020,6 +26236,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -26274,6 +26495,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26320,6 +26542,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -26520,7 +26743,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -26725,6 +26949,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -26979,6 +27208,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -27025,6 +27255,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -27225,7 +27456,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -27403,6 +27635,11 @@
           "description" : "Error message",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -27567,6 +27804,11 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
         },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
@@ -27825,6 +28067,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -27871,6 +28114,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -28071,7 +28315,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -28241,6 +28486,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -28495,6 +28745,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -28541,6 +28792,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -28741,7 +28993,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -28910,6 +29163,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -29165,6 +29423,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -29211,6 +29470,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -29411,7 +29671,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -29874,6 +30135,11 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -30096,6 +30362,11 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
         },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
@@ -30351,6 +30622,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -30397,6 +30669,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -30597,7 +30870,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },
@@ -31331,6 +31605,11 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "originalTaskUUID" : {
+          "description" : "UUID of the first task in the retry/rollback chain (clean universe state). Carried forward on retries and rollbacks. Distinct from previousTaskUUID, which is the immediate predecessor used for runtimeInfo inherit.",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "placementModificationTaskUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -31593,6 +31872,7 @@
             "OperatorImportUniverse",
             "RegisterUniverseWithPACollector",
             "UnregisterUniverseFromPACollector",
+            "UpgradeNodeAgent",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -31639,6 +31919,7 @@
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
             "RegisterUniverseWithPaCollector",
+            "PushPaExportConfig",
             "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
@@ -31839,7 +32120,8 @@
             "OperatorImportResource",
             "UpdateParentTaskParams",
             "SaveSoftwareUpgradeProgress",
-            "CheckDuplicateInstance"
+            "CheckDuplicateInstance",
+            "RunUpgradeNodeAgent"
           ],
           "type" : "string"
         },

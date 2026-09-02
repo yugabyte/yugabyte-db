@@ -40,6 +40,7 @@
       "startDate": "Start Date",
       "endDate": "End Date",
       "dot": ".",
+      "add": "Add",
       "and": "and",
       "learnMore": "Learn more",
       "clear": "Clear",
@@ -639,7 +640,13 @@
         "enableAdvancedObservabilityFailure": "Failed to enable Advanced Observability for the universe",
         "disableAdvancedObservabilityTitle": "Disable Advanced Observability",
         "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This will disable additional metrics export to Prometheus.",
-        "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe"
+        "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe",
+        "modeLabel": "Collection mode",
+        "modeBasic": "Basic - collect and store performance data on this YugabyteDB Anywhere",
+        "modeAdvanced": "Advanced observability - also export universe metrics to Prometheus",
+        "modeOnline": "Online - collect here and send everything to an external Perf Advisor",
+        "onlineDestinationLabel": "Destination",
+        "onlinePrerequisite": "The universe must already be registered on the destination Perf Advisor before online mode can be enabled."
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -1108,6 +1115,8 @@
     },
     "clusterDetail": {
       "troubleshoot": {
+        "onlineModeTitle": "This universe is collected in online mode",
+        "onlineModeSubText": "Performance data for this universe is collected here and sent to an external Perf Advisor. Open that Perf Advisor to analyze it.",
         "Troubleshoot": "Troubleshoot",
         "resolved": "Resolved",
         "Details": "Refer to details",
@@ -1163,7 +1172,8 @@
           "forceUnregisterCheckBoxLabel": "Force Unregister",
           "unregisterButton": "Unregister",
           "unregisterMessage": "Are you sure you want to unregister the Perf Advisor service with URL: {{url}} ?"
-        }
+        },
+        "collectorTabTitle": "Collector"
       },
       "performance": {
         "advisor": {
@@ -2112,6 +2122,49 @@
         "error": {
           "failedToFetchUniverseTaskList": "Unable to fetch universe task list."
         }
+      },
+      "perfAdvisorEndpoint": {
+        "tabTitle": "Endpoints",
+        "listSubText": "External Perf Advisors that universes registered in online mode send their collected data to.",
+        "addButton": "Add Endpoint",
+        "addTitle": "Add Perf Advisor Endpoint",
+        "editTitle": "Edit Perf Advisor Endpoint",
+        "emptyList": "No Perf Advisor endpoints configured yet.",
+        "name": "Name",
+        "type": "Type",
+        "typeByoc": "BYOC",
+        "collectionEndpoint": "Collection endpoint",
+        "collectionAuth": "Collection authentication",
+        "metricsEndpoint": "Metrics endpoint",
+        "metricsType": "Metrics protocol",
+        "metricsTypeOtlp": "OTLP/HTTP",
+        "metricsTypeRemoteWrite": "Prometheus remote write",
+        "metricsAuth": "Metrics authentication",
+        "authNone": "None",
+        "authBasic": "Basic",
+        "authBasicWithUser": "Basic ({{username}})",
+        "username": "Username",
+        "password": "Password",
+        "ybmAccountId": "YugabyteDB Managed account ID",
+        "ybmProjectId": "YugabyteDB Managed project ID",
+        "universesUsing": "Universes",
+        "actions": "Actions",
+        "fieldRequired": "This field is required",
+        "created": "Perf Advisor endpoint created",
+        "updated": "Perf Advisor endpoint updated",
+        "deleted": "Perf Advisor endpoint deleted",
+        "saveFailed": "Failed to save the Perf Advisor endpoint",
+        "fetchFailed": "Failed to fetch Perf Advisor endpoints",
+        "deleteFailed": "Failed to delete the Perf Advisor endpoint",
+        "deleteTitle": "Delete Perf Advisor Endpoint",
+        "deleteConfirm": "Delete endpoint \"{{name}}\"? Nothing is sending to it.",
+        "deleteBlocked": "Endpoint \"{{name}}\" is used by {{count}} universe(s). Disable Perf Advisor online mode on those universes first.",
+        "heading": "Perf Advisor Endpoints",
+        "inUse": "In use",
+        "notInUse": "Not in use",
+        "editEndpoint": "Edit Endpoint",
+        "deleteEndpoint": "Delete Endpoint",
+        "andMoreUniverses": "and {{count}} more"
       }
     },
     "cdc": {
@@ -3833,7 +3886,7 @@
         "cloudProvider": "Provider",
         "providerconfiguration": "Provider Configuration",
         "providerConfigurationPlaceholder": "Select Provider Configuration",
-        "providerEmptyState": "You don't have an {{providerCode}} provider configuration yet .<a /><a />To continue, create a provider configuration in <b>Admin → Advanced → Provider Configuration</b>. You may need admin privileges to complete this step.",
+        "providerEmptyState": "You don't have an {{providerCode}} provider configuration yet .<a /><a />To continue, create a provider configuration in <b>Integrations → Infrastructure</b>. You may need admin privileges to complete this step.",
         "providerTooltip": "A reusable configuration that defines the infrastructure and allowed deployment scope (cloud, regions, networking, and credentials) for Universes.",
         "databaseVersion": "Database Version",
         "databaseVersionPlaceholder": "Select Database Version",
@@ -5070,11 +5123,11 @@
         "title": "What Changed",
         "newAndImproved": "New and Improved",
         "enhancedUniverseConfigTitle": "Enhanced Universe Configuration",
-        "enhancedUniverseConfigDescription": "Set up and manage universes using a wizard in Guided or Expert mode to help you build the right topology. <learnMore>Learn more</learnMore>",
+        "enhancedUniverseConfigDescription": "Set up and manage universes using a wizard in Guided or Expert mode to help you build the right topology.",
         "centralizedSettingsTitle": "Centralized Settings",
-        "centralizedSettingsDescription": "Access all your universe configuration settings from a single Settings tab. <learnMore>Learn more</learnMore>",
+        "centralizedSettingsDescription": "Access all your universe configuration settings from a single Settings tab.",
         "preferredAzRankingTitle": "Preferred availability zone ranking",
-        "preferredAzRankingDescription": "Rank preferred availability zones to optimize connection latency. <learnMore>Learn more</learnMore>",
+        "preferredAzRankingDescription": "Rank preferred availability zones to optimize connection latency.",
         "otherImprovements": "Learn about other improvements in <releaseLink>this release.</releaseLink>",
         "sameFeaturesNewHome": "Same features, new home",
         "then": "Then",
@@ -5086,7 +5139,7 @@
         "logsAndMetricsExport": "Logs & Metrics Export",
         "settings": "Settings",
         "rolloutTitle": "Roll out the new experience for everyone",
-        "rolloutBody": "To enable the new experience for all users, set the <configTag>{{runtimeConfig}}</configTag> config on <globalConfigLink>global configuration page.</globalConfigLink>",
+        "rolloutBody": "To enable the new experience for all users, set the <configTag>{{runtimeConfig}}</configTag> config on",
         "close": "Close",
         "findOutMore": "Find Out More",
         "nowPlacement": "Placement",

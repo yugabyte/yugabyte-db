@@ -55,6 +55,12 @@ Run `git status`. If there are uncommitted changes:
 
 If the branch already has at least one commit ahead of the base and the working copy is clean, skip to Step 2.
 
+### Step 1.5: PG code style pass (only when src/postgres files changed)
+
+If the branch changes anything under `src/postgres`, load the `pg-code-style-guide` skill and check the diff against it (yb prefixes, YB marker blocks, upstream lines untouched, regress test rules). Fix violations now -- this is the last point where cleanup is free; after publishing they come back as review comments.
+
+Commit the resulting fixes -- amend Step 1's commit or add a new one -- before Step 5; the script refuses to run against a dirty tree.
+
 ### Step 2: Base branch
 
 The PR targets `master`. Do **not** prompt the user for a base branch — `create-pr.sh` always rebases and pushes against `master`. Backports are not opened with this skill — use `/backport-commit` instead.

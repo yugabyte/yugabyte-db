@@ -879,6 +879,11 @@ extern double yb_test_delay_next_ddl;
 extern int	yb_test_reset_retry_counts;
 
 /*
+ * If set to true, the walsender sends a keepalive after every decoded record.
+ */
+extern bool yb_test_walsender_keepalive_after_each_record;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -1409,6 +1414,14 @@ extern bool YbIsCommitStatsCollectionEnabled();
  */
 extern void YbRecordCommitLatency(uint64_t latency_us);
 
+/*
+ * Returns the running total of main table rows scanned by DocDB for this
+ * session.  Unlike the number of rows returned to the query layer, this
+ * includes rows that DocDB filtered out while evaluating a pushed down
+ * expression.
+ */
+extern uint64_t YbGetTableRowsScanned();
+
 /**
  * Update the global flag indicating what metric changes to capture and return
  * from the tserver to PG.
@@ -1748,7 +1761,7 @@ extern YbcPgStatement YbNewTruncateColocated(Relation rel,
 
 extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 														   YbcPgTransactionSetting transaction_setting);
-extern bool YbCanSkipIntentsWrite(Relation rel);
+extern YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoWrite(Relation rel);
 extern void YbEnableSkipIntentsForNewTransaction();
 extern void YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid);
 

@@ -53,4 +53,4 @@ ACCESS SHARE
 
 ## See also
 
-- [`SET TRANSACTION`](../txn_set)
+- [SET TRANSACTION](../txn_set)

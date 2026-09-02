@@ -1019,6 +1019,7 @@ void ObjectLockManagerImpl::WaitForConflictingLockers(
       new WaitForLockersContext(std::move(callback), deadline));
   {
     std::lock_guard lock(global_mutex_);
+    ConsumePendingSharedLockRequestsUnlocked();
     bool found_active_conflicts = false;
     for (auto& [txn_id, txn_entry] : txn_locks_) {
       if (!background_txn_id.IsNil() && txn_id == background_txn_id) {

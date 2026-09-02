@@ -843,6 +843,14 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			}
 		}
 
+		if (remove_old &&
+			IsYugaByteEnabled() &&
+			yb_test_force_parallel != YB_FORCE_PARALLEL_OFF &&
+			old_path->param_info == NULL &&
+			!yb_path_contains_gather(new_path) &&
+			yb_path_contains_gather(old_path))
+			remove_old = false;
+
 		/*
 		 * Remove current element from pathlist if dominated by new.
 		 */

@@ -19,6 +19,7 @@ import {
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
+  CreateUniverseSteps,
   StepsRef
 } from '../../CreateUniverseContext';
 import { mapCreateUniversePayload, getDedicatedTserverMasterCounts } from '../../CreateUniverseUtils';
@@ -56,7 +57,8 @@ const StyledUniverseName = styled('span')(({ theme }) => ({
   fontWeight: 600,
   lineHeight: '20px',
   color: theme.palette.primary[600],
-  textDecoration: 'underline'
+  textDecoration: 'underline',
+  cursor: 'pointer'
 }));
 
 const StyledAttrib = styled('div')(({ theme }) => ({
@@ -92,7 +94,7 @@ const StyledBoldValue = styled('div')(({ theme }) => ({
 }));
 
 export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
-  const [context, { moveToPreviousPage }] = (useContext(
+  const [context, { moveToPreviousPage, setActiveStep }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
@@ -187,7 +189,11 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
           <div style={{ display: 'flex', gap: '8px', flexDirection: 'row', marginRight: 'auto' }}>
             <UniverseIcon />
             <div style={{ display: 'flex', gap: '8px', flexDirection: 'column' }}>
-              <StyledUniverseName>{t('universe')}</StyledUniverseName>
+              <StyledUniverseName
+                onClick={() => {
+                  setActiveStep(CreateUniverseSteps.NODES_AVAILABILITY);
+                }}
+              >{t('universe')}</StyledUniverseName>
               <div
                 style={{
                   display: 'flex',
@@ -268,6 +274,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
           zoom: 1,
           center: [0, 0]
         }}
+        showBoundaries={false}
       >
         {
           resilienceAndRegionsSettings?.regions?.map((region: Region) => {

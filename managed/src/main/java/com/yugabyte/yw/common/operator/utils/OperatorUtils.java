@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -159,6 +161,9 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.EncryptionAtRest;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -241,6 +246,11 @@ public class OperatorUtils {
   private Config _k8sClientConfig;
   private ReleaseManager releaseManager;
   private ObjectMapper objectMapper;
+
+  // Keyed on path plus last-modified time and size, so an entry is only reused while the file it
+  // was read from is untouched. Bounded rather than expiring: a stale key cannot be read.
+  private final Cache<String, String> kubeConfigFileCache =
+      CacheBuilder.newBuilder().maximumSize(100).build();
 
   @Inject
   public OperatorUtils(
@@ -1571,10 +1581,11 @@ public class OperatorUtils {
     if (secret == null) {
       return null;
     }
-    if (secret.getData().get(key) != null) {
+    // A secret carries data, stringData, or neither - whichever is absent comes back null.
+    if (secret.getData() != null && secret.getData().get(key) != null) {
       return new String(Base64.getDecoder().decode(secret.getData().get(key)));
     }
-    return secret.getStringData().get(key);
+    return secret.getStringData() != null ? secret.getStringData().get(key) : null;
   }
 
   /*
@@ -2147,12 +2158,66 @@ public class OperatorUtils {
 
   public boolean hasKubeConfigChanged(
       Map<String, String> existingCloudInfo, Map<String, String> desiredCloudInfo) {
+    // A CR carries its kubeconfig by Secret reference and the reconciler names the file after the
+    // Secret, so the name never matches the one the provider was created with - comparing names
+    // reports drift forever on an imported provider.
+    String desiredKubeConfigContent = desiredCloudInfo.get("KUBECONFIG_CONTENT");
+    if (StringUtils.isNotBlank(desiredKubeConfigContent)) {
+      String existingKubeConfigContent =
+          readKubeConfigContent(existingCloudInfo.getOrDefault("KUBECONFIG", ""));
+      if (existingKubeConfigContent != null) {
+        // createKubernetesConfig writes the content verbatim, so this compares byte for byte.
+        // Only trailing whitespace is normalized - normalizing further risks reading a rotated
+        // credential as unchanged.
+        return !Objects.equals(
+            StringUtils.stripEnd(existingKubeConfigContent, null),
+            StringUtils.stripEnd(desiredKubeConfigContent, null));
+      }
+    }
     // Look for KUBECONFIG in the existing kubeconfig and extract the name of the kubeconfig file
     // since we don't store the kubeconfig name in the provider.
     String existingKubeConfigName =
         extractKubeConfigName(existingCloudInfo.getOrDefault("KUBECONFIG", ""));
     String desiredKubeConfigName = desiredCloudInfo.getOrDefault("KUBECONFIG_NAME", "");
     return !Objects.equals(existingKubeConfigName, desiredKubeConfigName);
+  }
+
+  /**
+   * The provider's kubeconfig, cached so the reconcile loop is not re-reading a file that only
+   * changes on a credential rotation. Keyed on the path, which AccessManager writes under {@code
+   * <providerUUID>[/<regionUUID>[/<zoneUUID>]]} and so is already unique per provider and zone. The
+   * reconciler drops a provider's entries when it submits an edit for it.
+   */
+  private String readKubeConfigContent(String kubeConfigPath) {
+    if (StringUtils.isBlank(kubeConfigPath)) {
+      return null;
+    }
+    String cached = kubeConfigFileCache.getIfPresent(kubeConfigPath);
+    if (cached != null) {
+      return cached;
+    }
+    try {
+      Path path = Paths.get(kubeConfigPath);
+      if (!Files.exists(path)) {
+        return null;
+      }
+      String content = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+      kubeConfigFileCache.put(kubeConfigPath, content);
+      return content;
+    } catch (Exception e) {
+      log.warn("Failed to read kubeconfig at {}", kubeConfigPath, e);
+      return null;
+    }
+  }
+
+  /**
+   * Drops every cached kubeconfig belonging to a provider - its own and its regions' and zones',
+   * which all live under the provider's UUID. Call when submitting an edit, before the task
+   * rewrites the files.
+   */
+  public void invalidateKubeConfigCache(UUID providerUUID) {
+    String marker = "/" + providerUUID + "/";
+    kubeConfigFileCache.asMap().keySet().removeIf(key -> key.contains(marker));
   }
 
   private String extractKubeConfigName(String kubeConfigPath) {

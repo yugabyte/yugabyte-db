@@ -113,6 +113,16 @@ target_link_libraries(yb-fs_dump
   ${LINK_LIBS}
   fs_tool)
 
+# Standalone check for swapped data mounts, run on the node against the data directories in
+# place, with the server stopped. Links tablet_proto rather than tablet or tablet_metadata on
+# purpose: the survey reads superblocks as raw protobufs, so that it cannot trigger the
+# tier_paths migration that RaftGroupMetadata::LoadFromDisk performs on first read.
+add_executable(yb-fs_pin fs_pin-tool.cc)
+target_link_libraries(yb-fs_pin
+  ${LINK_LIBS}
+  tablet_proto
+  yb_fs)
+
 add_library(ysck
     ysck.cc
     ysck_remote.cc

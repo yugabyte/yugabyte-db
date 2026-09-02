@@ -64,7 +64,6 @@ public class TestPgRegressTabletSplit extends BasePgRegressTest {
     flags.put("heartbeat_interval_ms", Integer.toString(1000));
     // TODO(28543): Remove once transactional ddl is enabled by default.
     flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flags.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
     return flags;
   }
 

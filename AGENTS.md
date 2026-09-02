@@ -26,6 +26,40 @@ For agents that want to deploy, configure and run YugabyteDB refer to instructio
 
 When working on DB code (`src/`), refer to `src/AGENTS.md` for build and test guidance
 
+## Cursor Cloud specific instructions
+
+### Environment
+
+The VM image is `yugabyteci/yb_build_infra_almalinux9_x86_64` which ships with: Clang, JDK 17, Go, Python 3.11, CMake, Ninja, SBT, Node.js 22, Rust, and all C++ build dependencies.
+
+### Building from source
+
+```bash
+./yb_build.sh release daemons initdb --sj --skip-pg-parquet --no-odyssey --no-ybc
+```
+
+This is the Cloud environment `install` command. Builds snapshot `build/latest` (yb-master, yb-tserver, postgres, initdb). Agents booting from a successful Build already have those binaries; rerun only if the branch changes build inputs. Do not start yugabyted in `install`; Builds keep files, not processes.
+
+Flags: `--sj` skips Java, `--skip-pg-parquet` skips the parquet extension, `--no-odyssey` skips the connection pooler, `--no-ybc` skips the backup controller. Add targets back as needed. First compile is ~15-20 minutes on 8 vCPUs; later Builds reuse `/opt/yb-build` and incremental objects.
+
+### Running the database
+
+If `build/latest` is present, start the cluster. Otherwise compile first.
+
+```bash
+python3 bin/yugabyted start --advertise_address 127.0.0.1 --base_dir /tmp/yb-data
+```
+
+For a multi-node cluster, start additional nodes with `--join <first-node-address>` and a distinct `--advertise_address` and `--base_dir` each.
+
+Ports: YSQL on 5433, YCQL on 9042, yb-master UI on 7000, yb-tserver UI on 9000.
+
+Connect: `build/latest/postgres/bin/ysqlsh -U yugabyte -d yugabyte -h 127.0.0.1`
+
+### Yugabyted UI
+
+`yugabyted-ui/ui/`: `npm ci` (Node.js >= 22.18), `npm start` on port 3000, `npm run typecheck`.
+
 ### Prose discipline — write for the reader, not for volume
 
 AI-written text runs long: PR and diff descriptions that narrate the diff, comments that

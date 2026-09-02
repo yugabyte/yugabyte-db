@@ -121,6 +121,7 @@ DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
 
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb::cdc {
 
@@ -909,13 +910,19 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     // Check if packed row schema version is present in the schema_packing_storage. If not
     // present, invalidate the cached_schema_details so that we fetch schema with required
     // version from sys catalog.
-    if (!SchemaPackingStorageContainsVersion(
-            schema_packing_storage, narrow_cast<SchemaVersion>(pr_schema_version))) {
-      update_schema_packing_storage = true;
-      auto it = cached_schema_details->find(table_id);
-      if (it != cached_schema_details->end()) {
-        (*cached_schema_details).erase(it);
-      }
+    update_schema_packing_storage = !SchemaPackingStorageContainsVersion(
+        schema_packing_storage, narrow_cast<SchemaVersion>(pr_schema_version));
+
+    // The cached entry holds a single schema version per table, but with transactional DDL, a
+    // transaction containing DDL writes rows under more than one version. A schema from a different
+    // version cannot resolve this row's column ids, so drop it and fetch the one this row was
+    // written with.
+    auto it = cached_schema_details->find(table_id);
+    if (it != cached_schema_details->end() &&
+        (update_schema_packing_storage ||
+         (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+          it->second.schema_version != pr_schema_version))) {
+      (*cached_schema_details).erase(it);
     }
   }
 

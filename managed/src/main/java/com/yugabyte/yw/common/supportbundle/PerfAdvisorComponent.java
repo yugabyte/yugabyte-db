@@ -4,6 +4,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.pa.PaRegistrationMode;
 import com.yugabyte.yw.common.pa.PerfAdvisorClient;
 import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.forms.SupportBundleFormData;
@@ -67,6 +68,9 @@ public class PerfAdvisorComponent implements SupportBundleComponent {
     }
 
     PACollector collector = perfAdvisorService.getOrBadRequest(customer.getUuid(), paCollectorUuid);
+    if (collectedElsewhere(collector, universe)) {
+      return;
+    }
 
     log.info("Scheduling PA support bundle for universe {}", universe.getUniverseUUID());
     PerfAdvisorClient.SupportBundle bundle =
@@ -144,11 +148,32 @@ public class PerfAdvisorComponent implements SupportBundleComponent {
     }
 
     PACollector collector = perfAdvisorService.getOrBadRequest(customer.getUuid(), paCollectorUuid);
+    if (collectedElsewhere(collector, universe)) {
+      return Collections.emptyMap();
+    }
     return perfAdvisorClient.estimateSupportBundleSize(
         collector,
         universe.getUniverseUUID(),
         bundleData.paDumpStartDate.toInstant(),
         bundleData.paDumpEndDate.toInstant(),
         bundleData.paMetricsFormat);
+  }
+
+  /**
+   * A universe registered in online mode is scraped by this collector but stored on an external
+   * Perf Advisor, so there is nothing here to put in a bundle. Asking for one anyway would produce
+   * an empty dump and a misleading impression that the data was captured.
+   */
+  private boolean collectedElsewhere(PACollector collector, Universe universe) {
+    PerfAdvisorClient.UniverseMetadata metadata =
+        perfAdvisorService.getUniverseMetadata(collector, universe);
+    if (metadata == null || PaRegistrationMode.of(metadata).storesLocally()) {
+      return false;
+    }
+    log.warn(
+        "Universe {} is collected in online mode - its Performance Advisor data lives on an"
+            + " external collector. Skipping PA support bundle.",
+        universe.getUniverseUUID());
+    return true;
   }
 }

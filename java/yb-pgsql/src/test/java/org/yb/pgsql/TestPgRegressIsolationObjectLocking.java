@@ -31,8 +31,7 @@ public class TestPgRegressIsolationObjectLocking extends BasePgRegressTest {
     flagMap.put("enable_object_locking_for_table_locks", "true");
     flagMap.put("ysql_enable_concurrent_ddl", "true");
     flagMap.put("allowed_preview_flags_csv",
-      "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks,"
-      + "ysql_enable_concurrent_ddl");
+      "enable_object_locking_for_table_locks,ysql_enable_concurrent_ddl");
     flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
     flagMap.put("ysql_beta_features", "true");
     return flagMap;
@@ -43,8 +42,7 @@ public class TestPgRegressIsolationObjectLocking extends BasePgRegressTest {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
     flagMap.put("enable_object_locking_for_table_locks", "true");
-    flagMap.put("allowed_preview_flags_csv",
-      "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks");
+    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
     return flagMap;
   }
 

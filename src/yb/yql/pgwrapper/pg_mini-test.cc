@@ -31,9 +31,12 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
+
+#include "yb/docdb/doc_read_context.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 
@@ -101,6 +104,7 @@ DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_tablet_pause_apply_write_ops);
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_colocated_table_tombstone_cache);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(flush_rocksdb_on_shutdown);
@@ -1750,6 +1754,562 @@ TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
   ASSERT_FALSE(tombstone_time.has_value());
 }
 
+namespace {
+
+// Returns true if the DocDB dump contains a table-level tombstone (a DEL at the bare
+// colocation doc key) for the given colocation id.
+bool DumpHasTableTombstone(const std::string& dump, int colocation_id) {
+  const auto prefix = Format("DocKey(ColocationId=$0, [], [])", colocation_id);
+  size_t pos = 0;
+  while ((pos = dump.find(prefix, pos)) != std::string::npos) {
+    auto eol = dump.find('\n', pos);
+    if (eol == std::string::npos) {
+      eol = dump.size();
+    }
+    if (dump.substr(pos, eol - pos).find("-> DEL") != std::string::npos) {
+      return true;
+    }
+    pos = eol;
+  }
+  return false;
+}
+
+} // namespace
+
+// Regression test for the colocated-table tombstone-time cache never being invalidated on
+// TRUNCATE (flag enable_colocated_table_tombstone_cache, default on). An "unsafe" TRUNCATE
+// (yb_enable_alter_table_rewrite = false) deletes a colocated table's data by writing one
+// table-level tombstone over the table's colocation prefix, and reads filter rows against
+// that tombstone time. The per-DocReadContext cache of that lookup is populated on the first
+// read and has no invalidation edge, and the tombstone-based TRUNCATE does not replace the
+// DocReadContext, so a node that cached the pre-truncate value keeps serving every truncated
+// row as live; an INSERT after the TRUNCATE mixes the new row with resurrected ones. With
+// RF > 1 a replica with a cold cache correctly sees the table as empty while the stale-cache
+// node resurrects the rows - divergent results for the same query - but RF1 is enough to
+// demonstrate the mechanism.
+// With the #32724 fix, the final assertions below must pass (they failed before
+// TRUNCATE invalidated / refreshed the cached tombstone time).
+TEST_F_EX(PgMiniTest, TruncateVisibleThroughTombstoneCache, PgMiniTestSingleNode) {
+  const std::string kDbName = "testdb";
+  const std::string kTableName = "truncate_cache_test";
+  const int kColocationId = 20001;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (110), (111), (112)", kTableName));
+
+  // Populate the cache: the first read stores the (absent) tombstone time in the
+  // DocReadContext.
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 3);
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(peers.size(), 1);
+  auto peer = peers.front();
+  auto read_cached_tombstone_time = [&]() {
+    auto table_info = CHECK_RESULT(peer->tablet_metadata()->GetTableInfo(kColocationId));
+    CHECK(table_info && table_info->doc_read_context);
+    return table_info->doc_read_context->table_tombstone_time();
+  };
+  auto doc_read_context_ptr = [&]() -> const void* {
+    auto table_info = CHECK_RESULT(peer->tablet_metadata()->GetTableInfo(kColocationId));
+    return table_info->doc_read_context.get();
+  };
+
+  // Trigger guard 1: the read above populated the cache; for a never-truncated table the
+  // cached value is kInvalid ("no tombstone").
+  auto cache_before = read_cached_tombstone_time();
+  ASSERT_TRUE(cache_before.has_value());
+  ASSERT_FALSE(cache_before->is_valid());
+  const auto* context_before = doc_read_context_ptr();
+
+  // The unsafe (non-rewrite) TRUNCATE: writes a table-level tombstone at the colocation
+  // prefix instead of switching to a new relfilenode.
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  // Trigger guard 2: prove the TRUNCATE took the tombstone path. The bytes on disk are
+  // correct - this is a read-path bug - so the dump (not a SELECT) is the right probe for
+  // this guard; do not "simplify" the wrongness assertions below to use the dump.
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
+  auto dump = tablet->TEST_DocDBDumpStr();
+  ASSERT_TRUE(DumpHasTableTombstone(dump, kColocationId))
+      << "TRUNCATE did not write a table-level tombstone (rewrite path taken?). Dump:\n" << dump;
+
+  // The stale read, served through the cached pre-truncate tombstone time.
+  auto count_after_truncate = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+  auto cache_after = read_cached_tombstone_time();
+  const auto* context_after = doc_read_context_ptr();
+
+  // Compounding evidence: an INSERT after the TRUNCATE mixes the new row with resurrected
+  // ones.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1000)", kTableName));
+  auto count_mixed = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+
+  // Causation control (passes today and after the fix): with the RUNTIME flag off the read
+  // bypasses the cache, sees the tombstone, and returns only the post-truncate row.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_colocated_table_tombstone_cache) = false;
+  auto count_uncached = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_colocated_table_tombstone_cache) = true;
+  ASSERT_EQ(count_uncached, 1)
+      << "uncached read after TRUNCATE + one INSERT must see exactly the new row";
+
+  // Correctness assertions for the warm-cache + legacy-TRUNCATE path.
+  ASSERT_EQ(count_after_truncate, 0)
+      << "TOMBSTONE-CACHE RESURRECTION: post-TRUNCATE read served " << count_after_truncate
+      << " deleted rows from the stale cached tombstone time."
+      << " Cached tombstone time before TRUNCATE: "
+      << (cache_before ? cache_before->ToString() : "<not cached>")
+      << ", after: " << (cache_after ? cache_after->ToString() : "<not cached>")
+      << " (unchanged => no invalidation edge)."
+      << " DocReadContext instance replaced: " << (context_before != context_after ? "yes" : "no")
+      << ". Count after post-TRUNCATE INSERT: " << count_mixed
+      << " (new row mixed with resurrected rows)."
+      << " Uncached (flag-off) count: " << count_uncached << ".";
+  ASSERT_EQ(count_mixed, 1)
+      << "post-TRUNCATE INSERT followed by count must see exactly the new row";
+}
+
+// Control for TruncateVisibleThroughTombstoneCache (passes today): with the default
+// yb_enable_alter_table_rewrite = true, TRUNCATE takes the rewrite path (new relfilenode,
+// fresh metadata), so reads are correct even with the tombstone-time cache populated. This
+// pins the wrongness above to the unsafe-truncate (table-tombstone) path.
+TEST_F_EX(PgMiniTest, TruncateRewritePathControl, PgMiniTestSingleNode) {
+  const std::string kDbName = "testdb";
+  const std::string kTableName = "truncate_cache_test";
+  const int kColocationId = 20001;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (110), (111), (112)", kTableName));
+
+  // Populate the tombstone-time cache before the TRUNCATE, like the repro does.
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 3);
+
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 0);
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1000)", kTableName));
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 1);
+}
+
+// Control for TruncateVisibleThroughTombstoneCache (passes today): a restart rebuilds every
+// DocReadContext from the superblock, so the stale cached tombstone time does not survive
+// it - the resurrection lasts only until the node restarts.
+TEST_F_EX(PgMiniTest, TruncateTombstoneCacheHealedByRestart, PgMiniTestSingleNode) {
+  const std::string kDbName = "testdb";
+  const std::string kTableName = "truncate_cache_test";
+  const int kColocationId = 20001;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (110), (111), (112)", kTableName));
+
+  // Populate the tombstone-time cache, then truncate through the tombstone path.
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 3);
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  {
+    auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    ASSERT_EQ(peers.size(), 1);
+    auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+    ASSERT_TRUE(DumpHasTableTombstone(tablet->TEST_DocDBDumpStr(), kColocationId))
+        << "TRUNCATE did not write a table-level tombstone (rewrite path taken?)";
+  }
+
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 0);
+}
+
+// Regression for #32724: legacy colocated TRUNCATE (yb_enable_alter_table_rewrite=false) must
+// invalidate the colocated tombstone-time cache so subsequent reads see an empty table.
+TEST_F_EX(PgMiniTest, TruncateColocatedInvalidatesTombstoneCache, PgMiniTestSingleNode) {
+  const std::string kDbName = "truncate_tombstone_db";
+  const std::string kTableName = "t";
+  const int kColocationId = 20002;
+  const std::vector<int> kInitialData = {1, 2, 3};
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES ($1), ($2), ($3)",
+      kTableName, kInitialData[0], kInitialData[1], kInitialData[2]));
+
+  // Warm the tombstone-time cache (caches "no tombstone").
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, kInitialData.size());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_FALSE(peers.empty());
+  auto peer = peers.front();
+  auto doc_read_context = [&]() -> Result<std::shared_ptr<docdb::DocReadContext>> {
+    // Always re-fetch: a TableInfo (and with it the DocReadContext) can be rebuilt underneath us,
+    // and asserting on a detached copy would not describe what reads actually see.
+    auto table_info = VERIFY_RESULT(peer->tablet_metadata()->GetTableInfo(kColocationId));
+    SCHECK(table_info && table_info->doc_read_context, IllegalState, "No DocReadContext");
+    return table_info->doc_read_context;
+  };
+  {
+    auto ctx = ASSERT_RESULT(doc_read_context());
+    auto cached = ctx->table_tombstone_time();
+    ASSERT_TRUE(cached.has_value());
+    ASSERT_FALSE(cached->is_valid());
+    // Serve-ready / AddTable should have armed the watermark (not left at kMax).
+    ASSERT_NE(ctx->tombstone_cache_watermark(), HybridTime::kMax);
+  }
+
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 0);
+
+  // Cache should now hold a real tombstone time (re-populated by the post-truncate read).
+  {
+    auto ctx = ASSERT_RESULT(doc_read_context());
+    auto cached_after = ctx->table_tombstone_time();
+    ASSERT_TRUE(cached_after.has_value());
+    ASSERT_TRUE(cached_after->is_valid());
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (4)", kTableName));
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 1);
+}
+
+// #32724 (a): a pinned read at R < truncate-HT must not re-poison the cache so that a later
+// current-time read resurrects truncated rows.
+TEST_F_EX(
+    PgMiniTest, TruncateColocatedPinnedReadDoesNotRePoisonTombstoneCache, PgMiniTestSingleNode) {
+  const std::string kDbName = "truncate_tombstone_pinned_db";
+  const std::string kTableName = "t";
+  const int kColocationId = 20003;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2), (3)", kTableName));
+
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 3);
+
+  auto pinned_us = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  // Pinned-old read: rows still visible as of pre-truncate time (cold path / below watermark).
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", pinned_us));
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 3);
+
+  // Current read must stay empty: pinned read must not have re-cached "absence" under the old
+  // watermark into the post-truncate epoch.
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, 0);
+}
+
+// #32724 (b): successive legacy truncates keep the single cache slot + watermark coherent.
+TEST_F_EX(PgMiniTest, TruncateColocatedMultipleTruncates, PgMiniTestSingleNode) {
+  const std::string kDbName = "truncate_tombstone_multi_db";
+  const std::string kTableName = "t";
+  const int kColocationId = 20004;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2)", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 2);
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3), (4), (5)", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_FALSE(peers.empty());
+  auto table_info = ASSERT_RESULT(peers.front()->tablet_metadata()->GetTableInfo(kColocationId));
+  auto cached = table_info->doc_read_context->table_tombstone_time();
+  ASSERT_TRUE(cached.has_value());
+  ASSERT_TRUE(cached->is_valid());
+  // The invariant is only that the watermark covers the cached tombstone. Anything else that arms
+  // the context (schema rebuild, ADD_TABLE replay) may push the watermark past the last truncate,
+  // so requiring equality here would make this test fail on unrelated re-arms.
+  ASSERT_GE(table_info->doc_read_context->tombstone_cache_watermark(), cached->hybrid_time());
+}
+
+// #32724 (c): after truncate + schema rebuild (ALTER arms a fresh context), pinned then current
+// reads stay correct (no kMin-init / unarmed-after-rebuild resurrection).
+TEST_F_EX(PgMiniTest, TruncateColocatedAfterAlterSchema, PgMiniTestSingleNode) {
+  const std::string kDbName = "truncate_tombstone_alter_db";
+  const std::string kTableName = "t";
+  const int kColocationId = 20005;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2), (3)", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
+
+  auto pinned_us = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+
+  // Rebuild DocReadContext (copy resets watermark to kMax) then AlterSchema re-arms at SafeTime.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN extra int", kTableName));
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_FALSE(peers.empty());
+  auto table_info = ASSERT_RESULT(peers.front()->tablet_metadata()->GetTableInfo(kColocationId));
+  ASSERT_NE(table_info->doc_read_context->tombstone_cache_watermark(), HybridTime::kMax);
+
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", pinned_us));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
+
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+}
+
+// #32724 (d): an unarmed DocReadContext (watermark kMax) fails closed: cache ineligible.
+TEST(DocReadContextTombstoneCacheTest, UnarmedWatermarkFailsClosed) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddKeyColumn("k", DataType::INT32));
+  auto schema = builder.Build();
+  schema.set_colocation_id(42);
+  auto ctx = docdb::DocReadContext::TEST_Create(schema);
+  ASSERT_EQ(ctx.tombstone_cache_watermark(), HybridTime::kMax);
+  ASSERT_FALSE(ctx.table_tombstone_time().has_value());
+
+  // kMax is an "unarmed" sentinel, not a numeric bound, so no read_ht may be eligible, including
+  // read_ht == kMax, which a naive read_ht >= watermark test would let through.
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::kInvalid));
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::kMin));
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::FromMicros(1)));
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::kMax));
+
+  // A populated entry must stay invisible while unarmed: the guard cannot rely on the slot being
+  // empty, since anything that arms and then re-unarms would leave a stale value behind. Assert the
+  // populate took effect first, otherwise the ineligibility below would hold trivially.
+  ctx.set_table_tombstone_time(DocHybridTime::kInvalid, ctx.tombstone_cache_generation());
+  ASSERT_TRUE(ctx.table_tombstone_time().has_value());
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::kMax));
+
+  // Arming makes it eligible again, which pins the assertions above to the watermark and not to
+  // some unrelated reason for rejecting every read.
+  ctx.AdvanceTombstoneCacheWatermark(HybridTime::FromMicros(100));
+  ASSERT_TRUE(ctx.IsTombstoneCacheEligible(HybridTime::FromMicros(100)));
+  ASSERT_FALSE(ctx.IsTombstoneCacheEligible(HybridTime::FromMicros(99)));
+}
+
+// #32724 (e): set must stamp the caller's pre-fetch generation, not the post-truncate epoch.
+TEST(DocReadContextTombstoneCacheTest, SetStampsCallerGeneration) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddKeyColumn("k", DataType::INT32));
+  auto schema = builder.Build();
+  schema.set_colocation_id(42);
+  auto ctx = docdb::DocReadContext::TEST_Create(schema);
+
+  ctx.AdvanceTombstoneCacheWatermark(HybridTime::FromMicros(100));
+  const auto gen_before = ctx.tombstone_cache_generation();
+
+  // Truncate advances generation after the fetch, before set.
+  ctx.OnTableTombstoneWritten(HybridTime::FromMicros(200));
+  const auto gen_after = ctx.tombstone_cache_generation();
+  ASSERT_NE(gen_before, gen_after);
+
+  // Stamping absence under the pre-truncate epoch must miss for current readers.
+  ctx.set_table_tombstone_time(DocHybridTime::kInvalid, gen_before);
+  ASSERT_FALSE(ctx.table_tombstone_time().has_value());
+
+  // Stamping under the current epoch is visible (sanity check of the hit path).
+  ctx.set_table_tombstone_time(DocHybridTime::kInvalid, gen_after);
+  ASSERT_TRUE(ctx.table_tombstone_time().has_value());
+  ASSERT_EQ(*ctx.table_tombstone_time(), DocHybridTime::kInvalid);
+}
+
+// #32724: a tombstone HT above the watermark must not land in the cache (empty-table polarity
+// in the commit-to-apply window). Absence (kInvalid) has no HT to compare and remains storable.
+TEST(DocReadContextTombstoneCacheTest, RejectTombstoneAboveWatermark) {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddKeyColumn("k", DataType::INT32));
+  auto schema = builder.Build();
+  schema.set_colocation_id(42);
+  auto ctx = docdb::DocReadContext::TEST_Create(schema);
+
+  ctx.AdvanceTombstoneCacheWatermark(HybridTime::FromMicros(100));
+  const auto gen = ctx.tombstone_cache_generation();
+
+  // Tombstone T > watermark: reject (would hide rows for watermark <= read_ht < T).
+  ctx.set_table_tombstone_time(
+      DocHybridTime(HybridTime::FromMicros(200), /*write_id=*/1), gen);
+  ASSERT_FALSE(ctx.table_tombstone_time().has_value());
+
+  // Tombstone at the watermark: accept.
+  ctx.set_table_tombstone_time(
+      DocHybridTime(HybridTime::FromMicros(100), /*write_id=*/1), gen);
+  ASSERT_TRUE(ctx.table_tombstone_time().has_value());
+  ASSERT_EQ(ctx.table_tombstone_time()->hybrid_time(), HybridTime::FromMicros(100));
+
+  ctx.clear_table_tombstone_time();
+  // Absence remains storable regardless of watermark.
+  ctx.set_table_tombstone_time(DocHybridTime::kInvalid, gen);
+  ASSERT_TRUE(ctx.table_tombstone_time().has_value());
+  ASSERT_EQ(*ctx.table_tombstone_time(), DocHybridTime::kInvalid);
+}
+
+// #32724 (f): RF3. A replica that held a warm cache while it was a follower must still see the
+// legacy TRUNCATE. Followers never run ApplyTruncateColocated (leader-side batch assembly), so
+// only the apply-path notify invalidates them; without it, moving leadership onto such a replica
+// (or a follower read) resurrects the truncated rows. Every single-node test above passes even
+// when the invalidation is leader-only, so this is the one that pins the fix to the apply path.
+TEST_F(PgMiniTest, TruncateColocatedInvalidatesTombstoneCacheOnFollower) {
+  const std::string kDbName = "truncate_tombstone_rf3_db";
+  const std::string kTableName = "t";
+  const int kColocationId = 20006;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)", kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2), (3)", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  auto peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
+  ASSERT_EQ(peers.size(), NumTabletServers());
+  const auto tablet_id = peers.front()->tablet_id();
+
+  auto doc_read_context = [&](const tablet::TabletPeerPtr& peer) {
+    auto table_info = CHECK_RESULT(peer->tablet_metadata()->GetTableInfo(kColocationId));
+    CHECK(table_info && table_info->doc_read_context);
+    return table_info->doc_read_context;
+  };
+
+  // Warm every replica with the pre-truncate "no tombstone" answer. The SELECT above only warmed
+  // the leader, and the replicas this test is about are the ones that are followers at apply time;
+  // stamping directly is the deterministic way to put them in that state.
+  for (const auto& peer : peers) {
+    auto ctx = doc_read_context(peer);
+    ASSERT_NE(ctx->tombstone_cache_watermark(), HybridTime::kMax)
+        << "replica " << peer->permanent_uuid() << " was never armed, so it cannot go stale and "
+        << "this test would not exercise anything";
+    ctx->set_table_tombstone_time(DocHybridTime::kInvalid, ctx->tombstone_cache_generation());
+    ASSERT_TRUE(ctx->table_tombstone_time().has_value());
+  }
+
+  const auto leader_uuid =
+      ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id))->permanent_uuid();
+
+  ASSERT_OK(conn.Execute("SET yb_enable_alter_table_rewrite = false"));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+
+  // The tombstone is transactional: commit returns before APPLY finishes on every participant, so
+  // a replica may still hold the DocHybridTime::kInvalid stamp we planted until apply runs. Wait
+  // until every replica has dropped that "no tombstone" entry (cleared or replaced with a real
+  // tombstone HT). Leadership transfer below does not need a similar wait: UpdateTxnOperation uses
+  // MVCC, so safe time on the new leader cannot reach `now` until apply completes.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& peer : peers) {
+          auto cached = doc_read_context(peer)->table_tombstone_time();
+          if (cached.has_value() && !cached->is_valid()) {
+            return false;
+          }
+        }
+        return true;
+      },
+      30s * kTimeMultiplier,
+      "Every replica dropped the planted \"no tombstone\" cache entry after TRUNCATE"));
+
+  for (const auto& peer : peers) {
+    auto cached = doc_read_context(peer)->table_tombstone_time();
+    ASSERT_TRUE(!cached.has_value() || cached->is_valid())
+        << "replica " << peer->permanent_uuid()
+        << (peer->permanent_uuid() == leader_uuid ? " (leader)" : " (follower)")
+        << " kept a cached \"no tombstone\" entry across the TRUNCATE";
+  }
+
+  // Now serve reads from a replica that was a follower when the tombstone applied.
+  tablet::TabletPeerPtr new_leader;
+  for (const auto& peer : peers) {
+    if (peer->permanent_uuid() != leader_uuid) {
+      new_leader = peer;
+      break;
+    }
+  }
+  ASSERT_TRUE(new_leader != nullptr);
+  ASSERT_OK(TransferLeadership(cluster_.get(), tablet_id, new_leader->permanent_uuid()));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto leader = VERIFY_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
+        return leader->permanent_uuid() == new_leader->permanent_uuid();
+      },
+      30s * kTimeMultiplier, "Leadership moved to the former follower"));
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 0);
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (4)", kTableName));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 1);
+}
 
 TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
   // Setup test data.

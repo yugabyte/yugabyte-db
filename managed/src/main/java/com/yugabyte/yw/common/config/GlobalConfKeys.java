@@ -2305,12 +2305,31 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Interval for GCP capacity reservation garbage collection",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> gcpCapacityReservationGcEmptyAge =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.gcp_gc_empty_reservation_age",
+          ScopeType.GLOBAL,
+          "Age after which empty GCP capacity reservations are garbage collected",
+          "Minimum age of an unused (empty) GCP capacity reservation before the background"
+              + " garbage collector may delete it. Fully utilized reservations are deleted"
+              + " immediately regardless of age.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> gcpCapacityReservationTtl =
       new ConfKeyInfo<>(
           "yb.task.capacity_reservation.gcp_ttl",
           ScopeType.GLOBAL,
           "Time to live for GCP capacity reservation",
           "Time to live for GCP capacity reservation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> awsCapacityReservationTtl =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.aws_ttl",
+          ScopeType.GLOBAL,
+          "Time to live for AWS capacity reservation",
+          "Time to live for AWS capacity reservation. Reservations are created with a limited"
+              + " end date so AWS auto-releases them after this duration.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> paMemoryPerNodeAdvancedObservabilityMb =

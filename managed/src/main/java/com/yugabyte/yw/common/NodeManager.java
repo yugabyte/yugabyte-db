@@ -1759,6 +1759,10 @@ public class NodeManager extends DevopsBase {
         ReplaceRootVolume.Params rrvParams = (ReplaceRootVolume.Params) nodeTaskParam;
         commandArgs.add("--replacement_disk");
         commandArgs.add(rrvParams.replacementDisk);
+        if (rrvParams.capacityReservation != null) {
+          commandArgs.add("--capacity_reservation");
+          commandArgs.add(rrvParams.capacityReservation);
+        }
         commandArgs.addAll(getAccessKeySpecificCommand(rrvParams, provider, type));
         if (Common.CloudType.aws == provider.getCloudCode()) {
           if (StringUtils.isNotBlank(rrvParams.rootDeviceName)) {

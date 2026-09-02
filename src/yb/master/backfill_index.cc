@@ -335,7 +335,7 @@ Status MultiStageAlterTable::StartBackfillingData(
     const std::vector<IndexInfoPB>& idx_infos,
     std::optional<uint32_t> current_version, const LeaderEpoch& epoch,
     std::optional<TransactionMetadata> requester_transaction) {
-  // We leave the table state as ALTERING so that a master failover can resume the backfill.
+  // Stay in ALTERING: IsAlterTableDone must not report done while the backfill is running.
   RETURN_NOT_OK(ClearFullyAppliedAndUpdateState(
       catalog_manager, indexed_table, current_version, /* change_state to RUNNING */ false, epoch));
 

@@ -17,16 +17,16 @@ import { api, runtimeConfigQueryKey } from '@app/redesign/helpers/api';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
 import {
-  ONBOARDING_BANNER_DISMISS_KEY,
   isCurrentUserSuperAdmin,
   isOnboardingNewExperienceEnabled,
   setOnboardingNewExperienceEnabled,
   useOnboardingFullscreenOverlayOpen,
   useOnboardingNewExperienceEnabled
 } from '../helper-methods';
+import { TourStep, dismissTourStep, isTourProgressReady, isTourStepDismissed } from '../tour-progress';
 import { DEFAULT_RELEASE_NOTES_URL } from '../modals/HelperComponent';
 import { UnsupportedFeatureWarningModal } from '../modals/UnsupportedFeatureWarningModal';
-import { WhatChangedModal, WHAT_CHANGED_MODAL_DISMISS_KEY } from '../modals/WhatChangedModal';
+import { WhatChangedModal } from '../modals/WhatChangedModal';
 import {
   BeforeNewExperiencePopover,
   isBeforeNewExperiencePopoverDismissed,
@@ -48,11 +48,10 @@ const ONBOARDING_BANNER_BODY_CLASS = 'onboarding-banner-visible';
 /** Delay before auto-opening tip popovers after the banner is shown. */
 const TIP_AUTO_OPEN_DELAY_MS = 1400;
 
-const isOnboardingBannerDismissed = (): boolean =>
-  localStorage.getItem(ONBOARDING_BANNER_DISMISS_KEY) === 'true';
+const isOnboardingBannerDismissed = (): boolean => isTourStepDismissed(TourStep.Banner);
 
 const dismissOnboardingBanner = (): void => {
-  localStorage.setItem(ONBOARDING_BANNER_DISMISS_KEY, 'true');
+  dismissTourStep(TourStep.Banner);
 };
 
 const BannerGradientText = styled(Typography)(() => ({
@@ -235,6 +234,11 @@ export const OnBoardingBanner: FC = () => {
   const currentUserInfo = useSelector((state: any) => state.customer.currentUser.data);
   const isSuperAdmin = isCurrentUserSuperAdmin(currentUserInfo?.role);
 
+  // Sync banner dismissed UI when tour progress hydrates from profile.
+  useEffect(() => {
+    setIsBannerDismissed(isOnboardingBannerDismissed());
+  }, [currentUserInfo?.uuid, currentUserInfo?.settings, currentUserInfo?.newUniverseUiTourCompleted]);
+
   const globalRuntimeConfigQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
     api.fetchRuntimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE)
   );
@@ -263,7 +267,12 @@ export const OnBoardingBanner: FC = () => {
 
   // V2 on (all users, including SuperAdmin): After tip after delay.
   useEffect(() => {
-    if (!isVisible || !isV2Enabled || isAfterNewExperiencePopoverDismissed()) {
+    if (
+      !isTourProgressReady() ||
+      !isVisible ||
+      !isV2Enabled ||
+      isAfterNewExperiencePopoverDismissed()
+    ) {
       return;
     }
     setBeforePopoverOpen(false);
@@ -273,11 +282,23 @@ export const OnBoardingBanner: FC = () => {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [isVisible, isV2Enabled, setBeforePopoverOpen, setAfterPopoverOpen]);
+  }, [
+    isVisible,
+    isV2Enabled,
+    setBeforePopoverOpen,
+    setAfterPopoverOpen,
+    currentUserInfo?.uuid
+  ]);
 
   // V2 off + SuperAdmin, toggle off: Before tip after delay on load.
   useEffect(() => {
-    if (!isVisible || isV2Enabled || enabled || isBeforeNewExperiencePopoverDismissed()) {
+    if (
+      !isTourProgressReady() ||
+      !isVisible ||
+      isV2Enabled ||
+      enabled ||
+      isBeforeNewExperiencePopoverDismissed()
+    ) {
       return;
     }
     clearAfterTipTimer();
@@ -294,19 +315,25 @@ export const OnBoardingBanner: FC = () => {
     enabled,
     clearAfterTipTimer,
     setBeforePopoverOpen,
-    setAfterPopoverOpen
+    setAfterPopoverOpen,
+    currentUserInfo?.uuid
   ]);
 
   // V2 off + SuperAdmin, toggle already on at first paint: After tip after delay.
   // Toggle flips while mounted are handled only in handleToggle (avoids effect cleanup
   // cancelling the timer when `enabled` updates).
   useEffect(() => {
-    if (!isVisible || isV2Enabled || !isOnboardingNewExperienceEnabled()) {
+    if (
+      !isTourProgressReady() ||
+      !isVisible ||
+      isV2Enabled ||
+      !isOnboardingNewExperienceEnabled()
+    ) {
       return;
     }
     scheduleAfterTipOpen();
     return clearAfterTipTimer;
-  }, [isVisible, isV2Enabled, scheduleAfterTipOpen, clearAfterTipTimer]);
+  }, [isVisible, isV2Enabled, scheduleAfterTipOpen, clearAfterTipTimer, currentUserInfo?.uuid]);
 
   const handleToggle = useCallback(
     (_event: unknown, checked: boolean) => {
@@ -347,12 +374,11 @@ export const OnBoardingBanner: FC = () => {
   }, [clearAfterTipTimer, setAfterPopoverOpen, setBeforePopoverOpen]);
 
   const handleSeeWhatsChanged = useCallback(() => {
-    localStorage.removeItem(WHAT_CHANGED_MODAL_DISMISS_KEY);
     setShowWhatChangedModal(true);
   }, []);
 
   const handleWhatChangedClose = useCallback(() => {
-    localStorage.setItem(WHAT_CHANGED_MODAL_DISMISS_KEY, 'true');
+    dismissTourStep(TourStep.WhatChanged);
     setShowWhatChangedModal(false);
   }, []);
 

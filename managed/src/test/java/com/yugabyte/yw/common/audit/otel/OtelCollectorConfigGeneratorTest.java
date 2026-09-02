@@ -567,6 +567,89 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   // Helper method to generate config file and assert result
+
+  @Test
+  public void generateOtelColConfigDropsLegacyAttributesWhenFlagIsOff() {
+    mutableConfigFactory
+        .forUniverse(universe)
+        .setValue("yb.universe.telemetry.emit_legacy_export_attributes", "false");
+
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    when(mockTelemetryProviderService.getOrBadRequest(telemetryProvider.getUuid()))
+        .thenReturn(telemetryProvider);
+
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+
+    String result = generateConfig(null, null, metricsExportConfig);
+
+    for (ExportLabel label : ExportLabel.values()) {
+      // node_identifier is onprem-only and this universe is on AWS.
+      if (label != ExportLabel.NODE_IDENTIFIER) {
+        assertThat(result, containsString("key: " + label.getAttributeName()));
+      }
+      if (label.getLegacyAttributeName() != null) {
+        assertThat(result, not(containsString("key: " + label.getLegacyAttributeName())));
+      }
+    }
+  }
+
+  @Test
+  public void generateOtelColConfigEmitsBothSetsByDefault() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    when(mockTelemetryProviderService.getOrBadRequest(telemetryProvider.getUuid()))
+        .thenReturn(telemetryProvider);
+
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+
+    String result = generateConfig(null, null, metricsExportConfig);
+
+    for (ExportLabel label : ExportLabel.values()) {
+      // node_identifier is onprem-only and this universe is on AWS.
+      if (label != ExportLabel.NODE_IDENTIFIER) {
+        assertThat(result, containsString("key: " + label.getAttributeName()));
+      }
+      if (label.getLegacyAttributeName() != null) {
+        assertThat(result, containsString("key: " + label.getLegacyAttributeName()));
+      }
+    }
+  }
+
+  private String generateConfig(
+      AuditLogConfig auditLogConfig,
+      QueryLogConfig queryLogConfig,
+      MetricsExportConfig metricsExportConfig) {
+    try {
+      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
+      file.createNewFile();
+      generator.generateConfigFile(
+          nodeTaskParams,
+          provider,
+          null,
+          TelemetryConfig.of(auditLogConfig, queryLogConfig, metricsExportConfig),
+          "%t | %u%d : ",
+          file.toPath(),
+          NodeManager.getOtelColMetricsPort(nodeTaskParams),
+          null);
+      return FileUtils.readFileToString(file, Charset.defaultCharset());
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   private void generateAndAssertConfig(
       AuditLogConfig auditLogConfig,
       QueryLogConfig queryLogConfig,

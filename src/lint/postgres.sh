@@ -115,16 +115,21 @@ if is_yb_file "$1"; then
   # Match only .h/.hpp includes, not .def X-macro includes.
   done < <(grep -nB 100 '^#include.*\.h' "$1" | grep -EA 100 '^[0-9]+[:-]#include')
 else
-  diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1")
+  # Materialize the upstream counterpart once so that the two diffs below share
+  # the work of getting it.
+  upstream_dir=$(mktemp -d)
+  trap 'rm -rf "$upstream_dir"' EXIT
+  upstream_copy=$upstream_dir/${1##*/}
+  fetch_result=$("${BASH_SOURCE%/*}"/upstream_file.py "$1" "$upstream_copy")
   exit_code=$?
   if [ $exit_code -ne 0 ]; then
     if [ $exit_code -ne 2 ]; then
       # The following messages are not emitted to stderr because those messages
       # may be buried under a large python stacktrace also emitted to stderr.
-      if [ -z "$diff_result" ]; then
+      if [ -z "$fetch_result" ]; then
         echo "Unexpected failure, exit code $exit_code"
       else
-        echo "$diff_result"
+        echo "$fetch_result"
       fi
       exit 1
     fi
@@ -136,8 +141,14 @@ else
 ' upstream_repositories.csv. The corresponding commit in'\
 ' upstream_repositories.csv should exist either locally in ~/code/<repo_name>'\
 ' or remotely in the corresponding remote repository (and you need internet'\
-' access in that case).:1:'"$(head -1)"
+' access in that case).:1:'"$(head -1 "$1")"
   else
+    diff_result=$(diff "$1" "$upstream_copy")
+    if [ $? -gt 1 ]; then
+      echo "Failed to diff $1"
+      exit 1
+    fi
+
     grep -inE '(yb|yugabyte) includes' "$1" \
       | grep -vE '^[0-9]+:/\* YB includes \*/$' \
       | while read -r line; do
@@ -268,8 +279,7 @@ else
 
     # For kwlist.h, new keywords by YB should have "_YB_" prefix.
     #
-    # TODO(jason): this does not belong in the "includes" section, but it is
-    # also wasteful to re-run diff_file_with_upstream.py a second time.  Should
+    # TODO(jason): this does not belong in the "includes" section.  Should
     # refactor this in the future.
     if [[ "$1" == */kwlist.h ]]; then
       grep -E '^< ' <<<"$diff_result" \
@@ -281,34 +291,22 @@ else
 'YB-added keywords should have "_YB_" prefix and "_P" suffix:/'
           done
     fi
-  fi
 
-  # This time, run with --ignore-space-change.
-  diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1" \
-                --ignore-space-change)
-  exit_code=$?
-  if [ $exit_code -ne 0 ]; then
-    if [ $exit_code -eq 2 ]; then
-      echo "Unexpected exit code 2"
+    # This time, diff with --ignore-space-change.
+    diff_result=$(diff --ignore-space-change "$1" "$upstream_copy")
+    if [ $? -gt 1 ]; then
+      echo "Failed to diff $1"
+      exit 1
     fi
-    # The following messages are not emitted to stderr because those messages
-    # may be buried under a large python stacktrace also emitted to stderr.
-    if [ -z "$diff_result" ]; then
-      echo "Unexpected failure, exit code $exit_code"
-    else
-      echo "$diff_result"
-    fi
-    exit 1
-  fi
 
-  # Find YB-side hunks.
-  while read -r line_ranges; do
-    if sed -n "$line_ranges"p "$1" \
-         | grep -Eq 'YB|Yb|yb|YSQL|Ysql|ysql|Yuga|yuga'; then
-      continue
-    fi
-    lineno=${line_ranges%%,*}
-    echo 'warning:missing_yb_marker_for_yb_changes:'\
+    # Find YB-side hunks.
+    while read -r line_ranges; do
+      if sed -n "$line_ranges"p "$1" \
+           | grep -Eq 'YB|Yb|yb|YSQL|Ysql|ysql|Yuga|yuga'; then
+        continue
+      fi
+      lineno=${line_ranges%%,*}
+      echo 'warning:missing_yb_marker_for_yb_changes:'\
 'YB changes to upstream owned files should have "yb", "ysql", or "yuga".'\
 ' In case the YB changes are legitimate, prioritize resolving this by'\
 ' renaming YB-introduced variables/functions/types with YB prefix; if there'\
@@ -319,9 +317,10 @@ else
 ' src/lint/diff_file_with_upstream.py '"$1"' -b, and find hunks with lines'\
 ' starting with <:'\
 "$lineno:$(sed -n "$lineno"p "$1")"
-  done < <(grep -E '^(< |[0-9])' <<<"$diff_result" \
-           | grep -B1 '^<' \
-           | grep -Eo '^[0-9]+(,[0-9]+)?')
+    done < <(grep -E '^(< |[0-9])' <<<"$diff_result" \
+             | grep -B1 '^<' \
+             | grep -Eo '^[0-9]+(,[0-9]+)?')
+  fi
 fi
 
 if [[ "$1" == src/postgres/third-party-extensions/* ]]; then
@@ -349,6 +348,14 @@ if [[ "$1" =~ /[^/]*Yb[^/]+\.[ch]$ &&
 fi
 check_ctags || exit 1
 yb_typedefs=$(cat "$yb_typedefs_list")
+upstream_types=
+pg_typedefs=
+have_upstream=false
+if [ -f "${upstream_copy:-}" ]; then
+  upstream_types=$(echo "$upstream_copy" | ctags_types | cut -f1)
+  pg_typedefs=$(cat src/postgres/src/tools/pgindent/typedefs.list)
+  have_upstream=true
+fi
 echo "$1" \
   | ctags_types \
   | while read -r line; do
@@ -362,11 +369,22 @@ echo "$1" \
 "$lineno:$(sed -n "$lineno"p "$1")"
       fi
 
-      # Ideally, we want to catch all YB-added types to make sure they have
-      # "yb", but it is not possible to determine which are YB-added or not.
-      # So as a best effort, at least we know YB files contain only YB code, so
-      # whatever types they produce should have "yb".
-      if is_yb_file "$1" && ! has_yb_marker "$symbol"; then
+      # YB files contain only YB code, so whatever types they produce are
+      # YB-added.  For upstream-owned files, compare against the upstream
+      # counterpart.
+      #
+      # TODO(#33608): This also checks upstream's typedefs.list to exempt
+      # types whose definition moves to another file, such as
+      # Int8TransTypeData.  Such outlier cases should be stamped out.
+      symbol_is_yb_added=false
+      if is_yb_file "$1"; then
+        symbol_is_yb_added=true
+      elif "$have_upstream" &&
+           [[ $'\n'"$upstream_types"$'\n' != *$'\n'"$symbol"$'\n'* ]] &&
+           [[ $'\n'"$pg_typedefs"$'\n' != *$'\n'"$symbol"$'\n'* ]]; then
+        symbol_is_yb_added=true
+      fi
+      if "$symbol_is_yb_added" && ! has_yb_marker "$symbol"; then
         echo 'error:missing_yb_prefix:This type should have "yb" prefix:'\
 "$lineno:$(sed -n "$lineno"p "$1")"
       fi

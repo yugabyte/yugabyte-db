@@ -12,7 +12,10 @@
 //
 
 #include <signal.h>
+#include <unordered_set>
 #include <gmock/gmock.h>
+
+#include "yb/gutil/casts.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
@@ -221,10 +224,11 @@ class PgGlobalViewsExceedRpcMaxSizeTest : public PgGlobalViewsTest {
         "--rpc_max_message_size=$0", kRpcMaxMessageSize));
   }
 
-  // 6 MB rather than 5 MB: PgResultToPB charges each row its kRowSize value plus 12 bytes of
-  // protobuf tag and length framing, so five rows encode to 5242940 bytes. A 5 MB limit leaves
-  // only 5241856 bytes once 1 KB is reserved for RPC headers, which would truncate the result at
-  // four rows. 6 MB leaves 6290432 bytes, which fits five rows but not six.
+  // 6 MB rather than 5 MB: each row encodes to kRowSize + 10 bytes in the row sidecar (a header
+  // byte, 8 bytes of length framing and a NUL terminator), so five rows encode to 5242930 bytes.
+  // A 5 MB limit leaves only 5241856 bytes once 1 KB is reserved for RPC headers, which would
+  // truncate the result at four rows. 6 MB leaves 6290432 bytes, which fits five rows but not
+  // six.
   static constexpr auto kRpcMaxMessageSize = 6 * 1024 * 1024;
   static constexpr auto kRowSize = 1 * 1024 * 1024;
   static constexpr auto kNumRows = 10;
@@ -288,6 +292,42 @@ class PgBuiltinGlobalViewsTest : public LibPqTestBase {
 
 TEST_F(PgGlobalViewsTest, TestDataFromEachNode) {
   ASSERT_OK(VerifyGlobalViewResultsForPgss());
+}
+
+// SQL NULL and empty string must stay distinct across the whole path:
+// remote PGresult -> sidecar wire encoding -> FDW tuple.
+TEST_F(PgGlobalViewsTest, TestNullAndEmptyStringValues) {
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE VIEW partial_null_and_empty AS
+          SELECT
+              yb_get_local_tserver_uuid() AS server_uuid,
+              NULL::TEXT AS null_col,
+              ''::TEXT AS empty_col,
+              'x'::TEXT AS val_col)"));
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE FOREIGN TABLE "gv$partial_null_and_empty" (
+          server_uuid UUID,
+          null_col TEXT,
+          empty_col TEXT,
+          val_col TEXT
+      )
+      SERVER gv_server
+      OPTIONS (schema_name 'public', table_name 'partial_null_and_empty'))"));
+  ASSERT_OK(conn_->Execute(
+      "GRANT SELECT ON partial_null_and_empty TO pg_read_all_stats"));
+
+  const auto rows = ASSERT_RESULT((conn_->FetchRows<
+      Uuid, std::optional<std::string>, std::optional<std::string>, std::optional<std::string>>(
+      R"(SELECT server_uuid, null_col, empty_col, val_col FROM "gv$partial_null_and_empty")")));
+  ASSERT_EQ(rows.size(), make_unsigned(GetNumTabletServers()));
+  std::unordered_set<std::string> seen_uuids;
+  for (const auto& [server_uuid, null_col, empty_col, val_col] : rows) {
+    seen_uuids.insert(server_uuid.ToString());
+    ASSERT_FALSE(null_col.has_value());
+    ASSERT_EQ(empty_col, "");
+    ASSERT_EQ(val_col, "x");
+  }
+  ASSERT_EQ(seen_uuids.size(), make_unsigned(GetNumTabletServers()));
 }
 
 TEST_F(PgGlobalViewsTest, TestLimitIsNotPushedDown) {
@@ -910,8 +950,7 @@ TEST_F(PgGlobalViewsTest, TestRemoteRejectsWrites) {
   ASSERT_OK(proxy.PgRemoteExec(req, &resp, &controller));
 
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
-  ASSERT_EQ(resp.pg_result().exec_status(), PGRES_FATAL_ERROR);
-  ASSERT_STR_CONTAINS(resp.pg_result().error_message(), "permission denied");
+  ASSERT_STR_CONTAINS(resp.error_message(), "permission denied");
 
   // The write must not have taken effect.
   ASSERT_EQ(ASSERT_RESULT(db_conn.FetchRow<int64_t>(
@@ -944,8 +983,7 @@ TEST_F(PgGlobalViewsTest, TestRemoteCannotSignalBackends) {
   ASSERT_OK(proxy.PgRemoteExec(req, &resp, &controller));
 
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
-  ASSERT_EQ(resp.pg_result().exec_status(), PGRES_FATAL_ERROR);
-  ASSERT_STR_CONTAINS(resp.pg_result().error_message(), "pg_signal_backend");
+  ASSERT_STR_CONTAINS(resp.error_message(), "pg_signal_backend");
 
   // The target backend must still be alive and usable.
   ASSERT_EQ(ASSERT_RESULT(target_conn.FetchRow<std::string>("SELECT (1)::text")), "1");

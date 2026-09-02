@@ -260,7 +260,8 @@ TEST_F(DriveIoStatsTest, CloseWithoutSyncDoesNotLeakUnsyncedBytes) {
 }
 
 // sync_file_range is where SST write cost actually lands, so it gets its own counters.
-TEST_F(DriveIoStatsTest, CountsRangeSync) {
+// macOS has no sync_file_range, so Flush() falls back to fsync and there is nothing to count.
+TEST_F(DriveIoStatsTest, YB_DISABLE_TEST_ON_MACOS(CountsRangeSync)) {
   // Flush() returns before issuing sync_file_range when never_fsync is set, and YBTest sets it.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
 

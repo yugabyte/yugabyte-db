@@ -19,11 +19,13 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
@@ -37,6 +39,7 @@ using std::string;
 
 using namespace std::literals;
 
+DECLARE_bool(docdb_keep_unmerged_column_tombstones_over_packed_row);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(pg_client_use_shared_memory);
@@ -57,7 +60,67 @@ DECLARE_int64(db_write_buffer_size);
 DECLARE_string(time_source);
 DECLARE_uint64(rocksdb_universal_compaction_always_include_size_threshold);
 
+METRIC_DECLARE_counter(docdb_column_tombstones_dropped_unmerged);
+METRIC_DECLARE_counter(docdb_column_tombstones_kept_unmerged);
+
 namespace yb::pgwrapper {
+
+namespace {
+
+Result<int64_t> SumTabletCounter(
+    MiniCluster* cluster, const std::string& table_name, ListPeersFilter filter,
+    const MetricPrototype& prototype) {
+  int64_t sum = 0;
+  for (const auto& peer : VERIFY_RESULT(ListTabletPeersForTableName(cluster, table_name, filter))) {
+    const auto& entity = VERIFY_RESULT(peer->shared_tablet())->GetTabletMetricsEntity();
+    if (!entity) {
+      continue;
+    }
+    auto counter = entity->FindOrNull<Counter>(prototype);
+    if (counter) {
+      sum += counter->value();
+    }
+  }
+  return sum;
+}
+
+struct ColumnTombstoneCounters {
+  int64_t kept_unmerged = 0;
+  int64_t dropped_unmerged = 0;
+};
+
+// Reads the leader only. Compaction runs on every replica, so summing all of them would make the
+// expected delta depend on how many replicas happened to compact.
+Result<ColumnTombstoneCounters> GetColumnTombstoneCounters(
+    MiniCluster* cluster, const std::string& table_name) {
+  const auto filter = ListPeersFilter::kLeaders;
+  return ColumnTombstoneCounters {
+    .kept_unmerged = VERIFY_RESULT(SumTabletCounter(
+        cluster, table_name, filter, METRIC_docdb_column_tombstones_kept_unmerged)),
+    .dropped_unmerged = VERIFY_RESULT(SumTabletCounter(
+        cluster, table_name, filter, METRIC_docdb_column_tombstones_dropped_unmerged)),
+  };
+}
+
+// Tablet::CompactionHybridTimeConstraints feeds MinRunningHybridTime() to HandleOtherRange, so a
+// transaction that is still running or applying pulls other_min below a column tombstone's hybrid
+// time. CanHaveOtherDataBefore then becomes true and the whole keep/drop branch is skipped, which
+// fails every assertion in these tests at once.
+Status WaitForNoRunningTransactions(MiniCluster* cluster, const std::string& table_name) {
+  for (const auto& peer : VERIFY_RESULT(ListTabletPeersForTableName(
+           cluster, table_name, ListPeersFilter::kAll))) {
+    auto* participant = VERIFY_RESULT(peer->shared_tablet())->transaction_participant();
+    if (!participant) {
+      continue;
+    }
+    RETURN_NOT_OK(WaitFor(
+        [participant] { return participant->MinRunningHybridTime() == HybridTime::kMax; },
+        30s * kTimeMultiplier, Format("No running transactions on $0", peer->tablet_id())));
+  }
+  return Status::OK();
+}
+
+} // namespace
 
 class PgTxnTest : public PgMiniTestBase {
  protected:
@@ -1009,6 +1072,254 @@ TEST_F(PgTxnTest, RepackDisabledPreservesPackedRow) {
   // 'extra' must survive: it only exists in the packed row, which must not be dropped.
   auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test"));
   ASSERT_EQ(res, "1, 3, 42");
+}
+
+// Regression test for the column-tombstone GC hole. A column tombstone (from
+// UPDATE ... SET col = NULL on a column with no missing value) can shadow a value that lives
+// inside a packed row rather than in a standalone entry. Compaction only effects that delete by
+// merging the tombstone into the packed row, and the merge is skipped when packed row is
+// unavailable to the compaction -- notably when ysql_enable_packed_row is false at compaction
+// time. The tombstone garbage-collection check in DocDBCompactionFeed::Feed used to run
+// regardless, dropping the delete while the packed row it shadows was forwarded unchanged, which
+// durably resurrected the pre-delete column value.
+TEST_F(PgTxnTest, ColumnTombstoneSurvivesCompactionWithPackingDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT, value INT, PRIMARY KEY((key) HASH)) SPLIT INTO 1 TABLETS"));
+  // Packed row carrying value=23.
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 23)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // 'value' has no missing value, so setting it to NULL writes a column tombstone.
+  ASSERT_OK(conn.Execute("UPDATE test SET value = NULL WHERE key = 1"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // With packing off the compaction can no longer merge the tombstone into the packed row, while
+  // the packed row itself is still forwarded to the output.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ASSERT_OK(WaitForNoRunningTransactions(cluster_.get(), "test"));
+  auto before = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));
+  auto after = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
+
+  auto dump = ASSERT_RESULT(DumpTableLeadersDocDB(cluster_.get(), "test"));
+  LOG(INFO) << "DocDB after compaction with packing disabled:\n" << dump;
+
+  // The delete must survive the compaction: the tombstone is kept alongside the packed row.
+  ASSERT_NE(dump.find("DEL"), std::string::npos);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test")), "1, NULL");
+
+  ASSERT_EQ(after.kept_unmerged - before.kept_unmerged, 1);
+  ASSERT_EQ(after.dropped_unmerged, before.dropped_unmerged);
+
+  // A kept tombstone is not permanent garbage: once packing is available again, the next
+  // compaction merges it into the packed row and collects it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  before = after;
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));
+  after = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
+
+  dump = ASSERT_RESULT(DumpTableLeadersDocDB(cluster_.get(), "test"));
+  LOG(INFO) << "DocDB after compaction with packing re-enabled:\n" << dump;
+
+  ASSERT_EQ(dump.find("DEL"), std::string::npos);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test")), "1, NULL");
+
+  ASSERT_EQ(after.kept_unmerged, before.kept_unmerged);
+  ASSERT_EQ(after.dropped_unmerged, before.dropped_unmerged);
+}
+
+// Control for the test above: with packing left enabled the tombstone is merged into the packed
+// row, so the delete survives on every build. Keeping both makes the packed-row flag state at
+// compaction time the only difference between a passing and a failing run.
+TEST_F(PgTxnTest, ColumnTombstoneSurvivesCompactionWithPackingEnabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT, value INT, PRIMARY KEY((key) HASH)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 23)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ASSERT_OK(conn.Execute("UPDATE test SET value = NULL WHERE key = 1"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ASSERT_OK(WaitForNoRunningTransactions(cluster_.get(), "test"));
+  auto before = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));
+  auto after = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test")), "1, NULL");
+
+  // Nothing is counted on the happy path: a counter that fired on every tombstone it saw, merged
+  // or not, would pass every other assertion in this file.
+  ASSERT_EQ(after.kept_unmerged, before.kept_unmerged);
+  ASSERT_EQ(after.dropped_unmerged, before.dropped_unmerged);
+}
+
+// A column tombstone that is OLDER than the packed row for the same key (the row was deleted and
+// re-inserted after the column delete) is shadowed by that packed row, not shadowing it. Such a
+// tombstone must still be garbage-collected even while packing is off: the overwrite handling in
+// DocDBCompactionFeed::Feed drops it before the tombstone GC check runs, because the newer packed
+// row put its own write time on the overwrite stack at the doc key level. This pins the ordering
+// guarantee that makes the keep-check above safe without an explicit write time comparison, and
+// verifies that keeping unmerged tombstones does not turn overwritten ones into permanent garbage.
+TEST_F(PgTxnTest, ColumnTombstoneOlderThanPackedRowIsCollected) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT, value INT, PRIMARY KEY((key) HASH)) SPLIT INTO 1 TABLETS"));
+  // Packed row carrying value=23.
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 23)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // Column tombstone over the packed row.
+  ASSERT_OK(conn.Execute("UPDATE test SET value = NULL WHERE key = 1"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // Delete the row and re-insert it: the new packed row is newer than the column tombstone.
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE key = 1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 42)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ASSERT_OK(WaitForNoRunningTransactions(cluster_.get(), "test"));
+  auto before = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));
+  auto after = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
+
+  auto dump = ASSERT_RESULT(DumpTableLeadersDocDB(cluster_.get(), "test"));
+  LOG(INFO) << "DocDB after compaction:\n" << dump;
+
+  // Everything below the new packed row is overwritten and must be gone: the old packed row, the
+  // row tombstone, and the column tombstone.
+  ASSERT_EQ(dump.find("DEL"), std::string::npos);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test")), "1, 42");
+
+  // The tombstone is dropped by the overwrite logic well before the keep-check, so neither counter
+  // may move: they must not fire above the packed_row_.active() early return.
+  ASSERT_EQ(after.kept_unmerged, before.kept_unmerged);
+  ASSERT_EQ(after.dropped_unmerged, before.dropped_unmerged);
+}
+
+// The counter for the reverted behavior: with the keep disabled, compaction drops the unmerged
+// tombstone and resurrects the deleted value.
+TEST_F(PgTxnTest, ColumnTombstoneDroppedCounterWithKeepDisabled) {
+  // Flags here are process-wide; the keep flag most of all: no other test sets it, so nothing
+  // downstream defends itself, and leaving it off silently resurrects deleted column values.
+  const auto original_packed_row = FLAGS_ysql_enable_packed_row;
+  const auto original_retention = FLAGS_timestamp_history_retention_interval_sec;
+  const auto original_keep_tombstones =
+      FLAGS_docdb_keep_unmerged_column_tombstones_over_packed_row;
+  auto restore_flags = ScopeExit([original_packed_row, original_retention,
+                                  original_keep_tombstones] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = original_packed_row;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = original_retention;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_keep_unmerged_column_tombstones_over_packed_row) =
+        original_keep_tombstones;
+  });
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_keep_unmerged_column_tombstones_over_packed_row) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT, value INT, PRIMARY KEY((key) HASH)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 23)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ASSERT_OK(conn.Execute("UPDATE test SET value = NULL WHERE key = 1"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ASSERT_OK(WaitForNoRunningTransactions(cluster_.get(), "test"));
+  auto before = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));
+  auto after = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
+
+  ASSERT_EQ(after.dropped_unmerged - before.dropped_unmerged, 1);
+  ASSERT_EQ(after.kept_unmerged, before.kept_unmerged);
+
+  // The dropped tombstone resurrected the pre-delete value.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test")), "1, 23");
+}
+
+// The keep-check must not fire for every compaction that is not a full one: a compaction holding
+// out only files newer than the tombstone can still merge, and a tombstone kept there would be
+// garbage that no later compaction is obliged to collect. Holding out newer files leaves
+// repack_range_min at kMin -- HandleOtherRange only narrows the repack range for a
+// non-participating range that starts at or before the input range or ends inside it -- so the
+// repack is allowed and the merge happens.
+//
+// The mirror case, a merge skipped because the repack was disallowed while packing was available,
+// is not constructible from a tablet-level test at all: with num_levels == 1 every SST is in L0,
+// RocksDB pulls all L0 files between the oldest and newest input back into the compaction
+// (SanitizeCompactionInputFiles fills the gap, and the universal picker only produces
+// time-contiguous input sets), so nothing held out can end inside the input range -- and ending
+// inside is the only geometry that narrows the repack range without also pulling other_min below
+// the tombstone, which would stop the tombstone from being collectable at all.
+// Leaving it uncovered costs little: it reaches the same increment as the packing-disabled route,
+// which the tests above cover.
+TEST_F(PgTxnTest, ColumnTombstoneCollectedByPartialCompaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  // CompactFilesImpl aborts if any input file is already marked being_compacted, so a background
+  // compaction that picks up one of the files chosen below fails the test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  // A leader change would point the file-layout assertions and CompactFiles below at a different
+  // replica. FlushTablets flushes every peer, but a replica that lagged in replication can batch
+  // two of the writes into one memtable and end up with a different set of files.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT, value INT, PRIMARY KEY((key) HASH)) SPLIT INTO 1 TABLETS"));
+
+  // File 0: packed row for key 1 carrying value=23.
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 23)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // File 1: the column tombstone shadowing that packed row.
+  ASSERT_OK(conn.Execute("UPDATE test SET value = NULL WHERE key = 1"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  // File 2: held out of the compaction below. Newer than the tombstone, so the tombstone is still
+  // collectable -- everything the compaction does not see was written after it.
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, 99)"));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
+      cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  auto* db = tablet->doc_db().regular;
+  auto files = db->GetLiveFilesMetaData();
+  ASSERT_EQ(files.size(), 3);
+  std::ranges::sort(files, {}, [](const auto& file) { return file.smallest.seqno; });
+  std::vector<std::string> input_files = {files[0].Name(), files[1].Name()};
+
+  ASSERT_OK(WaitForNoRunningTransactions(cluster_.get(), "test"));
+  auto before = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
+  ASSERT_OK(db->CompactFiles(rocksdb::CompactionOptions(), input_files, /* output_level= */ 0));
+  auto after = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
+
+  ASSERT_EQ(after.kept_unmerged, before.kept_unmerged);
+  ASSERT_EQ(after.dropped_unmerged, before.dropped_unmerged);
+
+  auto dump = ASSERT_RESULT(DumpTableLeadersDocDB(cluster_.get(), "test"));
+  LOG(INFO) << "DocDB after partial compaction:\n" << dump;
+
+  ASSERT_EQ(dump.find("DEL"), std::string::npos);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test WHERE key = 1")),
+      "1, NULL");
 }
 
 } // namespace yb::pgwrapper

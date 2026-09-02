@@ -16,6 +16,7 @@ import { createRef } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { ResilienceAndRegions } from './ResilienceAndRegions';
+import { ResilienceAndRegionsSchema } from './ValidationSchema';
 import {
   CreateUniverseContext,
   initialCreateUniverseFormState,
@@ -339,15 +340,20 @@ describe('ResilienceAndRegions', () => {
   });
 
   describe('Nodes (NODE_LEVEL)', () => {
-    it('shows node error for NODE_LEVEL with 2 regions', async () => {
-      renderResilienceAndTriggerNext(
-        getContextValue({
-          faultToleranceType: FaultToleranceType.NODE_LEVEL,
-          regions: makeRegions(2)
+    // UI auto-trims NODE_LEVEL to one region (ResilienceAndRegions effect), so multi-region
+    // nodeErr is covered at the schema layer rather than via mount + Next.
+    it('schema rejects NODE_LEVEL with more than one region (errMsg.nodeErr)', async () => {
+      const schema = ResilienceAndRegionsSchema(((key: string) => key) as any);
+      await expect(
+        schema.validate({
+          ...initialCreateUniverseFormState.resilienceAndRegionsSettings!,
+          [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
+          [RESILIENCE_FACTOR]: 1,
+          [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED,
+          [REGIONS_FIELD]: makeRegions(2)
         })
-      );
-      await waitFor(() => {
-        expect(screen.getByText('errMsg.nodeErr')).toBeInTheDocument();
+      ).rejects.toMatchObject({
+        inner: expect.arrayContaining([expect.objectContaining({ message: 'errMsg.nodeErr' })])
       });
     });
 
@@ -508,6 +514,26 @@ describe('ResilienceAndRegions', () => {
         expect(mockSaveNodesAvailabilitySettings).toHaveBeenCalledWith(
           initialCreateUniverseFormState.nodesAvailabilitySettings
         );
+      });
+    });
+
+    it('resets resilienceFactor to 1 when faultToleranceType changes', async () => {
+      const { ref } = renderResilience(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.REGION_LEVEL,
+          resilienceFactor: 3,
+          regions: makeRegions(3)
+        })
+      );
+      mockSaveResilienceAndRegionsSettings.mockClear();
+      ref.current.setValue!(FAULT_TOLERANCE_TYPE, FaultToleranceType.AZ_LEVEL);
+      await waitFor(() => {
+        const lastCall =
+          mockSaveResilienceAndRegionsSettings.mock.calls[
+            mockSaveResilienceAndRegionsSettings.mock.calls.length - 1
+          ]?.[0];
+        expect(lastCall?.[RESILIENCE_FACTOR]).toBe(1);
+        expect(lastCall?.[FAULT_TOLERANCE_TYPE]).toBe(FaultToleranceType.AZ_LEVEL);
       });
     });
 

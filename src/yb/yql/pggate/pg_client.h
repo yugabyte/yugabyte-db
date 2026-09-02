@@ -55,8 +55,6 @@
 #include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb::pggate {
 
@@ -87,6 +85,11 @@ struct PerformResult {
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(status, catalog_read_time, used_in_txn_limit);
   }
+};
+
+struct RemoteExecData {
+  tserver::PgRemoteExecResponsePB resp;
+  RefCntSlice rows_data;
 };
 
 namespace pg_client::internal {
@@ -126,7 +129,7 @@ class ExchangeFuture {
 template <class Data>
 class ResultFuture {
  public:
-  using Result = typename ResultTypeResolver<Data>::ResultType;
+  using ResultTp = typename ResultTypeResolver<Data>::ResultType;
 
   template <class... Args>
   ResultFuture(Args&&... args) : variant_(std::forward<Args>(args)...) {} // NOLINT
@@ -151,16 +154,14 @@ class ResultFuture {
     return std::visit([](const auto& future) { return future.valid(); }, variant_);
   }
 
-  Result Get() {
+  Result<ResultTp> Get() {
     const auto& result = std::visit([](auto& future) { return future.get(); }, variant_);
-
-    // Check for interrupts are waiting on async RPC.
-    YBCCheckForInterrupts();
+    RETURN_NOT_OK(CheckForPgInterrupts());
     return result;
   }
 
  private:
-  using SimpleFuture = std::future<Result>;
+  using SimpleFuture = std::future<ResultTp>;
   std::variant<SimpleFuture, ExchangeFuture<Data>> variant_;
 };
 
@@ -400,7 +401,7 @@ class PgClient {
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
 
-  Result<tserver::PgRemoteExecResponsePB> RemoteExec(
+  Result<RemoteExecData> RemoteExec(
       std::string_view query, std::string_view database_name, std::string_view tserver_uuid,
       const std::vector<std::optional<std::string>>& params);
 

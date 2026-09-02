@@ -201,7 +201,7 @@ describe('ReviewHardwareChangesModal', () => {
     expect(screen.getByText('rollingRestartRf1Warning')).toBeInTheDocument();
     expect(screen.getByText('restartNodes')).toBeInTheDocument();
     expect(screen.queryByText('rollingRestartDescription')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('hardware-delay-seconds-input')).not.toBeInTheDocument();
+    expect(screen.getByTestId('hardware-delay-seconds-input')).toBeInTheDocument();
   });
 
   it('shows online description for RF >= 3', () => {

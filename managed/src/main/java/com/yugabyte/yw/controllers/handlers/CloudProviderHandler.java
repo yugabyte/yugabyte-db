@@ -26,6 +26,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.cloud.azu.AZUInitializer;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
+import com.yugabyte.yw.cloud.oci.OCIInitializer;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -87,6 +88,7 @@ public class CloudProviderHandler {
   @Inject private AWSInitializer awsInitializer;
   @Inject private GCPInitializer gcpInitializer;
   @Inject private AZUInitializer azuInitializer;
+  @Inject private OCIInitializer ociInitializer;
 
   public UUID delete(Customer customer, UUID providerUUID) {
     CloudProviderDelete.Params params = new CloudProviderDelete.Params();
@@ -453,6 +455,8 @@ public class CloudProviderHandler {
       gcpInitializer.initialize(customerUUID, provider.getUuid());
     } else if (provider.getCode().equals("azu")) {
       azuInitializer.initialize(customerUUID, provider.getUuid());
+    } else if (provider.getCode().equals("oci")) {
+      ociInitializer.initialize(customerUUID, provider.getUuid());
     } else {
       awsInitializer.initialize(customerUUID, provider.getUuid());
     }

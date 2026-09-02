@@ -929,7 +929,6 @@ if(APPLE)
   # runtime. Hard-linking the backend (libyb_pgbackend) or libpq would be a layering/bloat regression.
   yb_allow_flat_namespace_lookup(yb-cql)
   yb_allow_flat_namespace_lookup(yb_pgwrapper)
-  yb_allow_flat_namespace_lookup(yb_pgresult_util)
   # yb_pggate_util and yb_dockv have a mutual (circular) dependency that cannot be expressed as a
   # link edge between shared libraries, so yb_pggate_util resolves yb_dockv/yb_ash symbols at runtime.
   yb_allow_flat_namespace_lookup(yb_pggate_util)

@@ -565,6 +565,28 @@ def check_for_errors(str):
     return str is not None and str.startswith('Error')
 
 
+def parse_ysqlsh_json(output):
+    # check_output merges server messages into stdout, and INFO level ones survive
+    # client_min_messages. ysqlsh prints the json_agg value on its own line, so fall back to
+    # the lines that start one - a server message containing '[' is never a candidate.
+    # None if nothing parses.
+    try:
+        return json.loads(output)
+    except ValueError:
+        pass
+    lines = output.splitlines()
+    for i, line in enumerate(lines):
+        if not line.strip().startswith('['):
+            continue
+        # Single line first; joined remainder covers a value ysqlsh split across lines.
+        for candidate in (line, '\n'.join(lines[i:])):
+            try:
+                return json.loads(candidate)
+            except ValueError:
+                continue
+    return None
+
+
 def get_process_name(process):
     return process.strip("yb-")
 
@@ -1734,7 +1756,10 @@ class NodeChecker():
 
             # Iterate through each database
             for dbname, tables in db_tables.items():
-                pg_class_cmd = "{}{} -t -c \"{}\"".format(ysqlsh_cmd, dbname,
+                # pgaudit.log_client=on echoes audit records to the client, corrupting the
+                # json below. Own -c: PLAT-15726 removed multi-statement -c queries here.
+                quiet_cmd = "-q -c \"SET client_min_messages TO error\""
+                pg_class_cmd = "{}{} -t {} -c \"{}\"".format(ysqlsh_cmd, dbname, quiet_cmd,
                     "SELECT json_agg(row_to_json(t)) FROM \
                      (SELECT relname, oid, relfilenode FROM pg_class WHERE oid >= 16384) t;")
 
@@ -1747,9 +1772,8 @@ class NodeChecker():
                         ["Failed to retrieve pg_class info: {}".format(pg_class_output)],
                         has_error=True,
                         metrics=[metric]), [])
-                try:
-                    pg_class_json = json.loads(pg_class_output)
-                except Exception as ex:
+                pg_class_json = parse_ysqlsh_json(pg_class_output)
+                if pg_class_json is None:
                     logging.warning("pg_class query returned invalid json: %s",
                                     pg_class_output)
                     metric.add_value(0)
@@ -1765,7 +1789,8 @@ class NodeChecker():
                     else:
                         pg_class_oid_tableinfo_dict[table['oid']] = table
 
-                pg_attribute_cmd = "{}{} -t -c \"{}\"".format(ysqlsh_cmd, dbname,
+                pg_attribute_cmd = "{}{} -t {} -c \"{}\"".format(ysqlsh_cmd, dbname,
+                    quiet_cmd,
                     "SELECT json_agg(row_to_json(t)) FROM \
                      (SELECT attname, attrelid FROM pg_attribute WHERE attrelid >= 16384) t;")
 
@@ -1778,9 +1803,8 @@ class NodeChecker():
                         has_error=True,
                         metrics=[metric]), [])
 
-                try:
-                    pg_attribute_json = json.loads(pg_attribute_output)
-                except Exception as ex:
+                pg_attribute_json = parse_ysqlsh_json(pg_attribute_output)
+                if pg_attribute_json is None:
                     logging.warning("pg_attribute query returned invalid json: %s",
                                     pg_attribute_output)
                     metric.add_value(0)
@@ -3161,7 +3185,11 @@ def main():
     if not n.is_k8s and n.check_thp:
         coordinator.add_check(checker, "check_thp_settings")
 
-    if not n.is_k8s:
+    # YBA passes --yba_ynp_version only with yb.node_agent.enable_ynp_version_check on, so it
+    # doubles as the on switch. The check has to be skipped wholesale when it is off, not just its
+    # skew comparison: it also publishes yb_node_ynp_version == 0 for a node with no version file,
+    # and the YNP_VERSION_SKEW alert fires on that independently of any skew.
+    if not n.is_k8s and args.yba_ynp_version:
         coordinator.add_check(checker, "check_ynp_version")
 
     entries = coordinator.run()

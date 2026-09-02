@@ -3023,6 +3023,8 @@ class PgLibPqTestDisableObjectLocking : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
     // Concurrent DDL requires object locking, so keep the two flags consistent.
     options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
     AppendFlagToAllowedPreviewFlagsCsv(
@@ -5934,6 +5936,8 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
     // Enabling table locks+concurrent DDLs causes the ConcurrentAnalyzeWithDDL fail.
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
     // Concurrent DDL requires object locking, so keep the two flags consistent.
     options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
     AppendFlagToAllowedPreviewFlagsCsv(
@@ -6186,6 +6190,9 @@ class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
     options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
     options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
     // Concurrent DDL requires object locking, so keep the two flags consistent.
     options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
     options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");

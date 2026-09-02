@@ -7,7 +7,7 @@ enum:
   - Failed
   - Aborted
 x-enum-varnames:
-  - Running
-  - Success
-  - Failed
-  - Aborted
+  - SupportBundleRunning
+  - SupportBundleSuccess
+  - SupportBundleFailed
+  - SupportBundleAborted

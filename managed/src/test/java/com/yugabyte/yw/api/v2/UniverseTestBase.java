@@ -1769,6 +1769,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
     assertThat(v2CloudInfo.getAz(), is(dbCloudInfo.az));
     assertThat(v2CloudInfo.getCloud(), is(dbCloudInfo.cloud));
+    assertThat(v2CloudInfo.getId(), is(dbCloudInfo.id));
     assertThat(v2CloudInfo.getInstanceType(), is(dbCloudInfo.instance_type));
     assertThat(v2CloudInfo.getKubernetesNamespace(), is(dbCloudInfo.kubernetesNamespace));
     assertThat(v2CloudInfo.getKubernetesPodName(), is(dbCloudInfo.kubernetesPodName));

@@ -65,7 +65,7 @@ Regardless of PR type, give these areas extra attention:
 - **`src/yb/master/`** (catalog manager, leader election) — concurrency and state-machine correctness.
 - **`src/yb/tablet/`** and **`src/yb/docdb/`** — write/read path, MVCC, transaction handling.
 - **`src/yb/cdc/`** and **`src/yb/cdc_consumer/`** — replication-stream correctness, idempotency.
-- **`src/postgres/`** — PostgreSQL-fork merges; double-check that upstream Postgres semantics are preserved.
+- **`src/postgres/`** — PostgreSQL-fork merges; double-check that upstream Postgres semantics are preserved. Also check the diff against the fork conventions in `.claude/skills/pg-code-style-guide/SKILL.md`: YB additions yb-prefixed and clustered behind `/* YB ... */` marker comments, upstream-owned lines left byte-identical (no style fixes or rewrapping), and regress test changes respecting the upstream-named / `yb.port.*` / `yb.orig.*` taxonomy. Flag violations — they surface as merge conflicts on the next PG major-version merge.
 - **`managed/`** (YBA platform) — orchestration logic, especially around node lifecycle and cluster-wide ops.
 
 ## What to ignore entirely

@@ -60,10 +60,6 @@ Result<std::shared_ptr<tablet::AbstractTablet>> MasterTabletServiceImpl::GetTabl
   YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
   tserver::ReadResponseMsg* resp) {
   // Ignore looked_up_tablet_peer.
-
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-  RETURN_NOT_OK(l.first_failed_status());
-
   return master_->catalog_manager()->GetSystemTablet(tablet_id);
 }
 
@@ -86,6 +82,17 @@ void MasterTabletServiceImpl::ReleaseObjectLocks(
 Result<tserver::GetYSQLLeaseInfoResponsePB> MasterTabletServiceImpl::GetYSQLLeaseInfo(
     const tserver::GetYSQLLeaseInfoRequestPB& req, CoarseTimePoint deadline) {
   return STATUS(NotSupported, "GetYSQLLeaseInfo is not implemented at masters");
+}
+
+void MasterTabletServiceImpl::Read(const tserver::ReadRequestMsg* req,
+                                    tserver::ReadResponseMsg* resp,
+                                    rpc::RpcContext context) {
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
+    return;
+  }
+
+  tserver::TabletServiceImpl::Read(req, resp, std::move(context));
 }
 
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
@@ -169,13 +176,15 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
     uint64_t last_breaking_version;
     // The above Write is async, so delay a bit to hopefully read the newly written values.  If the
     // delay was not sufficient, it's not a big deal since this is just for logging.
+    // The lookups below can also legitimately fail while the sys catalog is being restored by
+    // PITR, so they must not be fatal.
     SleepFor(100ms);
     if (!db_oids.empty()) {
       for (const auto db_oid : db_oids) {
         if (!master_->catalog_manager()->GetYsqlDBCatalogVersion(db_oid, &catalog_version,
                                                                  &last_breaking_version).ok()) {
-          LOG_WITH_FUNC(DFATAL) << "failed to get db catalog version for "
-                                << db_oid << ", ignoring";
+          LOG_WITH_FUNC(WARNING) << "failed to get db catalog version for "
+                                 << db_oid << ", ignoring";
         } else {
           LOG_WITH_FUNC(INFO) << "db catalog version for " << db_oid << ": "
                               << catalog_version << ", breaking version: "
@@ -185,7 +194,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
     } else {
       if (!master_->catalog_manager()->GetYsqlCatalogVersion(&catalog_version,
                                                              &last_breaking_version).ok()) {
-        LOG_WITH_FUNC(DFATAL) << "failed to get catalog version, ignoring";
+        LOG_WITH_FUNC(WARNING) << "failed to get catalog version, ignoring";
       } else {
         LOG_WITH_FUNC(INFO) << "catalog version: " << catalog_version << ", breaking version: "
                             << last_breaking_version;

@@ -118,7 +118,13 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
                       style={{ fontSize: '11.5px', fontWeight: 400, lineHeight: '16px' }}
                       i18nKey="tooltip"
                       components={{
-                        a: <Link />,
+                        a: (
+                          <Link
+                            href="https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/create-deployments/dedicated-master/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          />
+                        ),
                         br: <br />
                       }}
                     />
