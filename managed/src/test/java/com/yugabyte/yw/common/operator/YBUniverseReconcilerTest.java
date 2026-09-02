@@ -75,6 +75,9 @@ import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.api.model.SecretList;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
@@ -84,6 +87,8 @@ import io.fabric8.kubernetes.client.utils.Serialization;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.Resource;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.Master;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.master.Limits;
@@ -97,6 +102,7 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.YsqlConnMgrLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.YcqlAuditConfig;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.YsqlAuditConfig;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.querylogs.YsqlQueryLogConfig;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -136,6 +142,15 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
       inNamespaceYBUClient;
 
   @Mock io.fabric8.kubernetes.client.dsl.Resource<YBUniverse> ybUniverseResource;
+
+  @Mock
+  MixedOperation<Secret, SecretList, io.fabric8.kubernetes.client.dsl.Resource<Secret>>
+      secretClient;
+
+  @Mock
+  NonNamespaceOperation<Secret, SecretList, io.fabric8.kubernetes.client.dsl.Resource<Secret>>
+      inNamespaceSecretClient;
+
   @Mock RuntimeConfGetter confGetter;
   @Mock RuntimeConfGetter confGetterForOperatorUtils;
   @Mock YBInformerFactory informerFactory;
@@ -2473,5 +2488,254 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     String createdName = captor.getValue().getPrimaryCluster().userIntent.universeName;
     assertEquals(OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()), createdName);
     assertFalse("user-chosen-name".equals(createdName));
+  }
+
+  // ---------- YSQL/YCQL auth and password secret handling ----------
+
+  @SuppressWarnings("unchecked")
+  private void mockSecretLookup(String secretName, Secret secret) {
+    Mockito.when(client.secrets()).thenReturn(secretClient);
+    Mockito.when(secretClient.inNamespace(namespace)).thenReturn(inNamespaceSecretClient);
+    io.fabric8.kubernetes.client.dsl.Resource<Secret> secretResource =
+        Mockito.mock(io.fabric8.kubernetes.client.dsl.Resource.class);
+    Mockito.when(inNamespaceSecretClient.withName(secretName)).thenReturn(secretResource);
+    Mockito.when(secretResource.get()).thenReturn(secret);
+  }
+
+  // A null password builds a secret that exists but holds no password.
+  private Secret secretWithPassword(String secretName, String key, String password) {
+    Secret secret = new Secret();
+    ObjectMeta metadata = new ObjectMeta();
+    metadata.setName(secretName);
+    metadata.setNamespace(namespace);
+    secret.setMetadata(metadata);
+    if (password != null) {
+      secret.setStringData(Collections.singletonMap(key, password));
+    }
+    return secret;
+  }
+
+  private void setYsqlAuthSpec(YBUniverse ybUniverse, boolean authEnabled, String secretName) {
+    ybUniverse.getSpec().setEnableYSQLAuth(authEnabled);
+    if (secretName != null) {
+      YsqlPassword ysqlPassword = new YsqlPassword();
+      ysqlPassword.setSecretName(secretName);
+      ybUniverse.getSpec().setYsqlPassword(ysqlPassword);
+    }
+  }
+
+  private void setYcqlAuthSpec(YBUniverse ybUniverse, boolean authEnabled, String secretName) {
+    ybUniverse.getSpec().setEnableYCQL(true);
+    ybUniverse.getSpec().setEnableYCQLAuth(authEnabled);
+    if (secretName != null) {
+      YcqlPassword ycqlPassword = new YcqlPassword();
+      ycqlPassword.setSecretName(secretName);
+      ybUniverse.getSpec().setYcqlPassword(ycqlPassword);
+    }
+  }
+
+  // Creates a universe with both APIs' auth already enabled, as it would be after a create with
+  // passwords or after being imported into the operator from YBA.
+  private Universe createUniverseWithAuthEnabled(YBUniverse ybUniverse) throws Exception {
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          UserIntent userIntent = details.getPrimaryCluster().userIntent;
+          userIntent.enableYSQLAuth = true;
+          userIntent.ysqlPassword = "stored-ysql-pass";
+          userIntent.enableYCQLAuth = true;
+          userIntent.ycqlPassword = "stored-ycql-pass";
+          u.setUniverseDetails(details);
+        });
+  }
+
+  @Test
+  public void testCreateUserIntentSetsAuthAndPasswordsFromSpec() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-auth-from-spec", defaultProvider);
+    setYsqlAuthSpec(ybUniverse, true, "ysql-secret");
+    setYcqlAuthSpec(ybUniverse, true, "ycql-secret");
+    mockSecretLookup("ysql-secret", secretWithPassword("ysql-secret", "ysqlPassword", "ysqlPass"));
+    mockSecretLookup("ycql-secret", secretWithPassword("ycql-secret", "ycqlPassword", "ycqlPass"));
+
+    UserIntent userIntent =
+        ybUniverseReconciler.createUserIntent(
+            ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider);
+
+    assertTrue(userIntent.enableYSQLAuth);
+    assertEquals("ysqlPass", userIntent.ysqlPassword);
+    assertTrue(userIntent.enableYCQLAuth);
+    assertEquals("ycqlPass", userIntent.ycqlPassword);
+  }
+
+  @Test
+  public void testCreateUserIntentNoAuthWhenSpecHasNeither() {
+    // ModelFactory's spec sets neither auth flag nor a password secret.
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-auth-unset", defaultProvider);
+
+    UserIntent userIntent =
+        ybUniverseReconciler.createUserIntent(
+            ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider);
+
+    assertFalse(userIntent.enableYSQLAuth);
+    assertNull(userIntent.ysqlPassword);
+    assertFalse(userIntent.enableYCQLAuth);
+    assertNull(userIntent.ycqlPassword);
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenYsqlAuthEnabledWithoutPassword() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-ysql-auth-nopass", defaultProvider);
+    setYsqlAuthSpec(ybUniverse, true, null);
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("ysqlPassword must be set when enableYSQLAuth is true"));
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenYcqlAuthEnabledWithoutPassword() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-ycql-auth-nopass", defaultProvider);
+    setYcqlAuthSpec(ybUniverse, true, null);
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("ycqlPassword must be set when enableYCQLAuth is true"));
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenYsqlPasswordSetWithoutAuth() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-ysql-pass-noauth", defaultProvider);
+    setYsqlAuthSpec(ybUniverse, false, "ysql-secret");
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("enableYSQLAuth must be true when ysqlPassword is set"));
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenYcqlPasswordSetWithoutAuth() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-ycql-pass-noauth", defaultProvider);
+    setYcqlAuthSpec(ybUniverse, false, "ycql-secret");
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("enableYCQLAuth must be true when ycqlPassword is set"));
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenSecretHoldsNoPassword() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-empty-secret", defaultProvider);
+    setYsqlAuthSpec(ybUniverse, true, "ysql-secret");
+    mockSecretLookup("ysql-secret", secretWithPassword("ysql-secret", "ysqlPassword", null));
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("could not find ysqlPassword in secret ysql-secret"));
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenSecretMissing() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-missing-secret", defaultProvider);
+    setYcqlAuthSpec(ybUniverse, true, "ycql-secret");
+    mockSecretLookup("ycql-secret", null);
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("could not find ycqlPassword in secret ycql-secret"));
+  }
+
+  // Asserts that an edit reconcile left the universe's own auth settings untouched. The operator
+  // cannot toggle auth or rotate a password yet, so an edit must never write either back.
+  private void assertUniverseAuthUnchanged(UUID universeUuid) {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    UserIntent storedIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    assertTrue("edit must not disable YSQL auth", storedIntent.enableYSQLAuth);
+    assertTrue("edit must not disable YCQL auth", storedIntent.enableYCQLAuth);
+    assertEquals("stored-ysql-pass", storedIntent.ysqlPassword);
+    assertEquals("stored-ycql-pass", storedIntent.ycqlPassword);
+  }
+
+  @Test
+  public void testEditUserIntentKeepsAuthWhenPasswordRemovedFromSpec() throws Exception {
+    YBUniverse ybUniverse =
+        ModelFactory.createYbUniverse("test-auth-edit-removed", defaultProvider);
+    Universe universe = createUniverseWithAuthEnabled(ybUniverse);
+    // Auth stays on in the spec, but the password secret has been dropped from it entirely.
+    setYsqlAuthSpec(ybUniverse, true, null /* secretName */);
+    setYcqlAuthSpec(ybUniverse, true, null /* secretName */);
+
+    UserIntent userIntent =
+        ybUniverseReconciler.createUserIntent(
+            ybUniverse, defaultCustomer.getUuid(), false /* isCreate */, defaultProvider);
+
+    // Auth follows the spec flags, and no password is resolved - removing it is a no-op.
+    assertTrue(userIntent.enableYSQLAuth);
+    assertTrue(userIntent.enableYCQLAuth);
+    assertNull(userIntent.ysqlPassword);
+    assertNull(userIntent.ycqlPassword);
+    assertUniverseAuthUnchanged(universe.getUniverseUUID());
+  }
+
+  @Test
+  public void testEditUserIntentIgnoresUnreadablePasswordSecrets() throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-auth-edit-secret", defaultProvider);
+    Universe universe = createUniverseWithAuthEnabled(ybUniverse);
+    // The spec still points at secrets that no longer resolve - one deleted outright, one left
+    // without the password key. The edit path looks them up to keep the dependency rows current
+    // but never reads a password out of them, so neither may fail the reconcile.
+    setYsqlAuthSpec(ybUniverse, true, "gone-secret");
+    setYcqlAuthSpec(ybUniverse, true, "empty-secret");
+    mockSecretLookup("gone-secret", null);
+    mockSecretLookup("empty-secret", secretWithPassword("empty-secret", "ycqlPassword", null));
+
+    UserIntent userIntent =
+        ybUniverseReconciler.createUserIntent(
+            ybUniverse, defaultCustomer.getUuid(), false /* isCreate */, defaultProvider);
+
+    assertTrue(userIntent.enableYSQLAuth);
+    assertTrue(userIntent.enableYCQLAuth);
+    assertNull(userIntent.ysqlPassword);
+    assertNull(userIntent.ycqlPassword);
+    assertUniverseAuthUnchanged(universe.getUniverseUUID());
   }
 }

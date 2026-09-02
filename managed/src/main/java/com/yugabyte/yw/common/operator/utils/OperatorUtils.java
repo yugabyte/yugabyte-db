@@ -1364,10 +1364,11 @@ public class OperatorUtils {
     if (secret == null) {
       return null;
     }
-    if (secret.getData().get(key) != null) {
+    // A secret carries data, stringData, or neither - whichever is absent comes back null.
+    if (secret.getData() != null && secret.getData().get(key) != null) {
       return new String(Base64.getDecoder().decode(secret.getData().get(key)));
     }
-    return secret.getStringData().get(key);
+    return secret.getStringData() != null ? secret.getStringData().get(key) : null;
   }
 
   /*
