@@ -132,7 +132,8 @@ export const prometheusMetricsOptions = [
   { label: 'Prometheus', value: 'PROMETHEUS' },
   { label: 'TServer Export', value: 'TSERVER_EXPORT' },
   { label: 'YCQL Export', value: 'CQL_EXPORT' },
-  { label: 'YSQL Export', value: 'YSQL_EXPORT' }
+  { label: 'YSQL Export', value: 'YSQL_EXPORT' },
+  { label: 'Kubernetes Containers', value: 'KUBERNETES' }
 ];
 
 const ONE_GB_IN_BYTES = 1_07_37_41_824;

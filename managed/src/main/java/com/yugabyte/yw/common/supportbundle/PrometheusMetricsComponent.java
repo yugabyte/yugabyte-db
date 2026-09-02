@@ -6,12 +6,14 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.CodedOutputStream;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.metrics.remoteread.RemoteReadClient;
@@ -43,8 +45,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.CRC32C;
 import lombok.extern.slf4j.Slf4j;
@@ -53,6 +57,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import play.libs.Json;
 import prometheus.Remote;
 import prometheus.Types;
+import prometheus.Types.LabelMatcher;
 
 @Slf4j
 @Singleton
@@ -71,6 +76,7 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
   private final ObjectMapper objectMapper;
 
   public final String PROMETHEUS_DUMP_FOLDER = "promdump";
+
   public final String TOO_MANY_SAMPLES_ERROR_MSG =
       "query processing would load too many samples into memory in query execution";
   public final String TOO_MANY_RESOLUTIONS_ERROR_MSG = "exceeded maximum resolution";
@@ -193,10 +199,27 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
 
     for (PrometheusMetricsType type : data.prometheusMetricsTypes) {
       String typeName = type.name().toLowerCase();
+
+      // Kubernetes has its own selectors - one for pods, one for volume claims.
+      List<SeriesSelector> selectors;
+      if (type == PrometheusMetricsType.KUBERNETES) {
+        selectors = buildKubernetesSelectors(universe);
+        if (selectors.isEmpty()) {
+          log.info(
+              "Universe {} has no Kubernetes pods, skipping container metrics", universe.getName());
+          continue;
+        }
+      } else {
+        selectors =
+            List.of(
+                new SeriesSelector(
+                    null,
+                    null,
+                    RemoteReadClient.equalityMatchers(
+                        buildRemoteReadLabels(type, typeName, nodePrefix))));
+      }
       String exportDestDir = destDir + "/" + typeName;
       Files.createDirectories(Paths.get(exportDestDir));
-
-      Map<String, String> labels = buildRemoteReadLabels(type, typeName, nodePrefix);
 
       Instant batchEnd = rangeEnd;
       while (batchEnd.isAfter(rangeStart)) {
@@ -204,22 +227,27 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
         if (batchStart.isBefore(rangeStart)) {
           batchStart = rangeStart;
         }
-        String fileName = getRemoteReadFileName(typeName, batchStart, batchEnd, format);
-        Path metricsFile = Paths.get(exportDestDir, fileName);
+        for (SeriesSelector selector : selectors) {
+          String namePart = selector.name() == null ? typeName : typeName + "." + selector.name();
+          String fileName = getRemoteReadFileName(namePart, batchStart, batchEnd, format);
+          Path metricsFile = Paths.get(exportDestDir, fileName);
 
-        log.info(
-            "Writing metrics via Remote Read between {} and {} to {} (downsample={}, step {}s)",
-            batchStart,
-            batchEnd,
-            metricsFile,
-            downsample,
-            downsample ? stepSecs : 0);
-        try (FileOutputStream fout = new FileOutputStream(metricsFile.toFile());
-            BufferedOutputStream bufos = new BufferedOutputStream(fout)) {
-          if (useBinary) {
-            writeMetricsBinary(baseUrl, batchStart, batchEnd, labels, effectiveStep, bufos);
-          } else {
-            writeMetricsJson(baseUrl, batchStart, batchEnd, labels, effectiveStep, bufos);
+          log.info(
+              "Writing metrics via Remote Read between {} and {} to {} (downsample={}, step {}s)",
+              batchStart,
+              batchEnd,
+              metricsFile,
+              downsample,
+              downsample ? stepSecs : 0);
+          try (FileOutputStream fout = new FileOutputStream(metricsFile.toFile());
+              BufferedOutputStream bufos = new BufferedOutputStream(fout)) {
+            if (useBinary) {
+              writeMetricsBinary(
+                  baseUrl, batchStart, batchEnd, selector.matchers(), effectiveStep, bufos);
+            } else {
+              writeMetricsJson(
+                  baseUrl, batchStart, batchEnd, selector.matchers(), effectiveStep, bufos);
+            }
           }
         }
         batchEnd = batchStart;
@@ -235,12 +263,29 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
       int effectiveStep,
       OutputStream output)
       throws IOException {
-    List<Pair<Map<String, String>, List<Pair<Long, Double>>>> seriesList = new ArrayList<>();
-    remoteReadClient.readMetrics(
+    writeMetricsBinary(
         baseUrl,
         batchStart,
         batchEnd,
-        labels,
+        RemoteReadClient.equalityMatchers(labels),
+        effectiveStep,
+        output);
+  }
+
+  private void writeMetricsBinary(
+      String baseUrl,
+      Instant batchStart,
+      Instant batchEnd,
+      List<LabelMatcher> matchers,
+      int effectiveStep,
+      OutputStream output)
+      throws IOException {
+    List<Pair<Map<String, String>, List<Pair<Long, Double>>>> seriesList = new ArrayList<>();
+    remoteReadClient.readMetricsMatching(
+        baseUrl,
+        batchStart,
+        batchEnd,
+        matchers,
         (metricsLabels, points) -> {
           List<Pair<Long, Double>> stepped = downsampleByStep(points, effectiveStep);
           if (!stepped.isEmpty()) {
@@ -280,15 +325,32 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
       int effectiveStep,
       OutputStream output)
       throws IOException {
+    writeMetricsJson(
+        baseUrl,
+        batchStart,
+        batchEnd,
+        RemoteReadClient.equalityMatchers(labels),
+        effectiveStep,
+        output);
+  }
+
+  void writeMetricsJson(
+      String baseUrl,
+      Instant batchStart,
+      Instant batchEnd,
+      List<LabelMatcher> matchers,
+      int effectiveStep,
+      OutputStream output)
+      throws IOException {
     JsonFactory jfactory = new JsonFactory();
     try (JsonGenerator jGenerator =
         jfactory.createGenerator(output, JsonEncoding.UTF8).setCodec(objectMapper)) {
       jGenerator.writeStartArray();
-      remoteReadClient.readMetrics(
+      remoteReadClient.readMetricsMatching(
           baseUrl,
           batchStart,
           batchEnd,
-          labels,
+          matchers,
           (metricsLabels, points) -> {
             try {
               List<Pair<Long, Double>> stepped = downsampleByStep(points, effectiveStep);
@@ -319,6 +381,79 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
       jGenerator.writeEndArray();
       jGenerator.flush();
     }
+  }
+
+  /** One series selector, in both forms the two export paths need. */
+  @VisibleForTesting
+  record SeriesSelector(String name, String promQl, List<LabelMatcher> matchers) {}
+
+  private static LabelMatcher regexMatcher(String name, String value) {
+    return LabelMatcher.newBuilder()
+        .setName(name)
+        .setType(LabelMatcher.Type.RE)
+        .setValue(value)
+        .build();
+  }
+
+  /**
+   * Everything Prometheus holds about this universe's pods and volume claims, or empty for any
+   * provider other than Kubernetes.
+   *
+   * <p>Selected by pod and claim because these series carry neither {@code node_prefix} nor {@code
+   * export_type}, which is what every other metrics type here selects on. Selected by label rather
+   * than by metric name because the series come from three targets across two repositories' scrape
+   * configs - cAdvisor, the kubelet, and the kube-state-metrics job in the yugaware chart that Perf
+   * Advisor's CPU request and memory limit graphs read - and a name list here would have to track
+   * all of them.
+   *
+   * <p>Two selectors because volume stats carry no pod label; the claim name embeds the pod name
+   * instead. Scoping to this universe's pods matters because those targets keep every pod matching
+   * {@code .*yb-.*} on the whole Kubernetes cluster, and under the new Helm naming style several
+   * universes can share a namespace.
+   */
+  @VisibleForTesting
+  List<SeriesSelector> buildKubernetesSelectors(Universe universe) {
+    // Gated on the provider, not on whether a pod name comes back: NodeDetails.getK8sPodName
+    // falls back to slicing the private IP, so a VM node yields a plausible-looking selector
+    // that matches nothing.
+    if (!Util.isKubernetesBasedUniverse(universe)) {
+      return List.of();
+    }
+    Set<String> namespaces = new LinkedHashSet<>();
+    Set<String> pods = new LinkedHashSet<>();
+    Set<String> claims = new LinkedHashSet<>();
+    for (NodeDetails node : universe.getNodes()) {
+      try {
+        String pod = node.getK8sPodName();
+        namespaces.add(node.getK8sNamespace());
+        pods.add(pod);
+        // Claims are named <volume>-<pod>, e.g. datadir0-yb-tserver-0.
+        claims.add("(.*)-" + pod);
+      } catch (Exception e) {
+        log.warn(
+            "Skipping node {} in the Kubernetes metrics selector: {}",
+            node.getNodeName(),
+            e.getMessage());
+      }
+    }
+    if (namespaces.isEmpty()) {
+      return List.of();
+    }
+    String namespaceRegex = String.join("|", namespaces);
+    String podRegex = String.join("|", pods);
+    String claimRegex = String.join("|", claims);
+    return List.of(
+        new SeriesSelector(
+            "pods",
+            String.format("{namespace=~\"%s\",pod_name=~\"%s\"}", namespaceRegex, podRegex),
+            List.of(regexMatcher("namespace", namespaceRegex), regexMatcher("pod_name", podRegex))),
+        new SeriesSelector(
+            "volumes",
+            String.format(
+                "{namespace=~\"%s\",persistentvolumeclaim=~\"%s\"}", namespaceRegex, claimRegex),
+            List.of(
+                regexMatcher("namespace", namespaceRegex),
+                regexMatcher("persistentvolumeclaim", claimRegex))));
   }
 
   private Map<String, String> buildRemoteReadLabels(
@@ -638,6 +773,18 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
             type -> {
               try {
                 String typeName = type.name().toLowerCase();
+                List<SeriesSelector> kubernetesSelectors =
+                    type == PrometheusMetricsType.KUBERNETES
+                        ? buildKubernetesSelectors(universe)
+                        : List.of();
+                if (type == PrometheusMetricsType.KUBERNETES && kubernetesSelectors.isEmpty()) {
+                  // Every universe gets this type offered, so a VM universe lands here; leave
+                  // without creating the directory rather than shipping an empty one.
+                  log.info(
+                      "Universe {} has no Kubernetes pods, skipping container metrics",
+                      universe.getName());
+                  return;
+                }
                 // create <type> folder inside the support_bundle/YBA/promdump folder.
                 String exportDestDir = destDir + "/" + typeName;
                 log.info("Attempting to create output directory for the export: {}.", type);
@@ -646,7 +793,20 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
                 // generate the promQL query
                 // Ex query: "{export_type=\"master_export\",node_prefix=\"universe-test\"}"
                 String query;
-                if (type == PrometheusMetricsType.PLATFORM
+                if (type == PrometheusMetricsType.KUBERNETES) {
+                  for (SeriesSelector selector : kubernetesSelectors) {
+                    exportMetric(
+                        new Date(startTime),
+                        new Date(endTime),
+                        selector.promQl(),
+                        null,
+                        typeName,
+                        selector.name(),
+                        exportDestDir,
+                        null,
+                        data);
+                  }
+                } else if (type == PrometheusMetricsType.PLATFORM
                     || type == PrometheusMetricsType.PROMETHEUS) {
                   query =
                       String.format(
@@ -755,6 +915,12 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
     long totalSeriesCount = 0;
     for (PrometheusMetricsType type : bundleData.prometheusMetricsTypes) {
       String typeName = type.name().toLowerCase();
+      if (type == PrometheusMetricsType.KUBERNETES) {
+        for (SeriesSelector selector : buildKubernetesSelectors(universe)) {
+          totalSeriesCount += getMetricsCountAtTime(selector.promQl(), countAtTime);
+        }
+        continue;
+      }
       String selector = buildPromQLSelector(type, typeName, nodePrefix);
       Long count = getMetricsCountAtTime(selector, countAtTime);
       totalSeriesCount += count;

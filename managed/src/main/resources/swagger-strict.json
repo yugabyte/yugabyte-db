@@ -4936,7 +4936,8 @@
               "PROMETHEUS",
               "TSERVER_EXPORT",
               "CQL_EXPORT",
-              "YSQL_EXPORT"
+              "YSQL_EXPORT",
+              "KUBERNETES"
             ],
             "type" : "string"
           },
@@ -24068,7 +24069,8 @@
               "PROMETHEUS",
               "TSERVER_EXPORT",
               "CQL_EXPORT",
-              "YSQL_EXPORT"
+              "YSQL_EXPORT",
+              "KUBERNETES"
             ],
             "type" : "string"
           },

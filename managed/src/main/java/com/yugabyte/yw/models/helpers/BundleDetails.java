@@ -97,7 +97,11 @@ public class BundleDetails {
     PROMETHEUS,
     TSERVER_EXPORT,
     CQL_EXPORT,
-    YSQL_EXPORT;
+    YSQL_EXPORT,
+    // Everything scraped for this universe's pods and volume claims - cAdvisor, kubelet and
+    // kube-state-metrics. Kubernetes universes have no node_exporter, so this is the only
+    // source of resource usage for them.
+    KUBERNETES;
   }
 
   public enum PrometheusMetricsFormat {
