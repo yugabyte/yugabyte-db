@@ -49,6 +49,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestExplcictCheckpointMovementAfterDDL(bool no_activity_post_ddl);
   void TestSysCatalogRetentionBarriers(
       bool use_grpc_stream, bool use_logical_replication_stream, bool add_dummy_grpc_slot_entry);
+  void TestFailureOnAddingUnqualifiedTableToVWAL(bool add_expired_table, bool use_colocated);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -3912,22 +3913,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
   // delete table's cdc_state table entries and remove it from stream metadata.
   SleepFor(MonoDelta::FromSeconds(10));
 
-  int expected_dml_records = num_batches * inserts_per_batch;
-  auto vwal1_result = GetAllPendingTxnsFromVirtualWAL(
-      stream_id, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */);
+  auto init_vwal_result = InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1);
+  ASSERT_NOK(init_vwal_result);
 
-  ASSERT_NOK(vwal1_result);
-  ASSERT_TRUE(vwal1_result.status().IsNotFound());
-  ASSERT_STR_CONTAINS(vwal1_result.status().message().ToBuffer(), "not found under stream");
 
   // A new VWAL on the same stream should again receive the stream expired error.
-  auto vwal2_result = GetAllPendingTxnsFromVirtualWAL(
-      stream_id, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */,
-      kVWALSessionId2);
-
-  ASSERT_NOK(vwal2_result);
-  ASSERT_TRUE(vwal2_result.status().IsNotFound());
-  ASSERT_STR_CONTAINS(vwal2_result.status().message().ToBuffer(), "not found under stream");
+  auto init_vwal_result_2 = InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId2);
+  ASSERT_NOK(init_vwal_result_2);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestIntentGC) {
@@ -7118,6 +7110,82 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoLossWithInvalidConsistentSt
   ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
       stream_id, {table_1.table_id(), table_2.table_id()}, 2 /* expected_dml_records */,
       false /* init_virtual_wal */));
+}
+
+void CDCSDKConsumptionConsistentChangesTest::TestFailureOnAddingUnqualifiedTableToVWAL(
+    bool add_expired_table, bool use_colocated) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, use_colocated, true /* cdc_populate_safepoint_record */));
+
+  auto table_1 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      use_colocated));
+  auto table_2 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, "test_table_2", 1 /* num_tablets */, true /* add_pk */,
+      use_colocated));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  // Table_1 will not be marked as expired / not-of-interest since it has been polled, but table_2
+  // will be. We avoid this call for colocated tablet since it will prevent both the tables from
+  // being marked as expired / not-of-interest.
+  if (!use_colocated) {
+    ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+  }
+
+  if (add_expired_table) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+  } else {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 0;
+  }
+
+  // Since FLAGS_cdc_skip_unqualified_tables_for_polling is not set, UpdatePublicationTableList will
+  // fail while trying to add an unqualified table.
+  ASSERT_NOK(UpdatePublicationTableList(
+      stream_id, {table_1.table_id(), table_2.table_id()}, kVWALSessionId1,
+      false /* include_oid_to_relfilenode */, 0 /* timeout */));
+
+  // With FLAGS_cdc_skip_unqualified_tables_for_polling set, UpdatePublicationTableList will skip
+  // adding the unqualified table and will succeed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_skip_unqualified_tables_for_polling) = true;
+  ASSERT_OK(UpdatePublicationTableList(
+      stream_id, {table_1.table_id(), table_2.table_id()}, kVWALSessionId1,
+      false /* include_oid_to_relfilenode */, 0 /* timeout */));
+
+  if (!use_colocated && !add_expired_table) {
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+    ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 1)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test_table_2 values (1, 1)"));
+
+    // If not expired, consume the records from the table_1.
+    if (!add_expired_table) {
+      auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+      ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+          stream_id, {table_1.table_id()}, 1 /* expected_dml_records */,
+          false /* init_virtual_wal */));
+    }
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAddingNotOfInterestTableToVWAL) {
+  TestFailureOnAddingUnqualifiedTableToVWAL(
+      false /* add_expired_table */, false /* use_colocated */);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAddingExpiredTableToVWAL) {
+  TestFailureOnAddingUnqualifiedTableToVWAL(
+      true /* add_expired_table */, false /* use_colocated */);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAddingNotOfInterestTableToVWALWithColocated) {
+  TestFailureOnAddingUnqualifiedTableToVWAL(
+      false /* add_expired_table */, true /* use_colocated */);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAddingExpiredTableToVWALWithColocated) {
+  TestFailureOnAddingUnqualifiedTableToVWAL(true /* add_expired_table */, true /* use_colocated */);
 }
 
 }  // namespace cdc

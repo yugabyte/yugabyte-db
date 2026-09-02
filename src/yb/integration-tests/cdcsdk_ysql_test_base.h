@@ -170,6 +170,7 @@ DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
 DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
+DECLARE_bool(cdc_skip_unqualified_tables_for_polling);
 
 namespace yb {
 
@@ -618,7 +619,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      uint64_t session_id = kVWALSessionId1, bool include_oid_to_relfilenode = false);
+      uint64_t session_id = kVWALSessionId1, bool include_oid_to_relfilenode = false,
+      int timeout = kRpcTimeout);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
