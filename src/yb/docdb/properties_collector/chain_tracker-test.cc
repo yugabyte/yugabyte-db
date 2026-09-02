@@ -206,6 +206,13 @@ TEST_F(ChainTrackerTest, TableTombstoneAndCoprefixSubtotals) {
   EXPECT_EQ(live_sub.reclaimable_entries, 1);
 }
 
+TEST_F(ChainTrackerTest, PlainTableRecordsNoCoprefixSubtotals) {
+  // Rows without a cotable / colocation prefix must not produce a subtotal under the empty
+  // coprefix, even with subtotal tracking enabled.
+  const auto s = TrackerFixture(/* subtotals = */ true).Add(AnatomyStrip()).Finish();
+  EXPECT_TRUE(s.coprefix_subtotals.empty());
+}
+
 TEST_F(ChainTrackerTest, CorruptKeyInvalidatesChainStatsOnly) {
   auto entries = AnatomyStrip();
   // A key with no room for a hybrid time.

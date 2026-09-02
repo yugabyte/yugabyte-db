@@ -111,7 +111,8 @@ struct SstStats {
   AgeBandCounts droppable_age_entries{};
   AgeBandCounts droppable_age_bytes{};
 
-  // Only populated when subtotals are enabled; key = raw coprefix bytes ("" for a plain table).
+  // Only populated when subtotals are enabled AND the tablet is colocated; key = the raw
+  // cotable / colocation prefix bytes. Rows without a coprefix (plain tables) record none.
   std::map<std::string, CoprefixSubtotal> coprefix_subtotals;
 
   // Derived identities (meaningful only while chain_valid).

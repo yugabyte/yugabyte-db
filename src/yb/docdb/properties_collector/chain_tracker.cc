@@ -155,10 +155,14 @@ void ChainTracker::Add(Slice key, Slice value) {
       reclaimable = true;
       droppable_by_micros = row_tombstone_micros_;
     }
-    if (track_coprefix_subtotals_) {
+    if (track_coprefix_subtotals_ && ends->coprefix_end > 0) {
+      // Subtotals are per cotable / colocation prefix; a plain (non-colocated) table has no
+      // coprefix and records none, so single-table tablets never carry a redundant subtotal.
       row_subtotal_ =
           &stats_.coprefix_subtotals[std::string(subdoc_key.cdata(), ends->coprefix_end)];
       ++row_subtotal_->rows;
+    } else {
+      row_subtotal_ = nullptr;
     }
   }
 
