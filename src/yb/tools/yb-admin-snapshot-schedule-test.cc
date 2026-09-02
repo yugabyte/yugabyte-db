@@ -4003,7 +4003,8 @@ void YbAdminSnapshotScheduleTest::TestGCHiddenTables() {
 
 class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest {
  public:
-  virtual std::vector<std::string> ExtraTSFlags() { return {"--TEST_tablet_delay_restore_ms=0"}; }
+  // Suppresses the base class flags; keep the defaults.
+  std::vector<std::string> ExtraTSFlags() override { return {}; }
 };
 
 Status WaitWrites(int num, std::atomic<int>* current) {

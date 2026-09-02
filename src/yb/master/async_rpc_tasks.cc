@@ -1192,6 +1192,7 @@ void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
 }
 
 bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
+  TEST_SYNC_POINT("AsyncRemoveTableFromTablet::SendRequest");
   ts_admin_proxy_->RemoveTableFromTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1) << "Send RemoveTableFromTablet request (attempt " << attempt << "):\n"
                       << req_.DebugString();

@@ -134,6 +134,10 @@ class IndexedTableReader {
   }
 
   Status Init(HybridTime read_ht, Slice start_key) {
+    // The projection is empty when the vector column is missing from the indexed table schema
+    // (see DoCreateIndex); reading through it would access rows out of bounds.
+    SCHECK_EQ(context_.vector_column_projection().num_value_columns(), 1, IllegalState,
+              "Vector column is missing in the projection");
     iter_ = VERIFY_RESULT(context_.CreateVectorColumnIterator(read_ht, start_key));
     return Status::OK();
   }
@@ -237,6 +241,20 @@ Status TabletVectorIndexes::CreateIndex(
   return DoCreateIndex(index_table, indexed_table, bootstrap);
 }
 
+Status TabletVectorIndexes::CreateSkippedIndexes(
+    const TableInfoPtr& indexed_table, bool bootstrap) {
+  std::lock_guard lock(vector_indexes_mutex_);
+  for (const auto& table_info : metadata().GetAllColocatedTableInfos()) {
+    if (!table_info->NeedVectorIndex() ||
+        table_info->index_info->indexed_table_id() != indexed_table->table_id ||
+        vector_indexes_map_.count(table_info->table_id)) {
+      continue;
+    }
+    RETURN_NOT_OK(DoCreateIndex(*table_info, indexed_table, bootstrap));
+  }
+  return Status::OK();
+}
+
 void InsertVectorIndex(docdb::DocVectorIndexes& indexes, const docdb::DocVectorIndexPtr& index) {
   auto it = std::upper_bound(
       indexes.begin(), indexes.end(), index, [](const auto& lhs, const auto& rhs) {
@@ -248,6 +266,18 @@ void InsertVectorIndex(docdb::DocVectorIndexes& indexes, const docdb::DocVectorI
 Status TabletVectorIndexes::DoCreateIndex(
     const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap) {
   SCHECK(shutdown_controller_.IsRunning(), ShutdownInProgress, "Tablet vector indexes shutdown");
+
+  // The indexed column could be missing from the schema: e.g. a PITR restore resurrects a
+  // PREPARING index table and re-sends AddTableToTablet before restoring the pre-drop schema
+  // (#33276). Rows cannot be read through such a projection, so don't instantiate the index;
+  // CreateSkippedIndexes instantiates it once an alter brings the column back.
+  const ColumnId vector_column_id(index_table.index_info->vector_idx_options().column_id());
+  if (indexed_table->schema().find_column_by_id(vector_column_id) == Schema::kColumnNotFound) {
+    LOG_WITH_PREFIX(WARNING)
+        << "Skip creating vector index " << index_table.table_id << ": column " << vector_column_id
+        << " is missing in the indexed table schema: " << indexed_table->ToString();
+    return Status::OK();
+  }
 
   has_vector_indexes_ = true;
   if (vector_indexes_map_.count(index_table.table_id)) {
@@ -265,8 +295,7 @@ Status TabletVectorIndexes::DoCreateIndex(
     };
   };
 
-  auto index_context = std::make_unique<IndexContext>(
-      tablet(), *indexed_table, ColumnId(index_table.index_info->vector_idx_options().column_id()));
+  auto index_context = std::make_unique<IndexContext>(tablet(), *indexed_table, vector_column_id);
 
   MetricEntityPtr vector_index_metric_entity;
   if (metric_registry_) {

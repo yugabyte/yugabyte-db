@@ -3279,6 +3279,12 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
         current_table_info->table_id);
   }
 
+  // The alter could bring back a vector column that was missing when its vector index table was
+  // added to the tablet (see TabletVectorIndexes::DoCreateIndex), instantiate such indexes now.
+  RETURN_NOT_OK(vector_indexes_->CreateSkippedIndexes(
+      VERIFY_RESULT(metadata_->GetTableInfo(current_table_info->table_id)),
+      state_ == State::kBootstrapping));
+
   // Cleanup the index from cache which are deleted or updated.
   if (current_table_info->index_map && !current_table_info->index_map->empty()) {
     for (const auto& index : *current_table_info->index_map) {

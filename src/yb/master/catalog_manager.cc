@@ -14246,6 +14246,12 @@ void CatalogManager::SchedulePostTabletCreationTasks(
 Status CatalogManager::PromoteTableToRunningState(
     TableInfoPtr table_info, const LeaderEpoch& epoch) {
   auto l = table_info->LockForWrite();
+  if (l->pb.state() == SysTablesEntryPB::RUNNING) {
+    // Another AddTableToTablet task generation already promoted the table: the catalog loader
+    // re-sends the RPCs on every sys catalog reload (master failover, PITR restore) while the
+    // table is PREPARING, so multiple generations can complete.
+    return Status::OK();
+  }
   SCHECK(
       l.mutable_data()->IsPreparing(), IllegalState,
       "Table $0 should be in PREPARING state. Current state: $1", table_info->ToString(),
