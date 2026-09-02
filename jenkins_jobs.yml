@@ -5,11 +5,6 @@
 #   change - run by default for DB changes
 #   full - run for full official build
 #
-# To request optional build/test on PR, include Jenkins: directives
-# in the description.
-# Examples:
-#   Jenkins: build type: tsan
-#   Jenkins: jobs: full
 
 jobs:
   - os: alma9
