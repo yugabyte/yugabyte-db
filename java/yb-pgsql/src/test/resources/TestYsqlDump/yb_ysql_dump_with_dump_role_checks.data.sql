@@ -2,6 +2,8 @@
 -- YSQL database dump
 --
 
+\restrict test
+
 -- Dumped from database version 15.12-YB-2.25.2.0-b0
 -- Dumped by ysql_dump version 15.12-YB-2.25.2.0-b0
 
@@ -26,16 +28,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
@@ -52,14 +58,22 @@ END $$;
 CREATE SCHEMA hint_plan;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER SCHEMA hint_plan OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: pg_hint_plan; Type: EXTENSION; Schema: -; Owner: -
@@ -188,14 +202,22 @@ ALTER TYPE public.overflow ADD VALUE 'Z';
 
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TYPE public.overflow OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: underflow; Type: TYPE; Schema: public; Owner: yugabyte_test
@@ -315,14 +337,22 @@ ALTER TYPE public.underflow ADD VALUE 'Z';
 
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TYPE public.underflow OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: yb_cache_invalidate(); Type: FUNCTION; Schema: hint_plan; Owner: yugabyte_test
@@ -336,14 +366,22 @@ CREATE FUNCTION hint_plan.yb_cache_invalidate() RETURNS trigger
 ALTER EXTENSION pg_hint_plan ADD FUNCTION hint_plan.yb_cache_invalidate();
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER FUNCTION hint_plan.yb_cache_invalidate() OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: FUNCTION yb_cache_invalidate(); Type: COMMENT; Schema: hint_plan; Owner: yugabyte_test
@@ -352,9 +390,13 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_ex
 COMMENT ON FUNCTION hint_plan.yb_cache_invalidate() IS 'invalidate hint plan cache';
 
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = '';
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: grp1; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user
@@ -366,14 +408,22 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16478'::pg_catalog.oid
 CREATE TABLEGROUP grp1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLEGROUP grp1 OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: grp2; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user
@@ -385,18 +435,30 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16479'::pg_catalog.oid
 CREATE TABLEGROUP grp2;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLEGROUP grp2 OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = tsp1;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user; Tablespace: tsp1
@@ -408,18 +470,30 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16480'::pg_catalog.oid
 CREATE TABLEGROUP grp_with_spc;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLEGROUP grp_with_spc OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = '';
+\unrestrict test
 \endif
+\restrict test
 
 SET default_table_access_method = heap;
 
@@ -458,14 +532,22 @@ SPLIT INTO 3 TABLETS;
 ALTER EXTENSION pg_hint_plan ADD TABLE hint_plan.hints;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE hint_plan.hints OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: hints_id_seq; Type: SEQUENCE; Schema: hint_plan; Owner: yugabyte_test
@@ -488,14 +570,22 @@ CREATE SEQUENCE hint_plan.hints_id_seq
 ALTER EXTENSION pg_hint_plan ADD SEQUENCE hint_plan.hints_id_seq;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE hint_plan.hints_id_seq OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: hints_id_seq; Type: SEQUENCE OWNED BY; Schema: hint_plan; Owner: yugabyte_test
@@ -533,14 +623,22 @@ CREATE TABLE public.chat_user (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.chat_user OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: hash_tbl_pk_with_include_clause; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -573,14 +671,22 @@ CREATE TABLE public.hash_tbl_pk_with_include_clause (
 SPLIT INTO 8 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.hash_tbl_pk_with_include_clause OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: hash_tbl_pk_with_multiple_included_columns; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -614,14 +720,22 @@ CREATE TABLE public.hash_tbl_pk_with_multiple_included_columns (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.hash_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: level0; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -651,14 +765,22 @@ CREATE TABLE public.level0 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.level0 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: level1_0; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -719,14 +841,22 @@ WHERE contype = 'c' AND conname = 'level0_c1_cons'
 ALTER TABLE ONLY public.level1_0 INHERIT public.level0;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.level1_0 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: level1_1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -789,14 +919,22 @@ WHERE contype = 'c' AND conname = 'level0_c1_cons'
 ALTER TABLE ONLY public.level1_1 INHERIT public.level0;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.level1_1 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: level2_0; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -840,14 +978,22 @@ WHERE contype = 'c' AND conname = 'level0_c1_cons'
 ALTER TABLE ONLY public.level2_0 INHERIT public.level1_0;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.level2_0 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: level2_1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -899,14 +1045,22 @@ ALTER TABLE ONLY public.level2_1 INHERIT public.level1_0;
 ALTER TABLE ONLY public.level2_1 INHERIT public.level1_1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.level2_1 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: p1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -938,14 +1092,22 @@ CREATE TABLE public.p1 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.p1 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: p2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -977,14 +1139,22 @@ CREATE TABLE public.p2 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.p2 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: part_uniq_const; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1018,14 +1188,22 @@ PARTITION BY RANGE (v1)
 SPLIT INTO 1 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.part_uniq_const OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: part_uniq_const_30_50; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1058,14 +1236,22 @@ CREATE TABLE public.part_uniq_const_30_50 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.part_uniq_const_30_50 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: part_uniq_const_50_100; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1098,14 +1284,22 @@ CREATE TABLE public.part_uniq_const_50_100 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.part_uniq_const_50_100 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: part_uniq_const_default; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1138,14 +1332,22 @@ CREATE TABLE public.part_uniq_const_default (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.part_uniq_const_default OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: pre_split_range; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1190,14 +1392,22 @@ CREATE TABLE public.pre_split_range (
 SPLIT AT VALUES ((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000));
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.pre_split_range OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: range_tbl_pk_with_include_clause; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1230,14 +1440,22 @@ CREATE TABLE public.range_tbl_pk_with_include_clause (
 SPLIT AT VALUES ((1, '1'), (100, '100'));
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.range_tbl_pk_with_include_clause OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: range_tbl_pk_with_multiple_included_columns; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1270,14 +1488,22 @@ CREATE TABLE public.range_tbl_pk_with_multiple_included_columns (
 );
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.range_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: range_test; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1309,14 +1535,22 @@ CREATE TABLE public.range_test (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.range_test OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: range_test_id_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
@@ -1336,14 +1570,22 @@ CREATE SEQUENCE public.range_test_id_seq
     CACHE 1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.range_test_id_seq OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: range_test_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
@@ -1384,14 +1626,22 @@ SPLIT INTO 3 TABLETS;
 ALTER TABLE ONLY public.rls_private FORCE ROW LEVEL SECURITY;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.rls_private OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: rls_public; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1423,14 +1673,22 @@ CREATE TABLE public.rls_public (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.rls_public OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1456,14 +1714,22 @@ CREATE TABLE public.tbl1 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl1 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl10; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1497,14 +1763,22 @@ CREATE TABLE public.tbl10 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl10 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl11; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1536,14 +1810,22 @@ CREATE TABLE public.tbl11 (
 );
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl11 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl12; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1576,14 +1858,22 @@ CREATE TABLE public.tbl12 (
 );
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl12 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl13; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1617,14 +1907,22 @@ CREATE TABLE public.tbl13 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl13 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl1_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
@@ -1644,14 +1942,22 @@ CREATE SEQUENCE public.tbl1_a_seq
     CACHE 1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl1_a_seq OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl1_a_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
@@ -1683,14 +1989,22 @@ CREATE TABLE public.tbl2 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl2 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl2_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
@@ -1710,14 +2024,22 @@ CREATE SEQUENCE public.tbl2_a_seq
     CACHE 1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl2_a_seq OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl2_a_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
@@ -1755,14 +2077,22 @@ CREATE TABLE public.tbl3 (
 );
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl3 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl4; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1794,14 +2124,22 @@ CREATE TABLE public.tbl4 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl4 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl5; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1834,14 +2172,22 @@ CREATE TABLE public.tbl5 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl5 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl6; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1872,14 +2218,22 @@ CREATE TABLE public.tbl6 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl6 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl7; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1913,14 +2267,22 @@ CREATE TABLE public.tbl7 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl7 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl8; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1954,14 +2316,22 @@ CREATE TABLE public.tbl8 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl8 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tbl9; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1994,14 +2364,22 @@ CREATE TABLE public.tbl9 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tbl9 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_after_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2027,14 +2405,22 @@ WITH (parallel_workers='2', colocation_id='20002')
 TABLEGROUP grp1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tgroup_after_options OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_empty_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2059,14 +2445,22 @@ CREATE TABLE public.tgroup_empty_options (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tgroup_empty_options OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_in_between_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2092,14 +2486,22 @@ WITH (parallel_workers='2', autovacuum_enabled='true', colocation_id='20003')
 TABLEGROUP grp1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tgroup_in_between_options OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_no_options_and_tgroup; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2125,14 +2527,22 @@ WITH (colocation_id='20001')
 TABLEGROUP grp1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tgroup_no_options_and_tgroup OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_one_option; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2158,14 +2568,22 @@ WITH (autovacuum_enabled='true')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tgroup_one_option OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_one_option_and_tgroup; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2191,14 +2609,22 @@ WITH (autovacuum_enabled='true', colocation_id='20001')
 TABLEGROUP grp2;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tgroup_one_option_and_tgroup OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2224,14 +2650,22 @@ WITH (autovacuum_enabled='true', parallel_workers='2')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tgroup_options OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_options_and_tgroup; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2257,14 +2691,22 @@ WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='20002')
 TABLEGROUP grp2;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tgroup_options_and_tgroup OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_options_tgroup_and_custom_colocation_id; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2290,14 +2732,22 @@ WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='100500')
 TABLEGROUP grp2;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tgroup_options_tgroup_and_custom_colocation_id OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tgroup_with_spc; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -2323,14 +2773,22 @@ WITH (colocation_id='20001')
 TABLEGROUP grp_with_spc;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tgroup_with_spc OWNER TO tablegroup_test_user;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' tablegroup_test_user
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: th1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -2357,14 +2815,22 @@ CREATE TABLE public.th1 (
 SPLIT INTO 2 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.th1 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: th2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -2397,14 +2863,22 @@ CREATE TABLE public.th2 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.th2 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: th3; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -2437,14 +2911,22 @@ CREATE TABLE public.th3 (
 SPLIT INTO 4 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.th3 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tr1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -2477,14 +2959,22 @@ CREATE TABLE public.tr1 (
 SPLIT AT VALUES ((1), (100));
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tr1 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: tr2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -2517,14 +3007,22 @@ CREATE TABLE public.tr2 (
 SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n', MINVALUE), (1, 'z', -5.12));
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.tr2 OWNER TO yugabyte_test;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: uaccount; Type: TABLE; Schema: public; Owner: regress_rls_alice
@@ -2555,14 +3053,22 @@ CREATE TABLE public.uaccount (
 );
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_rls_alice') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER TABLE public.uaccount OWNER TO regress_rls_alice;
+\unrestrict test
 \else
     \echo 'Skipping owner privilege due to missing role:' regress_rls_alice
 \endif
+\restrict test
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: part_uniq_const_30_50; Type: TABLE ATTACH; Schema: public; Owner: yugabyte_test
@@ -4124,15 +4630,23 @@ CREATE POLICY p3 ON public.rls_private FOR UPDATE USING (((k % 2) = 1));
 -- Name: rls_public p4; Type: POLICY; Schema: public; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     CREATE POLICY p4 ON public.rls_public FOR UPDATE TO rls_user USING ((v = CURRENT_USER));
+\unrestrict test
 \else
     \echo 'Skipping create policy due to missing role:' rls_user
 \endif
+\restrict test
 
+\unrestrict test
 \endif
+\restrict test
 
 
 --
@@ -4165,148 +4679,212 @@ UPDATE pg_extension SET extconfig = ARRAY['hint_plan.hints'::regclass::oid,'hint
 -- Name: SCHEMA hint_plan; Type: ACL; Schema: -; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT USAGE ON SCHEMA hint_plan TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 GRANT ALL ON SCHEMA public TO PUBLIC;
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_rls_alice') AS role_exists \gset
 \if :role_exists
+\restrict test
     GRANT CREATE ON SCHEMA public TO regress_rls_alice;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' regress_rls_alice
 \endif
+\restrict test
 
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE hints; Type: ACL; Schema: hint_plan; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE hint_plan.hints TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE range_test; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 GRANT SELECT ON TABLE public.range_test TO PUBLIC;
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     GRANT UPDATE ON TABLE public.range_test TO rls_user;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' rls_user
 \endif
+\restrict test
 
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE rls_private; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     GRANT SELECT ON TABLE public.rls_private TO rls_user;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' rls_user
 \endif
+\restrict test
 
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE rls_public; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 GRANT ALL ON TABLE public.rls_public TO PUBLIC;
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE tbl13; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_rls_alice') AS role_exists \gset
 \if :role_exists
+\restrict test
     GRANT ALL ON TABLE public.tbl13 TO regress_rls_alice WITH GRANT OPTION;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' regress_rls_alice
 \endif
+\restrict test
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'tablegroup_test_user') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_rls_alice') AS role_exists \gset
 \if :role_exists
+\restrict test
     SET SESSION AUTHORIZATION regress_rls_alice;
     GRANT ALL ON TABLE public.tbl13 TO tablegroup_test_user;
     RESET SESSION AUTHORIZATION;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' tablegroup_test_user 'OR' regress_rls_alice
 \endif
+\restrict test
 
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: regress_rls_alice
 --
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_rls_alice') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public GRANT ALL ON FUNCTIONS  TO PUBLIC;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' regress_rls_alice
 \endif
+\restrict test
 
 
 
@@ -4314,19 +4892,27 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_rls_alice') AS rol
 -- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: yugabyte_test
 --
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test IN SCHEMA public GRANT SELECT ON TABLES  TO PUBLIC;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' yugabyte_test
 \endif
+\restrict test
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test IN SCHEMA public GRANT UPDATE ON TABLES  TO rls_user;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' rls_user 'OR' yugabyte_test
 \endif
+\restrict test
 
 
 
@@ -4334,12 +4920,16 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AND EXISTS(SELE
 -- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: regress_rls_alice
 --
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_rls_alice') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public GRANT DELETE ON TABLES  TO rls_user;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' rls_user 'OR' regress_rls_alice
 \endif
+\restrict test
 
 
 
@@ -4347,12 +4937,16 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AND EXISTS(SELE
 -- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: rls_user
 --
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DEFAULT PRIVILEGES FOR ROLE rls_user IN SCHEMA public GRANT SELECT ON TABLES  TO rls_user;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' rls_user
 \endif
+\restrict test
 
 
 
@@ -4360,12 +4954,16 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AS role_exists 
 -- Name: DEFAULT PRIVILEGES FOR TYPES; Type: DEFAULT ACL; Schema: -; Owner: regress_rls_alice
 --
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_rls_alice') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice REVOKE ALL ON TYPES  FROM PUBLIC;
+\unrestrict test
 \else
     \echo 'Skipping revoke privilege due to missing role:' regress_rls_alice
 \endif
+\restrict test
 
 
 
@@ -4373,12 +4971,16 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_rls_alice') AS rol
 -- Name: DEFAULT PRIVILEGES FOR SCHEMAS; Type: DEFAULT ACL; Schema: -; Owner: yugabyte_test
 --
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test GRANT USAGE ON SCHEMAS  TO rls_user;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' rls_user 'OR' yugabyte_test
 \endif
+\restrict test
 
 
 
@@ -4386,12 +4988,16 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AND EXISTS(SELE
 -- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: -; Owner: regress_rls_alice
 --
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_rls_alice') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice GRANT SELECT ON TABLES  TO rls_user;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' rls_user 'OR' regress_rls_alice
 \endif
+\restrict test
 
 
 
@@ -4399,19 +5005,27 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AND EXISTS(SELE
 -- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: -; Owner: rls_user
 --
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DEFAULT PRIVILEGES FOR ROLE rls_user REVOKE ALL ON TABLES  FROM rls_user;
+\unrestrict test
 \else
     \echo 'Skipping revoke privilege due to missing role:' rls_user
 \endif
+\restrict test
 
+\unrestrict test
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AS role_exists \gset
 \if :role_exists
+\restrict test
     ALTER DEFAULT PRIVILEGES FOR ROLE rls_user GRANT SELECT,REFERENCES,TRIGGER,TRUNCATE,UPDATE ON TABLES  TO rls_user;
+\unrestrict test
 \else
     \echo 'Skipping grant privilege due to missing role:' rls_user
 \endif
+\restrict test
 
 
 
@@ -5210,4 +5824,6 @@ END $$;
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 

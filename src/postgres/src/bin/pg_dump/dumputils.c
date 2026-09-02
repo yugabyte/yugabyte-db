@@ -19,6 +19,7 @@
 #include "dumputils.h"
 #include "fe_utils/string_utils.h"
 
+static const char restrict_chars[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 static bool parseAclItem(const char *item, const char *type,
 						 const char *name, const char *subname, int remoteVersion,
@@ -103,7 +104,8 @@ buildACLCommands(PGconn *yb_conn,
 				 const char *name, const char *subname, const char *nspname,
 				 const char *type, const char *acls, const char *baseacls,
 				 const char *owner, const char *prefix, int remoteVersion,
-				 bool yb_dump_role_checks, PQExpBuffer sql)
+				 bool yb_dump_role_checks, const char *yb_restrict_key,
+				 PQExpBuffer sql)
 {
 	bool		ok = true;
 	char	  **aclitems = NULL;
@@ -243,7 +245,7 @@ buildACLCommands(PGconn *yb_conn,
 				/* if ALTER DEFAULT PRIVILEGES FOR ROLE case */
 									(*prefix != '\0' && owner) ? owner : NULL,	/* role2 */
 									NULL,	/* role3 */
-									firstsql);
+									firstsql, yb_restrict_key);
 				destroyPQExpBuffer(yb_sql);
 			}
 		}
@@ -344,7 +346,7 @@ buildACLCommands(PGconn *yb_conn,
 										yb_need_session_auth ? grantor->data : NULL,	/* role2 */
 					/* ALTER DEFAULT PRIVILEGES FOR ROLE case */
 										(*prefix != '\0' && owner) ? owner : NULL,	/* role3 */
-										thissql);
+										thissql, yb_restrict_key);
 					destroyPQExpBuffer(yb_sql);
 				}
 			}
@@ -396,7 +398,8 @@ buildDefaultACLCommands(PGconn *yb_conn,
 						const char *type, const char *nspname,
 						const char *acls, const char *acldefault,
 						const char *owner, int remoteVersion,
-						bool yb_dump_role_checks, PQExpBuffer sql)
+						bool yb_dump_role_checks, const char *yb_restrict_key,
+						PQExpBuffer sql)
 {
 	PQExpBuffer prefix;
 
@@ -419,7 +422,8 @@ buildDefaultACLCommands(PGconn *yb_conn,
 	 */
 	if (!buildACLCommands(yb_conn, "", NULL, NULL, type,
 						  acls, acldefault, owner,
-						  prefix->data, remoteVersion, yb_dump_role_checks, sql))
+						  prefix->data, remoteVersion, yb_dump_role_checks,
+						  yb_restrict_key, sql))
 	{
 		destroyPQExpBuffer(prefix);
 		return false;
@@ -441,7 +445,8 @@ void
 YBWwrapInRoleChecks(PGconn *conn,
 					PQExpBuffer sql, const char *op_name,
 					const char *role_name1, const char *role_name2,
-					const char *role_name3, PQExpBuffer result)
+					const char *role_name3, PQExpBuffer result,
+					const char *yb_restrict_key)
 {
 	/* Treat empty-string role names same as NULL. */
 	const char *role1 = (role_name1 && *role_name1 == '\0' ? NULL : role_name1);
@@ -470,6 +475,7 @@ YBWwrapInRoleChecks(PGconn *conn,
 	if (role1)
 	{
 		/* Expecting role1 is not NULL. */
+		ybAppendUnrestrict(result, yb_restrict_key);
 		appendPQExpBufferStr(result, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ");
 		appendStringLiteralConn(result, role1, conn);
 
@@ -487,6 +493,7 @@ YBWwrapInRoleChecks(PGconn *conn,
 
 		appendPQExpBufferStr(result, ") AS role_exists \\gset\n"
 							 "\\if :role_exists\n");
+		ybAppendRestrict(result, yb_restrict_key);
 
 		/* Replace "<str>EOL" by "<indent><str>EOL". */
 		const char *str = sql->data;
@@ -505,6 +512,7 @@ YBWwrapInRoleChecks(PGconn *conn,
 		if (*str != '\0')
 			appendPQExpBuffer(result, "    %s\n", str);
 
+		ybAppendUnrestrict(result, yb_restrict_key);
 		appendPQExpBuffer(result, "\\else\n"
 						  "    \\echo 'Skipping %s due to missing role:' %s",
 						  op_name, fmtId(role1));
@@ -513,7 +521,9 @@ YBWwrapInRoleChecks(PGconn *conn,
 		if (role3)
 			appendPQExpBuffer(result, " 'OR' %s", fmtId(role3));
 
-		appendPQExpBufferStr(result, "\n\\endif\n\n");
+		appendPQExpBufferStr(result, "\n\\endif\n");
+		ybAppendRestrict(result, yb_restrict_key);
+		appendPQExpBufferChar(result, '\n');
 	}
 	else						/* NO not empty roles - skip role checks. */
 		appendPQExpBuffer(result, "%s", sql->data);
@@ -981,7 +991,8 @@ void
 makeAlterConfigCommand(PGconn *conn, const char *configitem,
 					   const char *type, const char *name,
 					   const char *type2, const char *name2,
-					   bool yb_dump_role_checks, PQExpBuffer yb_outbuf)
+					   bool yb_dump_role_checks, const char *yb_restrict_key,
+					   PQExpBuffer yb_outbuf)
 {
 	char	   *mine;
 	char	   *pos;
@@ -1047,11 +1058,69 @@ makeAlterConfigCommand(PGconn *conn, const char *configitem,
 							name,	/* role1 */
 							NULL,	/* role2 */
 							NULL,	/* role3 */
-							yb_outbuf);
+							yb_outbuf, yb_restrict_key);
 	}
 	else
 		appendPQExpBuffer(yb_outbuf, "%s", buf->data);
 
 	destroyPQExpBuffer(buf);
 	pg_free(mine);
+}
+
+/*
+ * Generates a valid restrict key (i.e., an alphanumeric string) for use with
+ * psql's \restrict and \unrestrict meta-commands.  For safety, the value is
+ * chosen at random.
+ */
+char *
+generate_restrict_key(void)
+{
+	uint8		buf[64];
+	char	   *ret = palloc(sizeof(buf));
+
+	if (!pg_strong_random(buf, sizeof(buf)))
+		return NULL;
+
+	for (int i = 0; i < sizeof(buf) - 1; i++)
+	{
+		uint8		idx = buf[i] % strlen(restrict_chars);
+
+		ret[i] = restrict_chars[idx];
+	}
+	ret[sizeof(buf) - 1] = '\0';
+
+	return ret;
+}
+
+/*
+ * Checks that a given restrict key (intended for use with psql's \restrict and
+ * \unrestrict meta-commands) contains only alphanumeric characters.
+ */
+bool
+valid_restrict_key(const char *restrict_key)
+{
+	return restrict_key != NULL &&
+		restrict_key[0] != '\0' &&
+		strspn(restrict_key, restrict_chars) == strlen(restrict_key);
+}
+
+/*
+ * YB: upstream (CVE-2025-8714) wraps plain-text dumps in psql restricted mode
+ * (\restrict), which rejects all backslash meta-commands. YB's own control-flow
+ * meta-commands (\if/\else/\endif/\set/\gset/\echo) must run outside
+ * restricted mode; bracket each such block with these. No-op when there is no
+ * restrict key. Shared by pg_dump and pg_dumpall.
+ */
+void
+ybAppendUnrestrict(PQExpBuffer buf, const char *restrict_key)
+{
+	if (restrict_key)
+		appendPQExpBuffer(buf, "\\unrestrict %s\n", restrict_key);
+}
+
+void
+ybAppendRestrict(PQExpBuffer buf, const char *restrict_key)
+{
+	if (restrict_key)
+		appendPQExpBuffer(buf, "\\restrict %s\n", restrict_key);
 }

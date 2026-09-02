@@ -283,6 +283,7 @@ dumpOptionsFromRestoreOptions(RestoreOptions *ropt)
 	dopt->include_everything = ropt->include_everything;
 	dopt->enable_row_security = ropt->enable_row_security;
 	dopt->sequence_data = ropt->sequence_data;
+	dopt->restrict_key = ropt->restrict_key ? pg_strdup(ropt->restrict_key) : NULL;
 
 	return dopt;
 }
@@ -538,6 +539,17 @@ RestoreArchive(Archive *AHX)
 		SetOutput(AH, ropt->filename, ropt->compression);
 
 	ahprintf(AH, "--\n-- YSQL database dump\n--\n\n");
+
+	/*
+	 * If generating plain-text output, enter restricted mode to block any
+	 * unexpected psql meta-commands.  A malicious source might try to inject
+	 * a variety of things via bogus responses to queries.  While we cannot
+	 * prevent such sources from affecting the destination at restore time, we
+	 * can block psql meta-commands so that the client machine that runs psql
+	 * with the dump output remains unaffected.
+	 */
+	if (ropt->restrict_key)
+		ahprintf(AH, "\\restrict %s\n\n", ropt->restrict_key);
 
 	if (AH->archiveRemoteVersion)
 		ahprintf(AH, "-- Dumped from database version %s\n",
@@ -821,6 +833,14 @@ RestoreArchive(Archive *AHX)
 		dumpTimestamp(AH, "Completed on", time(NULL));
 
 	ahprintf(AH, "--\n-- YSQL database dump complete\n--\n\n");
+
+	/*
+	 * If generating plain-text output, exit restricted mode at the very end
+	 * of the script. This is not pro forma; in particular, pg_dumpall
+	 * requires this when transitioning from one database to another.
+	 */
+	if (ropt->restrict_key)
+		ahprintf(AH, "\\unrestrict %s\n\n", ropt->restrict_key);
 
 	/*
 	 * Clean up & we're done.
@@ -3301,6 +3321,35 @@ _tocEntryIsACL(TocEntry *te)
 }
 
 /*
+ * YB: ahprintf counterparts of dumputils.c's ybAppendUnrestrict and
+ * ybAppendRestrict, for bracketing YB control-flow meta-commands written
+ * straight to the archive output, like the \connect handling in
+ * _printTocEntry.  Only YB-generated, properly escaped content may appear
+ * between them.
+ *
+ * The restrict key is always set here: these callers all require
+ * --include-yb-metadata, which pg_dump accepts only for plain-text output,
+ * and plain-text output always mints a key.
+ */
+static void
+ybAppendUnrestrictAH(ArchiveHandle *AH)
+{
+	RestoreOptions *ropt = AH->public.ropt;
+
+	Assert(ropt->restrict_key);
+	ahprintf(AH, "\\unrestrict %s\n", ropt->restrict_key);
+}
+
+static void
+ybAppendRestrictAH(ArchiveHandle *AH)
+{
+	RestoreOptions *ropt = AH->public.ropt;
+
+	Assert(ropt->restrict_key);
+	ahprintf(AH, "\\restrict %s\n", ropt->restrict_key);
+}
+
+/*
  * Issue SET commands for parameters that we want to have set the same way
  * at all times during execution of a restore script.
  */
@@ -3361,18 +3410,22 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	if (AH->public.dopt->include_yb_metadata && first_run)
 	{
 		first_run = false;
+		ahprintf(AH, "\n-- Set variable use_tablespaces (if not already set)\n");
+		ybAppendUnrestrictAH(AH);
 		ahprintf(AH,
-				 "\n-- Set variable use_tablespaces (if not already set)\n"
 				 "\\if :{?use_tablespaces}\n"
 				 "\\else\n"
 				 "\\set use_tablespaces true\n"
 				 "\\endif\n");
+		ybAppendRestrictAH(AH);
+		ahprintf(AH, "\n-- Set variable use_roles (if not already set)\n");
+		ybAppendUnrestrictAH(AH);
 		ahprintf(AH,
-				 "\n-- Set variable use_roles (if not already set)\n"
 				 "\\if :{?use_roles}\n"
 				 "\\else\n"
 				 "\\set use_roles true\n"
 				 "\\endif\n");
+		ybAppendRestrictAH(AH);
 
 		/*
 		 * If the --create option is specified, the target database will be
@@ -3449,11 +3502,21 @@ _reconnectToDB(ArchiveHandle *AH, const char *dbname)
 	else
 	{
 		PQExpBufferData connectbuf;
+		RestoreOptions *ropt = AH->public.ropt;
+
+		/*
+		 * We must temporarily exit restricted mode for \connect, etc.
+		 * Anything added between this line and the following \restrict must
+		 * be careful to avoid any possible meta-command injection vectors.
+		 */
+		ahprintf(AH, "\\unrestrict %s\n", ropt->restrict_key);
 
 		initPQExpBuffer(&connectbuf);
 		appendPsqlMetaConnect(&connectbuf, dbname);
-		ahprintf(AH, "%s\n", connectbuf.data);
+		ahprintf(AH, "%s", connectbuf.data);
 		termPQExpBuffer(&connectbuf);
+
+		ahprintf(AH, "\\restrict %s\n\n", ropt->restrict_key);
 	}
 
 	/*
@@ -3640,11 +3703,16 @@ _selectTablespace(ArchiveHandle *AH, const char *tablespace)
 		PQclear(res);
 	}
 	else if (AH->public.dopt->include_yb_metadata)
-		ahprintf(AH,
-				 "\\if :use_tablespaces\n"
-				 "    %s;\n"
-				 "\\endif\n\n",
-				 qry->data);
+	{
+		ybAppendUnrestrictAH(AH);
+		ahprintf(AH, "\\if :use_tablespaces\n");
+		ybAppendRestrictAH(AH);
+		ahprintf(AH, "    %s;\n", qry->data);
+		ybAppendUnrestrictAH(AH);
+		ahprintf(AH, "\\endif\n");
+		ybAppendRestrictAH(AH);
+		ahprintf(AH, "\n");
+	}
 	else
 		ahprintf(AH, "%s;\n\n", qry->data);
 
@@ -4025,25 +4093,34 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 
 			if (AH->public.dopt->include_yb_metadata)
 			{
+				ybAppendUnrestrictAH(AH);
 				ahprintf(AH, "\\if :use_roles\n");
+				ybAppendRestrictAH(AH);
 				if (AH->public.dopt->yb_dump_role_checks)
 				{
 					PQExpBuffer role_buf = createPQExpBuffer();
 
 					appendStringLiteralAHX(role_buf, eff_owner, AH);
+					ybAppendUnrestrictAH(AH);
 					ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
 							 ") AS role_exists \\gset\n"
-							 "\\if :role_exists\n"
-							 "    %s\n"
-							 "\\else\n"
+							 "\\if :role_exists\n", role_buf->data);
+					ybAppendRestrictAH(AH);
+					ahprintf(AH, "    %s\n", temp->data);
+					ybAppendUnrestrictAH(AH);
+					ahprintf(AH, "\\else\n"
 							 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
-							 "\\endif\n", role_buf->data, temp->data, fmtId(eff_owner));
+							 "\\endif\n", fmtId(eff_owner));
+					ybAppendRestrictAH(AH);
 					destroyPQExpBuffer(role_buf);
 				}
 				else
 					ahprintf(AH, "    %s\n", temp->data);
 
-				ahprintf(AH, "\\endif\n\n");
+				ybAppendUnrestrictAH(AH);
+				ahprintf(AH, "\\endif\n");
+				ybAppendRestrictAH(AH);
+				ahprintf(AH, "\n");
 			}
 			else
 				ahprintf(AH, "%s\n\n", temp->data);

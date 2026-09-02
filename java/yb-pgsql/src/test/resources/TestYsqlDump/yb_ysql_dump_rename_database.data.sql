@@ -2,6 +2,8 @@
 -- YSQL database dump
 --
 
+\restrict test
+
 -- Dumped from database version 15.12-YB-2.31.0.0-b0
 -- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
 
@@ -26,16 +28,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 --
 -- Name: rename_db_tgt; Type: DATABASE; Schema: -; Owner: yugabyte_test
@@ -44,11 +50,17 @@ SET row_security = off;
 CREATE DATABASE rename_db_tgt WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER DATABASE rename_db_tgt OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \connect rename_db_tgt
+\restrict test
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -90,12 +102,18 @@ COMMENT ON DATABASE rename_db_tgt IS 'rename_database test source';
 --
 
 ALTER DATABASE rename_db_tgt SET "TimeZone" TO 'UTC';
+\unrestrict test
 \if :use_roles
+\restrict test
 ALTER ROLE yugabyte_test IN DATABASE rename_db_tgt SET search_path TO 'public';
+\unrestrict test
 \endif
+\restrict test
 
 
+\unrestrict test
 \connect rename_db_tgt
+\restrict test
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -142,13 +160,21 @@ CREATE SEQUENCE public.s
     CACHE 1;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.s OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = '';
+\unrestrict test
 \endif
+\restrict test
 
 SET default_table_access_method = heap;
 
@@ -182,9 +208,13 @@ CREATE TABLE public.t (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.t OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: vw; Type: VIEW; Schema: public; Owner: yugabyte_test
@@ -208,9 +238,13 @@ CREATE VIEW public.vw AS
    FROM public.t;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.vw OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Data for Name: t; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
@@ -259,33 +293,45 @@ CREATE INDEX NONCONCURRENTLY t_v_idx ON public.t USING lsm (v HASH) SPLIT INTO 3
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
@@ -319,4 +365,6 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 
