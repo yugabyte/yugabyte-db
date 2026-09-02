@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMethods } from 'react-use';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -37,10 +37,14 @@ import './styles/override.css';
 
 import YBLogo from '../../../assets/yb_logo.svg';
 import Close from '../../../assets/close rounded.svg';
+import { CircularProgress } from '@material-ui/core';
 
 const { YBButton } = yba;
 
 const { Grid2: Grid, Typography, Box, styled } = mui;
+
+/** Absorbs a physical double-click when validation fails and activeStep does not change. */
+const NAVIGATION_UNLOCK_FALLBACK_MS = 300;
 
 const CreateUniverseRoot = styled('div')(() => ({
   '& .full-height-container': {
@@ -78,6 +82,24 @@ export function CreateUniverse() {
     isK8s
   ]);
   const currentStepRef = useRef<StepsRef>(null);
+  // Sync lock prevents double-click from advancing activeStep twice before React re-renders.
+  const isNavigatingRef = useRef(false);
+  const navigationUnlockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  const clearNavigationLock = () => {
+    if (navigationUnlockTimeoutRef.current !== null) {
+      clearTimeout(navigationUnlockTimeoutRef.current);
+      navigationUnlockTimeoutRef.current = null;
+    }
+    isNavigatingRef.current = false;
+    setIsNavigating(false);
+  };
+
+  // Successful Next/Back clears the lock when the step actually changes.
+  useEffect(() => {
+    clearNavigationLock();
+  }, [activeStep]);
 
   // Prefetch providers + DB versions in parallel so step 1 reuses the same cache.
   const { isLoading } = useQuery(
@@ -89,10 +111,24 @@ export function CreateUniverse() {
   const getButtonLabel = (resType: ResilienceType | undefined, actStep: number) => {
     if (resType === ResilienceType.SINGLE_NODE) {
       if (actStep === 8) return t('create', { keyPrefix: 'common' });
-      else return t(actStep === 7 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
-    } else {
-      if (actStep === 9) return t('create', { keyPrefix: 'common' });
-      else return t(actStep === 8 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
+      return t(actStep === 7 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
+    }
+    if (actStep === 9) return t('create', { keyPrefix: 'common' });
+    return t(actStep === 8 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
+  };
+
+  const runStepNavigation = async (action: () => void | Promise<boolean | void>) => {
+    if (isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
+    setIsNavigating(true);
+    try {
+      await action();
+    } finally {
+      // Keep the lock until activeStep changes (success) or this fallback fires (validation failed).
+      navigationUnlockTimeoutRef.current = setTimeout(
+        clearNavigationLock,
+        NAVIGATION_UNLOCK_FALLBACK_MS
+      );
     }
   };
 
@@ -185,9 +221,9 @@ export function CreateUniverse() {
                       <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>
                         <YBButton
                           onClick={() => {
-                            currentStepRef.current?.onPrev();
+                            void runStepNavigation(() => currentStepRef.current?.onPrev());
                           }}
-                          disabled={activeStep === 1}
+                          disabled={activeStep === 1 || isNavigating}
                           variant="secondary"
                           size="large"
                           dataTestId="create-universe-back-button"
@@ -196,8 +232,10 @@ export function CreateUniverse() {
                         </YBButton>
                         <YBButton
                           onClick={() => {
-                            currentStepRef.current?.onNext();
+                            void runStepNavigation(() => currentStepRef.current?.onNext());
                           }}
+                          disabled={isNavigating}
+                          endIcon={isNavigating ? <CircularProgress size={12} /> : undefined}
                           variant="ybaPrimary"
                           size="large"
                           dataTestId="create-universe-next-button"
