@@ -250,10 +250,17 @@ DEPRECATE_FLAG(uint32, ysql_min_new_version_ignored_count, "2026_05");
 DEFINE_RUNTIME_uint32(ysql_stale_catalog_version_min_seconds, 30,
     "Minimum duration in seconds that a tserver may receive only older per-db catalog versions "
     "(without ever seeing an advance) from the master before crashing itself to resync. A "
-    "random per-episode threshold is picked from [min, min+150]. Replaces the count-based check "
+    "random per-episode threshold is picked from [min, min + "
+    "ysql_stale_catalog_version_random_extra_seconds]. Replaces the count-based check "
     "controlled by ysql_min_new_version_ignored_count, which was sensitive to heartbeat "
     "frequency (a burst of zero-delay heartbeats could trip the count even though the master "
     "had only been stale for tens of milliseconds).");
+
+DEFINE_RUNTIME_uint32(ysql_stale_catalog_version_random_extra_seconds, 150,
+    "Width of the random window added on top of ysql_stale_catalog_version_min_seconds when "
+    "picking a per-episode fatal threshold. The randomization exists so that all tservers do "
+    "not crash at the same moment. Set to 0 to make the threshold exactly "
+    "ysql_stale_catalog_version_min_seconds, which tests use to bound their runtime.");
 
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 
@@ -1675,7 +1682,8 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
             existing_entry.stale_fatal_threshold =
                 MonoDelta::FromSeconds(RandomUniformInt<uint32_t>(
                     FLAGS_ysql_stale_catalog_version_min_seconds,
-                    FLAGS_ysql_stale_catalog_version_min_seconds + 150));
+                    FLAGS_ysql_stale_catalog_version_min_seconds +
+                        FLAGS_ysql_stale_catalog_version_random_extra_seconds));
           }
           const auto stale_for = MonoTime::Now() - existing_entry.stale_since;
           const bool fatal = stale_for >= existing_entry.stale_fatal_threshold;

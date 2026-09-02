@@ -3952,6 +3952,113 @@ TEST_F(PgCatalogVersionTest, RelcacheInitFileRevalidationRace) {
   ASSERT_GT(revalidated, 0);
 }
 
+// Exercises the interaction between the two master paths that publish catalog versions: the
+// heartbeat cache (refreshed by a background task) and the ReleaseObjectLocksGlobal broadcast on
+// DDL commit, which reads pg_yb_catalog_version directly and bypasses that cache. Object locking
+// must be on, since without it there is no broadcast.
+class PgCatalogVersionFrozenCacheTest : public PgCatalogVersionTest {
+ protected:
+  // The fatal threshold, in seconds before scaling. Exact rather than random because the fixture
+  // zeroes ysql_stale_catalog_version_random_extra_seconds, so the test does not have to wait out
+  // the default [30, 180] s window.
+  //
+  // Must stay comfortably above one heartbeat interval: with the fix in place a heartbeat already
+  // in flight when a DDL commits can still deliver the pre-commit version, opening a transient
+  // stale episode that the next heartbeat closes. That benign race has been observed lasting
+  // ~1.1 s in a healthy cluster, so a 1 s threshold would make this test crash the very tserver
+  // it is asserting stays alive. Scaled by kTimeMultiplier so sanitizer builds, where everything
+  // runs ~3x slower, keep proportional headroom.
+  static constexpr int kThresholdSecs = 5;
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--enable_heartbeat_pg_catalog_versions_cache=true");
+    options->extra_master_flags.push_back("--TEST_log_catalog_version_cache_events=true");
+
+    // The broadcast under test only happens with object locking enabled, which in turn requires
+    // DDL transaction blocks and invalidation messages.
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      flags->push_back("--enable_object_locking_for_table_locks=true");
+      flags->push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+      flags->push_back("--ysql_yb_enable_invalidation_messages=true");
+    }
+
+    // Make the staleness check fire fast and deterministically, so the test does not have to wait
+    // out the production window to observe a pre-fix crash.
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_stale_catalog_version_min_seconds=$0", kThresholdSecs * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(
+        "--ysql_stale_catalog_version_random_extra_seconds=0");
+  }
+};
+
+// Regression test for the tserver FATAL "Ignoring ysql db catalog version update: new version too
+// old". While the master's catalog versions cache is stale, the DDL-commit
+// ReleaseObjectLocksGlobal broadcast still reads pg_yb_catalog_version directly and pushes every
+// tserver forward. If that broadcast does not also feed the cache, heartbeats keep reporting the
+// stale version, and the tserver reads its own (correct, master-supplied) version as divergence
+// and crashes.
+//
+// Restarting clears the tserver's map but not the master's cache, so the next DDL commit's
+// broadcast re-establishes the same divergence. Whether it crashes a second time then depends on a
+// quiet DDL gap exceeding a fresh random threshold.
+//
+// Before the fix this crashes a tserver a second or two after the first DDL below. After it, the
+// broadcast installs its snapshot into the cache, so the heartbeat never regresses.
+TEST_F(
+    PgCatalogVersionFrozenCacheTest, BroadcastKeepsFrozenCacheFromCrashingTserver) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+
+  // Let the cache populate at least once, so the freeze below leaves it populated-but-stale
+  // rather than empty. An empty cache makes the heartbeat send no catalog versions at all, which
+  // would not reproduce the divergence.
+  auto cache_ready = cluster_->GetMasterLogWaiter("RefreshPgCatalogVersionCache: cache refreshed");
+  ASSERT_OK(cache_ready.WaitFor(60s * kTimeMultiplier));
+
+  // Freeze the cache against *every* refresh path. TEST_simulate_catalog_version_refresh_failure
+  // is not sufficient here: it only stops the periodic task, while ysql_ddl_handler refreshes the
+  // cache on demand at each DDL commit, so the cache would never actually fall behind the table.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_pg_catalog_versions_cache_refresh", "true"));
+
+  const auto versions_before = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn));
+
+  // Advance the catalog version several times. Each DDL commit broadcasts the new version to all
+  // tservers, moving them past whatever the frozen cache holds.
+  constexpr int kNumDdls = 5;
+  for (int i = 0; i != kNumDdls; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t ADD COLUMN c$0 INT", i));
+  }
+
+  // The test's own precondition check: if pg_yb_catalog_version did not actually advance, nothing
+  // could have pushed a tserver past the frozen cache and the scenario under test was never
+  // reached. Failing here rather than passing vacuously is the point.
+  const auto versions_after = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn));
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  ASSERT_TRUE(versions_before.contains(db_oid) && versions_after.contains(db_oid))
+      << "pg_yb_catalog_version has no row for db " << db_oid;
+  ASSERT_GT(versions_after.at(db_oid).current_version,
+            versions_before.at(db_oid).current_version)
+      << "Catalog version did not advance across " << kNumDdls << " DDLs, so this test is not "
+      << "exercising the bug";
+
+  // No further DDL runs from here, so nothing resets the staleness window. Wait out several
+  // multiples of the (already scaled) threshold, so a tserver that is going to abort has ample
+  // opportunity to do so before the assertions below.
+  SleepFor(1s * (kThresholdSecs + 10) * kTimeMultiplier);
+
+  // The pre-fix failure mode is a tserver process aborting on tablet_server.cc's staleness check.
+  cluster_->AssertNoCrashes();
+
+  // And the cluster must still be usable: a fresh connection performs catalog reads, and DDL
+  // still works, which would not hold if a tserver had been lost.
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn2.Execute("ALTER TABLE t ADD COLUMN c_final INT"));
+  ASSERT_OK(conn2.Fetch("SELECT * FROM t LIMIT 1"));
+}
+
 class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {

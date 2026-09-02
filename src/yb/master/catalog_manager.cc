@@ -583,6 +583,14 @@ DEFINE_test_flag(int32, delay_split_registration_secs, 0,
 
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 
+DEFINE_test_flag(bool, pause_pg_catalog_versions_cache_refresh, false,
+    "When true, RefreshPgCatalogVersionCache() returns without doing anything, for both its "
+    "periodic caller and the on-demand caller at DDL commit "
+    "(ysql_ddl_handler.cc). TEST_simulate_catalog_version_refresh_failure only stops the "
+    "periodic task, which is not enough to make the cache fall behind: every DDL commit "
+    "refreshes it on demand. Tests that need a cache genuinely behind pg_yb_catalog_version "
+    "must use this flag.");
+
 DEFINE_NON_RUNTIME_bool(enable_heartbeat_pg_catalog_versions_cache, true,
     "Whether to enable the use of heartbeat catalog versions cache for the "
     "pg_yb_catalog_version table which can help to reduce the number of reads "
@@ -11132,18 +11140,21 @@ Status CatalogManager::GetYsqlDBCatalogVersion(
   return Status::OK();
 }
 
-Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions) {
+Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(
+    DbOidToCatalogVersionMap* versions, HybridTime* out_read_ht) {
   // pg_yb_catalog_version exists in every steady-state YSQL-enabled cluster (created during
   // initdb). The only caller that may invoke this before the table exists is the initdb path
   // (Master::get_ysql_db_oid_to_cat_version_info_map), which gates this call on a GetTableInfo
   // check itself. Reading directly here avoids a SharedLock on the catalog manager's main
   // mutex_ on every heartbeat-rate refresh.
-  return sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId, versions);
+  return sys_catalog_->ReadYsqlAllDBCatalogVersions(
+      kPgYbCatalogVersionTableId, versions, out_read_ht);
 }
 
 // Note: versions and fingerprint are outputs.
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
-    bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) {
+    bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint,
+    HybridTime* out_read_ht) {
   if (use_cache) {
     SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
     // Callers that opt into the cache accept stale (but bounded) versions. Today this includes
@@ -11166,7 +11177,7 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
   }
   // Cannot use cached data, or the cache has never been initialized yet, read
   // from pg_yb_catalog_version table.
-  RETURN_NOT_OK(GetYsqlAllDBCatalogVersionsImpl(versions));
+  RETURN_NOT_OK(GetYsqlAllDBCatalogVersionsImpl(versions, out_read_ht));
   if (fingerprint) {
     *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
     VLOG_WITH_FUNC(3) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
@@ -14305,12 +14316,11 @@ void CatalogManager::EnqueuePendingBackfillsAfterLoad() {
 }
 
 void CatalogManager::ResetCachedCatalogVersions() {
-  // We use the refresh mutex_ to serialize on-demand callers from DDL commit
-  // against periodic runs, otherwise we can have catalog version in this cache
-  // go back after a DDL commit (which isn't a critical error but nice to prevent)
-  // or versions get repopulated after a reset from leader stepdown
-  LockGuard refresh_lock(refresh_pg_catalog_versions_cache_mutex_);
   LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+  // Invariant: all the pieces of heartbeat catalog-versions cache state below are reset
+  // together here. They are not independent, and clearing only a subset has already been a bug
+  // once: #33596 left the fingerprint behind, which suppressed the next invalidation-messages
+  // re-read. Any state added to this cache must be reset here too.
   if (heartbeat_pg_catalog_versions_cache_) {
     heartbeat_pg_catalog_versions_cache_->clear();
   }
@@ -14323,24 +14333,89 @@ void CatalogManager::ResetCachedCatalogVersions() {
   // Reset to empty map to distinguish it from std::nullopt which means last periodic reading
   // of pg_yb_invalidation_messages has failed.
   heartbeat_pg_inval_messages_cache_ = DbOidVersionToMessageListMap();
+  // Must also be cleared, or the first install after this reset is rejected as carrying an older
+  // snapshot than the one we just discarded, and the cache stays empty.
+  heartbeat_pg_catalog_versions_cache_read_ht_ = HybridTime::kInvalid;
+  ++heartbeat_pg_catalog_versions_cache_generation_;
   LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
-      << "ResetCachedCatalogVersions: cache reset";
+      << "ResetCachedCatalogVersions: cache reset, generation: "
+      << heartbeat_pg_catalog_versions_cache_generation_;
+}
+
+uint64_t CatalogManager::GetPgCatalogVersionsCacheGeneration() const {
+  SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+  return heartbeat_pg_catalog_versions_cache_generation_;
+}
+
+bool CatalogManager::InstallPgCatalogVersionsSnapshot(
+    uint64_t generation, HybridTime read_ht, DbOidToCatalogVersionMap versions,
+    uint64_t fingerprint, bool update_messages,
+    std::optional<DbOidVersionToMessageListMap> messages) {
+  if (!read_ht.is_valid()) {
+    // Callers must pass the read time of an actual read. Installing an invalid one would both
+    // install out of order -- HybridTime::kInvalid is kMax - 1, so it beats every real snapshot
+    // in the comparison below -- and then disarm that comparison for the following install.
+    // Note GetYsqlAllDBCatalogVersions() leaves its out_read_ht untouched on a cache hit, so
+    // only a use_cache=false read supplies a usable one.
+    LOG_WITH_FUNC(DFATAL) << "Refusing to install a catalog versions snapshot with no read time";
+    return false;
+  }
+  LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+  if (generation != heartbeat_pg_catalog_versions_cache_generation_) {
+    // The cache was reset after this snapshot was read, i.e. we lost leadership in between.
+    // Installing now would undo that reset, and the data is from before another master took over.
+    // Logged at INFO, not VLOG: the generation only moves on a leader stepdown, so this fires at
+    // most once per in-flight install per stepdown, and it is what explains a cache that stays
+    // empty across a failover.
+    LOG_WITH_FUNC(INFO) << "Skipping install: cache generation moved from " << generation << " to "
+                        << heartbeat_pg_catalog_versions_cache_generation_;
+    return false;
+  }
+  // The is_valid() test is required, not defensive: HybridTime::kInvalid is kMax - 1, so an unset
+  // heartbeat_pg_catalog_versions_cache_read_ht_ compares as nearly maximal rather than as "older
+  // than everything". Dropping it would reject every install, leaving the cache permanently empty
+  // on a fresh master and after every ResetCachedCatalogVersions(), which are the only two states
+  // where heartbeat_pg_catalog_versions_cache_read_ht_ is invalid.
+  if (heartbeat_pg_catalog_versions_cache_read_ht_.is_valid() &&
+      read_ht <= heartbeat_pg_catalog_versions_cache_read_ht_) {
+    // An equal or newer snapshot is already installed. Dropping this one is what keeps the cache
+    // monotonic, and it is also correct for the caller that broadcast this snapshot to tservers:
+    // what is installed is at least as new, so the cache cannot report below the broadcast.
+    VLOG_WITH_FUNC(2) << "Skipping install of snapshot at " << read_ht << ", cache holds "
+                      << heartbeat_pg_catalog_versions_cache_read_ht_;
+    return false;
+  }
+  heartbeat_pg_catalog_versions_cache_ = std::move(versions);
+  heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
+  heartbeat_pg_catalog_versions_cache_read_ht_ = read_ht;
+  if (update_messages) {
+    // nullopt marks the messages unavailable so the next refresh re-reads them; the versions
+    // above are unaffected, since messages are only an optimization on top of them.
+    heartbeat_pg_inval_messages_cache_ = std::move(messages);
+  }
+  LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
+      << "InstallPgCatalogVersionsSnapshot: installed snapshot at " << read_ht
+      << ", databases: " << heartbeat_pg_catalog_versions_cache_->size();
+  return true;
 }
 
 bool CatalogManager::RefreshPgCatalogVersionCache() {
-  // We use the refresh mutex_ to serialize on-demand callers from DDL commit
-  // against periodic runs, otherwise we can have catalog version in this cache
-  // go back after a DDL commit (which isn't a critical error but nice to prevent)
-  // or versions get repopulated after a reset from leader stepdown
-  LockGuard refresh_lock(refresh_pg_catalog_versions_cache_mutex_);
+  if (PREDICT_FALSE(FLAGS_TEST_pause_pg_catalog_versions_cache_refresh)) {
+    return false;
+  }
   if (!ysql_manager_->IsPgCatalogVersionsBgTaskRunning()) {
     // This can happen when an on-demand call from ysql_ddl_handler runs
     // while leader stepdown stops the periodic run.
     VLOG_WITH_FUNC(2) << "Skipping refresh: catalog versions bg task not running";
     return false;
   }
+  // Must be captured before the read: nothing serializes this function against a concurrent reset,
+  // so the generation is what lets the install below notice that one happened in between and drop
+  // this snapshot rather than resurrecting a cache that a stepdown deliberately cleared.
+  const auto generation = GetPgCatalogVersionsCacheGeneration();
   DbOidToCatalogVersionMap versions;
-  Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
+  HybridTime read_ht;
+  Status s = GetYsqlAllDBCatalogVersionsImpl(&versions, &read_ht);
   if (!s.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 20) << "Catalog versions refresh failed: " << s.ToString();
     // Keep the existing cache intact; stale data is preferable to forcing every
@@ -14378,32 +14453,20 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
     }
   }
 
-  {
-    LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
-    if (heartbeat_pg_catalog_versions_cache_) {
-      heartbeat_pg_catalog_versions_cache_->swap(versions);
-    } else {
-      heartbeat_pg_catalog_versions_cache_ = std::move(versions);
-    }
-    heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
-    LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
-        << "RefreshPgCatalogVersionCache: cache refreshed, databases: "
-        << heartbeat_pg_catalog_versions_cache_->size();
-
-    if (FLAGS_ysql_yb_enable_invalidation_messages && changed) {
-      if (messages_refresh_failed) {
-        heartbeat_pg_inval_messages_cache_ = std::nullopt;
-      } else {
-        VLOG_WITH_FUNC(2) << "Refreshed " << messages->size()
-                          << " catalog inval messages in memory";
-        if (heartbeat_pg_inval_messages_cache_) {
-          heartbeat_pg_inval_messages_cache_->swap(*messages);
-        } else {
-          heartbeat_pg_inval_messages_cache_ = std::move(*messages);
-        }
-      }
-    }
+  const bool update_messages = FLAGS_ysql_yb_enable_invalidation_messages && changed;
+  // Left as nullopt when the messages read failed, which marks them unavailable so the next
+  // refresh retries; the catalog versions are installed either way, since messages are only an
+  // optimization on top of them.
+  std::optional<DbOidVersionToMessageListMap> messages_to_install;
+  if (update_messages && !messages_refresh_failed) {
+    VLOG_WITH_FUNC(2) << "Refreshed " << messages->size() << " catalog inval messages in memory";
+    messages_to_install = std::move(messages);
   }
+  const bool installed = InstallPgCatalogVersionsSnapshot(
+      generation, read_ht, std::move(versions), fingerprint, update_messages,
+      std::move(messages_to_install));
+  LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
+      << "RefreshPgCatalogVersionCache: cache refreshed, installed: " << installed;
 
   return !messages_refresh_failed;
 }
