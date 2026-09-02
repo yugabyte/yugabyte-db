@@ -18,6 +18,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 
 DEFINE_NON_RUNTIME_bool(docdb_enable_sst_stats_collector, false,
@@ -72,11 +73,9 @@ Result<AgeBandCounts> SplitCounts(const std::string& text) {
   const auto parts = StringSplit(text, ',');
   SCHECK_EQ(parts.size(), result.size(), Corruption, Format("Expected 8 age bands in '$0'", text));
   for (size_t i = 0; i < parts.size(); ++i) {
-    try {
-      result[i] = std::stoull(parts[i]);
-    } catch (const std::exception& e) {
-      return STATUS_FORMAT(Corruption, "Malformed age band '$0': $1", parts[i], e.what());
-    }
+    // CheckedStoull rejects signs, empty input and trailing garbage, unlike std::stoull.
+    result[i] = VERIFY_RESULT_PREPEND(
+        CheckedStoull(Slice(parts[i])), Format("Malformed age band '$0'", parts[i]));
   }
   return result;
 }
@@ -110,15 +109,15 @@ Result<std::map<std::string, CoprefixSubtotal>> ParseCoprefixSubtotals(const std
     }
     const auto fields = StringSplit(item, ':');
     SCHECK_EQ(fields.size(), 5, Corruption, Format("Malformed coprefix subtotal '$0'", item));
-    try {
-      auto& subtotal = result[strings::a2b_hex(fields[0])];
-      subtotal.entries = std::stoull(fields[1]);
-      subtotal.tombstone_entries = std::stoull(fields[2]);
-      subtotal.reclaimable_entries = std::stoull(fields[3]);
-      subtotal.rows = std::stoull(fields[4]);
-    } catch (const std::exception& e) {
-      return STATUS_FORMAT(Corruption, "Malformed coprefix subtotal '$0': $1", item, e.what());
-    }
+    auto& subtotal = result[strings::a2b_hex(fields[0])];
+    const auto parse = [&item](const std::string& field) -> Result<uint64_t> {
+      return VERIFY_RESULT_PREPEND(
+          CheckedStoull(Slice(field)), Format("Malformed coprefix subtotal '$0'", item));
+    };
+    subtotal.entries = VERIFY_RESULT(parse(fields[1]));
+    subtotal.tombstone_entries = VERIFY_RESULT(parse(fields[2]));
+    subtotal.reclaimable_entries = VERIFY_RESULT(parse(fields[3]));
+    subtotal.rows = VERIFY_RESULT(parse(fields[4]));
   }
   return result;
 }
@@ -133,12 +132,8 @@ Result<const std::string&> Get(
 Result<uint64_t> GetUint64(
     const rocksdb::UserCollectedProperties& properties, std::string_view key) {
   const auto& text = VERIFY_RESULT_REF(Get(properties, key));
-  try {
-    return std::stoull(text);
-  } catch (const std::exception& e) {
-    return STATUS_FORMAT(
-        Corruption, "Malformed SST property $0 = '$1': $2", key, text, e.what());
-  }
+  return VERIFY_RESULT_PREPEND(
+      CheckedStoull(Slice(text)), Format("Malformed SST property $0 = '$1'", key, text));
 }
 
 Result<ExponentialHistogram> GetHistogram(
