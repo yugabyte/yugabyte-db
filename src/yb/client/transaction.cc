@@ -677,6 +677,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         RequestStatusTablet(deadline);
         return;
       }
+      DropPendingStatusMovesWithoutMetadata();
       if (!transaction_status_move_handles_.empty()) {
         DCHECK(!commit_waiter_);
         VLOG_WITH_PREFIX(1) << "Waiting for transaction move RPCs to finish";
@@ -2327,6 +2328,30 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           DoSendUpdateTransactionPromotingRpcs(std::move(transaction), id);
         },
         std::chrono::milliseconds(FLAGS_TEST_txn_status_moved_rpc_send_delay_ms));
+  }
+
+  // Stops waiting on the participants whose UpdateTransaction(PROMOTING) rpc is never going to be
+  // sent. DoSendUpdateTransactionPromotingRpcs() skips a participant until one of its batches
+  // completes, so a participant whose only batches failed keeps its entry in
+  // transaction_status_move_handles_ forever and the commit waits on an rpc that never goes out.
+  //
+  // Only safe at commit time: CheckCouldCommitUnlocked() rejects a commit with running requests, so
+  // no further batch can complete. Such a participant is not part of the commit either, since
+  // DoCommit() drops tablets without metadata.
+  void DropPendingStatusMovesWithoutMetadata() REQUIRES(mutex_) {
+    for (auto it = transaction_status_move_tablets_.begin();
+         it != transaction_status_move_tablets_.end();) {
+      const auto tablet_state = tablets_.find(*it);
+      CHECK(tablet_state != tablets_.end());
+      if (tablet_state->second.has_metadata) {
+        ++it;
+        continue;
+      }
+      VLOG_WITH_PREFIX(1) << "Tablet " << *it << " has no metadata, dropping its"
+                          << " UpdateTransaction(PROMOTING) rpc";
+      transaction_status_move_handles_.erase(*it);
+      it = transaction_status_move_tablets_.erase(it);
+    }
   }
 
   void DoSendUpdateTransactionPromotingRpcs(
