@@ -26,11 +26,13 @@ ADD_YB_LIBRARY(docdb_proto
         DEPS protobuf yb_common_proto dockv_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
+# DocDB-aware SST properties collectors (see properties_collector/README.md). Added before the
+# postgres include_directories below so the subdirectory does not inherit include paths it must
+# not depend on.
+add_subdirectory(properties_collector)
+
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
-
-# DocDB-aware SST properties collectors (see properties_collector/README.md).
-add_subdirectory(properties_collector)
 
 set(DOCDB_SHARED_SRCS
         lock_util.cc

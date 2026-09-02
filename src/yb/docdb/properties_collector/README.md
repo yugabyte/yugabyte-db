@@ -2,9 +2,10 @@
 
 DocDB-aware `rocksdb::TablePropertiesCollector` implementations: code that observes every entry
 while an SST file is built (on flush and on compaction) and stores what it learned in the file's
-own properties block. Today there is one, the **SST statistics collector**, which measures garbage
-(tombstones, shadowed versions, dead rows) and its shape (chain lengths, stretches, ages). The
-directory is expected to grow other collectors.
+own properties block. The first collector, the **SST statistics collector**, measures garbage
+(tombstones, shadowed versions, dead rows) and its shape (chain lengths, stretches, ages); its code
+arrives in the changes stacked on this directory, and this README describes the component as
+designed. The directory is expected to grow other collectors.
 
 This file holds what does not fit as a comment on one class or function: why the component exists,
 the vocabulary the files share, and the design choices that cut across them. Properties, flags and
@@ -29,8 +30,11 @@ during an SST build, on every replica, whether or not anyone ever reads it.
 ## The hook
 
 `BlockBasedTableBuilder::Add` calls every registered `TablePropertiesCollector` once per entry, and
-`Finish` once when the file is complete; what the collector returns is written into the file's
-`user_collected_properties`. This is stock RocksDB: it runs an internal collector on every build,
+`Finish` when the file is complete; what the collector returns is written into the file's
+`user_collected_properties`. `Finish` is NOT called exactly once: `GetTableProperties()` invokes it
+again, under `CHECK_OK`, so a collector's `Finish` must be idempotent and must never return non-OK
+(a failure there aborts the process, not just the build). This is stock RocksDB: it runs an
+internal collector on every build,
 and upstream ships a `CompactOnDeletionCollector` on the same hook. That one is unusable here: it
 classifies native RocksDB deletion records, which DocDB never writes (a DocDB delete is a `Put`
 whose value is a tombstone marker); it stores nothing in the file, only a `NeedCompact()` boolean;
@@ -55,8 +59,10 @@ Three counters over the chain-tracked entries of a file give the classification 
 `Ec` = chain-tracked entries, `K` = distinct subdoc keys, `R` = distinct rows.
 
 - **shadowed** = `Ec - K`: entries that are not the newest version of their key. Garbage.
-- **repackable** = `K - R`: live heads beyond one per row; live data a repack would fold into one
-  packed row. **Not garbage.**
+- **repackable** = `K - R`: heads beyond one per row; a measure of what a repack would fold into
+  one packed row, not a garbage class. In a live row these heads are live data; in a dead row they
+  are also garbage (counted by reclaimable below), so repackable and reclaimable overlap there.
+  Never a trigger input either way.
 - **collapsible** = `Ec - R` = shadowed + repackable. Mixed. Never a trigger input.
 
 Recognized at scan time:
@@ -81,7 +87,8 @@ r1: [packed v3][packed v2][packed v1][col a v2][col a v1][col b v1]
 r2: [row tombstone][col a v1][col b v1]      <- head is a tombstone: the whole row is dead
 
 Ec = 9, K = 6, R = 2
-shadowed    = 3      repackable = 4 (r1.a, r1.b, r2.a, r2.b)      collapsible = 7
+shadowed    = 3      repackable = 4 (r1.a, r1.b + r2.a, r2.b, the latter two
+                                     also reclaimable via the dead row)         collapsible = 7
 dead rows   = 1      dead-row entries = 3
 reclaimable = 3 (shadowed in r1) + 3 (all of r2) = 6
 stretches   = [packed v2, packed v1] = 2, [col a v1] = 1, [r2 x 3] = 3
@@ -97,13 +104,17 @@ valid only over chain-tracked entries (meta records excluded) and only while `ch
 
 The distributions use one fixed 145-bucket layout (`ExponentialHistogram`): values 1..16 exact,
 then 8 equal sub-buckets per power-of-two range up to 2^20, then one overflow bucket. This is
-HdrHistogram's layout at the bucket count and scale convention of Prometheus native histograms and
-OpenTelemetry exponential histograms (scale 3, base `2^(1/8)`). Bucket edges are within 12.5% of
-each other; the index is one bit-scan plus a shift and a mask.
+HdrHistogram's **log-linear** layout: the same bucket count as the exponential family at scale 3,
+but boundaries linear within each power-of-two range (worst-case bucket width 12.5%, vs a uniform
+9.05% for true-geometric `2^(k/8)` edges), which is what makes the index one bit-scan plus a shift
+and a mask, no floating point. Quantiles read from bucket bounds are within 12.5%, except in the
+overflow bucket, where the error is unbounded.
 
 Merging is bucket-wise addition, exact at every rollup: file -> tablet -> table -> fleet.
-Coarsening to a lower scale is summing runs of adjacent buckets, also exact, which is what the
-serialized scale tag buys: a later scale change stays mergeable with existing files.
+Coarsening is halving the sub-bucket count within the linear family (summing adjacent pairs), also
+exact; the serialized layout tag is what keeps files from different generations mergeable if the
+sub-bucket count ever changes. The tag deliberately does not claim the OTel/Prometheus geometric
+convention, because these are not those boundaries.
 
 Why a full histogram rather than a few percentiles: percentiles of files do not compose into the
 percentile of a tablet, and the questions we will ask later ("bytes in chains longer than 64?",
@@ -111,8 +122,8 @@ percentile of a tablet, and the questions we will ask later ("bytes in chains lo
 file.
 
 Why not reuse an existing class: `yb::HdrHistogram` is built for concurrent latency recording and
-does five lock-prefixed read-modify-writes plus two CAS loops per `Add`, on a path that runs once per
-row; it also lacks merge and bucket export. `rocksdb::HistogramImpl` merges, but its bucket table is
+does five lock-prefixed read-modify-writes plus two CAS loops per `Add`, on a path that runs once
+per row; it also lacks a merge operation. `rocksdb::HistogramImpl` merges, but its bucket table is
 one process-global constant shared by every RocksDB latency histogram, so it can be neither given
 this layout nor coarsened exactly, and each `Add` walks a `std::map`.
 
