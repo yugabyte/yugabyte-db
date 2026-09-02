@@ -43,10 +43,10 @@ On cloud service providers, use the provider's link-local time service. On-premi
 An example `chrony.conf` for an on-premises deployment with several time sources:
 
 ```
-server ntp1.example.internal prefer iburst minpoll 4 maxpoll 4
-server ntp2.example.internal prefer iburst minpoll 4 maxpoll 4
-server ntp3.example.internal prefer iburst minpoll 4 maxpoll 4
-server ntp4.example.internal prefer iburst minpoll 4 maxpoll 4
+server ntp1.example.internal prefer iburst minpoll 4 maxpoll 4 maxdelay 0.1
+server ntp2.example.internal prefer iburst minpoll 4 maxpoll 4 maxdelay 0.1
+server ntp3.example.internal prefer iburst minpoll 4 maxpoll 4 maxdelay 0.1
+server ntp4.example.internal prefer iburst minpoll 4 maxpoll 4 maxdelay 0.1
 
 minsources 2
 maxdistance 0.1
