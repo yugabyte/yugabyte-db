@@ -130,5 +130,5 @@ following the `rollback`. This shows that the user-defined run-time parameter ha
 
 ## See also
 
-- [`SHOW`](../cmd_show)
-- [`RESET`](../cmd_reset)
+- [SHOW](../cmd_show)
+- [RESET](../cmd_reset)

@@ -60,5 +60,5 @@ yugabyte=# ALTER FOREIGN TABLE my_table OPTIONS (ADD newopt1 'value1', DROP oldo
 
 ## See also
 
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table/)
-- [`DROP FOREIGN TABLE`](../ddl_drop_foreign_table/)
+- [CREATE FOREIGN TABLE](../ddl_create_foreign_table/)
+- [DROP FOREIGN TABLE](../ddl_drop_foreign_table/)

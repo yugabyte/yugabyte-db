@@ -31,5 +31,5 @@ Specify the name of a mutable run-time parameter.
 
 ## See also
 
-- [`SHOW`](../cmd_show)
-- [`SET`](../cmd_set)
+- [SHOW](../cmd_show)
+- [SET](../cmd_set)
