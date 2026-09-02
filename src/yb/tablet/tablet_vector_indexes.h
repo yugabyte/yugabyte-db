@@ -93,6 +93,11 @@ class TabletVectorIndexes :
   // Removes specified index, also destroying its data on disk.
   Status Remove(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
 
+  // Instantiates vector indexes of the given indexed table that were skipped because the indexed
+  // column was missing from the schema (see DoCreateIndex), once an alter brings the column back.
+  Status CreateSkippedIndexes(const TableInfoPtr& indexed_table, bool bootstrap)
+      EXCLUDES(vector_indexes_mutex_);
+
   // Returns a collection of vector indexes for the given vector index table ids. Returns an empty
   // list if at least one vector indexes is not found by the give table id. The order of vector
   // indexes in the returned collection is not guaranteed to be preserved.
