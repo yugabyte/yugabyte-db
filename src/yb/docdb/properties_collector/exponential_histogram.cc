@@ -19,6 +19,7 @@
 #include <limits>
 
 #include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 
 namespace yb::docdb {
@@ -104,7 +105,7 @@ uint64_t ExponentialHistogram::QuantileLowerBound(double q) const {
 }
 
 std::string ExponentialHistogram::Serialize() const {
-  std::string result = kScaleTag;
+  std::string result = kLayoutTag;
   bool first = true;
   for (size_t i = 0; i < kNumBuckets; ++i) {
     if (counts_[i] == 0) {
@@ -122,11 +123,11 @@ std::string ExponentialHistogram::Serialize() const {
 }
 
 Result<ExponentialHistogram> ExponentialHistogram::Parse(Slice serialized) {
-  if (!serialized.starts_with(kScaleTag)) {
+  if (!serialized.starts_with(kLayoutTag)) {
     return STATUS_FORMAT(
-        NotSupported, "Unsupported histogram scale tag in '$0'", serialized.ToDebugString());
+        NotSupported, "Unsupported histogram layout tag in '$0'", serialized.ToDebugString());
   }
-  serialized.remove_prefix(strlen(kScaleTag));
+  serialized.remove_prefix(strlen(kLayoutTag));
   ExponentialHistogram result;
   if (serialized.empty()) {
     return result;
@@ -136,14 +137,13 @@ Result<ExponentialHistogram> ExponentialHistogram::Parse(Slice serialized) {
     if (colon == std::string::npos) {
       return STATUS_FORMAT(Corruption, "Malformed histogram bucket '$0'", pair);
     }
-    size_t index = 0;
-    uint64_t count = 0;
-    try {
-      index = std::stoull(pair.substr(0, colon));
-      count = std::stoull(pair.substr(colon + 1));
-    } catch (const std::exception& e) {
-      return STATUS_FORMAT(Corruption, "Malformed histogram bucket '$0': $1", pair, e.what());
-    }
+    // CheckedStoull rejects signs, empty input and trailing garbage, unlike std::stoull.
+    const auto index = VERIFY_RESULT_PREPEND(
+        CheckedStoull(Slice(pair.data(), colon)),
+        Format("Malformed histogram bucket index in '$0'", pair));
+    const auto count = VERIFY_RESULT_PREPEND(
+        CheckedStoull(Slice(pair.data() + colon + 1, pair.size() - colon - 1)),
+        Format("Malformed histogram bucket count in '$0'", pair));
     if (index >= kNumBuckets) {
       return STATUS_FORMAT(Corruption, "Histogram bucket index out of range: $0", index);
     }

@@ -25,19 +25,22 @@ namespace yb::docdb {
 // A fixed-layout histogram of positive integers (chain lengths, stretch lengths, byte counts) for
 // SST properties. See properties_collector/README.md, "Histogram layout", for the design.
 //
-// Layout (scale 3 of the base-2 exponential family, base 2^(1/8) ~ 1.09):
+// The layout is HdrHistogram's LOG-LINEAR one -- the same bucket count as the base-2 exponential
+// family at scale 3, but with boundaries linear within each power-of-two range (NOT the geometric
+// 2^(k/8) edges of the OTel / Prometheus-native convention):
 //   buckets 0..15    values 1..16, one bucket per value (exact);
-//   buckets 16..143  values 17..2^20-1, 8 equal-width sub-buckets per power-of-two range
-//                    (the HdrHistogram layout);
+//   buckets 16..143  values 17..2^20-1, 8 equal-width sub-buckets per power-of-two range;
 //   bucket 144       values >= 2^20 (overflow).
-// Bucket edges are within 12.5% of each other, so a quantile read from bucket bounds is within
-// 12.5% of the true value. Merging two histograms is bucket-wise addition, exact at any rollup.
+// Below the overflow bucket, edges are within 12.5% of each other, so a quantile read from bucket
+// bounds is within 12.5% of the true value; a quantile landing in the overflow bucket reads as
+// 2^20 with unbounded error. Merging two histograms is bucket-wise addition, exact at any rollup;
+// coarsening within the linear family (halving the sub-bucket count) is exact too.
 //
 // Bucket index = one bit-scan plus a shift and a mask; no floating point. Plain counters, no
 // atomics: a histogram is owned by exactly one SST build.
 class ExponentialHistogram {
  public:
-  static constexpr int kScale = 3;
+  static constexpr int kScale = 3;  // 3 mantissa bits -> 8 linear sub-buckets per range.
   static constexpr int kSubBucketsPerRange = 1 << kScale;
   static constexpr uint64_t kExactMax = 16;
   static constexpr int kMinRangeLog2 = 4;   // The first split power-of-two range is [16, 32).
@@ -45,8 +48,10 @@ class ExponentialHistogram {
   static constexpr size_t kNumBuckets =
       kExactMax + (kCeilingLog2 - kMinRangeLog2) * kSubBucketsPerRange + 1;  // 145
 
-  // Serialized form: the scale tag followed by sparse "index:count" pairs, e.g. "s3;0:12,17:3".
-  static constexpr char kScaleTag[] = "s3;";
+  // Serialized form: the layout tag followed by sparse "index:count" pairs, e.g. "l3;0:12,17:3".
+  // "l3" = log-linear with 3 mantissa bits; deliberately not "s3", which would wrongly claim the
+  // geometric scale-3 boundary convention.
+  static constexpr char kLayoutTag[] = "l3;";
 
   // Bucket for a value. Values >= 1; 0 is folded into bucket 0.
   static size_t BucketIndex(uint64_t value);
@@ -63,7 +68,8 @@ class ExponentialHistogram {
   bool Empty() const;
 
   // Lower bound of the bucket in which the cumulative weight first reaches quantile q in [0, 1].
-  // Returns 0 for an empty histogram.
+  // Returns 0 for an empty histogram; a quantile in the overflow bucket returns 2^20 regardless of
+  // the true magnitude.
   uint64_t QuantileLowerBound(double q) const;
 
   std::string Serialize() const;

@@ -121,20 +121,23 @@ TEST_F(ExponentialHistogramTest, MergeIsBucketwiseAdd) {
 
 TEST_F(ExponentialHistogramTest, SerializeRoundTrip) {
   Hist hist;
-  EXPECT_EQ(hist.Serialize(), "s3;");
+  EXPECT_EQ(hist.Serialize(), "l3;");
   EXPECT_TRUE(hist.Empty());
   hist.Add(1, 12);
   hist.Add(18, 3);
   hist.Add(1u << 20, 1);
-  EXPECT_EQ(hist.Serialize(), "s3;0:12,17:3,144:1");
+  EXPECT_EQ(hist.Serialize(), "l3;0:12,17:3,144:1");
   const auto parsed = ASSERT_RESULT(Hist::Parse(hist.Serialize()));
   EXPECT_EQ(parsed, hist);
-  EXPECT_EQ(ASSERT_RESULT(Hist::Parse("s3;")), Hist());
+  EXPECT_EQ(ASSERT_RESULT(Hist::Parse("l3;")), Hist());
 
-  EXPECT_NOK(Hist::Parse("s2;0:1"));
-  EXPECT_NOK(Hist::Parse("s3;145:1"));
-  EXPECT_NOK(Hist::Parse("s3;0"));
-  EXPECT_NOK(Hist::Parse("s3;x:1"));
+  EXPECT_NOK(Hist::Parse("s3;0:1"));       // Wrong layout tag.
+  EXPECT_NOK(Hist::Parse("l3;145:1"));     // Index out of range.
+  EXPECT_NOK(Hist::Parse("l3;0"));         // No count.
+  EXPECT_NOK(Hist::Parse("l3;x:1"));       // Non-numeric index.
+  EXPECT_NOK(Hist::Parse("l3;0:-1"));      // Sign must not wrap to UINT64_MAX.
+  EXPECT_NOK(Hist::Parse("l3;0:1abc"));    // Trailing garbage.
+  EXPECT_NOK(Hist::Parse("l3;0:"));        // Empty count.
 }
 
 TEST_F(ExponentialHistogramTest, Quantile) {
