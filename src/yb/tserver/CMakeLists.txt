@@ -459,6 +459,7 @@ if (NOT APPLE)
   ADD_YB_TEST(tserver_cgroup_manager-test)
 endif()
 ADD_YB_TEST(header_manager_impl-test)
+ADD_YB_TEST(pg_response_cache-test)
 ADD_YB_TEST(backup_service-test)
 ADD_YB_TEST(clone_operation-test)
 

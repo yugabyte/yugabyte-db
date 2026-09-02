@@ -152,10 +152,7 @@ class MetricUpdater {
   void Consume(size_t bytes) {
     DCHECK(bytes);
     if (mem_tracker().TryConsume(bytes)) {
-      size_t expected = 0;
-      [[maybe_unused]] const auto changed = consumption_.compare_exchange_strong(
-          expected, bytes, std::memory_order::acq_rel);
-      DCHECK(changed);
+      [[maybe_unused]] auto before = consumption_.fetch_add(bytes, std::memory_order::acq_rel);
     }
   }
 
@@ -195,13 +192,10 @@ class Data {
           ReadHybridTime::SingleTime(HybridTime::FromMicros(
               FLAGS_TEST_pg_response_cache_catalog_read_time_usec)));
     }
-    auto new_state = DataState::kReadyFailure;
-    size_t sz = 0;
-    if (IsOk(value)) {
-      for (const auto& data : value.rows_data) {
-        sz += data.size();
-      }
-      new_state = DataState::kReadyOK;
+    const auto new_state = IsOk(value) ? DataState::kReadyOK : DataState::kReadyFailure;
+    size_t sz = value.response_memory_footprint;
+    for (const auto& data : value.rows_data) {
+      sz += data.size();
     }
     decltype(waiters_) waiters;
     // Since response_ is not changed after assignment, we could store pointer to it to make
@@ -217,11 +211,15 @@ class Data {
     for (auto waiter : waiters) {
       waiter->Apply(*response);
     }
-    if (sz) {
-      auto updater = metric_updater_.lock();
-      if (updater) {
-        updater->Consume(sz);
-      }
+    Consume(sz);
+  }
+
+  void Consume(size_t bytes) {
+    if (!bytes) {
+      return;
+    }
+    if (auto updater = metric_updater_.lock()) {
+      updater->Consume(bytes);
     }
   }
 
@@ -380,23 +378,33 @@ class PgResponseCache::Impl : private GarbageCollector {
         renew_metric->Increment();
       }
     });
-    std::lock_guard lock(mutex_);
-    const auto group = cache_info->key_group();
-    const auto& bucket = GetKeyGroupBucket(group);
-    if (bucket.disabler.lock()) {
-      return nullptr;
+    std::shared_ptr<Data> data;
+    size_t entry_bytes = 0;
+    {
+      std::lock_guard lock(mutex_);
+      const auto group = cache_info->key_group();
+      const auto& bucket = GetKeyGroupBucket(group);
+      if (bucket.disabler.lock()) {
+        return nullptr;
+      }
+      auto actual_version = bucket.version;
+      const auto& entry = *entries_.emplace(
+          group, std::move(*cache_info->mutable_key_value()));
+      const auto& value = entry.value;
+      data = value.data();
+      if (data && !IsRenewRequired(data->creation_time(), now, *cache_info, &renew_metric) &&
+          data->IsValid(now, actual_version)) {
+        return data;
+      }
+      VLOG(5) << "(Re)Building element group=" << group << " actual_version=" << actual_version;
+      const_cast<Value&>(value) = Value(actual_version, &metric_context_, now, deadline);
+      data = value.data();
+      entry_bytes = sizeof(Entry) + entry.key.value.size();
     }
-    auto actual_version = bucket.version;
-    const auto& value = entries_.emplace(
-        group, std::move(*cache_info->mutable_key_value()))->value;
-    auto data = value.data();
-    if (data && !IsRenewRequired(data->creation_time(), now, *cache_info, &renew_metric) &&
-        data->IsValid(now, actual_version)) {
-      return data;
-    }
-    VLOG(5) << "(Re)Building element group=" << group << " actual_version=" << actual_version;
-    const_cast<Value&>(value) = Value(actual_version, &metric_context_, now, deadline);
-    return value.data();
+    // Consume outside the lock: MemTracker::TryConsume may run CollectGarbage, which
+    // acquires mutex_.
+    data->Consume(entry_bytes);
+    return data;
   }
 
  public:
@@ -549,8 +557,11 @@ PgResponseCache::Disabler PgResponseCache::Disable(KeyGroup key_group) {
 
 PgResponseCache::Response::Response(
     const PgPerformResponseMsg& response_, std::vector<RefCntSlice> rows_data_)
-    : response(rpc::SharedMessage<PgPerformResponseMsg>(response_)),
-      rows_data(std::move(rows_data_)) {
+    : rows_data(std::move(rows_data_)) {
+  auto arena = SharedThreadSafeArena();
+  auto* copied_response = arena->NewArenaObject<PgPerformResponseMsg>(response_);
+  response_memory_footprint = arena->memory_footprint();
+  response = std::shared_ptr<PgPerformResponseMsg>(std::move(arena), copied_response);
   DCHECK_EQ(response->responses().size(), rows_data.size());
 }
 
