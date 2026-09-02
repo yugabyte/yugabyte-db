@@ -32,6 +32,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
@@ -40,6 +41,8 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+
+using namespace std::chrono_literals;
 
 namespace yb {
 namespace pgwrapper {
