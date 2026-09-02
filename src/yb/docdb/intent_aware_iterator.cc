@@ -43,6 +43,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
@@ -236,6 +237,13 @@ IntentAwareIterator::IntentAwareIterator(
   iter_.SetAvoidUselessNextInsteadOfSeek(avoid_useless_next_instead_of_seek);
   intent_iter_.SetAvoidUselessNextInsteadOfSeek(avoid_useless_next_instead_of_seek);
   VTRACE(2, "Created iterator");
+}
+
+IntentAwareIterator::~IntentAwareIterator() {
+  // Fires before iter_ / intent_iter_ are destroyed, i.e. at the start of RocksDB iterator
+  // teardown. A caller that owns a ScopedRWOperation blocking RocksDB shutdown must still hold it
+  // here; see issue #33496.
+  TEST_SYNC_POINT("IntentAwareIterator::~IntentAwareIterator");
 }
 
 void IntentAwareIterator::Seek(const dockv::DocKey &doc_key) {
