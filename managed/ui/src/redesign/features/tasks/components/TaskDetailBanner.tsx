@@ -35,6 +35,7 @@ import {
   getIsDbUpgradePrecheckTask,
   getIsDbUpgradeRollbackTask,
   getIsDbUpgradeTask,
+  getIsEditUniverseTask,
   isSoftwareUpgradeFailed,
   useIsTaskNewUIEnabled
 } from '../TaskUtils';
@@ -48,6 +49,7 @@ import { DbUpgradeFinalizeTaskBanner } from './clusterBanner/DbUpgradeFinalizeTa
 import { DbUpgradePrecheckTaskBanner } from './clusterBanner/DbUpgradePrecheckTaskBanner';
 import { DbUpgradeRollbackTaskBanner } from './clusterBanner/DbUpgradeRollbackTaskBanner';
 import { DbUpgradeTaskBanner } from './clusterBanner/DbUpgradeTaskBanner';
+import { EditUniverseTaskBanner } from './clusterBanner/EditUniverseTaskBanner';
 import {
   ClusterOperationBanner,
   ClusterOperationBannerType
@@ -104,17 +106,13 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
   const isNewTaskDetailsUIEnabled = useIsTaskNewUIEnabled();
 
   // This query is used to update the redux store with the latest task list.
-  useQuery(
-    taskQueryKey.universe(universeUUID),
-    () => api.fetchCustomerTasks(universeUUID),
-    {
-      enabled: !!universeUUID && isNewTaskDetailsUIEnabled && isCanaryUpgradeEnabled,
-      refetchInterval: TASK_SHORT_TIMEOUT,
-      onSuccess(data) {
-        dispatch(patchTasksForCustomer(universeUUID, data));
-      }
+  useQuery(taskQueryKey.universe(universeUUID), () => api.fetchCustomerTasks(universeUUID), {
+    enabled: !!universeUUID && isNewTaskDetailsUIEnabled && isCanaryUpgradeEnabled,
+    refetchInterval: TASK_SHORT_TIMEOUT,
+    onSuccess(data) {
+      dispatch(patchTasksForCustomer(universeUUID, data));
     }
-  );
+  });
 
   const universeDetailsQuery = useQuery(
     universeQueryKey.detailsV2(universeUUID),
@@ -345,6 +343,15 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
 
   if (universeUUID && acknowlegedTasks?.[universeUUID] === taskUUID) {
     return null;
+  }
+
+  // Edit universe tasks own their banner for the whole lifecycle: in progress, success and failure.
+  if (getIsEditUniverseTask(task)) {
+    return (
+      <div className={classes.bannerContainer}>
+        <EditUniverseTaskBanner task={task} universeUuid={universeUUID} onDismiss={hideBanner} />
+      </div>
+    );
   }
 
   return <>{bannerComp(task)}</>;

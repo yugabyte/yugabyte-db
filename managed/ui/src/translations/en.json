@@ -101,7 +101,11 @@
     },
     "toast": {
       "dbUpgradeRollbackRequestFailedLabel": "DB upgrade rollback request failed",
-      "dbUpgradeFinalizeRequestFailedLabel": "DB upgrade finalize request failed"
+      "dbUpgradeFinalizeRequestFailedLabel": "DB upgrade finalize request failed",
+      "retryUniverseUpdateTaskFailedLabel": "Failed to retry universe update task",
+      "retryUniverseUpdateTaskSuccess": "Universe updated",
+      "rollbackUniverseUpdateTaskFailedLabel": "Failed to roll back universe update task",
+      "rollbackUniverseUpdateTaskSuccess": "Universe rolled back to a stable state."
     },
     "queryError": {
       "failedToFetchUniverseList": "Error fetching universe list.",
@@ -3039,8 +3043,10 @@
           "taskAbortFailed": "Task abort failed",
           "taskRetrySuccess": "Task retry started",
           "taskRetryFailed": "Task retry failed",
+          "taskRetryCompleted": "Task retry completed successfully",
           "taskRollbackSuccess": "Task rollback started",
-          "taskRollbackFailed": "Task rollback failed"
+          "taskRollbackFailed": "Task rollback failed",
+          "taskRollbackCompleted": "Task rollback completed successfully"
         }
       },
       "info": {
@@ -3080,6 +3086,24 @@
         "softwareUpgradeFailed": "Software Upgrade Failed",
         "softwareUpgradeFailedText": "To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
         "rollbackUpgrade": "Rollback Upgrade"
+      },
+      "editUniverseTaskBanner": {
+        "inProgress": {
+          "title": "Updating universes...",
+          "description": "Some operations are not available while the operation is in progress."
+        },
+        "succeeded": {
+          "title": "Universe updated."
+        },
+        "failed": {
+          "title": "Failed to update universe."
+        },
+        "actions": {
+          "viewDetails": "View Details",
+          "retry": "Retry",
+          "rollBack": "Roll Back",
+          "rollBackHelperText": "Restores stable state"
+        }
       },
       "simple": {
         "viewDetails": "View Details"

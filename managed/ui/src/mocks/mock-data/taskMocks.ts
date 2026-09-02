@@ -431,3 +431,52 @@ export const createDbUpgradeFinalizeTaskMock = (overrides: Partial<Task> = {}): 
     }
   };
 };
+
+export const EDIT_UNIVERSE_TASK_ID = 'd0000001-0001-4000-8000-000000000001';
+
+export const EDIT_UNIVERSE_TASK_UNIVERSE_UUID = 'd0000001-0001-4000-8000-000000000002';
+
+const buildEditUniverseTaskFixture = (): Task => ({
+  id: EDIT_UNIVERSE_TASK_ID,
+  title: 'Updated Universe : mock-universe',
+  percentComplete: 5,
+  createTime: '2026-04-22T09:00:00Z',
+  completionTime: '2026-04-22T09:03:00Z',
+  target: TargetType.UNIVERSE as Task['target'],
+  targetUUID: EDIT_UNIVERSE_TASK_UNIVERSE_UUID,
+  type: TaskType.EDIT as Task['type'],
+  typeName: 'Update',
+  status: TaskState.FAILURE,
+  details: {
+    taskDetails: [
+      {
+        title: 'Provisioning',
+        description: 'Deploying machines of the required config into the desired cloud region.',
+        state: TaskState.FAILURE,
+        extraDetails: []
+      }
+    ]
+  },
+  abortable: false,
+  retryable: true,
+  canRollback: true,
+  correlationId: 'd0000001-0001-4000-8000-000000000003',
+  userEmail: 'admin',
+  subtaskInfos: [],
+  taskInfo: {
+    taskParams: {}
+  }
+});
+
+export const createEditUniverseTaskMock = (overrides: Partial<Task> = {}): Task => {
+  const base = buildEditUniverseTaskFixture();
+  return {
+    ...base,
+    ...overrides,
+    details: {
+      ...base.details,
+      ...(overrides.details ?? {}),
+      taskDetails: overrides.details?.taskDetails ?? base.details.taskDetails
+    }
+  };
+};
