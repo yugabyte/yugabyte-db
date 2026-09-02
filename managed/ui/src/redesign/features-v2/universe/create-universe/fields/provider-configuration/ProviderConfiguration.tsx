@@ -114,6 +114,10 @@ export const ProviderConfigurationField = <T extends FieldValues>({
                 getOptionLabel={(option: Record<string, string> | string) =>
                   typeof option === 'string' ? option : option.name
                 }
+                isOptionEqualToValue={(option, selectedValue) =>
+                  option.uuid === selectedValue.uuid
+                }
+                filterSelectedOptions={false}
                 onChange={handleChange}
                 ybInputProps={{
                   error: !!fieldState.error,
@@ -125,7 +129,9 @@ export const ProviderConfigurationField = <T extends FieldValues>({
                 dataTestId="ProvidersField-AutoComplete-container"
                 size="large"
                 disabled={disabled}
-                noOptionsText={renderEmptyState()}
+                noOptionsText={
+                  !isLoading && filteredProviders.length === 0 ? renderEmptyState() : undefined
+                }
               />
             </Box>
           </div>
