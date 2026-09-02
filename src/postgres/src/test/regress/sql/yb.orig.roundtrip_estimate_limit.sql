@@ -1,0 +1,454 @@
+-- Test planner's roundtrip estimates under a pushed-down LIMIT/OFFSET bound
+-- DEPENDENCY: yb.orig.roundtrip_estimate_setup
+\c roundtrip_test
+set client_min_messages to 'warning';
+
+-- A serial scan under a Limit has its first read request trimmed to
+-- LIMIT count + OFFSET (nodeLimit.c / pg_doc_op.cc; later pages revert to
+-- the default fetch size); the planner mirrors the executor's cancellation
+-- rules in yb_first_fetch_limit and reports the bound as "First Fetch
+-- Limit".  The printed roundtrip estimates stay full-pull (consistent with
+-- total_cost), so this suite derives the expected actual roundtrips from
+-- (full estimate, pushed bound, rows per page) and compares against EXPLAIN
+-- ANALYZE actuals.
+--
+-- QID categories:
+--   81xxx: trimmed -- contiguous ranges x scan kind x LIMIT k.  The fetch
+--          limit GUC blocks below vary rows-per-page R, so the same k values
+--          cover k < R, k = R, k = R+1, k spanning many pages, k >= rows.
+--   82xxx: trimmed -- storage-filter scans + small LIMIT (DocDB scans many
+--          rows to fill a small first response; d = -1 scans everything for
+--          an empty one).
+--   83xxx: trimmed -- LIMIT + OFFSET; the pushed bound is count + offset.
+--   84xxx: no trim, fully consumed -- a Sort/Agg above the scan re-enables
+--          the default fetch size and pulls everything, and OFFSET without
+--          LIMIT has no known bound: estimated == actual full pull.
+--   85xxx: trimmed -- DISTINCT resolved by a Unique over the scan's own
+--          ordering passes the bound through (#32804); the trim applies
+--          when the bound's rows are expected to be all distinct.
+--   86xxx: trimmed -- MIN/MAX optimized into an InitPlan runs under its own
+--          Limit 1, so its index scan is trimmed to one row with or
+--          without an outer LIMIT.
+--   89xxx: no trim, partially consumed -- excluded from the est-vs-act
+--          check: the Limit stops pulling early but no bound was pushed
+--          down (local filter), or the trimmed first request cannot satisfy
+--          the consumer (DISTINCT over duplicated keys, an Incremental Sort
+--          closing its last group), so the full-pull estimate exceeds the
+--          actuals by design.
+
+drop view if exists check_first_fetch_limit_estimates;
+drop type if exists limit_plan_rows cascade;
+create type limit_plan_rows as (
+    "Node Type" text,
+    "Index Name" text,
+    "Index Cond" text,
+    "Storage Index Filter" text,
+    "Storage Filter" text,
+    "Filter" text,
+    "Plan Rows" float8,
+    "Estimated Table Roundtrips" float8,
+    "Estimated Index Roundtrips" float8,
+    "First Fetch Limit" float8,
+    "Storage Table Read Requests" float8,
+    "Storage Index Read Requests" float8
+);
+
+-- Expected actual roundtrips per side: with a pushed bound, the first (and
+-- usually only) response holds min(bound, page rows) rows, so the expected
+-- request count is ceil(bound / page-rows), never more than the full-pull
+-- estimate; without one, the full-pull estimate.  Page rows come from
+-- yb_fetch_row_limit directly: the estimated page count is a ceiling
+-- (yb_get_pagination_metrics), so recovering page rows from it as plan rows /
+-- estimated pages understates capacity, and the ceil above then charges a
+-- whole extra request.  Under a size limit the per-side width is not in the
+-- plan output, and with neither limit there is one page, so both keep the
+-- derived value.  Colocated non-PK Index Scans bundle the index lookup into
+-- the table-side RPC; normalize actuals the same way check_roundtrip_estimates
+-- does.
+create view check_first_fetch_limit_estimates as
+with recursive plan_tree as (
+    select
+        q.qid,
+        ''::text path,
+        0 depth,
+        js.explain_line::jsonb #> '{0,Plan}' node
+    from
+        queries q,
+        explain_query_options opt,
+        lateral explain_query_json(q.query, opt.with_analyze) js
+
+    union all
+
+    select
+        pt.qid,
+        pt.path || child.ord::text || '.' path,
+        pt.depth + 1 depth,
+        child.node
+    from
+        plan_tree pt,
+        lateral jsonb_array_elements(coalesce(pt.node->'Plans', '[]'::jsonb))
+            with ordinality as child(node, ord)
+),
+plan_rows as (
+    select
+        pt.qid,
+        pt.path,
+        rec.*
+    from
+        plan_tree pt,
+        lateral jsonb_populate_record(
+            null::limit_plan_rows,
+            coalesce(pt.node, '{}'::jsonb)
+        ) rec
+),
+scan_nodes as (
+    select
+        qid,
+        path,
+        "Node Type",
+        "Index Name",
+        "Index Cond",
+        "Storage Index Filter",
+        "Storage Filter",
+        "Filter",
+        "Plan Rows" plan_rows,
+        coalesce("Estimated Table Roundtrips", 0) est_t,
+        coalesce("Estimated Index Roundtrips", 0) est_i,
+        coalesce("First Fetch Limit", 0) pushed,
+        case
+            when "Index Name" not like '%_pkey'
+                and "Node Type" not like 'Index Only Scan%'
+                and "Index Name" like 'rc_%' then
+                coalesce("Storage Table Read Requests", 0)
+                + coalesce("Storage Index Read Requests", 0)
+            else coalesce("Storage Table Read Requests", 0)
+        end act_t,
+        case
+            when "Index Name" not like '%_pkey'
+                and "Node Type" not like 'Index Only Scan%'
+                and "Index Name" like 'rc_%' then 0::float8
+            else coalesce("Storage Index Read Requests", 0)
+        end act_i
+    from plan_rows
+    where "Node Type" like 'Index% Scan%' or "Node Type" = 'Seq Scan'
+)
+select
+    qid,
+    row_number() over (partition by qid order by path) nid,
+    "Node Type",
+    "Index Name",
+    "Index Cond",
+    "Storage Index Filter",
+    "Storage Filter",
+    "Filter",
+    plan_rows "Plan Rows",
+    pushed "First Fetch Limit",
+    est_t "Estimated Table Roundtrips",
+    est_i "Estimated Index Roundtrips",
+    exp_t "Expected Table Roundtrips",
+    exp_i "Expected Index Roundtrips",
+    act_t "Storage Table Read Requests",
+    act_i "Storage Index Read Requests",
+    case when abs(exp_t + exp_i - act_t - act_i)
+            <= greatest(1.0, 0.05 * (act_t + act_i)) then
+        'passed' else 'failed' end "Estimates"
+from
+    scan_nodes,
+    lateral (
+        select case
+            when pg_size_bytes(current_setting('yb_fetch_size_limit')) = 0
+                 and current_setting('yb_fetch_row_limit')::float8 > 0 then
+                current_setting('yb_fetch_row_limit')::float8
+            end page_rows
+    ) cap,
+    lateral (
+        select
+            case when pushed > 0 and est_t > 0 then
+                least(est_t, greatest(1.0, ceil(pushed /
+                    greatest(coalesce(cap.page_rows, plan_rows / est_t), 1.0))))
+            else est_t end exp_t,
+            case when pushed > 0 and est_i > 0 then
+                least(est_i, greatest(1.0, ceil(pushed /
+                    greatest(coalesce(cap.page_rows, plan_rows / est_i), 1.0))))
+            else est_i end exp_i
+    ) expected;
+
+
+delete from queries;
+
+-- 81xxx: contiguous ranges x scan kind x LIMIT k.
+insert into queries (qid, query)
+with relations(rel, qidrel) as (
+    values ('ce.r',  0),
+           ('ce.rC', 500)
+),
+scans(qidscan, target, predicol) as (
+    values (000, '*', 'pk'),  -- Index Scan using PK index
+           (100, 'v', 'b'),   -- Index Scan using non-PK index
+           (200, 'b', 'b')    -- Index Only Scan on non-PK index
+),
+limits(qidlim, k) as (
+    values (1, 1), (2, 7), (3, 128), (4, 129), (5, 1025), (6, 5000),
+           (7, 20000)
+)
+select
+    81000 + r.qidrel + s.qidscan + l.qidlim as qid,
+    'select ' || s.target || ' from ' || r.rel
+    || ' where ' || s.predicol || ' between 1 and 12345 limit ' || l.k as query
+from relations r, scans s, limits l;
+
+-- 82xxx: storage-filter scans + small LIMIT.
+insert into queries values
+    (82001, $$select v from ce.r where b between 1 and 12345 and b % 100 <= 33 limit 10$$),
+    (82002, $$select v from ce.r where b between 1 and 12345 and b % 100 <= 33 limit 1000$$),
+    (82003, $$select * from ce.r where d = -1 limit 1$$),
+    (82004, $$select * from ce.r where e = 500 limit 10$$),
+    (82011, $$select v from ce.rC where b between 1 and 12345 and b % 100 <= 33 limit 10$$),
+    (82013, $$select * from ce.rC where d = -1 limit 1$$),
+    (82014, $$select * from ce.rC where e = 500 limit 10$$);
+
+-- 83xxx: LIMIT + OFFSET; the pushed-down bound is count + offset.
+insert into queries values
+    (83001, $$select * from ce.r where pk between 1 and 12345 limit 10 offset 90$$),
+    (83002, $$select b from ce.r where b between 1 and 12345 limit 100 offset 1000$$),
+    (83003, $$select v from ce.rC where b between 1 and 12345 limit 5 offset 2$$);
+
+-- 84xxx: no trim, but the scan is fully consumed: est == act full pull.
+insert into queries values
+    (84001, $$select v, b from ce.r where b between 1 and 12345 order by e limit 10$$),
+    -- b % 100 defeats the index ordering, so the aggregate hashes and
+    -- consumes the whole scan (a streaming GroupAggregate under a LIMIT
+    -- would stop early like the 89xxx cases).
+    (84002, $$select b % 100, count(*) from ce.r where b between 1 and 5000 group by b % 100 limit 10$$),
+    (84003, $$select * from ce.r where pk between 1 and 2000 offset 1900$$);
+
+-- 85xxx: DISTINCT via a Unique over the scan's ordering; b is unique, so
+-- the trimmed first request satisfies the LIMIT.
+insert into queries values
+    (85001, $$select distinct b from ce.r where b between 1 and 12345 limit 10$$),
+    (85002, $$select distinct b from ce.r where b between 1 and 12345 and b % 100 <= 33 limit 10$$),
+    (85003, $$select distinct on (b) v, b from ce.r where b between 1 and 5000 order by b limit 7$$),
+    (85011, $$select distinct b from ce.rC where b between 1 and 12345 limit 10$$);
+
+-- 86xxx: MIN/MAX via MinMaxAggPath; the subquery runs under its own Limit 1,
+-- so its index scan is trimmed to one row whatever the outer query's LIMIT.
+insert into queries values
+    (86001, $$select min(b) from ce.r$$),
+    (86002, $$select max(b) from ce.r$$),
+    (86003, $$select min(b) from ce.r limit 10$$),
+    (86011, $$select min(b) from ce.rC$$);
+
+-- 89xxx: no trim and partially consumed; est-vs-act does not apply.  Column
+-- a repeats every value 10 times, so a Unique needs more than the LIMIT's
+-- rows and the bound is not applied.  An Incremental Sort keeps the bound but
+-- must read past the LIMIT to close its last prefix group, so the trimmed
+-- first request is never enough and a default-sized page follows (#34718).
+insert into queries values
+    (89001, $$select v, b from ce.r where b between 1 and 5000 and non_pushable(b) <= 5000 limit 10$$),
+    (89002, $$select distinct on (a) v, a from ce.r where a between 1 and 1234 order by a limit 7$$),
+    (89003, $$select pk, a, b, e from ce.r order by pk, e limit 5$$),
+    (89004, $$select pk, a, b, e from ce.r order by a, b limit 5$$),
+    (89013, $$select pk, a, b, e from ce.rC order by pk, e limit 5$$);
+
+set enable_seqscan = off;
+set enable_bitmapscan = off;
+set yb_enable_bitmapscan = off;
+set max_parallel_workers_per_gather = 0;
+
+select * from queries order by qid;
+
+update explain_query_options set with_analyze = true;
+
+-- Baseline: scan node shapes and the pushed-down bound decisions.  Later
+-- fetch-limit variants assert the symmetric diff is empty: the bound comes
+-- from the query alone and must not move with the fetch-limit GUCs.
+create temp table baseline_scan_nodes as
+select coalesce(q.qid, x.qid) qid, x.nid, "Node Type", "Index Name",
+       "Index Cond", "Storage Index Filter", "Storage Filter", "Filter",
+       "First Fetch Limit"
+from queries q full join check_first_fetch_limit_estimates x on x.qid = q.qid;
+select * from baseline_scan_nodes order by qid, nid;
+
+-- should not return any row.
+select qid, nid, "Node Type", "Index Name",
+       "Plan Rows", "First Fetch Limit",
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Expected Table Roundtrips" exp_t, "Expected Index Roundtrips" exp_i,
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Estimates"
+from check_first_fetch_limit_estimates
+where qid < 89000 and "Estimates" <> 'passed'
+order by qid, nid;
+
+-- Fetch limit variant: row-count pagination
+set yb_fetch_size_limit = 0;
+set yb_fetch_row_limit = 128;
+
+(table baseline_scan_nodes
+ except all
+ select coalesce(q.qid, x.qid) qid, x.nid, "Node Type", "Index Name",
+        "Index Cond", "Storage Index Filter", "Storage Filter", "Filter",
+        "First Fetch Limit"
+ from queries q full join check_first_fetch_limit_estimates x on x.qid = q.qid)
+union all
+(select coalesce(q.qid, x.qid) qid, x.nid, "Node Type", "Index Name",
+        "Index Cond", "Storage Index Filter", "Storage Filter", "Filter",
+        "First Fetch Limit"
+ from queries q full join check_first_fetch_limit_estimates x on x.qid = q.qid
+ except all
+ table baseline_scan_nodes);
+
+-- should not return any row.
+select qid, nid, "Node Type", "Index Name",
+       "Plan Rows", "First Fetch Limit",
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Expected Table Roundtrips" exp_t, "Expected Index Roundtrips" exp_i,
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Estimates"
+from check_first_fetch_limit_estimates
+where qid < 89000 and "Estimates" <> 'passed'
+order by qid, nid;
+
+-- Fetch limit variant: byte-size pagination
+set yb_fetch_size_limit = '8kB';
+set yb_fetch_row_limit = 0;
+
+(table baseline_scan_nodes
+ except all
+ select coalesce(q.qid, x.qid) qid, x.nid, "Node Type", "Index Name",
+        "Index Cond", "Storage Index Filter", "Storage Filter", "Filter",
+        "First Fetch Limit"
+ from queries q full join check_first_fetch_limit_estimates x on x.qid = q.qid)
+union all
+(select coalesce(q.qid, x.qid) qid, x.nid, "Node Type", "Index Name",
+        "Index Cond", "Storage Index Filter", "Storage Filter", "Filter",
+        "First Fetch Limit"
+ from queries q full join check_first_fetch_limit_estimates x on x.qid = q.qid
+ except all
+ table baseline_scan_nodes);
+
+-- should not return any row.
+select qid, nid, "Node Type", "Index Name",
+       "Plan Rows", "First Fetch Limit",
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Expected Table Roundtrips" exp_t, "Expected Index Roundtrips" exp_i,
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Estimates"
+from check_first_fetch_limit_estimates
+where qid < 89000 and "Estimates" <> 'passed'
+order by qid, nid;
+
+-- Fetch limit variant: unlimited (a trimmed request is still bounded by the
+-- pushed-down limit; an untrimmed scan is a single response)
+set yb_fetch_size_limit = 0;
+set yb_fetch_row_limit = 0;
+
+(table baseline_scan_nodes
+ except all
+ select coalesce(q.qid, x.qid) qid, x.nid, "Node Type", "Index Name",
+        "Index Cond", "Storage Index Filter", "Storage Filter", "Filter",
+        "First Fetch Limit"
+ from queries q full join check_first_fetch_limit_estimates x on x.qid = q.qid)
+union all
+(select coalesce(q.qid, x.qid) qid, x.nid, "Node Type", "Index Name",
+        "Index Cond", "Storage Index Filter", "Storage Filter", "Filter",
+        "First Fetch Limit"
+ from queries q full join check_first_fetch_limit_estimates x on x.qid = q.qid
+ except all
+ table baseline_scan_nodes);
+
+-- should not return any row.
+select qid, nid, "Node Type", "Index Name",
+       "Plan Rows", "First Fetch Limit",
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Expected Table Roundtrips" exp_t, "Expected Index Roundtrips" exp_i,
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Estimates"
+from check_first_fetch_limit_estimates
+where qid < 89000 and "Estimates" <> 'passed'
+order by qid, nid;
+
+reset yb_fetch_size_limit;
+reset yb_fetch_row_limit;
+
+-- Parallel scans fetch whole parallel ranges with the fetch limits lifted
+-- (yb_scan_apply_next_parallel_range), so the bound is never pushed down to
+-- them; should not return any row.
+set yb_test_force_parallel = force;
+set max_parallel_workers_per_gather = 4;
+
+select qid, nid, "Node Type", "Index Name", "First Fetch Limit"
+from check_first_fetch_limit_estimates
+where "First Fetch Limit" > 0
+order by qid, nid;
+
+reset yb_test_force_parallel;
+reset max_parallel_workers_per_gather;
+
+-- The scan under an Incremental Sort has its first request trimmed to the
+-- LIMIT, which cannot close the last prefix group (six rows for one-row
+-- groups, eleven for ten-row groups), so a default-sized second page always
+-- follows.  "Requests" compares the request count with the pages the rows
+-- the sort pulled take at the current fetch limit.
+-- TODO(#34718): the failed rows pass once the trim is lifted under this sort.
+set max_parallel_workers_per_gather = 0;
+
+create temp view incsort_first_fetch as
+select q.label,
+       node->>'Node Type' "Node Type",
+       node->>'Index Name' "Index Name",
+       coalesce((node->>'First Fetch Limit')::float8, 0) "First Fetch Limit",
+       (node->>'Actual Rows')::float8 "Actual Rows",
+       (node->>'Storage Table Read Requests')::float8 "Storage Table Read Requests",
+       (node->>'Storage Table Rows Scanned')::float8 "Storage Table Rows Scanned",
+       p.pages "Expected Requests",
+       case when (node->>'Storage Table Read Requests')::float8 = p.pages
+            then 'passed' else 'failed' end "Requests"
+from (values ('groups of 1',  $$select pk, a, b, e from ce.r order by pk, e limit 5$$),
+             ('groups of 10', $$select pk, a, b, e from ce.r order by a, b limit 5$$))
+         q(label, query),
+     lateral explain_query_json(q.query, true) js,
+     lateral (select js.explain_line::jsonb #> '{0,Plan,Plans,0,Plans,0}') n(node),
+     lateral (select ceil((node->>'Actual Rows')::float8 /
+                          current_setting('yb_fetch_row_limit')::float8)) p(pages);
+
+table incsort_first_fetch;
+
+set yb_fetch_row_limit = 8;
+table incsort_first_fetch;
+
+reset yb_fetch_row_limit;
+drop view incsort_first_fetch;
+
+-- A YB Bitmap Table Scan does not take a pushed-down LIMIT, so its first
+-- request comes back full.  Exceeding work_mem drops the node to a full table
+-- scan, which does take the bound -- rows scanned falls to the LIMIT, and the
+-- planner costs and reports the trim.  That decision is made on the estimated
+-- bitmap size, so between the two settings below lies a window where the
+-- planner reports a trim the executor does not take; both settings sit
+-- outside it.
+set enable_bitmapscan = on;
+set yb_enable_bitmapscan = on;
+set max_parallel_workers_per_gather = 0;
+
+create temp view bitmap_first_fetch as
+select node->>'Node Type' "Node Type",
+       coalesce((node->>'Exceeded work_mem')::bool, false) "Exceeded work_mem",
+       coalesce((node->>'First Fetch Limit')::float8, 0) "First Fetch Limit",
+       (node->>'Storage Table Rows Scanned')::float8 "Storage Table Rows Scanned"
+from explain_query_json(
+         $$/*+ BitmapScan(r) */
+           select pk, a, b from ce.r where a < 500 or b > 12000 limit 10$$,
+         true) js,
+     lateral (select js.explain_line::jsonb #> '{0,Plan,Plans,0}') n(node);
+
+set work_mem to '4MB';
+table bitmap_first_fetch;
+
+set work_mem to '100kB';
+table bitmap_first_fetch;
+
+reset work_mem;
+drop view bitmap_first_fetch;
+
+drop table baseline_scan_nodes;

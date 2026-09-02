@@ -161,32 +161,33 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
 (5 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
-                              QUERY PLAN                               
------------------------------------------------------------------------
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t3.a = t1.a)
    ->  Seq Scan on p3 t3
          Storage Filter: (a <= 30)
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.a = t2.b)
          ->  Index Scan using p1_pkey on p1 t1
                Index Cond: (a = ANY (ARRAY[t3.a, $1, $2, ..., $1023]))
                Storage Filter: (a <= 100)
          ->  Index Scan using p2_pkey on p2 t2
-               Index Cond: (b = t1.a)
+               Index Cond: (b = ANY (ARRAY[t1.a, $1025, $1026, ..., $2047]))
                Storage Filter: (a <= 100)
-(11 rows)
+(12 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b) s ON t3.b = s.a;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (t1.a = t2.b)
-   ->  YB Batched Nested Loop Left Join
-         Join Filter: (t3.b = t1.a)
+ YB Batched Nested Loop Left Join
+   Join Filter: (t3.b = t1.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.a = t2.b)
          ->  Seq Scan on p1 t1
-         ->  Index Scan using p3_pkey on p3 t3
+         ->  Index Scan using p2_pkey on p2 t2
                Index Cond: (b = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
-   ->  Index Scan using p2_pkey on p2 t2
+   ->  Index Scan using p3_pkey on p3 t3
          Index Cond: (b = ANY (ARRAY[t1.a, $1025, $1026, ..., $2047]))
 (9 rows)
 
@@ -544,8 +545,10 @@ insert into q1 select i, i / 4 from generate_series(0, 199) i;
 insert into q2 select i, i / 2 from generate_series(0, 999) i;
 analyze q1;
 analyze q2;
--- Make sure a sort node is inserted above a batched NL join when appropriate
-explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+-- Make sure a sort node is inserted above a batched NL join when appropriate.
+-- The LIMIT must ask for enough rows to pay for a BNL's first batch: a BNL
+-- completes it before returning a row, so a small LIMIT favors a plain NL.
+explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 100;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Limit
@@ -557,7 +560,7 @@ explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1
                Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2, ..., $1023]))
 (7 rows)
 
-explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 100;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit

@@ -221,11 +221,13 @@ insert into q2 select i, i / 2 from generate_series(0, 999) i;
 analyze q1;
 analyze q2;
 
--- Make sure a sort node is inserted above a batched NL join when appropriate
+-- Make sure a sort node is inserted above a batched NL join when appropriate.
+-- The LIMIT must ask for enough rows to pay for a BNL's first batch: a BNL
+-- completes it before returning a row, so a small LIMIT favors a plain NL.
 
-explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 100;
 
-explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 100;
 
 
 delete from q1;

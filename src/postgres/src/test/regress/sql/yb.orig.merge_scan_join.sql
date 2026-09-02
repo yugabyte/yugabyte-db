@@ -20,6 +20,11 @@
 -- Basic join with order
 -- TODO(pg16): PG commit b592422095655a64d638f541df784b19b8ecf8ad enables
 -- incremental sort over MergeJoin.
+-- The sort key spans both inputs (a.n, b.n), so the join output needs a full
+-- sort whatever either scan returns, and the merge ordering buys nothing
+-- against merge scan's 2% cost penalty.  The single-relation sorts elsewhere
+-- in the suite keep it, because there the merge supplies the leading columns.
+-- TODO(#29078): this likely should use merge scan.
 \set query ':P :Q SELECT DISTINCT ON (a.r3, a.r4) * FROM r5n a JOIN r5n b ON a.r3 = b.r1 WHERE a.r1 = 9 AND a.r2 IN (3, 4, 5) ORDER BY a.r3, a.r4, a.n, b.n LIMIT 5;'
 \i :run_query
 \unset Q3
@@ -53,6 +58,10 @@
 
 -- Same as above with no DISTINCT
 -- Merge scan should not be used.
+-- The batched nested loop gives way to a plain one: a parameterized inner
+-- path gets no first-fetch LIMIT trim, so the unparameterized alternative
+-- starts cheaper.
+-- TODO(#34524): extend the first-fetch trim to parameterized inner paths.
 \set query ':explain :Q SELECT r5n.r1, h3r2n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2 FROM r5n JOIN h3r2n ON r5n.r1 = h3r2n.r1 AND r5n.r3 = h3r2n.h3 WHERE h3r2n.r1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;'
 \i :run_query
 

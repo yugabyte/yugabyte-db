@@ -16,6 +16,11 @@
 -- Compare behavior between
 -- - regular index scan using columns considered redundant for being constant
 -- - merge index scan using SAOP stream columns
+-- The regular index scan is pinned with a hint: idx does not cover the
+-- queries, so a seq scan with the predicate pushed down otherwise wins on
+-- cost.  The 16-row pages from merge_scan_setup still separate the two
+-- scans' read request counts.
+\set off '/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/'
 SELECT $$= '1'$$ AS "R1" \gset
 SELECT $$IN ('1', '1')$$ AS "R2" \gset
 

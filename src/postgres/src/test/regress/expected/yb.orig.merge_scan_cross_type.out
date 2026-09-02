@@ -18,6 +18,10 @@
 \set P2
 \set Q1 ':off'
 \set Q2 ':on'
+-- Small response pages make the execution metrics of the plan variants
+-- distinct without growing the tables: at the default page size their rows
+-- come back in one read request either way.
+SET yb_fetch_row_limit = 16;
 -- R1's array matches the column type.  R2's float8 array does not match the
 -- float4 column, so the bind drops: merge scan errors, and non merge scan
 -- returns correct rows through recheck (the values match rows since they are
@@ -41,8 +45,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          ->  Index Scan using num_tbl_pkey on public.num_tbl (actual rows=4000 loops=1)
                Output: id, f4, x
                Index Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::real[]))
-               Storage Table Read Requests: 4
-               Storage Table Read Ops: 4
+               Storage Table Read Requests: 250
+               Storage Table Read Ops: 250
                Storage Table Rows Scanned: 4000
 (12 rows)
 
@@ -59,8 +63,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: id, f4, x
                Index Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::double precision[]))
                Rows Removed by Index Recheck: 6000
-               Storage Table Read Requests: 10
-               Storage Table Read Ops: 10
+               Storage Table Read Requests: 625
+               Storage Table Read Ops: 625
                Storage Table Rows Scanned: 10000
 (13 rows)
 
@@ -125,8 +129,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          ->  Index Scan using num_tbl_pkey on public.num_tbl (actual rows=4000 loops=1)
                Output: id, f4, x
                Index Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::real[]))
-               Storage Table Read Requests: 4
-               Storage Table Read Ops: 4
+               Storage Table Read Requests: 250
+               Storage Table Read Ops: 250
                Storage Table Rows Scanned: 4000
 (12 rows)
 
@@ -143,8 +147,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: id, f4, x
                Index Cond: (num_tbl.f4 = ANY ('{1.5,2.5}'::double precision[]))
                Rows Removed by Index Recheck: 6000
-               Storage Table Read Requests: 10
-               Storage Table Read Ops: 10
+               Storage Table Read Requests: 625
+               Storage Table Read Ops: 625
                Storage Table Rows Scanned: 10000
 (13 rows)
 
@@ -233,11 +237,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          ->  Index Scan using num_tbl_i2_f4_id_idx on public.num_tbl (actual rows=1333 loops=1)
                Output: f4, id, i2, x
                Index Cond: ((num_tbl.i2 = ANY ('{1,2}'::integer[])) AND (num_tbl.f4 = '2.5'::real))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
+               Storage Table Read Requests: 84
+               Storage Table Read Ops: 84
                Storage Table Rows Scanned: 1333
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
+               Storage Index Read Requests: 84
+               Storage Index Read Ops: 84
                Storage Index Rows Scanned: 1333
 (15 rows)
 
@@ -254,11 +258,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
                Output: f4, id, i2, x
                Index Cond: ((num_tbl.i2 = ANY ('{1,2}'::integer[])) AND (num_tbl.f4 = '2.5'::double precision))
                Rows Removed by Index Recheck: 5334
-               Storage Table Read Requests: 7
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 417
+               Storage Table Read Ops: 417
                Storage Table Rows Scanned: 6667
-               Storage Index Read Requests: 7
-               Storage Index Read Ops: 7
+               Storage Index Read Requests: 417
+               Storage Index Read Ops: 417
                Storage Index Rows Scanned: 6667
 (16 rows)
 
@@ -451,11 +455,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          ->  Index Scan using num_tbl_i2_f4_id_idx on public.num_tbl (actual rows=1333 loops=1)
                Output: f4, id, i2, x
                Index Cond: ((num_tbl.i2 = ANY ('{1,2}'::integer[])) AND (num_tbl.f4 = '2.5'::real))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
+               Storage Table Read Requests: 84
+               Storage Table Read Ops: 84
                Storage Table Rows Scanned: 1333
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
+               Storage Index Read Requests: 84
+               Storage Index Read Ops: 84
                Storage Index Rows Scanned: 1333
 (15 rows)
 
@@ -472,11 +476,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
                Output: f4, id, i2, x
                Index Cond: ((num_tbl.i2 = ANY ('{1,2}'::integer[])) AND (num_tbl.f4 = '2.5'::double precision))
                Rows Removed by Index Recheck: 5334
-               Storage Table Read Requests: 7
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 417
+               Storage Table Read Ops: 417
                Storage Table Rows Scanned: 6667
-               Storage Index Read Requests: 7
-               Storage Index Read Ops: 7
+               Storage Index Read Requests: 417
+               Storage Index Read Ops: 417
                Storage Index Rows Scanned: 6667
 (16 rows)
 
@@ -685,11 +689,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          ->  Index Scan using num_tbl_f4_i2_id_idx on public.num_tbl (actual rows=1334 loops=1)
                Output: id, f4, i2
                Index Cond: ((num_tbl.f4 = ANY ('{1.5,2.5}'::real[])) AND (num_tbl.i2 = 1))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
+               Storage Table Read Requests: 84
+               Storage Table Read Ops: 84
                Storage Table Rows Scanned: 1334
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
+               Storage Index Read Requests: 84
+               Storage Index Read Ops: 84
                Storage Index Rows Scanned: 1334
 (15 rows)
 
