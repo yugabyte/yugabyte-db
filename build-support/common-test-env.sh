@@ -986,11 +986,74 @@ handle_cxx_test_failure() {
   fi
 }
 
+# If YB_KEEP_SUCCESSFUL_TEST_LOGS is set to a gs:// or s3:// prefix, upload a
+# successful test's log there before the harness deletes it: the last PASSING
+# log per (flavor, test) is the baseline a failure gets diffed against, and
+# it cannot be collected retroactively. Constraints this code must honor:
+# - Best-effort by construction: nothing in here may fail the test or the
+#   build - including an argument mistake, which is why there is no
+#   expect_num_args (it fatals).
+# - Uploads are bounded by a timeout: this runs per test on ~12k tests per
+#   launch, and an uploader that hangs on a misconfigured bucket would stall
+#   green Spark tasks into resubmission storms.
+# - The log gets the same rewrite_test_log normalization as failing logs, so
+#   the two sides of a pass/fail diff share one notation.
+# - Object key = <prefix>/<BUILD_ROOT basename>/<relative log path>.gz with
+#   NO build number: each pass overwrites, "last K passes" is the bucket's
+#   object-versioning policy, and branch separation belongs in the per-lane
+#   prefix. The relative path keeps the parent directory name so Java
+#   per-method logs (surefire-reports_<class>__<method>/<class>-output.txt,
+#   not under yb-test-logs) get distinct keys per method.
+keep_successful_test_log() {
+  local log_to_keep=${1:-}
+  local prefix=${YB_KEEP_SUCCESSFUL_TEST_LOGS:-}
+  if [[ -z $prefix || -z $log_to_keep || ! -f $log_to_keep ]]; then
+    return 0
+  fi
+  (
+    set +e
+    rewrite_test_log "$log_to_keep"
+    set +e  # rewrite_test_log re-enables errexit on its way out
+    while [[ $prefix == */ ]]; do
+      prefix=${prefix%/}
+    done
+    local rel_path=${log_to_keep##*/yb-test-logs/}
+    if [[ $rel_path == "$log_to_keep" ]]; then
+      # Not under yb-test-logs (e.g. Java surefire output): parent dir + name.
+      local parent_dir=${log_to_keep%/*}
+      rel_path=${parent_dir##*/}/${log_to_keep##*/}
+    fi
+    local object_url="${prefix}/${BUILD_ROOT##*/}/${rel_path}.gz"
+    local gz_path="${log_to_keep}.keep.gz"
+    if ! gzip -c "$log_to_keep" >"$gz_path" 2>/dev/null; then
+      log "keep_successful_test_log: gzip failed for $log_to_keep"
+      rm -f "$gz_path"
+      return 0
+    fi
+    case "$object_url" in
+      gs://*)
+        timeout 60 gsutil -q cp "$gz_path" "$object_url" 2>/dev/null ||
+          log "keep_successful_test_log: upload failed: $object_url"
+        ;;
+      s3://*)
+        timeout 60 aws s3 cp --only-show-errors "$gz_path" "$object_url" 2>/dev/null ||
+          log "keep_successful_test_log: upload failed: $object_url"
+        ;;
+      *)
+        log "keep_successful_test_log: unsupported prefix (need gs:// or s3://):" \
+            "$YB_KEEP_SUCCESSFUL_TEST_LOGS"
+        ;;
+    esac
+    rm -f "$gz_path"
+  ) || true
+}
+
 delete_successful_output_if_needed() {
   expect_vars_to_be_set \
     TEST_TMPDIR \
     test_log_path
   if is_jenkins && ! "$test_failed"; then
+    keep_successful_test_log "$test_log_path"
     # Delete test output after a successful test run to minimize network traffic and disk usage on
     # Jenkins.
     rm -rf "$test_log_path" "$TEST_TMPDIR"
@@ -1722,6 +1785,7 @@ run_java_test() {
          "$test_log_path" "$log_files_path_prefix".*.{stdout,stderr}.txt &>/dev/null && \
        ! grep -E "(errors|failures)=\"?[1-9][0-9]*\"?" "$junit_xml_path" &>/dev/null; then
       log "Removing $test_log_path and related per-test-method logs: test succeeded."
+      keep_successful_test_log "$test_log_path"
       (
         set -x
         rm -f "$test_log_path" \
