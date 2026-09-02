@@ -71,6 +71,21 @@ log "Full-LTO build root: $build_root"
 
 lto_out="$build_root/lib/$lib_name"
 
+# Build PostgreSQL first: the link-command step below reads
+# postgres_build/src/common/libpgcommon_srv.a (lto.py add_pgcommon_srv_library) even though
+# --incomplete-build means it needs no other built artifact. That archive is not a declared CMake
+# by-product -- only libpgcommon.a and libpgport.a are -- so it cannot be requested by name; it
+# appears as a side effect of the make that builds libpgcommon.a. Without this, a tree that has
+# never built PostgreSQL aborts in `ar -t` on a file nothing created, and the failure only stays
+# hidden where an earlier full build happened to leave one behind.
+log "Building the PostgreSQL static libraries the whole-program link reads"
+( cd "$build_root" && YB_BUILD_ROOT="$build_root" \
+    ninja -k 0 postgres_build/src/common/libpgcommon.a postgres_build/src/port/libpgport.a ) \
+  || log "note: a non-closure byproduct failed to link (expected with --no-tcmalloc); continuing"
+pgcommon_srv="$build_root/postgres_build/src/common/libpgcommon_srv.a"
+[[ -f "$pgcommon_srv" ]] || fatal "PostgreSQL build did not produce $pgcommon_srv, which the \
+whole-program link step reads"
+
 # Emit the link command without running the linker. Needs only the configured build graph, not built
 # objects (--incomplete-build), and it names every object the client links -- our build work-list.
 log "Computing the whole-program link command (and the real object closure) for $lib_name"
