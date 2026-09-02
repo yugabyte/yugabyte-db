@@ -64,6 +64,7 @@ PITR features are available in YugabyteDB Anywhere and Aeon as follows:
 
 |      | Inspect at PIT | Clone to PIT | Rewind to PIT | Restore to PIT |
 | :--- | :------------- | :----------- | :------------ | :------------- |
+| YugabyteDB | SQL | SQL and yb-admin | yb-admin | Advanced (yb-admin) |
 | YugabyteDB Anywhere| SQL | Not in UI | Yes | Yes |
 | YugabyteDB Aeon| SQL | Yes | No | No |
 

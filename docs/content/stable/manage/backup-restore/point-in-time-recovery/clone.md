@@ -171,7 +171,7 @@ The following example demonstrates how to use a database clone to recover from a
 1. Create a local cluster using [yugabyted](../../../../reference/configuration/yugabyted/):
 
     ```sh
-    ./bin/yugabyted start --advertise_address=127.0.0.1 \
+    ./bin/yugabyted start --advertise_address=127.0.0.1
     ```
 
 1. Start [ysqlsh](../../../../api/ysqlsh/) and create the database:

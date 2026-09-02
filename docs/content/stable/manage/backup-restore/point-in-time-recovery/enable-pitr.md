@@ -26,13 +26,17 @@ To create a schedule, use the [create_snapshot_schedule](../../../../admin/yb-ad
 For example, to create a schedule that produces a snapshot of a YSQL database once a day (every 1,440 minutes) and retains it for three days (4,320 minutes), execute the following command:
 
 ```sh
-./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot_schedule 1440 4320 ysql.<database_name>
+./bin/yb-admin \
+    --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+    create_snapshot_schedule 1440 4320 ysql.<database_name>
 ```
 
 The equivalent command for a YCQL keyspace is the following:
 
 ```sh
-./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot_schedule 1440 4320 <keyspace_name>
+./bin/yb-admin \
+    --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+    create_snapshot_schedule 1440 4320 <keyspace_name>
 ```
 
 The following output is a unique ID of the newly created snapshot schedule:
@@ -50,7 +54,9 @@ You can use this ID to [delete the schedule](#delete-a-schedule) or [rewind to a
 To delete a schedule and disable Rewind and Clone for that database or keyspace, use the [delete_snapshot_schedule](../../../../admin/yb-admin/#delete-snapshot-schedule) command with the ID of the schedule to delete:
 
 ```sh
-./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+./bin/yb-admin \
+    --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+    delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
 ## List schedules
@@ -58,7 +64,9 @@ To delete a schedule and disable Rewind and Clone for that database or keyspace,
 To see a list of schedules that currently exist in the cluster, use the [list_snapshot_schedules](../../../../admin/yb-admin/#list-snapshot-schedules) command:
 
 ```sh
-./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules
+./bin/yb-admin \
+    --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+    list_snapshot_schedules
 ```
 
 ```output.json
@@ -89,7 +97,9 @@ To see a list of schedules that currently exist in the cluster, use the [list_sn
 You can also use the same command to view information about a particular schedule by providing its ID:
 
 ```sh
-./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+./bin/yb-admin \
+    --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+    list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
 ## Configuration details

@@ -98,4 +98,4 @@ When recent production writes must be preserved and you cannot [clone](../clone/
 1. Extract the needed rows or objects.
 1. Import and merge them back into the production database.
 
-On a manually managed cluster, step 1 is the [off-cluster restore procedure](#restore-on-another-cluster). In YugabyteDB Anywhere, restore the PITR-enabled backup to another universe instead.
+On a manually managed cluster, step 1 is the [off-cluster restore procedure](#restore-on-another-cluster). In YugabyteDB Anywhere, restore the PITR-enabled backup to another universe instead; see [Restore from backup](../../../../yugabyte-platform/back-up-restore-universes/restore-universe-data/#restore-from-backup).
