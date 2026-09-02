@@ -26,20 +26,20 @@ DECLARE_uint32(reject_writes_min_disk_space_check_interval_sec);
 
 namespace yb {
 
-template <class Base>
-class DiskFullTestBase : public Base {
- protected:
-  // Sets reject_writes_min_disk_space_mb above the actual free space to simulate disk full.
-  void SimulateDiskFull() {
-    const auto free_space_mb =
-        ASSERT_RESULT(Env::Default()->GetFreeSpaceBytes(GetTestDataDirectory())) / 1_MB;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_mb) =
-        std::max<uint64_t>(free_space_mb * 2, 1);
-    SleepFor(2s);
-  }
-};
+namespace {
 
-class YCqlDiskFullTest : public DiskFullTestBase<client::KeyValueTableTest<MiniCluster>> {
+// Sets reject_writes_min_disk_space_mb above the actual free space to simulate disk full.
+void SimulateDiskFull() {
+  const auto free_space_mb =
+      ASSERT_RESULT(Env::Default()->GetFreeSpaceBytes(GetTestDataDirectory())) / 1_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_mb) =
+      std::max<uint64_t>(free_space_mb * 2, 1);
+  SleepFor(2s);
+}
+
+}  // namespace
+
+class YCqlDiskFullTest : public client::KeyValueTableTest<MiniCluster> {
  public:
   YCqlDiskFullTest() = default;
 
@@ -107,7 +107,7 @@ TEST_F(YCqlDiskFullTest, YB_DISABLE_TEST_IN_ASAN(TestDiskFullPercentage)) {
   ASSERT_OK(WriteRow(session, i, i));
 }
 
-class YSqlDiskFullTest : public DiskFullTestBase<pgwrapper::PgMiniTestBase> {
+class YSqlDiskFullTest : public pgwrapper::PgMiniTestBase {
  public:
   YSqlDiskFullTest() = default;
 
