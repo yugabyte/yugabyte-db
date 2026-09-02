@@ -5061,7 +5061,8 @@
               "PROMETHEUS",
               "TSERVER_EXPORT",
               "CQL_EXPORT",
-              "YSQL_EXPORT"
+              "YSQL_EXPORT",
+              "KUBERNETES"
             ],
             "type" : "string"
           },
@@ -16238,6 +16239,9 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "local" : {
+          "type" : "boolean"
+        },
         "state" : {
           "enum" : [
             "LEADER",
@@ -16257,6 +16261,7 @@
         "address",
         "instance_state",
         "is_leader",
+        "local",
         "state",
         "uuid",
         "ybaVersion"
@@ -24571,7 +24576,8 @@
               "PROMETHEUS",
               "TSERVER_EXPORT",
               "CQL_EXPORT",
-              "YSQL_EXPORT"
+              "YSQL_EXPORT",
+              "KUBERNETES"
             ],
             "type" : "string"
           },
@@ -32115,7 +32121,6 @@
       "description" : "xcluster config object",
       "properties" : {
         "automaticDdlMode" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "createTime" : {
@@ -32411,7 +32416,6 @@
       "description" : "xcluster get response",
       "properties" : {
         "automaticDdlMode" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "createTime" : {

@@ -256,7 +256,7 @@ libraryDependencies ++= Seq(
   "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.77.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-objectstorage" % "3.77.2",
-  "org.projectlombok" % "lombok" % "1.18.26",
+  "org.projectlombok" % "lombok" % "1.18.48",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "3.1.0",
   // Compatible with protoc 33.0 https://protobuf.dev/support/version-support/

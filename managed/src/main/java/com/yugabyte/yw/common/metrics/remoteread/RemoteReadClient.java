@@ -84,17 +84,40 @@ public class RemoteReadClient {
     return new ApiHelper(wsClient, wsClientRefresher.getMaterializer());
   }
 
+  /** Equality matchers, one per label. */
+  public static List<LabelMatcher> equalityMatchers(Map<String, String> labels) {
+    return labels.entrySet().stream()
+        .map(
+            e ->
+                LabelMatcher.newBuilder()
+                    .setName(e.getKey())
+                    .setType(Type.EQ)
+                    .setValue(e.getValue())
+                    .build())
+        .collect(Collectors.toList());
+  }
+
   public void readMetrics(
       String url,
       Instant from,
       Instant to,
       Map<String, String> labels,
       BiConsumer<Map<String, String>, List<Pair<Long, Double>>> metricConsumer) {
-    readMetricsBinary(
+    readMetricsMatching(url, from, to, equalityMatchers(labels), metricConsumer);
+  }
+
+  /** As {@link #readMetrics} but with arbitrary matchers, so a label can be matched by regex. */
+  public void readMetricsMatching(
+      String url,
+      Instant from,
+      Instant to,
+      List<LabelMatcher> matchers,
+      BiConsumer<Map<String, String>, List<Pair<Long, Double>>> metricConsumer) {
+    readMetricsBinaryMatching(
         normalizeUrl(url),
         from,
         to,
-        labels,
+        matchers,
         inputStream -> {
           try {
             parseChunkedReadResponse(inputStream, metricConsumer);
@@ -110,6 +133,15 @@ public class RemoteReadClient {
       Instant to,
       Map<String, String> labels,
       Consumer<InputStream> inputStreamConsumer) {
+    readMetricsBinaryMatching(url, from, to, equalityMatchers(labels), inputStreamConsumer);
+  }
+
+  public void readMetricsBinaryMatching(
+      String url,
+      Instant from,
+      Instant to,
+      List<LabelMatcher> matchers,
+      Consumer<InputStream> inputStreamConsumer) {
     long startTime = System.currentTimeMillis();
     Map<String, String> requestHeaders = buildRequestHeaders();
 
@@ -119,10 +151,7 @@ public class RemoteReadClient {
         Query.newBuilder()
             .setStartTimestampMs(from.toEpochMilli())
             .setEndTimestampMs(to.toEpochMilli());
-    labels.forEach(
-        (key, value) ->
-            readQueryBuilder.addMatchers(
-                LabelMatcher.newBuilder().setName(key).setType(Type.EQ).setValue(value).build()));
+    matchers.forEach(readQueryBuilder::addMatchers);
     readRequestBuilder.addQueries(readQueryBuilder.build());
 
     ReadRequest readRequest = readRequestBuilder.build();
