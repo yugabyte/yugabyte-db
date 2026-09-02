@@ -111,5 +111,5 @@ yugabyte=# \d feature_struct
 
 ## See also
 
-- [`CREATE TYPE`](../ddl_create_type)
+- [CREATE TYPE](../ddl_create_type)
 - [`DROP TYPE`](../ddl_drop_type)
