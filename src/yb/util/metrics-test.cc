@@ -366,7 +366,7 @@ TEST_F(MetricsTest, AggregationTest) {
     ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
     CheckPreAggreatedAndScrapeTimeValues(writer, kSumGaugeName, "table_1_id", 9, std::nullopt);
     CheckPreAggreatedAndScrapeTimeValues(writer, kMaxGaugeName, "table_1_id", std::nullopt, 9);
-    CheckPreAggreatedAndScrapeTimeValues(writer, kSumCounterName, "table_1_id", 9, std::nullopt);
+    CheckPreAggreatedAndScrapeTimeValues(writer, kSumCounterName, "table_1_id", 19, std::nullopt);
     MetricEntity::AttributeMap attributes;
     attributes["metric_type"] = "tablet";
     attributes["table_id"] = "table_1_id";
@@ -380,7 +380,7 @@ TEST_F(MetricsTest, AggregationTest) {
     ASSERT_OK(registry_.WriteForPrometheus(&writer2, opts));
     CheckPreAggreatedAndScrapeTimeValues(writer2, kSumGaugeName, "table_1_id", 20, std::nullopt);
     CheckPreAggreatedAndScrapeTimeValues(writer2, kMaxGaugeName, "table_1_id", std::nullopt, 11);
-    CheckPreAggreatedAndScrapeTimeValues(writer2, kSumCounterName, "table_1_id", 20, std::nullopt);
+    CheckPreAggreatedAndScrapeTimeValues(writer2, kSumCounterName, "table_1_id", 30, std::nullopt);
     CheckPreStoredAndScrapeTimeAttributes(writer2, "table_1_id", attributes, attributes);
 
     // Finally, bump the values and verify.
@@ -401,7 +401,7 @@ TEST_F(MetricsTest, AggregationTest) {
     ASSERT_OK(registry_.WriteForPrometheus(&writer3, opts));
     CheckPreAggreatedAndScrapeTimeValues(writer3, kSumGaugeName, "table_1_id", 21, std::nullopt);
     CheckPreAggreatedAndScrapeTimeValues(writer3, kMaxGaugeName, "table_1_id", std::nullopt, 12);
-    CheckPreAggreatedAndScrapeTimeValues(writer3, kSumCounterName, "table_1_id", 21, std::nullopt);
+    CheckPreAggreatedAndScrapeTimeValues(writer3, kSumCounterName, "table_1_id", 31, std::nullopt);
     CheckPreStoredAndScrapeTimeAttributes(writer3, "table_1_id", attributes, attributes);
   }
 }

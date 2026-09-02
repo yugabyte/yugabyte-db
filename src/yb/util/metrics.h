@@ -760,7 +760,10 @@ class AtomicGauge : public Gauge {
       : Gauge(std::move(proto)), value_(initial_value) {}
 
   ~AtomicGauge() {
-    if (aggregated_prometheus_value_holder_ != nullptr) {
+    // Don't subtract for counter-like metrics (EXPOSE_AS_COUNTER gauges), otherwise the table
+    // total dips when a tablet goes away and rate() spikes. Only real gauges should decrement.
+    if (aggregated_prometheus_value_holder_ != nullptr &&
+        prototype_->type() != MetricType::kCounter) {
       aggregated_prometheus_value_holder_->IncrementBy(-value());
     }
   }
@@ -997,7 +1000,9 @@ class Counter : public Metric {
   explicit Counter(const CounterPrototype* proto);
   explicit Counter(std::shared_ptr<CounterPrototype> proto);
 
-  ~Counter();
+  // Don't subtract aggregated_prometheus_value_holder_ here. If we did, the total would dip
+  // every time a tablet goes away (e.g. split/move) and rate() would read that dip as a spike.
+  ~Counter() = default;
 
   LongAdder value_;
 
