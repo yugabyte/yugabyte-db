@@ -183,7 +183,11 @@ yb-admin \
 * *keyspace-type*: Type of the keyspace, ysql or ycql.
 * *keyspace-name*: The namespace, or name of the database or keyspace.
 * *table*: The name of the table.
-* *max-tablets*: The maximum number of tables to be returned. Default is `10`. Set to `0` to return all tablets.
+* *max-tablets*: The maximum number of tablets to be returned. Default is `10`. Set to `0` to return all tablets.
+
+JSON output (`list_tablets ... JSON`) includes `partition_key_start_hex` and `partition_key_end_hex` for each tablet: the tablet's partition key boundaries, hex-encoded. Pass them to [get_table_hash](#get-table-hash) as its *start-key-hex* and *end-key-hex* arguments to hash one tablet's range at a time. The bounds are half-open, with `partition_key_start_hex` inclusive and `partition_key_end_hex` exclusive, so one tablet's end value is the next tablet's start value, and hashing every tablet's range covers the table exactly once. An empty value means unbounded, which is what the first tablet's start and the last tablet's end show.
+
+Passing these through is the only way to hash a range-partitioned table tablet by tablet, because the text output renders range boundaries as a debug string that can't be converted back into keys. For hash-partitioned tables, the hex values also save you the inclusive-to-exclusive conversion that the text output's `hash_split` ranges require.
 
 **Example**
 
@@ -800,7 +804,7 @@ A new backfill job is created for all the `DEFERRED` indexes of the table. The c
 
 Computes an XOR hash and row count over the data in a table, tablet by tablet. Use this to verify data consistency across clusters in an xCluster deployment by comparing hash values at the same hybrid timestamp.
 
-For colocated databases, pass a child table's *table-id* to scope the hash to a single colocated table. To hash all colocated tables sharing a tablet together, pass the colocation parent table ID, which is visible in [list_tables](#list-tables) when system tables are included.
+For colocated databases, pass a child table's *table-id* to scope the hash to a single colocated table. To hash every colocated table sharing a tablet in one command, pass the colocation parent table ID, which is visible in [list_tables](#list-tables) when system tables are included. The parent form reports a separate hash per table rather than one combined value; see the note on colocation parents below.
 
 **Syntax**
 
@@ -812,16 +816,23 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *table-id*: UUID of the table to hash. Obtain this from [list_tables](#list-tables). For a colocated database, pass the child table UUID to scope the hash to one table, or the colocation parent table UUID to hash all colocated tables in the tablet.
+* *table-id*: UUID of the table to hash. Obtain this from [list_tables](#list-tables). For a colocated database, pass the child table UUID to scope the hash to one table, or the colocation parent table UUID to hash every colocated table in the tablet.
 * *read-ht* (optional): Hybrid timestamp at which to read, as a 64-bit integer. Defaults to the current time. Because the arguments are positional, pass 0 to keep the default when you also need to specify *start-key-hex* / *end-key-hex*. Use the same value on both clusters when comparing hashes for xCluster consistency checks.
-* *start-key-hex* (optional): Inclusive lower bound of the partition-key range to hash, as the hex encoding of a tablet's `partition_key_start` from [list_tablets](#list-tablets). Pass an empty string (`""`) to leave this side unbounded.
-* *end-key-hex* (optional): Exclusive upper bound of the partition-key range, as the hex encoding of `partition_key_end`. `partition_key_end` values from [list_tablets](#list-tablets) are inclusive; add 1 to match this exclusive bound. Pass an empty string (`""`) to leave this side unbounded.
+* *start-key-hex* (optional): Inclusive lower bound of the key range to hash, hex-encoded. Use a tablet's `partition_key_start_hex` from the JSON output of [list_tablets](#list-tablets), or a `Next key` returned by an earlier capped scan (see `--max_rows_per_scan`). Pass an empty string (`""`) for no lower bound.
+* *end-key-hex* (optional): Exclusive upper bound of the key range, hex-encoded. Use a tablet's `partition_key_end_hex` from the JSON output of `list_tablets`; it is already exclusive, so pass it through unchanged. Pass an empty string (`""`) for no upper bound. If you take the boundary from the text output of `list_tablets` instead, add 1 to the 2-byte hash value it prints in a `hash_split` range, because that range ends on an inclusive value.
 
 **Notes**
 
+* A colocation parent table ID reports one `Table <table-id>: rows <n>, XOR hash <hash>` line per colocated table, and no `Total XOR hash`. A row's hash depends on its column IDs and values but not on which table it belongs to, so two colocated tables holding the same values under the same column IDs hash alike and would cancel each other out if combined, leaving a total that cannot be told apart from an empty tablet. Compare the per-table lines instead. `Total row count` still covers the whole tablet.
 * Key range arguments (*start-key-hex* / *end-key-hex*) require a concrete child table ID. Using them with a colocation parent table ID returns an error.
-* For hash-partitioned tables, each bound must be a valid 2-byte hash-partition key.
-* *start-key-hex* must be strictly less than *end-key-hex* when both are specified.
+* For hash-partitioned tables, each bound must be either a valid 2-byte hash-partition key, or a `Next key` returned by a prior capped scan (see `--max_rows_per_scan`).
+* When you specify both bounds, *start-key-hex* must be strictly less than *end-key-hex*, or the command returns an error rather than hashing an empty range. An empty bound means unbounded and is always accepted. The two are compared after both have been converted to the same internal key encoding, so a 2-byte hash bound and a longer `Next key` from a capped scan can be used together.
+* `--max_rows_per_scan <n>` (optional, default `0` = unlimited) stops the scan after `n` rows have been hashed, for hash- and range-partitioned tables alike. The output then includes a `Next key: <hex>` line holding the key of the first row that was *not* hashed. The rows covered are those from *start-key-hex* up to but not including `Next key`, so passing `Next key` as *start-key-hex* on the next call, which is an inclusive bound, resumes exactly where the scan stopped without skipping or double-counting a row.
+* When you page through a table this way, pass the `Read HT` printed by the first page as *read-ht* on every subsequent page. With *read-ht* left at `0`, each invocation picks a fresh read time, so the pages are read at different snapshots and the combined hash describes no single state of the table. Under concurrent writes the pages then neither add up to the table's row count nor XOR together to its hash. Pinning the read time is what makes the pages fold into the same result an uncapped scan at that time would have produced.
+* A read time stays readable only for as long as the YB-TServer keeps history for it, which is `timestamp_history_retention_interval_sec` (default 15 minutes). Each request pins the cutoff for its own duration, so a single scan is safe however long it runs, but a paged scan that holds one *read-ht* across many requests fails with `Snapshot too old` once the pinned time ages past the retention window. The command reports this rather than silently hashing a compacted view. On a table large enough to need more paging time than the retention window allows, either raise the flag on the YB-TServers for the duration of the scan, or hash sub-ranges independently, accepting that each range is then read at its own time and the results describe no single state of the table.
+* For a hash-partitioned table, `Next key` is an encoded row key rather than a 2-byte hash value, because a scan that stops in the middle of a hash band has to resume inside that band. Pass it through unchanged, and don't compare it against the 2-byte tablet boundaries from `list_tablets`.
+* `--max_rows_per_scan` needs a YB-TServer that supports the row cap, which is newer than the support needed for the key-range scoping described in the last note. {{<release "2024.2">}}, {{<release "2025.2">}}, and {{<release "2026.1">}} support key-range scoping but not the row cap, and no release up to and including {{<release "2026.1">}} supports it. A YB-TServer that doesn't support the cap ignores it silently rather than returning an error: it hashes the entire requested range and prints no `Next key`, so a caller that pages on `Next key` reads the whole range in a single request. A `Total row count` greater than `n` tells you this has happened.
+* `Hash scheme version` identifies the algorithm that produced the hash. **Two hashes are comparable only when their scheme versions are equal.** Under different schemes, identical data hashes to unrelated values, so a comparison across schemes reports a difference that isn't there. Check the version before comparing hashes between clusters or across an upgrade. A YB-TServer too old to report a version shows `0`. If the tablets of one table report different versions, which happens while an upgrade is rolling through a cluster, the command fails instead of combining them into a meaningless total; re-run it once every YB-TServer is on the same version.
 * Key-range and per-table colocated scoping require YugabyteDB {{<release "2024.2">}}, {{<release "2025.2">}}, or {{<release "2026.1">}} on both yb-admin and the target YB-TServers. On older YB-TServer versions, the scoping arguments are silently ignored and the full table (or entire colocated tablet) is hashed instead of returning an error, so verify versions before relying on the result in a mixed-version cluster.
 
 **Example: Hash a full table**
@@ -838,22 +849,26 @@ Read HT: { physical: 1748000000000000 }
 Tablet ID: cea3aaac2f10460a880b0b4a2a4b652a
     Row count: 100
     XOR hash: 3825474321
+    Hash scheme version: 1
 
 Tablet ID: e509cf8eedba410ba3b60c7e9138d479
     Row count: 98
     XOR hash: 2910384756
+    Hash scheme version: 1
 
 Tablet ID: f1a234b5c6d7e8f9a0b1c2d3e4f5a6b7
     Row count: 102
     XOR hash: 1029384756
+    Hash scheme version: 1
 
 Total row count: 300
 Total XOR hash: 1948762961
+Hash scheme version: 1
 ```
 
 **Example: Hash a partition-key range**
 
-Use this to narrow down where data diverged across clusters (bisecting after a whole-table mismatch), or to hash only a fraction of a very large table. For example, sampling a random range periodically, or splitting a full scan into non-overlapping ranges run in parallel. *start-key-hex* and *end-key-hex* are the hex encodings of `partition_key_start` and `partition_key_end` which you can obtain from [list_tablets](#list-tablets). For hash-partitioned tables, `list_tablets` prints each tablet's range as `hash_split: [0x..., 0x...]`; use the values without the `0x` prefix. Remember that `list_tablets` shows `partition_key_end` as inclusive, while *end-key-hex* is exclusive, so add 1 to the end value to land on the same boundary. The range is logical and cluster-independent; each cluster resolves it against its own tablet boundaries.
+Use this to narrow down where data diverged across clusters (bisecting after a whole-table mismatch), or to hash only a fraction of a very large table. For example, sampling a random range periodically, or splitting a full scan into non-overlapping ranges run in parallel. *start-key-hex* and *end-key-hex* are the hex encodings of a tablet's partition key boundaries, which you can obtain from [list_tablets](#list-tablets). The simplest source is its JSON output, whose `partition_key_start_hex` and `partition_key_end_hex` fields need no conversion. In the text output, a hash-partitioned tablet's range is printed as `hash_split: [0x..., 0x...]`; use those values without the `0x` prefix, and add 1 to the end value, because the text output ends the range on an inclusive value while *end-key-hex* is exclusive. The range is logical and cluster-independent; each cluster resolves it against its own tablet boundaries.
 
 ```sh
 ./bin/yb-admin \
@@ -862,6 +877,31 @@ Use this to narrow down where data diverged across clusters (bisecting after a w
 ```
 
 This hashes the lower half of the hash-partition space (unbounded start through `0x8000` exclusive).
+
+**Example: Hash every table in a colocated tablet**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    get_table_hash 000033e8000030008000000000000000
+```
+
+```output
+Processing 1 tablets for table 000033e8000030008000000000000000
+Read HT: { physical: 1748000000000000 }
+Tablet ID: 9b1c0e4f5a2d43c7b8e6f0a1d2c3b4e5
+    Row count: 80
+    Table 000033e8000030008000000000004001: rows 50, XOR hash 3825474321
+    Table 000033e8000030008000000000004002: rows 30, XOR hash 2910384756
+    Hash scheme version: 1
+
+Total row count: 80
+Table 000033e8000030008000000000004001: rows 50, XOR hash 3825474321
+Table 000033e8000030008000000000004002: rows 30, XOR hash 2910384756
+Hash scheme version: 1
+```
+
+Compare each table's line against the same table on the other cluster. Table IDs differ between clusters, so match the lines up by table name using [list_tables](#list-tables).
 
 ---
 
