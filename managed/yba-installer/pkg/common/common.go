@@ -400,6 +400,11 @@ func createYugabyteUser() error {
 		if out := shell.Run("useradd", "-m", userName, "-U"); !out.Succeeded() {
 			return fmt.Errorf("failed to create user %s: %s", userName, out.Error.Error())
 		}
+		// The python preflight check can only warn while the service user is missing. This is the
+		// first point where it exists and we can still abort, so enforce it here.
+		if err := ValidatePython(userName); err != nil {
+			return err
+		}
 	} else {
 		return fmt.Errorf("need sudo access to create yugabyte user")
 	}
