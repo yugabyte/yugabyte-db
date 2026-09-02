@@ -2968,6 +2968,7 @@ public class NodeManager extends DevopsBase {
         || type == NodeCommandType.Create_Root_Volumes
         || type == NodeCommandType.RunHooks
         || type == NodeCommandType.Verify_Certs
-        || type == NodeCommandType.Wait_For_Connection;
+        || type == NodeCommandType.Wait_For_Connection
+        || type == NodeCommandType.Hard_Reboot;
   }
 }

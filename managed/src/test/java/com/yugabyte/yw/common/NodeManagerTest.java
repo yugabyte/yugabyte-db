@@ -49,6 +49,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
@@ -2812,6 +2813,64 @@ public class NodeManagerTest extends FakeDBApplication {
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommand), any(ShellProcessContext.class));
       idx++;
+    }
+  }
+
+  /**
+   * Soft and hard reboot must pass provider --ssh_user. Without it, ybops defaults to centos /
+   * yugabyte which may not exist (e.g. create-time InstanceExistCheck hard-reboot recovery).
+   */
+  @Test
+  @Parameters({"Reboot", "Hard_Reboot"})
+  @TestCaseName("{method}({0})")
+  public void testRebootNodeCommandIncludesSshUser(String commandTypeName) {
+    NodeManager.NodeCommandType type = NodeManager.NodeCommandType.valueOf(commandTypeName);
+    String sshUser = "ec2-user";
+    for (TestData t : testData) {
+      t.provider.getDetails().sshUser = sshUser;
+      t.provider.getDetails().sshPort = 22;
+      t.provider.save();
+
+      AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+      keyInfo.privateKey = "/path/to/private.key";
+      keyInfo.publicKey = "/path/to/public.key";
+      getOrCreate(t.provider.getUuid(), "demo-access", keyInfo);
+
+      UserIntent userIntent = new UserIntent();
+      userIntent.numNodes = 3;
+      userIntent.accessKeyCode = "demo-access";
+      userIntent.regionList = new ArrayList<>();
+      userIntent.regionList.add(t.region.getUuid());
+      userIntent.providerType = t.cloudType;
+      userIntent.provider = t.provider.getUuid().toString();
+
+      NodeTaskParams params =
+          type == NodeManager.NodeCommandType.Reboot
+              ? new RebootServer.Params()
+              : new NodeTaskParams();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent)));
+
+      reset(shellProcessHandler);
+      ArgumentCaptor<List> arg = ArgumentCaptor.forClass(List.class);
+      nodeManager.nodeCommand(type, params);
+      verify(shellProcessHandler, times(1)).run(arg.capture(), any(ShellProcessContext.class));
+
+      List<String> cmdArgs = arg.getValue();
+      assertNotNull(cmdArgs);
+      assertTrue(cmdArgs.contains(type.toString().toLowerCase()));
+      assertTrue(
+          "Expected --ssh_user for " + type + " but got: " + cmdArgs,
+          cmdArgs.contains("--ssh_user"));
+      assertEquals(sshUser, cmdArgs.get(cmdArgs.indexOf("--ssh_user") + 1));
+      if (type == NodeManager.NodeCommandType.Reboot) {
+        assertTrue(cmdArgs.contains("--use_ssh"));
+      } else {
+        assertFalse(cmdArgs.contains("--use_ssh"));
+      }
     }
   }
 
