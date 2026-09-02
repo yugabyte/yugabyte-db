@@ -179,6 +179,42 @@ def query_test(uniqueId: str, wait: bool) -> bool:
     return found_prev
 
 
+# Classify one execution before reporting: the ReportPortal 'retry' flag, the 'retry_kind'
+# item attribute (why this is not a plain first attempt - the empty string for one), and
+# whether a previous-item query must wait. The kinds, in precedence order:
+#   fail_repetition - intentional re-run of a test that failed earlier (--fail_repetitions);
+#                     exists only after a first-attempt failure, so it must never enter a
+#                     first-attempt failure rate;
+#   task_resubmit   - Spark re-ran the task because a worker died; an infra artifact;
+#   repetition      - unconditional extra run (--num_repetitions).
+# The shapes overlap: a Spark task resubmit (attempt > 0) can happen inside the
+# fail-repetition job or inside a --num_repetitions job, since both dispatch through the same
+# task path. Only fail_repetition vs repetition is exclusive by construction. The order above
+# resolves the overlap on purpose: a resubmitted fail-repetition is still a run of a test whose
+# first attempt failed, so it keeps the fail_repetition tag (the "first attempt failed"
+# implication stays exact for consumers), and a resubmitted repetition reports task_resubmit
+# because it needs the resubmit wait semantics. Consequence: task_resubmit undercounts infra
+# resubmits by those that occur inside fail-repetition jobs; it is a best-effort signal.
+# Known gap: a driver-level Spark JOB resubmit starts a fresh task with attempt 0 and is
+# indistinguishable from a first attempt here.
+def classify_execution(rerun: bool, attempt: int, reps: str,
+                       attempt_index: int) -> Tuple[bool, str, bool]:
+    if rerun:
+        # Intentionally re-running a completed (failed) test; serial, no wait needed. Checked
+        # before attempt so a resubmit inside the rerun job keeps this kind (see above).
+        return True, 'fail_repetition', False
+    if attempt > 0:
+        # Spark re-tries happen only if there is some failure, so attempts are serial.
+        # The previous attempt died before reporting completion; the query must wait to
+        # find out whether it reported a start.
+        return True, 'task_resubmit', True
+    # Repetitions are the same test intentionally run multiple times, in parallel and
+    # random order; only the first-indexed one may skip the wait.
+    if reps != '1':
+        return True, 'repetition', attempt_index != 1
+    return False, '', False
+
+
 # Normally, we want to use asynchronous reporting of results to not slow down test runs.
 # For test re-try, though, if the prior attempt did not get reported, then the re-try report will
 # fail and then there is no record. So we need to query to check for the prior attempt and in the
@@ -194,31 +230,14 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
     pt = SimpleTestDescriptor.parse(full_name)
     tname = f"{pt.class_name} - {pt.test_name}"
 
-    if rerun:
-        # In this case, we are intentionally re-running a completed test.
-        retry = True
-    else:
-        if attempt > 0:
-            # Spark re-tries happen only if there is some failure, so attempts are serial.
-            retry = True
-            wait = True
-            # In this case the previous attempt died before having a chance to report completion.
-            # We need to query to find out if the previous attempt reported start or not.
-        else:
-            # Repetitions are same test intentionally run multiple times, in parallel and random
-            # order. We need to query to make sure one has at least started before reporting these
-            # as retry.
-            retry = (csi['reps'] != '1')
-            if test.attempt_index == 1:
-                wait = False
-            else:
-                wait = True
-
-        if retry:
-            prev_test = query_test(full_name, wait)
-            if not prev_test:
-                # Found no previous test, so do not call this one a retry.
-                retry = False
+    retry, retry_kind, wait = classify_execution(rerun, attempt, csi['reps'], test.attempt_index)
+    if retry and not rerun:
+        prev_test = query_test(full_name, wait)
+        if not prev_test:
+            # Found no previous test, so do not call this one a retry. The retry_kind
+            # attribute is kept: the execution is still a repetition/resubmit, it just
+            # happens to be the first one that reported.
+            retry = False
 
     # TestCase ID (used to compare across test runs) seems to depend on codeRef & parameters
     # instead we give uniqueId with fully-specified name.  uniqueID is not shown in web UI.
@@ -235,6 +254,8 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
             {'key': 'lang',  'value': test.language}
         ]
     }
+    if retry_kind:
+        req_data['attributes'].append({'key': 'retry_kind', 'value': retry_kind})
     # For cxx tests, the name might not be unique if in different directories, so we add
     # parameter indicating the cxx_rel_binary that is included in test descriptor.
     if pt.cxx_rel_test_binary:
