@@ -415,6 +415,9 @@ class Log : public RefCountedThreadSafe<Log> {
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
   FRIEND_TEST(LogTest, TestLogMetrics);
   FRIEND_TEST(LogTest, TestLogMetricsWithSegmentReuse);
+  FRIEND_TEST(LogTest, TestWalSyncOverdueMetric);
+  FRIEND_TEST(LogTest, TestWalSyncOverdueMetricUnderDurableWalWrite);
+  FRIEND_TEST(LogTest, TestWalSyncOverdueMetricWhenIntervalDisabled);
   FRIEND_TEST(LogTest, AsyncRolloverMarker);
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
   FRIEND_TEST(cdc::CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace);
@@ -445,6 +448,11 @@ class Log : public RefCountedThreadSafe<Log> {
       const PreLogRolloverCallback& pre_log_rollover_callback,
       CreateNewSegment create_new_segment = CreateNewSegment::kTrue,
       MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback = {});
+
+  // Value of the log_wal_sync_overdue_ms gauge: how far past interval_durable_wal_write_ the
+  // oldest unsynced entry is, or 0 if nothing is unsynced or the interval does not apply. Read on
+  // the metrics thread, concurrently with the appender and the background fsync.
+  int64_t WalSyncOverdueMs() const;
 
   Env* get_env() {
     return options_.env;
@@ -705,6 +713,9 @@ class Log : public RefCountedThreadSafe<Log> {
   scoped_refptr<MetricEntity> table_metric_entity_;
   scoped_refptr<MetricEntity> tablet_metric_entity_;
   std::unique_ptr<LogMetrics> metrics_;
+  // Detaches the function gauge in metrics_ from this Log on destruction. Declared after the
+  // members the gauge reads.
+  std::shared_ptr<void> metric_detacher_;
 
   std::shared_ptr<MemTracker> read_wal_mem_tracker_;
 
