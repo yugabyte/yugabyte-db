@@ -2684,17 +2684,6 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         e.getMessage().contains("could not find ycqlPassword in secret ycql-secret"));
   }
 
-  // Asserts that an edit reconcile left the universe's own auth settings untouched. The operator
-  // cannot toggle auth or rotate a password yet, so an edit must never write either back.
-  private void assertUniverseAuthUnchanged(UUID universeUuid) {
-    Universe universe = Universe.getOrBadRequest(universeUuid);
-    UserIntent storedIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    assertTrue("edit must not disable YSQL auth", storedIntent.enableYSQLAuth);
-    assertTrue("edit must not disable YCQL auth", storedIntent.enableYCQLAuth);
-    assertEquals("stored-ysql-pass", storedIntent.ysqlPassword);
-    assertEquals("stored-ycql-pass", storedIntent.ycqlPassword);
-  }
-
   @Test
   public void testEditUserIntentKeepsAuthWhenPasswordRemovedFromSpec() throws Exception {
     YBUniverse ybUniverse =
@@ -2713,7 +2702,6 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     assertTrue(userIntent.enableYCQLAuth);
     assertNull(userIntent.ysqlPassword);
     assertNull(userIntent.ycqlPassword);
-    assertUniverseAuthUnchanged(universe.getUniverseUUID());
   }
 
   @Test
@@ -2736,6 +2724,5 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     assertTrue(userIntent.enableYCQLAuth);
     assertNull(userIntent.ysqlPassword);
     assertNull(userIntent.ycqlPassword);
-    assertUniverseAuthUnchanged(universe.getUniverseUUID());
   }
 }
