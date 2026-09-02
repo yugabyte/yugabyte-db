@@ -34,6 +34,7 @@
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/server/webserver.h"
+#include "yb/tserver/pg_shared_mem_trace.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/dist_trace.h"
@@ -71,10 +72,10 @@ namespace otlp_trace = opentelemetry::proto::trace::v1;
 static constexpr auto kOtelBatchMaxQueueSize = 4096;
 static constexpr auto kOtelBatchMaxExportBatchSize = 512;
 static constexpr auto kOtelBatchScheduleDelayMs = 100;
-static constexpr auto kSharedMemoryPerformSpanName =
-    "shmem yb.tserver.PgClientService.Perform";
-static constexpr auto kSharedMemoryObjectLockSpanName =
-    "shmem yb.tserver.PgClientService.AcquireObjectLock";
+static const auto kSharedMemoryPerformSpanName =
+    tserver::GetSharedMemSpanName(tserver::PgSharedExchangeReqType::PERFORM);
+static const auto kSharedMemoryObjectLockSpanName =
+    tserver::GetSharedMemSpanName(tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK);
 
 // Sets otel_collector_traces_endpoint for the object's lifetime, keeping g_dist_trace_enabled
 // in sync (google::FlagSaver restores the flag without rerunning its callback).
@@ -668,8 +669,8 @@ class DistTraceTest : public LibPqTestBase {
 
   void ConfigureClusterOptions(ExternalMiniClusterOptions* options) {
     options->replication_factor = 1;
-    options->extra_tserver_flags.push_back(
-        Format("--enable_object_lock_fastpath=$0", UsePgClientSharedMemory()));
+    // Force object locks over the exchange (fastpath produces no request, hence no span).
+    options->extra_tserver_flags.push_back("--enable_object_lock_fastpath=false");
     options->extra_tserver_flags.push_back(
         Format("--pg_client_use_shared_memory=$0", UsePgClientSharedMemory()));
     if (UsePgClientSharedMemory()) {
@@ -1934,8 +1935,7 @@ TEST_F(DistTraceTest, TestSharedMemorySpansReachTabletServer) {
       "ysql" /* client_service */, "TabletServer" /* server_service */));
 }
 
-// Checks that a request too large for the exchange falls back to RPC, leaving a childless shared
-// memory span and an RPC span whose inbound counterpart on TabletServer is its remote child.
+// A request too large for the exchange falls back to RPC; the shmem span ends with an error.
 TEST_F(DistTraceTest, TestSharedMemoryFallbackToRpc) {
   static constexpr auto kTableName = "shmem_fallback_test";
   ASSERT_OK(CreateTable(kTableName, 1));
@@ -1956,6 +1956,9 @@ TEST_F(DistTraceTest, TestSharedMemoryFallbackToRpc) {
                  tp.trace_id, kSharedMemoryPerformSpanName)) {
           if (span.service_name == "ysql" &&
               collector_.FindSpansByParent(tp.trace_id, span.span_id).empty()) {
+            EXPECT_EQ(span.status_code, otlp_trace::Status::STATUS_CODE_ERROR);
+            EXPECT_NE(span.status_message.find("falling back to RPC"), std::string::npos)
+                << span.status_message;
             return true;
           }
         }
