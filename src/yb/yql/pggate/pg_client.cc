@@ -41,10 +41,12 @@
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/serialization.h"
 
 #include "yb/tserver/pg_client.messages.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client.proxy.h"
+#include "yb/tserver/pg_shared_mem_trace.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/dist_trace.h"
@@ -278,18 +280,6 @@ class BigDataFetcher {
 template <class T>
 struct ResponseReadyTraits;
 
-std::string_view GetSharedMemSpanName(tserver::PgSharedExchangeReqType req_type) {
-  switch (req_type) {
-    case tserver::PgSharedExchangeReqType::PERFORM:
-      return "shmem yb.tserver.PgClientService.Perform";
-    case tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK:
-      return "shmem yb.tserver.PgClientService.AcquireObjectLock";
-    case tserver::PgSharedExchangeReqType_INT_MIN_SENTINEL_DO_NOT_USE_: [[fallthrough]];
-    case tserver::PgSharedExchangeReqType_INT_MAX_SENTINEL_DO_NOT_USE_: break;
-  }
-  FATAL_INVALID_ENUM_VALUE(tserver::PgSharedExchangeReqType, req_type);
-}
-
 template <>
 struct ResponseReadyTraits<bool> {
   static bool AllowNotReady() {
@@ -388,7 +378,7 @@ template <class Data>
 void ExchangeFuture<Data>::wait() const {
   if (!value_) {
     value_ = MakeExchangeResult(*data_, data_->Complete());
-    data_->EndSharedMemorySpan(value_->status);
+    tserver::EndSharedMemSpan(&data_->otel_span, value_->status);
   }
 }
 
@@ -432,24 +422,12 @@ struct PgClientData : public FetchBigDataCallback {
   PgClientData(const LWReqPB& req_, ThreadSafeArena* arena_) : req(req_), resp(arena_) {}
 
   void StartSharedMemorySpan() {
-    otel_span = dist_trace::StartClientSpan(GetSharedMemSpanName(kSharedExchangeRequestType));
+    otel_span = dist_trace::StartClientSpan(
+        tserver::GetSharedMemSpanName(kSharedExchangeRequestType));
     if (otel_span) {
       // Mirror the attributes the RPC outbound span carries (outbound_call.cc).
       otel_span->SetAttribute("rpc.system", "yb_shmem");
     }
-  }
-
-  void EndSharedMemorySpan(const Status& status) {
-    if (!otel_span) {
-      return;
-    }
-    if (status.ok()) {
-      otel_span->SetStatus(opentelemetry::trace::StatusCode::kOk);
-    } else {
-      otel_span->SetStatus(opentelemetry::trace::StatusCode::kError, status.ToUserMessage());
-    }
-    otel_span->End();
-    otel_span = nullptr;
   }
 
   void SetupExchange(
@@ -1113,7 +1091,7 @@ class PgClient::Impl : public BigDataFetcher {
       // Start the outbound shared-memory span before sizing the request.
       data->StartSharedMemorySpan();
       ash::MetadataSerializer metadata(rpc::MetadataSerializationMode::kWriteOnZero);
-      ash::TraceContextSerializer trace_context;
+      rpc::TraceContextSerializer trace_context;
       if (data->otel_span) {
         trace_context.SetTraceContext(data->otel_span->GetContext());
       }
@@ -1150,15 +1128,16 @@ class PgClient::Impl : public BigDataFetcher {
         }
         if (!status.ok()) {
           auto result = MakeExchangeResult(*data, status);
-          data->EndSharedMemorySpan(result.status);
+          tserver::EndSharedMemSpan(&data->otel_span, result.status);
           data->promise.set_value(std::move(result));
           return data->promise.get_future();
         }
         data->SetupExchange(&exchange, this, rpc_deadline);
         return ExchangeFuture<Data>(std::move(data));
       }
-      // End the shared-memory span started above so it is not leaked.
-      data->EndSharedMemorySpan(Status::OK());
+      tserver::EndSharedMemSpan(
+          &data->otel_span,
+          STATUS(Aborted, "Request too large for shared memory exchange, falling back to RPC"));
     }
     data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
     method(
