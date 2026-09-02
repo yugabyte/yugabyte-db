@@ -29,6 +29,9 @@ ADD_YB_LIBRARY(docdb_proto
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
+# DocDB-aware SST properties collectors (see properties_collector/README.md).
+add_subdirectory(properties_collector)
+
 set(DOCDB_SHARED_SRCS
         lock_util.cc
         object_lock_shared_state.cc
