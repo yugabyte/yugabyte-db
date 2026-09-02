@@ -37,7 +37,7 @@ $ sudo yum install -y chrony
 
 YugabyteDB shuts down a YB-TServer or YB-Master when it detects clock skew larger than `--max_clock_skew_usec` (500 ms by default). Configure chrony so that synchronization stays accurate, and so that it draws on time sources that are themselves highly available and accurate.
 
-On cloud service providers, use the provider's link-local time service. On-premises you can place a time service behind a virtual IP or router as those services do, or configure several independent sources in chrony. If you configure multiple sources, spread them across availability zones or regions.
+On cloud service providers, use the provider's link-local time service. On-premises, configure several independent sources in chrony, and spread them across availability zones or regions.
 
 An example `chrony.conf` for an on-premises deployment with several time sources:
 
