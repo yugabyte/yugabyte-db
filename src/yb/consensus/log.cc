@@ -95,6 +95,8 @@ using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;  // NOLINT.
 using namespace std::placeholders;
 
+METRIC_DECLARE_gauge_int64(log_wal_sync_overdue_ms);
+
 // Log retention configuration.
 // -----------------------------
 DEFINE_RUNTIME_int32(log_min_segments_to_retain, 2,
@@ -723,6 +725,13 @@ Log::Log(
   set_wal_retention_secs(options_.retention_secs);
   if (table_metric_entity_ && tablet_metric_entity_) {
     metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
+    // The tablet entity outlives any one Log and is reused when the tablet is opened again on this
+    // server. InstantiateFunctionGauge() would then hand back the previous Log's gauge, already
+    // detached to a constant, so drop it first.
+    tablet_metric_entity_->RemoveFromMetricMap(&METRIC_log_wal_sync_overdue_ms);
+    metrics_->wal_sync_overdue_ms = METRIC_log_wal_sync_overdue_ms.InstantiateFunctionGauge(
+        tablet_metric_entity_, Bind(&Log::WalSyncOverdueMs, Unretained(this)));
+    metrics_->wal_sync_overdue_ms->AutoDetach(&metric_detacher_, 0);
   }
   if (background_synchronizer_wait_state_) {
     background_synchronizer_wait_state_->set_root_request_id(yb::Uuid::Generate());
@@ -733,6 +742,25 @@ Log::Log(
     SET_WAIT_STATUS_TO(background_synchronizer_wait_state_, Idle);
     yb::ash::RaftLogWaitStatesTracker().Track(background_synchronizer_wait_state_);
   }
+}
+
+int64_t Log::WalSyncOverdueMs() const {
+  if (durable_wal_write_ || !interval_durable_wal_write_ || !periodic_sync_needed_) {
+    return 0;
+  }
+  // The appender publishes periodic_sync_needed_, then the timestamp, then the byte count, in that
+  // order, and DoSync() resets needed then bytes. Reading the byte count before the timestamp
+  // means a non-zero count came after the timestamp of the same batch, so a scrape that lands
+  // between the appender's first two stores reads 0 instead of pairing a fresh "needed" with the
+  // previous batch's timestamp. The remaining window is a background DoSync() whose two resets
+  // become visible out of step, which is store-buffer sized; a value read there is at most one
+  // previous cycle old.
+  if (periodic_sync_unsynced_bytes_ == 0) {
+    return 0;
+  }
+  const MonoTime earliest_unsync_entry_time = periodic_sync_earliest_unsync_entry_time_;
+  const auto overdue = MonoTime::Now() - earliest_unsync_entry_time - interval_durable_wal_write_;
+  return std::max<int64_t>(overdue.ToMilliseconds(), 0);
 }
 
 Status Log::Init() {

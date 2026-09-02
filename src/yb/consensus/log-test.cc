@@ -682,6 +682,82 @@ TEST_F(LogTest, TestLogMetricsWithSegmentReuse) {
   ASSERT_EQ(log_->metrics_->wal_size->value(), st.st_size);
 }
 
+// log_wal_sync_overdue_ms reads 0 while the oldest unsynced entry is within
+// interval_durable_wal_write_ms, grows once it is past it, and returns to 0 after the fsync.
+TEST_F(LogTest, TestWalSyncOverdueMetric) {
+  constexpr int kIntervalMs = 1000;
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(kIntervalMs);
+  // Keep the size arm out of reach so only the time arm decides when the fsync happens.
+  options_.bytes_durable_wal_write_mb = 1024;
+  BuildLog();
+  const auto& gauge = *log_->metrics_->wal_sync_overdue_ms;
+
+  ASSERT_EQ(gauge.value(), 0);
+
+  const auto appended_at = MonoTime::Now();
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+  // The gauge is only ever the age beyond the interval, so a freshly appended entry reads 0 even
+  // though it is unsynced.
+  ASSERT_EQ(gauge.value(), 0);
+
+  SleepFor(MonoDelta::FromMilliseconds(kIntervalMs + 200));
+  const auto overdue_ms = gauge.value();
+  ASSERT_GT(overdue_ms, 0);
+  ASSERT_LE(overdue_ms, (MonoTime::Now() - appended_at).ToMilliseconds() - kIntervalMs);
+
+  // The next append finds the entry past the interval and fsyncs in line before acknowledging, so
+  // nothing is unsynced once it returns. Not via WaitUntilAllFlushed(): its flush marker re-arms
+  // periodic_sync_needed_ with zero bytes, which would make the 0 below come from the byte guard.
+  ASSERT_OK(AppendNoOp(&opid));
+  ASSERT_FALSE(log_->periodic_sync_needed_);
+  ASSERT_EQ(gauge.value(), 0);
+
+  // Reopening the log reuses the tablet metric entity. The gauge must follow the new Log rather
+  // than stay bound to the closed one, which reads a constant 0 once detached.
+  ASSERT_OK(log_->Close());
+  constexpr int kShortIntervalMs = 100;
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(kShortIntervalMs);
+  BuildLog();
+  ASSERT_OK(AppendNoOp(&opid));
+  SleepFor(MonoDelta::FromMilliseconds(kShortIntervalMs + 100));
+  ASSERT_GT(log_->metrics_->wal_sync_overdue_ms->value(), 0);
+
+  ASSERT_OK(log_->Close());
+}
+
+// With durable_wal_write every append is fsynced before it is acknowledged, so there is never an
+// overdue entry to report.
+TEST_F(LogTest, TestWalSyncOverdueMetricUnderDurableWalWrite) {
+  options_.durable_wal_write = true;
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(1);
+  options_.preallocate_segments = false;
+  BuildLog();
+
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+  SleepFor(MonoDelta::FromMilliseconds(20));
+  ASSERT_EQ(log_->metrics_->wal_sync_overdue_ms->value(), 0);
+
+  ASSERT_OK(log_->Close());
+}
+
+// With the interval disabled there is no bound to be overdue against, so the gauge stays 0 however
+// long an entry sits unsynced.
+TEST_F(LogTest, TestWalSyncOverdueMetricWhenIntervalDisabled) {
+  // How LogOptions spells --interval_durable_wal_write_ms=0: an uninitialized MonoDelta.
+  options_.interval_durable_wal_write = MonoDelta();
+  options_.bytes_durable_wal_write_mb = 1024;
+  BuildLog();
+
+  OpIdPB opid = MakeOpId(0, 1);
+  ASSERT_OK(AppendNoOp(&opid));
+  SleepFor(MonoDelta::FromMilliseconds(200));
+  ASSERT_EQ(log_->metrics_->wal_sync_overdue_ms->value(), 0);
+
+  ASSERT_OK(log_->Close());
+}
+
 // Verify presence of min_start_time_running_txns in footer of closed segments.
 void VerifyClosedSegmentsHaveMinStartTimeRunningTxns(const SegmentSequence& segments) {
   VLOG(1) << "Found " << segments.size() << " log segments";
