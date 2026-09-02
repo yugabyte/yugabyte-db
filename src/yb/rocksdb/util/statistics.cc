@@ -246,11 +246,15 @@ class StatisticsMetricPrototypes {
           yb::Format("Per-tablet Regular Rocksdb Ticker for $0", ticker_name_regular));
       const auto& description_regular = descriptions_.back();
 
+      // Tickers are cumulative counts, so expose them as counters. This also makes their
+      // pre-aggregated table-level value monotonic across tablet lifecycle events (see the
+      // AtomicGauge destructor), avoiding spurious Prometheus rate() spikes on tablet split/move.
       regular_ticker_prototypes_.emplace_back(
           std::make_unique<GaugePrototype<uint64_t>>(::yb::MetricPrototype::CtorArgs(
               "tablet", ticker_name_regular.c_str(), description_regular.c_str(),
               yb::MetricUnit::kRequests, description_regular.c_str(),
-              yb::MetricLevel::kInfo)));
+              yb::MetricLevel::kInfo,
+              yb::MetricPrototype::OptionalArgs(yb::EXPOSE_AS_COUNTER))));
 
       metric_names_.emplace_back(yb::Format("intentsdb_$0", TickersNameMap[i].second));
       const auto& ticker_name_intents = metric_names_.back();
@@ -263,7 +267,8 @@ class StatisticsMetricPrototypes {
           std::make_unique<GaugePrototype<uint64_t>>(::yb::MetricPrototype::CtorArgs(
               "tablet", ticker_name_intents.c_str(), description_intents.c_str(),
               yb::MetricUnit::kRequests, description_intents.c_str(),
-              yb::MetricLevel::kInfo)));
+              yb::MetricLevel::kInfo,
+              yb::MetricPrototype::OptionalArgs(yb::EXPOSE_AS_COUNTER))));
     }
   }
 
