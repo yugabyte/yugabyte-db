@@ -5,6 +5,9 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -18,8 +21,7 @@ public class UpdateClusterUserIntent extends UniverseTaskBase {
   }
 
   public static class Params extends UniverseDefinitionTaskParams {
-    public UUID clusterUUID;
-    public UUID imageBundleUUID;
+    public Map<String, UUID> nodeToImageBundleMap;
   }
 
   protected Params taskParams() {
@@ -35,6 +37,21 @@ public class UpdateClusterUserIntent extends UniverseTaskBase {
   public void run() {
     try {
       log.info("Running {}", getName());
+      Map<UUID, Map<UUID, UUID>> bundleMapByClusterUUID = new HashMap<>();
+      Universe universe = getUniverse();
+
+      taskParams()
+          .nodeToImageBundleMap
+          .forEach(
+              (nodeName, imageBundleUUID) -> {
+                NodeDetails node = universe.getNode(nodeName);
+                UniverseDefinitionTaskParams.Cluster cluster =
+                    universe.getCluster(node.placementUuid);
+                Map<UUID, UUID> bundleMap =
+                    bundleMapByClusterUUID.computeIfAbsent(cluster.uuid, x -> new HashMap<>());
+                UUID providerUUID = cluster.getProviderUUIDForNode(node);
+                bundleMap.put(providerUUID, imageBundleUUID);
+              });
 
       // Create the update lambda.
       UniverseUpdater updater =
@@ -52,11 +69,15 @@ public class UpdateClusterUserIntent extends UniverseTaskBase {
 
               universeDetails.clusters.forEach(
                   (cluster) -> {
-                    if (cluster.uuid.equals(taskParams().clusterUUID)) {
-                      // Update the imageBundle reference for the cluster in which node
-                      // is provisioned.
-                      cluster.userIntent.imageBundleUUID = taskParams().imageBundleUUID;
-                    }
+                    Map<UUID, UUID> bundleMap =
+                        bundleMapByClusterUUID.getOrDefault(cluster.uuid, new HashMap<>());
+                    bundleMap.forEach(
+                        (providerUUID, imageBundleUUID) -> {
+                          // Update the imageBundle reference for the cluster in which node
+                          // is provisioned.
+                          cluster.userIntent.setProviderImageBundleUUID(
+                              providerUUID, imageBundleUUID);
+                        });
                   });
               universe.setUniverseDetails(universeDetails);
             }

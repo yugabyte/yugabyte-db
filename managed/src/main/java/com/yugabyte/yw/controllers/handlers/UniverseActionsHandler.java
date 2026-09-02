@@ -20,11 +20,11 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
+import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.upgrade.PauseKubernetesUniverse;
 import com.yugabyte.yw.commissioner.tasks.upgrade.ResumeKubernetesUniverse;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -383,10 +383,12 @@ public class UniverseActionsHandler {
 
   public UUID updateAdditionalServicesState(
       Customer customer, Universe universe, AdditionalServicesStateData data) {
-    boolean enableEarlyoomFeature =
-        runtimeConfGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
-    if (!enableEarlyoomFeature) {
-      throw new PlatformServiceException(BAD_REQUEST, "Earlyoom feature is disabled");
+    UpdateOOMServiceState.EarlyoomEnablementState earlyoomEnablementState =
+        UpdateOOMServiceState.getEarlyoomEnablementState(
+            runtimeConfGetter, universe.getUniverseDetails(), customer);
+    if (!earlyoomEnablementState.isInstallationPossible()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Earlyoom installation is not possible for universe");
     }
     LOG.info(
         "Update additional services state: {} {}  ", universe.getUniverseUUID(), Json.toJson(data));

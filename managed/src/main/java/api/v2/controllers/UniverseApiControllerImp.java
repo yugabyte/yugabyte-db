@@ -43,6 +43,7 @@ import api.v2.models.UniverseSoftwareUpgradeStart;
 import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
 import api.v2.models.UniverseUpdateProxyConfig;
+import api.v2.models.UniverseVMImageUpgradeSpec;
 import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBATask;
 import api.v2.models.YBAValidationResponse;
@@ -115,6 +116,17 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags universeEditGFlags)
       throws Exception {
     return universeUpgradeHandler.editGFlags(request, cUUID, uniUUID, universeEditGFlags);
+  }
+
+  @Override
+  public YBATask editVMImage(
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseVMImageUpgradeSpec universeVMImageUpgradeSpec)
+      throws Exception {
+    return universeUpgradeHandler.vmImageUpgrade(
+        request, cUUID, uniUUID, universeVMImageUpgradeSpec);
   }
 
   @Override

@@ -249,9 +249,7 @@ public class UniverseCRUDHandler {
         isAwsArnChanged(cluster, currentCluster)
             || areCommunicationPortsChanged(taskParams, universe)
             || currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP
-            || !Objects.equals(
-                currentCluster.userIntent.imageBundleUUID, cluster.userIntent.imageBundleUUID);
-    // TODO
+            || imageBundleChanged(currentCluster, cluster);
 
     for (NodeDetails node : nodesInCluster) {
       if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
@@ -282,6 +280,19 @@ public class UniverseCRUDHandler {
       } else if (!isK8s) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE);
       }
+    }
+    return result;
+  }
+
+  private static boolean imageBundleChanged(Cluster currentCluster, Cluster cluster) {
+    return !getProviderToBundleMap(cluster.userIntent)
+        .equals(getProviderToBundleMap(currentCluster.userIntent));
+  }
+
+  private static Map<UUID, UUID> getProviderToBundleMap(UserIntent userIntent) {
+    Map<UUID, UUID> result = new HashMap<>();
+    for (UUID providerUUID : userIntent.getAllProviderUUIDs()) {
+      result.put(providerUUID, userIntent.getImageBundleUUIDForProvider(providerUUID));
     }
     return result;
   }
@@ -988,21 +999,14 @@ public class UniverseCRUDHandler {
           }
         }
       }
-      if (UpdateOOMServiceState.isEarlyoomInstallationPossible(confGetter, taskParams, customer)
+      UpdateOOMServiceState.EarlyoomEnablementState enablementState =
+          UpdateOOMServiceState.getEarlyoomEnablementState(confGetter, taskParams, customer);
+
+      if (enablementState.isInstallationPossible()
           && taskParams.additionalServicesStateData == null) {
         AdditionalServicesStateData servicesStateData = new AdditionalServicesStateData();
-        // TODO: will modify this later.
-        Provider sampleProvider =
-            Provider.getOrBadRequest(
-                taskParams.getPrimaryCluster().userIntent.getAllProviderUUIDs().iterator().next());
-        Boolean enableEarlyoom =
-            confGetter.getConfForScope(
-                sampleProvider, ProviderConfKeys.enableEarlyoomByDefaultForProvider);
-        String earlyoomArgs =
-            confGetter.getConfForScope(sampleProvider, ProviderConfKeys.earlyoomDefaultArgs);
-        servicesStateData.setEarlyoomConfig(
-            AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
-        servicesStateData.setEarlyoomEnabled(enableEarlyoom);
+        servicesStateData.setEarlyoomConfig(enablementState.getConfig());
+        servicesStateData.setEarlyoomEnabled(enablementState.isEnableByDefault());
         taskParams.additionalServicesStateData = servicesStateData;
       }
 

@@ -299,17 +299,14 @@ public class ImageBundleUtil {
       Set<Universe> universes = Universe.getAllWithoutResources(customer);
 
       for (Universe universe : universes) {
-        // Assumption both the primary & rr cluster uses the same provider.
-        UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-        if (userIntent != null) {
-          CloudType cloudType = userIntent.providerType;
-          if (!cloudType.imageBundleSupported()) {
-            continue;
-          }
-          UUID imageBundleUUID = userIntent.imageBundleUUID;
-          if (imageBundleUUID != null && !imageBundleMap.containsKey(imageBundleUUID)) {
-            ImageBundle bundle = ImageBundle.get(imageBundleUUID);
-            imageBundleMap.put(imageBundleUUID, bundle);
+        for (Cluster cluster : universe.getUniverseDetails().clusters) {
+          UserIntent userIntent = cluster.userIntent;
+
+          for (UUID imageBundleUUID : userIntent.getAllImageBundles()) {
+            if (imageBundleUUID != null && !imageBundleMap.containsKey(imageBundleUUID)) {
+              ImageBundle bundle = ImageBundle.get(imageBundleUUID);
+              imageBundleMap.put(imageBundleUUID, bundle);
+            }
           }
         }
       }
@@ -334,9 +331,7 @@ public class ImageBundleUtil {
     if (imageBundleUUID != null) {
       ImageBundle.NodeProperties toOverwriteNodeProperties =
           getNodePropertiesOrFail(
-              imageBundleUUID,
-              nodeDetails.cloudInfo.region,
-              cluster.userIntent.providerType.toString());
+              imageBundleUUID, nodeDetails.cloudInfo.region, provider.getCloudCode().toString());
       sshUser = toOverwriteNodeProperties.getSshUser();
     }
     return sshUser;

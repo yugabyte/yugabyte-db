@@ -114,8 +114,8 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
     params.machineImages = null;
     params.imageBundles =
         Arrays.asList(
-            new ImageBundleUpgradeInfo(primaryClusterUuid, primaryBundle.getUuid()),
-            new ImageBundleUpgradeInfo(readReplicaClusterUuid, rrBundle.getUuid()));
+            new ImageBundleUpgradeInfo(primaryClusterUuid, primaryBundle.getUuid(), null),
+            new ImageBundleUpgradeInfo(readReplicaClusterUuid, rrBundle.getUuid(), null));
     // Should be successfull since we validate bundle per cluster.
     params.verifyParams(universe, true);
   }
@@ -132,8 +132,8 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
     params.machineImages = null;
     params.imageBundles =
         Arrays.asList(
-            new ImageBundleUpgradeInfo(primaryClusterUuid, incompletePrimaryBundle.getUuid()),
-            new ImageBundleUpgradeInfo(readReplicaClusterUuid, rrBundle.getUuid()));
+            new ImageBundleUpgradeInfo(primaryClusterUuid, incompletePrimaryBundle.getUuid(), null),
+            new ImageBundleUpgradeInfo(readReplicaClusterUuid, rrBundle.getUuid(), null));
 
     PlatformServiceException ex =
         assertThrows(PlatformServiceException.class, () -> params.verifyParams(universe, true));

@@ -702,8 +702,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       Map<UUID, ImageBundle> imageBundles = new HashMap<>();
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       for (UniverseDefinitionTaskParams.Cluster cluster : universeDetails.clusters) {
-        UUID imageBundleUUID = cluster.userIntent.imageBundleUUID;
-        if (imageBundleUUID != null) {
+        for (UUID imageBundleUUID : cluster.userIntent.getAllImageBundles()) {
           ImageBundle imageBundle = ImageBundle.get(imageBundleUUID);
           if (imageBundle != null && !imageBundles.containsKey(imageBundleUUID)) {
             imageBundles.put(imageBundleUUID, imageBundle);
@@ -711,11 +710,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         }
       }
       if (imageBundles.isEmpty()) {
-        UUID providerUUID =
-            UUID.fromString(universeDetails.getPrimaryCluster().userIntent.provider);
-        List<ImageBundle> defaultBundles = ImageBundle.getDefaultForProvider(providerUUID);
-        for (ImageBundle defaultBundle : defaultBundles) {
-          imageBundles.put(defaultBundle.getUuid(), defaultBundle);
+        for (UUID providerUUID :
+            universeDetails.getPrimaryCluster().userIntent.getAllProviderUUIDs()) {
+          List<ImageBundle> defaultBundles = ImageBundle.getDefaultForProvider(providerUUID);
+          for (ImageBundle defaultBundle : defaultBundles) {
+            imageBundles.put(defaultBundle.getUuid(), defaultBundle);
+          }
         }
       }
 

@@ -7,13 +7,13 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -23,12 +23,14 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
+import java.util.function.Function;
+import javax.annotation.Nullable;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -129,16 +131,6 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
         (StringUtils.isNotBlank(ybSoftwareVersion)
             && !ybSoftwareVersion.equals(userIntent.ybSoftwareVersion));
 
-    if (Util.checkAnyProviderMatches(
-        universe.getUniverseDetails(), p -> !p.getCloudCode().isPublicCloud())) {
-      Set<CloudType> nonCloud =
-          userIntent.getAllCloudTypes().stream()
-              .filter(c -> !c.isPublicCloud())
-              .collect(Collectors.toSet());
-      throw new PlatformServiceException(
-          Status.BAD_REQUEST,
-          "VM image upgrade is only supported for cloud providers, got: " + nonCloud);
-    }
     if (UniverseDefinitionTaskParams.hasEphemeralStorage(universe.getUniverseDetails())) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage.");
@@ -152,7 +144,11 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     }
 
     nodeToRegion.clear();
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
+    Set<UUID> clustersAffected = new HashSet<>();
     for (NodeDetails node : universe.getUniverseDetails().nodeDetailsSet) {
+      Cluster cluster = universe.getCluster(node.placementUuid);
+      boolean multiProvider = cluster.userIntent.getAllProviderUUIDs().size() > 1;
       if (node.isMaster || node.isTserver) {
         Region region =
             AvailabilityZone.maybeGet(node.azUuid)
@@ -163,53 +159,110 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
                             Status.BAD_REQUEST,
                             "Could not find region for AZ " + node.cloudInfo.az));
 
-        if (machineImages != null && !machineImages.containsKey(region.getUuid())) {
-          throw new PlatformServiceException(
-              Status.BAD_REQUEST, "No VM image was specified for region " + node.cloudInfo.region);
-        } else if (imageBundleUUID != null) {
-          // Populate the imageBundle in imageBundles
-          ImageBundleUpgradeInfo bundleUpgradeInfo =
-              new ImageBundleUpgradeInfo(node.placementUuid, imageBundleUUID);
-          if (imageBundles.stream()
-              .noneMatch(iB -> iB.getClusterUuid().equals(node.placementUuid))) {
-            validateBundleInfo(universe, node, bundleUpgradeInfo);
-            imageBundles.add(bundleUpgradeInfo);
+        Provider provider = providerGetter.apply(node);
+        boolean bundleAdded = false;
+        // Old route.
+        if (machineImages != null) {
+          if (userIntent.isMulticloudSupport()) {
+            throw new PlatformServiceException(
+                Status.FORBIDDEN, "Use list of ImageBundleUpgradeInfo for multicloud case");
           }
-        } else if (imageBundles != null && imageBundles.size() > 0) {
-          boolean imageSpecifiedForCluster =
-              imageBundles.stream()
-                  .map(bundle -> bundle.getClusterUuid())
-                  .anyMatch(
-                      placementUuid ->
-                          placementUuid != null && placementUuid.equals(node.placementUuid));
-          if (!imageSpecifiedForCluster) {
+          if (!provider.getCloudCode().isPublicCloud()) {
             throw new PlatformServiceException(
                 Status.BAD_REQUEST,
-                String.format("Specify the imageBundle for the cluster %s ", node.placementUuid));
+                "VM image upgrade is only supported for cloud providers, got: "
+                    + provider.getCloudCode());
+          }
+          if (!machineImages.containsKey(region.getUuid())) {
+            throw new PlatformServiceException(
+                Status.BAD_REQUEST,
+                "No VM image was specified for region " + node.cloudInfo.region);
+          }
+          clustersAffected.add(node.placementUuid);
+          bundleAdded = true;
+        } else if (imageBundleUUID != null) {
+          if (multiProvider) {
+            throw new PlatformServiceException(
+                Status.FORBIDDEN, "Use list of ImageBundleUpgradeInfo for multicloud case");
+          }
+          if (!provider.getCloudCode().isPublicCloud()) {
+            throw new PlatformServiceException(
+                Status.BAD_REQUEST,
+                "VM image upgrade is only supported for cloud providers, got: "
+                    + provider.getCloudCode());
+          }
+          Optional<ImageBundleUpgradeInfo> upgradeInfo = findForNode(imageBundles, universe, node);
+          if (upgradeInfo.isEmpty()) {
+            // Populate the imageBundle in imageBundles
+            ImageBundleUpgradeInfo bundleUpgradeInfo =
+                new ImageBundleUpgradeInfo(node.placementUuid, imageBundleUUID, provider.getUuid());
+            validateBundleInfo(universe, node, bundleUpgradeInfo);
+            imageBundles.add(bundleUpgradeInfo);
+            clustersAffected.add(node.placementUuid);
+            bundleAdded = true;
+          }
+        }
+        if (!bundleAdded && imageBundles != null && imageBundles.size() > 0) {
+          Optional<ImageBundleUpgradeInfo> upgradeInfo = findForNode(imageBundles, universe, node);
+
+          if (!provider.getCloudCode().isPublicCloud()) {
+            if (upgradeInfo.isPresent()) {
+              throw new PlatformServiceException(
+                  Status.BAD_REQUEST,
+                  "VM image upgrade is only supported for cloud providers, got: "
+                      + provider.getCloudCode());
+            }
+            continue;
           }
 
-          imageBundles.forEach(
-              bundleUpgradeInfo -> {
-                if (bundleUpgradeInfo.getClusterUuid() == null) {
-                  throw new PlatformServiceException(
-                      Status.BAD_REQUEST,
-                      String.format(
-                          "Specify the placementInfo for which the bundle %s needs to be used.",
-                          bundleUpgradeInfo.getImageBundleUuid()));
-                }
-                if (Objects.equals(node.placementUuid, bundleUpgradeInfo.getClusterUuid())) {
-                  validateBundleInfo(universe, node, bundleUpgradeInfo);
-                }
-              });
+          if (!upgradeInfo.isPresent()) {
+            continue;
+          }
+          clustersAffected.add(node.placementUuid);
+
+          validateBundleInfo(universe, node, upgradeInfo.get());
         }
 
         nodeToRegion.putIfAbsent(node.nodeUuid, region.getUuid());
       }
     }
+    if (clustersAffected.isEmpty()) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, String.format("Specify the imageBundle for clusters"));
+    }
+  }
+
+  public static Optional<ImageBundleUpgradeInfo> findForNode(
+      List<ImageBundleUpgradeInfo> imageBundles, Universe universe, NodeDetails node) {
+    if (imageBundles == null) {
+      return Optional.empty();
+    }
+    Cluster cluster = universe.getCluster(node.placementUuid);
+    if (cluster.userIntent.isMulticloudSupport()) {
+      UUID providerUUID = cluster.getProviderUUIDForNode(node);
+      return imageBundles.stream()
+          .filter(
+              ib ->
+                  node.placementUuid.equals(ib.clusterUuid)
+                      && (providerUUID.equals(ib.providerUuid)
+                          || providerUUID.equals(
+                              ImageBundle.getOrBadRequest(ib.imageBundleUuid)
+                                  .getProvider()
+                                  .getUuid())))
+          .findFirst();
+    } else {
+      return imageBundles.stream()
+          .filter(ib -> node.placementUuid.equals(ib.clusterUuid))
+          .findFirst();
+    }
   }
 
   public void validateBundleInfo(
       Universe universe, NodeDetails node, ImageBundleUpgradeInfo bundleUpgradeInfo) {
+    if (bundleUpgradeInfo.getClusterUuid() == null) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, String.format("Specify cluster uuid for image bundle info"));
+    }
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getCluster(bundleUpgradeInfo.getClusterUuid());
     UUID providerUUID = cluster.getProviderUUIDForNode(node);
@@ -242,5 +295,6 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
   public static class ImageBundleUpgradeInfo {
     private UUID clusterUuid;
     private UUID imageBundleUuid;
+    @Nullable private UUID providerUuid; // For multiprovider case.
   }
 }

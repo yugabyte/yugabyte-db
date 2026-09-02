@@ -2014,10 +2014,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     private <T> List<T> getAllProviderProperties(
         Function<ProviderSpecification, T> getter, Function<UserIntent, T> oldGetter) {
+      return getAllProviderProperties(getter, oldGetter, false);
+    }
+
+    private <T> List<T> getAllProviderProperties(
+        Function<ProviderSpecification, T> getter,
+        Function<UserIntent, T> oldGetter,
+        boolean acceptNulls) {
+      List<T> result;
       if (isMulticloudSupport()) {
-        return providerSpecifications.stream().map(getter).collect(Collectors.toList());
+        result = providerSpecifications.stream().map(getter).collect(Collectors.toList());
+      } else {
+        result = Collections.singletonList(oldGetter.apply(this));
       }
-      return Collections.singletonList(oldGetter.apply(this));
+      if (!acceptNulls) {
+        return result.stream().filter(Objects::nonNull).collect(Collectors.toList());
+      }
+      return result;
     }
 
     @JsonIgnore

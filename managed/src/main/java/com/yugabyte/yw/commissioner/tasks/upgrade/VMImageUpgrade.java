@@ -23,7 +23,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
@@ -53,9 +52,11 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -79,6 +80,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private volatile RuntimeInfo runtimeInfo;
 
   private volatile boolean enableEarlyoom;
+  private volatile UpdateOOMServiceState.EarlyoomEnablementState enablementState;
 
   @Inject
   protected VMImageUpgrade(
@@ -148,18 +150,17 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     addBasicPrecheckTasks();
     runtimeInfo = getRuntimeInfo(RuntimeInfo.class);
     Customer customer = Customer.get(universe.getCustomerId());
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+
+    enablementState =
+        UpdateOOMServiceState.getEarlyoomEnablementState(
+            confGetter, universe.getUniverseDetails(), customer);
+    log.debug("Earlyoom enablement state {}", enablementState);
 
     enableEarlyoom =
-        UpdateOOMServiceState.isEarlyoomInstallationPossible(
-                confGetter, universe.getUniverseDetails(), customer)
+        enablementState.isInstallationPossible()
             && (universe.getUniverseDetails().additionalServicesStateData == null
                 || !universe.getUniverseDetails().additionalServicesStateData.isEarlyoomEnabled())
-            && confGetter.getConfForScope(
-                provider, ProviderConfKeys.enableEarlyoomByDefaultForProvider)
-            && confGetter.getConfForScope(provider, ProviderConfKeys.enableEarlyoomOnOSUpgrade);
+            && enablementState.isEnableOnUpgrade();
 
     if (enableEarlyoom) {
       Set<String> nodesWithoutNA =
@@ -229,18 +230,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                 universe.getUniverseDetails().additionalServicesStateData;
             if (servicesStateData == null) {
               servicesStateData = new AdditionalServicesStateData();
-              Provider p =
-                  Provider.getOrBadRequest(
-                      UUID.fromString(
-                          getUniverse()
-                              .getUniverseDetails()
-                              .getPrimaryCluster()
-                              .userIntent
-                              .provider));
-              String earlyoomArgs =
-                  confGetter.getConfForScope(p, ProviderConfKeys.earlyoomDefaultArgs);
-              servicesStateData.setEarlyoomConfig(
-                  AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
+              servicesStateData.setEarlyoomConfig(enablementState.getConfig());
             }
             servicesStateData.setEarlyoomEnabled(true);
 
@@ -273,6 +263,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   private Map<NodeDetails, ImageSettings> getImageSettingsForNodes(Set<NodeDetails> nodes) {
+    Universe universe = getUniverse();
     Map<NodeDetails, ImageSettings> result = new LinkedHashMap<>();
     UUID imageBundleUUID;
     for (NodeDetails node : nodes) {
@@ -282,7 +273,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       Integer sshPortOverride = null;
       imageBundleUUID = null;
       if (taskParams().imageBundles != null && taskParams().imageBundles.size() > 0) {
-        imageBundleUUID = retrieveImageBundleUUID(taskParams().imageBundles, node);
+        Optional<VMImageUpgradeParams.ImageBundleUpgradeInfo> imageBundleUpgradeInfo =
+            VMImageUpgradeParams.findForNode(taskParams().imageBundles, universe, node);
+        if (!imageBundleUpgradeInfo.isPresent()) {
+          continue;
+        }
+        imageBundleUUID = imageBundleUpgradeInfo.get().getImageBundleUuid();
         ImageBundle.NodeProperties toOverwriteNodeProperties =
             imageBundleUtil.getNodePropertiesOrFail(
                 imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
@@ -295,7 +291,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         sshUserOverride = taskParams().sshUserOverrideMap.get(region);
       }
       log.info(
-          "Upgrading universe nodes to use vm image {}, having ssh user {} & port {}",
+          "Upgrading node {} to use vm image {}, having ssh user {} & port {}",
+          node.nodeName,
           machineImage,
           sshUserOverride,
           sshPortOverride);
@@ -305,7 +302,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         existingMachineImage = retreiveMachineImageForNode(node);
       }
 
-      if (!taskParams().forceVMImageUpgrade && machineImage.equals(existingMachineImage)) {
+      if (!taskParams().forceVMImageUpgrade
+          && StringUtils.equals(machineImage, existingMachineImage)) {
         log.info(
             "Skipping node {} as it's already running on {} and force flag is not set",
             node.nodeName,
@@ -343,9 +341,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                       }));
     }
 
-    Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
+    Map<String, UUID> nodeToImageBundleMap = new HashMap<>();
     Universe universe = getUniverse();
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     for (NodeDetails node : imageSettingsMap.keySet()) {
       Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
       if (runtimeInfo.replacementCompletedNodes.contains(node.getNodeUuid())) {
@@ -458,7 +457,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               new ArrayList<>(universe.getNodes()), primaryCluster.userIntent.ybSoftwareVersion)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = providerGetter.apply(node);
       createConfigureServerTasks(
               nodeList,
               params -> {
@@ -514,9 +513,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
       createWaitForKeyInMemoryTask(node);
       if (imageBundleUUID != null) {
-        if (!clusterToImageBundleMap.containsKey(node.placementUuid)) {
-          clusterToImageBundleMap.put(node.placementUuid, imageBundleUUID);
-        }
+        nodeToImageBundleMap.put(node.nodeName, imageBundleUUID);
       }
       createSetNodeStateTask(node, NodeState.Live);
       createUpdateUniverseFieldsTask(
@@ -548,12 +545,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     createPersistCpuCgroupConfiguredTask(universe);
 
     // Update the imageBundleUUID in the cluster -> userIntent
-    if (!clusterToImageBundleMap.isEmpty()) {
-      clusterToImageBundleMap.forEach(
-          (clusterUUID, bundleUUID) -> {
-            createClusterUserIntentUpdateTask(clusterUUID, bundleUUID)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-          });
+    if (!nodeToImageBundleMap.isEmpty()) {
+      createClusterUserIntentUpdateTask(nodeToImageBundleMap)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
     // Delete after all the disks are replaced.
     createDeleteRootVolumesTasks(universe, nodes, null /* volume Ids */)
@@ -671,20 +665,11 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     return subTaskGroup;
   }
 
-  private UUID retrieveImageBundleUUID(
-      List<VMImageUpgradeParams.ImageBundleUpgradeInfo> imageBundles, NodeDetails node) {
-    return imageBundles.stream()
-        .filter(info -> info.getClusterUuid().equals(node.placementUuid))
-        .findFirst()
-        .map(VMImageUpgradeParams.ImageBundleUpgradeInfo::getImageBundleUuid)
-        .orElse(null);
-  }
-
   private String retreiveMachineImageForNode(NodeDetails node) {
     UUID clusterUuid = node.placementUuid;
     UniverseDefinitionTaskParams.Cluster cluster = getUniverse().getCluster(clusterUuid);
-    Provider provider = Util.getProviderForNode(node, cluster);
-    UUID imageBundleUUID = cluster.userIntent.getImageBundleUUIDForProvider(provider.getUuid());
+    UUID providerUUID = cluster.getProviderUUIDForNode(node);
+    UUID imageBundleUUID = cluster.userIntent.getImageBundleUUIDForProvider(providerUUID);
     if (imageBundleUUID != null) {
       ImageBundle.NodeProperties imageBundleProperties =
           imageBundleUtil.getNodePropertiesOrFail(

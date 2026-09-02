@@ -10556,11 +10556,16 @@
         "imageBundleUuid" : {
           "format" : "uuid",
           "type" : "string"
+        },
+        "providerUuid" : {
+          "format" : "uuid",
+          "type" : "string"
         }
       },
       "required" : [
         "clusterUuid",
-        "imageBundleUuid"
+        "imageBundleUuid",
+        "providerUuid"
       ],
       "type" : "object"
     },
