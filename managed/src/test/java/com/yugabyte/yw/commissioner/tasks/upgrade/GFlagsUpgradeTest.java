@@ -103,6 +103,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
     try {
+      when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
       setCheckNodesAreSafeToTakeDown(mockClient);
       when(mockGFlagsAuditHandler.constructGFlagAuditPayload(any()))
@@ -1260,6 +1261,52 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testValidateGFlagsSkippedOnRetry() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                    "2024.2.0.0-b1");
+    expectedUniverseVersion++;
+
+    GFlagsUpgradeParams firstTry = newGFlagsPrecheckParams();
+    TaskInfo firstInfo = submitTask(firstTry);
+    assertEquals(Success, firstInfo.getTaskState());
+    assertTrue(
+        firstInfo.getSubTasks().stream().anyMatch(t -> t.getTaskType() == TaskType.ValidateGFlags));
+    assertTrue(
+        firstInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeDataDirDiskSpace));
+    assertTrue(
+        firstInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown));
+
+    GFlagsUpgradeParams retry = newGFlagsPrecheckParams();
+    retry.setPreviousTaskUUID(firstInfo.getUuid());
+    TaskInfo retryInfo = submitTask(retry);
+    assertEquals(Success, retryInfo.getTaskState());
+    assertTrue(
+        retryInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ValidateGFlags));
+    assertTrue(
+        retryInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeDataDirDiskSpace));
+    assertTrue(
+        retryInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown));
+  }
+
+  private GFlagsUpgradeParams newGFlagsPrecheckParams() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    taskParams.runOnlyPrechecks = true;
+    return taskParams;
+  }
+
+  @Test
   public void testGFlagsUpgradePrimaryWithRRRetries() {
     addReadReplica();
 
@@ -1334,7 +1381,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.runOnlyPrechecks = true;
 
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
 

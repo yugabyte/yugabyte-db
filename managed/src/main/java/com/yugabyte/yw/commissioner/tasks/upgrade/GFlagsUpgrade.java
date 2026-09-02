@@ -16,7 +16,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeDataDirDiskSpace;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
@@ -316,20 +315,10 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
       }
     }
 
-    // Validate GFlags through RPC
-    boolean skipRuntimeGflagValidation =
-        confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
-    if (!skipRuntimeGflagValidation && !skipPrechecksForNonRollingGFlagsUpgrade()) {
-      if (Util.compareYBVersions(
-              softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
-          >= 0) {
-        Map<UUID, UniverseDefinitionTaskParams.Cluster> newClustersMap =
-            taskParams().getNewVersionsOfClusters(universe);
-        List<UniverseDefinitionTaskParams.Cluster> newClustersList =
-            new ArrayList<>(newClustersMap.values());
-        createValidateGFlagsTask(newClustersList, true /* useCLIBinary */, softwareVersion);
-      }
-    }
+    createValidateGFlagsTaskInGFlagsUpgrades(
+        new ArrayList<>(taskParams().getNewVersionsOfClusters(universe).values()),
+        softwareVersion,
+        skipPrechecksForNonRollingGFlagsUpgrade());
 
     taskParams().verifyPreviewGFlagsSettings(universe);
 

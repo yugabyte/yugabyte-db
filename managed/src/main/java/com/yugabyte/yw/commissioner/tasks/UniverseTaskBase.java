@@ -1481,6 +1481,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  protected void createValidateGFlagsTaskInGFlagsUpgrades(
+      List<UniverseDefinitionTaskParams.Cluster> newClusters,
+      String softwareVersion,
+      boolean skipValidation) {
+    if (!isFirstTry()
+        || skipValidation
+        || confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation)) {
+      return;
+    }
+    if (Util.compareYBVersions(
+            softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
+        < 0) {
+      return;
+    }
+    createValidateGFlagsTask(newClusters, true /* useCLIBinary */, softwareVersion);
+  }
+
   /** Create a task to mark the change on a universe as success. */
   public SubTaskGroup createMarkUniverseUpdateSuccessTasks() {
     return createMarkUniverseUpdateSuccessTasks(taskParams().getUniverseUUID());
