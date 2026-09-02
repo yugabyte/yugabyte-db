@@ -250,6 +250,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/integral_types.h"
 
