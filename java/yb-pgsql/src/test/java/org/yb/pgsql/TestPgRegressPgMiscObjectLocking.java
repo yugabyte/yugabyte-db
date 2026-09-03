@@ -12,30 +12,31 @@
 //
 package org.yb.pgsql;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.yb.client.TestUtils;
-import org.yb.YBTestRunner;
-
-import java.io.File;
-
 import java.util.Map;
 
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 
-@RunWith(value=YBTestRunner.class)
-public class TestPgRegressContribPostgresFdw extends BasePgRegressTestPorted {
+/**
+ * Runs the part of yb_pg_misc_serial_schedule whose expected output needs the DDL mode enabled, so
+ * that TestPgRegressPgMisc can keep running the rest of the schedule in both modes.
+ */
+@RunWith(value = YBTestRunner.class)
+public class TestPgRegressPgMiscObjectLocking extends BasePgRegressTestPorted {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }
 
-  // (Auto-Analyze) proactively disable auto analyze because the test
-  // checks query plan.
+  // Disable auto analyze likely because of issue #27973.
+  // This may not be related to auto analyze at all.
+  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_enable_auto_analyze", "false");
-    // The schedule runs DDL inside a transaction block and its expected output assumes the DDL
-    // is part of that transaction, so it needs the new DDL mode in every build type.
+    // create_procedure drops overloaded procedures inside a transaction block and relies on the
+    // rollback restoring them, which only happens with transactional DDL.
     toggleDDLMode(flagMap, /* useLegacy */ false);
     return flagMap;
   }
@@ -48,8 +49,7 @@ public class TestPgRegressContribPostgresFdw extends BasePgRegressTestPorted {
   }
 
   @Test
-  public void schedule() throws Exception {
-    runPgRegressTest(new File(TestUtils.getBuildRootDir(), "postgres_build/contrib/postgres_fdw"),
-                     "yb_pg_schedule");
+  public void testPgRegressPgMiscObjectLocking() throws Exception {
+    runPgRegressTest("yb_pg_misc_object_locking_schedule");
   }
 }

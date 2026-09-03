@@ -13,6 +13,7 @@
 
 #include <string>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/util/json_document.h"
 #include "yb/util/slice.h"
@@ -278,23 +279,8 @@ class PgHintTableTestTableLocksDisabled : public PgHintTableTest {
     // TODO(#28742): Enabling ysql_yb_ddl_transaction_block_enabled causes the test to fail with
     // "could not serialize access due to concurrent update" errors.
     PgHintTableTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
-    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_master_flags.push_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
   }
 };
 

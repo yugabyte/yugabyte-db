@@ -1,4 +1,4 @@
-# The Java test (TestPgRegressDDLIsolationNoTxnDDLNoObjectLocking#testWithHighHeartbeatDelay)
+# The Java test (TestPgRegressDDLIsolationNoObjectLocking#testWithHighHeartbeatDelay)
 # restarts the cluster with heartbeat_interval_ms=2000, so give this spec's async DDL
 # verification and catalog version propagation that much time to settle before the next
 # spec in the schedule starts, so it doesn't inherit a stale catalog snapshot from this one.

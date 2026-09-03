@@ -18,6 +18,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/fs/fs_manager.h"
@@ -73,8 +74,6 @@ DECLARE_string(ysql_pg_conf_csv);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_bool(ysql_enable_write_pipelining);
@@ -150,9 +149,7 @@ class PgWaitQueuesTestWithoutObjectLocking : public PgWaitQueuesTest {
  protected:
   void InitFlags() override {
     PgWaitQueuesTest::InitFlags();
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
   }
 };
 
@@ -1234,7 +1231,7 @@ class PgWaitQueuesTestWithObjectLocking : public PgWaitQueuesTest {
  protected:
   void InitFlags() override {
     PgWaitQueuesTest::InitFlags();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
   }
 };
 
@@ -1740,9 +1737,7 @@ class PgWaitQueueRF1TestWithoutObjectLocking : public PgWaitQueueRF1Test {
  protected:
   void InitFlags() override {
     PgWaitQueuesTest::InitFlags();
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
   }
 };
 
@@ -2008,9 +2003,7 @@ class PgWaitQueuesWithRetriesTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_debug_log_internal_restarts=true";
     // TODO(#24877): Remove the below once we enable query layer retries for object locking.
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     PgMiniTestBase::SetUp();
   }
 };

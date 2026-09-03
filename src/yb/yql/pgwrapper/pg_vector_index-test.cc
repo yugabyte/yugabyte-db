@@ -21,6 +21,7 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 
@@ -68,7 +69,6 @@
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_load_balancing);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_table_owned_vector_reverse_mapping);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
@@ -77,7 +77,6 @@ DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_enable_auto_analyze);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(TEST_disable_wal_retention_time);
@@ -239,10 +238,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     // uncommitted transaction still holds intents on the indexed table. Object-locking-based DDL
     // serialization, which defaults on in release builds, would make CREATE INDEX wait for that
     // transaction to finish, so disable it to keep behavior consistent across build types.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    // ysql_enable_concurrent_ddl requires enable_object_locking_for_table_locks, so keep the two
-    // consistent instead of leaving a combination that flag validation rejects.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
 
     PgMiniTestBase::SetUp();
 

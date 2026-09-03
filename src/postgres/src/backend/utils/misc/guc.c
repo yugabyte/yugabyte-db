@@ -917,6 +917,7 @@ static bool yb_bypass_cond_recheck;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;
 static bool yb_conn_mgr_selective_deallocate;
+static bool yb_disable_ddl_transaction_block_for_read_committed;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -3494,13 +3495,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_disable_ddl_transaction_block_for_read_committed", PGC_POSTMASTER, DEVELOPER_OPTIONS,
-			gettext_noop("If true, DDL operations in READ COMMITTED mode will "
-						 "be executed in a separate DDL transaction instead of "
-						 "the as part of the enclosing transaction block even "
-						 "if ysql_yb_ddl_transaction_block_enabled is true. In "
-						 "other words, for Read Committed, fall back to the "
-						 "mode when ysql_yb_ddl_transaction_block_enabled is "
-						 "false."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},

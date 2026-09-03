@@ -81,6 +81,7 @@
 #include "yb/yql/pggate/util/pg_wire.h"
 #include "yb/yql/pggate/pg_global_view_read.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -2109,9 +2110,14 @@ bool YBCIsLegacyModeForCatalogOps() {
   //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
   //     the TransactionSnapshot's read time serial number.
   //
-  return !YBCIsObjectLockingEnabled() || !FLAGS_ysql_enable_concurrent_ddl ||
-      YBCIsInitDbModeEnvVarSet() || YBCIsSysTablePrefetchingStarted() ||
-      pgapi->IsParallelWorker();
+  return !pgapi || !pgapi->IsTableLockingEnabledForCurrentTxn() ||
+      !FLAGS_ysql_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet() ||
+      YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
+}
+
+bool YBCIsDdlTransactionBlockEnabled() {
+  return pgapi && yb_ddl_transaction_block_enabled &&
+      pgapi->IsTableLockingEnabledForCurrentTxn();
 }
 
 //------------------------------------------------------------------------------------------------

@@ -173,7 +173,6 @@ DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
 DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(cdc_skip_unqualified_tables_for_polling);
 
 namespace yb {

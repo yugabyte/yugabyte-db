@@ -7118,11 +7118,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   private void addConcurrentDdlFlags(Map<String, String> flags) {
-    flags.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
-    flags.put("ysql_enable_concurrent_ddl", "true");
-    flags.put("enable_object_locking_for_table_locks", "true");
+    toggleDDLMode(flags, /* useLegacy */ false);
     flags.put("ysql_enable_object_locking_infra", "true");
-    flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
   }
 
   @Test

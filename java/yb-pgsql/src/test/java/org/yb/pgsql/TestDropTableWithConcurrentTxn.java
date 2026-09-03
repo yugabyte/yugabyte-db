@@ -50,14 +50,17 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    // The test suite asserts for DML failing when run concurrent to DROP,
-    // and doesn't expect proper wait-on behavior for DML-DDL interaction.
-    // Therefore, object locking should be disabled.
-    flagMap.put("enable_object_locking_for_table_locks", "false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    flagMap.put("ysql_enable_concurrent_ddl", "false");
-    flagMap.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
-        (e, a) -> e + "," + a);
+    // The test suite asserts for DML failing when run concurrent to DROP, and doesn't expect
+    // proper wait-on behavior for DML-DDL interaction. Therefore, the suite runs in the legacy
+    // DDL mode.
+    toggleDDLMode(flagMap, /* useLegacy */ true);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ true);
     return flagMap;
   }
 
@@ -280,13 +283,6 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
     }
   }
 
-  private boolean isTransactionalDdlEnabled(Statement stmt) throws SQLException {
-    try (ResultSet rs = stmt.executeQuery("SHOW yb_ddl_transaction_block_enabled")) {
-      assertTrue(rs.next());
-      return "on".equalsIgnoreCase(rs.getString(1));
-    }
-  }
-
   private void runDmlTxnInSameConnectionAsDropTable() throws Exception {
     String tableName = "runDmlTxnInSameConnectionAsDropTable";
     prepareResources(Resource.TABLE, tableName);
@@ -294,22 +290,15 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
     try (Connection connection = getConnectionBuilder().connect();
         Statement statement = connection.createStatement()) {
 
-      boolean txnDdlEnabled = isTransactionalDdlEnabled(statement);
       statement.execute("BEGIN");
       statement.execute("INSERT INTO " + tableName + " VALUES (10, 'x')");
       statement.execute("SELECT * FROM " + tableName);
 
       statement.execute("DROP TABLE " + tableName);
 
-      if (txnDdlEnabled) {
-        // Without transactional DDL, DROP TABLE runs in an autonomous transaction that aborts the
-        // enclosing DML transaction, so COMMIT fails. With transactional DDL, DROP participates in
-        // the enclosing transaction and COMMIT succeeds.
-        statement.execute("COMMIT");
-        runInvalidQuery(statement, "SELECT * FROM " + tableName, RESOURCE_NONEXISTING_ERROR);
-      } else {
-        runInvalidQuery(statement, "COMMIT", TRANSACTION_ABORT_ERRORS);
-      }
+      // DROP TABLE runs in an autonomous transaction that aborts the enclosing DML transaction,
+      // so COMMIT fails.
+      runInvalidQuery(statement, "COMMIT", TRANSACTION_ABORT_ERRORS);
     }
   }
 

@@ -14,6 +14,8 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/master/catalog_manager.h"
 
 #include "yb/tablet/tablet_peer.h"
@@ -56,7 +58,6 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transactions_status_poll_interval_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(ysql_yb_ash_sampling_interval_ms);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb {
@@ -582,7 +583,7 @@ class DeadlockDetectionWithTxnPromotionTest : public GeoPartitionedDeadlockTest 
 class GeoTransactionsPromotionWithDdlTest : public GeoTransactionsPromotionTest {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     GeoTransactionsPromotionTest::SetUp();
   }
 

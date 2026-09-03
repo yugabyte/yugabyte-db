@@ -383,7 +383,7 @@ uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requir
 Status PgTxnManager::CalculateIsolation(
     bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement,
     IsLocalObjectLockOp is_local_object_lock_op) {
-  if (yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction() : IsDdlMode()) {
+  if (YBCIsDdlTransactionBlockEnabled() ? IsDdlModeWithSeparateTransaction() : IsDdlMode()) {
     VLOG_TXN_STATE(2);
     priority_ = NewPriority(txn_priority_requirement);
     return Status::OK();
@@ -447,9 +447,9 @@ Status PgTxnManager::CalculateIsolation(
       (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
        docdb_isolation == IsolationLevel::READ_COMMITTED);
   skip_picking_isolation_level |= is_local_object_lock_op;
-  if (!skip_picking_isolation_level || (yb_ddl_transaction_block_enabled && IsDdlMode())) {
+  if (!skip_picking_isolation_level || (YBCIsDdlTransactionBlockEnabled() && IsDdlMode())) {
     if (IsDdlMode()) {
-      DCHECK(yb_ddl_transaction_block_enabled)
+      DCHECK(YBCIsDdlTransactionBlockEnabled())
           << "Unexpected DDL state found in plain transaction";
     }
 
@@ -646,8 +646,9 @@ Status PgTxnManager::ExitSeparateDdlTxnModeWithCommit(uint32_t db_oid, bool is_s
 
 Status PgTxnManager::ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>& commit_info) {
   VLOG_TXN_STATE(2);
-  if (!((yb_ddl_transaction_block_enabled && IsDdlModeWithSeparateTransaction()) ||
-          (!yb_ddl_transaction_block_enabled && IsDdlMode()))) {
+  const auto ddl_txn_block_enabled = YBCIsDdlTransactionBlockEnabled();
+  if (!((ddl_txn_block_enabled && IsDdlModeWithSeparateTransaction()) ||
+          (!ddl_txn_block_enabled && IsDdlMode()))) {
     RSTATUS_DCHECK(
         !commit_info, IllegalState,
         "Commit separate ddl txn called when not in a separate DDL transaction");

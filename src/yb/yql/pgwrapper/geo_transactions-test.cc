@@ -15,6 +15,8 @@
 #include "yb/client/transaction_pool.h"
 #include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
@@ -29,17 +31,12 @@ using std::string;
 
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_tablespace_based_transaction_placement);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
 DECLARE_bool(transaction_tables_use_preferred_zones);
 DECLARE_bool(use_tablespace_based_transaction_placement);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
-DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 DECLARE_bool(TEST_fatal_on_transaction_status_request_failure);
 DECLARE_bool(TEST_perform_ignore_pg_is_region_local);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
@@ -342,15 +339,7 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
 class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
  protected:
   void SetUp() override {
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = false;
-    ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     GeoTransactionsTest::SetUp();
   }
 };
@@ -1064,14 +1053,7 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
 
   void SetUp() override {
     // These tests are failing when table-level locks are enabled due to #28317.
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    // The in-txn-block write fastpath requires transactional DDL, so keep the two flags
-    // consistent.
-    ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     GeoTransactionsTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_tablespace_based_transaction_placement) = true;

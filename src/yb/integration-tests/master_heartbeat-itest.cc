@@ -985,6 +985,7 @@ void GlobalTransactionTableCreationTest::SetUp() {
       // enable_object_locking_for_table_locks requires ysql_yb_ddl_transaction_block_enabled.
       "--ysql_yb_ddl_transaction_block_enabled=true",
       "--enable_object_locking_for_table_locks=true",
+      "--ysql_enable_concurrent_ddl=true",
   };
   cluster_ = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK(cluster_->Start());
