@@ -11,7 +11,11 @@
 // under the License.
 //
 
+#include "yb/client/client-test-util.h"
 #include "yb/common/ddl_mode-test-util.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -644,5 +648,148 @@ TEST_F(PgConcurrentCreateOrReplaceCrashTest, ConcurrentCreateOrReplaceWithDropCr
   // concurrent updates to pg_proc and its secondary index.
   ASSERT_OK(
       setup_conn.Fetch("SELECT yb_index_check('pg_proc_proname_args_nsp_index'::regclass)"));
+}
+
+// Deterministic repro of the Jepsen si.append-table silent data loss (DB-22722 / DB-20699).
+//
+// Root cause: a plain CREATE INDEX run INSIDE a transaction block is transparently downgraded to
+// nonconcurrent (utility.c: online multi-phase backfill needs multiple commits, impossible in a
+// txn block). A nonconcurrent build sets skip_index_backfill=true, so the async DocDB backfill
+// (BackfillTable / AllowCompactionsToGCDeleteMarkers) never runs and the index's docdb "birth_time"
+// is never set (stays 0). The index is instead populated inline within the DDL transaction, so its
+// entries are stamped at the DDL commit time.
+//
+// The read guard (read_query.cc) only rejects a stale index read when birth_time != 0, and only
+// returns a retryable error when birth_time == 0 && retain_delete_markers == true. For this
+// inline-built index birth_time == 0 AND retain_delete_markers == false, so NEITHER branch fires:
+// a snapshot-isolation read whose read time precedes the CREATE INDEX commit reads the fresh index,
+// finds none of the pre-existing rows (their index entries are stamped after the read time), and
+// silently returns an incomplete result.
+//
+// This mirrors the Jepsen client, which runs its lazy DDL as `BEGIN; CREATE INDEX ...`.
+TEST_F(PgConcurrentDDLsTest,
+       YB_DISABLE_TEST_IN_TSAN(SnapshotReadFreshNonConcurrentIndex)) {
+  // Enable the index birth-time guard diagnostic (read_query.cc) so the test log shows the
+  // birth_time / retain_delete_markers / read_time the guard saw for the offending index read.
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "read_query=1"));
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  // The committed row the snapshot read must never lose.
+  ASSERT_OK(setup_conn.Execute("INSERT INTO t VALUES (0, 13)"));
+  // Unrelated table used only to fix the reader's snapshot without locking t.
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE anchor (k INT PRIMARY KEY)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO anchor VALUES (1)"));
+
+  // Reader fixes its REPEATABLE READ snapshot by reading `anchor`; it does NOT touch t yet.
+  auto reader = ASSERT_RESULT(Connect());
+  ASSERT_OK(reader.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(reader.FetchAllAsString("SELECT k FROM anchor")), "1");
+
+  // Create the covering index INSIDE a transaction block -> nonconcurrent inline build ->
+  // skip_index_backfill -> birth_time is never set (stays 0). Its entries are stamped at COMMIT,
+  // which is after the reader's snapshot.
+  auto indexer = ASSERT_RESULT(Connect());
+  ASSERT_OK(indexer.Execute("BEGIN"));
+  ASSERT_OK(indexer.Execute("CREATE INDEX idx_t_k_v ON t (k, v)"));
+  ASSERT_OK(indexer.Execute("COMMIT"));
+
+  // Force the reader's first read of t onto the fresh (birth_time==0) index.
+  ASSERT_OK(reader.Execute("SET enable_seqscan = off"));
+  const auto plan = ASSERT_RESULT(reader.FetchAllAsString(
+      "EXPLAIN (COSTS OFF) SELECT k, v FROM t ORDER BY k"));
+  LOG(INFO) << "Index read plan:\n" << plan;
+  // Ensure the read actually goes through the fresh index; otherwise the test wouldn't exercise the
+  // bug.
+  ASSERT_STR_CONTAINS(plan, "idx_t_k_v");
+
+  // The committed row (0, 13) must be visible via the index. The bug returns an empty result
+  // (silent loss): the inline index entry is stamped after the reader's snapshot and, with no
+  // birth_time, the guard does not reject the stale read. Correct behavior: the row, or a loud
+  // error (SnapshotTooOld once birth_time is set).
+  auto index_read_result = reader.FetchAllAsString("SELECT k, v FROM t ORDER BY k");
+  LOG(INFO) << "Read via index result: "
+            << (index_read_result.ok() ? *index_read_result
+                                       : index_read_result.status().ToString());
+  if (index_read_result.ok()) {
+    ASSERT_EQ(*index_read_result, "0, 13")
+        << "Index read silently dropped a committed row: read a nonconcurrent index whose "
+           "birth_time was never set.";
+  }
+}
+
+// The master finalizes a nonconcurrently built index's birth_time on its tablets with an RPC
+// (AsyncMarkNonConcurrentIndexDone), which can be lost. The tablet validator then finalizes it
+// from the master's state when the tablet is opened.
+TEST_F(PgConcurrentDDLsTest,
+       YB_DISABLE_TEST_IN_TSAN(NonConcurrentIndexBirthTimeRecoveredByTabletValidator)) {
+  constexpr auto kIndexName = "idx_t_v";
+  // Drop the finalize on the tablets, as if the master's RPC were lost.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_metadata_non_concurrent_index_done", "true"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (0, 13)"));
+  // Inside a transaction block, CREATE INDEX is built nonconcurrently.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON t (v)", kIndexName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto index_id =
+      ASSERT_RESULT(client::GetTableIdByTableName(client.get(), "yugabyte", kIndexName));
+  std::vector<TabletId> tablet_ids;
+  ASSERT_OK(client->GetTabletsFromTableId(index_id, /* max_tablets = */ 0, &tablet_ids));
+  ASSERT_FALSE(tablet_ids.empty());
+
+  // Returns the index's IndexInfoPB on every tablet replica, as persisted in the tablet
+  // superblocks.
+  itest::ExternalMiniClusterFsInspector inspector(cluster_.get());
+  auto get_replica_index_infos = [&]() -> Result<std::vector<IndexInfoPB>> {
+    std::vector<IndexInfoPB> index_infos;
+    for (const auto& tablet_id : tablet_ids) {
+      for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+        tablet::RaftGroupReplicaSuperBlockPB superblock;
+        RETURN_NOT_OK(inspector.ReadTabletSuperBlockOnTS(i, tablet_id, &superblock));
+        for (const auto& table : superblock.kv_store().tables()) {
+          if (table.table_id() == index_id) {
+            index_infos.push_back(table.index_info());
+          }
+        }
+      }
+    }
+    return index_infos;
+  };
+
+  // Give the master's finalize RPC time to reach the tablets, and check it was dropped there.
+  SleepFor(5s * kTimeMultiplier);
+  auto index_infos = ASSERT_RESULT(get_replica_index_infos());
+  ASSERT_EQ(index_infos.size(), tablet_ids.size() * cluster_->num_tablet_servers());
+  for (const auto& index_info : index_infos) {
+    ASSERT_EQ(index_info.birth_time_state(), IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT);
+  }
+
+  // Restart the tservers without dropping the finalize. The tablet validator runs when the tablets
+  // are opened and finalizes the index from the master's state.
+  cluster_->Shutdown(ExternalMiniCluster::TS_ONLY);
+  cluster_->AddExtraFlagOnTServers(
+      "tablet_validator_retain_delete_markers_validation_period_sec", "1");
+  ASSERT_OK(cluster_->Restart());
+
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    for (const auto& index_info : VERIFY_RESULT(get_replica_index_infos())) {
+      if (index_info.birth_time_state() != IndexInfoPB::BIRTH_TIME_FINAL ||
+          index_info.birth_time() == 0) {
+        return false;
+      }
+    }
+    return true;
+  }, 60s * kTimeMultiplier, "Wait for the tablet validator to finalize the index birth time"));
+
+  // The index is readable again.
+  conn = ASSERT_RESULT(Connect());
+  const std::string query = "SELECT k FROM t WHERE v = 13";
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(query)), 0);
 }
 }  // namespace yb::pgwrapper

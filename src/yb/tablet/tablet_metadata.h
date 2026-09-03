@@ -884,6 +884,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Status OnBackfillDone(const OpId& op_id, const TableId& table_id,
                         uint64_t birth_time = 0) EXCLUDES(data_mutex_);
 
+  // Called to finalize the birth_time of a nonconcurrently built index (see
+  // IndexInfoPB.birth_time_state). birth_time 0 leaves the index without a birth_time.
+  Status OnNonConcurrentIndexDone(const TableId& table_id, uint64_t birth_time)
+      EXCLUDES(data_mutex_);
+  Status OnNonConcurrentIndexDone(const OpId& op_id, const TableId& table_id,
+                                  uint64_t birth_time) EXCLUDES(data_mutex_);
+
   // Updates related meta data as a reaction for post split compaction completed. Returns true
   // if any field has been updated and a flush may be required.
   bool OnPostSplitCompactionDone();
@@ -940,6 +947,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void OnChangeMetadataOperationAppliedUnlocked(const OpId& applied_op_id) REQUIRES(data_mutex_);
 
   Status OnBackfillDoneUnlocked(const TableId& table_id, uint64_t birth_time = 0)
+      REQUIRES(data_mutex_);
+
+  Status OnNonConcurrentIndexDoneUnlocked(const TableId& table_id, uint64_t birth_time)
       REQUIRES(data_mutex_);
 
   Status SetTableInfoUnlocked(const TableInfoMap::iterator& it,

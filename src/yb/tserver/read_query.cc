@@ -910,10 +910,12 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
         // backfill is replicated from the source).
         auto birth_time = table_info->index_info->birth_time();
         auto birth_ht = HybridTime(birth_time);
+        const auto birth_time_state = table_info->index_info->birth_time_state();
         VLOG(1) << "Index read birth-time guard: index_table=" << table_info->table_id
                 << " birth_time=" << birth_time << " (" << birth_ht << ")"
                 << " retain_delete_markers="
                 << table_info->schema().table_properties().retain_delete_markers()
+                << " birth_time_state=" << IndexInfoPB::BirthTimeState_Name(birth_time_state)
                 << " read_time=" << read_time_.read;
         if (birth_time != 0 && !birth_ht.is_special() && read_time_.read < birth_ht) {
           return STATUS(
@@ -922,16 +924,17 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
                      read_time_.read.ToString(), table_info->table_id, birth_ht.ToString()),
               TransactionError(TransactionErrorCode::kSnapshotTooOld));
         }
-        // Master persists index birth before launching AsyncBackfillDone task in
-        // AllowCompactionsToGCDeleteMarkers. So if the delete markers are still set,
-        // reject reads with retryable error until the task to clear the delete markers
-        // is processed, which would set birth_time (if one exists).
+        // birth_time is not set yet but is still coming: birth_time_state is a PENDING state (for
+        // both the backfill and nonconcurrent paths) from index creation until birth_time is
+        // finalized. Reject reads with a retryable error meanwhile rather than serve a
+        // possibly-incomplete index. retain_delete_markers is a legacy fallback for backfilled
+        // indexes created before birth_time_state existed (or while its AutoFlag was off).
         if (birth_time == 0 &&
-            table_info->schema().table_properties().retain_delete_markers()) {
+            (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL ||
+             table_info->schema().table_properties().retain_delete_markers())) {
           return STATUS_FORMAT(
               LeaderNotReadyToServe,
-              "Index table $0 backfill metadata not yet applied locally "
-              "(retain_delete_markers still set)",
+              "Index table $0 birth time not yet finalized locally",
               table_info->table_id);
         }
       }

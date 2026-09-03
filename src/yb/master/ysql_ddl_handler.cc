@@ -14,6 +14,7 @@
 #include <optional>
 #include <tuple>
 
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master.h"
@@ -503,8 +504,50 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
         cols_being_dropped.push_back(col.name());
     }
   }
+
+  // A nonconcurrently built index was populated inline by the CREATE INDEX transaction and is
+  // finalized here, now that the transaction has committed (see IndexInfoPB.birth_time_state).
+  // Online (backfilled) indexes are in BIRTH_TIME_PENDING_BACKFILL at this point and are finalized
+  // when backfill completes, so they are skipped.
+  const bool finalize_index_birth_time =
+      txn_data.table->is_index() && l->pb.has_index_info() &&
+      l->pb.index_info().birth_time_state() == IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT;
+  if (finalize_index_birth_time) {
+    // An inline build never retains delete markers; that is only done while backfilling.
+    LOG_IF(DFATAL, l->pb.schema().table_properties().retain_delete_markers())
+        << "Nonconcurrent index " << txn_data.table->ToString() << " retains delete markers";
+    // Index tables have no columns marked for deletion, and the tablets are only updated below.
+    LOG_IF(DFATAL, !cols_being_dropped.empty())
+        << "Nonconcurrent index " << txn_data.table->ToString() << " has columns being dropped";
+  }
+
   if (cols_being_dropped.empty()) {
-    return ClearYsqlDdlTxnState(txn_data);
+    uint64_t index_birth_time = 0;
+    if (finalize_index_birth_time) {
+      auto* index_info = mutable_pb.mutable_index_info();
+      // master clock Now() is >= the commit time, as this runs after the txn is applied: reads
+      // before birth_time are then rejected with SnapshotTooOld, reads at/after it see the complete
+      // index. xCluster automatic-mode targets get birth_time from the source (TODO(#33155)), so
+      // don't stamp one there, but still mark it final so the target index becomes readable.
+      if (!GetXClusterManager()->IsTableReplicationConsumer(txn_data.table->id())) {
+        index_birth_time = master_->clock()->Now().ToUint64();
+        index_info->set_birth_time(index_birth_time);
+      }
+      index_info->clear_birth_time_state();
+    }
+    RETURN_NOT_OK(ClearYsqlDdlTxnState(txn_data));
+    // Propagate birth time related information so that the index starts accepting reads.
+    if (finalize_index_birth_time) {
+      auto tablets = VERIFY_RESULT(txn_data.table->GetTablets());
+      for (const auto& tablet : tablets) {
+        auto call = std::make_shared<AsyncMarkNonConcurrentIndexDone>(
+            master_, AsyncTaskPool(), tablet, txn_data.table->id(), txn_data.epoch,
+            index_birth_time);
+        tablet->table()->AddTask(call);
+        RETURN_NOT_OK(ScheduleTask(call));
+      }
+    }
+    return Status::OK();
   }
   Schema current_schema;
   RETURN_NOT_OK(SchemaFromPB(mutable_pb.schema(), &current_schema));

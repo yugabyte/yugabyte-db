@@ -640,6 +640,13 @@ service TabletServerAdminService {
   // leader.
   rpc TableBackfillChunk(TableBackfillChunkRequestPB) returns (TableBackfillChunkResponsePB);
 
+  // Finalizes the birth time of a nonconcurrently built index (see
+  // IndexInfoPB.birth_time_state). Only accepts requests with mark_non_concurrent_index_done set.
+  rpc MarkNonConcurrentIndexDone(tablet.ChangeMetadataRequestPB)
+      returns (ChangeMetadataResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
+
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
 
   // Records target_tier as a tablet replica's placement intent and starts moving its SSTs there

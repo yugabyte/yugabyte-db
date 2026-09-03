@@ -695,6 +695,11 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablespace_based_transaction_placement, kLocalPe
     false, true,
     "Enable support for tablespace-based transaction locality.");
 
+DEFINE_RUNTIME_AUTO_bool(enable_ysql_index_birth_time_state, kLocalPersisted, false, true,
+    "Track state for a YSQL index whether birth_time is set or pending "
+    "(IndexInfoPB.birth_time_state). This is required to decide if reads should throw a retryable "
+    "error if the birth time is not yet final to avoid inconsistent results.");
+
 DEFINE_test_flag(bool, fail_yugabyte_namespace_creation_on_second_attempt, false,
     "Fail CopyPgsqlSysTables for yugabyte database on the second creation attempt "
     "to simulate failure during pg_restore phase of YSQL major upgrade");
@@ -1479,7 +1484,8 @@ void CatalogManager::ValidateIndexTablesPostLoad(
         table_id, std::move(indexes),
         [this, tables_to_persist = DCHECK_NOTNULL(tables_to_persist)](
             const Status& status, const TableId& index_id,
-            IndexStatusPB::BackfillStatus backfill_status, uint64_t /*birth_time*/) {
+            IndexStatusPB::BackfillStatus backfill_status, uint64_t /*birth_time*/,
+            IndexInfoPB::BirthTimeState /*birth_time_state*/) {
           DCHECK(status.ok());
           if (!status.ok()) {
             LOG(WARNING) << "ValidateIndexTablesPostLoad: Failed to get backfill status for "
@@ -1496,6 +1502,12 @@ void CatalogManager::ValidateIndexTablesPostLoad(
           auto index_table = CHECK_RESULT(GetTableById(index_id));
           auto index_table_wlock = index_table->LockForWrite();
           BackfillTable::UnsetIndexTableRetainsDeleteMarkers(index_table_wlock.mutable_data());
+          // Backfill is done, so the birth_time is final too (it is 0 if it was not persisted).
+          auto& index_pb = index_table_wlock.mutable_data()->pb;
+          if (index_pb.has_index_info() && index_pb.index_info().birth_time_state() ==
+                                               IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL) {
+            index_pb.mutable_index_info()->clear_birth_time_state();
+          }
           index_table_wlock.Commit();
           tables_to_persist->emplace(index_id);
         });
@@ -4696,6 +4708,26 @@ bool EnableTableOwnedVectorReverseMapping() {
       : FLAGS_enable_table_owned_vector_reverse_mapping;
 }
 
+// Returns the initial IndexInfoPB.birth_time_state of a new YSQL index: whether its birth_time is
+// not final yet, and which build path finalizes it. Vector indexes are not covered by the read
+// guard.
+IndexInfoPB::BirthTimeState InitialIndexBirthTimeState(
+    const CreateTableRequestPB& req, const IndexInfoPB& index_info, bool index_backfill_enabled) {
+  if (!FLAGS_enable_ysql_index_birth_time_state || index_info.has_vector_idx_options()) {
+    return IndexInfoPB::BIRTH_TIME_FINAL;
+  }
+  if (index_backfill_enabled && !req.skip_index_backfill()) {
+    // Finalized when backfill completes (BackfillTable::AllowCompactionsToGCDeleteMarkers).
+    return IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL;
+  }
+  if (req.skip_index_backfill() && req.has_transaction() && req.ysql_yb_ddl_rollback_enabled()) {
+    // Finalized when the CREATE INDEX transaction commits (HandleSuccessfulYsqlDdlTxn). That only
+    // runs for tables with DDL transaction verification, so without it the index stays FINAL.
+    return IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT;
+  }
+  return IndexInfoPB::BIRTH_TIME_FINAL;
+}
+
 } // namespace
 
 Status CatalogManager::PersistNewTable(
@@ -5007,6 +5039,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (orig_req->table_type() != PGSQL_TABLE_TYPE) {
       auto indexed_schema = VERIFY_RESULT(indexed_table->GetSchema());
       RETURN_NOT_OK(index_info_builder.ApplyColumnMapping(indexed_schema, schema));
+    }
+  }
+
+  if (req.has_index_info() && is_pg_table) {
+    const auto birth_time_state =
+        InitialIndexBirthTimeState(req, index_info, index_backfill_enabled);
+    if (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL) {
+      index_info.set_birth_time_state(birth_time_state);
     }
   }
 
@@ -7126,7 +7166,8 @@ void CatalogManager::GetBackfillStatus(
   // Utility functor to respond with the provided error for the remaining indexes.
   auto callback_failure = [&callback, &indexes](const Status& status) {
     for (const auto& index : indexes) {
-      callback(status, index, IndexStatusPB::BACKFILL_UNKNOWN, /*birth_time=*/uint64_t{0});
+      callback(status, index, IndexStatusPB::BACKFILL_UNKNOWN, /*birth_time=*/uint64_t{0},
+               IndexInfoPB::BIRTH_TIME_FINAL);
     }
   };
 
@@ -7176,13 +7217,15 @@ void CatalogManager::GetBackfillStatus(
 
   for (const auto& [index_id, backfill_status] : indexes_for_callback) {
     uint64_t birth_time = 0;
+    auto birth_time_state = IndexInfoPB::BIRTH_TIME_FINAL;
     if (auto index_table = GetTableInfo(index_id)) {
       auto l = index_table->LockForRead();
-      if (l->pb.has_index_info() && l->pb.index_info().has_birth_time()) {
+      if (l->pb.has_index_info()) {
         birth_time = l->pb.index_info().birth_time();
+        birth_time_state = l->pb.index_info().birth_time_state();
       }
     }
-    callback(Status::OK(), index_id, backfill_status, birth_time);
+    callback(Status::OK(), index_id, backfill_status, birth_time, birth_time_state);
   }
 
   // Notify the caller with the remaining indexes. There's a chance some of the indexes
@@ -7253,7 +7296,8 @@ Status CatalogManager::GetBackfillStatus(
         table_id, std::move(indexes),
         [&index_to_identifier_map, &resp](
             const Status& status, const TableId& index_id,
-            IndexStatusPB::BackfillStatus backfill_status, uint64_t birth_time) {
+            IndexStatusPB::BackfillStatus backfill_status, uint64_t birth_time,
+            IndexInfoPB::BirthTimeState birth_time_state) {
           auto identifier_it = index_to_identifier_map.find(index_id);
           CHECK(identifier_it != index_to_identifier_map.end());
           auto* index_status = resp->add_index_status();
@@ -7263,6 +7307,7 @@ Status CatalogManager::GetBackfillStatus(
             if (birth_time != 0) {
               index_status->set_birth_time(birth_time);
             }
+            index_status->set_birth_time_state(birth_time_state);
           } else {
              StatusToPB(status, index_status->mutable_error());
           }
