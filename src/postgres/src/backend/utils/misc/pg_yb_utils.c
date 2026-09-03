@@ -1284,6 +1284,16 @@ typedef struct
 	 */
 	int			num_rollback_to_savepoint_stmts;
 	/*
+	 * This indicates whether we need to increment logical client version at
+	 * commit. This is needed by Connection Manager to handle `ALTER ... SET`
+	 * commands and is irrelevant when it is disabled.
+	 * Note that we don't handle savepoint rollbacks here i.e. we don't unset
+	 * it when we rollback to a savepoint. This is fine since an additional
+	 * logical client version bump will only cause a recycling of backends used
+	 * by Connection Manager, and that is harmless.
+	 */
+	bool increment_logical_client_version;
+	/*
 	 * This indicates whether the current DDL transaction is running as part of
 	 * the regular transaction block.
 	 *
@@ -3349,6 +3359,11 @@ YBCommitTransactionContainingDDL()
 	Oid			database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
 	bool		use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
 	bool		is_global_ddl = ddl_transaction_state.is_global_ddl;
+	bool increment_logical_client_version =
+		ddl_transaction_state.increment_logical_client_version;
+
+	if (increment_logical_client_version)
+		YbIncrementMasterLogicalClientVersionTableEntry();
 
 	YBClearDdlTransactionState();
 
@@ -3464,6 +3479,12 @@ YBCommitTransactionContainingDDL()
 				pg_usleep(sleep);
 			}
 		}
+	}
+
+	if (increment_logical_client_version)
+	{
+		elog(LOG, "Logical client version incremented");
+		YbSendMasterLogicalClientVersionToFrontend();
 	}
 
 	List	   *handles = YBGetDdlHandles();
@@ -4582,14 +4603,6 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 
 				YBAddDdlTxnState(ddl_mode.value);
 			}
-
-			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
-				YbIsClientYsqlConnMgr() &&
-				YbIncrementMasterLogicalClientVersionTableEntry())
-			{
-				elog(LOG, "Logical client version incremented");
-				YbSendMasterLogicalClientVersionToFrontend();
-			}
 		}
 
 		if (prev_ProcessUtility)
@@ -4604,6 +4617,10 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 		if (is_ddl)
 		{
 			CheckAlterDatabaseDdl(pstmt);
+
+			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
+				YbIsClientYsqlConnMgr())
+				ddl_transaction_state.increment_logical_client_version = true;
 
 			if (use_separate_ddl_transaction)
 				YBDecrementDdlNestingLevel();
