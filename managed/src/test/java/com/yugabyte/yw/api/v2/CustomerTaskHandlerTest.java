@@ -35,8 +35,11 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.filters.TaskFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Collections;
+import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.Before;
@@ -161,6 +164,96 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
   }
 
   @Test
+  public void createQueryByFilter_dateRangeAndStatus_doesNotThrowAmbiguousCreateTime() {
+    ObjectNode responseJson = Json.newObject();
+    CustomerTask task =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Create,
+            TaskType.CreateUniverse,
+            universe.getName(),
+            "Success",
+            100.0,
+            responseJson);
+
+    Date start = new Date(task.getCreateTime().getTime() - 60_000L);
+    Date end = new Date(task.getCreateTime().getTime() + 60_000L);
+    // Status filtering joins task_info (also has create_time). The date predicate must qualify
+    // customer_task.create_time or Postgres rejects the query as ambiguous.
+    List<CustomerTask> found =
+        CustomerTask.createQueryByFilter(
+                TaskFilter.builder()
+                    .customerUUID(customer.getUuid())
+                    .dateRangeStart(start)
+                    .dateRangeEnd(end)
+                    .status(Collections.singleton(TaskInfo.State.Success))
+                    .build())
+            .findList();
+
+    assertThat(found.size(), greaterThanOrEqualTo(1));
+    assertEquals(task.getTaskUUID(), found.get(0).getTaskUUID());
+
+    // Start-only must also apply (open-ended upper bound), including with status join.
+    List<CustomerTask> foundStartOnly =
+        CustomerTask.createQueryByFilter(
+                TaskFilter.builder()
+                    .customerUUID(customer.getUuid())
+                    .dateRangeStart(start)
+                    .status(Collections.singleton(TaskInfo.State.Success))
+                    .build())
+            .findList();
+    assertThat(foundStartOnly.size(), greaterThanOrEqualTo(1));
+    assertEquals(
+        1, foundStartOnly.stream().filter(t -> t.getTaskUUID().equals(task.getTaskUUID())).count());
+  }
+
+  @Test
+  public void createQueryByFilter_completionDateRange_excludesNullCompletionTime() {
+    ObjectNode responseJson = Json.newObject();
+    CustomerTask completed =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Create,
+            TaskType.CreateUniverse,
+            universe.getName(),
+            "Success",
+            100.0,
+            responseJson);
+    completed.markAsCompleted();
+    Date completedAt = completed.getCompletionTime();
+
+    CustomerTask inProgress =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Update,
+            TaskType.EditUniverse,
+            universe.getName(),
+            "Running",
+            50.0,
+            responseJson);
+    // Leave completion_time null (in-progress). ge/le must not match nulls.
+
+    Date start = new Date(completedAt.getTime() - 60_000L);
+    // Start-only: open-ended upper bound; still excludes null completion_time.
+    List<CustomerTask> found =
+        CustomerTask.createQueryByFilter(
+                TaskFilter.builder()
+                    .customerUUID(customer.getUuid())
+                    .completionDateRangeStart(start)
+                    .build())
+            .findList();
+
+    assertThat(found.size(), greaterThanOrEqualTo(1));
+    assertEquals(
+        1, found.stream().filter(t -> t.getTaskUUID().equals(completed.getTaskUUID())).count());
+    assertEquals(
+        0, found.stream().filter(t -> t.getTaskUUID().equals(inProgress.getTaskUUID())).count());
+  }
+
+  @Test
   public void pageListTasks_invalidCustomer() {
     TaskPagedQuerySpec spec = new TaskPagedQuerySpec();
     spec.offset(0).limit(10);
@@ -211,6 +304,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
     taskInfo.setUuid(taskUUID);
     taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("");
+    taskInfo.setTaskState(TaskInfo.State.valueOf(status));
     taskInfo.save();
     CustomerTask task =
         CustomerTask.create(customer, targetUUID, taskUUID, targetType, taskType, targetName);
