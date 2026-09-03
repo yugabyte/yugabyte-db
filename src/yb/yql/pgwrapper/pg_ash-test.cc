@@ -1021,6 +1021,48 @@ TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
   ASSERT_GE(bgworker_query_id_cnt, 1);
 }
 
+// Deferred unique-index verification (#33444): the scan runs on the tserver under the
+// originating CREATE INDEX statement's ASH metadata, threaded through the master's backfill
+// task. The Scan wait state is short on small data, so pin the sleep-at-wait-state hook to
+// it and sample fast.
+class PgAshUniqueIndexVerifyTest : public PgAshTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--ysql_index_backfill_shadow_verification=true");
+    options->extra_master_flags.push_back(
+        "--TEST_ysql_index_backfill_unique_check_mode=skip_all");
+    // Base-table retention for the backfill reads (#32565), mirroring the verifier fixtures.
+    options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=900");
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_yb_ash_wait_code_to_sleep_at=$0",
+        std::to_underlying(ash::WaitStateCode::kUniqueIndexVerify_Scan)));
+    options->extra_tserver_flags.push_back("--TEST_yb_ash_sleep_at_wait_state_ms=1000");
+    options->extra_tserver_flags.push_back("--ysql_yb_ash_sampling_interval_ms=50");
+  }
+};
+
+TEST_F(PgAshUniqueIndexVerifyTest, UniqueIndexVerifyScanCarriesQueryId) {
+  constexpr auto kTableName = "uniq_verify_ash";
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 1000) AS i", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX uniq_verify_ash_idx ON $0 (v)", kTableName));
+
+  const auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'CREATE UNIQUE INDEX%'"));
+  // Only Scan is pinned on purpose: UniqueIndexVerify_ResolveIntents shares the identical
+  // RPC/metadata path but is typically instantaneous on an idle cluster, and the sleep hook
+  // above targets one code.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM yb_active_session_history "
+        "WHERE query_id = $0 AND wait_event = 'UniqueIndexVerify_Scan'", query_id))) > 0;
+  }, 30s * kTimeMultiplier, "wait for UniqueIndexVerify_Scan ASH sample"));
+}
+
 TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   static constexpr auto kTableName = "test_table";
 
