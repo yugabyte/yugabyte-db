@@ -1112,13 +1112,9 @@ valid_restrict_key(const char *restrict_key)
 }
 
 /*
- * Drop a trailing "\restrict <restrict_key>\n" from buf and report whether one
- * was there.  Trailing newlines after it are blank lines in the dump rather
- * than part of the bracket, so they are skipped over and kept.
- *
- * Only an exact bracket line at column 0 matches, which dumped content cannot
- * forge: YB indents the SQL it wraps in a bracket, and every statement pg_dump
- * emits ends in a semicolon.
+ * YB: drop a trailing "\restrict <restrict_key>\n" from buf and report
+ * whether one was there.  Trailing newlines after it are blank lines in the
+ * dump rather than part of the bracket, so they are skipped over and kept.
  */
 static bool
 ybCancelTrailingRestrict(PQExpBuffer buf, const char *restrict_key)
@@ -1137,9 +1133,10 @@ ybCancelTrailingRestrict(PQExpBuffer buf, const char *restrict_key)
 		return false;
 
 	/*
-	 * tail is end-anchored, so the candidate is exactly the last closelen
-	 * bytes: the prefix, the key, then the newline.  Checking the newline's
-	 * position keeps the bytes removed to one complete bracket line.
+	 * The candidate is exactly the last closelen bytes: the prefix, the key,
+	 * then the newline.  The start of the line is not checked, so a buffer
+	 * ending in an indented bracket line would match too; every emitter writes
+	 * the bracket at column 0, so that does not arise.
 	 */
 	tail = buf->data + end - closelen;
 	if (strncmp(tail, "\\restrict ", sizeof("\\restrict ") - 1) != 0 ||
@@ -1201,7 +1198,7 @@ ybAppendUnrestrict(PQExpBuffer buf, const char *restrict_key)
 		return;
 
 	/*
-	 * Two YB blocks in a row leave a \restrict immediately followed by a
+	 * Two YB blocks in a row would leave a \restrict immediately followed by a
 	 * \unrestrict for the same key: two meta-command dispatches and ~150 bytes
 	 * that put the window back exactly where it was.  Cancel the pair instead.
 	 * The result is one wider window over the same YB-generated text, so it
@@ -1221,14 +1218,16 @@ ybAppendRestrict(PQExpBuffer buf, const char *restrict_key)
 }
 
 /*
- * YB: append str as a single-quoted argument to a psql meta-command.
+ * YB: append str as a single-quoted psql meta-command argument.
  *
- * fmtId quoting is not safe here. psql's slash-argument lexer cannot carry a
- * quoted argument across a newline, so a newline in a dumped identifier ends
- * the argument and the rest of the name is lexed as top-level psql input -
- * inside an unrestricted window, that is the CVE-2025-8714 injection. The
- * single-quoted argument state expands neither :variables nor backquotes, so
- * escaping the quote, the backslash and the control characters is enough.
+ * psql reads a meta-command one line at a time, so an argument cannot carry a
+ * raw newline: the lexer reports an unterminated string and the rest of the
+ * name becomes top-level psql input.  Only the single-quoted argument state
+ * offers backslash escapes, so control characters are escaped and the newline
+ * never reaches the line.  That state also does not expand :variables or
+ * backquotes, so quote, backslash and control characters are the complete set.
+ * Do not use fmtId for this: psql's double-quoted state has no escapes and no
+ * "" rule.
  */
 void
 ybAppendPsqlMetaLiteral(PQExpBuffer buf, const char *str)

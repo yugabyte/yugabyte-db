@@ -3322,8 +3322,8 @@ _tocEntryIsACL(TocEntry *te)
 
 /*
  * YB: the restrict key for the CVE-2025-8714 brackets around YB control-flow
- * meta-commands, like the \connect handling in _printTocEntry.  Only
- * YB-generated, properly escaped content may appear inside those brackets.
+ * meta-commands, like the owner check in _printTocEntry.  Only YB-generated,
+ * properly escaped content may appear inside those brackets.
  *
  * The key is always set here: every caller requires --include-yb-metadata,
  * which pg_dump accepts only for plain-text output, and plain-text output
@@ -3344,8 +3344,8 @@ ybRestrictKey(ArchiveHandle *AH)
  * YB: ahprintf counterparts of dumputils.c's ybAppendUnrestrict and
  * ybAppendRestrict, for callers with no adjacent bracket to cancel and so no
  * need of a buffer.  Callers that do have such a seam build into a PQExpBuffer
- * with the dumputils helpers and write it with a single ahprintf, the way
- * _reconnectToDB does.
+ * with the dumputils helpers and write it with a single ahprintf, as
+ * _printTocEntry's owner block does.
  */
 static void
 ybAppendUnrestrictAH(ArchiveHandle *AH)
