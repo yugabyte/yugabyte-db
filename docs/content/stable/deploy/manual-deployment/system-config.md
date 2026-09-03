@@ -62,7 +62,7 @@ rtcsync
 # sourcedir /run/chrony-dhcp
 ```
 
-- `minpoll 4 maxpoll 4` fixes the polling interval at 16 seconds. This is required if you use ClockBound, and is recommended even otherwise.
+- `minpoll 4 maxpoll 4` fixes the polling interval at 16 seconds. This is required if you use [ClockBound](#configure-clockbound), and is recommended regardless.
 - `minsources` defaults to 1, letting one source steer the clock while every other source disagrees. Use at least 2, and more if you have more sources.
 - `maxdistance` defaults to 3 seconds, six times the default skew threshold, so it never rejects a source. Keep it well below `--max_clock_skew_usec`.
 - Use time servers that smear leap seconds.
