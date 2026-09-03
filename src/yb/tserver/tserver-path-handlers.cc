@@ -244,6 +244,29 @@ void HandleTabletPage(
   const SchemaPtr schema = peer->tablet_metadata()->schema();
   server::HtmlOutputSchemaTable(*schema, output);
 
+  const auto generation = peer->tablet_metadata()->index_backfill_ordering_generation();
+  if (generation.active) {
+    // A held generation pins history GC on this tablet (deferred unique-index verification);
+    // surfacing it here pairs with the ts_index_backfill_* gauges for stuck-barrier triage.
+    *output << "<h2>Index-Backfill Ordering Generation</h2>\n";
+    *output << "<table class='table table-striped'>\n";
+    *output << Format("<tr><th>Index table</th><td>$0</td></tr>\n",
+                      EscapeForHtmlToString(generation.table_id));
+    *output << Format("<tr><th>Base op index</th><td>$0</td></tr>\n", generation.base_op_index);
+    *output << Format("<tr><th>Write-ID floor version</th><td>$0</td></tr>\n",
+                      generation.write_id_floor_version);
+    if (generation.retention_barrier_ht) {
+      *output << Format(
+          "<tr><th>Retention barrier</th><td>$0 (age: $1 ms)</td></tr>\n",
+          EscapeForHtmlToString(generation.retention_barrier_ht.ToString()),
+          generation.RetentionBarrierAgeMs(peer->clock_ptr()->Now()));
+    } else {
+      *output << "<tr><th>Retention barrier</th>"
+                 "<td>missing (blocks all history GC on this tablet)</td></tr>\n";
+    }
+    *output << "</table>\n";
+  }
+
   *output << "<h2>Other Tablet Info Pages</h2>" << endl;
 
   // List of links to various tablet-specific info pages
