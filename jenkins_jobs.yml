@@ -1,27 +1,44 @@
 # This file determines the jobs that we run in this branch on Jenkins.
 # Default architecture is x86_64
+#
+# when selectors:
+#   change - run by default for DB changes
+#   full - run for full official build
+#
+
 jobs:
   - os: alma9
     compiler: clang21
     build_type: asan
     release_artifact: false
+    when:
+     - change
+     - full
 
   - os: alma8
     compiler: clang21
     build_type: tsan
     release_artifact: false
+    when:
+     - full
 
   - os: alma8
     compiler: gcc15
     build_type: fastdebug
     test_opts: YB_TEST_YB_CONTROLLER=0 YB_ENABLE_YSQL_CONN_MGR_IN_JAVA_TESTS=true
     release_artifact: false
+    when:
+     - change
+     - full
 
   - os: alma8
     compiler: clang21
     build_type: release
     build_opts: YB_LINKING_TYPE=full-lto YB_PGO_BOLT=1
     release_artifact: true
+    when:
+     - change
+     - full
 
   - os: alma8
     compiler: clang21
@@ -29,6 +46,8 @@ jobs:
     architecture: aarch64
     build_opts: YB_LINKING_TYPE=full-lto YB_PGO_BOLT=1
     release_artifact: true
+    when:
+     - full
 
   - os: mac14
     compiler: clang21
@@ -36,6 +55,8 @@ jobs:
     architecture: arm64
     test_opts: YB_TEST_YB_CONTROLLER=0
     release_artifact: true
+    when:
+     - full
 
   - os: mac14
     compiler: clang21
@@ -43,9 +64,13 @@ jobs:
     architecture: x86_64
     test_opts: YB_COMPILE_ONLY=1
     release_artifact: true
+    when:
+     - full
 
   - os: ubuntu22.04
     compiler: clang21
     build_type: debug
     release_artifact: false
     test_opts: YB_COMPILE_ONLY=1
+    when:
+     - full

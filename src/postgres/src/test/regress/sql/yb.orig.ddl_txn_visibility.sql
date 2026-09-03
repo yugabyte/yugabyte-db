@@ -438,7 +438,22 @@ ALTER TABLE cursor_rewrite_open
 FETCH ALL FROM cur_rewrite_open;
 ROLLBACK;
 
+-- Case 7: Case 1 with a savepoint between the write and the FETCH. The savepoint
+-- disables the skip-intents optimization for the rest of the transaction, so the FETCH
+-- takes the regular transactional path while the rows written before it are already in
+-- the regular db, at a hybrid time above the transaction read time. Reading at the
+-- statement's in_txn_limit is what keeps them visible, and collapsing the uncertainty
+-- window onto it is what keeps the FETCH from asking for a read restart -- which the
+-- query layer cannot honour once the transaction has performed a skip-intents write.
+BEGIN;
+CREATE TABLE cursor_savepoint (id INT PRIMARY KEY);
+DECLARE cur_savepoint CURSOR FOR SELECT id FROM cursor_savepoint ORDER BY id;
+INSERT INTO cursor_savepoint SELECT generate_series(1, 3);
+SAVEPOINT sp;
+FETCH ALL FROM cur_savepoint;
+COMMIT;
+
 DROP TABLE cursor_new_rel, cursor_stability, cursor_for_update, cursor_with_hold,
-           cursor_rewrite;
+           cursor_rewrite, cursor_savepoint;
 
 SET default_transaction_isolation TO :'default_transaction_isolation';

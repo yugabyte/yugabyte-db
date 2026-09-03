@@ -360,8 +360,56 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertNotNull(extraNode);
     assertEquals("aws", extraNode.get("cloud_type").asText());
     assertEquals("/tmp/node-agent/thirdparty", extraNode.get("package_path").asText());
+    assertTrue(extraNode.path("path_to_uuid_mapping").isMissingNode());
 
     // Clean up
+    Files.deleteIfExists(tempFile);
+  }
+
+  @Test
+  public void testPathToUuidMappingIncludedInConfig() throws Exception {
+    Universe universe = ModelFactory.createUniverse("test-universe", customer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", CloudType.aws));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    NodeDetails primaryNode = universe.getNodes().iterator().next();
+
+    Map<String, String> pathToUuid = new HashMap<>();
+    pathToUuid.put("/mnt/d0", "11111111-1111-1111-1111-111111111111");
+    pathToUuid.put("/mnt/d1", "22222222-2222-2222-2222-222222222222");
+
+    YNPProvisioning.Params params = new YNPProvisioning.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = primaryNode.nodeName;
+    params.isYbPrebuiltImage = false;
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.numVolumes = 2;
+    params.pathToUUIDMapping = pathToUuid;
+    setTaskParams(params);
+
+    primaryNode.cloudInfo = new CloudSpecificInfo();
+    primaryNode.cloudInfo.cloud = "aws";
+    primaryNode.cloudInfo.private_ip = "10.0.0.1";
+    primaryNode.cloudInfo.region = "us-west-2";
+    primaryNode.cloudInfo.instance_type = "m5.large";
+
+    UserIntent primaryUserIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    primaryUserIntent.providerType = CloudType.aws;
+    primaryUserIntent.provider = provider.getUuid().toString();
+    primaryUserIntent.deviceInfo = new DeviceInfo();
+    primaryUserIntent.deviceInfo.numVolumes = 2;
+
+    Path tempFile = Files.createTempFile("ynp-test-mapping-", ".json");
+    Path nodeAgentHome = Paths.get("/tmp/node-agent");
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
+
+    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome, null);
+
+    JsonNode rootNode = objectMapper.readTree(Files.readAllBytes(tempFile));
+    String encoded = rootNode.get("extra").get("path_to_uuid_mapping").asText();
+    assertTrue(encoded.contains("/mnt/d0=11111111-1111-1111-1111-111111111111"));
+    assertTrue(encoded.contains("/mnt/d1=22222222-2222-2222-2222-222222222222"));
+
     Files.deleteIfExists(tempFile);
   }
 

@@ -19,6 +19,12 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
 )
 
+// Marker yb_platform_backup.sh puts on its backup-lock messages. Those are worth showing while
+// the script runs - a backup queued behind another one is otherwise indistinguishable from a hang
+// - unlike the rest of its output, which stays buffered. Keep in step with BACKUP_LOCK_LOG_PREFIX
+// in devops/bin/yb_platform_backup.sh.
+const backupLockLogPrefix = "[backup-lock] "
+
 func CreateBackupScript(outputPath string, dataDir string, excludePrometheus bool,
 	excludeReleases bool, restart bool, disableVersion bool, verbose bool,
 	excludePADatabase bool, excludePAFiles bool, plat Platform) {
@@ -95,7 +101,7 @@ func CreateBackupScriptHelper(outputPath, dataDir, script, ysqldump, pgdump stri
 	}
 
 	log.Info("Creating a backup of your YugabyteDB Anywhere Installation.")
-	out := shell.RunWithEnvVars(script, envVars, args...)
+	out := shell.RunWithEnvVarsProgress(script, envVars, backupLockLogPrefix, args...)
 	if !out.SucceededOrLog() {
 		return out.Error
 	}
@@ -237,7 +243,8 @@ func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart
 	}
 
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
-	if out := shell.RunWithEnvVars(script, envVars, args...); !out.SucceededOrLog() {
+	if out := shell.RunWithEnvVarsProgress(script, envVars, backupLockLogPrefix,
+		args...); !out.SucceededOrLog() {
 		log.Error(fmt.Sprintf("Restore script failed. May need to restart services: %s", out.Error.Error()))
 		return out.Error
 	}

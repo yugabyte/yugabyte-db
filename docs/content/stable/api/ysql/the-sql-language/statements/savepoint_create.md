@@ -97,5 +97,5 @@ SELECT * FROM SAMPLE;
 
 ## See also
 
-- [`ROLLBACK TO`](../savepoint_rollback)
-- [`RELEASE`](../savepoint_release)
+- [ROLLBACK TO](../savepoint_rollback)
+- [RELEASE](../savepoint_release)

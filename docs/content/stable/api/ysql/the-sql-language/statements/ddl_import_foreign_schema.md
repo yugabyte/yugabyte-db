@@ -35,6 +35,6 @@ The `EXCEPT` clause can be optionally used to specify which tables to *not* impo
 
 ## See also
 
-- [`CREATE SERVER`](../ddl_create_server)
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table)
-- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema)
+- [CREATE SERVER](../ddl_create_server)
+- [CREATE FOREIGN TABLE](../ddl_create_foreign_table)
+- [IMPORT FOREIGN SCHEMA](../ddl_import_foreign_schema)

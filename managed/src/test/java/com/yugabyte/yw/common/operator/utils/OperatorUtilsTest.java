@@ -114,6 +114,7 @@ import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.TokenSecret;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.approle.SecretIdSecret;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.Metrics;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.EnumMap;
@@ -2331,5 +2332,103 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals("us-west-2", spec.getAws().getRegion());
     // The CMK is carried over so that a later edit does not create a second one.
     assertEquals("arn:aws:kms:us-west-2:1:key/cmk", spec.getAws().getCmkID());
+  }
+
+  // A universe import stores the provider's kubeconfig in a Secret, and the reconciler names the
+  // file after that Secret - so the name always differs from the one the provider was created
+  // with even though the credentials are identical. Comparing names reported drift forever and
+  // drove an endless edit retry. PLAT-22036.
+  @Test
+  public void testHasKubeConfigChangedComparesContentNotFileName() throws Exception {
+    java.io.File kubeConfig = java.io.File.createTempFile("sa-kubeconfig", ".yaml");
+    kubeConfig.deleteOnExit();
+    String content = "apiVersion: v1\nkind: Config\nusers:\n- name: sa\n";
+    java.nio.file.Files.write(kubeConfig.toPath(), content.getBytes(StandardCharsets.UTF_8));
+
+    Map<String, String> existing = new HashMap<>();
+    existing.put("KUBECONFIG", kubeConfig.getAbsolutePath());
+
+    // Same credentials, but reached by a Secret-derived file name, as after an import.
+    Map<String, String> importedSameContent = new HashMap<>();
+    importedSameContent.put("KUBECONFIG_NAME", "my-provider-provider-kubeconfig.conf");
+    importedSameContent.put("KUBECONFIG_CONTENT", content);
+    assertFalse(
+        "a renamed but identical kubeconfig is not a change",
+        operatorUtils.hasKubeConfigChanged(existing, importedSameContent));
+
+    // Trailing whitespace is the one difference an externally written file picks up.
+    Map<String, String> trailingNewline = new HashMap<>();
+    trailingNewline.put("KUBECONFIG_NAME", "my-provider-provider-kubeconfig.conf");
+    trailingNewline.put("KUBECONFIG_CONTENT", content + "\n\n");
+    assertFalse(
+        "a trailing newline is not a change",
+        operatorUtils.hasKubeConfigChanged(existing, trailingNewline));
+
+    // Genuinely different credentials under that same name must still be caught.
+    Map<String, String> changed = new HashMap<>();
+    changed.put("KUBECONFIG_NAME", "my-provider-provider-kubeconfig.conf");
+    changed.put("KUBECONFIG_CONTENT", content + "# rotated\n");
+    assertTrue(
+        "different kubeconfig content is a change",
+        operatorUtils.hasKubeConfigChanged(existing, changed));
+
+    // Same keys, different order - deliberately treated as a change rather than parsed and
+    // deep-compared, since deciding which YAML differences are semantically irrelevant risks
+    // silently ignoring a real credential change.
+    Map<String, String> reordered = new HashMap<>();
+    reordered.put("KUBECONFIG_NAME", "my-provider-provider-kubeconfig.conf");
+    reordered.put("KUBECONFIG_CONTENT", "kind: Config\napiVersion: v1\nusers:\n- name: sa\n");
+    assertTrue(
+        "reordered yaml is conservatively treated as a change",
+        operatorUtils.hasKubeConfigChanged(existing, reordered));
+
+    // With no content to compare (non-operator callers) the name comparison still applies.
+    Map<String, String> nameOnly = new HashMap<>();
+    nameOnly.put("KUBECONFIG_NAME", "some-other-name.conf");
+    assertTrue(
+        "without content the file name is still the fallback",
+        operatorUtils.hasKubeConfigChanged(existing, nameOnly));
+
+    // An in-cluster provider carries neither, and must not report drift.
+    assertFalse(
+        "in-cluster credentials on both sides are not a change",
+        operatorUtils.hasKubeConfigChanged(new HashMap<>(), new HashMap<>()));
+  }
+
+  // The reconcile loop compares the kubeconfig every pass, but the file only changes on a
+  // rotation, so it is cached and dropped when the reconciler submits an edit for that provider.
+  @Test
+  public void testKubeConfigFileIsCachedUntilTheProviderIsEdited() throws Exception {
+    UUID providerUUID = UUID.randomUUID();
+    java.io.File providerDir =
+        new java.io.File(System.getProperty("java.io.tmpdir"), providerUUID.toString());
+    assertTrue("temp provider dir", providerDir.mkdirs() || providerDir.isDirectory());
+    java.io.File kubeConfig = new java.io.File(providerDir, "kubeconfig.yaml");
+    kubeConfig.deleteOnExit();
+    providerDir.deleteOnExit();
+
+    String original = "apiVersion: v1\nkind: Config\nusers:\n- name: original\n";
+    java.nio.file.Files.write(kubeConfig.toPath(), original.getBytes(StandardCharsets.UTF_8));
+
+    Map<String, String> existing = new HashMap<>();
+    existing.put("KUBECONFIG", kubeConfig.getAbsolutePath());
+    Map<String, String> desired = new HashMap<>();
+    desired.put("KUBECONFIG_CONTENT", original);
+
+    assertFalse(
+        "identical content is not a change", operatorUtils.hasKubeConfigChanged(existing, desired));
+
+    // Rewriting the file behind the cache must not be observed - that is the point of caching.
+    java.nio.file.Files.write(
+        kubeConfig.toPath(),
+        "apiVersion: v1\nkind: Config\nusers:\n- name: rotated\n".getBytes(StandardCharsets.UTF_8));
+    assertFalse(
+        "the cached copy is still served", operatorUtils.hasKubeConfigChanged(existing, desired));
+
+    // An edit for this provider drops its entries, so the next read picks the new file up.
+    operatorUtils.invalidateKubeConfigCache(providerUUID);
+    assertTrue(
+        "after invalidation the rotated file is read",
+        operatorUtils.hasKubeConfigChanged(existing, desired));
   }
 }

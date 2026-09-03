@@ -11,6 +11,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -55,6 +57,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.nodeagent.ConfigureServiceOutput;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -73,6 +77,7 @@ import org.mockito.ArgumentMatcher;
 import org.mockito.InjectMocks;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class VMImageUpgradeTest extends UpgradeTaskTest {
@@ -100,6 +105,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.RunNodeCommand,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
           TaskType.ReplaceRootVolume,
@@ -138,6 +144,11 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     vmImageUpgrade.setUserTaskUUID(UUID.randomUUID());
     factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
     mockLocaleCheckResponse(mockNodeUniverseManager);
+    when(mockNodeUniverseManager.runCommand(
+            any(), any(), eq(ImmutableList.of("cat", "/etc/fstab")), any()))
+        .thenReturn(
+            ShellResponse.create(
+                0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "UUID=abc /mnt/d0 xfs defaults 0 0"));
   }
 
   private TaskInfo submitTask(VMImageUpgradeParams requestParams, int version) {
@@ -312,6 +323,35 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         (key, value) -> assertEquals(value.size(), (int) replaceRootVolumeParams.get(key)));
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
+
+    // Captured fstab UUID mapping is stored in runtime info and passed into each YNP config.
+    JsonNode deviceMappingByNode = taskInfo.getRuntimeInfo().get("deviceMappingByNode");
+    assertNotNull(deviceMappingByNode);
+    assertEquals(nodeOrder.size(), deviceMappingByNode.size());
+    deviceMappingByNode
+        .fields()
+        .forEachRemaining(e -> assertEquals("abc", e.getValue().get("/mnt/d0").asText()));
+
+    ArgumentCaptor<String> uploadedSourceCaptor = ArgumentCaptor.forClass(String.class);
+    verify(mockNodeUniverseManager, atLeast(nodeOrder.size()))
+        .uploadFileToNode(
+            any(), any(), uploadedSourceCaptor.capture(), anyString(), anyString(), any());
+    List<JsonNode> ynpConfigs =
+        uploadedSourceCaptor.getAllValues().stream()
+            .map(
+                path -> {
+                  try {
+                    return Json.mapper().readTree(Files.readAllBytes(Paths.get(path)));
+                  } catch (Exception e) {
+                    return null;
+                  }
+                })
+            .filter(node -> node != null && node.has("ynp") && node.has("extra"))
+            .collect(Collectors.toList());
+    assertEquals(nodeOrder.size(), ynpConfigs.size());
+    for (JsonNode ynpConfig : ynpConfigs) {
+      assertEquals("/mnt/d0=abc", ynpConfig.path("extra").path("path_to_uuid_mapping").asText());
+    }
   }
 
   @Test

@@ -16,6 +16,7 @@ import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.DeployContext;
+import com.yugabyte.yw.models.NodeAgent.DeployType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import io.ebean.annotation.Transactional;
@@ -145,7 +146,8 @@ public class NodeAgentManager {
   @Builder
   @Getter
   public static class InstallerFiles {
-    @NonNull private String certDir;
+    @Nullable private Path newCertPath;
+    @Nullable private String certDir;
     @Nullable private Path packagePath;
     @Singular private List<Path> createDirs;
     @Singular private List<CopyFileInfo> copyFileInfos;
@@ -544,15 +546,13 @@ public class NodeAgentManager {
         .setServerCertExpirySecs(
             Instant.now().plus(NodeAgent.INITIAL_SERVER_CERT_EXPIRY).getEpochSecond());
     nodeAgent.setState(State.REGISTERING);
-    if (deployContext.isCustomCerts()) {
+    CertificateInfo certificateInfo = null;
+    if (deployContext.isCustomCert()) {
       nodeAgent.setCertificateUuid(deployContext.getCertificateUuid());
+      certificateInfo = CertificateInfo.getOrBadRequest(deployContext.getCertificateUuid());
     }
     nodeAgent.insert();
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
-    CertificateInfo certificateInfo =
-        deployContext.isCustomCerts()
-            ? CertificateInfo.getOrBadRequest(deployContext.getCertificateUuid())
-            : null;
     GenerateCertsResponse response =
         generateNodeAgentCerts(nodeAgent, certDirPath, certificateInfo);
     Pair<X509Certificate, KeyPair> serverPair = response.serverCertKeyPair;
@@ -568,7 +568,7 @@ public class NodeAgentManager {
           .setSignerPrivateKey(CertificateHelper.getAsPemString(signerKeyPair.getPrivate()));
       // Default and SelfSigned custom certs return server cert/key in the registration response.
       // CustomCertHostPath certs are copied from the remote host paths during YBA-driven install.
-      if (!deployContext.isCustomCerts()
+      if (!deployContext.isCustomCert()
           || certificateInfo.getCertType() == CertConfigType.SelfSigned) {
         serverPair =
             Objects.requireNonNull(
@@ -600,16 +600,18 @@ public class NodeAgentManager {
   public InstallerFiles getInstallerFiles(NodeAgent nodeAgent, DeployContext deployContext) {
     InstallerFiles.InstallerFilesBuilder builder = InstallerFiles.builder();
     CertificateInfo certificateInfo =
-        deployContext.isCustomCerts()
+        deployContext.isCustomCert()
             ? CertificateInfo.getOrBadRequest(deployContext.getCertificateUuid())
             : null;
     Path certDirPath = null;
     Path nodeAgentHome = Paths.get(nodeAgent.getHome());
-    if (deployContext.isCertsOnly()) {
+    if (deployContext.getDeployType() == DeployType.CERTS_ONLY) {
+      // Only certs are being updated for this deployment.
       certDirPath = generateCerts(nodeAgent, certificateInfo);
     } else {
-      // Package tgz file to be copied.
+      // Either just the binary or both the binary and certs are being updated.
       Path packagePath = getNodeAgentPackagePath(nodeAgent.getOsType(), nodeAgent.getArchType());
+      // Package tgz file to be copied.
       Path targetPackagePath = nodeAgentHome.resolve(Paths.get("release", "node-agent.tgz"));
       builder.packagePath(targetPackagePath);
       builder.copyFileInfo(new CopyFileInfo(packagePath, targetPackagePath));
@@ -617,7 +619,10 @@ public class NodeAgentManager {
         builder.createDir(targetPackagePath.getParent());
         certDirPath = nodeAgent.getCertDirPath();
       } else {
-        certDirPath = generateCerts(nodeAgent, certificateInfo);
+        if (deployContext.getDeployType() != DeployType.BINARY_ONLY) {
+          // Just the binary is being updated.
+          certDirPath = generateCerts(nodeAgent, certificateInfo);
+        }
         // Upload the installer script for upgrade as the old one may not be forward compatible.
         Path tmpInstallerScriptPath = getInstallerScriptTempFile("node-agent-installer-");
         Path targetInstallerScriptPath =
@@ -628,87 +633,91 @@ public class NodeAgentManager {
       }
     }
 
-    String targetCertDir = UUID.randomUUID().toString();
-    builder.certDir(targetCertDir);
+    if (certDirPath != null) {
+      // Populate the cert info as certs are also being updated.
+      String targetCertDir = UUID.randomUUID().toString();
+      builder.certDir(targetCertDir);
 
-    // Cert file to be copied on the remote node agent node.
-    Path targetCertDirPath = nodeAgentHome.resolve(Paths.get("cert", targetCertDir));
-    builder.createDir(targetCertDirPath);
+      // Cert file to be copied on the remote node agent node.
+      Path targetCertDirPath = nodeAgentHome.resolve(Paths.get("cert", targetCertDir));
+      builder.createDir(targetCertDirPath);
 
-    // Set the copyFileInfos for the certs and keys to be copied to the remote node agent node.
-    builder.copyFileInfo(
-        new CopyFileInfo(
-            certDirPath.resolve(NodeAgent.SIGNER_PUBLIC_KEY_NAME),
-            targetCertDirPath.resolve(NodeAgent.SIGNER_PUBLIC_KEY_NAME),
-            CopyType.UPLOAD,
-            "644",
-            false));
-    builder.copyFileInfo(
-        new CopyFileInfo(
-            certDirPath.resolve(NodeAgent.SIGNER_PRIVATE_KEY_NAME),
-            targetCertDirPath.resolve(NodeAgent.SIGNER_PRIVATE_KEY_NAME),
-            CopyType.UPLOAD,
-            "644",
-            false));
-    if (deployContext.isCustomCerts()) {
-      switch (certificateInfo.getCertType()) {
-        case CustomCertHostPath:
-          CustomCertInfo customCertInfo = certificateInfo.getCustomCertPathParams();
-          Path nodeCertPath = Paths.get(customCertInfo.nodeCertPath);
-          Path nodeKeyPath = Paths.get(customCertInfo.nodeKeyPath);
-          builder.copyFileInfo(
-              new CopyFileInfo(
-                  nodeCertPath,
-                  targetCertDirPath.resolve(NodeAgent.NODE_AGENT_CERT_NAME),
-                  CopyType.REMOTE_COPY,
-                  "644",
-                  false));
-          builder.copyFileInfo(
-              new CopyFileInfo(
-                  nodeKeyPath,
-                  targetCertDirPath.resolve(NodeAgent.NODE_AGENT_KEY_NAME),
-                  CopyType.REMOTE_COPY,
-                  "644",
-                  false));
-          break;
-        case SelfSigned:
-          builder.copyFileInfo(
-              new CopyFileInfo(
-                  certDirPath.resolve(NodeAgent.SERVER_CERT_NAME),
-                  targetCertDirPath.resolve(NodeAgent.NODE_AGENT_CERT_NAME),
-                  CopyType.UPLOAD,
-                  "644",
-                  false));
-          builder.copyFileInfo(
-              new CopyFileInfo(
-                  certDirPath.resolve(NodeAgent.SERVER_KEY_NAME),
-                  targetCertDirPath.resolve(NodeAgent.NODE_AGENT_KEY_NAME),
-                  CopyType.UPLOAD,
-                  "644",
-                  false));
-          break;
-        default:
-          throw new RuntimeException(
-              String.format(
-                  "Unsupported certificate type %s for node agent %s",
-                  certificateInfo.getCertType(), nodeAgent));
+      builder.newCertPath(certDirPath);
+
+      // Set the copyFileInfos for the certs and keys to be copied to the remote node agent node.
+      builder.copyFileInfo(
+          new CopyFileInfo(
+              certDirPath.resolve(NodeAgent.SIGNER_PUBLIC_KEY_NAME),
+              targetCertDirPath.resolve(NodeAgent.SIGNER_PUBLIC_KEY_NAME),
+              CopyType.UPLOAD,
+              "644",
+              false));
+      builder.copyFileInfo(
+          new CopyFileInfo(
+              certDirPath.resolve(NodeAgent.SIGNER_PRIVATE_KEY_NAME),
+              targetCertDirPath.resolve(NodeAgent.SIGNER_PRIVATE_KEY_NAME),
+              CopyType.UPLOAD,
+              "644",
+              false));
+      if (deployContext.isCustomCert()) {
+        switch (certificateInfo.getCertType()) {
+          case CustomCertHostPath:
+            CustomCertInfo customCertInfo = certificateInfo.getCustomCertPathParams();
+            Path nodeCertPath = Paths.get(customCertInfo.nodeCertPath);
+            Path nodeKeyPath = Paths.get(customCertInfo.nodeKeyPath);
+            builder.copyFileInfo(
+                new CopyFileInfo(
+                    nodeCertPath,
+                    targetCertDirPath.resolve(NodeAgent.NODE_AGENT_CERT_NAME),
+                    CopyType.REMOTE_COPY,
+                    "644",
+                    false));
+            builder.copyFileInfo(
+                new CopyFileInfo(
+                    nodeKeyPath,
+                    targetCertDirPath.resolve(NodeAgent.NODE_AGENT_KEY_NAME),
+                    CopyType.REMOTE_COPY,
+                    "644",
+                    false));
+            break;
+          case SelfSigned:
+            builder.copyFileInfo(
+                new CopyFileInfo(
+                    certDirPath.resolve(NodeAgent.SERVER_CERT_NAME),
+                    targetCertDirPath.resolve(NodeAgent.NODE_AGENT_CERT_NAME),
+                    CopyType.UPLOAD,
+                    "644",
+                    false));
+            builder.copyFileInfo(
+                new CopyFileInfo(
+                    certDirPath.resolve(NodeAgent.SERVER_KEY_NAME),
+                    targetCertDirPath.resolve(NodeAgent.NODE_AGENT_KEY_NAME),
+                    CopyType.UPLOAD,
+                    "644",
+                    false));
+            break;
+          default:
+            throw new RuntimeException(
+                String.format(
+                    "Unsupported certificate type %s for node agent %s",
+                    certificateInfo.getCertType(), nodeAgent));
+        }
+      } else {
+        builder.copyFileInfo(
+            new CopyFileInfo(
+                certDirPath.resolve(NodeAgent.SERVER_CERT_NAME),
+                targetCertDirPath.resolve(NodeAgent.NODE_AGENT_CERT_NAME),
+                CopyType.UPLOAD,
+                "644",
+                false));
+        builder.copyFileInfo(
+            new CopyFileInfo(
+                certDirPath.resolve(NodeAgent.SERVER_KEY_NAME),
+                targetCertDirPath.resolve(NodeAgent.NODE_AGENT_KEY_NAME),
+                CopyType.UPLOAD,
+                "644",
+                false));
       }
-
-    } else {
-      builder.copyFileInfo(
-          new CopyFileInfo(
-              certDirPath.resolve(NodeAgent.SERVER_CERT_NAME),
-              targetCertDirPath.resolve(NodeAgent.NODE_AGENT_CERT_NAME),
-              CopyType.UPLOAD,
-              "644",
-              false));
-      builder.copyFileInfo(
-          new CopyFileInfo(
-              certDirPath.resolve(NodeAgent.SERVER_KEY_NAME),
-              targetCertDirPath.resolve(NodeAgent.NODE_AGENT_KEY_NAME),
-              CopyType.UPLOAD,
-              "644",
-              false));
     }
     return builder.build();
   }
@@ -727,29 +736,33 @@ public class NodeAgentManager {
    * confirms that it has completed upgrade.
    *
    * @param nodeAgent the node agent.
+   * @param newCertDirPath the new cert directory path.
    */
-  public void replaceCerts(NodeAgent nodeAgent) {
+  public void replaceCerts(NodeAgent nodeAgent, @Nullable Path newCertDirPath) {
     Path currentCertDirPath = nodeAgent.getCertDirPath();
-    Path newCertDirPath = getOrCreateNextCertDirectory(nodeAgent);
-    if (!Files.exists(newCertDirPath)) {
+    if (newCertDirPath == null) {
+      log.info("Updating the cert dir to {} for node agent {}", currentCertDirPath, nodeAgent);
+      nodeAgent.updateCertDirPath(currentCertDirPath, State.UPGRADED);
+    } else if (!Files.exists(newCertDirPath)) {
       throw new IllegalStateException(
           String.format(
               "New cert directory %s does not exist for node agent %s", newCertDirPath, nodeAgent));
-    }
-    // Point to the new directory and persist in the DB before deleting.
-    log.info("Updating the cert dir to {} for node agent {}", newCertDirPath, nodeAgent);
-    nodeAgent.updateCertDirPath(newCertDirPath, State.UPGRADED);
-    try {
-      // Delete the old cert directory.
-      log.info("Deleting current cert dir {} for node agent {}", currentCertDirPath, nodeAgent);
-      FileData.deleteFiles(currentCertDirPath.toString(), true);
-    } catch (Exception e) {
-      // Ignore error.
-      log.warn(
-          "Error deleting old cert directory {} for node agent {}",
-          currentCertDirPath,
-          nodeAgent,
-          e);
+    } else {
+      // Point to the new directory and persist in the DB before deleting.
+      log.info("Updating the cert dir to {} for node agent {}", newCertDirPath, nodeAgent);
+      nodeAgent.updateCertDirPath(newCertDirPath, State.UPGRADED);
+      try {
+        // Delete the old cert directory.
+        log.info("Deleting current cert dir {} for node agent {}", currentCertDirPath, nodeAgent);
+        FileData.deleteFiles(currentCertDirPath.toString(), true);
+      } catch (Exception e) {
+        // Ignore error.
+        log.warn(
+            "Error deleting old cert directory {} for node agent {}",
+            currentCertDirPath,
+            nodeAgent,
+            e);
+      }
     }
   }
 

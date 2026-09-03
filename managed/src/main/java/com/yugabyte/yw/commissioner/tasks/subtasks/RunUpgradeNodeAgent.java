@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.DeployContext;
+import com.yugabyte.yw.models.NodeAgent.DeployType;
 import java.util.UUID;
 import javax.inject.Inject;
 
@@ -33,10 +34,14 @@ public class RunUpgradeNodeAgent extends NodeTaskBase {
   @Override
   public void run() {
     NodeAgent nodeAgent = NodeAgent.maybeGetByIp(taskParams().nodeIp).orElseThrow();
+    DeployType deployType = DeployType.FULL;
+    if (taskParams().certsOnly && nodeAgentPoller.versionMatched(nodeAgent)) {
+      deployType = DeployType.CERTS_ONLY;
+    }
     DeployContext deployContext =
         DeployContext.builder()
             .certificateUuid(taskParams().certificateUuid)
-            .certsOnly(taskParams().certsOnly && nodeAgentPoller.versionMatched(nodeAgent))
+            .deployType(deployType)
             .build();
     nodeAgentPoller.upgradeNodeAgent(
         nodeAgent.getUuid(), false /* waitForInFlightUpgrade */, n -> deployContext);

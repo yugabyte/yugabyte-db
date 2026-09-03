@@ -1250,7 +1250,8 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   regular_rocksdb_options.compaction_context_factory = docdb::CreateCompactionContextFactory(
       retention_policy_, &key_bounds_,
       std::bind(&Tablet::CompactionHybridTimeConstraints, this, _1),
-      metadata_.get(), vector_indexes_.get());
+      metadata_.get(), vector_indexes_.get(),
+      docdb::CreateCompactionMetrics(tablet_metrics_entity_));
 
   regular_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
     {
@@ -1876,6 +1877,10 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
 std::vector<std::string> Tablet::CompleteShutdownStorages(
     const TabletScopedRWOperationPauses& ops_pauses) {
   // We need ops_pauses just to guarantee that PauseReadWriteOperations has been called.
+
+  // Both op counters have drained by this point, so every reader that was blocking RocksDB
+  // shutdown is gone and the DBs are about to be destroyed.
+  TEST_SYNC_POINT("Tablet::CompleteShutdownStorages:Start");
 
   if (intents_db_) {
     intents_db_->ListenFilesChanged(nullptr);

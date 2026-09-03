@@ -6297,6 +6297,10 @@
           "description" : "The node's cloud provider",
           "type" : "string"
         },
+        "id" : {
+          "description" : "The cloud provider's instance identifier",
+          "type" : "string"
+        },
         "instance_type" : {
           "description" : "The node's instance type",
           "type" : "string"
@@ -25759,14 +25763,26 @@
     },
     "TaskApiFilter" : {
       "properties" : {
+        "completionDateRangeEnd" : {
+          "description" : "Include tasks completed on or before this time (completion_time). May be set alone or with completion_date_range_start. Tasks with null completion_time (still in progress) are excluded when either completion bound is set.",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "completionDateRangeStart" : {
+          "description" : "Include tasks completed on or after this time (completion_time). May be set alone or with completion_date_range_end. Tasks with null completion_time (still in progress) are excluded when either completion bound is set.",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
         "dateRangeEnd" : {
-          "description" : "The end date to filter paged query.",
+          "description" : "Include tasks created on or before this time (create_time). May be set alone or with date_range_start.",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
         "dateRangeStart" : {
-          "description" : "The start date to filter paged query.",
+          "description" : "Include tasks created on or after this time (create_time). May be set alone or with date_range_end.",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"

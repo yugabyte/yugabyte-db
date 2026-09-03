@@ -1164,8 +1164,25 @@ public class CustomerTask extends Model {
       appendInClause(query, "custom_type_name", filter.getTypeNameList());
     }
 
-    if (filter.getDateRangeStart() != null && filter.getDateRangeEnd() != null) {
-      query.between("create_time", filter.getDateRangeStart(), filter.getDateRangeEnd());
+    // Use entity property paths so Ebean qualifies columns as t0.* - raw "create_time" is
+    // ambiguous once status filtering joins task_info (which also has create_time).
+    // Each bound is independent: omit a side to leave that end open-ended.
+    if (filter.getDateRangeStart() != null) {
+      query.ge("createTime", filter.getDateRangeStart());
+    }
+
+    if (filter.getDateRangeEnd() != null) {
+      query.le("createTime", filter.getDateRangeEnd());
+    }
+
+    // Rows with null completion_time (in-progress) do not match ge/le and are excluded whenever
+    // either completion bound is set.
+    if (filter.getCompletionDateRangeStart() != null) {
+      query.ge("completionTime", filter.getCompletionDateRangeStart());
+    }
+
+    if (filter.getCompletionDateRangeEnd() != null) {
+      query.le("completionTime", filter.getCompletionDateRangeEnd());
     }
 
     if (!CollectionUtils.isEmpty(filter.getStatus())) {

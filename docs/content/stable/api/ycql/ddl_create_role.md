@@ -79,9 +79,9 @@ ycqlsh:example> CREATE ROLE role3 WITH SUPERUSER = false AND LOGIN = true AND PA
 
 ## See also
 
-- [`ALTER ROLE`](../ddl_alter_role)
-- [`DROP ROLE`](../ddl_drop_role)
-- [`GRANT ROLE`](../ddl_grant_role)
-- [`REVOKE ROLE`](../ddl_revoke_role)
-- [`GRANT PERMISSION`](../ddl_grant_permission)
-- [`REVOKE PERMISSION`](../ddl_revoke_permission)
+- [ALTER ROLE](../ddl_alter_role)
+- [DROP ROLE](../ddl_drop_role)
+- [GRANT ROLE](../ddl_grant_role)
+- [REVOKE ROLE](../ddl_revoke_role)
+- [GRANT PERMISSION](../ddl_grant_permission)
+- [REVOKE PERMISSION](../ddl_revoke_permission)

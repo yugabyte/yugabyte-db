@@ -46,8 +46,8 @@ DROP FUNCTION IF EXISTS inc(i integer), mul(integer, integer) CASCADE;
 
 ## See also
 
-- [`CREATE FUNCTION`](../ddl_create_function)
-- [`ALTER FUNCTION`](../ddl_alter_function)
-- [`CREATE PROCEDURE`](../ddl_create_procedure)
-- [`ALTER PROCEDURE`](../ddl_alter_procedure)
-- [`DROP PROCEDURE`](../ddl_drop_procedure)
+- [CREATE FUNCTION](../ddl_create_function)
+- [ALTER FUNCTION](../ddl_alter_function)
+- [CREATE PROCEDURE](../ddl_create_procedure)
+- [ALTER PROCEDURE](../ddl_alter_procedure)
+- [DROP PROCEDURE](../ddl_drop_procedure)

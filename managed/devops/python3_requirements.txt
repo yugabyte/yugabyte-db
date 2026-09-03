@@ -28,7 +28,6 @@ boto==2.49.0
 boto3==1.42.46
 botocore==1.42.46
 distro==1.5.0
-fabric==2.2.1
 google-api-python-client==1.10.0
 google-api-core==1.22.0
 google-auth==1.19.2
@@ -38,7 +37,7 @@ Jinja2==3.1.6
 MarkupSafe==2.0.1
 msrestazure
 oci==2.184.2
-paramiko==3.4.0
+paramiko==5.0.0
 protobuf==6.33.5
 psycopg2
 python-dateutil==2.8.2

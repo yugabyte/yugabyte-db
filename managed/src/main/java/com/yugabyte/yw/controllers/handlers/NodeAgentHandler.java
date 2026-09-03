@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
@@ -12,6 +13,7 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.forms.NodeAgentResp;
@@ -119,14 +121,24 @@ public class NodeAgentHandler {
         throw new PlatformServiceException(Status.BAD_REQUEST, msg);
       }
     }
-    UUID certificateUuid = null;
+    DeployContext.DeployContextBuilder deployContextBuilder = DeployContext.builder();
     if (StringUtils.isNotBlank(payload.certificateName)) {
-      certificateUuid =
-          CertificateInfo.getOrBadRequest(customerUuid, payload.certificateName).getUuid();
+      CertificateInfo certificateInfo =
+          CertificateInfo.getOrBadRequest(customerUuid, payload.certificateName);
+      if (certificateInfo.getCertType() != CertConfigType.CustomCertHostPath
+          && certificateInfo.getCertType() != CertConfigType.SelfSigned) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Only CustomCertHostPath or SelfSigned type certificate is supported for node"
+                + " agent registration");
+      }
+      log.info(
+          "Using certificate {}({}) for node agent registration",
+          certificateInfo.getLabel(),
+          certificateInfo.getUuid());
+      deployContextBuilder.certificateUuid(certificateInfo.getUuid());
     }
-    nodeAgent.setCertificateUuid(certificateUuid);
-    DeployContext deployContext = DeployContext.builder().certificateUuid(certificateUuid).build();
-    return nodeAgentManager.create(nodeAgent, deployContext, true);
+    return nodeAgentManager.create(nodeAgent, deployContextBuilder.build(), true);
   }
 
   private List<NodeAgentResp> transformNodeAgentResponse(

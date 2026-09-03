@@ -170,6 +170,42 @@ SELECT * FROM
   (SELECT pctest4.* FROM pctest1 pctest3, pctest2 pctest4
      WHERE pctest3.k = pctest4.k AND pctest3.b = pctest4.b) s2 ON s1.b = s2.c;
 
+-- The planner prefers paths with a lower startup_cost, even if the total_cost
+-- is slightly higher (within the FUZZ_FACTOR).
+BEGIN;
+-- temporarily make parallel paths cheaper
+SET LOCAL yb_parallel_range_size = '1MB';
+SET LOCAL parallel_setup_cost = 10;
+SET LOCAL parallel_tuple_cost = 0;
+
+-- inflate both paths to make their costs close
+CREATE FUNCTION pc_restricted(int) RETURNS int AS $$begin return $1; end$$
+  LANGUAGE plpgsql IMMUTABLE PARALLEL RESTRICTED COST 10000;
+
+-- planner chooses serial paths with lower startup_cost
+SET yb_test_force_parallel = off;
+
+EXPLAIN (costs off) SELECT pc_restricted(k) FROM pctest1;
+
+EXPLAIN (costs off)
+SELECT * FROM (SELECT * FROM pctest1 OFFSET 0) s
+  WHERE pc_restricted(s.k) < 10 ORDER BY k;
+
+-- the GUC overrides the behavior
+SET LOCAL yb_test_force_parallel = force;
+
+EXPLAIN (costs off) SELECT pc_restricted(k) FROM pctest1;
+SELECT pc_restricted(k) FROM pctest1;
+
+EXPLAIN (costs off)
+SELECT * FROM (SELECT * FROM pctest1 OFFSET 0) s
+  WHERE pc_restricted(s.k) < 10 ORDER BY k;
+SELECT * FROM (SELECT * FROM pctest1 OFFSET 0) s
+  WHERE pc_restricted(s.k) < 10 ORDER BY k;
+
+DROP FUNCTION pc_restricted(int);
+ROLLBACK;
+
 -- no parallelism
 EXPLAIN (costs off)
 SELECT * from pctest2

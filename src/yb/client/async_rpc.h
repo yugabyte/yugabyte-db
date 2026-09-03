@@ -68,6 +68,8 @@ struct AsyncRpcData {
   bool allow_local_calls_in_curr_thread = false;
   bool need_consistent_read = false;
   bool skip_intents = false;
+  // Read this RPC's ops at the statement's in_txn_limit instead of the transaction read time.
+  bool read_at_in_txn_limit = false;
   ThreadSafeArenaPtr arena;
   InFlightOps ops;
   bool need_metadata = false;
