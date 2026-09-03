@@ -34,11 +34,13 @@ TEST_F(ChainTrackerTest, AnatomyStrip) {
   EXPECT_EQ(s.num_subdoc_keys, 6);
   EXPECT_EQ(s.num_rows, 2);
   EXPECT_EQ(s.shadowed_entries(), 3);      // packed v2, packed v1, col a v1
-  EXPECT_EQ(s.repackable_entries(), 4);    // r1.a, r1.b, r2.a, r2.b (dead-row heads count too)
+  EXPECT_EQ(s.repackable_entries(), 4);    // r1.a, r1.b, r2.a, r2.b (an identity over heads)
   EXPECT_EQ(s.dead_rows, 1);
   EXPECT_EQ(s.dead_row_entries, 3);
-  // Reclaimable = shadowed entries of live rows (3) + every entry of dead rows (3), no overlap.
-  EXPECT_EQ(s.reclaimable_entries, 6);
+  // Reclaimable = the 3 shadowed versions + col a v2 (10 min old, covered by the packed write at
+  // 1 min) + all 3 entries of the dead row r2. col b v1 shares packed v3's hybrid time, so no
+  // covering write is newer than it: live.
+  EXPECT_EQ(s.reclaimable_entries, 7);
   EXPECT_EQ(s.max_row_chain, 6);
 
   // Row-chain histogram: one row of 6, one row of 3.
@@ -47,19 +49,20 @@ TEST_F(ChainTrackerTest, AnatomyStrip) {
   EXPECT_EQ(s.row_chain_hist.TotalWeight(), 2);
 
   // Stretches of consecutive reclaimable entries in file order:
-  //   [packed v2, packed v1] = 2, [col a v1] = 1, [r2 tombstone, r2.a, r2.b] = 3.
-  EXPECT_EQ(s.stretch_hist.TotalWeight(), 3);
-  EXPECT_EQ(s.stretch_hist.bucket(ExponentialHistogram::BucketIndex(1)), 1);
-  EXPECT_EQ(s.stretch_hist.bucket(ExponentialHistogram::BucketIndex(2)), 1);
+  //   [packed v2, packed v1, col a v2, col a v1] = 4, [r2 tombstone, r2.a, r2.b] = 3.
+  EXPECT_EQ(s.stretch_hist.TotalWeight(), 2);
+  EXPECT_EQ(s.stretch_hist.bucket(ExponentialHistogram::BucketIndex(4)), 1);
   EXPECT_EQ(s.stretch_hist.bucket(ExponentialHistogram::BucketIndex(3)), 1);
-  EXPECT_EQ(s.max_stretch, 3);
+  EXPECT_EQ(s.max_stretch, 4);
 
-  // Age bands, by the age of what makes each entry droppable:
-  //   packed v2  -> its overwriter packed v3, 1 min old        -> band 0 (< 5 m)
-  //   packed v1  -> its overwriter packed v2, 20 min old       -> band 2 (15 m .. 1 h)
-  //   col a v1   -> its overwriter col a v2, 10 min old        -> band 1 (5 m .. 15 m)
-  //   r2 x 3     -> the row tombstone, 2 days old              -> band 5 (24 h .. 7 d)
-  const AgeBandCounts expected_bands = {1, 1, 1, 0, 0, 3, 0, 0};
+  // Age bands, by the age of the OLDEST write whose passing of the cutoff makes the entry
+  // droppable:
+  //   packed v2  -> packed v3, 1 min old                          -> band 0 (< 5 m)
+  //   packed v1  -> packed v2, 20 min old                         -> band 2 (15 m .. 1 h)
+  //   col a v2   -> the covering packed v3, 1 min old             -> band 0
+  //   col a v1   -> min(col a v2 @ 10 min, covering packed v1 @ 2 h): the older wins -> band 3
+  //   r2 x 3     -> the row tombstone, 2 days old                 -> band 5 (24 h .. 7 d)
+  const AgeBandCounts expected_bands = {2, 0, 1, 1, 0, 3, 0, 0};
   EXPECT_EQ(s.droppable_age_entries, expected_bands);
 
   // Write-time range spans the oldest (r2.b, 6 days) to the newest (1 minute) entry.
@@ -80,10 +83,10 @@ TEST_F(ChainTrackerTest, IdentitiesHoldOverChainEntriesWithMetaRecords) {
   EXPECT_EQ(s.meta_entries, 2);
   EXPECT_EQ(s.chain_entries, 9);
   EXPECT_EQ(s.num_rows, 2);
-  EXPECT_EQ(s.reclaimable_entries, 6);
+  EXPECT_EQ(s.reclaimable_entries, 7);
   // A meta record between two rows does not create a phantom row or join two stretches.
   EXPECT_EQ(s.row_chain_hist.TotalWeight(), 2);
-  EXPECT_EQ(s.stretch_hist.TotalWeight(), 3);
+  EXPECT_EQ(s.stretch_hist.TotalWeight(), 2);
 }
 
 TEST_F(ChainTrackerTest, EmptyFileAndFinishIdempotence) {
@@ -204,6 +207,62 @@ TEST_F(ChainTrackerTest, TableTombstoneAndCoprefixSubtotals) {
   EXPECT_EQ(live_sub.entries, 2);
   EXPECT_EQ(live_sub.tombstone_entries, 0);
   EXPECT_EQ(live_sub.reclaimable_entries, 1);
+}
+
+TEST_F(ChainTrackerTest, PackedRowCoversOlderColumns) {
+  // A packed (whole-row) write covers every older entry of the row, including record heads the
+  // key comparison alone would call live: col2, written before the packed row, is garbage; col1,
+  // written after it, is live.
+  const auto row = Row(1);
+  const auto s = TrackerFixture().Add({
+      {RowKey(row, 10 * kMinute), PackedRow("v")},
+      {ColumnKey(row, 1, 5 * kMinute), Str("newer than packed: live")},
+      {ColumnKey(row, 2, 20 * kMinute), Str("older than packed: covered")},
+  }).Finish();
+  ASSERT_NO_FATALS(ExpectIdentities(s));
+  EXPECT_EQ(s.chain_entries, 3);
+  EXPECT_EQ(s.num_subdoc_keys, 3);
+  EXPECT_EQ(s.num_rows, 1);
+  EXPECT_EQ(s.shadowed_entries(), 0);
+  EXPECT_EQ(s.dead_rows, 0);
+  EXPECT_EQ(s.reclaimable_entries, 1);
+  // col2 becomes droppable when the packed write (10 min old) passes the cutoff: band 1.
+  EXPECT_EQ(s.droppable_age_entries[1], 1);
+  EXPECT_EQ(s.max_stretch, 1);
+}
+
+TEST_F(ChainTrackerTest, RowResurrectedAfterDelete) {
+  // A column written after a row tombstone brings the row back to life: the column is live data,
+  // the row is not dead. The tombstone marker itself stays reclaimable (it drops at a full
+  // compaction once its own hybrid time passes the cutoff, resurrection or not).
+  const auto row = Row(1);
+  const auto s = TrackerFixture().Add({
+      {RowKey(row, 2 * kHour), Tombstone()},
+      {ColumnKey(row, 1, 10 * kMinute), Str("written after the delete: live")},
+  }).Finish();
+  ASSERT_NO_FATALS(ExpectIdentities(s));
+  EXPECT_EQ(s.chain_entries, 2);
+  EXPECT_EQ(s.tombstone_entries, 1);
+  EXPECT_EQ(s.dead_rows, 0);
+  EXPECT_EQ(s.dead_row_entries, 0);
+  EXPECT_EQ(s.reclaimable_entries, 1);       // the marker only, by its own age (2 h: band 3)
+  EXPECT_EQ(s.droppable_age_entries[3], 1);
+  EXPECT_EQ(s.max_stretch, 1);
+}
+
+TEST_F(ChainTrackerTest, ColumnTombstoneHeadIsReclaimable) {
+  // A column-level delete marker that nothing covers still drops at a full compaction once past
+  // the cutoff; it does not make the row dead.
+  const auto row = Row(1);
+  const auto s = TrackerFixture().Add({
+      {RowKey(row, 10 * kMinute), PackedRow("v")},
+      {ColumnKey(row, 1, 2 * kMinute), Tombstone()},
+  }).Finish();
+  ASSERT_NO_FATALS(ExpectIdentities(s));
+  EXPECT_EQ(s.tombstone_entries, 1);
+  EXPECT_EQ(s.dead_rows, 0);
+  EXPECT_EQ(s.reclaimable_entries, 1);       // the column marker, by its own age (2 min: band 0)
+  EXPECT_EQ(s.droppable_age_entries[0], 1);
 }
 
 TEST_F(ChainTrackerTest, PlainTableRecordsNoCoprefixSubtotals) {

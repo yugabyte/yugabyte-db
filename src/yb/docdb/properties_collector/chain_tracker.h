@@ -75,12 +75,15 @@ struct SstStats {
   uint64_t num_subdoc_keys = 0;   // K: distinct subdocument keys = number of subdoc chains
   uint64_t num_rows = 0;          // R: distinct rows = number of row chains
 
-  // Rows whose chain head is a row-level (or table-level) tombstone, and all their entries.
+  // Rows whose newest covering write (see ChainTracker) is a tombstone with nothing newer in the
+  // row, and all their entries. A row re-inserted after a delete is NOT dead.
   uint64_t dead_rows = 0;
   uint64_t dead_row_entries = 0;
 
-  // All the garbage: shadowed entries of live rows + every entry of dead rows, counted once at scan
-  // time (the two sets are disjoint by construction, so there is no double counting).
+  // All the garbage, counted once at scan time: entries shadowed by a newer version of their own
+  // record, record heads older than a covering write (a packed row or row tombstone overwrites the
+  // whole row), and tombstone markers themselves (a tombstone past the history cutoff drops at a
+  // full compaction regardless of covering).
   uint64_t reclaimable_entries = 0;
   uint64_t reclaimable_bytes = 0;
 
@@ -143,6 +146,15 @@ class ChainTracker {
   const SstStats& stats() const { return stats_; }
 
  private:
+  // A covering write is an entry at the row key itself -- a packed row or a row tombstone. It
+  // overwrites the whole row, so every entry of the row with an older hybrid time is garbage
+  // (the compaction feed's overwrite stack applies parent writes to all deeper components).
+  struct CoveringWrite {
+    EncodedDocHybridTime encoded_ht;
+    int64_t micros;
+    bool is_tombstone;
+  };
+
   void OnMetaEntry();
   void CloseRow();
   void CloseStretch();
@@ -151,6 +163,10 @@ class ChainTracker {
   void AddReclaimable(size_t entry_bytes, int64_t droppable_by_micros);
   void UpdateWriteHtRange(const EncodedDocHybridTime& encoded_ht);
   Result<int64_t> PhysicalMicros(const EncodedDocHybridTime& encoded_ht);
+  void AddCoveringWrite(const EncodedDocHybridTime& encoded_ht, int64_t micros, bool is_tombstone);
+  // The oldest covering write newer than encoded_ht, i.e. the first write whose passing of the
+  // history cutoff makes an entry at encoded_ht droppable; nullptr if none.
+  const CoveringWrite* OldestCoveringAfter(const EncodedDocHybridTime& encoded_ht) const;
 
   // Length of the row key prefix of a subdocument key (hybrid time already stripped), and of its
   // coprefix (cotable / colocation id, possibly empty).
@@ -175,9 +191,16 @@ class ChainTracker {
   size_t row_end_ = 0;
   uint64_t row_entries_ = 0;
   uint64_t row_bytes_ = 0;
-  bool row_dead_ = false;
-  int64_t row_tombstone_micros_ = 0;        // valid when row_dead_
   CoprefixSubtotal* row_subtotal_ = nullptr;
+  // Covering writes of the current row, newest first (scan order); typically 0..2. On overflow the
+  // oldest are dropped, which only makes banding conservative (a newer overwriter means "droppable
+  // later"), never wrong.
+  static constexpr size_t kMaxCoveringWrites = 8;
+  std::array<CoveringWrite, kMaxCoveringWrites> covering_writes_;
+  size_t num_covering_writes_ = 0;
+  // Record heads of the current row that are neither covered nor tombstones: the row's live
+  // content. A row is dead iff its newest covering write is a tombstone and this stays zero.
+  uint64_t uncovered_record_heads_ = 0;
 
   // Current stretch of consecutive reclaimable entries.
   uint64_t stretch_entries_ = 0;
