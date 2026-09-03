@@ -21,18 +21,4 @@ BEGIN;
     8116, 1255, 0,
     'Disk size in bytes of a tablegroup colocation parent tablet (leader SST+WAL)'
   ) ON CONFLICT DO NOTHING;
-
-  -- Create dependency records for everything we (possibly) created.
-  DO $$
-  BEGIN
-    IF NOT EXISTS (
-      SELECT FROM pg_catalog.pg_depend
-        WHERE refclassid = 1255 AND refobjid = 8116
-    ) THEN
-      INSERT INTO pg_catalog.pg_depend (
-        classid, objid, objsubid, refclassid, refobjid, refobjsubid, deptype
-      ) VALUES
-        (0, 0, 0, 1255, 8116, 0, 'p');
-    END IF;
-  END $$;
 COMMIT;
