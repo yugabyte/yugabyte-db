@@ -363,21 +363,28 @@ Result<HostPort> TSDescriptor::GetHostPort() const {
   return GetHostPortUnlocked();
 }
 
-Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
+Result<TSDescriptor::SelectedEndpoint> TSDescriptor::SelectEndpointUnlocked() const {
   auto l = LockForRead();
-  const auto& addr = DesiredHostPort(l->pb.registration(), local_master_cloud_info_);
-  if (addr.host().empty()) {
+  auto selected = SelectHostPort(l->pb.registration(), local_master_cloud_info_);
+  if (selected.host_port.host().empty()) {
     return STATUS_FORMAT(NetworkError, "Unable to find the TS address for $0: $1",
                          permanent_uuid(), l->pb.registration().ShortDebugString());
   }
 
-  return HostPortFromPB(addr);
+  return SelectedEndpoint {
+    .host_port = HostPortFromPB(selected.host_port),
+    .kind = selected.kind,
+  };
 }
 
-const rpc::Protocol& TSDescriptor::ProtocolForUnlocked() const {
+Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
+  return VERIFY_RESULT(SelectEndpointUnlocked()).host_port;
+}
+
+const rpc::Protocol& TSDescriptor::ProtocolForUnlocked(AddressKind kind) const {
   auto l = LockForRead();
-  return proxy_cache_->GetContext()->ProtocolFor(
-      l->pb.registration().cloud_info(), local_master_cloud_info_);
+  return proxy_cache_->GetContext()->ProtocolFor(rpc::Encrypted(
+      UseEncryption(kind, l->pb.registration().cloud_info(), local_master_cloud_info_)));
 }
 
 bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const {

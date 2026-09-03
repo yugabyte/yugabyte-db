@@ -14,6 +14,8 @@
 #include "yb/tserver/master_leader_poller.h"
 
 #include "yb/gutil/bind.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_fwd.h"
 
@@ -262,7 +264,11 @@ Result<MasterLeaderFinder::MasterLeader> MasterLeaderFinder::UpdateMasterLeader(
 }
 
 const rpc::Protocol& MasterLeaderFinder::ProtocolFor(const MasterLeader& leader) const {
-  return proxy_cache_.GetContext()->ProtocolFor(leader.cloud_info, connect_from_);
+  // GetLeaderMasterRpc races every address the master configuration names, so the surviving
+  // connection could be on either of the leader's address lists. kConfigured says that, and
+  // node_to_node_encryption_required_on_broadcast treats it as not private.
+  return proxy_cache_.GetContext()->ProtocolFor(rpc::Encrypted(
+      UseEncryption(AddressKind::kConfigured, leader.cloud_info, connect_from_)));
 }
 
 rpc::ProxyCache& MasterLeaderFinder::get_proxy_cache() {

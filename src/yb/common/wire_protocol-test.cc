@@ -45,7 +45,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+DECLARE_bool(node_to_node_encryption_required_on_broadcast);
 DECLARE_string(node_to_node_encryption_scope);
+DECLARE_string(use_private_ip);
 
 namespace yb {
 
@@ -228,10 +230,10 @@ TEST_F(WireProtocolTest, NodeToNodeEncryptionScope) {
     google::FlagSaver flag_saver;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = c.scope;
     SCOPED_TRACE(c.scope);
-    EXPECT_EQ(c.zone, UseEncryption(same_zone, here));
-    EXPECT_EQ(c.region, UseEncryption(same_region, here));
-    EXPECT_EQ(c.cloud, UseEncryption(same_cloud, here));
-    EXPECT_EQ(c.other, UseEncryption(elsewhere, here));
+    EXPECT_EQ(c.zone, UseEncryption(AddressKind::kPrivate, same_zone, here));
+    EXPECT_EQ(c.region, UseEncryption(AddressKind::kPrivate, same_region, here));
+    EXPECT_EQ(c.cloud, UseEncryption(AddressKind::kPrivate, same_cloud, here));
+    EXPECT_EQ(c.other, UseEncryption(AddressKind::kPrivate, elsewhere, here));
   }
 }
 
@@ -244,7 +246,7 @@ TEST_F(WireProtocolTest, NodeToNodeEncryptionScopeUnknownPlacement) {
     google::FlagSaver flag_saver;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = scope;
     SCOPED_TRACE(scope);
-    EXPECT_TRUE(UseEncryption(CloudInfoPB(), here));
+    EXPECT_TRUE(UseEncryption(AddressKind::kPrivate, CloudInfoPB(), here));
   }
 }
 
@@ -257,7 +259,81 @@ TEST_F(WireProtocolTest, NodeToNodeEncryptionScopeInvalid) {
   // A value that names no scope leaves every destination outside it, so a typo encrypts
   // rather than exposing traffic.
   const auto here = CloudInfo("cloud1", "region1", "zone1");
-  EXPECT_TRUE(UseEncryption(here, here));
+  EXPECT_TRUE(UseEncryption(AddressKind::kPrivate, here, here));
+}
+
+// use_private_ip names a boundary of its own, and a destination inside the encryption scope
+// can still sit outside that one, which is what sends the connection out on a broadcast
+// address. The exemption is withheld there so narrowing the scope cannot leave a connection
+// unencrypted once it has left the destination's private address.
+TEST_F(WireProtocolTest, NodeToNodeEncryptionRequiredOnBroadcast) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = "zone";
+  const auto here = CloudInfo("cloud1", "region1", "zone1");
+
+  for (auto kind : {AddressKind::kBroadcast, AddressKind::kConfigured}) {
+    SCOPED_TRACE(ToString(kind));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_required_on_broadcast) = true;
+    EXPECT_TRUE(UseEncryption(kind, here, here));
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_required_on_broadcast) = false;
+    EXPECT_FALSE(UseEncryption(kind, here, here));
+  }
+
+  // A connection that stayed on the private address is the scope's to decide either way.
+  for (auto required : {true, false}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_required_on_broadcast) = required;
+    EXPECT_FALSE(UseEncryption(AddressKind::kPrivate, here, here));
+  }
+}
+
+// The gate withholds an exemption; it cannot grant one.
+TEST_F(WireProtocolTest, NodeToNodeEncryptionRequiredOnBroadcastCannotExempt) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = "never";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_required_on_broadcast) = false;
+
+  const auto here = CloudInfo("cloud1", "region1", "zone1");
+  for (auto kind : {AddressKind::kPrivate, AddressKind::kBroadcast, AddressKind::kConfigured}) {
+    SCOPED_TRACE(ToString(kind));
+    EXPECT_TRUE(UseEncryption(kind, here, here));
+  }
+}
+
+// The address and the transport must describe the same connection, so the kind reports which
+// list GetHostPort actually returned from, including its fallback when no broadcast address
+// was reported.
+TEST_F(WireProtocolTest, SelectHostPortReportsTheListItUsed) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = "zone";
+
+  const auto here = CloudInfo("cloud1", "region1", "zone1");
+  const auto elsewhere = CloudInfo("cloud2", "region2", "zone2");
+
+  google::protobuf::RepeatedPtrField<HostPortPB> private_addrs;
+  auto* p = private_addrs.Add();
+  p->set_host("private.example.com");
+  p->set_port(9100);
+
+  google::protobuf::RepeatedPtrField<HostPortPB> broadcast_addrs;
+  auto* b = broadcast_addrs.Add();
+  b->set_host("broadcast.example.com");
+  b->set_port(9100);
+
+  auto same_zone = SelectHostPort(broadcast_addrs, private_addrs, here, here);
+  EXPECT_EQ(AddressKind::kPrivate, same_zone.kind);
+  EXPECT_EQ("private.example.com", same_zone.host_port.host());
+
+  auto other_zone = SelectHostPort(broadcast_addrs, private_addrs, elsewhere, here);
+  EXPECT_EQ(AddressKind::kBroadcast, other_zone.kind);
+  EXPECT_EQ("broadcast.example.com", other_zone.host_port.host());
+
+  // Outside the scope, but nothing was broadcast, so the private address is what gets used
+  // and the kind has to say so or the connection would be encrypted for the wrong reason.
+  google::protobuf::RepeatedPtrField<HostPortPB> no_broadcast;
+  auto fallback = SelectHostPort(no_broadcast, private_addrs, elsewhere, here);
+  EXPECT_EQ(AddressKind::kPrivate, fallback.kind);
+  EXPECT_EQ("private.example.com", fallback.host_port.host());
 }
 
 } // namespace yb

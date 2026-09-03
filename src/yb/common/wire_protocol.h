@@ -107,12 +107,27 @@ Result<UsePrivateIpMode> GetNodeToNodeEncryptionScope();
 // registration - node registration information
 const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration);
 
+// Which of a node's advertised address lists a connection to it uses. kConfigured is for a
+// connection whose address came from configuration rather than from a node's registration,
+// which is how a tserver reaches a master: it races every address the master config names,
+// so the surviving connection could be on either list.
+YB_DEFINE_ENUM(AddressKind, (kPrivate)(kBroadcast)(kConfigured));
+
+// An address to reach a node at, together with which list it came from. The two travel
+// together because a caller that encrypts has to know which one it got: what a connection
+// carries follows the address chosen for it, and recomputing that choice separately would
+// let the two answers drift apart.
+struct SelectedHostPort {
+  const HostPortPB& host_port;
+  AddressKind kind;
+};
+
 // Pick host and port that should be used to connect node
 // broadcast_addresses - node public host ports
 // private_host_ports - node private host ports
 // connect_to - node placement information
 // connect_from - placement information of connect originator
-const HostPortPB& DesiredHostPort(
+SelectedHostPort SelectHostPort(
     const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
     const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
     const CloudInfoPB& connect_to,
@@ -121,19 +136,35 @@ const HostPortPB& DesiredHostPort(
 // Pick host and port that should be used to connect node
 // registration - node registration information
 // connect_from - placement information of connect originator
+SelectedHostPort SelectHostPort(
+    const ServerRegistrationPB& registration, const CloudInfoPB& connect_from);
+
+// The address SelectHostPort chooses, for callers that have no use for which list it came
+// from. Anything deciding a connection's transport must take both from one SelectHostPort
+// call instead, so that the address and the transport cannot describe different connections.
+const HostPortPB& DesiredHostPort(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const CloudInfoPB& connect_to,
+    const CloudInfoPB& connect_from);
+
 const HostPortPB& DesiredHostPort(
     const ServerRegistrationPB& registration, const CloudInfoPB& connect_from);
 
-// Whether a connection to connect_to should be encrypted, per node_to_node_encryption_scope.
-// Scoped the same way as use_private_ip, so a deployment can treat traffic that stays within
-// a cloud, region or zone as it treats traffic on a private address.
+// Whether a connection to connect_to should be encrypted: node_to_node_encryption_scope
+// exempts destinations within a placement boundary, and
+// node_to_node_encryption_required_on_broadcast withholds that exemption from any connection
+// that did not stay on the destination's private address.
+//
+// kind comes from the same SelectHostPort call that chose the address, so the transport
+// always describes the connection actually being made.
 //
 // This answers the policy alone. A messenger built without encryption has no encrypted
 // transport to name, so ProxyContext::ProtocolFor pairs this with the transports the
-// messenger actually holds, as DesiredHostPort pairs UsePublicIp with the addresses a node
-// actually reported. It is exported for that reason, where UsePublicIp is not: the two
-// halves of this decision sit on opposite sides of the common and rpc boundary.
-bool UseEncryption(const CloudInfoPB& connect_to, const CloudInfoPB& connect_from);
+// messenger actually holds, the way SelectHostPort pairs the scope with the addresses a node
+// actually reported.
+bool UseEncryption(
+    AddressKind kind, const CloudInfoPB& connect_to, const CloudInfoPB& connect_from);
 
 HAS_MEMBER_FUNCTION(error);
 HAS_MEMBER_FUNCTION(status);

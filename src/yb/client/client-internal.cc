@@ -2799,8 +2799,10 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
 
     if (status.ok()) {
       leader_master_hostport_ = host_port;
-      const auto* protocol =
-          &proxy_cache_->GetContext()->ProtocolFor(cloud_info, cloud_info_pb_);
+      // GetLeaderMasterRpc races every configured master address, so this connection could
+      // be on either of the leader's address lists.
+      const auto* protocol = &proxy_cache_->GetContext()->ProtocolFor(rpc::Encrypted(
+          UseEncryption(AddressKind::kConfigured, cloud_info, cloud_info_pb_)));
       master_admin_proxy_ = std::make_shared<master::MasterAdminProxy>(
           proxy_cache_.get(), host_port, protocol);
       master_backup_proxy_ =

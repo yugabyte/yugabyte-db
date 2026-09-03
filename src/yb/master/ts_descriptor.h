@@ -41,6 +41,7 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/gutil/thread_annotations.h"
@@ -375,11 +376,20 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   friend class LoadBalancerMockedBase;
 
+  // An address to reach this server at and which of its lists it came from, so a proxy can
+  // take both from one selection.
+  struct SelectedEndpoint {
+    HostPort host_port;
+    AddressKind kind;
+  };
+
   // Uses DNS to resolve registered hosts to a single endpoint.
+  Result<SelectedEndpoint> SelectEndpointUnlocked() const REQUIRES_SHARED(mutex_);
   Result<HostPort> GetHostPortUnlocked() const REQUIRES_SHARED(mutex_);
 
-  // The transport for a connection to this server, from the master's own placement.
-  const rpc::Protocol& ProtocolForUnlocked() const REQUIRES_SHARED(mutex_);
+  // The transport for a connection to this server on an address of the given kind, from the
+  // master's own placement.
+  const rpc::Protocol& ProtocolForUnlocked(AddressKind kind) const REQUIRES_SHARED(mutex_);
 
   void DecayRecentReplicaCreationsUnlocked() REQUIRES(mutex_);
 
@@ -496,9 +506,10 @@ Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
       *result = *result_cache;
       return Status::OK();
     }
-    auto hostport = VERIFY_RESULT(GetHostPortUnlocked());
+    auto selected = VERIFY_RESULT(SelectEndpointUnlocked());
     if (!(*result_cache)) {
-      *result_cache = std::make_shared<TProxy>(proxy_cache_, hostport, &ProtocolForUnlocked());
+      *result_cache = std::make_shared<TProxy>(
+          proxy_cache_, selected.host_port, &ProtocolForUnlocked(selected.kind));
     }
     *result = *result_cache;
   }

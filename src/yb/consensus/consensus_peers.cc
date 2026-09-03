@@ -724,10 +724,12 @@ RpcPeerProxyFactory::RpcPeerProxyFactory(
     : messenger_(messenger), proxy_cache_(proxy_cache), from_(std::move(from)) {}
 
 PeerProxyPtr RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb) {
-  auto hostport = HostPortFromPB(DesiredHostPort(peer_pb, from_));
+  auto selected = SelectHostPort(peer_pb, from_);
+  auto hostport = HostPortFromPB(selected.host_port);
   auto proxy = std::make_unique<ConsensusServiceProxy>(
       proxy_cache_, hostport,
-      &proxy_cache_->GetContext()->ProtocolFor(peer_pb.cloud_info(), from_));
+      &proxy_cache_->GetContext()->ProtocolFor(
+          rpc::Encrypted(UseEncryption(selected.kind, peer_pb.cloud_info(), from_))));
   return std::make_unique<RpcPeerProxy>(std::move(hostport), std::move(proxy));
 }
 

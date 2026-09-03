@@ -183,9 +183,10 @@ MultiRaftHeartbeatBatcherPtr MultiRaftManager::AddOrGetBatcher(const RaftPeerPB&
     return nullptr;
   }
 
-  auto hostport = HostPortFromPB(DesiredHostPort(remote_peer_pb, local_peer_cloud_info_pb_));
-  auto* protocol = &proxy_cache_->GetContext()->ProtocolFor(
-      remote_peer_pb.cloud_info(), local_peer_cloud_info_pb_);
+  auto selected = SelectHostPort(remote_peer_pb, local_peer_cloud_info_pb_);
+  auto hostport = HostPortFromPB(selected.host_port);
+  auto* protocol = &proxy_cache_->GetContext()->ProtocolFor(rpc::Encrypted(UseEncryption(
+      selected.kind, remote_peer_pb.cloud_info(), local_peer_cloud_info_pb_)));
   std::lock_guard lock(mutex_);
   if (shutdown_) {
     LOG(DFATAL) << __func__ << " after shutdown";

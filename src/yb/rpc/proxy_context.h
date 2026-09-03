@@ -15,8 +15,6 @@
 
 #pragma once
 
-#include "yb/common/common_net.pb.h"
-
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/metrics_fwd.h"
@@ -46,13 +44,12 @@ class ProxyContext {
   // factory to create it from.
   virtual const Protocol& ProtocolFor(Compressed compressed, Encrypted encrypted) = 0;
 
-  // The protocol for a connection to a node at connect_to, seen from connect_from: the
-  // compression and encryption this messenger holds, encrypted only where
-  // node_to_node_encryption_scope does not exempt the destination. Pairs the policy with the
-  // transports available the way DesiredHostPort pairs it with the addresses a node reported,
-  // so a messenger built without encryption yields a protocol it can still create.
-  virtual const Protocol& ProtocolFor(
-      const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) = 0;
+  // The protocol carrying the requested encryption at whatever compression this messenger
+  // was built with, clamped to the transports it actually holds: one built without encryption
+  // yields a protocol it can still create rather than failing the connection. Callers get
+  // the encryption half from UseEncryption, which decides it from the address selected for
+  // the connection.
+  virtual const Protocol& ProtocolFor(Encrypted encrypted) = 0;
 
   virtual ThreadPool& CallbackThreadPool(ServicePriority priority = ServicePriority::kNormal) = 0;
 

@@ -43,8 +43,6 @@
 
 #include "yb/util/logging.h"
 
-#include "yb/common/wire_protocol.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -259,17 +257,14 @@ const Protocol& Messenger::ProtocolFor(Compressed compressed, Encrypted encrypte
   return *StreamProtocol(compressed, encrypted);
 }
 
-const Protocol& Messenger::ProtocolFor(
-    const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
+const Protocol& Messenger::ProtocolFor(Encrypted encrypted) {
   // Both dimensions are read off the protocols this messenger was built with rather than the
   // flags that chose them, so it never names a point it has no stream factory for. Applying a
   // secure context names the secure stream as the uncompressed protocol, and adding
   // compression on top leaves the listen protocol differing from it.
-  auto compressed = Compressed(&listen_protocol_ != &uncompressed_protocol_);
-  auto encrypted = Encrypted(
-      &uncompressed_protocol_ == SecureStreamProtocol() &&
-      UseEncryption(connect_to, connect_from));
-  return ProtocolFor(compressed, encrypted);
+  return ProtocolFor(
+      Compressed(&listen_protocol_ != &uncompressed_protocol_),
+      Encrypted(encrypted && &uncompressed_protocol_ == SecureStreamProtocol()));
 }
 
 Status Messenger::ListenAddress(

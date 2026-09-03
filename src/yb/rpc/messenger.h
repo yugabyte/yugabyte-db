@@ -259,8 +259,7 @@ class Messenger : public ProxyContext {
   const Protocol& DefaultProtocol() override { return listen_protocol_; }
   const Protocol& UncompressedProtocol() override { return uncompressed_protocol_; }
   const Protocol& ProtocolFor(Compressed compressed, Encrypted encrypted) override;
-  const Protocol& ProtocolFor(
-      const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) override;
+  const Protocol& ProtocolFor(Encrypted encrypted) override;
 
   rpc::ThreadPool& CallbackThreadPool(ServicePriority priority) override {
     return ThreadPool(priority);

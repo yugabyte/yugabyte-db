@@ -240,14 +240,16 @@ Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::O
   // TODO: if the TS advertises multiple host/ports, pick the right one
   // based on some kind of policy. For now just use the first always.
   const auto& connect_from = client.data_->cloud_info_pb_;
-  auto hostport = HostPortFromPB(yb::DesiredHostPort(
-      public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_, connect_from));
+  auto selected = yb::SelectHostPort(
+      public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_, connect_from);
+  auto hostport = HostPortFromPB(selected.host_port);
   CHECK(!hostport.host().empty());
   ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
   auto* proxy_cache = client.data_->proxy_cache_.get();
   proxy_ = std::make_shared<TabletServerServiceProxy>(
       proxy_cache, hostport,
-      &proxy_cache->GetContext()->ProtocolFor(cloud_info_pb_, connect_from));
+      &proxy_cache->GetContext()->ProtocolFor(
+          rpc::Encrypted(yb::UseEncryption(selected.kind, cloud_info_pb_, connect_from))));
   proxy_endpoint_ = hostport;
 
   return proxy_;

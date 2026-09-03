@@ -40,6 +40,7 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/opid.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/metadata.pb.h"
 
@@ -304,6 +305,7 @@ class ConsensusMetadata {
   DISALLOW_COPY_AND_ASSIGN(ConsensusMetadata);
 };
 
+SelectedHostPort SelectHostPort(const RaftPeerPB& peer, const CloudInfoPB& from);
 const HostPortPB& DesiredHostPort(const RaftPeerPB& peer, const CloudInfoPB& from);
 void TakeRegistration(ServerRegistrationPB* source, RaftPeerPB* dest);
 void CopyRegistration(ServerRegistrationPB source, RaftPeerPB* dest);
