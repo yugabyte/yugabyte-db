@@ -225,6 +225,10 @@ DEFINE_test_flag(bool, pause_verify_unique_index_tablet_rpc, false,
     "Reject VerifyUniqueIndexTablet RPCs with a retryable error, holding the shadow "
     "verification phase open for tests (e.g. master failover mid-phase).");
 
+DEFINE_test_flag(bool, force_verify_unique_index_inconclusive, false,
+    "Respond to VerifyUniqueIndexTablet RPCs with an INCONCLUSIVE outcome without scanning, "
+    "to exercise the fail-closed publication gate.");
+
 DEFINE_RUNTIME_int32(index_backfill_wait_for_old_txns_ms, 0,
     "Index backfill needs to wait for transactions that started before the "
     "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
@@ -752,6 +756,14 @@ void TabletServiceAdminImpl::VerifyUniqueIndexTablet(
     SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS(TryAgain, "TEST: verification paused"), &context);
+    return;
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_force_verify_unique_index_inconclusive)) {
+    resp->set_outcome(VerifyUniqueIndexTabletResponsePB::INCONCLUSIVE);
+    resp->set_reason("TEST: forced inconclusive");
+    resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
+    context.RespondSuccess();
     return;
   }
 
