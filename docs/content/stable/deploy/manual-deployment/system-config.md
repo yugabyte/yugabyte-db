@@ -83,7 +83,7 @@ Update interval : 16.0 seconds
 Leap status     : Normal
 ```
 
-`Leap status` is `Normal`, the offsets are well under a millisecond, and `Update interval` matches the configured 16 seconds. The clock error - `Root dispersion`, plus half of `Root delay`, plus `System time` - is 0.49 ms. With ClockBound, clock error must also stay below `clockbound_clock_error_estimate_usec`.
+In this example, Leap status is "Normal", the offsets are well under a millisecond, and Update interval matches the configured 16 seconds. The clock error , calculated as Root dispersion plus half of Root delay plus System time, is 0.49 ms. With ClockBound, clock error must also stay below `clockbound_clock_error_estimate_usec`.
 
 The same fields on a node that is not synchronized closely enough:
 
