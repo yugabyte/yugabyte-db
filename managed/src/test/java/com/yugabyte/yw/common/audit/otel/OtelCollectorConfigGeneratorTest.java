@@ -64,6 +64,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -1392,6 +1394,59 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
 
     assertTrue("config should be enabled", result.isEnabled());
     assertThat(result.getConfig(), equalTo(TestUtils.readResource("audit/k8s_otel_config.yml")));
+  }
+
+  // The K8s config reaches the collector through the OTEL_CONFIG env var, and kubelet's $(VAR)
+  // expansion collapses "$$" -> "$" in env values before the collector's confmap unescapes once
+  // more (PLAT-22313, opentelemetry-operator#3262). The golden file pins the doubled escapes; this
+  // covers the metricsPrefix token the golden config lacks, and simulates the kubelet pass to
+  // assert nothing the collector would reject as an env reference survives it.
+  @Test
+  public void getOtelColConfigK8sEscapesDollarsForEnvVarDelivery() {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("ddsite");
+    ddConfig.setApiKey("apikey");
+    TelemetryProvider ddTp =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), ddConfig);
+    when(mockTelemetryProviderService.getOrBadRequest(ddTp.getUuid())).thenReturn(ddTp);
+
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            ddTp.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+    // The prefix renders the metricstransform capture-group reference - the token that crashed
+    // the sidecar (and with it the pod) when it reached the collector as ${1}.
+    metricsExportConfig.getUniverseMetricsExporterConfig().get(0).setMetricsPrefix("ybdb.");
+
+    String config =
+        generator
+            .getOtelColConfigK8s(
+                provider,
+                universe,
+                TelemetryConfig.builder().metricsExportConfig(metricsExportConfig).build(),
+                null,
+                "%m [%p] ")
+            .getConfig();
+
+    // Doubled escapes in the CR; the POD_NAME reference stays single-$ so the collector expands
+    // it from the pod env.
+    assertThat(config, containsString("new_name: ybdb.$$$${1}"));
+    assertThat(config, containsString("replacement: $$$$1"));
+    assertThat(config, containsString("${POD_NAME}"));
+    assertThat(config, not(containsString("$${POD_NAME}")));
+
+    // Kubelet pass: what the collector actually receives in OTEL_CONFIG.
+    String atCollector = config.replace("$$", "$");
+    assertThat(atCollector, containsString("new_name: ybdb.$${1}"));
+    assertThat(atCollector, containsString("replacement: $$1"));
+    // Any ${...} still bare after the kubelet pass is resolved by the collector as an env var and
+    // must have a valid name, or startup fails with 'environment variable "..." has invalid name'.
+    Matcher envRef = Pattern.compile("(?<!\\$)\\$\\{([^}]*)\\}").matcher(atCollector);
+    while (envRef.find()) {
+      assertTrue(
+          "collector would reject env reference ${" + envRef.group(1) + "}",
+          envRef.group(1).matches("[a-zA-Z_][a-zA-Z0-9_]*"));
+    }
   }
 
   @Test
