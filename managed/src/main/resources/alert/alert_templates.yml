@@ -1291,6 +1291,7 @@ templates:
     defaultThresholdUnit: STATUS
     thresholdMaxValue: 0.0
     thresholdReadOnly: true
+    defaultDurationSec: 180
     labels:
       affected_xcluster_configs: >-
         {{ range $index, $element := query "count by (source_universe_uuid, xcluster_config_name)
