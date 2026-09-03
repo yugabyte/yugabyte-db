@@ -250,13 +250,28 @@ TEST_F(ChainTrackerTest, RowResurrectedAfterDelete) {
   EXPECT_EQ(s.max_stretch, 1);
 }
 
-TEST_F(ChainTrackerTest, ColumnTombstoneHeadIsReclaimable) {
-  // A column-level delete marker that nothing covers still drops at a full compaction once past
-  // the cutoff; it does not make the row dead.
+TEST_F(ChainTrackerTest, ColumnTombstoneOverPackedRowIsNotCounted) {
+  // A column tombstone over a packed row may be kept unmerged by compactions
+  // (docdb_keep_unmerged_column_tombstones_over_packed_row; permanently for columns that never
+  // pack), so it is not counted reclaimable: the statistic stays a lower bound.
   const auto row = Row(1);
   const auto s = TrackerFixture().Add({
       {RowKey(row, 10 * kMinute), PackedRow("v")},
       {ColumnKey(row, 1, 2 * kMinute), Tombstone()},
+  }).Finish();
+  ASSERT_NO_FATALS(ExpectIdentities(s));
+  EXPECT_EQ(s.tombstone_entries, 1);
+  EXPECT_EQ(s.dead_rows, 0);
+  EXPECT_EQ(s.reclaimable_entries, 0);
+}
+
+TEST_F(ChainTrackerTest, ColumnTombstoneWithoutPackedRowIsReclaimable) {
+  // With no packed row under it, a column marker past the cutoff drops at a full compaction; it
+  // does not make the row dead.
+  const auto row = Row(1);
+  const auto s = TrackerFixture().Add({
+      {ColumnKey(row, 1, 2 * kMinute), Tombstone()},
+      {ColumnKey(row, 2, 1 * kMinute), Str("live")},
   }).Finish();
   ASSERT_NO_FATALS(ExpectIdentities(s));
   EXPECT_EQ(s.tombstone_entries, 1);

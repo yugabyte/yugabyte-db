@@ -83,7 +83,8 @@ struct SstStats {
   // All the garbage, counted once at scan time: entries shadowed by a newer version of their own
   // record, record heads older than a covering write (a packed row or row tombstone overwrites the
   // whole row), and tombstone markers themselves (a tombstone past the history cutoff drops at a
-  // full compaction regardless of covering).
+  // full compaction) -- excluding column tombstones over a packed row, which compactions may keep
+  // unmerged, so the count stays a lower bound.
   uint64_t reclaimable_entries = 0;
   uint64_t reclaimable_bytes = 0;
 
@@ -184,7 +185,9 @@ class ChainTracker {
   bool has_prev_ = false;
   std::vector<char> prev_key_;              // subdoc key without hybrid time
   EncodedDocHybridTime prev_entry_ht_;
-  EncodedDocHybridTime min_encoded_ht_;     // lexicographic extremes of the encoded form
+  // Time-order extremes: EncodedDocHybridTime's comparator inverts the reversed byte encoding,
+  // so min_encoded_ht_ is the OLDEST write time and max_encoded_ht_ the newest.
+  EncodedDocHybridTime min_encoded_ht_;
   EncodedDocHybridTime max_encoded_ht_;
 
   // Current row.
@@ -201,6 +204,10 @@ class ChainTracker {
   // Record heads of the current row that are neither covered nor tombstones: the row's live
   // content. A row is dead iff its newest covering write is a tombstone and this stays zero.
   uint64_t uncovered_record_heads_ = 0;
+  // Whether any covering write of the current row is a packed row (not a tombstone). A column
+  // tombstone over a packed row may be kept un-dropped by compactions (see Add()), so such
+  // markers are not counted reclaimable.
+  bool row_has_packed_covering_ = false;
 
   // Current stretch of consecutive reclaimable entries.
   uint64_t stretch_entries_ = 0;

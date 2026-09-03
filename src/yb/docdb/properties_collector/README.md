@@ -77,8 +77,10 @@ Recognized at scan time:
   row. A row re-inserted after a delete is live again, tombstone notwithstanding.
 - **reclaimable** = shadowed versions + record heads older than a covering write + tombstone
   markers themselves (a tombstone past the history cutoff drops at a full compaction whether or
-  not the row lives on). All the garbage, regardless of whether retention allows removing it yet,
-  counted once online.
+  not the row lives on) -- except a column tombstone over a packed row, which compactions may keep
+  unmerged (`docdb_keep_unmerged_column_tombstones_over_packed_row`; permanently, for columns that
+  never pack), so it is not counted and the statistic stays a lower bound. All the garbage,
+  regardless of whether retention allows removing it yet, counted once online.
 - **droppable** = the part of reclaimable already past the history cutoff a consumer applies. The
   compaction trigger uses droppable; the metric reports reclaimable.
 - A **stretch** is a maximal run of consecutive reclaimable entries in file order, ignoring key and

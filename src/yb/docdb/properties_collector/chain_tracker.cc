@@ -57,9 +57,10 @@ ChainTracker::ChainTracker(int64_t anchor_micros, bool track_coprefix_subtotals)
 //      seen so far -- which is all of them, because the row key sorts first in the row.
 //   6. Garbage is therefore: shadowed versions, record heads older than a covering write, and
 //      tombstone markers themselves (a tombstone past the history cutoff drops at a full
-//      compaction regardless). Each lands in the age band of the OLDEST write whose passing of
-//      the cutoff makes it droppable (its own hybrid time, for a marker), and extends the current
-//      stretch; a non-garbage entry closes the stretch.
+//      compaction) -- except a column tombstone over a packed row, which compactions may keep
+//      unmerged, so it is never counted. Each garbage entry lands in the age band of the OLDEST
+//      write whose passing of the cutoff makes it droppable (its own hybrid time, for a marker),
+//      and extends the current stretch; a non-garbage entry closes the stretch.
 void ChainTracker::Add(Slice key, Slice value) {
   ++stats_.total_entries;
   const size_t entry_bytes = key.size() + value.size();
@@ -170,9 +171,13 @@ void ChainTracker::Add(Slice key, Slice value) {
     // A record head older than a covering write: the whole-row write shadows it.
     reclaimable = true;
     droppable_by_micros = oldest_covering->micros;
-  } else if (is_tombstone) {
-    // An uncovered tombstone marker (row- or column-level): droppable at a full compaction once
-    // its own hybrid time passes the cutoff, whether or not the row lives on.
+  } else if (is_tombstone && (subdoc_key_end == row_end_ || !row_has_packed_covering_)) {
+    // An uncovered tombstone marker: droppable at a full compaction once its own hybrid time
+    // passes the cutoff, whether or not the row lives on. EXCEPT a column tombstone over a packed
+    // row: the feed keeps it when it was not merged into the packed row
+    // (docdb_keep_unmerged_column_tombstones_over_packed_row, and permanently for columns that
+    // never pack, e.g. YCQL collections) -- counting it would break the lower-bound property, so
+    // those markers are excluded above.
     const auto own_micros = PhysicalMicros(encoded_ht);
     if (!own_micros.ok()) {
       Invalidate();
@@ -258,6 +263,7 @@ void ChainTracker::CloseRow() {
   row_bytes_ = 0;
   num_covering_writes_ = 0;
   uncovered_record_heads_ = 0;
+  row_has_packed_covering_ = false;
 }
 
 void ChainTracker::CloseStretch() {
@@ -279,6 +285,7 @@ void ChainTracker::Invalidate() {
   row_bytes_ = 0;
   num_covering_writes_ = 0;
   uncovered_record_heads_ = 0;
+  row_has_packed_covering_ = false;
   stretch_entries_ = 0;
   stretch_bytes_ = 0;
   row_subtotal_ = nullptr;
@@ -321,6 +328,7 @@ void ChainTracker::AddCoveringWrite(
     return;
   }
   covering_writes_[num_covering_writes_++] = {encoded_ht, micros, is_tombstone};
+  row_has_packed_covering_ |= !is_tombstone;
 }
 
 const ChainTracker::CoveringWrite* ChainTracker::OldestCoveringAfter(
