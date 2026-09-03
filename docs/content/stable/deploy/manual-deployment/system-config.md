@@ -110,7 +110,7 @@ MS Name/IP address         Stratum Poll Reach LastRx Last sample
 
 `ntp1` is selected (`*`), and `ntp2` and `ntp4` are combined with it (`+`); all three are reachable (`Reach 377`, meaning the last eight polls succeeded) and agree to within microseconds.
 
-`ntp3` is marked `x`: chrony has classified it a falseticker because it disagrees with the other sources by 487 ms. Correct or replace it.
+`ntp3` is marked `x`: chrony has classified it as a falseticker because it disagrees with the other sources by 487 ms. Correct or replace it.
 
 ### Configure Precision Time Protocol
 
