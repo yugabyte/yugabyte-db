@@ -2412,7 +2412,9 @@ templates:
     queryTemplate: ybp_pa_collector_expected_up{customer_uuid = "__customerUuid__"} == 1
       and on() absent(up{job="perf-advisor"}) == 1
     createForNewCustomer: true
-    defaultDurationSec: 900
+    # absent() only turns 1 once the collector's last sample leaves Prometheus' query lookback
+    # delta, 5 minutes by default, so the wait to fire is that plus this duration.
+    defaultDurationSec: 300
     defaultThresholdMap:
       SEVERE:
         threshold: 1.0
