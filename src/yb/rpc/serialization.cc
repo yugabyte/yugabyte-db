@@ -454,6 +454,9 @@ Result<opentelemetry::trace::SpanContext> ParseTraceContext(Slice buf) {
   return BuildSpanContext(trace_id_hi, trace_id_lo, span_id, version_and_flags);
 }
 
+TraceContextSerializer::TraceContextSerializer() = default;
+TraceContextSerializer::~TraceContextSerializer() = default;
+
 void TraceContextSerializer::SetTraceContext(
     const opentelemetry::trace::SpanContext& span_context) {
   if (!span_context.IsValid()) {
@@ -461,16 +464,16 @@ void TraceContextSerializer::SetTraceContext(
   }
   const auto trace_id = span_context.trace_id();
   const auto span_id = span_context.span_id();
-  auto& trace_context = trace_context_.emplace();
+  trace_context_ = std::make_unique<TraceContextPB>();
   // Split the 16-byte trace id into two big-endian 64-bit halves; the span id is one big-endian
   // 64-bit value -- the layout ParseTraceContext reads back on the tserver.
-  trace_context.set_trace_id_hi(BigEndian::Load64(trace_id.Id().data()));
-  trace_context.set_trace_id_lo(BigEndian::Load64(trace_id.Id().data() + 8));
-  trace_context.set_span_id(BigEndian::Load64(span_id.Id().data()));
+  trace_context_->set_trace_id_hi(BigEndian::Load64(trace_id.Id().data()));
+  trace_context_->set_trace_id_lo(BigEndian::Load64(trace_id.Id().data() + 8));
+  trace_context_->set_span_id(BigEndian::Load64(span_id.Id().data()));
   // Low byte: flags; high byte: the (currently unused) version.
   constexpr uint32_t kVersion = 0;
-  trace_context.set_version_and_flags((kVersion << 8) | span_context.trace_flags().flags());
-  serialized_size_ = trace_context.ByteSizeLong();
+  trace_context_->set_version_and_flags((kVersion << 8) | span_context.trace_flags().flags());
+  serialized_size_ = trace_context_->ByteSizeLong();
 }
 
 size_t TraceContextSerializer::SerializedSize() const {

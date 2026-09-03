@@ -35,6 +35,7 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include <memory>
 #include <string>
 
 #include <boost/range/iterator_range.hpp>
@@ -45,7 +46,6 @@
 #include "opentelemetry/trace/span_context.h"
 
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
@@ -114,16 +114,21 @@ Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
 // is missing or the trace/span ids are zero.
 Result<opentelemetry::trace::SpanContext> ParseTraceContext(Slice buf);
 
+class TraceContextPB;
+
 // Serializes a SpanContext as a length-prefixed TraceContextPB blob for the shared-memory
 // exchange; ParseTraceContext reads it back. Always emits the length prefix (zero when unset).
 class TraceContextSerializer {
  public:
+  TraceContextSerializer();
+  ~TraceContextSerializer();
+
   void SetTraceContext(const opentelemetry::trace::SpanContext& span_context);
   size_t SerializedSize() const;
   uint8_t* SerializeToArray(uint8_t* out) const;
 
  private:
-  std::optional<TraceContextPB> trace_context_;
+  std::unique_ptr<TraceContextPB> trace_context_;
   size_t serialized_size_ = 0;
 };
 
