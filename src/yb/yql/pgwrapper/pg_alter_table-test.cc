@@ -14,6 +14,7 @@
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_thread_holder.h"
@@ -169,6 +170,73 @@ std::string ParamsToString(const testing::TestParamInfo<StorageFormat>& param_in
 } // namespace
 
 INSTANTIATE_TEST_CASE_P(, PgAlterTableTest, testing::ValuesIn(kStorageFormatArray), ParamsToString);
+
+class PgSchemaVersionMismatchBackfillTest : public LibPqTestBase {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    LibPqTestBase::UpdateMiniClusterOptions(opts);
+    // Disable table locks so the ALTER can land mid-backfill instead of queueing behind it.
+    opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+    // No retries: a retried chunk's fresh backfill connection would succeed and hide the error.
+    opts->extra_master_flags.emplace_back("--index_backfill_rpc_max_retries=0");
+    // Throttle to one-row BACKFILL statements so the ALTER lands with statements still to run.
+    opts->extra_tserver_flags.emplace_back("--backfill_index_write_batch_size=1");
+    opts->extra_tserver_flags.emplace_back("--backfill_index_rate_rows_per_sec=10");
+    opts->extra_tserver_flags.emplace_back("--ysql_prefetch_limit=1");
+  }
+};
+
+// A mismatch hit by BACKFILL INDEX must reach the CREATE INDEX client as 40001, not XX000.
+TEST_F(PgSchemaVersionMismatchBackfillTest, BackfillSurfacesAsSerializationFailure) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE DATABASE test_colo6 WITH COLOCATION = true"));
+  auto conn = ASSERT_RESULT(ConnectToDB("test_colo6"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (k INT PRIMARY KEY, v1 INT) WITH (COLOCATION = true)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 100) i"));
+
+  Status create_index_status;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn, &create_index_status] {
+    create_index_status = conn.Execute("CREATE INDEX idx ON t (v1)");
+  });
+
+  // The backfill connection lands on the colocation tablet's leader, so poll every tserver.
+  std::vector<PGConn> ts_conns;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ts_conns.push_back(ASSERT_RESULT(
+        ConnectToTsForDB(*cluster_->tablet_server(i), "test_colo6")));
+  }
+  ASSERT_OK(WaitFor([&ts_conns]() -> Result<bool> {
+    for (auto& ts_conn : ts_conns) {
+      if (VERIFY_RESULT(ts_conn.FetchRow<PGUint64>(
+              "SELECT count(*) FROM pg_stat_activity"
+              " WHERE query LIKE 'BACKFILL INDEX%'")) > 0) {
+        return true;
+      }
+    }
+    return false;
+  }, MonoDelta::FromSeconds(60), "backfill is executing"));
+  // Let a few one-row chunks complete so the backfill connection has cached the table.
+  SleepFor(MonoDelta::FromSeconds(2));
+
+  auto ddl_conn = ASSERT_RESULT(ConnectToTsForDB(*cluster_->tablet_server(1), "test_colo6"));
+  ASSERT_OK(ddl_conn.Execute("SET yb_test_fail_next_ddl = 1"));
+  ASSERT_NOK(ddl_conn.Execute("ALTER TABLE t ADD COLUMN v2 INT"));
+
+  thread_holder.JoinAll();
+  ASSERT_NOK(create_index_status);
+  LOG(INFO) << "Client-visible error: " << create_index_status;
+  ASSERT_STR_CONTAINS(create_index_status.ToString(), "schema version mismatch");
+  const auto pg_error = PgsqlError::ValueFromStatus(create_index_status);
+  ASSERT_TRUE(pg_error.has_value()) << create_index_status;
+  ASSERT_EQ(*pg_error, YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << create_index_status;
+}
 
 class PgAlterTableConcurrencyTest : public PgAlterTableTest {
  public:
