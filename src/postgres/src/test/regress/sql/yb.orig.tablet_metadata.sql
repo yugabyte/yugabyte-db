@@ -345,7 +345,7 @@ WHERE db_name = 'colocated_db'
   AND relname LIKE '%.colocation.parent.tablename'
   AND tablet_attrs IS NOT NULL;
 
--- yb_tablegroup_size raises a NOTICE naming the tablegroup oid when a tablet
+-- yb_tablegroup_size raises a NOTICE naming the tablegroup when a tablet
 -- has not reported drive info yet, which depends on heartbeat timing.
 SET client_min_messages = warning;
 
