@@ -94,8 +94,9 @@ public class TestTcmallocGC extends BaseYsqlConnMgr {
   // ysql_conn_mgr_tcmalloc_gc_interval seconds.
   @Test
   public void TestTcmallocGC() throws Exception {
-    assumeFalse("RSS-based memory assertions are unreliable under ASAN builds",
-        BuildTypeUtil.isASAN());
+    assumeFalse("tcmalloc is not used for sanitizer (tsan/asan) builds and conn mgr "
+        + "does gc for google tcmalloc only.",
+        BuildTypeUtil.isSanitizerBuild());
 
     final int tserverIndex = 1;
     final String tserverHost = getPgHost(tserverIndex);
@@ -109,19 +110,14 @@ public class TestTcmallocGC extends BaseYsqlConnMgr {
     Thread.sleep(500);
     long odysseyRSSEnd = getRssForPid(odysseyPid);
 
-    // Sanitizer builds (ASAN/TSAN) do not use tcmalloc. So therefore skip
-    // the log-based assertion as conn mgr does gc for YB_GOOGLE_TCMALLOC
-    // based allocations only.
-    if (!BuildTypeUtil.isSanitizerBuild()) {
-      ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, tserverIndex);
-      tailer.skipToEnd();
+    ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, tserverIndex);
+    tailer.skipToEnd();
 
-      String released = tailer.waitForLogRegex(
-          "released pageheap free memory to OS", (2), TimeUnit.SECONDS);
-      assertNotNull(
-          "Expected cron to log 'released pageheap free memory to OS' ",
-          released);
-    }
+    String released = tailer.waitForLogRegex(
+        "released pageheap free memory to OS", (2), TimeUnit.SECONDS);
+    assertNotNull(
+        "Expected cron to log 'released pageheap free memory to OS' ",
+        released);
 
     assertTrue(String.format("Odyssey RSS should have released from %d KB to %d KB",
         odysseyRSSPeak, odysseyRSSEnd), odysseyRSSPeak > odysseyRSSEnd);

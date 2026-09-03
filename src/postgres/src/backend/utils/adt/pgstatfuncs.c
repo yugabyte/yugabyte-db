@@ -860,73 +860,101 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			else
 				nulls[11] = true;
 
-			/* A zeroed client addr means we don't know */
-			memset(&zero_clientaddr, 0, sizeof(zero_clientaddr));
-			if (memcmp(&(beentry->st_clientaddr), &zero_clientaddr,
-					   sizeof(zero_clientaddr)) == 0)
+			/*
+			 * YB: For backends served by conn mgr, the physical connection
+			 * is always a Unix socket with conn mgr.
+			 * Show the logical client's address/port/hostname that the
+			 * connection manager forwarded via the yb_conn_mgr_client_*
+			 * GUCs instead.
+			 */
+			if (beentry->yb_st_cm_client_addr[0] != '\0')
 			{
-				nulls[12] = true;
-				nulls[13] = true;
-				nulls[14] = true;
+				values[12] = DirectFunctionCall1(inet_in,
+												 CStringGetDatum(beentry->yb_st_cm_client_addr));
+				if (beentry->yb_st_cm_client_hostname[0] != '\0')
+					values[13] = CStringGetTextDatum(beentry->yb_st_cm_client_hostname);
+				else
+					nulls[13] = true;
+				values[14] = Int32GetDatum(beentry->yb_st_cm_client_port >= 0
+										   ? beentry->yb_st_cm_client_port
+										   : -1);
 			}
 			else
 			{
-				if (beentry->st_clientaddr.addr.ss_family == AF_INET
-#ifdef HAVE_IPV6
-					|| beentry->st_clientaddr.addr.ss_family == AF_INET6
-#endif
-					)
+				/* YB: non-CM connection: use standard upstream client-address reporting */
+				/* A zeroed client addr means we don't know */
+				memset(&zero_clientaddr, 0, sizeof(zero_clientaddr));
+				if (memcmp(&(beentry->st_clientaddr), &zero_clientaddr,
+						sizeof(zero_clientaddr)) == 0)
 				{
-					char		remote_host[NI_MAXHOST];
-					char		remote_port[NI_MAXSERV];
-					int			ret;
-
-					remote_host[0] = '\0';
-					remote_port[0] = '\0';
-					ret = pg_getnameinfo_all(&beentry->st_clientaddr.addr,
-											 beentry->st_clientaddr.salen,
-											 remote_host, sizeof(remote_host),
-											 remote_port, sizeof(remote_port),
-											 NI_NUMERICHOST | NI_NUMERICSERV);
-					if (ret == 0)
+					nulls[12] = true;
+					nulls[13] = true;
+					nulls[14] = true;
+				}
+				else
+				{
+					/* YB: non-CM connection: use standard upstream client-address reporting */
+					if (beentry->st_clientaddr.addr.ss_family == AF_INET
+#ifdef HAVE_IPV6
+						|| beentry->st_clientaddr.addr.ss_family == AF_INET6
+#endif
+						)
 					{
-						clean_ipv6_addr(beentry->st_clientaddr.addr.ss_family, remote_host);
-						values[12] = DirectFunctionCall1(inet_in,
-														 CStringGetDatum(remote_host));
-						if (beentry->st_clienthostname &&
-							beentry->st_clienthostname[0])
-							values[13] = CStringGetTextDatum(beentry->st_clienthostname);
+						/* YB: non-CM connection: use standard upstream client-address reporting */
+						char		remote_host[NI_MAXHOST];
+						char		remote_port[NI_MAXSERV];
+						int			ret;
+
+						remote_host[0] = '\0';
+						remote_port[0] = '\0';
+						ret = pg_getnameinfo_all(&beentry->st_clientaddr.addr,
+												beentry->st_clientaddr.salen,
+												remote_host, sizeof(remote_host),
+												remote_port, sizeof(remote_port),
+												NI_NUMERICHOST | NI_NUMERICSERV);
+						if (ret == 0)
+						{
+							clean_ipv6_addr(beentry->st_clientaddr.addr.ss_family, remote_host);
+							values[12] = DirectFunctionCall1(inet_in,
+															CStringGetDatum(remote_host));
+							if (beentry->st_clienthostname &&
+								beentry->st_clienthostname[0])
+								values[13] = CStringGetTextDatum(beentry->st_clienthostname);
+							else
+								nulls[13] = true;
+							values[14] = Int32GetDatum(atoi(remote_port));
+						}
 						else
+						{
+							/* YB: non-CM connection: use standard upstream client-address reporting */
+							nulls[12] = true;
 							nulls[13] = true;
-						values[14] = Int32GetDatum(atoi(remote_port));
+							nulls[14] = true;
+						}
+					}
+					else if (beentry->st_clientaddr.addr.ss_family == AF_UNIX)
+					{
+						/* YB: non-CM connection: use standard upstream client-address reporting */
+						/*
+						 * Unix sockets always reports NULL for host and -1 for
+						 * port, so it's possible to tell the difference to
+						 * connections we have no permissions to view, or with
+						 * errors.
+						 */
+						nulls[12] = true;
+						nulls[13] = true;
+						values[14] = Int32GetDatum(-1);
 					}
 					else
 					{
+						/* YB: non-CM connection: use standard upstream client-address reporting */
+						/* Unknown address type, should never happen */
 						nulls[12] = true;
 						nulls[13] = true;
 						nulls[14] = true;
 					}
 				}
-				else if (beentry->st_clientaddr.addr.ss_family == AF_UNIX)
-				{
-					/*
-					 * Unix sockets always reports NULL for host and -1 for
-					 * port, so it's possible to tell the difference to
-					 * connections we have no permissions to view, or with
-					 * errors.
-					 */
-					nulls[12] = true;
-					nulls[13] = true;
-					values[14] = Int32GetDatum(-1);
-				}
-				else
-				{
-					/* Unknown address type, should never happen */
-					nulls[12] = true;
-					nulls[13] = true;
-					nulls[14] = true;
-				}
-			}
+			} /* end yb_st_cm_client_addr check */
 			/* Add backend type */
 			if (beentry->st_backendType == B_BG_WORKER)
 			{
@@ -1254,6 +1282,10 @@ pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS)
 	else if (!HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
 		PG_RETURN_NULL();
 
+	if (beentry->yb_st_cm_client_addr[0] != '\0')
+		PG_RETURN_DATUM(DirectFunctionCall1(inet_in,
+											CStringGetDatum(beentry->yb_st_cm_client_addr)));
+
 	/* A zeroed client addr means we don't know */
 	memset(&zero_clientaddr, 0, sizeof(zero_clientaddr));
 	if (memcmp(&(beentry->st_clientaddr), &zero_clientaddr,
@@ -1300,6 +1332,10 @@ pg_stat_get_backend_client_port(PG_FUNCTION_ARGS)
 
 	else if (!HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
 		PG_RETURN_NULL();
+
+	if (beentry->yb_st_cm_client_addr[0] != '\0')
+		PG_RETURN_INT32(beentry->yb_st_cm_client_port >= 0
+						? beentry->yb_st_cm_client_port : -1);
 
 	/* A zeroed client addr means we don't know */
 	memset(&zero_clientaddr, 0, sizeof(zero_clientaddr));
