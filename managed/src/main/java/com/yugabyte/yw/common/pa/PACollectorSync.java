@@ -45,6 +45,7 @@ public class PACollectorSync {
 
   private final SettableRuntimeConfigFactory configFactory;
   private final PerfAdvisorService perfAdvisorService;
+  private final PerfAdvisorClient perfAdvisorClient;
   private final MetricUrlProvider metricUrlProvider;
   private final RoleBindingUtil roleBindingUtil;
   private final PlatformScheduler platformScheduler;
@@ -69,12 +70,28 @@ public class PACollectorSync {
 
   private record CollectorEndpoint(UUID collectorUuid, UUID endpointUuid) {}
 
+  /**
+   * What was last pushed to each embedded collector, so a tick that changes nothing sends no
+   * request. Pushing every minute regardless meant a collector that had merely stopped answering
+   * failed the PUT and raised PA_EMBEDDED_COLLECTOR_ERROR - an alert about YBA-side initialization
+   * - well before PA_COLLECTOR_DOWN, the one that describes what happened.
+   *
+   * <p>Empty after a restart, so boot pushes once per collector; that pass is also what now repairs
+   * a collector edited out from under YBA.
+   */
+  private final Map<UUID, EmbeddedCollectorPush> lastPushed = new ConcurrentHashMap<>();
+
+  /** The body, plus the URL and token it is sent with, neither of which is part of the body. */
+  private record EmbeddedCollectorPush(
+      String paUrl, String paApiToken, PerfAdvisorClient.CustomerMetadata metadata) {}
+
   private final MetricService metricService;
 
   @Inject
   public PACollectorSync(
       SettableRuntimeConfigFactory configFactory,
       PerfAdvisorService perfAdvisorService,
+      PerfAdvisorClient perfAdvisorClient,
       MetricUrlProvider metricUrlProvider,
       RoleBindingUtil roleBindingUtil,
       PlatformScheduler platformScheduler,
@@ -83,6 +100,7 @@ public class PACollectorSync {
       RuntimeConfGetter confGetter) {
     this.configFactory = configFactory;
     this.perfAdvisorService = perfAdvisorService;
+    this.perfAdvisorClient = perfAdvisorClient;
     this.metricUrlProvider = metricUrlProvider;
     this.roleBindingUtil = roleBindingUtil;
     this.platformScheduler = platformScheduler;
@@ -200,17 +218,27 @@ public class PACollectorSync {
           collector.setUuid(customer.getUuid());
           collector.setPaApiToken(embeddedPaToken);
           collector.setApiToken(apiToken);
-          collector.setPaUrl(embeddedPaUrl);
+          // Normalized before the body is built, or it would differ from what create() stores
+          // by a trailing slash and the next tick would push again.
+          collector.setPaUrl(PerfAdvisorService.normalizeUrl(embeddedPaUrl));
           collector.setCustomerUUID(customer.getUuid());
-          collector.setMetricsUrl(prometheusUrl);
+          collector.setMetricsUrl(PerfAdvisorService.normalizeUrl(prometheusUrl));
           collector.setMetricsUsername(metricsUsername);
           collector.setMetricsPassword(metricsPassword);
-          collector.setYbaUrl(platformUrl);
+          collector.setYbaUrl(PerfAdvisorService.normalizeUrl(platformUrl));
           collector.setMetricsScrapePeriodSecs(scrapeInterval);
           collector.setEmbedded(true);
-          perfAdvisorService.create(collector);
+          // Built once, then pushed and remembered, so the next tick compares against the body
+          // that actually went out. Remembered here too, or that tick would re-push it.
+          PerfAdvisorClient.CustomerMetadata metadata =
+              perfAdvisorClient.buildCustomerMetadata(collector);
+          PACollector created = perfAdvisorService.create(collector, metadata);
+          lastPushed.put(
+              created.getUuid(),
+              new EmbeddedCollectorPush(created.getPaUrl(), created.getPaApiToken(), metadata));
         } else if (StringUtils.isEmpty(embeddedPaUrl) && embeddedCollector != null) {
           log.info("Removing embedded collector for customer {}", customer.getUuid());
+          lastPushed.remove(embeddedCollector.getUuid());
           // Delete the local yugaware DB row only - if we don't have embeddedPaUrl - this
           // means that embedded collector is not running and we can't call it's APIs anyway
           embeddedCollector.delete();
@@ -233,15 +261,28 @@ public class PACollectorSync {
           // doesn't restart YBA propagates promptly. The row write is clobbered by the
           // next HA sync, but the customer_metadata PUT on the local PA is what actually
           // gates its scraping / anomaly detection.
-          log.info("Updating embedded collector for customer {}", customer.getUuid());
           embeddedCollector.setPaApiToken(embeddedPaToken);
-          embeddedCollector.setPaUrl(embeddedPaUrl);
-          embeddedCollector.setMetricsUrl(prometheusUrl);
+          embeddedCollector.setPaUrl(PerfAdvisorService.normalizeUrl(embeddedPaUrl));
+          embeddedCollector.setMetricsUrl(PerfAdvisorService.normalizeUrl(prometheusUrl));
           embeddedCollector.setMetricsUsername(metricsUsername);
           embeddedCollector.setMetricsPassword(metricsPassword);
-          embeddedCollector.setYbaUrl(platformUrl);
+          embeddedCollector.setYbaUrl(PerfAdvisorService.normalizeUrl(platformUrl));
           embeddedCollector.setMetricsScrapePeriodSecs(scrapeInterval);
-          perfAdvisorService.save(embeddedCollector, true);
+          // Normalized above rather than left to save(), so unchanged values compare equal.
+          EmbeddedCollectorPush push =
+              new EmbeddedCollectorPush(
+                  embeddedCollector.getPaUrl(),
+                  embeddedCollector.getPaApiToken(),
+                  perfAdvisorClient.buildCustomerMetadata(embeddedCollector));
+          if (push.equals(lastPushed.get(embeddedCollector.getUuid()))) {
+            log.debug(
+                "Embedded collector for customer {} is up to date, skipping update",
+                customer.getUuid());
+          } else {
+            log.info("Updating embedded collector for customer {}", customer.getUuid());
+            perfAdvisorService.save(embeddedCollector, true, push.metadata());
+            lastPushed.put(embeddedCollector.getUuid(), push);
+          }
         }
         metricService.setOkStatusMetric(
             buildMetricTemplate(PlatformMetrics.PA_EMBEDDED_COLLECTOR_INIT_STATUS, customer));

@@ -46,28 +46,40 @@ public class PerfAdvisorClient {
     this.confGetter = confGetter;
   }
 
+  /**
+   * The body a PUT would carry for this collector. Exposed so PACollectorSync can build it once,
+   * push that same object and remember it: collection_enabled and proxy_mode are read from live
+   * state here, so a second build could differ from what was sent.
+   */
+  public CustomerMetadata buildCustomerMetadata(PACollector collector) {
+    // collection_enabled is derived from local HA state at PUT time - never persisted on
+    // PACollector. For non-embedded collectors HA does not apply, so collection is always
+    // enabled from YBA's point of view (the operator can still pause collection through
+    // the PA UI). For embedded collectors we disable collection when the local YBA is an
+    // HA follower.
+    boolean collectionEnabled = !(collector.isEmbedded() && HighAvailabilityConfig.isFollower());
+    return new CustomerMetadata()
+        .setId(collector.getCustomerUUID())
+        .setPlatformUrl(collector.getYbaUrl())
+        .setMetricsUrl(collector.getMetricsUrl())
+        .setMetricsUsername(collector.getMetricsUsername())
+        .setMetricsPassword(collector.getMetricsPassword())
+        .setMetricsScrapePeriodSec(collector.getMetricsScrapePeriodSecs())
+        .setApiToken(collector.getApiToken())
+        .setProxyMode(confGetter.getGlobalConf(GlobalConfKeys.paEmbeddedUiReverseProxyEnabled))
+        .setCollectionEnabled(collectionEnabled);
+  }
+
   public CustomerMetadata putCustomerMetadata(PACollector collector) {
+    return putCustomerMetadata(collector, buildCustomerMetadata(collector));
+  }
+
+  /** Sends a body the caller has already built. Returns the collector's response. */
+  public CustomerMetadata putCustomerMetadata(
+      PACollector collector, CustomerMetadata customerMetadata) {
     String customerMetadataUrl =
         collector.getPaUrl() + "/api/customer/" + collector.getCustomerUUID() + "/metadata";
     try {
-      // collection_enabled is derived from local HA state at PUT time - never persisted on
-      // PACollector. For non-embedded collectors HA does not apply, so collection is always
-      // enabled from YBA's point of view (the operator can still pause collection through
-      // the PA UI). For embedded collectors we disable collection when the local YBA is an
-      // HA follower.
-      boolean collectionEnabled = !(collector.isEmbedded() && HighAvailabilityConfig.isFollower());
-      CustomerMetadata customerMetadata =
-          new CustomerMetadata()
-              .setId(collector.getCustomerUUID())
-              .setPlatformUrl(collector.getYbaUrl())
-              .setMetricsUrl(collector.getMetricsUrl())
-              .setMetricsUsername(collector.getMetricsUsername())
-              .setMetricsPassword(collector.getMetricsPassword())
-              .setMetricsScrapePeriodSec(collector.getMetricsScrapePeriodSecs())
-              .setApiToken(collector.getApiToken())
-              .setProxyMode(
-                  confGetter.getGlobalConf(GlobalConfKeys.paEmbeddedUiReverseProxyEnabled))
-              .setCollectionEnabled(collectionEnabled);
       JsonNode result =
           getApiHelper()
               .putRequest(
