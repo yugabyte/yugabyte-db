@@ -35,7 +35,6 @@
 #include <inttypes.h>
 #include <string.h>
 
-#include <memory>
 #include <string>
 
 #include <boost/range/iterator_range.hpp>
