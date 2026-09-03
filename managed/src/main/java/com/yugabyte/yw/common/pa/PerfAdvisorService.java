@@ -186,8 +186,6 @@ public class PerfAdvisorService {
                   info.setUniverseUuid(meta.getId());
                   Optional<Universe> universe = Universe.maybeGet(meta.getId());
                   info.setUniverseName(universe.map(Universe::getName).orElse(null));
-                  info.setDataMountPoints(meta.getDataMountPoints());
-                  info.setOtherMountPoints(meta.getOtherMountPoints());
                   info.setAdvancedObservability(meta.isMetricsExportToPrometheusEnabled());
                   return info;
                 });
@@ -473,19 +471,12 @@ public class PerfAdvisorService {
         new PerfAdvisorClient.UniverseMetadata()
             .setId(universe.getUniverseUUID())
             .setCustomerId(paCollector.getCustomerUUID())
-            .setDataMountPoints(splitMountPoints(MetricQueryHelper.getDataMountPoints(universe)))
-            .setOtherMountPoints(
-                splitMountPoints(MetricQueryHelper.getOtherMountPoints(confGetter, universe)))
             .setMetricsExportToPrometheusEnabled(advancedObservability);
     client.putUniverseMetadata(paCollector, universeMetadata);
   }
 
   public void deleteUniverse(PACollector paCollector, Universe universe) {
     client.deleteUniverseMetadata(paCollector, universe.getUniverseUUID());
-  }
-
-  private List<String> splitMountPoints(String mountPoints) {
-    return Arrays.stream(mountPoints.split("\\|")).toList();
   }
 
   public void validate(PACollector platform) {

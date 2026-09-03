@@ -14721,20 +14721,6 @@
           "description" : "Whether advanced observability (metrics export) is enabled",
           "type" : "boolean"
         },
-        "dataMountPoints" : {
-          "description" : "Data mount points",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
-        "otherMountPoints" : {
-          "description" : "Other mount points",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
         "universeName" : {
           "description" : "Universe name (from YBA, or null if universe was deleted)",
           "type" : "string"

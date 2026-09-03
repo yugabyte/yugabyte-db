@@ -334,8 +334,6 @@ public class PerfAdvisorClient {
   public static class UniverseMetadata {
     private UUID id;
     private UUID customerId;
-    List<String> dataMountPoints;
-    List<String> otherMountPoints;
     private boolean metricsExportToPrometheusEnabled = false;
     private boolean metricsExportJsonlEnabled = true;
   }
