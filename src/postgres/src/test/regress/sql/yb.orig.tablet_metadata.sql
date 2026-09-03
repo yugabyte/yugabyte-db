@@ -314,45 +314,17 @@ FROM yb_get_tablet_metadata()
 WHERE tablet_id = '00000000000000000000000000000000';
 
 -- ============================================================
--- tablet_attrs and yb_tablegroup_size
+-- yb_tablegroup_size
 -- ============================================================
--- Privilege-masked rows keep tablet_attrs NULL (covered by (G) above).
--- When drive info is present, tablet_attrs exposes leader SST/WAL sizes.
--- Soft checks: if attrs are populated they must have the expected keys
--- and non-negative values. Empty result (attrs not yet available) is OK.
-\c yugabyte yugabyte
-
-SELECT COALESCE(bool_and(
-         (tablet_attrs->>'sst_bytes') IS NOT NULL
-         AND (tablet_attrs->>'wal_bytes') IS NOT NULL
-         AND (tablet_attrs->>'total_bytes') IS NOT NULL
-         AND (tablet_attrs->>'uncompressed_sst_bytes') IS NOT NULL
-         AND (tablet_attrs->>'sst_bytes')::bigint >= 0
-         AND (tablet_attrs->>'wal_bytes')::bigint >= 0
-         AND (tablet_attrs->>'total_bytes')::bigint >= 0), true) AS attrs_shape_ok
-FROM yb_tablet_metadata
-WHERE db_name = 'yugabyte'
-  AND relname = 'test_table_1'
-  AND tablet_attrs IS NOT NULL;
-
+-- tablet_attrs key/shape checks live in PgTableSizeTest.ColocatedTableSize,
+-- which can wait for master drive-info heartbeats. pg_regress cannot, and a
+-- populated-but-unread-yet row would make those predicates return false.
+-- yb_tablegroup_size raises a NOTICE when a tablet has not reported drive
+-- info yet; suppress it. The returned size is still >= 0.
 \c colocated_db yugabyte
-
-SELECT COALESCE(bool_and(
-         (tablet_attrs->>'total_bytes') IS NOT NULL
-         AND (tablet_attrs->>'total_bytes')::bigint >= 0), true) AS coloc_parent_attrs_ok
-FROM yb_tablet_metadata
-WHERE db_name = 'colocated_db'
-  AND relname LIKE '%.colocation.parent.tablename'
-  AND tablet_attrs IS NOT NULL;
-
--- yb_tablegroup_size raises a NOTICE naming the tablegroup when a tablet
--- has not reported drive info yet, which depends on heartbeat timing.
 SET client_min_messages = warning;
-
-SELECT yb_tablegroup_size(oid) >= 0 AS tg_size_ok
-FROM pg_yb_tablegroup
-WHERE grpname = 'default';
-
+SELECT COALESCE(bool_and(yb_tablegroup_size(oid) >= 0), true) AS tg_size_ok
+FROM pg_yb_tablegroup;
 RESET client_min_messages;
 
 -- Cleanup
