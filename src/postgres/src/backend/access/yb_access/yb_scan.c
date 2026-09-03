@@ -1836,7 +1836,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 											attnum),
 						   current->sk_collation,
 						   current->sk_argument,
-						   false);
+						   (current->sk_flags & SK_ISNULL) != 0 /* is_null */ );
 
 		/*
 		 * PgGate rejects IS NOT NULL binds on partition columns, and
