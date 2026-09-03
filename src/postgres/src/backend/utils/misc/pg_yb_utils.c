@@ -137,6 +137,7 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
+#include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
@@ -9556,11 +9557,59 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	return (Datum) 0;
 }
 
+typedef struct
+{
+	Oid			docdb_oid;		/* hash key; must be first */
+	Oid			relid;
+} YbDocdbOidToRelidEntry;
+
+/*
+ * Map from docdb oid (relfilenode, or original oid for mapped catalogs) to
+ * pg_class.oid. Caller must hash_destroy the result.
+ */
+static HTAB *
+yb_build_docdb_oid_to_relid_map(void)
+{
+	HASHCTL		hash_ctl;
+	HTAB	   *map;
+	Relation	pg_class;
+	SysScanDesc scan;
+	HeapTuple	tuple;
+
+	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
+	hash_ctl.keysize = sizeof(Oid);
+	hash_ctl.entrysize = sizeof(YbDocdbOidToRelidEntry);
+	hash_ctl.hcxt = CurrentMemoryContext;
+	map = hash_create("yb_stat_auto_analyze docdb oid map",
+					  1024,
+					  &hash_ctl,
+					  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+
+	pg_class = table_open(RelationRelationId, AccessShareLock);
+	scan = systable_beginscan(pg_class, InvalidOid, false, NULL, 0, NULL);
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		Form_pg_class classform = (Form_pg_class) GETSTRUCT(tuple);
+		YbDocdbOidToRelidEntry *entry;
+		Oid			docdb_oid = OidIsValid(classform->relfilenode)
+			? classform->relfilenode
+			: classform->oid;
+
+		entry = hash_search(map, &docdb_oid, HASH_ENTER, NULL);
+		entry->relid = classform->oid;
+	}
+	systable_endscan(scan);
+	table_close(pg_class, AccessShareLock);
+
+	return map;
+}
+
 Datum
 yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	int			i;
+	HTAB	   *docdb_oid_map;
 
 #define YB_AUTO_ANALYZE_TABLE_COLS 5
 
@@ -9570,22 +9619,32 @@ yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 
 	HandleYBStatus(YBCQueryAutoAnalyze(MyDatabaseId, &auto_analyze_info, &num_rows));
 
+	docdb_oid_map = yb_build_docdb_oid_to_relid_map();
+
 	for (i = 0; i < num_rows; ++i)
 	{
 		YbcAutoAnalyzeInfo *row_info = (YbcAutoAnalyzeInfo *) auto_analyze_info + i;
+		YbDocdbOidToRelidEntry *entry;
+		Relation	rel;
 		Datum		values[YB_AUTO_ANALYZE_TABLE_COLS];
 		bool		nulls[YB_AUTO_ANALYZE_TABLE_COLS];
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
-		Relation rel = RelationIdGetRelation(row_info->table_oid);
+
 		/*
-		 * A table could be deleted, but auto analyze hasn't cleaned up its
-		 * entry from its service table yet.
+		 * We may temporarily have stale YCQL rows corresponding to older
+		 * DocDB oids for this table; skip them.
 		 */
+		entry = hash_search(docdb_oid_map, &row_info->table_oid, HASH_FIND,
+							NULL);
+		if (!entry)
+			continue;
+
+		rel = RelationIdGetRelation(entry->relid);
 		if (!RelationIsValid(rel))
 			continue;
-		values[0] = ObjectIdGetDatum(row_info->table_oid);
+		values[0] = ObjectIdGetDatum(entry->relid);
 		values[1] = CStringGetTextDatum(get_namespace_name(RelationGetNamespace(rel)));
 		values[2] = CStringGetTextDatum(RelationGetRelationName(rel));
 		values[3] = UInt64GetDatum(row_info->mutations);
@@ -9601,6 +9660,8 @@ yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 		RelationClose(rel);
 	}
+
+	hash_destroy(docdb_oid_map);
 
 #undef YB_AUTO_ANALYZE_TABLE_COLS
 

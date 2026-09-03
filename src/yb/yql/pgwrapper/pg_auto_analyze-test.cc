@@ -1628,6 +1628,53 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
   ASSERT_EQ(1000 * cooldown_value, history_event["cooldown"].GetInt64());
 }
 
+// yb_stat_auto_analyze must keep reporting pg_class.oid after a rewrite, when
+// the service table key is the new relfilenode.
+TEST_F(PgAutoAnalyzeTest, StatAutoAnalyzeAfterTableRewrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+
+  const std::string table_name = "rewrite_obs";
+  const int num_rows = 80;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k int)", table_name));
+
+  const auto table_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT '$0'::regclass::oid", table_name)));
+  const auto relfilenode_before = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT relfilenode FROM pg_class WHERE oid = $0", table_oid)));
+  ASSERT_EQ(table_oid, relfilenode_before);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT generate_series(1, $1)", table_name, num_rows));
+  ASSERT_OK(WaitFor([&conn, table_oid, table_name]() -> Result<bool> {
+    auto row = conn.FetchRow<std::string>(
+        Format("SELECT relname FROM yb_stat_auto_analyze() WHERE relid = $0", table_oid));
+    return row.ok() && *row == table_name;
+  }, 30s * kTimeMultiplier, "table appears in yb_stat_auto_analyze"));
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN k TYPE bigint", table_name));
+
+  const auto oid_after = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", table_name)));
+  const auto relfilenode_after = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT relfilenode FROM pg_class WHERE oid = $0", table_oid)));
+  ASSERT_EQ(table_oid, oid_after);
+  ASSERT_NE(relfilenode_after, table_oid);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT generate_series(1, $1)", table_name, num_rows));
+  ASSERT_OK(WaitFor([&conn, table_oid, table_name]() -> Result<bool> {
+    auto row = conn.FetchRow<std::string>(
+        Format("SELECT relname FROM yb_stat_auto_analyze() WHERE relid = $0", table_oid));
+    return row.ok() && *row == table_name;
+  }, 30s * kTimeMultiplier, "rewritten table still visible by oid"));
+
+  const auto row_count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_stat_auto_analyze() WHERE relid = $0", table_oid)));
+  ASSERT_EQ(row_count, 1);
+}
+
 // Verify that setting yb_auto_analyze_enabled=false on a table prevents auto analyze from running
 // on that table, while other tables are still analyzed. Also verify that re-enabling
 // yb_auto_analyze_enabled allows the table to be analyzed again.
