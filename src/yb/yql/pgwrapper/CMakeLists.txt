@@ -153,6 +153,7 @@ if (NOT APPLE)
   # We disable this test when running on Apple platform as it does not support cgroups.
   ADD_YB_TEST(pg_cgroups-test)
 endif()
+ADD_YB_TEST(pg_analyze_mem-test)
 ADD_YB_TEST(pg_clock_skew-test)
 ADD_YB_TEST(pg_concurrent_ddls-test)
 ADD_YB_TEST(pg_conn-test)
