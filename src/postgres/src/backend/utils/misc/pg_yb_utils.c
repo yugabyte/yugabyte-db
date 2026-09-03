@@ -9363,7 +9363,7 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * NULL, and start_range/end_range contain the decoded range partition key
  * boundaries.
  * Leader is provided as a separate column for simpler querying.
- * tablet_attrs is a jsonb object with leader-replica disk size fields when
+ * tablet_attrs is a json object with leader-replica disk size fields when
  * available: sst_bytes, wal_bytes, uncompressed_sst_bytes, total_bytes
  * (sst+wal), and optionally vector_index_bytes. NULL when sizes are
  * unavailable or the row is privilege-masked.
@@ -9619,7 +9619,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 						 (long long) tablet->uncompressed_sst_files_disk_size,
 						 (long long) total_bytes);
 			}
-			values[12] = DirectFunctionCall1(jsonb_in, CStringGetDatum(attrs_buf));
+			values[12] = DirectFunctionCall1(json_in, CStringGetDatum(attrs_buf));
 		}
 		else
 			nulls[12] = true;
