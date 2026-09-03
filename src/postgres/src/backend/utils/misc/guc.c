@@ -907,6 +907,7 @@ bool		yb_enable_advanced_index_cond_fold;
 static bool yb_bypass_cond_recheck;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;
+static bool yb_conn_mgr_selective_deallocate;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -4207,7 +4208,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_conn_mgr_selective_deallocate", PGC_SIGHUP, CUSTOM_OPTIONS,
-			gettext_noop("Enables connection-manager-aware DEALLOCATE behavior."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},

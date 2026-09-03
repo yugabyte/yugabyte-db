@@ -14,6 +14,7 @@
 package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 import static org.yb.ysqlconnmgr.PgWireProtocol.*;
 
@@ -26,8 +27,10 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 
 import org.apache.commons.lang3.StringUtils;
@@ -49,6 +52,36 @@ public class TestParseErrors extends BaseYsqlConnMgr {
 
   private static final int SOCKET_TIMEOUT_MS = 10000;
   private static final int SLEEP_BEFORE_FINAL_SYNC_MS = 5000;
+
+  private static final String PID_QUERY = "SELECT pg_backend_pid()";
+  private static final String PID_QUERY_V2 = "SELECT pg_backend_pid(), 2";
+
+  private static PgMessage[] expectMessages(DataInputStream in, String what, char... expected)
+      throws Exception {
+    PgMessage[] msgs = new PgMessage[expected.length];
+    for (int i = 0; i < expected.length; i++) {
+      PgMessage msg = readMessage(in);
+      LOG.info(what + " [" + i + "]: " + msg +
+          (msg.type == BE_ERROR_RESPONSE
+              ? " " + new String(msg.body, StandardCharsets.UTF_8) : ""));
+      assertEquals(what + ": message type mismatch at position " + i,
+          expected[i], msg.type);
+      msgs[i] = msg;
+    }
+    assertEquals(what + ": unexpected trailing bytes after ReadyForQuery",
+        0, in.available());
+    return msgs;
+  }
+
+  private static int readPid(PgMessage dataRow) {
+    assertEquals("Expected DataRow", BE_DATA_ROW, dataRow.type);
+    ByteBuffer bb = ByteBuffer.wrap(dataRow.body);
+    bb.getShort();
+    int len = bb.getInt();
+    byte[] col = new byte[len];
+    bb.get(col);
+    return Integer.parseInt(new String(col, StandardCharsets.UTF_8));
+  }
 
   // Verifies that the connection manager correctly handles parse errors within
   // pipelined requests across multiple backends in round-robin mode,
@@ -932,6 +965,152 @@ public class TestParseErrors extends BaseYsqlConnMgr {
       }
 
       // Clean up
+      out.write(buildTerminate());
+      out.flush();
+    }
+  }
+
+  // Reproduces a bug where a pipeling failure causes eviction of wrong entry from
+  // server hashmap. This happened because we were consulting client hashmap to figure
+  // out query text, but that can be overwritten
+  //
+  // Shape of the bug (S3 -> Q1 is already in the client hashmap):
+  //   ... error ... P(S3, Q1) B E    <- skipped by the backend, but conn mgr had
+  //                                     already recorded hash(S3, Q1) as present
+  //                                     on the server
+  //                 P(S3, Q2) B E    <- also skipped; client hashmap now S3 -> Q2
+  //                 Sync             <- the drain evicts using the client hashmap,
+  //                                     so only hash(S3, Q2) goes away and
+  //                                     hash(S3, Q1) stays in server hashmap
+  // A later plain Bind of S3 -> Q1 landing on that same backend then finds the
+  // leaked entry, is forwarded without a re-parse, and the backend rejects it.
+  //
+  // Round-robin allotment gives a deterministic three-backend rotation (one hop
+  // per transaction), which is what lets the test come back to the backend that
+  // saw the failed pipeline. Every hop asserts pg_backend_pid() so a routing
+  // change cannot make the test pass vacuously.
+  @Test
+  public void testStaleServerStateAfterRebindInFailedPipeline() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "round_robin");
+    tserverFlags.put("ysql_conn_mgr_enable_multi_route_pool", "true");
+    tserverFlags.put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+
+    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
+    LOG.info("Connecting raw socket to Odyssey at " + addr);
+
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in = new DataInputStream(socket.getInputStream());
+
+      out.write(buildStartupMessage("yugabyte", "yugabyte"));
+      out.flush();
+      readUntilReady(in);
+      LOG.info("Startup complete, connection is ready");
+
+      // Let the pool finish warming up to min_pool_size before relying on the
+      // round-robin rotation.
+      Thread.sleep(SLEEP_BEFORE_FINAL_SYNC_MS);
+
+      // Learn the rotation: one transaction per backend, three distinct pids.
+      int[] pids = new int[3];
+      for (int i = 0; i < pids.length; i++) {
+        out.write(buildParse("PROBE" + i, PID_QUERY, new int[0]));
+        out.write(buildBind("PROBE" + i, new String[0]));
+        out.write(buildExecute());
+        out.write(buildSync());
+        out.flush();
+        PgMessage[] msgs = expectMessages(in, "probe " + i,
+            BE_PARSE_COMPLETE, BE_BIND_COMPLETE, BE_DATA_ROW,
+            BE_COMMAND_COMPLETE, BE_READY_FOR_QUERY);
+        pids[i] = readPid(msgs[2]);
+      }
+      LOG.info("Round-robin rotation: " + Arrays.toString(pids));
+      assertEquals("Expected three distinct backends in round-robin mode",
+          3, new HashSet<>(Arrays.asList(pids[0], pids[1], pids[2])).size());
+
+      // Backend pids[0]: a pipeline that fails and then re-binds S3 to a second
+      // query. Everything after the syntax error is skipped by the backend.
+      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
+      pipeline.write(buildParse("PROBE_ERR", PID_QUERY, new int[0]));
+      pipeline.write(buildBind("PROBE_ERR", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildParse("S_BAD", "this is not valid sql", new int[0]));
+      pipeline.write(buildBind("S_BAD", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildParse("S3", PID_QUERY, new int[0]));
+      pipeline.write(buildBind("S3", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildParse("S3", PID_QUERY_V2, new int[0]));
+      pipeline.write(buildBind("S3", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline: P(PROBE_ERR)+B+E + P(S_BAD)+B+E + "
+          + "P(S3,Q1)+B+E + P(S3,Q2)+B+E + Sync");
+
+      PgMessage[] msgs = expectMessages(in, "failing pipeline",
+          BE_PARSE_COMPLETE, BE_BIND_COMPLETE, BE_DATA_ROW, BE_COMMAND_COMPLETE,
+          BE_ERROR_RESPONSE, BE_READY_FOR_QUERY);
+      assertEquals("Failing pipeline did not run on the first backend",
+          pids[0], readPid(msgs[2]));
+      String errText = new String(msgs[4].body, StandardCharsets.UTF_8);
+      assertTrue("Expected a syntax error from S_BAD, got: " + errText,
+          StringUtils.contains(errText, "syntax error"));
+
+      // Backend pids[1]: re-parse S3 back to Q1, so the client hashmap once more
+      // maps S3 -> Q1 -- the mapping whose server-side entry leaked on pids[0].
+      out.write(buildParse("S3", PID_QUERY, new int[0]));
+      out.write(buildBind("S3", new String[0]));
+      out.write(buildExecute());
+      out.write(buildSync());
+      out.flush();
+      LOG.info("Sent pipeline: P(S3,Q1)+B(S3)+E+Sync");
+      msgs = expectMessages(in, "re-parse of S3",
+          BE_PARSE_COMPLETE, BE_BIND_COMPLETE, BE_DATA_ROW, BE_COMMAND_COMPLETE,
+          BE_READY_FOR_QUERY);
+      assertEquals("Re-parse of S3 did not run on the second backend",
+          pids[1], readPid(msgs[2]));
+
+      // Backend pids[2]: plain Bind on a backend that never saw S3 -- the normal
+      // redeploy path, and the hop that brings the rotation back to pids[0].
+      out.write(buildBind("S3", new String[0]));
+      out.write(buildExecute());
+      out.write(buildSync());
+      out.flush();
+      LOG.info("Sent pipeline: B(S3)+E+Sync on a backend without S3");
+      msgs = expectMessages(in, "plain bind after redeploy",
+          BE_BIND_COMPLETE, BE_DATA_ROW, BE_COMMAND_COMPLETE, BE_READY_FOR_QUERY);
+      assertEquals("Plain bind did not run on the third backend",
+          pids[2], readPid(msgs[1]));
+
+      // Back on pids[0]: the plain Bind must still be redeployed. If conn mgr
+      // kept hash(S3, Q1) from the skipped Parse it forwards the Bind as-is and
+      // the backend answers with 26000.
+      out.write(buildBind("S3", new String[0]));
+      out.write(buildExecute());
+      out.write(buildSync());
+      out.flush();
+      LOG.info("Sent pipeline: B(S3)+E+Sync on the backend that saw the failed pipeline");
+
+      PgMessage first = readMessage(in);
+      LOG.info("plain bind on poisoned backend [0]: " + first);
+      if (first.type == BE_ERROR_RESPONSE) {
+        fail("Stale server-side prepared statement left behind by the failed "
+            + "pipeline: " + new String(first.body, StandardCharsets.UTF_8));
+      }
+      assertEquals("Expected BindComplete", BE_BIND_COMPLETE, first.type);
+      msgs = expectMessages(in, "plain bind on poisoned backend",
+          BE_DATA_ROW, BE_COMMAND_COMPLETE, BE_READY_FOR_QUERY);
+      assertEquals("Final bind did not run on the backend that saw the failed pipeline",
+          pids[0], readPid(msgs[0]));
+
       out.write(buildTerminate());
       out.flush();
     }

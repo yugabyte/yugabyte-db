@@ -66,13 +66,11 @@ void od_config_init(od_config_t *config)
 	config->yb_ysql_max_connections = 300;
 	config->yb_optimized_session_parameters = true;
 	config->yb_max_pools = YSQL_CONN_MGR_MAX_POOLS;
-	config->yb_enable_prep_stmt_close = true;
 	config->TEST_yb_auth_delay_ms = 0;
 	config->yb_max_prepared_statements = 0;
 	config->yb_tcmalloc_gc_interval = 300;
 	config->yb_enable_parse_queue_tracking = true;
 	config->yb_wait_for_rfq_on_sync = true;
-	config->yb_enable_dealloc_reconciliation = true;
 	config->yb_backend_drain_timeout_ms = 100;
 
 	od_list_init(&config->listen);
@@ -379,9 +377,6 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	od_log(logger, "config", NULL, NULL, "yb_max_pools     %d",
 	       config->yb_max_pools);
 
-	od_log(logger, "config", NULL, NULL, "yb_enable_prep_stmt_close %s",
-	       od_config_yes_no(config->yb_enable_prep_stmt_close));
-
 	od_log(logger, "config", NULL, NULL, "yb_tcmalloc_gc_interval     %d",
 	       config->yb_tcmalloc_gc_interval);
 
@@ -412,10 +407,6 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	od_log(logger, "config", NULL, NULL,
 	       "yb_wait_for_rfq_on_sync        %s",
 	       od_config_yes_no(config->yb_wait_for_rfq_on_sync));
-
-	od_log(logger, "config", NULL, NULL,
-	       "yb_enable_dealloc_reconciliation %s",
-	       od_config_yes_no(config->yb_enable_dealloc_reconciliation));
 
 #ifdef USE_SCRAM
 	od_log(logger, "config", NULL, NULL, "SCRAM auth metod:       OK");

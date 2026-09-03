@@ -141,13 +141,9 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
     "Enable optimized extended query protocol in Ysql Connection Manager. "
     "If set to false, extended query protocol handling is fully correct but unoptimized.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_prep_stmt_close, true,
-    "When enabled, the YSQL Connection Manager forwards Close messages to the backend, which "
-    "drops the prepared statement only if its cached plan is invalid or the connection is sticky; "
-    "valid plans on non-sticky connections are retained for reuse across logical connections. "
-    "When disabled, Close messages are handled as a no-op by the connection manager itself "
-    "and never reach the backend, which can cause errors. "
-    "Requires ysql_conn_mgr_optimized_extended_query_protocol to be enabled.");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_prep_stmt_close, "07_2026");
+
+DEPRECATE_FLAG(bool, ysql_conn_mgr_enable_dealloc_reconciliation, "07_2026");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_deallocate_if_invalid_prep_stmt, "04_2026");
 
@@ -198,12 +194,6 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
     "forwarding a Sync message and resumes only once the matching ReadyForQuery from the "
     "backend is received, preventing cross-Sync-boundary pipelining. if set to false, there"
     " can be correctness issues with pipelining.");
-
-DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, enable_dealloc_reconciliation, true,
-    "When enabled, the YSQL Connection Manager tracks prepared statements that have been "
-    "deallocated on the backend in a per-server hashmap and defers evicting them from "
-    "server hashmap till Sync boundary. If set to false, there can be correctness issues "
-    "on sending deallocate and parse for same name of prep stmt within Sync boundary.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "Sets the interval at which TCMalloc should sample allocations for connection manager. "
@@ -267,12 +257,6 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 } // namespace
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
-
-DEFINE_validator(ysql_conn_mgr_enable_prep_stmt_close,
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
-
-DEFINE_validator(ysql_conn_mgr_enable_dealloc_reconciliation,
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_wait_for_rfq_on_sync));
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
