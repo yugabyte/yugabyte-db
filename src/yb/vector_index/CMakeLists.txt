@@ -29,6 +29,7 @@ ADD_YB_LIBRARY(vector_index_proto
 set(VECTOR_INDEX_SRCS
   ann_validation.cc
   benchmark_data.cc
+  coordinate_codec.cc
   hnsw_options.cc
   hnsw_util.cc
   index_wrapper_base.cc
@@ -36,6 +37,7 @@ set(VECTOR_INDEX_SRCS
   vector_lsm.cc
   vector_lsm_metadata.cc
   vector_lsm_metrics.cc
+  vector_storage_kind.cc
   )
 
 set(VECTOR_INDEX_LIBS
@@ -57,4 +59,5 @@ add_dependencies(
 set(YB_TEST_LINK_LIBS
     vector_index yb_common_test_util ${YB_MIN_TEST_LIBS})
 
+ADD_YB_TEST(coordinate_codec-test)
 ADD_YB_TEST(hnsw_util-test)

@@ -640,6 +640,27 @@ DEFINE_validator(vector_index_backend,
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
 
+static constexpr char kVectorStorageFloat32[] = "float32";
+static constexpr char kVectorStorageFloat16[] = "float16";
+static constexpr char kVectorStorageInt8[] = "int8";
+
+DEFINE_RUNTIME_string(vector_index_storage_coordinate_type, kVectorStorageFloat32,
+    "Coordinate encoding for the on-disk chunks of newly created vector indexes. \"float32\" "
+    "stores full precision. \"float16\" halves the coordinate bytes of every served chunk, so "
+    "roughly twice as much of the index fits in the block cache, at a small recall cost. "
+    "\"int8\" quarters the bytes a distance evaluation touches and stores a float16 rerank copy "
+    "alongside, which makes the whole record 0.75x float32 -- so it trades disk against search "
+    "cost in the other direction from \"float16\" and suits an index that already fits in the "
+    "block cache. The graph is built at full precision in every case. Recorded per index at "
+    "creation time, so it never changes for an existing index, and chunks written as anything "
+    "other than float32 cannot be read by releases that predate the encoding.");
+
+DEFINE_validator(vector_index_storage_coordinate_type,
+    FLAG_IN_SET_VALIDATOR(
+        kVectorStorageFloat32, kVectorStorageFloat16, kVectorStorageInt8));
+
+TAG_FLAG(vector_index_storage_coordinate_type, advanced);
+
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
     "Such tables write vector reverse mappings on row insert/update regardless of "
@@ -4683,6 +4704,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_USEARCH);
       } else if (backend == kYbHnswHnswlib) {
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_HNSWLIB);
+      }
+      // Copied, not referenced: the flag is runtime-settable, so holding a reference to its
+      // std::string races with a concurrent set. The backend flag above is read the same way.
+      const auto storage_type = FLAGS_vector_index_storage_coordinate_type;
+      if (storage_type == kVectorStorageFloat16) {
+        vector_index_options.mutable_hnsw()->set_storage_type(VectorStorageType::STORAGE_FLOAT16);
+      } else if (storage_type == kVectorStorageInt8) {
+        vector_index_options.mutable_hnsw()->set_storage_type(VectorStorageType::STORAGE_INT8);
       }
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
@@ -14246,12 +14275,6 @@ void CatalogManager::SchedulePostTabletCreationTasks(
 Status CatalogManager::PromoteTableToRunningState(
     TableInfoPtr table_info, const LeaderEpoch& epoch) {
   auto l = table_info->LockForWrite();
-  if (l->pb.state() == SysTablesEntryPB::RUNNING) {
-    // Another AddTableToTablet task generation already promoted the table: the catalog loader
-    // re-sends the RPCs on every sys catalog reload (master failover, PITR restore) while the
-    // table is PREPARING, so multiple generations can complete.
-    return Status::OK();
-  }
   SCHECK(
       l.mutable_data()->IsPreparing(), IllegalState,
       "Table $0 should be in PREPARING state. Current state: $1", table_info->ToString(),

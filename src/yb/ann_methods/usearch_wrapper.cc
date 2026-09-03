@@ -124,7 +124,7 @@ class UsearchIndex :
       : block_cache_(block_cache),
         dimensions_(options.dimensions),
         distance_kind_(options.distance_kind),
-        metric_(options.CreateMetric<Vector>()),
+        metric_(options.CreateBuildMetric<Vector>()),
         backend_(backend),
         index_(IndexImpl::make(metric_, CreateIndexDenseConfig(options))) {
     CHECK_GT(dimensions_, 0);
@@ -350,7 +350,7 @@ class UsearchIndexTraits :
       const MemTrackerPtr& mem_tracker)
       : block_cache_(block_cache), options_(options), backend_(backend),
         mem_tracker_(mem_tracker),
-        metric_(options.CreateMetric<Vector>()) {
+        metric_(options.CreateBuildMetric<Vector>()) {
     LOG_IF(DFATAL, backend != HnswBackend::USEARCH && backend != HnswBackend::YB_HNSW_USEARCH) <<
         "Invalid backend for usearch index: " << HnswBackend_Name(backend);
   }
