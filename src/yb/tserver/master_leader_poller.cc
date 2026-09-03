@@ -14,6 +14,7 @@
 #include "yb/tserver/master_leader_poller.h"
 
 #include "yb/gutil/bind.h"
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/master/master_rpc.h"
@@ -176,33 +177,38 @@ void MasterLeaderPollScheduler::UpdateMasterAddresses(server::MasterAddressesPtr
 
 MasterLeaderFinder::MasterLeaderFinder(
     rpc::Messenger* messenger, rpc::ProxyCache& proxy_cache,
-    server::MasterAddressesPtr master_addresses)
+    server::MasterAddressesPtr master_addresses, CloudInfoPB connect_from)
     : messenger_(messenger),
       proxy_cache_(proxy_cache),
+      connect_from_(std::move(connect_from)),
       master_addresses_(std::move(master_addresses)) {}
 
 namespace {
 struct FindLeaderMasterData {
-  HostPort result;
+  MasterLeaderFinder::MasterLeader result;
   Synchronizer sync;
   std::shared_ptr<master::GetLeaderMasterRpc> rpc;
 };
 
 void LeaderMasterCallback(const std::shared_ptr<FindLeaderMasterData>& data,
                           const Status& status,
-                          const HostPort& result) {
+                          const HostPort& result,
+                          const CloudInfoPB& cloud_info) {
   if (status.ok()) {
-    data->result = result;
+    data->result = {.hostport = result, .cloud_info = cloud_info};
   }
   data->sync.StatusCB(status);
 }
 
 }  // anonymous namespace
 
-Result<HostPort> MasterLeaderFinder::FindMasterLeader(MonoDelta timeout) {
+Result<MasterLeaderFinder::MasterLeader> MasterLeaderFinder::FindMasterLeader(MonoDelta timeout) {
   const auto master_addresses = get_master_addresses_unlocked();
   if (master_addresses->size() == 1 && (*master_addresses)[0].size() == 1) {
-    return (*master_addresses)[0][0];
+    // A single configured master is the leader by definition, so no registration is fetched
+    // and its placement stays unset. An unset placement matches no node's, so it falls
+    // outside every scope and the connection is encrypted when encryption is enabled.
+    return MasterLeader{.hostport = (*master_addresses)[0][0], .cloud_info = CloudInfoPB()};
   }
   auto master_sock_addrs = *master_addresses;
   if (master_sock_addrs.empty()) {
@@ -228,20 +234,20 @@ Result<HostPort> MasterLeaderFinder::FindMasterLeader(MonoDelta timeout) {
       Format("Failed to find master leader using master addresses $0", *master_addresses));
 }
 
-Result<HostPort> MasterLeaderFinder::UpdateMasterLeaderHostPort(MonoDelta timeout) {
-  // Keep a local copy of the latest leader master hostport we compute to avoid holding the lock
+Result<MasterLeaderFinder::MasterLeader> MasterLeaderFinder::UpdateMasterLeader(MonoDelta timeout) {
+  // Keep a local copy of the latest leader master we compute to avoid holding the lock
   // while making a synchronous RPC.
-  HostPort local_hp_copy;
+  MasterLeader local_copy;
   {
     std::lock_guard l(master_meta_mtx_);
-    master_leader_hostport_ =
+    master_leader_ =
         VERIFY_RESULT_PREPEND(FindMasterLeader(timeout), "Attempt to find leader master failed");
-    local_hp_copy = master_leader_hostport_;
+    local_copy = master_leader_;
   }
 
   // Pings are common for both Master and Tserver.
-  auto new_proxy =
-      std::make_unique<server::GenericServiceProxy>(&proxy_cache_, local_hp_copy);
+  auto new_proxy = std::make_unique<server::GenericServiceProxy>(
+      &proxy_cache_, local_copy.hostport, &ProtocolFor(local_copy));
 
   // Ping the master to verify that it's alive.
   server::PingRequestPB req;
@@ -250,9 +256,13 @@ Result<HostPort> MasterLeaderFinder::UpdateMasterLeaderHostPort(MonoDelta timeou
   rpc.set_timeout(timeout);
   RETURN_NOT_OK_PREPEND(
       new_proxy->Ping(req, &resp, &rpc),
-      Format("Failed to ping master at $0", local_hp_copy));
-  VLOG(1) << "Connected to leader master server at " << local_hp_copy;
-  return local_hp_copy;
+      Format("Failed to ping master at $0", local_copy.hostport));
+  VLOG(1) << "Connected to leader master server at " << local_copy.hostport;
+  return local_copy;
+}
+
+const rpc::Protocol& MasterLeaderFinder::ProtocolFor(const MasterLeader& leader) const {
+  return proxy_cache_.GetContext()->ProtocolFor(leader.cloud_info, connect_from_);
 }
 
 rpc::ProxyCache& MasterLeaderFinder::get_proxy_cache() {
@@ -271,7 +281,7 @@ server::MasterAddressesPtr MasterLeaderFinder::get_master_addresses() const {
 
 HostPort MasterLeaderFinder::get_master_leader_hostport() const {
   std::lock_guard l(master_meta_mtx_);
-  return master_leader_hostport_;
+  return master_leader_.hostport;
 }
 
 void MasterLeaderFinder::set_master_addresses(server::MasterAddressesPtr master_addresses) {

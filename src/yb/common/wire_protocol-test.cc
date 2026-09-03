@@ -40,9 +40,12 @@
 #include "yb/common/wire_protocol.pb.h"
 
 #include "yb/util/errno.h"
+#include "yb/util/flags.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+
+DECLARE_string(node_to_node_encryption_scope);
 
 namespace yb {
 
@@ -186,6 +189,75 @@ TEST_F(WireProtocolTest, TestBadSchema_DuplicateColumnName) {
   Status s = ColumnPBsToSchema(pbs, &schema);
   ASSERT_EQ("Invalid argument: Duplicate column name: c0",
             s.ToString(/* no file/line */ false));
+}
+
+namespace {
+
+CloudInfoPB CloudInfo(const std::string& cloud, const std::string& region,
+                      const std::string& zone) {
+  CloudInfoPB result;
+  result.set_placement_cloud(cloud);
+  result.set_placement_region(region);
+  result.set_placement_zone(zone);
+  return result;
+}
+
+} // namespace
+
+TEST_F(WireProtocolTest, NodeToNodeEncryptionScope) {
+  const auto here = CloudInfo("cloud1", "region1", "zone1");
+  const auto same_zone = CloudInfo("cloud1", "region1", "zone1");
+  const auto same_region = CloudInfo("cloud1", "region1", "zone2");
+  const auto same_cloud = CloudInfo("cloud1", "region2", "zone3");
+  const auto elsewhere = CloudInfo("cloud2", "region3", "zone4");
+
+  // Each scope names the boundary within which a destination is exempt. Anything at or
+  // beyond that boundary is outside the scope.
+  struct {
+    const char* scope;
+    bool zone, region, cloud, other;
+  } cases[] = {
+    // scope     same_zone  same_region  same_cloud  elsewhere
+    {"zone",     false,     true,        true,       true},
+    {"region",   false,     false,       true,       true},
+    {"cloud",    false,     false,       false,      true},
+    {"never",    true,      true,        true,       true},
+  };
+
+  for (const auto& c : cases) {
+    google::FlagSaver flag_saver;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = c.scope;
+    SCOPED_TRACE(c.scope);
+    EXPECT_EQ(c.zone, UseEncryption(same_zone, here));
+    EXPECT_EQ(c.region, UseEncryption(same_region, here));
+    EXPECT_EQ(c.cloud, UseEncryption(same_cloud, here));
+    EXPECT_EQ(c.other, UseEncryption(elsewhere, here));
+  }
+}
+
+TEST_F(WireProtocolTest, NodeToNodeEncryptionScopeUnknownPlacement) {
+  const auto here = CloudInfo("cloud1", "region1", "zone1");
+
+  // A destination whose placement was never reported matches no node's, so it is outside
+  // every scope and its connection stays encrypted.
+  for (const auto* scope : {"zone", "region", "cloud", "never"}) {
+    google::FlagSaver flag_saver;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = scope;
+    SCOPED_TRACE(scope);
+    EXPECT_TRUE(UseEncryption(CloudInfoPB(), here));
+  }
+}
+
+TEST_F(WireProtocolTest, NodeToNodeEncryptionScopeInvalid) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = "continent";
+
+  ASSERT_NOK(GetNodeToNodeEncryptionScope());
+
+  // A value that names no scope leaves every destination outside it, so a typo encrypts
+  // rather than exposing traffic.
+  const auto here = CloudInfo("cloud1", "region1", "zone1");
+  EXPECT_TRUE(UseEncryption(here, here));
 }
 
 } // namespace yb

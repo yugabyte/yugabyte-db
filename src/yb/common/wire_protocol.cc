@@ -61,6 +61,20 @@ DEFINE_UNKNOWN_string(use_private_ip, "never",
               "zone - would use private IP if destination node is located in the same cloud, "
                   "region and zone."
               "never - would never use private IP if broadcast address is specified.");
+
+DEFINE_UNKNOWN_string(node_to_node_encryption_scope, "never",
+              "When node to node encryption is enabled, which connections to encrypt. "
+              "Scoped like use_private_ip: "
+              "cloud - would not encrypt if destination node is located in the same cloud. "
+              "region - would not encrypt if destination node is located in the same cloud and "
+                  "region. "
+              "zone - would not encrypt if destination node is located in the same cloud, region "
+                  "and zone. "
+              "never - would encrypt every connection. "
+              "Traffic left unencrypted by this flag is only as private as the network carrying "
+              "it, so narrow the scope no further than the boundary that network reaches. "
+              "The nodes receiving those connections must run with allow_insecure_connections, "
+              "which is what lets a listener accept one that carries no TLS.");
 namespace yb {
 
 namespace {
@@ -381,51 +395,69 @@ Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
   return Status::OK();
 }
 
-Result<UsePrivateIpMode> GetPrivateIpMode() {
+namespace {
+
+Result<UsePrivateIpMode> ParseScope(const char* flag_name, const std::string& value) {
   for (auto i : UsePrivateIpModeList()) {
-    if (FLAGS_use_private_ip == ToCString(i)) {
+    if (value == ToCString(i)) {
       return i;
     }
   }
   return STATUS_FORMAT(
-      IllegalState,
-      "Invalid value of FLAGS_use_private_ip: $0, using private ip everywhere",
-      FLAGS_use_private_ip);
+      IllegalState, "Invalid value of $0: $1, treating every destination as outside the scope",
+      flag_name, value);
 }
 
-UsePrivateIpMode GetMode() {
-  auto result = GetPrivateIpMode();
-  if (result.ok()) {
-    return *result;
+UsePrivateIpMode ScopeOrDefault(Result<UsePrivateIpMode> scope) {
+  if (scope.ok()) {
+    return *scope;
   }
-  YB_LOG_EVERY_N_SECS(WARNING, 300) << result.status();
+  YB_LOG_EVERY_N_SECS(WARNING, 300) << scope.status();
   return UsePrivateIpMode::never;
 }
 
-PublicAddressAllowed UsePublicIp(const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
-  auto mode = GetMode();
+}  // namespace
 
+Result<UsePrivateIpMode> GetPrivateIpMode() {
+  return ParseScope("use_private_ip", FLAGS_use_private_ip);
+}
+
+Result<UsePrivateIpMode> GetNodeToNodeEncryptionScope() {
+  return ParseScope("node_to_node_encryption_scope", FLAGS_node_to_node_encryption_scope);
+}
+
+// Whether connect_to lies outside the scope named by mode, as seen from connect_from.
+bool OutsideScope(
+    UsePrivateIpMode mode, const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
   if (mode == UsePrivateIpMode::never) {
-    return PublicAddressAllowed::kTrue;
+    return true;
   }
   if (connect_to.placement_cloud() != connect_from.placement_cloud()) {
-    return PublicAddressAllowed::kTrue;
+    return true;
   }
   if (mode == UsePrivateIpMode::cloud) {
-    return PublicAddressAllowed::kFalse;
+    return false;
   }
   if (connect_to.placement_region() != connect_from.placement_region()) {
-    return PublicAddressAllowed::kTrue;
+    return true;
   }
   if (mode == UsePrivateIpMode::region) {
-    return PublicAddressAllowed::kFalse;
+    return false;
   }
   if (connect_to.placement_zone() != connect_from.placement_zone()) {
-    return PublicAddressAllowed::kTrue;
+    return true;
   }
-  return mode == UsePrivateIpMode::zone
-      ? PublicAddressAllowed::kFalse
-      : PublicAddressAllowed::kTrue;
+  return mode != UsePrivateIpMode::zone;
+}
+
+PublicAddressAllowed UsePublicIp(const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
+  return PublicAddressAllowed(
+      OutsideScope(ScopeOrDefault(GetPrivateIpMode()), connect_to, connect_from));
+}
+
+bool UseEncryption(const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
+  return OutsideScope(
+      ScopeOrDefault(GetNodeToNodeEncryptionScope()), connect_to, connect_from);
 }
 
 const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration) {

@@ -50,6 +50,8 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
 
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/locks.h"
@@ -376,6 +378,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // Uses DNS to resolve registered hosts to a single endpoint.
   Result<HostPort> GetHostPortUnlocked() const REQUIRES_SHARED(mutex_);
 
+  // The transport for a connection to this server, from the master's own placement.
+  const rpc::Protocol& ProtocolForUnlocked() const REQUIRES_SHARED(mutex_);
+
   void DecayRecentReplicaCreationsUnlocked() REQUIRES(mutex_);
 
   template <typename LockType>
@@ -493,7 +498,7 @@ Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
     }
     auto hostport = VERIFY_RESULT(GetHostPortUnlocked());
     if (!(*result_cache)) {
-      *result_cache = std::make_shared<TProxy>(proxy_cache_, hostport);
+      *result_cache = std::make_shared<TProxy>(proxy_cache_, hostport, &ProtocolForUnlocked());
     }
     *result = *result_cache;
   }

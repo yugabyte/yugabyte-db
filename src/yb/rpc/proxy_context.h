@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "yb/common/common_net.pb.h"
+
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/metrics_fwd.h"
@@ -38,6 +40,19 @@ class ProxyContext {
 
   virtual const Protocol& DefaultProtocol() = 0;
   virtual const Protocol& UncompressedProtocol() = 0;
+
+  // The protocol at a point in the (compression, encryption) space. Naming a point this
+  // messenger was not built for fails the connection with NotFound, since there is no stream
+  // factory to create it from.
+  virtual const Protocol& ProtocolFor(Compressed compressed, Encrypted encrypted) = 0;
+
+  // The protocol for a connection to a node at connect_to, seen from connect_from: the
+  // compression and encryption this messenger holds, encrypted only where
+  // node_to_node_encryption_scope does not exempt the destination. Pairs the policy with the
+  // transports available the way DesiredHostPort pairs it with the addresses a node reported,
+  // so a messenger built without encryption yields a protocol it can still create.
+  virtual const Protocol& ProtocolFor(
+      const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) = 0;
 
   virtual ThreadPool& CallbackThreadPool(ServicePriority priority = ServicePriority::kNormal) = 0;
 

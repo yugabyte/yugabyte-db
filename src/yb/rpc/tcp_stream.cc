@@ -515,8 +515,7 @@ void TcpStream::DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* res
 }
 
 const Protocol* TcpStream::StaticProtocol() {
-  static Protocol result("tcp");
-  return &result;
+  return StreamProtocol(Compressed::kFalse, Encrypted::kFalse);
 }
 
 StreamFactoryPtr TcpStream::Factory() {

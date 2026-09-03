@@ -413,7 +413,8 @@ class YBClient::Data {
   //
   // See also: SetMasterServerProxyAsync.
   void LeaderMasterDetermined(const Status& status,
-                              const HostPort& host_port);
+                              const HostPort& host_port,
+                              const CloudInfoPB& cloud_info);
 
   // Asynchronously sets 'master_proxy_' to the leader master by
   // cycling through servers listed in 'master_server_addrs_' until

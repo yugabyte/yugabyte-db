@@ -45,6 +45,8 @@
 #include <boost/version.hpp>
 #include "yb/util/flags.h"
 
+#include "yb/common/common_net.pb.h"
+
 #include "yb/gutil/callback.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
@@ -84,7 +86,11 @@ namespace master {
 // leader has already been found.
 class GetLeaderMasterRpc : public rpc::Rpc {
  public:
-  typedef Callback<void(const Status&, const HostPort&)> LeaderCallback;
+  // The placement accompanies the address because every master proxy the callee builds is
+  // scoped by it, the way DesiredHostPort and ProxyContext::ProtocolFor both take the
+  // destination's placement. It is the placement the leader reported in its registration, and
+  // is unset when a leader was named without one being fetched.
+  typedef Callback<void(const Status&, const HostPort&, const CloudInfoPB&)> LeaderCallback;
   // The host and port of the leader master server is stored in
   // 'leader_master', which must remain valid for the lifetime of this
   // object.
@@ -125,6 +131,7 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   std::vector<HostPort> addrs_;
 
   HostPort leader_master_;
+  CloudInfoPB leader_master_cloud_info_;
 
   // The received responses.
   //

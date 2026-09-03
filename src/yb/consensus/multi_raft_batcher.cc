@@ -17,9 +17,12 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_meta.h"
+
 #include "yb/consensus/consensus.proxy.h"
 
 #include "yb/rpc/periodic.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/proxy_context.h"
 
 #include "yb/util/flags.h"
 
@@ -63,11 +66,12 @@ struct MultiRaftHeartbeatBatcher::MultiRaftConsensusData {
 
 MultiRaftHeartbeatBatcher::MultiRaftHeartbeatBatcher(
     const HostPort& hostport,
+    const rpc::Protocol* protocol,
     rpc::ProxyCache* proxy_cache,
     rpc::Messenger* messenger,
     std::atomic<int>* running_calls)
     : messenger_(messenger),
-      consensus_proxy_(std::make_unique<ConsensusServiceProxy>(proxy_cache, hostport)),
+      consensus_proxy_(std::make_unique<ConsensusServiceProxy>(proxy_cache, hostport, protocol)),
       current_batch_(std::make_shared<MultiRaftConsensusData>()),
       running_calls_(running_calls) {}
 
@@ -180,6 +184,8 @@ MultiRaftHeartbeatBatcherPtr MultiRaftManager::AddOrGetBatcher(const RaftPeerPB&
   }
 
   auto hostport = HostPortFromPB(DesiredHostPort(remote_peer_pb, local_peer_cloud_info_pb_));
+  auto* protocol = &proxy_cache_->GetContext()->ProtocolFor(
+      remote_peer_pb.cloud_info(), local_peer_cloud_info_pb_);
   std::lock_guard lock(mutex_);
   if (shutdown_) {
     LOG(DFATAL) << __func__ << " after shutdown";
@@ -194,7 +200,7 @@ MultiRaftHeartbeatBatcherPtr MultiRaftManager::AddOrGetBatcher(const RaftPeerPB&
     return batcher;
   }
   batcher = std::make_shared<MultiRaftHeartbeatBatcher>(
-      hostport, proxy_cache_, messenger_, &running_calls_);
+      hostport, protocol, proxy_cache_, messenger_, &running_calls_);
   batchers_[hostport] = batcher;
   batcher->Start();
   return batcher;

@@ -16,7 +16,10 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 
+#include "yb/common/common_net.pb.h"
+
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_base_options.h"
 
@@ -28,10 +31,18 @@ namespace yb::tserver {
 
 class MasterLeaderFinder {
  public:
+  // A master leader and the placement it registered. The two travel together because every
+  // proxy to the leader is scoped by that placement, the way DesiredHostPort and
+  // ProxyContext::ProtocolFor both take the destination's.
+  struct MasterLeader {
+    HostPort hostport;
+    CloudInfoPB cloud_info;
+  };
+
   MasterLeaderFinder(
       rpc::Messenger* messenger, rpc::ProxyCache& proxy_cache,
-      server::MasterAddressesPtr master_addresses);
-  Result<HostPort> UpdateMasterLeaderHostPort(MonoDelta timeout) EXCLUDES(master_meta_mtx_);
+      server::MasterAddressesPtr master_addresses, CloudInfoPB connect_from);
+  Result<MasterLeader> UpdateMasterLeader(MonoDelta timeout) EXCLUDES(master_meta_mtx_);
   rpc::ProxyCache& get_proxy_cache();
   server::MasterAddressesPtr get_master_addresses() const EXCLUDES(master_meta_mtx_);
   HostPort get_master_leader_hostport() const EXCLUDES(master_meta_mtx_);
@@ -40,17 +51,22 @@ class MasterLeaderFinder {
 
   template <class P>
   Result<P> CreateProxy(MonoDelta timeout) {
-    return P(&get_proxy_cache(), VERIFY_RESULT(UpdateMasterLeaderHostPort(timeout)));
+    auto leader = VERIFY_RESULT(UpdateMasterLeader(timeout));
+    return P(&get_proxy_cache(), leader.hostport, &ProtocolFor(leader));
   }
 
  private:
   server::MasterAddressesPtr get_master_addresses_unlocked() const REQUIRES(master_meta_mtx_);
-  Result<HostPort> FindMasterLeader(MonoDelta timeout) REQUIRES(master_meta_mtx_);
+  Result<MasterLeader> FindMasterLeader(MonoDelta timeout) REQUIRES(master_meta_mtx_);
+
+  // The transport for a connection to this leader, from this server's own placement.
+  const rpc::Protocol& ProtocolFor(const MasterLeader& leader) const;
 
   rpc::Rpcs rpcs_;
   rpc::Messenger* messenger_;
   rpc::ProxyCache& proxy_cache_;
-  HostPort master_leader_hostport_ GUARDED_BY(master_meta_mtx_);
+  const CloudInfoPB connect_from_;
+  MasterLeader master_leader_ GUARDED_BY(master_meta_mtx_);
   mutable std::mutex master_meta_mtx_;
   server::MasterAddressesPtr master_addresses_ GUARDED_BY(master_meta_mtx_);
 };

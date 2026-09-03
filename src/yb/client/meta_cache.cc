@@ -67,6 +67,7 @@
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/local_tablet_server.h"
@@ -238,12 +239,15 @@ Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::O
 
   // TODO: if the TS advertises multiple host/ports, pick the right one
   // based on some kind of policy. For now just use the first always.
+  const auto& connect_from = client.data_->cloud_info_pb_;
   auto hostport = HostPortFromPB(yb::DesiredHostPort(
-      public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_,
-      client.data_->cloud_info_pb_));
+      public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_, connect_from));
   CHECK(!hostport.host().empty());
   ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
-  proxy_ = std::make_shared<TabletServerServiceProxy>(client.data_->proxy_cache_.get(), hostport);
+  auto* proxy_cache = client.data_->proxy_cache_.get();
+  proxy_ = std::make_shared<TabletServerServiceProxy>(
+      proxy_cache, hostport,
+      &proxy_cache->GetContext()->ProtocolFor(cloud_info_pb_, connect_from));
   proxy_endpoint_ = hostport;
 
   return proxy_;

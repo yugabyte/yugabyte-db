@@ -47,6 +47,8 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
 
+#include "yb/rpc/proxy_context.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
@@ -370,6 +372,12 @@ Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
   }
 
   return HostPortFromPB(addr);
+}
+
+const rpc::Protocol& TSDescriptor::ProtocolForUnlocked() const {
+  auto l = LockForRead();
+  return proxy_cache_->GetContext()->ProtocolFor(
+      l->pb.registration().cloud_info(), local_master_cloud_info_);
 }
 
 bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const {

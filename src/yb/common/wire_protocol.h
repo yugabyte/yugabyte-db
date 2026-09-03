@@ -100,6 +100,9 @@ YB_DEFINE_ENUM(UsePrivateIpMode, (cloud)(region)(zone)(never));
 // Returns mode for selecting between private and public IP.
 Result<UsePrivateIpMode> GetPrivateIpMode();
 
+// Returns the scope outside which node to node connections are encrypted.
+Result<UsePrivateIpMode> GetNodeToNodeEncryptionScope();
+
 // Pick node's public host and port
 // registration - node registration information
 const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration);
@@ -120,6 +123,17 @@ const HostPortPB& DesiredHostPort(
 // connect_from - placement information of connect originator
 const HostPortPB& DesiredHostPort(
     const ServerRegistrationPB& registration, const CloudInfoPB& connect_from);
+
+// Whether a connection to connect_to should be encrypted, per node_to_node_encryption_scope.
+// Scoped the same way as use_private_ip, so a deployment can treat traffic that stays within
+// a cloud, region or zone as it treats traffic on a private address.
+//
+// This answers the policy alone. A messenger built without encryption has no encrypted
+// transport to name, so ProxyContext::ProtocolFor pairs this with the transports the
+// messenger actually holds, as DesiredHostPort pairs UsePublicIp with the addresses a node
+// actually reported. It is exported for that reason, where UsePublicIp is not: the two
+// halves of this decision sit on opposite sides of the common and rpc boundary.
+bool UseEncryption(const CloudInfoPB& connect_to, const CloudInfoPB& connect_from);
 
 HAS_MEMBER_FUNCTION(error);
 HAS_MEMBER_FUNCTION(status);
