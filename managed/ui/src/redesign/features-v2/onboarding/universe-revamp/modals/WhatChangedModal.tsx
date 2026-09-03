@@ -94,6 +94,10 @@ const RELOCATION_ROWS: RelocationRow[] = [
     nowPathKey: 'nowHardware'
   },
   {
+    thenKey: 'readReplica',
+    nowPathKey: 'nowPlacement'
+  },
+  {
     thenKey: 'logs',
     nowPathKey: 'nowLogs'
   },
@@ -142,6 +146,7 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
       size="xl"
       overrideWidth={MODAL_WIDTH_PX}
       overrideHeight={MODAL_HEIGHT_PX}
+      scroll="body"
       hideCloseBtn={false}
       // Above OnBoardingBanner (2100) and HighlightedStatsPanel (2040).
       sx={{ zIndex: 2300 }}
@@ -369,7 +374,7 @@ export const WhatChangedModal: FC<WhatChangedModalProps> = ({
               <Trans
                 t={t}
                 i18nKey="rolloutBody"
-                values={{ runtimeConfig: RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI }}
+                values={{ runtimeConfig: RuntimeConfigKey.ENABLE_NEW_UNIVERSE_EXPERIENCE_FOR_ALL_USERS }}
                 components={{
                   configTag: <RuntimeConfigTag component="span" />
                   // globalConfigLink: (

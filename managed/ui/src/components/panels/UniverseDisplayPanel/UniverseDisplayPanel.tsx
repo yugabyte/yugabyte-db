@@ -53,7 +53,8 @@ export const UniverseDisplayPanel = ({
     handleClose: handleUniverseCreationPopoverClose,
     handleClickAway: handleUniverseCreationPopoverClickAway
   } = useUniverseCreationPopover();
-  const isOnboardingExperienceEnabled = useOnboardingNewExperienceEnabled();
+  // Re-render when SuperAdmin banner toggle flips (in-memory feature mirror).
+  useOnboardingNewExperienceEnabled();
   const currentUser = useSelector((state: any) => state.customer.currentUser.data);
 
   const providerUuidToName = {};
@@ -127,8 +128,7 @@ export const UniverseDisplayPanel = ({
     const showNodeAgentInstallReminderBanner = isNodeAgentEnabled && hasUniverseMissingNodeAgent;
     const isNewV2CreateUniverseUIEnabled = isUniverseRevampExperienceEnabled(
       globalRuntimeConfigQuery?.data,
-      currentUser?.role,
-      isOnboardingExperienceEnabled
+      currentUser?.role
     );
 
     return (

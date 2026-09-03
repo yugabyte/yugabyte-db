@@ -91,6 +91,8 @@ export const RuntimeConfigKey = {
   CONTINUOUS_PLATFORM_BACKUPS_UI: 'yb.ui.feature_flags.continuous_platform_backups',
   METRICS_EXPORT_FEATURE_FLAG: 'yb.universe.metrics_export_enabled',
   ENABLE_V2_EDIT_UNIVERSE_UI: 'yb.ui.feature_flags.enable_new_universe_experience',
+  ENABLE_NEW_UNIVERSE_EXPERIENCE_FOR_ALL_USERS:
+    'yb.ui.enable_new_universe_experience_for_all_users',
   ENABLE_NEW_PERF_ADVISOR_UI: 'yb.ui.feature_flags.enable_new_perf_advisor_ui',
   ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION:
     'yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option',

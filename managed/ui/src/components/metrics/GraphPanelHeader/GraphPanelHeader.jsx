@@ -42,7 +42,7 @@ import { YBFormatDate, ybFormatDate, YBTimeFormats } from '../../../redesign/hel
 import { DEFAULT_TIMEZONE, RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import { UniverseMetricsExportConfigModal } from '@app/redesign/features/export-telemetry/UniverseMetricsExportConfigModal';
 import { RedirectToUniverseTelemetryExportModal } from '@app/redesign/features/export-telemetry/RedirectToUniverseTelemetryExportModal';
-import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/utils/createUniverseRuntime';
+import { isUniverseRevampExperienceEnabled } from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
 
 import './GraphPanelHeader.scss';
 import 'react-widgets/dist/css/react-widgets.css';
@@ -629,7 +629,10 @@ class GraphPanelHeader extends Component {
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.METRICS_EXPORT_FEATURE_FLAG
       )?.value === 'true';
-    const isV2EditUniverseUIEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs?.data);
+    const isV2EditUniverseUIEnabled = isUniverseRevampExperienceEnabled(
+      runtimeConfigs?.data,
+      currentUser?.data?.role
+    );
 
     const self = this;
     const menuItems = filterTypes.map((filter, idx) => {
