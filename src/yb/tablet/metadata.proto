@@ -262,6 +262,14 @@ message IndexBackfillOrderingGenerationPB {
   // Numbering starts at 1 for the initial floor (kIntraTxnWriteIdLimit, 2^31); 0 is reserved as
   // absent/unknown. Written by the master activation flow.
   optional uint32 write_id_floor_version = 5;
+
+  // Highest marked-write Raft index this tablet had applied when the generation was released
+  // (0 = never released or no marked writes). A regular-DB flushed frontier at or above this
+  // proves no marked write can replay from the WAL -- the per-tablet condition of the
+  // downgrade fence. Anchored to the last marked WRITE (not the release op itself) so the
+  // release-triggered flush is sufficient to converge it on an otherwise idle tablet.
+  // Survives until the next activation.
+  optional int64 released_marked_write_watermark = 6;
 }
 
 message FilePB {

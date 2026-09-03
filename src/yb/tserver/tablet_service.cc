@@ -870,6 +870,53 @@ void TabletServiceAdminImpl::VerifyUniqueIndexTablet(
   context.RespondSuccess();
 }
 
+void TabletServiceAdminImpl::CheckIndexBackfillDowngradeSafety(
+    const CheckIndexBackfillDowngradeSafetyRequestPB* req,
+    CheckIndexBackfillDowngradeSafetyResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "CheckIndexBackfillDowngradeSafety", req, resp, &context)) {
+    return;
+  }
+  uint32_t active_generation_tablets = 0;
+  uint32_t unflushed_marked_wal_tablets = 0;
+  for (const auto& peer : server_->tablet_manager()->GetTabletPeers()) {
+    const auto data_state = peer->tablet_metadata()->tablet_data_state();
+    if (data_state == tablet::TABLET_DATA_TOMBSTONED ||
+        data_state == tablet::TABLET_DATA_DELETED ||
+        data_state == tablet::TABLET_DATA_SPLIT_COMPLETED) {
+      // No replay hazard: tombstoning/deletion removes the WAL, and a completed split parent
+      // flushed (pre-checkpoint sync flush) before splitting, so its marked writes are below
+      // its frontier. Counting these husks would block demotion on the master's
+      // tombstone-cleanup schedule instead of the fence's own drain.
+      continue;
+    }
+    const auto generation = peer->tablet_metadata()->index_backfill_ordering_generation();
+    if (generation.active) {
+      ++active_generation_tablets;
+      continue;
+    }
+    if (generation.released_marked_write_watermark == 0) {
+      continue;
+    }
+    // Released: marked writes (all at or below the watermark) stop replaying once the
+    // regular DB's flushed frontier reaches it. Fail closed while the tablet cannot report
+    // a frontier (bootstrapping, shutting down).
+    const auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      ++unflushed_marked_wal_tablets;
+      continue;
+    }
+    const auto persistent_op_ids = tablet->MaxPersistentOpId();
+    if (!persistent_op_ids.ok() ||
+        persistent_op_ids->regular.index < generation.released_marked_write_watermark) {
+      ++unflushed_marked_wal_tablets;
+    }
+  }
+  resp->set_active_generation_tablets(active_generation_tablets);
+  resp->set_unflushed_marked_wal_tablets(unflushed_marked_wal_tablets);
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::UpdateIndexBackfillOrderingGeneration(
     const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
     rpc::RpcContext context) {
