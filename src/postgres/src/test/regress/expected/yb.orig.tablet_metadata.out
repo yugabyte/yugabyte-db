@@ -426,10 +426,10 @@ WHERE tablet_id = '00000000000000000000000000000000';
 -- and non-negative values. Empty result (attrs not yet available) is OK.
 \c yugabyte yugabyte
 SELECT COALESCE(bool_and(
-         (tablet_attrs ? 'sst_bytes')
-         AND (tablet_attrs ? 'wal_bytes')
-         AND (tablet_attrs ? 'total_bytes')
-         AND (tablet_attrs ? 'uncompressed_sst_bytes')
+         (tablet_attrs->>'sst_bytes') IS NOT NULL
+         AND (tablet_attrs->>'wal_bytes') IS NOT NULL
+         AND (tablet_attrs->>'total_bytes') IS NOT NULL
+         AND (tablet_attrs->>'uncompressed_sst_bytes') IS NOT NULL
          AND (tablet_attrs->>'sst_bytes')::bigint >= 0
          AND (tablet_attrs->>'wal_bytes')::bigint >= 0
          AND (tablet_attrs->>'total_bytes')::bigint >= 0), true) AS attrs_shape_ok
@@ -444,7 +444,7 @@ WHERE db_name = 'yugabyte'
 
 \c colocated_db yugabyte
 SELECT COALESCE(bool_and(
-         (tablet_attrs ? 'total_bytes')
+         (tablet_attrs->>'total_bytes') IS NOT NULL
          AND (tablet_attrs->>'total_bytes')::bigint >= 0), true) AS coloc_parent_attrs_ok
 FROM yb_tablet_metadata
 WHERE db_name = 'colocated_db'

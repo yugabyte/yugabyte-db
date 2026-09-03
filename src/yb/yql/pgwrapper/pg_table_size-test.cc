@@ -208,15 +208,18 @@ TEST_F(PgTableSizeTest, ColocatedTableSize) {
       "SELECT yb_tablegroup_size(oid) FROM pg_yb_tablegroup WHERE grpname = 'default'"));
   ASSERT_GT(tg_size, 0);
 
+  // Both sides read the master's heartbeat-cached drive info, which keeps being
+  // refreshed while the test runs, so compare them within a single statement.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return test_conn.FetchRow<bool>(Format(
+    return test_conn.FetchRow<bool>(
         "SELECT EXISTS ("
         "  SELECT 1 FROM yb_tablet_metadata "
         "  WHERE db_name = current_database() "
-        "    AND relname LIKE '%%.colocation.parent.tablename' "
+        "    AND relname LIKE '%.colocation.parent.tablename' "
         "    AND tablet_attrs IS NOT NULL "
-        "    AND (tablet_attrs->>'total_bytes')::bigint = $0)",
-        tg_size));
+        "    AND (tablet_attrs->>'total_bytes')::bigint = "
+        "        (SELECT yb_tablegroup_size(oid) FROM pg_yb_tablegroup "
+        "         WHERE grpname = 'default'))");
   }, 30s, "Wait for colocated parent tablet_attrs to match yb_tablegroup_size"));
 }
 
