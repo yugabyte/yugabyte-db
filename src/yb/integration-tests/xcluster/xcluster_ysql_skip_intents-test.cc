@@ -92,7 +92,10 @@ class XClusterYsqlSkipIntentsReplicationTest : public XClusterDDLReplicationTest
     return Status::OK();
   }
 
-  void DoCtasReplicatesOrderedRows(bool use_txn_block) {
+  // txn_block_isolation of NON_TRANSACTIONAL runs the DDL as a top level statement; any other
+  // level wraps it in an explicit transaction block at that level.
+  void DoCtasReplicatesOrderedRows(IsolationLevel txn_block_isolation) {
+    const bool use_txn_block = txn_block_isolation != IsolationLevel::NON_TRANSACTIONAL;
     ASSERT_OK(producer_conn_->Execute(
         "DROP TABLE IF EXISTS skict_dst, skict_src CASCADE"));
     ASSERT_OK(producer_conn_->Execute(
@@ -103,7 +106,7 @@ class XClusterYsqlSkipIntentsReplicationTest : public XClusterDDLReplicationTest
     const int64_t skip_before = SumSkipIntentsWriteMetric(*producer_cluster());
 
     if (use_txn_block) {
-      ASSERT_OK(producer_conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+      ASSERT_OK(producer_conn_->StartTransaction(txn_block_isolation));
     }
     ASSERT_OK(producer_conn_->Execute(
         "CREATE TABLE skict_dst AS SELECT * FROM skict_src ORDER BY k"));
@@ -131,7 +134,8 @@ class XClusterYsqlSkipIntentsReplicationTest : public XClusterDDLReplicationTest
     ASSERT_EQ(cons_cnt, 400);
   }
 
-  void DoAlterRewriteReplicatesOrderedRows(bool use_txn_block) {
+  void DoAlterRewriteReplicatesOrderedRows(IsolationLevel txn_block_isolation) {
+    const bool use_txn_block = txn_block_isolation != IsolationLevel::NON_TRANSACTIONAL;
     ASSERT_OK(producer_conn_->Execute("DROP TABLE IF EXISTS skialt_rewrite CASCADE"));
     ASSERT_OK(producer_conn_->Execute(
         "CREATE TABLE skialt_rewrite (k INT PRIMARY KEY, val INT)"));
@@ -141,7 +145,7 @@ class XClusterYsqlSkipIntentsReplicationTest : public XClusterDDLReplicationTest
     const int64_t skip_before = SumSkipIntentsWriteMetric(*producer_cluster());
 
     if (use_txn_block) {
-      ASSERT_OK(producer_conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+      ASSERT_OK(producer_conn_->StartTransaction(txn_block_isolation));
     }
     ASSERT_OK(producer_conn_->Execute(
         "ALTER TABLE skialt_rewrite ALTER COLUMN val TYPE TEXT"));
@@ -167,12 +171,12 @@ class XClusterYsqlSkipIntentsReplicationTest : public XClusterDDLReplicationTest
 
 TEST_F(XClusterYsqlSkipIntentsReplicationTest, CtasReplicatesOrderedRows) {
   ASSERT_OK(SetUpClustersAndReplication());
-  DoCtasReplicatesOrderedRows(false);
+  DoCtasReplicatesOrderedRows(IsolationLevel::NON_TRANSACTIONAL);
 }
 
 TEST_F(XClusterYsqlSkipIntentsReplicationTest, AlterRewriteReplicatesOrderedRows) {
   ASSERT_OK(SetUpClustersAndReplication());
-  DoAlterRewriteReplicatesOrderedRows(false);
+  DoAlterRewriteReplicatesOrderedRows(IsolationLevel::NON_TRANSACTIONAL);
 }
 
 // Similar to the first CTAS test, but the source table itself is created via CTAS (skip-intents).
@@ -196,26 +200,37 @@ TEST_F(XClusterYsqlSkipIntentsReplicationTest, ChainedCtasReplicatesOrderedRows)
   ASSERT_EQ(prod_fp, cons_fp);
 }
 
-// DDL inside an explicit READ COMMITTED transaction block: skip-intents-in-txn-blocks only applies
-// under RC (see YbGetSkipIntentsOptimizationInfo).  Verifies xCluster still replicates final
-// state in key order.
-TEST_F(XClusterYsqlSkipIntentsReplicationTest, TxnBlockCtasReplicatesOrderedRows) {
+// DDL inside an explicit transaction block. The optimization applies at every isolation level
+// except Serializable (see YbGetSkipIntentsOptimizationInfo), and Read Committed and Repeatable
+// Read differ in how they pick a read time -- the former per statement, the latter once for the
+// transaction -- so these run under both.  Verifies xCluster still replicates final state in key
+// order.
+class XClusterYsqlSkipIntentsTxnBlockTest : public XClusterYsqlSkipIntentsReplicationTest,
+                                            public ::testing::WithParamInterface<IsolationLevel> {
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    IsolationLevel, XClusterYsqlSkipIntentsTxnBlockTest,
+    ::testing::Values(IsolationLevel::READ_COMMITTED, IsolationLevel::SNAPSHOT_ISOLATION),
+    [](const auto& info) { return IsolationLevel_Name(info.param); });
+
+TEST_P(XClusterYsqlSkipIntentsTxnBlockTest, TxnBlockCtasReplicatesOrderedRows) {
   ASSERT_OK(SetUpClustersAndReplication());
-  DoCtasReplicatesOrderedRows(true);
+  DoCtasReplicatesOrderedRows(GetParam());
 }
 
-TEST_F(XClusterYsqlSkipIntentsReplicationTest, TxnBlockAlterRewriteReplicatesOrderedRows) {
+TEST_P(XClusterYsqlSkipIntentsTxnBlockTest, TxnBlockAlterRewriteReplicatesOrderedRows) {
   ASSERT_OK(SetUpClustersAndReplication());
-  DoAlterRewriteReplicatesOrderedRows(true);
+  DoAlterRewriteReplicatesOrderedRows(GetParam());
 }
 
-TEST_F(XClusterYsqlSkipIntentsReplicationTest, TxnBlockChainedCtasReplicatesOrderedRows) {
+TEST_P(XClusterYsqlSkipIntentsTxnBlockTest, TxnBlockChainedCtasReplicatesOrderedRows) {
   ASSERT_OK(SetUpClustersAndReplication());
 
   ASSERT_OK(producer_conn_->Execute(
       "DROP TABLE IF EXISTS skict_txn_c2, skict_txn_c1 CASCADE"));
 
-  ASSERT_OK(producer_conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(producer_conn_->StartTransaction(GetParam()));
   ASSERT_OK(producer_conn_->Execute(
       "CREATE TABLE skict_txn_c1 AS SELECT g AS k, ('b' || g::text) AS v "
       "FROM generate_series(1, 95) g ORDER BY k"));

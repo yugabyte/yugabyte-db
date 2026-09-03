@@ -379,7 +379,15 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
   }
 }
 
-// Points the request's read time at the statement's in_txn_limit. Used for reading relations that
+template <class Req>
+void SetReadTimeTo(HybridTime ht, Req* req) {
+  auto* read_time = req->mutable_read_time();
+  read_time->set_read_ht(ht.ToUint64());
+  read_time->set_local_limit_ht(ht.ToUint64());
+  read_time->set_global_limit_ht(ht.ToUint64());
+}
+
+// Points the request's read time at in_txn_limit. Used for reading relations that
 // were created in the current transaction. This is done since there might be 2 kinds of rows for
 // such relations:
 //
@@ -416,10 +424,7 @@ bool SetReadTimeToInTxnLimit(const ConsistentReadPoint* read_point, Req* req) {
   if (!in_txn_limit || in_txn_limit == HybridTime::kMax) {
     return false;
   }
-  auto* read_time = req->mutable_read_time();
-  read_time->set_read_ht(in_txn_limit.ToUint64());
-  read_time->set_local_limit_ht(in_txn_limit.ToUint64());
-  read_time->set_global_limit_ht(in_txn_limit.ToUint64());
+  SetReadTimeTo(in_txn_limit, req);
   return true;
 }
 
@@ -502,8 +507,20 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     // and does not need one: it reads at the latest time, which is already above those rows.
     if (data.read_at_in_txn_limit && has_read_time && !serializable) {
       if (!SetReadTimeToInTxnLimit(read_point, &req_)) {
-        VLOG(2) << "No usable in_txn_limit, leaving read time as "
-                << read_point->GetReadTime().ToString();
+        // Some sessions never pick a statement in_txn_limit -- PgClientSession::UpdateReadTime
+        // skips SetInTxnLimit for autonomous DDL ones (see the TODO there) -- but the relation
+        // still needs a read time above the rows an earlier skip_intents write left in the
+        // regular db. The transaction's own read time is not one: it is picked at its first
+        // transactional operation, which for a DDL is the catalog writes it starts with, before
+        // any user data row is written.
+        //
+        // The current time is above every write this transaction has already completed, since
+        // their responses advanced this clock, and no other transaction can write to a relation
+        // created by an uncommitted one. Clearing the read time would read above those rows too,
+        // but the tserver would then pick one and report it back through used_read_time, which
+        // YBTransaction::Impl::Flushed DFATALs on before applying it over the read point of the
+        // whole transaction.
+        SetReadTimeTo(read_point->Now(), &req_);
       }
     }
   } else if (data.skip_intents) {

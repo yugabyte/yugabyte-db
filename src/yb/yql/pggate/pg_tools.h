@@ -219,12 +219,12 @@ template <class ReqPB>
 Status ApplySkipIntentsOptimizationInfo(
     const YbcPgSkipIntentsOptimizationInfo& info, ReqPB& req) {
   // An operation that bypasses the intents db leaves its rows in the regular db above the
-  // transaction read time, so it can only be correct if the operation also reads at the
-  // statement's in_txn_limit. YbGetSkipIntentsOptimizationInfo establishes this by construction;
+  // transaction read time, so it can only be correct if the operation also reads at
+  // in_txn_limit. YbGetSkipIntentsOptimizationInfo establishes this by construction;
   // check it here because the struct crosses the C boundary between the two.
   RSTATUS_DCHECK(
       !info.skip_intents || info.read_at_in_txn_limit, IllegalState,
-      "Skipping the intents db requires reading at the statement's in_txn_limit");
+      "Skipping the intents db requires reading at in_txn_limit");
 
   if (info.skip_intents) {
     if constexpr (requires { req.set_skip_intents_write(true); }) {

@@ -1093,7 +1093,7 @@ typedef struct {
 //   on transaction state (nesting level, savepoints, whether the optimization was already
 //   disabled), so it can turn off partway through a transaction.
 //
-// - read_at_in_txn_limit: this operation must read at the statement's in_txn_limit rather than at
+// - read_at_in_txn_limit: this operation must read at in_txn_limit rather than at
 //   the transaction read time. It depends only on the relation, so it holds for the whole
 //   transaction and stays set after skip_intents turns off. That is the point of keeping it
 //   separate: rows an earlier skip intents write put in the regular db sit above the transaction

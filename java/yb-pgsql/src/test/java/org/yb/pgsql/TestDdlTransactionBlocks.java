@@ -32,24 +32,13 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
     return getPerfMaxRuntime(500, 1000, 1200, 1200, 1200);
   }
 
+  // The isolation level under test is left to the build type: yb_enable_read_committed_isolation
+  // defaults to true in release and false elsewhere, so a release run exercises these tests under
+  // Read Committed and a debug, fastdebug or asan run exercises them under Repeatable Read.
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("TEST_hide_details_for_pg_regress", "false");
-    flagMap.put("yb_enable_read_committed_isolation", "true");
-    if (!org.yb.util.BuildTypeUtil.isRelease()) {
-      appendToYsqlPgConf(flagMap, "default_transaction_isolation='repeatable read'");
-    }
-    return flagMap;
-  }
-
-  @Override
-  protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("yb_enable_read_committed_isolation", "true");
-    if (!org.yb.util.BuildTypeUtil.isRelease()) {
-      appendToYsqlPgConf(flagMap, "default_transaction_isolation='repeatable read'");
-    }
     return flagMap;
   }
 
