@@ -45,13 +45,21 @@ ChainTracker::ChainTracker(int64_t anchor_micros, bool track_coprefix_subtotals)
 //      ignored; the identities are stated over chain_entries for this reason.
 //   3. Strip the hybrid time to get the subdoc key; track the encoded-HT extremes.
 //   4. Compare with the previous subdoc key by shared-prefix length:
-//        identical              -> a shadowed version; its overwriter is the previous entry.
-//        shares the row key     -> a new subdoc chain in the same row; reclaimable iff row is dead.
+//        identical              -> a shadowed version; garbage.
+//        shares the row key     -> a new record (subdoc chain) in the same row.
 //        otherwise              -> a new row: close the previous one, compute the row key length
-//                                  once, decide whether the row is dead (head is a tombstone whose
-//                                  subdoc key is exactly the row key).
-//   5. A reclaimable entry extends the current stretch and lands in the age band of what makes it
-//      droppable; a non-reclaimable entry closes the stretch.
+//                                  once.
+//   5. Entries at the row key itself (packed rows, row tombstones) are covering writes: they
+//      overwrite the whole row, so any entry of the row with an older hybrid time is garbage even
+//      if it is the newest version of its own record. Note file order is key order, not time
+//      order: a covering write is newer than some entries after it and older than others, so each
+//      record head is compared (encoded hybrid times, a short memcmp) against the covering writes
+//      seen so far -- which is all of them, because the row key sorts first in the row.
+//   6. Garbage is therefore: shadowed versions, record heads older than a covering write, and
+//      tombstone markers themselves (a tombstone past the history cutoff drops at a full
+//      compaction regardless). Each lands in the age band of the OLDEST write whose passing of
+//      the cutoff makes it droppable (its own hybrid time, for a marker), and extends the current
+//      stretch; a non-garbage entry closes the stretch.
 void ChainTracker::Add(Slice key, Slice value) {
   ++stats_.total_entries;
   const size_t entry_bytes = key.size() + value.size();
@@ -106,30 +114,17 @@ void ChainTracker::Add(Slice key, Slice value) {
   const size_t shared_prefix =
       has_prev_ ? strings::MemoryDifferencePos(key.data(), prev_key_.data(), compare_len) : 0;
 
-  bool reclaimable = false;
-  int64_t droppable_by_micros = 0;
+  bool is_head = true;
   if (has_prev_ && subdoc_key_end == prev_key_.size() && shared_prefix >= subdoc_key_end) {
-    // Same subdoc key as the previous (newer) entry: this version is shadowed. It becomes droppable
-    // once the entry that shadows it is past the history cutoff.
+    // Same subdoc key as the previous (newer) entry: this version is shadowed.
+    is_head = false;
     ++row_entries_;
     row_bytes_ += entry_bytes;
-    reclaimable = true;
-    const auto overwriter_micros = PhysicalMicros(prev_entry_ht_);
-    if (!overwriter_micros.ok()) {
-      Invalidate();
-      return;
-    }
-    droppable_by_micros = *overwriter_micros;
   } else if (has_prev_ && shared_prefix >= row_end_) {
-    // Same row, new subdoc key: a live head (of a column or record) in this row.
+    // Same row, new record (subdoc chain).
     ++stats_.num_subdoc_keys;
     ++row_entries_;
     row_bytes_ += entry_bytes;
-    if (row_dead_) {
-      // Under a row tombstone every entry goes when the tombstone does.
-      reclaimable = true;
-      droppable_by_micros = row_tombstone_micros_;
-    }
   } else {
     // New row.
     CloseRow();
@@ -143,18 +138,6 @@ void ChainTracker::Add(Slice key, Slice value) {
     ++stats_.num_subdoc_keys;
     row_entries_ = 1;
     row_bytes_ = entry_bytes;
-    // A dead row: its chain head is a row-level (or table-level) tombstone.
-    row_dead_ = subdoc_key_end == row_end_ && is_tombstone;
-    if (row_dead_) {
-      const auto tombstone_micros = PhysicalMicros(encoded_ht);
-      if (!tombstone_micros.ok()) {
-        Invalidate();
-        return;
-      }
-      row_tombstone_micros_ = *tombstone_micros;
-      reclaimable = true;
-      droppable_by_micros = row_tombstone_micros_;
-    }
     if (track_coprefix_subtotals_ && ends->coprefix_end > 0) {
       // Subtotals are per cotable / colocation prefix; a plain (non-colocated) table has no
       // coprefix and records none, so single-table tablets never carry a redundant subtotal.
@@ -164,6 +147,51 @@ void ChainTracker::Add(Slice key, Slice value) {
     } else {
       row_subtotal_ = nullptr;
     }
+  }
+
+  // Classify against the row's covering writes. Only writes seen so far are in the list, which is
+  // all of them: the row-key chain sorts first within the row.
+  const auto* oldest_covering = OldestCoveringAfter(encoded_ht);
+  bool reclaimable = false;
+  int64_t droppable_by_micros = 0;
+  if (!is_head) {
+    // Droppable once the oldest write that overwrites it passes the cutoff: its own successor
+    // version, or an even older covering write.
+    const auto overwriter_micros = PhysicalMicros(prev_entry_ht_);
+    if (!overwriter_micros.ok()) {
+      Invalidate();
+      return;
+    }
+    reclaimable = true;
+    droppable_by_micros = oldest_covering != nullptr
+        ? std::min(*overwriter_micros, oldest_covering->micros)
+        : *overwriter_micros;
+  } else if (oldest_covering != nullptr) {
+    // A record head older than a covering write: the whole-row write shadows it.
+    reclaimable = true;
+    droppable_by_micros = oldest_covering->micros;
+  } else if (is_tombstone) {
+    // An uncovered tombstone marker (row- or column-level): droppable at a full compaction once
+    // its own hybrid time passes the cutoff, whether or not the row lives on.
+    const auto own_micros = PhysicalMicros(encoded_ht);
+    if (!own_micros.ok()) {
+      Invalidate();
+      return;
+    }
+    reclaimable = true;
+    droppable_by_micros = *own_micros;
+  }
+
+  // Maintain the covering-write list and the row's live-content count.
+  if (subdoc_key_end == row_end_) {
+    const auto micros = PhysicalMicros(encoded_ht);
+    if (!micros.ok()) {
+      Invalidate();
+      return;
+    }
+    AddCoveringWrite(encoded_ht, *micros, is_tombstone);
+  } else if (is_head && !reclaimable && !is_tombstone) {
+    ++uncovered_record_heads_;
   }
 
   if (reclaimable) {
@@ -219,13 +247,17 @@ void ChainTracker::CloseRow() {
   stats_.row_chain_hist.Add(row_entries_);
   stats_.row_chain_bytes_hist.Add(row_bytes_);
   stats_.max_row_chain = std::max(stats_.max_row_chain, row_entries_);
-  if (row_dead_) {
+  // Dead row: the newest covering write is a tombstone and nothing newer was written -- a row
+  // re-inserted after a delete has an uncovered record head and stays live.
+  if (num_covering_writes_ > 0 && covering_writes_[0].is_tombstone &&
+      uncovered_record_heads_ == 0) {
     ++stats_.dead_rows;
     stats_.dead_row_entries += row_entries_;
   }
   row_entries_ = 0;
   row_bytes_ = 0;
-  row_dead_ = false;
+  num_covering_writes_ = 0;
+  uncovered_record_heads_ = 0;
 }
 
 void ChainTracker::CloseStretch() {
@@ -245,7 +277,8 @@ void ChainTracker::Invalidate() {
   has_prev_ = false;
   row_entries_ = 0;
   row_bytes_ = 0;
-  row_dead_ = false;
+  num_covering_writes_ = 0;
+  uncovered_record_heads_ = 0;
   stretch_entries_ = 0;
   stretch_bytes_ = 0;
   row_subtotal_ = nullptr;
@@ -278,6 +311,28 @@ void ChainTracker::UpdateWriteHtRange(const EncodedDocHybridTime& encoded_ht) {
   if (max_encoded_ht_.empty() || encoded_ht > max_encoded_ht_) {
     max_encoded_ht_ = encoded_ht;
   }
+}
+
+void ChainTracker::AddCoveringWrite(
+    const EncodedDocHybridTime& encoded_ht, int64_t micros, bool is_tombstone) {
+  if (num_covering_writes_ == kMaxCoveringWrites) {
+    // New arrivals are older (scan order is newest first); dropping them only makes banding
+    // conservative.
+    return;
+  }
+  covering_writes_[num_covering_writes_++] = {encoded_ht, micros, is_tombstone};
+}
+
+const ChainTracker::CoveringWrite* ChainTracker::OldestCoveringAfter(
+    const EncodedDocHybridTime& encoded_ht) const {
+  // The list is newest first, so scan from the oldest end for the first write newer than the
+  // entry.
+  for (size_t i = num_covering_writes_; i > 0; --i) {
+    if (covering_writes_[i - 1].encoded_ht > encoded_ht) {
+      return &covering_writes_[i - 1];
+    }
+  }
+  return nullptr;
 }
 
 Result<int64_t> ChainTracker::PhysicalMicros(const EncodedDocHybridTime& encoded_ht) {
