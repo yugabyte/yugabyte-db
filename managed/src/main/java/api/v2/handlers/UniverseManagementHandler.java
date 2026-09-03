@@ -69,6 +69,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.controllers.handlers.KubernetesOverridesHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -1099,6 +1100,24 @@ public class UniverseManagementHandler extends ApiControllerUtils {
           "Universe {} has AZ level overrides set, cannot migrate to operator", universe.getName());
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot migrate universes with AZ level overrides.");
+    }
+
+    // Encryption at rest is migrated as a KMSConfig CR, which only covers some KMS providers.
+    // Checking here keeps an unsupported one from failing the import halfway through.
+    UUID kmsConfigUUID = OperatorUtils.getUniverseKmsConfigUuid(universe);
+    KmsConfig kmsConfig = kmsConfigUUID == null ? null : KmsConfig.get(kmsConfigUUID);
+    if (kmsConfig != null
+        && !OperatorUtils.SUPPORTED_KMS_PROVIDERS.contains(kmsConfig.getKeyProvider())) {
+      log.error(
+          "Universe {} uses a {} KMS config, cannot migrate to operator",
+          universe.getName(),
+          kmsConfig.getKeyProvider());
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot migrate universes using a %s KMS config, it is not supported by the"
+                  + " operator.",
+              kmsConfig.getKeyProvider()));
     }
     log.info("Universe {} precheck for operator import success", universe.getName());
   }

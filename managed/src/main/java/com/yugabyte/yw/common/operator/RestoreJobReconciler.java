@@ -23,6 +23,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, Runnable {
@@ -106,6 +107,22 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
     restoreBackupParams.customerUUID = cust.getUuid();
     restoreBackupParams.setUniverseUUID(universeUUID);
     restoreBackupParams.storageConfigUUID = backup.getStorageConfigUUID();
+
+    // Optional KMS config, required by the backend only when restoring an encrypted (EAR) backup.
+    // Resolve the referenced KMSConfig CR to its YBA config UUID; the backend restore preflight
+    // enforces the "required-when-encrypted" rule and will fail fast if it is needed but absent.
+    String kmsConfigCrName = restoreJob.getSpec().getKmsConfig();
+    if (StringUtils.isNotBlank(kmsConfigCrName)) {
+      UUID kmsConfigUUID =
+          operatorUtils.resolveReadyKmsConfigUuid(
+              kmsConfigCrName, restoreJob.getMetadata().getNamespace());
+      restoreBackupParams.kmsConfigUUID = kmsConfigUUID;
+      log.info(
+          "Using KMS config CR '{}' (UUID {}) for restore job {}",
+          kmsConfigCrName,
+          kmsConfigUUID,
+          restoreJob.getMetadata().getName());
+    }
 
     List<BackupStorageInfo> bSIList =
         backup.getBackupInfo().backupList.stream()

@@ -172,6 +172,9 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.UpdatePitrConfig,
           TaskType.DeletePitrConfig,
           TaskType.RestoreSnapshotSchedule,
+          TaskType.CreateKMSConfig,
+          TaskType.EditKMSConfig,
+          TaskType.DeleteKMSConfig,
           TaskType.ProvisionUniverseNodes,
           TaskType.ProvisionUniverseNodes);
 

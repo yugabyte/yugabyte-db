@@ -156,6 +156,33 @@ spec:
                 x-kubernetes-validations:
                 - message: enableClientToNodeEncrypt cannot be changed
                   rule: self == oldSelf
+              encryptionAtRest:
+                description: >
+                  Encryption at rest (EAR) configuration for the universe. Omit to leave EAR off.
+                  Set enabled to false to disable EAR while keeping the KMS config association so it
+                  can be re-enabled later. Changing kmsConfig while enabled triggers a master key
+                  rotation.
+                type: object
+                properties:
+                  kmsConfig:
+                    description: >
+                      Name of the KMSConfig CR (in the same namespace) to associate with the
+                      universe for encryption at rest. Only read while enabled is true: changing it
+                      on a disabled universe has no immediate effect, and takes effect when EAR is
+                      re-enabled. Because disabling EAR keeps the existing universe key, re-enabling
+                      against a kmsConfig other than the one that key was encrypted under performs a
+                      master key rotation.
+                    type: string
+                  enabled:
+                    description: >
+                      Whether encryption at rest is enabled. Defaults to true. Set to false to
+                      disable EAR without removing the kmsConfig association so it can be flipped
+                      back on later. Disabling and changing kmsConfig in the same edit applies the
+                      disable only; the new kmsConfig is applied on re-enable.
+                    type: boolean
+                    default: true
+                required:
+                  - kmsConfig
               rootCA:
                 description: >
                   Specify the name of the rootCA certificate to be used for cert-manager

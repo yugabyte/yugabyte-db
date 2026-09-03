@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
@@ -37,6 +38,9 @@ import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -57,6 +61,7 @@ import com.yugabyte.yw.models.AvailabilityZoneDetails.AZCloudInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ExportTelemetryConfig;
+import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.OperatorResource;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
@@ -84,7 +89,10 @@ import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Indexer;
 import io.fabric8.kubernetes.client.utils.Serialization;
+import io.yugabyte.operator.v1alpha1.KMSConfig;
+import io.yugabyte.operator.v1alpha1.KMSConfigStatus;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.EncryptionAtRest;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
@@ -599,6 +607,323 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         "toggle params should have useYbdbInbuiltYbc true",
         paramsCaptor.getValue().isUseYbdbInbuiltYbc());
     assertEquals(oldUniverse.getUniverseUUID(), paramsCaptor.getValue().getUniverseUUID());
+  }
+
+  // Stubs both routes to a Ready KMS config CR: the reconciler's own client (used when creating a
+  // universe) and OperatorUtils (used when deciding on an EAR change to an existing universe).
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  private void stubReadyKmsConfigCr(UUID configUuid) throws Exception {
+    MixedOperation kmsMixed = Mockito.mock(MixedOperation.class);
+    NonNamespaceOperation kmsInNs = Mockito.mock(NonNamespaceOperation.class);
+    io.fabric8.kubernetes.client.dsl.Resource kmsResource =
+        Mockito.mock(io.fabric8.kubernetes.client.dsl.Resource.class);
+    Mockito.lenient().when(client.resources(KMSConfig.class)).thenReturn(kmsMixed);
+    Mockito.lenient().when(kmsMixed.inNamespace(anyString())).thenReturn(kmsInNs);
+    Mockito.lenient().when(kmsInNs.withName(anyString())).thenReturn(kmsResource);
+    KMSConfig cr = new KMSConfig();
+    KMSConfigStatus status = new KMSConfigStatus();
+    status.setState("Ready");
+    status.setResourceUUID(configUuid.toString());
+    cr.setStatus(status);
+    Mockito.lenient().when(kmsResource.get()).thenReturn(cr);
+    Mockito.doReturn(configUuid)
+        .when(operatorUtils)
+        .resolveReadyKmsConfigUuid(anyString(), anyString());
+  }
+
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  private void stubMissingKmsConfigCr() throws Exception {
+    MixedOperation kmsMixed = Mockito.mock(MixedOperation.class);
+    NonNamespaceOperation kmsInNs = Mockito.mock(NonNamespaceOperation.class);
+    io.fabric8.kubernetes.client.dsl.Resource kmsResource =
+        Mockito.mock(io.fabric8.kubernetes.client.dsl.Resource.class);
+    Mockito.lenient().when(client.resources(KMSConfig.class)).thenReturn(kmsMixed);
+    Mockito.lenient().when(kmsMixed.inNamespace(anyString())).thenReturn(kmsInNs);
+    Mockito.lenient().when(kmsInNs.withName(anyString())).thenReturn(kmsResource);
+    Mockito.lenient().when(kmsResource.get()).thenReturn(null);
+    Mockito.doThrow(new Exception("KMS config CR not found"))
+        .when(operatorUtils)
+        .resolveReadyKmsConfigUuid(anyString(), anyString());
+  }
+
+  // Marks the universe as currently having encryption at rest enabled, so the reconciler sees a
+  // transition rather than a first-time enable.
+  private void markEarEnabled(Universe universe) {
+    EncryptionAtRestConfig config = new EncryptionAtRestConfig();
+    config.encryptionAtRestEnabled = true;
+    universe.getUniverseDetails().encryptionAtRestConfig = config;
+  }
+
+  private EncryptionAtRest earSpec(String kmsConfigName, Boolean enabled) {
+    EncryptionAtRest ear = new EncryptionAtRest();
+    ear.setKmsConfig(kmsConfigName);
+    ear.setEnabled(enabled);
+    return ear;
+  }
+
+  @Test
+  public void testEncryptionAtRestOnlySpecChangeIsUniverseMismatch() throws Exception {
+    String universeName = "test-ear-mismatch-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    // createTaskParams leaves the node set null - the create task is what fills it in - while
+    // universeAndSpecMismatch walks the universe's nodes to diff gflags.
+    taskParams.nodeDetailsSet = new HashSet<>();
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    UserIntent incomingIntent = taskParams.getPrimaryCluster().userIntent;
+
+    // Baseline: the CR the universe was created from must not look like an update.
+    assertFalse(
+        operatorUtils.universeAndSpecMismatch(
+            defaultCustomer, universe, ybUniverse, incomingIntent, null));
+
+    Mockito.doReturn(UUID.randomUUID())
+        .when(operatorUtils)
+        .resolveReadyKmsConfigUuid(anyString(), anyString());
+    ybUniverse.getSpec().setEncryptionAtRest(earSpec("my-kms", true));
+
+    // An EAR-only edit has to report a mismatch. Without it the No-Op reconcile never promotes the
+    // change to an Update action, and the enable/rotate/disable only happens the next time the
+    // operator restarts and re-runs editUniverse from the Create path.
+    assertTrue(
+        operatorUtils.universeAndSpecMismatch(
+            defaultCustomer, universe, ybUniverse, incomingIntent, null));
+  }
+
+  @Test
+  public void testHandleEncryptionAtRestChangeSameConfigIsNoOp() throws Exception {
+    String universeName = "test-ear-same-config-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    markEarEnabled(oldUniverse);
+
+    UUID configUuid = UUID.randomUUID();
+    stubReadyKmsConfigCr(configUuid);
+    ybUniverse.getSpec().setEncryptionAtRest(earSpec("my-kms", true));
+
+    KmsHistory activeKey = Mockito.mock(KmsHistory.class);
+    Mockito.when(activeKey.getConfigUuid()).thenReturn(configUuid);
+
+    boolean handled;
+    try (MockedStatic<EncryptionAtRestUtil> earUtil =
+        Mockito.mockStatic(EncryptionAtRestUtil.class)) {
+      earUtil
+          .when(() -> EncryptionAtRestUtil.getActiveKey(oldUniverse.getUniverseUUID()))
+          .thenReturn(activeKey);
+      handled =
+          ybUniverseReconciler.handleEncryptionAtRestChange(
+              defaultCustomer,
+              oldUniverse,
+              ybUniverse,
+              KubernetesResourceDetails.fromResource(ybUniverse));
+    }
+
+    // Already enabled with the same KMS config: must not submit a task, and must fall through to
+    // the structural edit. Otherwise every reconcile pass would rotate the master key.
+    assertFalse(handled);
+    Mockito.verify(universeActionsHandler, Mockito.never()).setUniverseKey(any(), any(), any());
+  }
+
+  @Test
+  public void testHandleEncryptionAtRestChangeRotatesMasterKeyOnConfigChange() throws Exception {
+    String universeName = "test-ear-rotate-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    markEarEnabled(oldUniverse);
+
+    UUID currentConfigUuid = UUID.randomUUID();
+    UUID newConfigUuid = UUID.randomUUID();
+    stubReadyKmsConfigCr(newConfigUuid);
+    ybUniverse.getSpec().setEncryptionAtRest(earSpec("new-kms", true));
+
+    KmsHistory activeKey = Mockito.mock(KmsHistory.class);
+    Mockito.when(activeKey.getConfigUuid()).thenReturn(currentConfigUuid);
+    Mockito.when(
+            universeActionsHandler.setUniverseKey(
+                eq(defaultCustomer), eq(oldUniverse), any(EncryptionAtRestKeyParams.class)))
+        .thenReturn(UUID.randomUUID());
+
+    boolean handled;
+    try (MockedStatic<EncryptionAtRestUtil> earUtil =
+        Mockito.mockStatic(EncryptionAtRestUtil.class)) {
+      earUtil
+          .when(() -> EncryptionAtRestUtil.getActiveKey(oldUniverse.getUniverseUUID()))
+          .thenReturn(activeKey);
+      handled =
+          ybUniverseReconciler.handleEncryptionAtRestChange(
+              defaultCustomer,
+              oldUniverse,
+              ybUniverse,
+              KubernetesResourceDetails.fromResource(ybUniverse));
+    }
+
+    // Pointing an already-encrypted universe at a different KMS config is a master key rotation:
+    // ENABLE against the new config UUID.
+    assertTrue(handled);
+    ArgumentCaptor<EncryptionAtRestKeyParams> captor =
+        ArgumentCaptor.forClass(EncryptionAtRestKeyParams.class);
+    Mockito.verify(universeActionsHandler, Mockito.times(1))
+        .setUniverseKey(eq(defaultCustomer), eq(oldUniverse), captor.capture());
+    EncryptionAtRestKeyParams keyParams = captor.getValue();
+    assertEquals(OpType.ENABLE, keyParams.encryptionAtRestConfig.opType);
+    assertEquals(newConfigUuid, keyParams.encryptionAtRestConfig.kmsConfigUUID);
+  }
+
+  @Test
+  public void testHandleEncryptionAtRestChangeDisablesEar() throws Exception {
+    String universeName = "test-ear-disable-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    markEarEnabled(oldUniverse);
+
+    UUID currentConfigUuid = UUID.randomUUID();
+    // enabled=false keeps the kmsConfig association but turns EAR off.
+    ybUniverse.getSpec().setEncryptionAtRest(earSpec("my-kms", false));
+
+    KmsHistory activeKey = Mockito.mock(KmsHistory.class);
+    Mockito.when(activeKey.getConfigUuid()).thenReturn(currentConfigUuid);
+    Mockito.when(
+            universeActionsHandler.setUniverseKey(
+                eq(defaultCustomer), eq(oldUniverse), any(EncryptionAtRestKeyParams.class)))
+        .thenReturn(UUID.randomUUID());
+
+    boolean handled;
+    try (MockedStatic<EncryptionAtRestUtil> earUtil =
+        Mockito.mockStatic(EncryptionAtRestUtil.class)) {
+      earUtil
+          .when(() -> EncryptionAtRestUtil.getActiveKey(oldUniverse.getUniverseUUID()))
+          .thenReturn(activeKey);
+      handled =
+          ybUniverseReconciler.handleEncryptionAtRestChange(
+              defaultCustomer,
+              oldUniverse,
+              ybUniverse,
+              KubernetesResourceDetails.fromResource(ybUniverse));
+    }
+
+    // Disable runs against the currently active config UUID, not a freshly resolved one.
+    assertTrue(handled);
+    ArgumentCaptor<EncryptionAtRestKeyParams> captor =
+        ArgumentCaptor.forClass(EncryptionAtRestKeyParams.class);
+    Mockito.verify(universeActionsHandler, Mockito.times(1))
+        .setUniverseKey(eq(defaultCustomer), eq(oldUniverse), captor.capture());
+    EncryptionAtRestKeyParams keyParams = captor.getValue();
+    assertEquals(OpType.DISABLE, keyParams.encryptionAtRestConfig.opType);
+    assertEquals(currentConfigUuid, keyParams.encryptionAtRestConfig.kmsConfigUUID);
+    assertFalse(keyParams.encryptionAtRestConfig.encryptionAtRestEnabled);
+  }
+
+  @Test
+  public void testHandleEncryptionAtRestChangeUnresolvableKmsConfigDoesNotSubmitTask()
+      throws Exception {
+    String universeName = "test-ear-unresolvable-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    markEarEnabled(oldUniverse);
+
+    stubMissingKmsConfigCr();
+    ybUniverse.getSpec().setEncryptionAtRest(earSpec("missing-kms", true));
+
+    KmsHistory activeKey = Mockito.mock(KmsHistory.class);
+    Mockito.lenient().when(activeKey.getConfigUuid()).thenReturn(UUID.randomUUID());
+
+    boolean handled;
+    try (MockedStatic<EncryptionAtRestUtil> earUtil =
+        Mockito.mockStatic(EncryptionAtRestUtil.class)) {
+      earUtil
+          .when(() -> EncryptionAtRestUtil.getActiveKey(oldUniverse.getUniverseUUID()))
+          .thenReturn(activeKey);
+      handled =
+          ybUniverseReconciler.handleEncryptionAtRestChange(
+              defaultCustomer,
+              oldUniverse,
+              ybUniverse,
+              KubernetesResourceDetails.fromResource(ybUniverse));
+    }
+
+    // An unusable KMS config must never disrupt a running universe: no task is submitted, the CR is
+    // marked errored, and the change is retried later (handled=true skips the structural edit).
+    assertTrue(handled);
+    Mockito.verify(universeActionsHandler, Mockito.never()).setUniverseKey(any(), any(), any());
+    Mockito.verify(kubernetesStatusUpdator, Mockito.times(1))
+        .updateUniverseState(
+            any(KubernetesResourceDetails.class), eq(UniverseState.ERROR_UPDATING));
+  }
+
+  @Test
+  public void testHandleEncryptionAtRestChangeEnablesEar() throws Exception {
+    String universeName = "test-ear-enable-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+
+    UUID configUuid = UUID.randomUUID();
+    UUID taskUUID = UUID.randomUUID();
+    stubReadyKmsConfigCr(configUuid);
+
+    EncryptionAtRest ear = new EncryptionAtRest();
+    ear.setKmsConfig("my-kms");
+    ear.setEnabled(true);
+    ybUniverse.getSpec().setEncryptionAtRest(ear);
+
+    Mockito.when(
+            universeActionsHandler.setUniverseKey(
+                eq(defaultCustomer), eq(oldUniverse), any(EncryptionAtRestKeyParams.class)))
+        .thenReturn(taskUUID);
+
+    boolean handled;
+    try (MockedStatic<EncryptionAtRestUtil> earUtil =
+        Mockito.mockStatic(EncryptionAtRestUtil.class)) {
+      earUtil
+          .when(() -> EncryptionAtRestUtil.getActiveKey(oldUniverse.getUniverseUUID()))
+          .thenReturn(null);
+      handled =
+          ybUniverseReconciler.handleEncryptionAtRestChange(
+              defaultCustomer,
+              oldUniverse,
+              ybUniverse,
+              KubernetesResourceDetails.fromResource(ybUniverse));
+    }
+
+    assertTrue(handled);
+    ArgumentCaptor<EncryptionAtRestKeyParams> captor =
+        ArgumentCaptor.forClass(EncryptionAtRestKeyParams.class);
+    Mockito.verify(universeActionsHandler, Mockito.times(1))
+        .setUniverseKey(eq(defaultCustomer), eq(oldUniverse), captor.capture());
+    EncryptionAtRestKeyParams keyParams = captor.getValue();
+    assertEquals(OpType.ENABLE, keyParams.encryptionAtRestConfig.opType);
+    assertEquals(configUuid, keyParams.encryptionAtRestConfig.kmsConfigUUID);
+    assertTrue(keyParams.encryptionAtRestConfig.encryptionAtRestEnabled);
+  }
+
+  @Test
+  public void testHandleEncryptionAtRestChangeNoBlockIsNoOp() throws Exception {
+    String universeName = "test-ear-noop-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    // No encryptionAtRest block on the CR.
+
+    boolean handled =
+        ybUniverseReconciler.handleEncryptionAtRestChange(
+            defaultCustomer,
+            oldUniverse,
+            ybUniverse,
+            KubernetesResourceDetails.fromResource(ybUniverse));
+
+    assertFalse(handled);
+    Mockito.verify(universeActionsHandler, Mockito.never()).setUniverseKey(any(), any(), any());
   }
 
   @Test

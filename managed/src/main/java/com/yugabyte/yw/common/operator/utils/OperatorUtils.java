@@ -27,6 +27,15 @@ import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.CiphertrustEARServiceUtil.CipherTrustKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthType;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.ResourceTracker;
@@ -45,6 +54,7 @@ import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
 import com.yugabyte.yw.forms.DrConfigRestartForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -63,6 +73,8 @@ import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -114,6 +126,9 @@ import io.yugabyte.operator.v1alpha1.BackupScheduleSpec;
 import io.yugabyte.operator.v1alpha1.BackupSpec;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
 import io.yugabyte.operator.v1alpha1.DrConfig;
+import io.yugabyte.operator.v1alpha1.KMSConfig;
+import io.yugabyte.operator.v1alpha1.KMSConfigSpec;
+import io.yugabyte.operator.v1alpha1.KMSConfigStatus;
 import io.yugabyte.operator.v1alpha1.PitrConfig;
 import io.yugabyte.operator.v1alpha1.PitrRestore;
 import io.yugabyte.operator.v1alpha1.Release;
@@ -140,6 +155,7 @@ import io.yugabyte.operator.v1alpha1.storageconfigspec.Data;
 import io.yugabyte.operator.v1alpha1.storageconfigspec.GcsCredentialsJsonSecret;
 import io.yugabyte.operator.v1alpha1.ybproviderspec.Regions;
 import io.yugabyte.operator.v1alpha1.ybproviderspec.regions.Zones;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.EncryptionAtRest;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
@@ -152,6 +168,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -164,6 +181,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -187,6 +206,21 @@ public class OperatorUtils {
    * exactly.
    */
   private static final ObjectMapper TELEMETRY_COPY_MAPPER = new ObjectMapper();
+
+  /**
+   * KMS providers the operator implements, both for reconciling a KMSConfig CR and for importing an
+   * existing YBA config into one. Other providers surface as an Error state on the CR, and block a
+   * universe that uses them from being imported.
+   */
+  public static final Set<KeyProvider> SUPPORTED_KMS_PROVIDERS =
+      Collections.unmodifiableSet(
+          EnumSet.of(
+              KeyProvider.HASHICORP,
+              KeyProvider.AWS,
+              KeyProvider.GCP,
+              KeyProvider.AZU,
+              KeyProvider.CIPHERTRUST,
+              KeyProvider.OCI));
 
   private static final String[] ZONE_CONFIG_KEYS_TO_CHECK = {
     "KUBENAMESPACE",
@@ -360,6 +394,43 @@ public class OperatorUtils {
             "Telemetry provider CR '"
                 + telemetryProviderCrName
                 + "' has no resolved provider UUID yet");
+      }
+      return UUID.fromString(resourceUUID);
+    }
+  }
+
+  /**
+   * Resolves a KMSConfig CR (by name, in the given namespace) to its YBA config UUID. Throws when
+   * the config CR is missing, not yet Ready/InUse, or has no resolved config UUID, so the caller
+   * can surface a clear error rather than proceeding without a valid KMS config.
+   *
+   * @param kmsConfigCrName the KMSConfig CR name
+   * @param namespace the namespace to look it up in
+   * @return the resolved YBA KMS config UUID
+   */
+  public UUID resolveReadyKmsConfigUuid(String kmsConfigCrName, String namespace) throws Exception {
+    try (final KubernetesClient kubernetesClient =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      KMSConfig kmsConfigCr =
+          kubernetesClient
+              .resources(KMSConfig.class)
+              .inNamespace(namespace)
+              .withName(kmsConfigCrName)
+              .get();
+      if (kmsConfigCr == null) {
+        throw new Exception("KMS config CR '" + kmsConfigCrName + "' not found");
+      }
+      KMSConfigStatus status = kmsConfigCr.getStatus();
+      String state = status == null ? null : status.getState();
+      String resourceUUID = status == null ? null : status.getResourceUUID();
+      // Ready or InUse both mean the config exists in YBA with a valid UUID.
+      if (!"Ready".equals(state) && !"InUse".equals(state)) {
+        throw new Exception(
+            "KMS config CR '" + kmsConfigCrName + "' is not ready (state: " + state + ")");
+      }
+      if (StringUtils.isBlank(resourceUUID)) {
+        throw new Exception(
+            "KMS config CR '" + kmsConfigCrName + "' has no resolved config UUID yet");
       }
       return UUID.fromString(resourceUUID);
     }
@@ -1053,6 +1124,8 @@ public class OperatorUtils {
     log.trace("Toggle Immutable YBC mismatch: {}", mismatch);
     mismatch = mismatch || shouldUpdateTelemetry(u, ybUniverse);
     log.trace("telemetry mismatch: {}", mismatch);
+    mismatch = mismatch || shouldUpdateEncryptionAtRest(u, ybUniverse);
+    log.trace("encryption at rest mismatch: {}", mismatch);
     return mismatch;
   }
 
@@ -1266,6 +1339,116 @@ public class OperatorUtils {
   @SuppressWarnings("unchecked")
   private static <T> T authoredCopy(T config) {
     return (T) TELEMETRY_COPY_MAPPER.convertValue(config, config.getClass());
+  }
+
+  /** Whether encryption at rest is on in the spec. Defaults to true when unset, as does the CRD. */
+  public static boolean earEnabled(EncryptionAtRest ear) {
+    return ear.getEnabled() == null || ear.getEnabled();
+  }
+
+  /** What the universe CR's encryptionAtRest block asks for, relative to the live universe. */
+  public enum EarChangeType {
+    /** The universe is already in the requested state. */
+    NONE,
+    /** Turn encryption at rest on, or point it at a different KMS config. */
+    ENABLE,
+    /** Turn encryption at rest off. */
+    DISABLE,
+    /** EAR is requested, but the KMS config CR it names is missing or not Ready yet. */
+    KMS_CONFIG_NOT_READY
+  }
+
+  /** The outcome of {@link #getEncryptionAtRestChange}. */
+  @Getter
+  @AllArgsConstructor
+  public static class EarChange {
+    private final EarChangeType type;
+
+    /** The KMS config the spec names, null when it names none or it could not be resolved. */
+    private final UUID desiredConfigUUID;
+
+    /** The KMS config the universe's active key is held under, null when there is none. */
+    private final UUID currentConfigUUID;
+
+    /** Why the KMS config could not be resolved. Null unless the type is KMS_CONFIG_NOT_READY. */
+    private final String kmsConfigError;
+
+    /** Whether this change needs a task submitted for it. */
+    public boolean isActionable() {
+      return type == EarChangeType.ENABLE || type == EarChangeType.DISABLE;
+    }
+
+    /**
+     * Whether applying this change re-encrypts the universe key under a different master key. True
+     * for a rotation between two KMS configs, and also when re-enabling EAR under a config other
+     * than the one the universe's still-active key was left under.
+     */
+    public boolean rotatesMasterKey() {
+      return desiredConfigUUID != null
+          && currentConfigUUID != null
+          && !desiredConfigUUID.equals(currentConfigUUID);
+    }
+  }
+
+  /**
+   * Works out the encryption at rest change a universe CR is asking for: EAR off to on, on to off,
+   * a different KMS config (master key rotation), or nothing.
+   *
+   * <p>This is the one place that decision is made. Two callers act on it: shouldUpdateUniverse
+   * uses it to decide whether an edit is queued at all (a spec change touching only
+   * encryptionAtRest is otherwise treated as a No-Op and dropped), and
+   * YBUniverseReconciler.handleEncryptionAtRestChange uses it to build and submit the task. They
+   * have to agree - queueing an edit the handler then declines to act on requeues the resource
+   * forever - which is why they read the same answer instead of each deriving their own.
+   */
+  public EarChange getEncryptionAtRestChange(Universe u, YBUniverse ybUniverse) {
+    EncryptionAtRest ear = ybUniverse.getSpec().getEncryptionAtRest();
+    if (ear == null) {
+      // No EAR block: leave the universe's EAR state unchanged (disable is via enabled=false).
+      return new EarChange(EarChangeType.NONE, null, null, null);
+    }
+    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    boolean currentlyEnabled =
+        details.encryptionAtRestConfig != null
+            && details.encryptionAtRestConfig.encryptionAtRestEnabled;
+    KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(u.getUniverseUUID());
+    UUID currentConfigUUID = activeKey == null ? null : activeKey.getConfigUuid();
+    boolean desiredEnabled = StringUtils.isNotBlank(ear.getKmsConfig()) && earEnabled(ear);
+
+    if (!desiredEnabled) {
+      return new EarChange(
+          currentlyEnabled ? EarChangeType.DISABLE : EarChangeType.NONE,
+          null,
+          currentConfigUUID,
+          null);
+    }
+
+    UUID desiredConfigUUID;
+    try {
+      desiredConfigUUID =
+          resolveReadyKmsConfigUuid(ear.getKmsConfig(), ybUniverse.getMetadata().getNamespace());
+    } catch (Exception e) {
+      // The KMS config CR is missing or not Ready yet. The caller decides what to do about it:
+      // queueing an edit that cannot complete would only flip the universe to ERROR_UPDATING on
+      // every resync and block unrelated edits. Once the KMS config goes Ready, a resync picks
+      // this up.
+      log.warn(
+          "Encryption at rest change for universe {} needs KMS config '{}', which is unusable: {}",
+          u.getName(),
+          ear.getKmsConfig(),
+          e.getMessage());
+      return new EarChange(
+          EarChangeType.KMS_CONFIG_NOT_READY, null, currentConfigUUID, e.getMessage());
+    }
+    if (currentlyEnabled && desiredConfigUUID.equals(currentConfigUUID)) {
+      return new EarChange(EarChangeType.NONE, desiredConfigUUID, currentConfigUUID, null);
+    }
+    return new EarChange(EarChangeType.ENABLE, desiredConfigUUID, currentConfigUUID, null);
+  }
+
+  /** Whether the universe CR's encryptionAtRest block calls for an edit to the universe. */
+  public boolean shouldUpdateEncryptionAtRest(Universe u, YBUniverse ybUniverse) {
+    return getEncryptionAtRestChange(u, ybUniverse).isActionable();
   }
 
   /*--- Release related help methods ---*/
@@ -2355,6 +2538,378 @@ public class OperatorUtils {
     }
   }
 
+  /**
+   * The KMS config an imported universe's encryption at rest hangs off: the config its active
+   * universe key is held under, falling back to the association recorded on the universe when there
+   * is no key yet. Null when the universe has never had encryption at rest.
+   */
+  public static UUID getUniverseKmsConfigUuid(Universe universe) {
+    KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.getUniverseUUID());
+    if (activeKey != null) {
+      return activeKey.getConfigUuid();
+    }
+    EncryptionAtRestConfig earConfig = universe.getUniverseDetails().encryptionAtRestConfig;
+    return earConfig == null ? null : earConfig.kmsConfigUUID;
+  }
+
+  /**
+   * The credentials held in a KMS config's auth config, keyed by auth-config field name. Each one
+   * has to be moved into a Kubernetes Secret before {@link #createKMSConfigCr} can reference it,
+   * because the CRD only takes credentials by Secret reference. Fields that the config does not use
+   * (an IAM profile, a managed identity, an instance principal, the unused auth type) are absent
+   * from the auth config and so are absent here too.
+   */
+  public static Map<String, String> getKMSConfigSecretValues(KmsConfig cfg) {
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(cfg.getConfigUUID());
+    if (authConfig == null) {
+      throw new RuntimeException(
+          String.format("KMS config %s has no auth config to import", cfg.getName()));
+    }
+    List<String> fields;
+    switch (cfg.getKeyProvider()) {
+      case AWS:
+        fields =
+            List.of(
+                AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName,
+                AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName);
+        break;
+      case GCP:
+        fields = List.of(GcpKmsAuthConfigField.GCP_CONFIG.fieldName);
+        break;
+      case AZU:
+        fields = List.of(AzuKmsAuthConfigField.CLIENT_SECRET.fieldName);
+        break;
+      case OCI:
+        fields = List.of(OciKmsAuthConfigField.ociPrivateKeyContent.fieldName);
+        break;
+      case CIPHERTRUST:
+        fields =
+            List.of(
+                CipherTrustKmsAuthConfigField.PASSWORD.fieldName,
+                CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName);
+        break;
+      case HASHICORP:
+        fields =
+            List.of(
+                HashicorpVaultConfigParams.HC_VAULT_TOKEN,
+                HashicorpVaultConfigParams.HC_VAULT_SECRET_ID);
+        break;
+      default:
+        throw new UnsupportedOperationException(
+            String.format(
+                "%s KMS is not yet supported via the Kubernetes operator",
+                cfg.getKeyProvider().name()));
+    }
+    Map<String, String> values = new HashMap<>();
+    for (String field : fields) {
+      if (!authConfig.hasNonNull(field)) {
+        continue;
+      }
+      JsonNode value = authConfig.get(field);
+      // The GCP service account credentials are an object; every other credential is a string.
+      values.put(field, value.isTextual() ? value.asText() : value.toString());
+    }
+    return values;
+  }
+
+  /**
+   * Creates a KMSConfig custom resource for a KMS config that already exists in YBA, so that an
+   * imported universe's encryption at rest keeps working under the operator. The spec is the
+   * reverse of {@link #getKMSConfigFormDataFromCr}: the stored auth config is mapped back onto the
+   * CRD fields, with every credential replaced by a reference to a Secret the caller has already
+   * created.
+   *
+   * @param cfg the YBA KMS config to import
+   * @param namespace the namespace to create the CR in
+   * @param secretNames auth-config field name to the name of the Secret holding its value, as
+   *     returned by {@link #getKMSConfigSecretValues}. The key within each Secret is the
+   *     auth-config field name itself.
+   */
+  public void createKMSConfigCr(KmsConfig cfg, String namespace, Map<String, String> secretNames)
+      throws Exception {
+    String crName = kubernetesCompatName(cfg.getName());
+    try (final KubernetesClient kubernetesClient =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      if (kubernetesClient.resources(KMSConfig.class).inNamespace(namespace).withName(crName).get()
+          != null) {
+        log.info("KMS config {} already exists, skipping creation", crName);
+        return;
+      }
+      KMSConfig kmsConfigCr = new KMSConfig();
+      kmsConfigCr.setMetadata(
+          new ObjectMetaBuilder()
+              .withName(crName)
+              .withNamespace(namespace)
+              // The reconciler adds this finalizer to the configs it creates, so that deleting the
+              // CR deletes the KMS config in YBA. An imported config is no different.
+              .withFinalizers(YB_FINALIZER)
+              .withAnnotations(
+                  Map.ofEntries(
+                      Map.entry(
+                          ResourceAnnotationKeys.YBA_RESOURCE_ID, cfg.getConfigUUID().toString())))
+              .build());
+      kmsConfigCr.setSpec(buildKMSConfigSpec(cfg, namespace, secretNames));
+      KMSConfigStatus status = new KMSConfigStatus();
+      status.setResourceUUID(cfg.getConfigUUID().toString());
+      status.setState("Ready");
+      status.setMessage("KMS config ready");
+      kmsConfigCr.setStatus(status);
+      kubernetesClient
+          .resources(KMSConfig.class)
+          .inNamespace(namespace)
+          .resource(kmsConfigCr)
+          .create();
+    } catch (Exception e) {
+      throw new Exception(
+          String.format("Unable to create KMS config: %s type: KMSConfig", cfg.getName()), e);
+    }
+  }
+
+  /** Builds the KMSConfig CR spec from a YBA KMS config's stored auth config. */
+  @VisibleForTesting
+  KMSConfigSpec buildKMSConfigSpec(
+      KmsConfig cfg, String namespace, Map<String, String> secretNames) {
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(cfg.getConfigUUID());
+    if (authConfig == null) {
+      throw new RuntimeException(
+          String.format("KMS config %s has no auth config to import", cfg.getName()));
+    }
+    KeyProvider provider = cfg.getKeyProvider();
+    ObjectNode spec = Json.newObject();
+    spec.put("name", cfg.getName());
+    spec.put("provider", provider.name());
+    switch (provider) {
+      case AWS:
+        spec.set("aws", buildAwsSpec(authConfig, namespace, secretNames));
+        break;
+      case GCP:
+        spec.set("gcp", buildGcpSpec(authConfig, namespace, secretNames));
+        break;
+      case AZU:
+        spec.set("azure", buildAzureSpec(authConfig, namespace, secretNames));
+        break;
+      case OCI:
+        spec.set("oci", buildOciSpec(authConfig, namespace, secretNames));
+        break;
+      case CIPHERTRUST:
+        spec.set("cipherTrust", buildCiphertrustSpec(authConfig, namespace, secretNames));
+        break;
+      case HASHICORP:
+        spec.set("vault", buildVaultSpec(authConfig, namespace, secretNames));
+        break;
+      default:
+        throw new UnsupportedOperationException(
+            String.format(
+                "%s KMS is not yet supported via the Kubernetes operator", provider.name()));
+    }
+    return objectMapper.convertValue(spec, KMSConfigSpec.class);
+  }
+
+  private ObjectNode buildAwsSpec(
+      ObjectNode authConfig, String namespace, Map<String, String> secretNames) {
+    ObjectNode aws = Json.newObject();
+    aws.put("region", authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText());
+    // Static credentials are only stored when the config does not use the host IAM profile.
+    boolean useIAMProfile = !authConfig.hasNonNull(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName);
+    aws.put("useIAMProfile", useIAMProfile);
+    if (!useIAMProfile) {
+      aws.set(
+          "accessKeyIdSecret",
+          buildSecretRef(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName, namespace, secretNames));
+      aws.set(
+          "secretAccessKeySecret",
+          buildSecretRef(
+              AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName, namespace, secretNames));
+    }
+    // cmkID is always set on an existing config, whether the customer supplied it or YBA created
+    // the CMK. cmkPolicy is deliberately not carried over: it only applies while creating a CMK.
+    copyText(authConfig, AwsKmsAuthConfigField.CMK_ID.fieldName, aws, "cmkID");
+    copyText(authConfig, AwsKmsAuthConfigField.ENDPOINT.fieldName, aws, "endpoint");
+    return aws;
+  }
+
+  private ObjectNode buildGcpSpec(
+      ObjectNode authConfig, String namespace, Map<String, String> secretNames) {
+    ObjectNode gcp = Json.newObject();
+    gcp.put(
+        "location",
+        getTextOrDefault(authConfig, GcpKmsAuthConfigField.LOCATION_ID.fieldName, "global"));
+    gcp.put("keyRingName", authConfig.get(GcpKmsAuthConfigField.KEY_RING_ID.fieldName).asText());
+    gcp.put(
+        "cryptoKeyName", authConfig.get(GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName).asText());
+    gcp.put(
+        "protectionLevel",
+        getTextOrDefault(authConfig, GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName, "HSM"));
+    copyText(authConfig, GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName, gcp, "endpoint");
+    gcp.set(
+        "credentialsSecret",
+        buildSecretRef(GcpKmsAuthConfigField.GCP_CONFIG.fieldName, namespace, secretNames));
+    return gcp;
+  }
+
+  private ObjectNode buildAzureSpec(
+      ObjectNode authConfig, String namespace, Map<String, String> secretNames) {
+    ObjectNode azure = Json.newObject();
+    azure.put("clientID", authConfig.get(AzuKmsAuthConfigField.CLIENT_ID.fieldName).asText());
+    azure.put("tenantID", authConfig.get(AzuKmsAuthConfigField.TENANT_ID.fieldName).asText());
+    azure.put(
+        "keyVaultURL", authConfig.get(AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName).asText());
+    azure.put("keyName", authConfig.get(AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName).asText());
+    azure.put(
+        "keyAlgorithm",
+        getTextOrDefault(authConfig, AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName, "RSA"));
+    azure.put(
+        "keySize", getIntOrDefault(authConfig, AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName, 2048));
+    // A managed identity leaves the client secret out of the auth config entirely.
+    boolean useManagedIdentity =
+        !authConfig.hasNonNull(AzuKmsAuthConfigField.CLIENT_SECRET.fieldName);
+    azure.put("useManagedIdentity", useManagedIdentity);
+    if (!useManagedIdentity) {
+      azure.set(
+          "clientSecretSecret",
+          buildSecretRef(AzuKmsAuthConfigField.CLIENT_SECRET.fieldName, namespace, secretNames));
+    }
+    return azure;
+  }
+
+  private ObjectNode buildOciSpec(
+      ObjectNode authConfig, String namespace, Map<String, String> secretNames) {
+    ObjectNode oci = Json.newObject();
+    oci.put("region", authConfig.get(OciKmsAuthConfigField.ociRegion.fieldName).asText());
+    oci.put(
+        "compartmentOCID",
+        authConfig.get(OciKmsAuthConfigField.ociCompartmentId.fieldName).asText());
+    oci.put("vaultOCID", authConfig.get(OciKmsAuthConfigField.ociVaultId.fieldName).asText());
+    oci.put(
+        "keyName",
+        getTextOrDefault(authConfig, OciKmsAuthConfigField.ociKeyName.fieldName, "yba-master-key"));
+    // keyOCID is filled in by the backend once the key exists, so an existing config always has it.
+    copyText(authConfig, OciKmsAuthConfigField.ociKeyOcid.fieldName, oci, "keyOCID");
+    // The auth type is left blank for API-key configs created before instance-principal support.
+    boolean useInstancePrincipal =
+        OciKmsAuthType.INSTANCE_PRINCIPAL
+            .name()
+            .equals(
+                getTextOrDefault(authConfig, OciKmsAuthConfigField.ociAuthType.fieldName, null));
+    oci.put("useInstancePrincipal", useInstancePrincipal);
+    if (!useInstancePrincipal) {
+      oci.put("userOCID", authConfig.get(OciKmsAuthConfigField.ociUserId.fieldName).asText());
+      oci.put("tenancyOCID", authConfig.get(OciKmsAuthConfigField.ociTenancyId.fieldName).asText());
+      oci.put(
+          "fingerprint", authConfig.get(OciKmsAuthConfigField.ociFingerprint.fieldName).asText());
+      oci.set(
+          "privateKeySecret",
+          buildSecretRef(
+              OciKmsAuthConfigField.ociPrivateKeyContent.fieldName, namespace, secretNames));
+    }
+    return oci;
+  }
+
+  private ObjectNode buildCiphertrustSpec(
+      ObjectNode authConfig, String namespace, Map<String, String> secretNames) {
+    ObjectNode cipherTrust = Json.newObject();
+    cipherTrust.put(
+        "managerURL",
+        authConfig.get(CipherTrustKmsAuthConfigField.CIPHERTRUST_MANAGER_URL.fieldName).asText());
+    cipherTrust.put(
+        "keyName", authConfig.get(CipherTrustKmsAuthConfigField.KEY_NAME.fieldName).asText());
+    cipherTrust.put(
+        "keyAlgorithm",
+        getTextOrDefault(authConfig, CipherTrustKmsAuthConfigField.KEY_ALGORITHM.fieldName, "AES"));
+    cipherTrust.put(
+        "keySize",
+        getIntOrDefault(authConfig, CipherTrustKmsAuthConfigField.KEY_SIZE.fieldName, 256));
+    String authType =
+        getTextOrDefault(authConfig, CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName, null);
+    // The backend calls user-credentials auth PASSWORD; the CRD calls it USER_CREDENTIALS.
+    if ("PASSWORD".equals(authType)) {
+      cipherTrust.put("authType", "USER_CREDENTIALS");
+      ObjectNode userCredentials = Json.newObject();
+      userCredentials.put(
+          "username", authConfig.get(CipherTrustKmsAuthConfigField.USERNAME.fieldName).asText());
+      userCredentials.set(
+          "passwordSecret",
+          buildSecretRef(CipherTrustKmsAuthConfigField.PASSWORD.fieldName, namespace, secretNames));
+      cipherTrust.set("userCredentials", userCredentials);
+    } else if ("REFRESH_TOKEN".equals(authType)) {
+      cipherTrust.put("authType", "REFRESH_TOKEN");
+      cipherTrust.set(
+          "refreshTokenSecret",
+          buildSecretRef(
+              CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName, namespace, secretNames));
+    } else {
+      throw new UnsupportedOperationException(
+          "Unsupported auth type for CIPHERTRUST KMS via the Kubernetes operator: " + authType);
+    }
+    return cipherTrust;
+  }
+
+  private ObjectNode buildVaultSpec(
+      ObjectNode authConfig, String namespace, Map<String, String> secretNames) {
+    ObjectNode vault = Json.newObject();
+    vault.put("address", authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS).asText());
+    vault.put(
+        "keyName",
+        getTextOrDefault(authConfig, HashicorpVaultConfigParams.HC_VAULT_KEY_NAME, "key_yugabyte"));
+    vault.put(
+        "secretEngine",
+        getTextOrDefault(authConfig, HashicorpVaultConfigParams.HC_VAULT_ENGINE, "transit"));
+    String mountPath =
+        getTextOrDefault(authConfig, HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH, "transit/");
+    if (authConfig.hasNonNull(HashicorpVaultConfigParams.HC_VAULT_TOKEN)) {
+      vault.put("authType", "TOKEN");
+      vault.set(
+          "tokenSecret",
+          buildSecretRef(HashicorpVaultConfigParams.HC_VAULT_TOKEN, namespace, secretNames));
+    } else {
+      vault.put("authType", "APPROLE");
+      ObjectNode appRole = Json.newObject();
+      appRole.put("roleID", authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID).asText());
+      appRole.set(
+          "secretIdSecret",
+          buildSecretRef(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID, namespace, secretNames));
+      vault.set("appRole", appRole);
+      String authNamespace =
+          getTextOrDefault(authConfig, HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE, null);
+      if (authNamespace != null) {
+        vault.put("authNamespace", authNamespace);
+        // The CR holds a mount path relative to the auth namespace, which
+        // getKMSConfigFormDataFromCr prefixes on the way back. Strip it so the CR round-trips to
+        // the auth config it came from and the reconciler sees no change.
+        String prefix = authNamespace.endsWith("/") ? authNamespace : authNamespace + "/";
+        if (mountPath.startsWith(prefix)) {
+          mountPath = mountPath.substring(prefix.length());
+        }
+      }
+    }
+    vault.put("mountPath", mountPath);
+    return vault;
+  }
+
+  /**
+   * Builds the CR's {name, namespace, key} reference to the Secret holding an auth-config field.
+   */
+  private static ObjectNode buildSecretRef(
+      String field, String namespace, Map<String, String> secretNames) {
+    String secretName = secretNames == null ? null : secretNames.get(field);
+    if (StringUtils.isBlank(secretName)) {
+      throw new RuntimeException(
+          String.format("No Secret was created for the KMS config credential '%s'", field));
+    }
+    ObjectNode ref = Json.newObject();
+    ref.put("name", secretName);
+    ref.put("namespace", namespace);
+    ref.put("key", field);
+    return ref;
+  }
+
+  /** Copies an optional text field from the auth config onto the spec, under a new name. */
+  private static void copyText(ObjectNode from, String fromField, ObjectNode to, String toField) {
+    if (from.hasNonNull(fromField)) {
+      to.put(toField, from.get(fromField).asText());
+    }
+  }
+
   private long convertFrequencyToMillis(long frequency, TimeUnit timeUnit) {
     switch (timeUnit) {
       case DAYS:
@@ -2564,6 +3119,9 @@ public class OperatorUtils {
       // UserIntent overrides
       universeImporter.setAzDeviceInfoOverridesSpecFromUniverse(spec, universe);
 
+      // Encryption at rest
+      universeImporter.setEncryptionAtRestSpecFromUniverse(spec, universe);
+
       ybUniverse.setSpec(spec);
       YBUniverseStatus status = new YBUniverseStatus();
       status.setCqlEndpoints(getYCQLEndpoints(universe));
@@ -2661,6 +3219,375 @@ public class OperatorUtils {
         KubernetesResourceDetails.fromResource(pitrConfig));
 
     return updatePitrConfigParams;
+  }
+
+  /** Returns the backend {@link KeyProvider} for the given KMSConfig custom resource. */
+  public KeyProvider getKMSConfigProvider(KMSConfig kmsConfig) {
+    ObjectNode spec = objectMapper.valueToTree(kmsConfig.getSpec());
+    JsonNode providerNode = spec.get("provider");
+    if (providerNode == null || providerNode.isNull()) {
+      throw new RuntimeException("KMS config provider is not set");
+    }
+    return KeyProvider.valueOf(providerNode.asText());
+  }
+
+  /**
+   * Builds the KMS provider auth-config form data from the KMSConfig CR spec, resolving any
+   * referenced Kubernetes Secrets. The returned ObjectNode contains the KMS config {@code name}
+   * plus the provider-specific auth-config fields expected by the backend EncryptionAtRest services
+   * (the same shape the REST API accepts as the request body).
+   *
+   * <p>HASHICORP (Vault) is implemented with TOKEN and APPROLE auth, AWS with static credentials or
+   * the host IAM profile, GCP with a service account credentials JSON, AZU with a service principal
+   * or managed identity, CIPHERTRUST with user credentials or a refresh token, and OCI with API-key
+   * authentication; every other provider throws {@link UnsupportedOperationException} as an
+   * explicit placeholder for future support.
+   */
+  public ObjectNode getKMSConfigFormDataFromCr(KMSConfig kmsConfig) {
+    ObjectNode spec = objectMapper.valueToTree(kmsConfig.getSpec());
+    KeyProvider provider = getKMSConfigProvider(kmsConfig);
+    String resourceNamespace = kmsConfig.getMetadata().getNamespace();
+    ObjectNode formData = Json.newObject();
+    formData.put("name", spec.get("name").asText());
+    switch (provider) {
+      case HASHICORP:
+        buildHashicorpAuthConfig(formData, spec.get("vault"), resourceNamespace);
+        break;
+      case AWS:
+        buildAwsAuthConfig(formData, spec.get("aws"), resourceNamespace);
+        break;
+      case GCP:
+        buildGcpAuthConfig(formData, spec.get("gcp"), resourceNamespace);
+        break;
+      case AZU:
+        buildAzureAuthConfig(formData, spec.get("azure"), resourceNamespace);
+        break;
+      case CIPHERTRUST:
+        buildCiphertrustAuthConfig(formData, spec.get("cipherTrust"), resourceNamespace);
+        break;
+      case OCI:
+        buildOciAuthConfig(formData, spec.get("oci"), resourceNamespace);
+        break;
+      default:
+        throw new UnsupportedOperationException(
+            String.format(
+                "%s KMS is not yet supported via the Kubernetes operator", provider.name()));
+    }
+    return formData;
+  }
+
+  private void buildAwsAuthConfig(ObjectNode formData, JsonNode aws, String resourceNamespace) {
+    if (aws == null || aws.isNull()) {
+      throw new RuntimeException("aws configuration is required for AWS KMS");
+    }
+    formData.put(AwsKmsAuthConfigField.REGION.fieldName, aws.get("region").asText());
+
+    // The host IAM profile authenticates through the default AWS credential chain and omits the
+    // static credentials; otherwise both of them are required.
+    boolean useIAMProfile = aws.hasNonNull("useIAMProfile") && aws.get("useIAMProfile").asBoolean();
+    if (!useIAMProfile) {
+      JsonNode accessKeyIdSecret = aws.get("accessKeyIdSecret");
+      JsonNode secretAccessKeySecret = aws.get("secretAccessKeySecret");
+      if (accessKeyIdSecret == null
+          || accessKeyIdSecret.isNull()
+          || secretAccessKeySecret == null
+          || secretAccessKeySecret.isNull()) {
+        throw new RuntimeException(
+            "accessKeyIdSecret and secretAccessKeySecret are required for AWS KMS unless"
+                + " useIAMProfile is true");
+      }
+      formData.put(
+          AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName,
+          resolveSecretRef(accessKeyIdSecret, resourceNamespace));
+      formData.put(
+          AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName,
+          resolveSecretRef(secretAccessKeySecret, resourceNamespace));
+    }
+
+    // cmkID and endpoint are optional. When cmkID is omitted YBA creates a CMK on the customer's
+    // behalf; when endpoint is omitted the default AWS KMS endpoint is used.
+    String cmkId = getTextOrDefault(aws, "cmkID", null);
+    if (cmkId != null) {
+      formData.put(AwsKmsAuthConfigField.CMK_ID.fieldName, cmkId);
+    }
+    String endpoint = getTextOrDefault(aws, "endpoint", null);
+    if (endpoint != null) {
+      formData.put(AwsKmsAuthConfigField.ENDPOINT.fieldName, endpoint);
+    }
+
+    // Optional custom CMK policy document, used by the backend only when it creates the CMK
+    // (cmkID unset). Held in a Secret because it is a multi-line JSON document.
+    JsonNode cmkPolicySecret = aws.get("cmkPolicySecret");
+    if (cmkPolicySecret != null && !cmkPolicySecret.isNull()) {
+      formData.put(
+          AwsKmsAuthConfigField.CMK_POLICY.fieldName,
+          resolveSecretRef(cmkPolicySecret, resourceNamespace));
+    }
+  }
+
+  private void buildGcpAuthConfig(ObjectNode formData, JsonNode gcp, String resourceNamespace) {
+    if (gcp == null || gcp.isNull()) {
+      throw new RuntimeException("gcp configuration is required for GCP KMS");
+    }
+    formData.put(
+        GcpKmsAuthConfigField.LOCATION_ID.fieldName, getTextOrDefault(gcp, "location", "global"));
+    formData.put(GcpKmsAuthConfigField.KEY_RING_ID.fieldName, gcp.get("keyRingName").asText());
+    formData.put(GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName, gcp.get("cryptoKeyName").asText());
+    formData.put(
+        GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName,
+        getTextOrDefault(gcp, "protectionLevel", "HSM"));
+
+    String endpoint = getTextOrDefault(gcp, "endpoint", null);
+    if (endpoint != null) {
+      formData.put(GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName, endpoint);
+    }
+
+    // The service account credentials JSON is stored as a nested object under GCP_CONFIG. The
+    // project ID is read from this JSON (GCP_CONFIG.project_id) with no other source, so the
+    // credentials are required.
+    JsonNode credentialsSecret = gcp.get("credentialsSecret");
+    if (credentialsSecret == null || credentialsSecret.isNull()) {
+      throw new RuntimeException("credentialsSecret is required for GCP KMS");
+    }
+    String credentialsJson = resolveSecretRef(credentialsSecret, resourceNamespace);
+    formData.set(GcpKmsAuthConfigField.GCP_CONFIG.fieldName, readJson(credentialsJson));
+  }
+
+  private JsonNode readJson(String json) {
+    try {
+      return objectMapper.readTree(json);
+    } catch (Exception e) {
+      throw new RuntimeException("GCP credentials Secret does not contain valid JSON", e);
+    }
+  }
+
+  private void buildAzureAuthConfig(ObjectNode formData, JsonNode azure, String resourceNamespace) {
+    if (azure == null || azure.isNull()) {
+      throw new RuntimeException("azure configuration is required for AZU KMS");
+    }
+    formData.put(AzuKmsAuthConfigField.CLIENT_ID.fieldName, azure.get("clientID").asText());
+    formData.put(AzuKmsAuthConfigField.TENANT_ID.fieldName, azure.get("tenantID").asText());
+    formData.put(AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName, azure.get("keyVaultURL").asText());
+    formData.put(AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName, azure.get("keyName").asText());
+    formData.put(
+        AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName,
+        getTextOrDefault(azure, "keyAlgorithm", "RSA"));
+    formData.put(
+        AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName, getIntOrDefault(azure, "keySize", 2048));
+
+    // A managed identity authenticates through DefaultAzureCredential and omits the client secret;
+    // a service principal requires it. clientID and tenantID are required in both cases.
+    boolean useManagedIdentity =
+        azure.hasNonNull("useManagedIdentity") && azure.get("useManagedIdentity").asBoolean();
+    if (!useManagedIdentity) {
+      JsonNode clientSecretSecret = azure.get("clientSecretSecret");
+      if (clientSecretSecret == null || clientSecretSecret.isNull()) {
+        throw new RuntimeException(
+            "clientSecretSecret is required for AZU KMS unless useManagedIdentity is true");
+      }
+      formData.put(
+          AzuKmsAuthConfigField.CLIENT_SECRET.fieldName,
+          resolveSecretRef(clientSecretSecret, resourceNamespace));
+    }
+  }
+
+  private static int getIntOrDefault(JsonNode node, String field, int defaultValue) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    return value.asInt();
+  }
+
+  private void buildCiphertrustAuthConfig(
+      ObjectNode formData, JsonNode cipherTrust, String resourceNamespace) {
+    if (cipherTrust == null || cipherTrust.isNull()) {
+      throw new RuntimeException("cipherTrust configuration is required for CIPHERTRUST KMS");
+    }
+    formData.put(
+        CipherTrustKmsAuthConfigField.CIPHERTRUST_MANAGER_URL.fieldName,
+        cipherTrust.get("managerURL").asText());
+    formData.put(
+        CipherTrustKmsAuthConfigField.KEY_NAME.fieldName, cipherTrust.get("keyName").asText());
+    formData.put(
+        CipherTrustKmsAuthConfigField.KEY_ALGORITHM.fieldName,
+        getTextOrDefault(cipherTrust, "keyAlgorithm", "AES"));
+    formData.put(
+        CipherTrustKmsAuthConfigField.KEY_SIZE.fieldName,
+        getIntOrDefault(cipherTrust, "keySize", 256));
+
+    String authType = getTextOrDefault(cipherTrust, "authType", null);
+    if ("USER_CREDENTIALS".equals(authType)) {
+      JsonNode userCredentials = cipherTrust.get("userCredentials");
+      if (userCredentials == null || userCredentials.isNull()) {
+        throw new RuntimeException(
+            "userCredentials is required for CIPHERTRUST KMS with USER_CREDENTIALS auth");
+      }
+      // The backend represents user-credentials auth as the PASSWORD auth type.
+      formData.put(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName, "PASSWORD");
+      formData.put(
+          CipherTrustKmsAuthConfigField.USERNAME.fieldName,
+          userCredentials.get("username").asText());
+      JsonNode passwordSecret = userCredentials.get("passwordSecret");
+      if (passwordSecret == null || passwordSecret.isNull()) {
+        throw new RuntimeException(
+            "passwordSecret is required for CIPHERTRUST KMS with USER_CREDENTIALS auth");
+      }
+      formData.put(
+          CipherTrustKmsAuthConfigField.PASSWORD.fieldName,
+          resolveSecretRef(passwordSecret, resourceNamespace));
+    } else if ("REFRESH_TOKEN".equals(authType)) {
+      JsonNode refreshTokenSecret = cipherTrust.get("refreshTokenSecret");
+      if (refreshTokenSecret == null || refreshTokenSecret.isNull()) {
+        throw new RuntimeException(
+            "refreshTokenSecret is required for CIPHERTRUST KMS with REFRESH_TOKEN auth");
+      }
+      formData.put(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName, "REFRESH_TOKEN");
+      formData.put(
+          CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName,
+          resolveSecretRef(refreshTokenSecret, resourceNamespace));
+    } else {
+      throw new UnsupportedOperationException(
+          "Unsupported auth type for CIPHERTRUST KMS via the Kubernetes operator: " + authType);
+    }
+  }
+
+  // OCI is exposed with API-key authentication (the default when ociAuthType is absent) and with
+  // the OCI Instance Principal of the YBA host.
+  private void buildOciAuthConfig(ObjectNode formData, JsonNode oci, String resourceNamespace) {
+    if (oci == null || oci.isNull()) {
+      throw new RuntimeException("oci configuration is required for OCI KMS");
+    }
+    formData.put(OciKmsAuthConfigField.ociRegion.fieldName, oci.get("region").asText());
+    formData.put(
+        OciKmsAuthConfigField.ociCompartmentId.fieldName, oci.get("compartmentOCID").asText());
+    formData.put(OciKmsAuthConfigField.ociVaultId.fieldName, oci.get("vaultOCID").asText());
+    formData.put(
+        OciKmsAuthConfigField.ociKeyName.fieldName,
+        getTextOrDefault(oci, "keyName", "yba-master-key"));
+
+    // The instance principal is resolved from the host metadata service and omits the API-key
+    // credentials; otherwise all four of them are required.
+    boolean useInstancePrincipal =
+        oci.hasNonNull("useInstancePrincipal") && oci.get("useInstancePrincipal").asBoolean();
+    if (useInstancePrincipal) {
+      formData.put(
+          OciKmsAuthConfigField.ociAuthType.fieldName, OciKmsAuthType.INSTANCE_PRINCIPAL.name());
+    } else {
+      JsonNode userOcid = oci.get("userOCID");
+      JsonNode tenancyOcid = oci.get("tenancyOCID");
+      JsonNode fingerprint = oci.get("fingerprint");
+      JsonNode privateKeySecret = oci.get("privateKeySecret");
+      if (userOcid == null
+          || userOcid.isNull()
+          || tenancyOcid == null
+          || tenancyOcid.isNull()
+          || fingerprint == null
+          || fingerprint.isNull()
+          || privateKeySecret == null
+          || privateKeySecret.isNull()) {
+        throw new RuntimeException(
+            "userOCID, tenancyOCID, fingerprint and privateKeySecret are required for OCI KMS"
+                + " unless useInstancePrincipal is true");
+      }
+      // ociAuthType is deliberately left unset for API_KEY: it is the backend default when the
+      // field is blank, so configs created before instance-principal support keep an identical
+      // auth config and do not look changed to the reconciler.
+      formData.put(OciKmsAuthConfigField.ociUserId.fieldName, userOcid.asText());
+      formData.put(OciKmsAuthConfigField.ociTenancyId.fieldName, tenancyOcid.asText());
+      formData.put(OciKmsAuthConfigField.ociFingerprint.fieldName, fingerprint.asText());
+      formData.put(
+          OciKmsAuthConfigField.ociPrivateKeyContent.fieldName,
+          resolveSecretRef(privateKeySecret, resourceNamespace));
+    }
+
+    // keyOCID is optional: when omitted YBA creates a key with keyName in the vault.
+    String keyOcid = getTextOrDefault(oci, "keyOCID", null);
+    if (keyOcid != null) {
+      formData.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, keyOcid);
+    }
+  }
+
+  private void buildHashicorpAuthConfig(
+      ObjectNode formData, JsonNode vault, String resourceNamespace) {
+    if (vault == null || vault.isNull()) {
+      throw new RuntimeException("vault configuration is required for HASHICORP KMS");
+    }
+    formData.put(HashicorpVaultConfigParams.HC_VAULT_ADDRESS, vault.get("address").asText());
+    formData.put(
+        HashicorpVaultConfigParams.HC_VAULT_KEY_NAME,
+        getTextOrDefault(vault, "keyName", "key_yugabyte"));
+    formData.put(
+        HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+        getTextOrDefault(vault, "secretEngine", "transit"));
+
+    String mountPath = getTextOrDefault(vault, "mountPath", "transit/");
+
+    String authType = getTextOrDefault(vault, "authType", null);
+    if ("TOKEN".equals(authType)) {
+      JsonNode tokenSecret = vault.get("tokenSecret");
+      if (tokenSecret == null || tokenSecret.isNull()) {
+        throw new RuntimeException("tokenSecret is required for HASHICORP KMS with TOKEN auth");
+      }
+      formData.put(
+          HashicorpVaultConfigParams.HC_VAULT_TOKEN,
+          resolveSecretRef(tokenSecret, resourceNamespace));
+    } else if ("APPROLE".equals(authType)) {
+      JsonNode appRole = vault.get("appRole");
+      if (appRole == null || appRole.isNull()) {
+        throw new RuntimeException("appRole is required for HASHICORP KMS with APPROLE auth");
+      }
+      formData.put(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID, appRole.get("roleID").asText());
+      JsonNode secretIdSecret = appRole.get("secretIdSecret");
+      if (secretIdSecret == null || secretIdSecret.isNull()) {
+        throw new RuntimeException(
+            "secretIdSecret is required for HASHICORP KMS with APPROLE auth");
+      }
+      formData.put(
+          HashicorpVaultConfigParams.HC_VAULT_SECRET_ID,
+          resolveSecretRef(secretIdSecret, resourceNamespace));
+
+      // authNamespace is only meaningful for APPROLE auth. The backend expects the transit mount
+      // path to be namespace-qualified (it strips the auth-namespace prefix before use), so the CR
+      // takes a mountPath relative to the Vault namespace and we prefix it here.
+      String authNamespace = getTextOrDefault(vault, "authNamespace", null);
+      if (authNamespace != null) {
+        formData.put(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE, authNamespace);
+        String prefix = authNamespace.endsWith("/") ? authNamespace : authNamespace + "/";
+        if (!mountPath.startsWith(prefix)) {
+          mountPath = prefix + mountPath;
+        }
+      }
+    } else {
+      throw new UnsupportedOperationException(
+          "Unsupported auth type for HASHICORP KMS via the Kubernetes operator: " + authType);
+    }
+
+    formData.put(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH, mountPath);
+  }
+
+  /**
+   * Resolves a {name, namespace, key} Secret reference from the CR to the secret's string value.
+   */
+  private String resolveSecretRef(JsonNode secretRef, String defaultNamespace) {
+    String name = secretRef.get("name").asText();
+    String key = secretRef.get("key").asText();
+    String namespace =
+        secretRef.hasNonNull("namespace") ? secretRef.get("namespace").asText() : defaultNamespace;
+    String value = parseSecretForKey(getSecret(name, namespace), key);
+    if (value == null) {
+      throw new RuntimeException(
+          String.format("Could not resolve key '%s' from secret '%s'", key, name));
+    }
+    return value;
+  }
+
+  private static String getTextOrDefault(JsonNode node, String field, String defaultValue) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    return value.asText();
   }
 
   public boolean requiresDrConfigDatabaseUpdate(DrConfig drConfig, XClusterConfig xClusterConfig) {
