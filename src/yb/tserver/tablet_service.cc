@@ -108,6 +108,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_admin_util.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
@@ -128,6 +129,7 @@
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/keyed_fingerprint.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
@@ -748,7 +750,7 @@ void TabletServiceAdminImpl::VerifyUniqueIndexTablet(
           server_->tablet_manager(), "VerifyUniqueIndexTablet", req, resp, &context)) {
     return;
   }
-  DVLOG(3) << "Received VerifyUniqueIndexTablet RPC: " << req->DebugString();
+  DVLOG(3) << "Received VerifyUniqueIndexTablet RPC: " << RedactedDebugString(*req);
 
   if (PREDICT_FALSE(FLAGS_TEST_pause_verify_unique_index_tablet_rpc)) {
     // Retryable rejection: keeps the coordinator's task alive while a test arranges a master
@@ -845,6 +847,18 @@ void TabletServiceAdminImpl::VerifyUniqueIndexTablet(
   }
   if (!result->reason.empty()) {
     resp->set_reason(result->reason);
+  }
+  if (result->outcome == docdb::UniqueIndexVerificationOutcome::kViolation &&
+      req->has_verification_fingerprint_key() && !result->violating_group_prefix.empty()) {
+    // The reason rides backfill_error_message into the CREATE INDEX error and support
+    // bundles; the token makes reports of the same duplicate correlatable within this job
+    // without exposing the indexed value.
+    const auto token = KeyedFingerprintToken(
+        req->verification_fingerprint_key(), result->violating_group_prefix);
+    resp->set_violation_fingerprint(token);
+    resp->set_reason(
+        resp->reason().empty() ? Format("fingerprint=$0", token)
+                               : Format("$0; fingerprint=$1", resp->reason(), token));
   }
   if (!result->resume_from_dockey.empty()) {
     resp->set_resume_key(result->resume_from_dockey);
