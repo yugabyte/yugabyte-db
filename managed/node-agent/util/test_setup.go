@@ -28,7 +28,15 @@ const (
 	dummyInstanceType = "instance_type_0"
 	dummyRegion       = "region_0"
 	dummyZone         = "zone_0"
+	// DummyCertificateName / DummyCertificateUuid are returned by the mock
+	// certificate lookup API for unit tests.
+	DummyCertificateName = "custom-cert"
+	DummyCertificateUuid = "cert-uuid-1"
 )
+
+// MockNodeAgentCertificateUuid is the certificateUuid returned by the mock
+// GET node_agents API. Tests may set this before calling ValidateNodeAgentIfExists.
+var MockNodeAgentCertificateUuid string
 
 func init() {
 	setUp()
@@ -83,6 +91,7 @@ func MockServer() *httptest.Server {
 		"/api/customers/{cuuid}/providers/{puuid}/instance_types/{instanceType}",
 		getInstanceTypeTestHandler,
 	)
+	r.HandleFunc("/api/customers/{cuuid}/certificates/{name}", getCertificateTestHandler)
 	r.HandleFunc("/test", testHandler)
 	r.HandleFunc("/api/customers/{cuuid}/zones/{azid}/nodes", nodeCapabilitiesTestHandler)
 	r.HandleFunc("/customers/{cuuid}/node_agents/{nuuid}/state", nodeAgentStateHandler)
@@ -124,7 +133,37 @@ func registerNodeTestHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "{\"success\": false, \"error\": \"Bad Request\"}", 400)
 		return
 	}
+	if r.Method == http.MethodGet {
+		nodeAgent := GetTestRegisterResponse().NodeAgent
+		nodeAgent.State = string(model.Ready)
+		nodeAgent.CertificateUuid = MockNodeAgentCertificateUuid
+		data, err := json.Marshal([]*model.NodeAgent{&nodeAgent})
+		if err != nil {
+			http.Error(w, "Internal Server Error", 500)
+			return
+		}
+		w.Write(data)
+		return
+	}
 	data, err := json.Marshal(GetTestRegisterResponse())
+	if err != nil {
+		http.Error(w, "Internal Server Error", 500)
+		return
+	}
+	w.Write(data)
+}
+
+func getCertificateTestHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	if vars["cuuid"] != "c1234" {
+		http.Error(w, "{\"success\": false, \"error\": \"Bad Request\"}", 400)
+		return
+	}
+	if vars["name"] != DummyCertificateName {
+		http.Error(w, "{\"success\": false, \"error\": \"No certificate with label\"}", 400)
+		return
+	}
+	data, err := json.Marshal(DummyCertificateUuid)
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
 		return

@@ -215,6 +215,20 @@ func PlatformGetNodeAgentEndpoint(cuuid string, ip string) string {
 	return fmt.Sprintf("/api/v1/customers/%s/node_agents?nodeIp=%s", cuuid, ip)
 }
 
+// Returns the platform endpoint for looking up a certificate UUID by label/name.
+func PlatformGetCertificateEndpoint(cuuid string, certificateName string) string {
+	return fmt.Sprintf(
+		"/api/customers/%s/certificates/%s",
+		cuuid,
+		url.PathEscape(certificateName),
+	)
+}
+
+// Returns the platform endpoint for listing certificates for a customer.
+func PlatformGetCertificatesEndpoint(cuuid string) string {
+	return fmt.Sprintf("/api/customers/%s/certificates", cuuid)
+}
+
 // Returns the platform endpoint for unregistering a node agent.
 func PlatformUnregisterAgentEndpoint(cuuid string, nuuid string) string {
 	return fmt.Sprintf("/api/v1/customers/%s/node_agents/%s", cuuid, nuuid)

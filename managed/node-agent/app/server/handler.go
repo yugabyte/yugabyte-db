@@ -155,7 +155,7 @@ func UnregisterNodeAgent(ctx context.Context, apiToken string) error {
 }
 
 // ValidateNodeAgentIfExists validates if the existing node agent communication works.
-func ValidateNodeAgentIfExists(ctx context.Context, apiToken string) error {
+func ValidateNodeAgentIfExists(ctx context.Context, apiToken, certificateName string) error {
 	config := util.CurrentConfig()
 	getNodeAgentHandler := task.NewGetNodeAgentHandler(apiToken)
 	err := executor.GetInstance().ExecuteTask(ctx, getNodeAgentHandler.Handle)
@@ -174,7 +174,26 @@ func ValidateNodeAgentIfExists(ctx context.Context, apiToken string) error {
 		getNodeAgentHandler = task.NewGetNodeAgentHandler("")
 		err = executor.GetInstance().ExecuteTask(ctx, getNodeAgentHandler.Handle)
 		if err == nil {
-			return nil
+			matches, err := certificateMatches(
+				ctx,
+				apiToken,
+				nodeAgent.CertificateUuid,
+				certificateName,
+			)
+			if err != nil {
+				return err
+			}
+			if matches {
+				return nil
+			}
+			util.FileLogger().Infof(ctx,
+				"Node agent certificate changed (existing uuid=%q, requested name=%q); reinstalling",
+				nodeAgent.CertificateUuid, certificateName)
+			err = UnregisterNodeAgent(ctx, apiToken)
+			if err != nil {
+				return err
+			}
+			return util.ErrNotExist
 		}
 	}
 	if nodeAgentId != nodeAgent.Uuid {
@@ -193,4 +212,25 @@ func ValidateNodeAgentIfExists(ctx context.Context, apiToken string) error {
 		return err
 	}
 	return util.ErrNotExist
+}
+
+// certificateMatches reports whether the node agent's certificateUuid matches the
+// YBA certificate labeled certificateName.
+func certificateMatches(
+	ctx context.Context,
+	apiToken, existingCertificateUuid, certificateName string,
+) (bool, error) {
+	desiredUuid := ""
+	if certificateName != "" {
+		// Determine the certificate UUID by name.
+		handler := task.NewGetCertificateUuidHandler(apiToken, certificateName)
+		err := executor.GetInstance().ExecuteTask(ctx, handler.Handle)
+		if err != nil {
+			util.FileLogger().Errorf(ctx,
+				"Failed to resolve certificate name %q - %s", certificateName, err)
+			return false, err
+		}
+		desiredUuid = handler.Result()
+	}
+	return existingCertificateUuid == desiredUuid, nil
 }

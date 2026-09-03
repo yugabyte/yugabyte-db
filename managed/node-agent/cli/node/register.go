@@ -190,7 +190,6 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to store skip_verify_cert value - %s", err.Error())
 	}
-	// Do not persist in config.yml — the name can go out of sync on cert rotation.
 	certificateName, err := cmd.Flags().GetString("certificate_name")
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to read certificate name - %s", err.Error())

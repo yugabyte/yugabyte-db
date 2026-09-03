@@ -13,10 +13,11 @@ type RegisterRequest struct {
 
 type NodeAgent struct {
 	CommonInfo
-	Uuid         string          `json:"uuid,omitempty"`
-	CustomerUuid string          `json:"customerUuid,omitempty"`
-	UpdatedAt    time.Time       `json:"updatedAt,omitempty"`
-	Config       NodeAgentConfig `json:"config,omitempty"`
+	Uuid            string          `json:"uuid,omitempty"`
+	CustomerUuid    string          `json:"customerUuid,omitempty"`
+	CertificateUuid string          `json:"certificateUuid,omitempty"`
+	UpdatedAt       time.Time       `json:"updatedAt,omitempty"`
+	Config          NodeAgentConfig `json:"config,omitempty"`
 }
 
 type RegisterResponseSuccess struct {
@@ -31,6 +32,12 @@ type ResponseError struct {
 type ResponseMessage struct {
 	SuccessStatus bool   `json:"success,omitempty"`
 	Message       string `json:"message,omitempty"`
+}
+
+// CertificateInfo is a YBA certificate config (label + uuid).
+type CertificateInfo struct {
+	Uuid  string `json:"uuid,omitempty"`
+	Label string `json:"label,omitempty"`
 }
 
 type CommonInfo struct {
