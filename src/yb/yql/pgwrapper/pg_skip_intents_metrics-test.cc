@@ -1384,6 +1384,68 @@ TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
   ASSERT_EQ(val4, "off");
 }
 
+// Startup must not depend on where the GUC and yb_ddl_transaction_block_enabled land in
+// ysql_pg.conf. Settings from --ysql_pg_conf_csv are written ahead of the block that
+// AppendPgGFlags generates from the PG gflags, so the GUC here is assigned while
+// yb_ddl_transaction_block_enabled still holds its compiled-in default rather than the value the
+// cluster runs with. That default is false in debug builds, where the dependency check used to
+// reject this configuration and the postmaster refused to start even though the cluster does run
+// with transactional DDL on. Release builds compile the default to true, which masks the
+// ordering, so this test only bites in debug.
+class SkipIntentsGucConfOrderingTest : public SkipIntentsMetricTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
+    // Set the GUC through ysql_pg_conf_csv, and drop the gflag the base class sets so that
+    // AppendPgGFlags leaves it at its default: postgres applies only the last occurrence of a
+    // parameter in the file, so a gflag line would re-assign the GUC after
+    // yb_ddl_transaction_block_enabled and hide the ordering.
+    std::erase_if(options->extra_tserver_flags, [](const std::string& flag) {
+      return flag.starts_with("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=");
+    });
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_enable_new_relation_fastpath_write_in_txn_blocks=true");
+  }
+};
+
+TEST_F(SkipIntentsGucConfOrderingTest, TestGucSetBeforeDdlTransactionBlock) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>("SHOW yb_ddl_transaction_block_enabled")), "on");
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>(
+          "SHOW yb_enable_new_relation_fastpath_write_in_txn_blocks")),
+      "on");
+}
+
+// Cluster without transactional DDL, where the in-txn-block fastpath cannot apply.
+class SkipIntentsNoDdlTxnBlockTest : public SkipIntentsMetricTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      flags->emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+      // DDL savepoints and object locking both require transactional DDL, so keep the flags
+      // consistent.
+      flags->emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
+      flags->emplace_back("--enable_object_locking_for_table_locks=false");
+    }
+    // ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks also requires transactional DDL;
+    // leaving the base class value of true would fail flag validation at startup.
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
+  }
+};
+
+TEST_F(SkipIntentsNoDdlTxnBlockTest, TestGucRequiresDdlTransactionBlock) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  auto result = conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = on");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "yb_ddl_transaction_block_enabled is disabled");
+}
+
 TEST_F(SkipIntentsMetricTest, TestSkipIntentsInDoBlock) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET default_transaction_isolation TO 'read committed'"));

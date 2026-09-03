@@ -4256,7 +4256,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_enable_new_relation_fastpath_write_in_txn_blocks", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Allows yb_enable_new_relation_fastpath_write to be applicable inside explicit transaction blocks too."),
-			NULL,
+			gettext_noop("Requires yb_ddl_transaction_block_enabled to be on."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_new_relation_fastpath_write_in_txn_blocks,
@@ -18066,6 +18066,30 @@ check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **e
 							"when yb_enable_new_relation_fastpath_write is disabled.");
 		return false;
 	}
+
+	/*
+	 * A DDL inside a transaction block can only use the fastpath if it runs in
+	 * the enclosing transaction, which requires transactional DDL. Otherwise
+	 * this GUC would be silently ineffective.
+	 *
+	 * Only values supplied once the postmaster has read its configuration are
+	 * checked: SET, the validation pass of ALTER ROLE/DATABASE ... SET, and
+	 * connection request options. The configuration file is applied in file
+	 * order, and yb_ddl_transaction_block_enabled may be assigned after this
+	 * GUC - pg_wrapper writes ysql_pg_conf_csv entries ahead of the block it
+	 * generates from the PG gflags - so checking there would reject a
+	 * configuration whose final values are valid. The validator on the
+	 * ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks gflag rejects the
+	 * cluster-level combination instead, order-independently; a GUC enabled only
+	 * through ysql_pg_conf_csv is left to no-op silently.
+	 */
+	if (*newval && !yb_ddl_transaction_block_enabled && source >= PGC_S_CLIENT)
+	{
+		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
+							"when yb_ddl_transaction_block_enabled is disabled.");
+		return false;
+	}
+
 	return check_skip_intents_internal("yb_enable_new_relation_fastpath_write_in_txn_blocks", newval, source);
 }
 

@@ -38,6 +38,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -58,6 +59,7 @@ using namespace std::literals;
 
 DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
@@ -95,7 +97,12 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write, true,
 
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks, false,
                                "Allows yb_enable_new_relation_fastpath_write to be applicable "
-                               "inside explicit transaction blocks too.");
+                               "inside explicit transaction blocks too. DDL inside a transaction "
+                               "block can only use the fastpath if the DDL runs in the enclosing "
+                               "transaction, so this flag only takes effect if "
+                               "ysql_yb_ddl_transaction_block_enabled is true.");
+DEFINE_validator(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
 
 namespace yb::pggate {
 namespace {
