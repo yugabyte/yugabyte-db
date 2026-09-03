@@ -6824,8 +6824,26 @@ void CatalogManager::GetBackfillStatus(
           index_info_pb.has_index_permissions() ?
               IndexPermissions_Name(index_info_pb.index_permissions()) : "-");
 
-      indexes_for_callback.emplace_back(
-          index_info_pb.table_id(), master::GetBackfillStatus(index_info_pb));
+      auto backfill_status = master::GetBackfillStatus(index_info_pb);
+      // Structural guard for the tserver metadata validator's release backstop: while
+      // deferred uniqueness verification is in progress, the validator must not release the
+      // index tablets' ordering generations (or, through them, the retention barrier holding
+      // the verification window). Today this cannot fire -- index permissions stay at
+      // DO_BACKFILL (never a terminal status) until the terminal funnel runs after the
+      // verification phase -- but the validator's safety should not hinge on that ordering
+      // staying true.
+      if (backfill_status != IndexStatusPB::BACKFILL_UNKNOWN) {
+        for (const auto& backfill_job : indexed_table_lock->pb.backfill_jobs()) {
+          auto it = backfill_job.unique_index_verification().find(index_info_pb.table_id());
+          if (it != backfill_job.unique_index_verification().end() &&
+              it->second.state() == UniqueIndexVerificationStatePB::VERIFY_IN_PROGRESS) {
+            backfill_status = IndexStatusPB::BACKFILL_UNKNOWN;
+            break;
+          }
+        }
+      }
+
+      indexes_for_callback.emplace_back(index_info_pb.table_id(), backfill_status);
     }
   }
 

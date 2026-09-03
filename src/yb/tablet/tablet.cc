@@ -3296,10 +3296,14 @@ Result<docdb::UniqueIndexVerificationResult> Tablet::VerifyUniqueIndex(
     return down_cast<docdb::ConsensusFrontier&>(*flushed_frontier).history_cutoff()
         .primary_cutoff_ht;
   };
+  // Strictness matters (the equality-insufficiency analysis): the marked duplicates the
+  // verifier exists to find share one hybrid time, and an overwrite tracked at a cutoff
+  // EQUAL to the window's lower bound lets compaction drop the lower-write-ID versions at
+  // that exact coordinate. The cutoff must be strictly below the window.
   const auto cutoff_before = applied_history_cutoff();
   SCHECK(
-      !cutoff_before || window_lower >= cutoff_before, IllegalState,
-      "Verification window begins below the applied history cutoff");
+      !cutoff_before || cutoff_before < window_lower, IllegalState,
+      "Verification window does not begin strictly above the applied history cutoff");
 
   // The identity column: a regular value column on unique-index tablets. Its absence means
   // this tablet does not host a unique index shaped for verification.
@@ -3328,8 +3332,8 @@ Result<docdb::UniqueIndexVerificationResult> Tablet::VerifyUniqueIndex(
   // return a result computed over possibly-incomplete history.
   const auto cutoff_after = applied_history_cutoff();
   SCHECK(
-      !cutoff_after || window_lower >= cutoff_after, IllegalState,
-      "Applied history cutoff advanced past the verification window during the scan");
+      !cutoff_after || cutoff_after < window_lower, IllegalState,
+      "Applied history cutoff advanced into the verification window during the scan");
   return result;
 }
 
