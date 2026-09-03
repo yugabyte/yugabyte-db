@@ -72,6 +72,8 @@ The following connection properties need to be added to enable load balancing:
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `YB Servers Refresh Interval` connection parameter.
 
+When load balancing is enabled, the driver creates a separate connection pool for each node in the cluster, so `Maximum Pool Size` applies per node, and not to the cluster as a whole. The maximum number of connections an application can open is `Maximum Pool Size` multiplied by the number of nodes.
+
 ### Use the driver
 
 To use the driver, pass new connection properties for load balancing in the connection URL or properties pool.
