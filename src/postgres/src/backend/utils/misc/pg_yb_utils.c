@@ -6120,7 +6120,6 @@ yb_tablegroup_size(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup with OID %u does not exist", tablegroup_oid)));
-	ReleaseSysCache(tuple);
 
 	HandleYBStatus(YBCPgGetTablegroupDiskSize(tablegroup_oid,
 											  MyDatabaseId,
@@ -6129,12 +6128,15 @@ yb_tablegroup_size(PG_FUNCTION_ARGS)
 											  &num_missing_tablets));
 	if (num_missing_tablets > 0)
 	{
+		Form_pg_yb_tablegroup form = (Form_pg_yb_tablegroup) GETSTRUCT(tuple);
+
 		elog(NOTICE,
-			 "%d tablets of tablegroup %u did not provide disk size "
+			 "%d tablets of tablegroup %s did not provide disk size "
 			 "estimates, and were not added to the displayed totals.",
 			 num_missing_tablets,
-			 tablegroup_oid);
+			 NameStr(form->grpname));
 	}
+	ReleaseSysCache(tuple);
 
 	PG_RETURN_INT64(size);
 }
