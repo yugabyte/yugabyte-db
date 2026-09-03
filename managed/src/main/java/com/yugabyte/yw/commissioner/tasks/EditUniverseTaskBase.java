@@ -13,7 +13,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ConfirmEditRollbackMembership;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseDetailsFromDelta;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -32,7 +31,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -52,7 +50,6 @@ import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.client.YBClientApi;
 
 @Slf4j
 public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
@@ -791,49 +788,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       toDestroy.add(node);
     }
     return toDestroy;
-  }
-
-  protected SubTaskGroup createRestoreUniverseDetailsFromDeltaTask(
-      StateTransitionDetails stateTransitionDetails) {
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup("RestoreUniverseDetailsFromDelta", SubTaskGroupType.ConfigureUniverse);
-    RestoreUniverseDetailsFromDelta.Params params = new RestoreUniverseDetailsFromDelta.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.stateTransitionDetails = stateTransitionDetails;
-    RestoreUniverseDetailsFromDelta task = createTask(RestoreUniverseDetailsFromDelta.class);
-    task.initialize(params);
-    task.setUserTaskUUID(getUserTaskUUID());
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
-   * When {@code rollbackSafe} is true, confirm master cluster config (including server_blacklist)
-   * is reachable. Do not trust the YBA flag alone.
-   */
-  protected void confirmMasterServerBlacklistReadable(Universe universe) {
-    try (YBClientApi client = ybService.getUniverseClient(universe)) {
-      org.yb.client.GetMasterClusterConfigResponse configResponse = client.getMasterClusterConfig();
-      if (configResponse == null || configResponse.getConfig() == null) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "Cannot roll back edit universe: master cluster config is unavailable to confirm"
-                + " server_blacklist");
-      }
-      int blacklistSize = configResponse.getConfig().getServerBlacklist().getHostsCount();
-      log.info(
-          "Rollback precheck: master server_blacklist has {} host(s) for universe {}",
-          blacklistSize,
-          universe.getUniverseUUID());
-    } catch (PlatformServiceException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Cannot roll back edit universe: failed to read master server_blacklist - "
-              + e.getMessage());
-    }
   }
 
   /**

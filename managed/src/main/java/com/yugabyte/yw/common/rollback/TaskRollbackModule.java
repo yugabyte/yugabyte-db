@@ -24,5 +24,6 @@ public class TaskRollbackModule extends AbstractModule {
     mapBinder
         .addBinding(TaskType.EditKubernetesUniverse)
         .to(EditKubernetesUniverseRollbackComputer.class);
+    mapBinder.addBinding(TaskType.AddNodeToUniverse).to(AddNodeToUniverseRollbackComputer.class);
   }
 }

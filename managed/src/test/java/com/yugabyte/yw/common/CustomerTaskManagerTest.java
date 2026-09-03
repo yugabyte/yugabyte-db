@@ -1023,6 +1023,95 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     assertEquals(rootTaskUUID, paramsCaptor.getValue().getOriginalTaskUUID());
   }
 
+  private JsonNode addNodeTaskParams(Universe universe) {
+    ObjectNode params = (ObjectNode) Json.toJson(universe.getUniverseDetails());
+    params.put("universeUUID", universe.getUniverseUUID().toString());
+    params.put("nodeName", universe.getNodes().iterator().next().getNodeName());
+    return params;
+  }
+
+  @Test
+  public void testRollbackAddNodeDisabledByRuntimeFlag() {
+    universe =
+        Universe.saveDetails(
+            ModelFactory.createUniverse(customer.getId()).getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater());
+    JsonNode taskParams = addNodeTaskParams(universe);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.AddNodeToUniverse, CustomerTask.TaskType.Add, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
+    assertTrue(ex.getMessage().contains("not enabled"));
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testRollbackAddNodeSubmitsRollbackAddNodeWhenEnabled() {
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.task.allow_add_node_rollback", "true");
+    universe =
+        Universe.saveDetails(
+            ModelFactory.createUniverse(customer.getId()).getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater());
+    JsonNode taskParams = addNodeTaskParams(universe);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.AddNodeToUniverse, CustomerTask.TaskType.Add, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    UUID rollbackTaskUUID = UUID.randomUUID();
+    persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.RollbackAddNodeToUniverse);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.RollbackAddNodeToUniverse), any()))
+        .thenReturn(rollbackTaskUUID);
+
+    CustomerTask rollbackTask =
+        taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.RollbackAddNodeToUniverse), paramsCaptor.capture());
+    assertNull(paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(failedTaskUUID, paramsCaptor.getValue().getOriginalTaskUUID());
+    assertEquals(CustomerTask.TaskType.RollbackAddNodeToUniverse, rollbackTask.getType());
+    assertEquals(rollbackTaskUUID, rollbackTask.getTaskUUID());
+  }
+
+  @Test
+  public void testRollbackAddNodeCarriesRootOriginalTaskUUID() {
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.task.allow_add_node_rollback", "true");
+    universe =
+        Universe.saveDetails(
+            ModelFactory.createUniverse(customer.getId()).getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater());
+    UUID rootTaskUUID = UUID.randomUUID();
+    ObjectNode taskParams = (ObjectNode) addNodeTaskParams(universe);
+    taskParams.put("originalTaskUUID", rootTaskUUID.toString());
+    taskParams.put("previousTaskUUID", UUID.randomUUID().toString());
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.AddNodeToUniverse, CustomerTask.TaskType.Add, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    UUID rollbackTaskUUID = UUID.randomUUID();
+    persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.RollbackAddNodeToUniverse);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.RollbackAddNodeToUniverse), any()))
+        .thenReturn(rollbackTaskUUID);
+
+    taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.RollbackAddNodeToUniverse), paramsCaptor.capture());
+    assertNull(paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(rootTaskUUID, paramsCaptor.getValue().getOriginalTaskUUID());
+  }
+
   @Test
   public void testRollbackEditKubernetesUniverse() {
     // K8s edit is bound to EditKubernetesUniverseRollbackComputer, which submits
@@ -1065,6 +1154,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     assertNotNull(computers.get(TaskType.SoftwareKubernetesUpgradeYB));
     assertNotNull(computers.get(TaskType.EditUniverse));
     assertNotNull(computers.get(TaskType.EditKubernetesUniverse));
+    assertNotNull(computers.get(TaskType.AddNodeToUniverse));
     assertNull(computers.get(TaskType.CreateUniverse));
   }
 

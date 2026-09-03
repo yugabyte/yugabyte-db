@@ -299,6 +299,11 @@ public enum TaskType {
       CustomerTask.TaskType.Add,
       CustomerTask.TargetType.Node),
 
+  RollbackAddNodeToUniverse(
+      com.yugabyte.yw.commissioner.tasks.RollbackAddNodeToUniverse.class,
+      CustomerTask.TaskType.RollbackAddNodeToUniverse,
+      CustomerTask.TargetType.Node),
+
   RemoveNodeFromUniverse(
       com.yugabyte.yw.commissioner.tasks.RemoveNodeFromUniverse.class,
       CustomerTask.TaskType.Remove,
@@ -1459,6 +1464,7 @@ public enum TaskType {
           .put(UpdateK8sYbcThrottleFlags, 63)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
+          .put(RollbackAddNodeToUniverse, 79)
           .put(DeleteNodeFromUniverse, 71)
           .put(RebootNodeInUniverse, 72)
           .put(ReleaseInstanceFromUniverse, 73)

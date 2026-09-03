@@ -192,6 +192,9 @@ public class CustomerTask extends Model {
     @EnumValue("RollbackEditUniverse")
     RollbackEditUniverse,
 
+    @EnumValue("RollbackAddNodeToUniverse")
+    RollbackAddNodeToUniverse,
+
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
 
@@ -518,6 +521,8 @@ public class CustomerTask extends Model {
           return completed ? "Rolled back upgrade" : "Rolling back upgrade";
         case RollbackEditUniverse:
           return completed ? "Rolled back edit universe" : "Rolling back edit universe";
+        case RollbackAddNodeToUniverse:
+          return completed ? "Rolled back add node" : "Rolling back add node";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd" : "Upgrading to Systemd";
         case GFlagsUpgrade:

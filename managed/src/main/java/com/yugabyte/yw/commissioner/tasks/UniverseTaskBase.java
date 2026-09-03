@@ -286,6 +286,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RollbackKubernetesUpgrade,
           TaskType.RollbackEditUniverse,
           TaskType.RollbackEditKubernetesUniverse,
+          TaskType.RollbackAddNodeToUniverse,
           TaskType.RestartUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
@@ -649,6 +650,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // rerun are allowed on a failed K8s edit.
       if (lockedTaskType == TaskType.EditKubernetesUniverse) {
         builder.taskTypes(ImmutableSet.of(TaskType.RollbackEditKubernetesUniverse));
+      }
+      // 1:1 with AddNodeToUniverseRollbackComputer / TaskType.AddNodeToUniverse.
+      if (lockedTaskType == TaskType.AddNodeToUniverse) {
+        builder.taskTypes(ImmutableSet.of(TaskType.RollbackAddNodeToUniverse));
       }
       if (RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
         builder.rerun(true);
@@ -1618,6 +1623,47 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     createMarkRollbackUnsafeTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     markRollbackUnsafeAdded = true;
+  }
+
+  protected SubTaskGroup createRestoreUniverseDetailsFromDeltaTask(
+      StateTransitionDetails stateTransitionDetails) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("RestoreUniverseDetailsFromDelta", SubTaskGroupType.ConfigureUniverse);
+    RestoreUniverseDetailsFromDelta.Params params = new RestoreUniverseDetailsFromDelta.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.stateTransitionDetails = stateTransitionDetails;
+    RestoreUniverseDetailsFromDelta task = createTask(RestoreUniverseDetailsFromDelta.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * When {@code rollbackSafe}, confirm master cluster config (including server_blacklist) is
+   * reachable. Do not trust the YBA flag alone.
+   */
+  protected void confirmMasterServerBlacklistReadable(Universe universe) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
+      org.yb.client.GetMasterClusterConfigResponse configResponse = client.getMasterClusterConfig();
+      if (configResponse == null || configResponse.getConfig() == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Cannot roll back: master cluster config is unavailable to confirm server_blacklist");
+      }
+      int blacklistSize = configResponse.getConfig().getServerBlacklist().getHostsCount();
+      log.info(
+          "Rollback precheck: master server_blacklist has {} host(s) for universe {}",
+          blacklistSize,
+          universe.getUniverseUUID());
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot roll back: failed to read master server_blacklist - " + e.getMessage());
+    }
   }
 
   /** Create a task to mark the change on a universe as success. */

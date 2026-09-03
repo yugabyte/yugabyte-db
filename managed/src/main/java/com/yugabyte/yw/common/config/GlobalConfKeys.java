@@ -2076,6 +2076,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " rollback API",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowAddNodeRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_add_node_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Add Node Tasks",
+          "Allow rolling back a failed add-node-to-universe task via the task rollback API."
+              + " Rollback is limited to the window before tserver start / raft join; Kubernetes"
+              + " is out of scope.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.continuous_platform_backups",
