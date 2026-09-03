@@ -56,6 +56,35 @@ message BackfillJobPB {
   // created and immutable for the job's lifetime, across master failover, retries, and
   // runtime flag changes. Missing means UNIQUE_INDEX_BACKFILL_CHECK_ALL.
   optional UniqueIndexBackfillMode unique_index_backfill_mode = 6;
+
+  // Deferred uniqueness verification state, keyed by unique-index TableId. Written by the
+  // shadow verification coordinator after a SKIP_ALL backfill completes; survives master
+  // failover so verification resumes with the same window and does not re-scan tablets
+  // already confirmed clean.
+  map<string, UniqueIndexVerificationStatePB> unique_index_verification = 7;
+}
+
+message UniqueIndexVerificationStatePB {
+  enum State {
+    VERIFY_NONE = 0;
+    VERIFY_IN_PROGRESS = 1;
+    VERIFY_CLEAN = 2;
+    VERIFY_VIOLATION = 3;
+    VERIFY_INCONCLUSIVE = 4;
+  }
+  optional State state = 1;
+
+  // Chosen once from cluster hybrid time when verification starts; never changes for the
+  // job's lifetime -- retries and failover resume verify the same window.
+  optional fixed64 verify_upper_ht = 2;
+
+  // Tablets confirmed clean (tablet-granularity durable progress). Finer intra-tablet resume
+  // keys are deliberately not persisted: re-scanning one tablet after failover is idempotent.
+  repeated bytes clean_tablet_ids = 3;
+
+  // Value-free context for VERIFY_VIOLATION / VERIFY_INCONCLUSIVE: encoding classes and
+  // counts only, never key or value bytes.
+  optional string reason = 4;
 }
 
   message YsqlDdlTxnVerifierStatePB {
