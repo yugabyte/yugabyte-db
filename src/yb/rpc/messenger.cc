@@ -98,6 +98,10 @@ DEPRECATE_FLAG(int32, rpc_queue_limit, "03_2024");
 
 DEFINE_NON_RUNTIME_int32(rpc_workers_limit, 1024, "Workers limit for rpc server");
 
+DEFINE_NON_RUNTIME_int32(rpc_callback_workers_limit, 0,
+    "Workers limit for the outbound RPC response callback thread pools. 0 means use the value of "
+    "rpc_workers_limit.");
+
 DEFINE_NON_RUNTIME_int32(rpc_reactor_task_timeout_ms, 0,
     "Report if reactor task task takes longer that specified amount of milliseconds. "
     "0 to disable monitoring.");
@@ -439,6 +443,41 @@ const ThreadPoolPtr& Messenger::ThreadPoolPtr(ServicePriority priority) {
   FATAL_INVALID_ENUM_VALUE(ServicePriority, priority);
 }
 
+rpc::ThreadPool& Messenger::CallbackThreadPool(ServicePriority priority) {
+  switch (priority) {
+    case ServicePriority::kNormal:
+      return GetOrCreateCallbackThreadPool(
+          &normal_callback_thread_pool_, &normal_callback_thread_pool_ready_, "-cb",
+          system_med_cgroup_);
+    case ServicePriority::kHigh:
+      return GetOrCreateCallbackThreadPool(
+          &high_priority_callback_thread_pool_, &high_priority_callback_thread_pool_ready_,
+          "-high-pri-cb", system_high_cgroup_);
+  }
+  FATAL_INVALID_ENUM_VALUE(ServicePriority, priority);
+}
+
+rpc::ThreadPool& Messenger::GetOrCreateCallbackThreadPool(
+    rpc::ThreadPoolPtr* pool, std::atomic<bool>* ready, const std::string& name_suffix,
+    Cgroup* cgroup) {
+  if (ready->load(std::memory_order_acquire)) {
+    return **pool;
+  }
+  std::lock_guard lock(mutex_callback_thread_pools_);
+  if (ready->load(std::memory_order_acquire)) {
+    return **pool;
+  }
+  *pool = std::make_shared<rpc::ThreadPool>(
+      rpc::ThreadPoolOptions {
+        .name = name_ + name_suffix,
+        .max_workers = FLAGS_rpc_callback_workers_limit > 0
+            ? FLAGS_rpc_callback_workers_limit : thread_pool_workers_limit_,
+        .cgroup = cgroup,
+      });
+  ready->store(true, std::memory_order_release);
+  return **pool;
+}
+
 Result<ThreadPoolPtr> Messenger::TaggedThreadPool(TaggedThreadPools::Tag tag) {
   return normal_thread_pools_->Pool(tag);
 }
@@ -453,6 +492,15 @@ Status Messenger::RegisterService(
 
 void Messenger::ShutdownThreadPools() {
   normal_thread_pools_->Shutdown();
+  {
+    std::lock_guard lock(mutex_callback_thread_pools_);
+    if (normal_callback_thread_pool_) {
+      normal_callback_thread_pool_->Shutdown();
+    }
+    if (high_priority_callback_thread_pool_) {
+      high_priority_callback_thread_pool_->Shutdown();
+    }
+  }
   std::lock_guard lock(mutex_high_priority_thread_pool_);
   if (high_priority_thread_pool_) {
     high_priority_thread_pool_->Shutdown();
