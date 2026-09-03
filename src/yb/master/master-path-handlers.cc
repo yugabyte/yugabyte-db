@@ -4039,10 +4039,12 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
 
     std::unordered_set<TabletId> tablet_ids;
     for (const auto& [_, table_tree] : tserver_tree) {
-      for (const auto& [_, replicas] : table_tree) {
-        for (const auto& replica : replicas) {
-          tablet_ids.insert(replica.tablet_id);
-        }
+      const auto* replicas = FindOrNull(table_tree, table_id);
+      if (replicas == nullptr) {
+        continue;
+      }
+      for (const auto& replica : *replicas) {
+        tablet_ids.insert(replica.tablet_id);
       }
     }
     auto tablet_count = tablet_ids.size();
