@@ -166,7 +166,8 @@ export const UniverseView = (props) => {
     handleClose: handleUniverseCreationPopoverClose,
     handleClickAway: handleUniverseCreationPopoverClickAway
   } = useUniverseCreationPopover();
-  const isOnboardingExperienceEnabled = useOnboardingNewExperienceEnabled();
+  // Re-render when SuperAdmin banner toggle flips (in-memory feature mirror).
+  useOnboardingNewExperienceEnabled();
 
   const {
     universe: { universeList },
@@ -595,8 +596,7 @@ export const UniverseView = (props) => {
   }
   const isNewV2CreateUniverseUIEnabled = isUniverseRevampExperienceEnabled(
     runtimeConfigs?.data,
-    currentUser?.role,
-    isOnboardingExperienceEnabled
+    currentUser?.role
   );
   return (
     <React.Fragment>

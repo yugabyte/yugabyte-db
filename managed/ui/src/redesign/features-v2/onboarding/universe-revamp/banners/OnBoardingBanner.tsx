@@ -1,6 +1,6 @@
 import { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { useQuery } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import {
@@ -15,11 +15,15 @@ import {
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '@app/actions/customers';
 import { api, runtimeConfigQueryKey } from '@app/redesign/helpers/api';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
-import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
+import {
+  isNewUniverseExperienceForAllUsers,
+  isV2CreateEditUniverseEnabled
+} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
 import {
   isCurrentUserSuperAdmin,
   isOnboardingNewExperienceEnabled,
   setOnboardingNewExperienceEnabled,
+  syncOnboardingNewExperienceEnabled,
   useOnboardingFullscreenOverlayOpen,
   useOnboardingNewExperienceEnabled
 } from '../helper-methods';
@@ -191,6 +195,7 @@ export const OnBoardingBanner: FC = () => {
   });
 
   const enabled = useOnboardingNewExperienceEnabled();
+  const queryClient = useQueryClient();
   const [showWhatChangedModal, setShowWhatChangedModal] = useState(false);
   const [isUnsupportedFeatureWarningOpen, setUnsupportedFeatureWarningOpen] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(isOnboardingBannerDismissed);
@@ -243,16 +248,25 @@ export const OnBoardingBanner: FC = () => {
     api.fetchRuntimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE)
   );
 
-  const isV2Enabled =
+  const isFeatureEnabled =
     globalRuntimeConfigQuery.isSuccess &&
     isV2CreateEditUniverseEnabled(globalRuntimeConfigQuery.data);
+  const isEnabledForAll =
+    isFeatureEnabled && isNewUniverseExperienceForAllUsers(globalRuntimeConfigQuery.data);
 
-  // V2 on: dismissable "in use" banner for everyone. V2 off: opt-in toggle banner for SuperAdmin only.
+  // Keep in-memory feature mirror aligned with runtime config.
+  useEffect(() => {
+    if (!globalRuntimeConfigQuery.isSuccess) return;
+    syncOnboardingNewExperienceEnabled(isFeatureEnabled);
+  }, [globalRuntimeConfigQuery.isSuccess, isFeatureEnabled]);
+
+  // Feature + for-all: dismissable "in use" banner for everyone.
+  // Otherwise: opt-in toggle banner for SuperAdmin only.
   // Hide while Edit Placement / Universe Form fullscreen flows are open.
   const isVisible =
     globalRuntimeConfigQuery.isSuccess &&
     !isFullscreenOverlayOpen &&
-    (isV2Enabled ? !isBannerDismissed : isSuperAdmin);
+    (isEnabledForAll ? !isBannerDismissed : isSuperAdmin);
 
   useEffect(() => {
     if (!isVisible) {
@@ -265,12 +279,12 @@ export const OnBoardingBanner: FC = () => {
     };
   }, [isVisible]);
 
-  // V2 on (all users, including SuperAdmin): After tip after delay.
+  // Enabled for all: After tip after delay.
   useEffect(() => {
     if (
       !isTourProgressReady() ||
       !isVisible ||
-      !isV2Enabled ||
+      !isEnabledForAll ||
       isAfterNewExperiencePopoverDismissed()
     ) {
       return;
@@ -284,18 +298,18 @@ export const OnBoardingBanner: FC = () => {
     };
   }, [
     isVisible,
-    isV2Enabled,
+    isEnabledForAll,
     setBeforePopoverOpen,
     setAfterPopoverOpen,
     currentUserInfo?.uuid
   ]);
 
-  // V2 off + SuperAdmin, toggle off: Before tip after delay on load.
+  // Not for-all + SuperAdmin, toggle off: Before tip after delay on load.
   useEffect(() => {
     if (
       !isTourProgressReady() ||
       !isVisible ||
-      isV2Enabled ||
+      isEnabledForAll ||
       enabled ||
       isBeforeNewExperiencePopoverDismissed()
     ) {
@@ -311,7 +325,7 @@ export const OnBoardingBanner: FC = () => {
     };
   }, [
     isVisible,
-    isV2Enabled,
+    isEnabledForAll,
     enabled,
     clearAfterTipTimer,
     setBeforePopoverOpen,
@@ -319,21 +333,31 @@ export const OnBoardingBanner: FC = () => {
     currentUserInfo?.uuid
   ]);
 
-  // V2 off + SuperAdmin, toggle already on at first paint: After tip after delay.
+  // Not for-all + SuperAdmin, toggle already on at first paint: After tip after delay.
   // Toggle flips while mounted are handled only in handleToggle (avoids effect cleanup
   // cancelling the timer when `enabled` updates).
   useEffect(() => {
     if (
       !isTourProgressReady() ||
       !isVisible ||
-      isV2Enabled ||
+      isEnabledForAll ||
       !isOnboardingNewExperienceEnabled()
     ) {
       return;
     }
     scheduleAfterTipOpen();
     return clearAfterTipTimer;
-  }, [isVisible, isV2Enabled, scheduleAfterTipOpen, clearAfterTipTimer, currentUserInfo?.uuid]);
+  }, [
+    isVisible,
+    isEnabledForAll,
+    scheduleAfterTipOpen,
+    clearAfterTipTimer,
+    currentUserInfo?.uuid
+  ]);
+
+  const invalidateRuntimeConfigs = useCallback(() => {
+    void queryClient.invalidateQueries(runtimeConfigQueryKey.ALL);
+  }, [queryClient]);
 
   const handleToggle = useCallback(
     (_event: unknown, checked: boolean) => {
@@ -342,7 +366,7 @@ export const OnBoardingBanner: FC = () => {
         return;
       }
 
-      setOnboardingNewExperienceEnabled(true);
+      void setOnboardingNewExperienceEnabled(true).then(invalidateRuntimeConfigs);
       toast(
         ({ closeToast }) => (
           <YBAlert
@@ -360,18 +384,23 @@ export const OnBoardingBanner: FC = () => {
       );
       scheduleAfterTipOpen();
     },
-    [scheduleAfterTipOpen, t]
+    [invalidateRuntimeConfigs, scheduleAfterTipOpen, t]
   );
 
   const handleSwitchBackConfirm = useCallback(() => {
     setUnsupportedFeatureWarningOpen(false);
-    setOnboardingNewExperienceEnabled(false);
+    void setOnboardingNewExperienceEnabled(false).then(invalidateRuntimeConfigs);
     clearAfterTipTimer();
     setAfterPopoverOpen(false);
     if (!isBeforeNewExperiencePopoverDismissed()) {
       setBeforePopoverOpen(true);
     }
-  }, [clearAfterTipTimer, setAfterPopoverOpen, setBeforePopoverOpen]);
+  }, [
+    clearAfterTipTimer,
+    invalidateRuntimeConfigs,
+    setAfterPopoverOpen,
+    setBeforePopoverOpen
+  ]);
 
   const handleSeeWhatsChanged = useCallback(() => {
     setShowWhatChangedModal(true);
@@ -394,7 +423,7 @@ export const OnBoardingBanner: FC = () => {
   return (
     <>
       <div className="onboarding-banner-root">
-        {isV2Enabled ? (
+        {isEnabledForAll ? (
           <YBPromotionalBanner
             open
             dismissable={false}
@@ -553,7 +582,7 @@ export const OnBoardingBanner: FC = () => {
         )}
       </div>
 
-      {!isV2Enabled && !enabled && (
+      {!isEnabledForAll && !enabled && (
         <BeforeNewExperiencePopover
           open={isBeforePopoverOpen}
           anchorRef={seeWhatsChangedAnchorRef}
@@ -562,7 +591,7 @@ export const OnBoardingBanner: FC = () => {
           onSeeWhatsChanged={handleSeeWhatsChanged}
         />
       )}
-      {(isV2Enabled || enabled) && (
+      {(isEnabledForAll || enabled) && (
         <AfterNewExperiencePopover
           open={isAfterPopoverOpen}
           anchorRef={seeWhatsChangedAnchorRef}

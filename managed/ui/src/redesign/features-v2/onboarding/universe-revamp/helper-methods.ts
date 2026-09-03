@@ -1,16 +1,24 @@
 import { useEffect, useState } from 'react';
 import { RunTimeConfig } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
+import {
+  isNewUniverseExperienceForAllUsers,
+  isV2CreateEditUniverseEnabled
+} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
 import { isRbacEnabled, isSuperAdminUser } from '@app/redesign/features/rbac/common/RbacUtils';
 import { UserPermission } from '@app/redesign/features/rbac/common/rbac_constants';
 import {
   ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT,
   isOnboardingNewExperienceEnabled,
-  setOnboardingNewExperienceEnabled
+  setOnboardingNewExperienceEnabled,
+  syncOnboardingNewExperienceEnabled
 } from './tour-progress';
 
 export { ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT };
-export { isOnboardingNewExperienceEnabled, setOnboardingNewExperienceEnabled };
+export {
+  isOnboardingNewExperienceEnabled,
+  setOnboardingNewExperienceEnabled,
+  syncOnboardingNewExperienceEnabled
+};
 
 export const ONBOARDING_FULLSCREEN_OVERLAY_EVENT = 'yb-onboarding-fullscreen-overlay-change';
 export const EDIT_PLACEMENT_OVERLAY_ID = 'edit-placement';
@@ -76,14 +84,21 @@ export const isCurrentUserSuperAdmin = (currentUserRole?: string): boolean => {
 };
 
 /**
- * True when V2 runtime is on, or SuperAdmin has opted in via profile.
- * Pass `onboardingOptInEnabled` from `useOnboardingNewExperienceEnabled()` so UI
- * updates when the banner toggle changes.
+ * True when enable_new_universe_experience is on and either
+ * enable_new_universe_experience_for_all_users is on or the user is SuperAdmin.
+ *
+ * SuperAdmin uses the in-memory mirror (hydrated from runtime config, updated by
+ * the banner toggle) so the UI flips immediately without waiting for refetch.
  */
 export const isUniverseRevampExperienceEnabled = (
   runtimeConfigs?: RunTimeConfig,
-  currentUserRole?: string,
-  onboardingOptInEnabled: boolean = isOnboardingNewExperienceEnabled()
-): boolean =>
-  isV2CreateEditUniverseEnabled(runtimeConfigs as RunTimeConfig) ||
-  (isCurrentUserSuperAdmin(currentUserRole) && onboardingOptInEnabled);
+  currentUserRole?: string
+): boolean => {
+  if (isCurrentUserSuperAdmin(currentUserRole)) {
+    return isOnboardingNewExperienceEnabled();
+  }
+  return (
+    isV2CreateEditUniverseEnabled(runtimeConfigs as RunTimeConfig) &&
+    isNewUniverseExperienceForAllUsers(runtimeConfigs as RunTimeConfig)
+  );
+};

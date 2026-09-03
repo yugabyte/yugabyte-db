@@ -5145,7 +5145,8 @@
         "nowPlacement": "Placement",
         "nowHardware": "Hardware",
         "nowLogs": "Logs",
-        "nowTelemetryExport": "Telemetry Export"
+        "nowTelemetryExport": "Telemetry Export",
+        "readReplica": "Read Replica"
       },
       "whereThingsMovedModal": {
         "title": "Where Things Moved",
@@ -5164,6 +5165,7 @@
         "nowHardwareDetail": "(Instance settings)",
         "nowLogs": "Logs",
         "nowTelemetryExport": "Telemetry Export",
+        "readReplica": "Read Replica",
         "close": "Close",
         "findOutMore": "Find Out More"
       },

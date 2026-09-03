@@ -618,8 +618,7 @@ class UniverseDetail extends Component {
 
     const isV2EditUniverseUIEnabled = isUniverseRevampExperienceEnabled(
       runtimeConfigs?.data,
-      currentUser?.data?.role,
-      this.state.isOnboardingExperienceEnabled
+      currentUser?.data?.role
     );
 
     if (
