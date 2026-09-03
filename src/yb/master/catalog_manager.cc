@@ -562,6 +562,34 @@ METRIC_DEFINE_counter(cluster, backfill_aborted,
     yb::MetricUnit::kRequests,
     "Counts BackfillTable::Abort invocations on the master.");
 
+METRIC_DEFINE_counter(cluster, unique_index_verification_outcome_clean,
+    "Unique-Index Verifications Completed Clean", yb::MetricUnit::kUnits,
+    "Per-index outcomes of deferred unique-index verification that found no violation.");
+
+METRIC_DEFINE_counter(cluster, unique_index_verification_outcome_violation,
+    "Unique-Index Verifications That Found a Violation", yb::MetricUnit::kUnits,
+    "Per-index outcomes of deferred unique-index verification that found a uniqueness "
+    "violation. In fail-closed mode these fail the index build; in observational (shadow) "
+    "mode they are recorded and logged only.");
+
+METRIC_DEFINE_counter(cluster, unique_index_verification_outcome_inconclusive,
+    "Unique-Index Verifications That Were Inconclusive", yb::MetricUnit::kUnits,
+    "Per-index outcomes of deferred unique-index verification that could prove neither "
+    "cleanliness nor a violation (scan errors, unresolvable encodings, coordinator "
+    "failures). In fail-closed mode these fail the index build.");
+
+METRIC_DEFINE_counter(cluster, unique_index_verification_versions_scanned,
+    "Physical Versions Scanned by Unique-Index Verification", yb::MetricUnit::kKeys,
+    "Total physical versions scanned by deferred unique-index verification, aggregated from "
+    "per-tablet scan responses. Each version is counted once regardless of replay path.");
+
+METRIC_DEFINE_counter(cluster, unique_index_verification_fallback_groups,
+    "DocKey Groups That Took the Verifier's Bounded-Memory Fallback", yb::MetricUnit::kUnits,
+    "DocKey groups whose version count exceeded the verifier's buffering bound and were "
+    "replayed by the bounded-memory reverse walk, which re-reads the group (roughly doubling "
+    "its scan cost). A persistently high rate suggests raising "
+    "unique_index_verify_max_buffered_versions_per_group.");
+
 DEFINE_test_flag(bool, duplicate_addtabletotablet_request, false,
     "Send a duplicate AddTableToTablet request to the tserver to simulate a retry.");
 
@@ -1156,6 +1184,22 @@ Status CatalogManager::Init() {
 
   metric_backfill_aborted_ =
       METRIC_backfill_aborted.Instantiate(master_->metric_entity_cluster());
+
+  metric_unique_index_verification_outcome_clean_ =
+      METRIC_unique_index_verification_outcome_clean.Instantiate(
+          master_->metric_entity_cluster());
+  metric_unique_index_verification_outcome_violation_ =
+      METRIC_unique_index_verification_outcome_violation.Instantiate(
+          master_->metric_entity_cluster());
+  metric_unique_index_verification_outcome_inconclusive_ =
+      METRIC_unique_index_verification_outcome_inconclusive.Instantiate(
+          master_->metric_entity_cluster());
+  metric_unique_index_verification_versions_scanned_ =
+      METRIC_unique_index_verification_versions_scanned.Instantiate(
+          master_->metric_entity_cluster());
+  metric_unique_index_verification_fallback_groups_ =
+      METRIC_unique_index_verification_fallback_groups.Instantiate(
+          master_->metric_entity_cluster());
 
   metric_max_follower_heartbeat_delay_ =
     METRIC_max_follower_heartbeat_delay.Instantiate(master_->metric_entity_cluster(), 0);
@@ -11387,6 +11431,39 @@ Status CatalogManager::UpdateMastersListInMemoryAndDisk() {
 
 void CatalogManager::IncrementBackfillAborted() {
   IncrementCounter(metric_backfill_aborted_);
+}
+
+void CatalogManager::RecordUniqueIndexVerificationScan(
+    uint64_t versions_scanned, uint64_t fallback_groups) {
+  // static_cast, not narrow_cast: same-width sign conversion (narrow_cast requires a
+  // strictly narrower destination). Scan counts cannot approach int64 range.
+  IncrementCounterBy(
+      metric_unique_index_verification_versions_scanned_, static_cast<int64_t>(versions_scanned));
+  IncrementCounterBy(
+      metric_unique_index_verification_fallback_groups_, static_cast<int64_t>(fallback_groups));
+}
+
+// At-least-once across failover: a resumed job re-drives Record for an index whose outcome
+// persisted but whose marking did not, and the counters are process-local to the leader --
+// treat them as approximate across failover, never exact.
+void CatalogManager::RecordUniqueIndexVerificationOutcome(
+    UniqueIndexVerificationStatePB::State state) {
+  switch (state) {
+    case UniqueIndexVerificationStatePB::VERIFY_CLEAN:
+      IncrementCounter(metric_unique_index_verification_outcome_clean_);
+      return;
+    case UniqueIndexVerificationStatePB::VERIFY_VIOLATION:
+      IncrementCounter(metric_unique_index_verification_outcome_violation_);
+      return;
+    case UniqueIndexVerificationStatePB::VERIFY_INCONCLUSIVE:
+      IncrementCounter(metric_unique_index_verification_outcome_inconclusive_);
+      return;
+    case UniqueIndexVerificationStatePB::VERIFY_NONE: [[fallthrough]];
+    case UniqueIndexVerificationStatePB::VERIFY_IN_PROGRESS:
+      // Not terminal outcomes; nothing to count.
+      return;
+  }
+  FATAL_INVALID_ENUM_VALUE(UniqueIndexVerificationStatePB::State, state);
 }
 
 Status CatalogManager::EnableBgTasks() {

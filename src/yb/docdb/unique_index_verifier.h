@@ -74,7 +74,13 @@ struct UniqueIndexVerificationResult {
   std::string resume_from_dockey;
 
   size_t dockey_groups_scanned = 0;
+  // Physical versions in the scanned groups, counted exactly once per version regardless of
+  // which replay path ran (the bounded-memory reverse walk's re-visits are not re-counted;
+  // fallback_groups records that extra work instead).
   size_t versions_scanned = 0;
+  // Groups that exceeded max_buffered_versions_per_group and took the bounded-memory
+  // reverse walk, which re-reads the group (roughly doubling its scan cost).
+  size_t fallback_groups = 0;
 
   std::string ToString() const;
 };
