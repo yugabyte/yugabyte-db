@@ -784,12 +784,16 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
   auto hostport = pg_host_port();
   std::string kHostFlag = "--host=" + hostport.host();
   std::string kPortFlag = "--port=" + std::to_string(hostport.port());
+  // Plain-text dumps are wrapped in psql restricted mode, and ysql_dump picks a random key per
+  // run unless one is given. Step 6 compares the two dumps byte for byte, so pin the key.
+  const std::string kRestrictKeyFlag = "--restrict-key=test";
   std::vector<std::string> args = {
       GetPgToolPath("ysql_dump"),
       kHostFlag,
       kPortFlag,
       "--schema-only",
       "--include-yb-metadata",
+      kRestrictKeyFlag,
       "yugabyte"  // Database name
   };
   LOG(INFO) << "Run tool: " << AsString(args);
@@ -809,6 +813,7 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
       "--schema-only",
       timestamp_flag,
       "--include-yb-metadata",
+      kRestrictKeyFlag,
       "yugabyte"  // database name
   };
   LOG(INFO) << "Run tool: " << AsString(args);
@@ -1547,9 +1552,10 @@ TEST_P(PgBackfillReadTimeTest, PrecedesClampDefer) {
 
   for (const auto* mode : {"relaxed", "deferred"}) {
     ASSERT_OK(internal.ExecuteFormat("SET yb_read_after_commit_visibility = '$0'", mode));
-    const auto bf = ASSERT_RESULT((internal.FetchRow<std::string, double>(Format(
+    const auto bf = ASSERT_RESULT((internal.FetchRow<std::string, double, double>(Format(
         "BACKFILL INDEX $0 WITH x'0880011a00' READ TIME $1 PARTITION x''", idx_oid, t1_ht))));
     ASSERT_EQ(std::get<1>(bf), 6) << mode;
+    ASSERT_EQ(std::get<2>(bf), 6) << mode;
   }
 }
 

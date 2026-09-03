@@ -110,6 +110,6 @@ DELETE 1
 
 ## See also
 
-- [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select/)
-- [`UPDATE`](../dml_update/)
+- [INSERT](../dml_insert)
+- [SELECT](../dml_select/)
+- [UPDATE](../dml_update/)

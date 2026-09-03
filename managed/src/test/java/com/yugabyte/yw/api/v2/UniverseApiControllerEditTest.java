@@ -82,6 +82,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -968,6 +969,188 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .azStream()
             .anyMatch(az -> az.tsStsIndex > 0 || az.masterStsIndex > 0);
     assertTrue("Expected a K8s statefulset index bump signalling a full move", stsIndexBumped);
+  }
+
+  // A second full move must bump the statefulset index again (1 -> 2). If the persisted index is
+  // not restored first, the increment recomputes 1 from a base of 0, the new index equals the
+  // deployed one, and getPodsToAdd/getPodsToRemove find nothing to replace: the full move silently
+  // degrades into an in-place rolling upgrade instead of failing.
+  @Test
+  public void testEditUniverseV2KubernetesSecondFullMoveBumpsStsIndexAgain() throws ApiException {
+    Universe k8sUniverse = setupKubernetesUniverseInDB();
+    UUID k8sUuid = k8sUniverse.getUniverseUUID();
+    // Simulate the state left behind by a previous full move: every AZ at statefulset index 1.
+    Universe.saveDetails(
+        k8sUuid,
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details
+              .getPrimaryCluster()
+              .placementInfo
+              .azStream()
+              .forEach(
+                  az -> {
+                    az.masterStsIndex = 1;
+                    az.tsStsIndex = 1;
+                  });
+          univ.setUniverseDetails(details);
+        });
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), k8sUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+
+    // Changing the volume count forces every tserver pod to be replaced (a full move).
+    ClusterStorageSpec newStorageSpec =
+        primaryClusterSpec.getNodeSpec().getStorageSpec().numVolumes(2);
+    ClusterNodeSpec newNodeSpec = primaryClusterSpec.getNodeSpec().storageSpec(newStorageSpec);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).nodeSpec(newNodeSpec);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditKubernetesUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    YBATask editTask = api.editUniverse(customer.getUuid(), k8sUuid, universeEditSpec);
+    assertThat(editTask.getResourceUuid(), is(k8sUuid));
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditKubernetesUniverse), v1EditParamsCapture.capture());
+    UniverseConfigureTaskParams v1EditParams = v1EditParamsCapture.getValue();
+
+    // The index must move away from the deployed generation, otherwise EditKubernetesUniverse
+    // finds no pods to replace and the full move becomes a no-op.
+    boolean tsStsIndexBumpedPastDeployed =
+        v1EditParams
+            .getPrimaryCluster()
+            .placementInfo
+            .azStream()
+            .anyMatch(az -> az.tsStsIndex == 2);
+    assertTrue(
+        "Expected the second full move to bump the tserver statefulset index to 2",
+        tsStsIndexBumpedPastDeployed);
+  }
+
+  // Regression test for "K8s edit placement fails after a full move". The v2 edit spec is mapped
+  // onto dbUniverse.getUniverseDetails() in place (MapStruct @MappingTarget), so by the time the
+  // task is submitted that object no longer holds the persisted placement. If the statefulset
+  // indices are re-hydrated from it, they silently fall back to 0 while the deployed statefulsets
+  // are at 1, and EditKubernetesUniverse then renders an inverted helm range (start=1, end=0):
+  // "stsIndex.master: end (0) must be >= start (1)".
+  @Test
+  public void testEditUniverseV2KubernetesPlacementEditPreservesStsIndex() throws ApiException {
+    Universe k8sUniverse = setupKubernetesUniverseInDB();
+    UUID k8sUuid = k8sUniverse.getUniverseUUID();
+    // Simulate the state left behind by a previous full move: every AZ at statefulset index 1.
+    Universe.saveDetails(
+        k8sUuid,
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details
+              .getPrimaryCluster()
+              .placementInfo
+              .azStream()
+              .forEach(
+                  az -> {
+                    az.masterStsIndex = 1;
+                    az.tsStsIndex = 1;
+                  });
+          univ.setUniverseDetails(details);
+        });
+    Set<UUID> existingAzUuids =
+        Universe.getOrBadRequest(k8sUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .placementInfo
+            .azStream()
+            .map(az -> az.uuid)
+            .collect(Collectors.toSet());
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), k8sUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+
+    // A plain placement edit (scale out), not a full move.
+    int incNumNodesBy = 3;
+    PlacementCloud newPlacementCloud =
+        expandNumNodes(primaryClusterSpec.getPlacementSpec().getCloudList().get(0), incNumNodesBy);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(primaryClusterSpec.getUuid())
+            .numNodes(primaryClusterSpec.getNumNodes() + incNumNodesBy)
+            .placementSpec(new ClusterPlacementSpec().cloudList(List.of(newPlacementCloud)));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditKubernetesUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    YBATask editTask = api.editUniverse(customer.getUuid(), k8sUuid, universeEditSpec);
+    assertThat(editTask.getResourceUuid(), is(k8sUuid));
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditKubernetesUniverse), v1EditParamsCapture.capture());
+    UniverseConfigureTaskParams v1EditParams = v1EditParamsCapture.getValue();
+    Cluster editedPrimary = v1EditParams.getPrimaryCluster();
+
+    // A scale out must not look like a full move.
+    assertThat(
+        "no node should be replaced by a plain placement edit",
+        v1EditParams.getNodesInCluster(editedPrimary.uuid).stream()
+            .filter(n -> n.state == NodeState.ToBeRemoved)
+            .count(),
+        is(0L));
+
+    // Every AZ that already existed must keep the statefulset generation that is deployed.
+    editedPrimary
+        .placementInfo
+        .azStream()
+        .filter(az -> existingAzUuids.contains(az.uuid))
+        .forEach(
+            az -> {
+              assertThat("masterStsIndex must be preserved", az.masterStsIndex, is(1));
+              assertThat("tsStsIndex must be preserved", az.tsStsIndex, is(1));
+            });
+    if (!CollectionUtils.isEmpty(editedPrimary.getPartitions())) {
+      editedPrimary
+          .getPartitions()
+          .forEach(
+              partition ->
+                  partition
+                      .getPlacement()
+                      .azStream()
+                      .filter(az -> existingAzUuids.contains(az.uuid))
+                      .forEach(
+                          az -> {
+                            assertThat(
+                                "partition masterStsIndex must be preserved",
+                                az.masterStsIndex,
+                                is(1));
+                            assertThat(
+                                "partition tsStsIndex must be preserved", az.tsStsIndex, is(1));
+                          }));
+    }
   }
 
   @Test

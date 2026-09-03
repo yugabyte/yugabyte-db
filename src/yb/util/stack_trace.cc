@@ -61,7 +61,10 @@ DEFINE_test_flag(bool, disable_thread_stack_collection_wait, false,
 // cause trouble in TSAN builds (deadlock during collection). But the alternative (llvm libunwind)
 // currently has issues with BOLT-ed binaries that we use for releases, and backtrace() is what
 // we have been using in the past. So disabling in non-sanitizer builds until #32197 is resolved.
-DEFINE_RUNTIME_bool(use_libunwind_for_stack_trace_collection, yb::IsSanitizer(),
+// It is also disabled in ASAN builds, where it segfaults inside DwarfInstructions while unwinding a
+// thread that the signal interrupted in the middle of the ASAN runtime's own stack collection,
+// which happens on every allocation and deallocation.
+DEFINE_RUNTIME_bool(use_libunwind_for_stack_trace_collection, yb::IsTsan(),
     "Use (llvm-)libunwind for stack trace collection instead of glibc backtrace().");
 TAG_FLAG(use_libunwind_for_stack_trace_collection, advanced);
 TAG_FLAG(use_libunwind_for_stack_trace_collection, hidden);
@@ -283,6 +286,11 @@ bool InitSignalHandlerUnlocked(int signum) {
                    << " is already in use: "
                    << "YB will not produce thread stack traces.";
     } else {
+      // The first backtrace() call dlopen()s the unwinder, which allocates and is not safe to do
+      // from the signal handler, so force that initialization to happen here.
+      void* dummy_frames[1];
+      backtrace(dummy_frames, arraysize(dummy_frames));
+
       // No one appears to be using the signal. This is racy, but there is no
       // atomic swap capability.
       sighandler_t old_handler = signal(g_stack_trace_signum, HandleStackTraceSignal);

@@ -141,7 +141,7 @@ else
 ' upstream_repositories.csv. The corresponding commit in'\
 ' upstream_repositories.csv should exist either locally in ~/code/<repo_name>'\
 ' or remotely in the corresponding remote repository (and you need internet'\
-' access in that case).:1:'"$(head -1)"
+' access in that case).:1:'"$(head -1 "$1")"
   else
     diff_result=$(diff "$1" "$upstream_copy")
     if [ $? -gt 1 ]; then

@@ -64,8 +64,6 @@ public class TestPgRegressColocatedTablesWithTablespaces extends BasePgRegressTe
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_enable_colocated_tables_with_tablespaces", "true");
-    // TODO(#33535): Fix this test with DDL savepoint and remove below line.
-    flagMap.put("ysql_yb_enable_ddl_savepoint_support", "false");
     return flagMap;
   }
 
@@ -73,8 +71,6 @@ public class TestPgRegressColocatedTablesWithTablespaces extends BasePgRegressTe
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("ysql_enable_colocated_tables_with_tablespaces", "true");
-    // TODO(#33535): Fix this test with DDL savepoint and remove below line.
-    flagMap.put("ysql_yb_enable_ddl_savepoint_support", "false");
     return flagMap;
   }
 

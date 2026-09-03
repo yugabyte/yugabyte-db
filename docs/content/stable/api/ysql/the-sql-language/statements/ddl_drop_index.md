@@ -88,6 +88,6 @@ Indexes:
 
 ## See also
 
-- [`CREATE INDEX`](../ddl_create_index)
-- [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select/)
+- [CREATE INDEX](../ddl_create_index)
+- [INSERT](../dml_insert)
+- [SELECT](../dml_select/)

@@ -667,9 +667,10 @@ public class NodeAgentPoller {
     return upgradeNodeAgent(
         nodeAgentUuid,
         true /* waitForInFlightUpgrade */,
-        n -> {
-          return DeployContext.builder().certificateUuid(n.getCertificateUuid()).build();
-        });
+        n ->
+            needsUpgrade(n)
+                ? DeployContext.builder().certificateUuid(n.getCertificateUuid()).build()
+                : null);
   }
 
   /**
@@ -699,8 +700,13 @@ public class NodeAgentPoller {
     } else {
       try {
         nodeAgent.refresh();
+        DeployContext deployContext = deployContextFn.apply(nodeAgent);
+        if (deployContext == null) {
+          log.info("Node agent {} does not need an upgrade", nodeAgent);
+          return false;
+        }
         log.info("Starting explicit upgrade on node agent {}", nodeAgent);
-        pollerTask.upgradeNodeAgentLocked(nodeAgent, deployContextFn.apply(nodeAgent));
+        pollerTask.upgradeNodeAgentLocked(nodeAgent, deployContext);
       } catch (RuntimeException e) {
         log.error("Explicit upgrade failed for node agent {}", nodeAgent);
         throw e;

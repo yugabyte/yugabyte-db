@@ -70,4 +70,4 @@ yugabyte=# SELECT * FROM selective_sample ORDER BY k1;
 
 ## See also
 
-- [`CREATE TABLE`](../ddl_create_table)
+- [CREATE TABLE](../ddl_create_table)

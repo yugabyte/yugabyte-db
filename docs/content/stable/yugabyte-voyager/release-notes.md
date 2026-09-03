@@ -29,6 +29,19 @@ Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated o
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
 
+## v2026.9.1 - September 1, 2026
+
+### Enhancements
+
+- Upgraded the [YugabyteDB logical replication connector](../../additional-features/change-data-capture/using-logical-replication/) to support YugabyteDB v2026.1.
+
+### Bug fixes
+
+- Fixed an issue where live migration of PostgreSQL hstore values containing SQL NULL could stall permanently during CDC.
+- Fixed an issue where live [import data](../reference/data-migration/import-data/) could fail with a unique-violation error when an UPDATE changed only some columns of a composite unique index.
+- Fixed an issue where import data could hang after an abrupt Voyager exit, waiting on locks held by a stale connection.
+- Fixed an issue where import data could proceed with the wrong target schema if setting the search path failed, and where a failed source-database connection could crash Voyager instead of reporting an error.
+
 ## v2026.8.2 - August 18, 2026
 
 ### Enhancements

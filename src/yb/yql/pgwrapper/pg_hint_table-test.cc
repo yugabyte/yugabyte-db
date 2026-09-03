@@ -167,6 +167,11 @@ TEST_F(PgHintTableTest, ForceBatchedNestedLoop) {
 
 TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
   auto conn_explain = ASSERT_RESULT(ConnectWithHintTable());
+  // The planner refreshes the hint cache by scanning hint_plan.hints within the statement's read
+  // snapshot, so the concurrent hint updates below can force a read restart. EXPLAIN is not query
+  // layer retriable by default; opt it in so the restart is handled transparently, as it is for a
+  // plain SELECT.
+  ASSERT_OK(conn_explain.Execute("SET yb_extra_commands_to_retry TO 'EXPLAIN'"));
   auto conn_hint1 = ASSERT_RESULT(ConnectWithHintTable());
   auto conn_hint2 = ASSERT_RESULT(ConnectWithHintTable());
 

@@ -91,8 +91,11 @@ public class UpgradeYbc extends AbstractTaskBase {
                 + " on universe "
                 + taskParams().universeUUID);
       }
-      // Only update the universe YBC version if all nodes have the new version.
-      if (sourceYbcVersions.size() == universe.getNodes().size()) {
+      // Counting master pods would keep k8s universes from ever being stamped. The > 0 guard stops
+      // a universe with no YBC nodes from being stamped on a vacuous 0 == 0.
+      long expectedYbcNodes =
+          universe.getNodes().stream().filter(n -> !YbcUpgrade.isMasterOnlyNode(n)).count();
+      if (expectedYbcNodes > 0 && sourceYbcVersions.size() == expectedYbcNodes) {
         UniverseUpdater updater =
             new UniverseUpdater() {
               @Override

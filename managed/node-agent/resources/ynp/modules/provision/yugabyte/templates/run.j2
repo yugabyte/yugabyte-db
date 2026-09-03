@@ -87,7 +87,8 @@ for mount_point in "${mount_points_array[@]}"; do
     else
         echo "Mount point already exists: $mount_point"
     fi
-    chown -R {{ yb_user }}:{{ yb_user }} "$mount_point"
+    # Do not run recursively. If mount point is wrong, it can cause system corruption.
+    chown {{ yb_user }}:{{ yb_user }} "$mount_point"
 done
 
 {% if is_cloud == 'True' %}

@@ -62,10 +62,6 @@ class ColocatedTablesWithTablespacesTest : public ColocatedDBTest {
 
     options->extra_tserver_flags.emplace_back(
         "--ysql_enable_colocated_tables_with_tablespaces=true");
-
-    // TODO(#33535): Fix this test with DDL savepoint and remove below lines.
-    options->extra_master_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
   }
 
   Result<client::YBTableName> GetTable(

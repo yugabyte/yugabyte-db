@@ -1629,7 +1629,7 @@ Result<GetConsistentChangesResponsePB> CDCSDKYsqlTest::GetConsistentChangesFromC
 
 Status CDCSDKYsqlTest::UpdatePublicationTableList(
     const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-    uint64_t session_id, bool include_oid_to_relfilenode) {
+    uint64_t session_id, bool include_oid_to_relfilenode, int timeout) {
   UpdatePublicationTableListRequestPB req;
   UpdatePublicationTableListResponsePB resp;
 
@@ -1661,7 +1661,7 @@ Status CDCSDKYsqlTest::UpdatePublicationTableList(
 
         return false;
       },
-      MonoDelta::FromSeconds(kRpcTimeout),
+      MonoDelta::FromSeconds(timeout),
       "UpdatePublicationTableList failed due to RPC timeout"));
 
   return Status::OK();

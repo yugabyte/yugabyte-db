@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -15,7 +17,10 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -35,6 +40,7 @@ import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
@@ -64,6 +70,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   // deterministic on retry after a partial failure.
   private final Map<UUID, Map<String, String>> replacementRootVolumes = new ConcurrentHashMap<>();
   private final Map<UUID, String> replacementRootDevices = new ConcurrentHashMap<>();
+  // Node UUID -> (mount path -> disk UUID). Shared with YNPProvisioning params so CaptureFstab
+  // can populate it before provisioning runs in the same task execution.
+  private final Map<UUID, Map<String, String>> deviceMappingByNode = new ConcurrentHashMap<>();
 
   private final XClusterUniverseService xClusterUniverseService;
 
@@ -95,6 +104,11 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     @JsonProperty("replacementCompletedNodes")
     Set<UUID> replacementCompletedNodes = ConcurrentHashMap.newKeySet();
+
+    // Node UUID to mount-path -> disk-UUID mapping captured from /etc/fstab before root volume
+    // replacement.
+    @JsonProperty("deviceMappingByNode")
+    Map<UUID, Map<String, String>> deviceMappingByNode = new ConcurrentHashMap<>();
   }
 
   @Override
@@ -133,7 +147,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     }
     addBasicPrecheckTasks();
     runtimeInfo = getRuntimeInfo(RuntimeInfo.class);
-
     Customer customer = Customer.get(universe.getCustomerId());
     Provider provider =
         Provider.getOrBadRequest(
@@ -307,6 +320,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
   private void createVMImageUpgradeTasks(
       Map<NodeDetails, ImageSettings> imageSettingsMap, Set<NodeDetails> nodes) {
+    // Restore mount-path -> UUID mappings from a prior attempt so YNPProvisioning can remount.
+    runtimeInfo.deviceMappingByNode.forEach(
+        (nodeUuid, mapping) ->
+            deviceMappingByNode
+                .computeIfAbsent(nodeUuid, k -> new ConcurrentHashMap<>())
+                .putAll(mapping));
     if (runtimeInfo.volumesCreated) {
       replacementRootDevices.putAll(runtimeInfo.replacementRootDevices);
       replacementRootVolumes.putAll(runtimeInfo.replacementRootVolumes);
@@ -356,6 +375,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       // The node is going to be stopped. Ignore error because of previous error due to
       // possibly detached root volume.
       if (!runtimeInfo.volumeReplacedNodes.contains(node.getNodeUuid())) {
+        // Capture /etc/fstab before the root volume is replaced (old root is detached after).
+        if (!runtimeInfo.deviceMappingByNode.containsKey(node.getNodeUuid())) {
+          createCaptureFstabTask(universe, node).setSubTaskGroupType(getTaskSubGroupType());
+        }
         processTypes.forEach(
             processType ->
                 createServerControlTask(
@@ -404,9 +427,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         createYNPProvisioningTask(
                 universe,
                 nodeList,
-                p -> {
+                (n, p) -> {
                   p.isYbPrebuiltImage = isYbPrebuiltImage;
                   p.isDataPresent = true;
+                  p.pathToUUIDMapping =
+                      deviceMappingByNode.computeIfAbsent(
+                          n.getNodeUuid(), k -> new ConcurrentHashMap<>());
                 })
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       }
@@ -591,6 +617,55 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
     replaceDiskTask.initialize(replaceParams);
     subTaskGroup.addSubTask(replaceDiskTask);
+
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  private SubTaskGroup createCaptureFstabTask(Universe universe, NodeDetails node) {
+    DeviceInfo deviceInfo =
+        universe
+            .getUniverseDetails()
+            .getClusterByUuid(node.placementUuid)
+            .userIntent
+            .getDeviceInfoForNode(node);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CaptureFstab", getTaskSubGroupType());
+    List<String> command = Arrays.asList("cat", "/etc/fstab");
+    RunNodeCommand.Params params = new RunNodeCommand.Params();
+    params.nodeName = node.nodeName;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.command = command;
+    params.shellContext = ShellProcessContext.builder().logCmdOutput(true).build();
+    params.responseConsumer =
+        response -> {
+          String output =
+              response
+                  .processErrors("Failed to read /etc/fstab on node " + node.nodeName)
+                  .extractRunCommandOutput();
+          Set<String> mountPoints = new HashSet<>(Util.getMountPoints(deviceInfo));
+          Map<String, String> parsed = Util.parseFstabPathToUUID(output);
+          parsed.keySet().retainAll(mountPoints);
+          if (!parsed.keySet().equals(mountPoints)) {
+            throw new PlatformServiceException(
+                INTERNAL_SERVER_ERROR,
+                "Expected to see mount points "
+                    + mountPoints
+                    + " on the node, whereas only found in fstab "
+                    + parsed.keySet());
+          }
+          Map<String, String> mapping =
+              deviceMappingByNode.computeIfAbsent(
+                  node.getNodeUuid(), k -> new ConcurrentHashMap<>());
+          mapping.clear();
+          mapping.putAll(parsed);
+          updateRuntimeInfo(
+              RuntimeInfo.class,
+              info -> info.deviceMappingByNode.put(node.getNodeUuid(), new HashMap<>(mapping)));
+        };
+
+    RunNodeCommand task = createTask(RunNodeCommand.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

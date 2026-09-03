@@ -57,6 +57,10 @@ public class CloudSpecificInfo {
   @ApiModelProperty(value = "The node's cloud provider")
   public String cloud = null;
 
+  // The cloud provider's instance identifier.
+  @ApiModelProperty(value = "The cloud provider's instance identifier")
+  public String id = null;
+
   @ApiModelProperty(value = "True if the node has a public IP address assigned")
   public boolean assignPublicIP = true;
 
@@ -94,6 +98,7 @@ public class CloudSpecificInfo {
     cloudInfo.az = az;
     cloudInfo.region = region;
     cloudInfo.cloud = cloud;
+    cloudInfo.id = id;
     cloudInfo.assignPublicIP = assignPublicIP;
     cloudInfo.mount_roots = mount_roots;
     cloudInfo.lun_indexes = lun_indexes == null ? new Integer[0] : lun_indexes.clone();

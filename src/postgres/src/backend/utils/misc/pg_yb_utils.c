@@ -7518,6 +7518,12 @@ YbRecordCommitLatency(uint64_t latency_us)
 	yb_session_stats.current_state.stats.commit_wait += latency_us;
 }
 
+uint64_t
+YbGetTableRowsScanned()
+{
+	return yb_session_stats.current_state.stats.tables.rows_scanned;
+}
+
 void
 YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture)
 {

@@ -1250,7 +1250,8 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   regular_rocksdb_options.compaction_context_factory = docdb::CreateCompactionContextFactory(
       retention_policy_, &key_bounds_,
       std::bind(&Tablet::CompactionHybridTimeConstraints, this, _1),
-      metadata_.get(), vector_indexes_.get());
+      metadata_.get(), vector_indexes_.get(),
+      docdb::CreateCompactionMetrics(tablet_metrics_entity_));
 
   regular_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
     {
@@ -1876,6 +1877,10 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
 std::vector<std::string> Tablet::CompleteShutdownStorages(
     const TabletScopedRWOperationPauses& ops_pauses) {
   // We need ops_pauses just to guarantee that PauseReadWriteOperations has been called.
+
+  // Both op counters have drained by this point, so every reader that was blocking RocksDB
+  // shutdown is gone and the DBs are about to be destroyed.
+  TEST_SYNC_POINT("Tablet::CompleteShutdownStorages:Start");
 
   if (intents_db_) {
     intents_db_->ListenFilesChanged(nullptr);
@@ -3379,7 +3384,7 @@ constexpr auto kBackfillReadSnapshotTooOldRemedy =
 // - IllegalState: for nonretryable errors
 Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
     pgwrapper::PGConn* conn, const string& query) {
-  auto result = conn->FetchRow<std::string, double>(query);
+  auto result = conn->FetchRow<std::string, double, double>(query);
   if (!result.ok()) {
     const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
     LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
@@ -3400,12 +3405,17 @@ Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
     }
     return STATUS(IllegalState, libpq_error_msg);
   }
-  const auto [returned_spec, num_rows_backfilled_in_index] = *result;
+  const auto [returned_spec, num_rows_backfilled_in_index, num_rows_scanned] = *result;
   PgsqlBackfillSpecPB spec;
   spec.ParseFromString(a2b_hex(returned_spec));
-  VLOG(3) << "Returned backfill spec: { " << spec.ShortDebugString() << " }";
+  VLOG(3) << "Returned backfill spec: { " << spec.ShortDebugString() << " }"
+          << ", rows scanned: " << num_rows_scanned;
   VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
-  return std::make_tuple(spec.next_row_key(), spec.count(), num_rows_backfilled_in_index);
+  // The spec's count only accounts for the rows returned to postgres, which excludes the rows DocDB
+  // filtered out when the index predicate is pushed down.  Postgres reports the number of rows
+  // scanned separately, which is the number of base table rows that were processed.
+  return std::make_tuple(
+      spec.next_row_key(), static_cast<uint64_t>(num_rows_scanned), num_rows_backfilled_in_index);
 }
 
 struct BackfillParams {

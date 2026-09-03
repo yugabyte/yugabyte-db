@@ -37,6 +37,7 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb::docdb {
@@ -204,12 +205,30 @@ struct CompactionHybridTimeConstraints {
 using CompactionHybridTimeLimitsProvider = std::function<CompactionHybridTimeConstraints(
     const std::vector<rocksdb::FileMetaData*>&)>;
 
+// Counters for column tombstones that compaction could not merge into the packed row they
+// shadow. See DocDBCompactionFeed::Feed for why such a tombstone is kept rather than
+// garbage-collected. Either pointer may be null, in which case the event is not recorded.
+// Both count decisions rather than distinct tombstones.
+struct CompactionMetrics {
+  // Includes tombstones over columns schema packing never packs at all -- a YCQL collection,
+  // which ProcessColumn refuses -- which are therefore kept permanently rather than transiently.
+  CounterPtr column_tombstones_kept_unmerged;
+
+  // Only non-zero while docdb_keep_unmerged_column_tombstones_over_packed_row is off, in which
+  // case deleted column values are being resurrected and replicas that compact on opposite sides
+  // of the flag diverge.
+  CounterPtr column_tombstones_dropped_unmerged;
+};
+
+CompactionMetrics CreateCompactionMetrics(const MetricEntityPtr& tablet_metric_entity);
+
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
     const CompactionHybridTimeLimitsProvider& compaction_hybrid_time_limit_provider,
     SchemaPackingProvider* schema_packing_provider,
-    DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider = nullptr);
+    DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider,
+    const CompactionMetrics& metrics);
 
 // A history retention policy that can be configured manually. Useful in tests. This class is
 // useful for testing and is thread-safe.

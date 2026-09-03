@@ -281,7 +281,12 @@
       "type": "script-and-regex",
       "include": [
         "(^managed/src/main/resources/swagger[.]json$)",
-        "(^managed/src/main/resources/openapi/.*[.]yaml$)"
+        "(^managed/src/main/resources/openapi/.*[.]yaml$)",
+        "(^managed/client/java/openapi-java-config[.]json$)",
+        "(^managed/client/java/openapi-java-config-v2[.]json$)",
+        "(^managed/client/java/pom[.]xml$)",
+        "(^managed/client/java/v1/pom.xml$)",
+        "(^managed/client/java/v2/pom.xml$)"
       ],
       "script-and-regex.script": "managed/lint/check-client-version.sh",
       "script-and-regex.regex":
