@@ -41,11 +41,11 @@ TEST_F(SstStatsCollectorTest, PropertiesRoundTrip) {
   SstStatsToProperties(s, &properties);
   EXPECT_EQ(properties.at(std::string(SstStatsPropertyKeys::kCollectorVersion)),
             kSstStatsCollectorVersion);
-  // The anatomy strip's 6 plus the shadowed colocated version.
-  EXPECT_EQ(properties.at(std::string(SstStatsPropertyKeys::kReclaimableEntries)), "7");
+  // The anatomy strip's 7 plus the shadowed colocated version.
+  EXPECT_EQ(properties.at(std::string(SstStatsPropertyKeys::kReclaimableEntries)), "8");
   // The shadowed colocated version's overwriter is 1 h old: the lower edge of band 3 (1-6 h).
   EXPECT_EQ(properties.at(std::string(SstStatsPropertyKeys::kDroppableAgeEntries)),
-            "1,1,1,1,0,3,0,0");
+            "2,0,1,2,0,3,0,0");
 
   const auto parsed = ASSERT_RESULT(SstStatsFromProperties(properties));
   EXPECT_EQ(parsed.total_entries, s.total_entries);
@@ -96,12 +96,12 @@ TEST_F(SstStatsCollectorTest, CollectorEndToEnd) {
   ASSERT_OK(collector->Finish(&properties));
   const auto s = ASSERT_RESULT(SstStatsFromProperties(properties));
   EXPECT_EQ(s.total_entries, 9);
-  EXPECT_EQ(s.reclaimable_entries, 6);
+  EXPECT_EQ(s.reclaimable_entries, 7);
   EXPECT_EQ(s.num_rows, 2);
   // The anchor is taken from the wall clock at construction; the test entries are dated relative
   // to a fixed 2023 anchor, so every band lands in the oldest bucket here.
   EXPECT_GT(s.anchor_micros, kAnchorMicros);
-  EXPECT_EQ(s.droppable_age_entries[AgeBands::kNumBands - 1], 6);
+  EXPECT_EQ(s.droppable_age_entries[AgeBands::kNumBands - 1], 7);
 
   // A tombstone-heavy file trips the MANIFEST mark.
   std::unique_ptr<rocksdb::TablePropertiesCollector> heavy(
