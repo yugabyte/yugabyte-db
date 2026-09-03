@@ -729,7 +729,8 @@ PeerProxyPtr RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb) {
   auto proxy = std::make_unique<ConsensusServiceProxy>(
       proxy_cache_, hostport,
       &proxy_cache_->GetContext()->ProtocolFor(
-          rpc::Encrypted(UseEncryption(selected.kind, peer_pb.cloud_info(), from_))));
+          rpc::Encrypted(
+              UseEncryption(selected.used_broadcast, peer_pb.cloud_info(), from_))));
   return std::make_unique<RpcPeerProxy>(std::move(hostport), std::move(proxy));
 }
 

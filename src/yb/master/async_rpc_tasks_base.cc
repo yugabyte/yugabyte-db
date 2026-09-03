@@ -542,7 +542,8 @@ Status RetryingMasterRpcTask::ResetProxies() {
   auto selected = SelectHostPort(peer_, connect_from);
   HostPort hostport = HostPortFromPB(selected.host_port);
   auto* protocol = &master_->proxy_cache().GetContext()->ProtocolFor(
-      rpc::Encrypted(UseEncryption(selected.kind, peer_.cloud_info(), connect_from)));
+      rpc::Encrypted(
+          UseEncryption(selected.used_broadcast, peer_.cloud_info(), connect_from)));
   master_test_proxy_ =
       std::make_unique<MasterTestProxy>(&master_->proxy_cache(), hostport, protocol);
   master_cluster_proxy_ =

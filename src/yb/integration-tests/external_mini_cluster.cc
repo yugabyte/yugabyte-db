@@ -2009,7 +2009,7 @@ void LeaderMasterCallback(HostPort* dst_hostport,
                           Synchronizer* sync,
                           const Status& status,
                           const HostPort& result,
-                          const CloudInfoPB& cloud_info) {
+                          const ServerRegistrationPB& registration) {
   if (status.ok()) {
     *dst_hostport = result;
   }

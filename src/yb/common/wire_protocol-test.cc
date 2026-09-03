@@ -230,10 +230,10 @@ TEST_F(WireProtocolTest, NodeToNodeEncryptionScope) {
     google::FlagSaver flag_saver;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = c.scope;
     SCOPED_TRACE(c.scope);
-    EXPECT_EQ(c.zone, UseEncryption(AddressKind::kPrivate, same_zone, here));
-    EXPECT_EQ(c.region, UseEncryption(AddressKind::kPrivate, same_region, here));
-    EXPECT_EQ(c.cloud, UseEncryption(AddressKind::kPrivate, same_cloud, here));
-    EXPECT_EQ(c.other, UseEncryption(AddressKind::kPrivate, elsewhere, here));
+    EXPECT_EQ(c.zone, UseEncryption(UsedBroadcastAddress::kFalse, same_zone, here));
+    EXPECT_EQ(c.region, UseEncryption(UsedBroadcastAddress::kFalse, same_region, here));
+    EXPECT_EQ(c.cloud, UseEncryption(UsedBroadcastAddress::kFalse, same_cloud, here));
+    EXPECT_EQ(c.other, UseEncryption(UsedBroadcastAddress::kFalse, elsewhere, here));
   }
 }
 
@@ -246,7 +246,7 @@ TEST_F(WireProtocolTest, NodeToNodeEncryptionScopeUnknownPlacement) {
     google::FlagSaver flag_saver;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = scope;
     SCOPED_TRACE(scope);
-    EXPECT_TRUE(UseEncryption(AddressKind::kPrivate, CloudInfoPB(), here));
+    EXPECT_TRUE(UseEncryption(UsedBroadcastAddress::kFalse, CloudInfoPB(), here));
   }
 }
 
@@ -259,7 +259,7 @@ TEST_F(WireProtocolTest, NodeToNodeEncryptionScopeInvalid) {
   // A value that names no scope leaves every destination outside it, so a typo encrypts
   // rather than exposing traffic.
   const auto here = CloudInfo("cloud1", "region1", "zone1");
-  EXPECT_TRUE(UseEncryption(AddressKind::kPrivate, here, here));
+  EXPECT_TRUE(UseEncryption(UsedBroadcastAddress::kFalse, here, here));
 }
 
 // use_private_ip names a boundary of its own, and a destination inside the encryption scope
@@ -271,19 +271,19 @@ TEST_F(WireProtocolTest, NodeToNodeEncryptionRequiredOnBroadcast) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = "zone";
   const auto here = CloudInfo("cloud1", "region1", "zone1");
 
-  for (auto kind : {AddressKind::kBroadcast, AddressKind::kConfigured}) {
-    SCOPED_TRACE(ToString(kind));
+  for (auto used : {UsedBroadcastAddress::kTrue}) {
+    SCOPED_TRACE(ToString(used));
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_required_on_broadcast) = true;
-    EXPECT_TRUE(UseEncryption(kind, here, here));
+    EXPECT_TRUE(UseEncryption(used, here, here));
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_required_on_broadcast) = false;
-    EXPECT_FALSE(UseEncryption(kind, here, here));
+    EXPECT_FALSE(UseEncryption(used, here, here));
   }
 
   // A connection that stayed on the private address is the scope's to decide either way.
   for (auto required : {true, false}) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_required_on_broadcast) = required;
-    EXPECT_FALSE(UseEncryption(AddressKind::kPrivate, here, here));
+    EXPECT_FALSE(UseEncryption(UsedBroadcastAddress::kFalse, here, here));
   }
 }
 
@@ -294,9 +294,9 @@ TEST_F(WireProtocolTest, NodeToNodeEncryptionRequiredOnBroadcastCannotExempt) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_required_on_broadcast) = false;
 
   const auto here = CloudInfo("cloud1", "region1", "zone1");
-  for (auto kind : {AddressKind::kPrivate, AddressKind::kBroadcast, AddressKind::kConfigured}) {
-    SCOPED_TRACE(ToString(kind));
-    EXPECT_TRUE(UseEncryption(kind, here, here));
+  for (auto used : {UsedBroadcastAddress::kFalse, UsedBroadcastAddress::kTrue}) {
+    SCOPED_TRACE(ToString(used));
+    EXPECT_TRUE(UseEncryption(used, here, here));
   }
 }
 
@@ -321,19 +321,61 @@ TEST_F(WireProtocolTest, SelectHostPortReportsTheListItUsed) {
   b->set_port(9100);
 
   auto same_zone = SelectHostPort(broadcast_addrs, private_addrs, here, here);
-  EXPECT_EQ(AddressKind::kPrivate, same_zone.kind);
+  EXPECT_FALSE(same_zone.used_broadcast);
   EXPECT_EQ("private.example.com", same_zone.host_port.host());
 
   auto other_zone = SelectHostPort(broadcast_addrs, private_addrs, elsewhere, here);
-  EXPECT_EQ(AddressKind::kBroadcast, other_zone.kind);
+  EXPECT_TRUE(other_zone.used_broadcast);
   EXPECT_EQ("broadcast.example.com", other_zone.host_port.host());
 
   // Outside the scope, but nothing was broadcast, so the private address is what gets used
   // and the kind has to say so or the connection would be encrypted for the wrong reason.
   google::protobuf::RepeatedPtrField<HostPortPB> no_broadcast;
   auto fallback = SelectHostPort(no_broadcast, private_addrs, elsewhere, here);
-  EXPECT_EQ(AddressKind::kPrivate, fallback.kind);
+  EXPECT_FALSE(fallback.used_broadcast);
   EXPECT_EQ("private.example.com", fallback.host_port.host());
+}
+
+// A tserver reaches its master over an address the master configuration named, raced against
+// every other, so that connection's provenance is recovered from the registration instead of
+// being selected. What the node reports about the address decides it.
+TEST_F(WireProtocolTest, UsesBroadcastAddressRecoversProvenance) {
+  ServerRegistrationPB registration;
+  auto* p = registration.add_private_rpc_addresses();
+  p->set_host("private.example.com");
+  p->set_port(9100);
+  auto* b = registration.add_broadcast_addresses();
+  b->set_host("broadcast.example.com");
+  b->set_port(9100);
+
+  auto host_port = [](const std::string& host) {
+    HostPortPB result;
+    result.set_host(host);
+    result.set_port(9100);
+    return result;
+  };
+
+  EXPECT_FALSE(UsesBroadcastAddress(registration, host_port("private.example.com")));
+  EXPECT_TRUE(UsesBroadcastAddress(registration, host_port("broadcast.example.com")));
+
+  // An address the node reports in neither list cannot be shown to be private, so it is
+  // treated as broadcast rather than exempted.
+  EXPECT_TRUE(UsesBroadcastAddress(registration, host_port("alias.example.com")));
+
+  // The port is part of the identity: the same host on another port is a different address.
+  auto other_port = host_port("private.example.com");
+  other_port.set_port(9200);
+  EXPECT_TRUE(UsesBroadcastAddress(registration, other_port));
+
+  // A node that reports the same address in both lists is reporting a private address, and
+  // also advertising it. The Kubernetes manifests in cloud/ do exactly this.
+  ServerRegistrationPB both;
+  *both.add_private_rpc_addresses() = host_port("node.example.com");
+  *both.add_broadcast_addresses() = host_port("node.example.com");
+  EXPECT_FALSE(UsesBroadcastAddress(both, host_port("node.example.com")));
+
+  // An empty registration reports no private address, so nothing is exempt.
+  EXPECT_TRUE(UsesBroadcastAddress(ServerRegistrationPB(), host_port("anything.example.com")));
 }
 
 } // namespace yb

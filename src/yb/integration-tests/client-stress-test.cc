@@ -186,7 +186,7 @@ class ClientStressTestSlowMultiMaster : public ClientStressTest {
 void LeaderMasterCallback(Synchronizer* sync,
                           const Status& status,
                           const HostPort& result,
-                          const CloudInfoPB& cloud_info) {
+                          const ServerRegistrationPB& registration) {
   LOG_IF(INFO, status.ok()) << "Leader master host port: " << result.ToString();
   sync->StatusCB(status);
 }

@@ -195,9 +195,9 @@ struct FindLeaderMasterData {
 void LeaderMasterCallback(const std::shared_ptr<FindLeaderMasterData>& data,
                           const Status& status,
                           const HostPort& result,
-                          const CloudInfoPB& cloud_info) {
+                          const ServerRegistrationPB& registration) {
   if (status.ok()) {
-    data->result = {.hostport = result, .cloud_info = cloud_info};
+    data->result = {.hostport = result, .registration = registration};
   }
   data->sync.StatusCB(status);
 }
@@ -207,10 +207,11 @@ void LeaderMasterCallback(const std::shared_ptr<FindLeaderMasterData>& data,
 Result<MasterLeaderFinder::MasterLeader> MasterLeaderFinder::FindMasterLeader(MonoDelta timeout) {
   const auto master_addresses = get_master_addresses_unlocked();
   if (master_addresses->size() == 1 && (*master_addresses)[0].size() == 1) {
-    // A single configured master is the leader by definition, so no registration is fetched
-    // and its placement stays unset. An unset placement matches no node's, so it falls
-    // outside every scope and the connection is encrypted when encryption is enabled.
-    return MasterLeader{.hostport = (*master_addresses)[0][0], .cloud_info = CloudInfoPB()};
+    // A single configured master is the leader by definition, so nothing is asked and its
+    // registration stays empty. That reports no private address and an unset placement, so
+    // the connection falls outside every scope and is encrypted when encryption is enabled.
+    return MasterLeader{
+        .hostport = (*master_addresses)[0][0], .registration = ServerRegistrationPB()};
   }
   auto master_sock_addrs = *master_addresses;
   if (master_sock_addrs.empty()) {
@@ -264,11 +265,12 @@ Result<MasterLeaderFinder::MasterLeader> MasterLeaderFinder::UpdateMasterLeader(
 }
 
 const rpc::Protocol& MasterLeaderFinder::ProtocolFor(const MasterLeader& leader) const {
-  // GetLeaderMasterRpc races every address the master configuration names, so the surviving
-  // connection could be on either of the leader's address lists. kConfigured says that, and
-  // node_to_node_encryption_required_on_broadcast treats it as not private.
-  return proxy_cache_.GetContext()->ProtocolFor(rpc::Encrypted(
-      UseEncryption(AddressKind::kConfigured, leader.cloud_info, connect_from_)));
+  // GetLeaderMasterRpc races every address the master configuration names, so this address
+  // was not selected and its provenance has to be recovered from what the leader reported.
+  auto host_port = HostPortToPB(leader.hostport);
+  return proxy_cache_.GetContext()->ProtocolFor(rpc::Encrypted(UseEncryption(
+      UsesBroadcastAddress(leader.registration, host_port),
+      leader.registration.cloud_info(), connect_from_)));
 }
 
 rpc::ProxyCache& MasterLeaderFinder::get_proxy_cache() {

@@ -244,7 +244,7 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
   }
   auto callback = std::move(user_cb_);
   user_cb_.Reset();
-  callback.Run(status, leader_master_, leader_master_cloud_info_);
+  callback.Run(status, leader_master_, leader_master_registration_);
 }
 
 void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
@@ -289,7 +289,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
               "choosing to heartbeat to follower master " << resp.instance_id().permanent_uuid()
               << " after " << num_iters_ << " iterations of all masters.";
           leader_master_ = addrs_[idx];
-          leader_master_cloud_info_ = resp.registration().cloud_info();
+          leader_master_registration_ = resp.registration();
         } else {
           new_status = STATUS(NotFound, "no leader found: " + ToString());
         }
@@ -297,7 +297,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
         VLOG_WITH_PREFIX_AND_FUNC(4) << idx << ") " << addrs_[idx] << " is leader master";
         // We've found a leader.
         leader_master_ = addrs_[idx];
-        leader_master_cloud_info_ = resp.registration().cloud_info();
+        leader_master_registration_ = resp.registration();
       }
     }
     if (!new_status.ok()) {
@@ -320,7 +320,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
   if (new_status.ok()) {
     auto callback = std::move(user_cb_);
     user_cb_.Reset();
-    callback.Run(new_status, leader_master_, leader_master_cloud_info_);
+    callback.Run(new_status, leader_master_, leader_master_registration_);
   } else {
     Finished(new_status);
   }

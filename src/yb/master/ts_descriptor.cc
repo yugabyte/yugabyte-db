@@ -373,7 +373,7 @@ Result<TSDescriptor::SelectedEndpoint> TSDescriptor::SelectEndpointUnlocked() co
 
   return SelectedEndpoint {
     .host_port = HostPortFromPB(selected.host_port),
-    .kind = selected.kind,
+    .used_broadcast = selected.used_broadcast,
   };
 }
 
@@ -381,10 +381,10 @@ Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
   return VERIFY_RESULT(SelectEndpointUnlocked()).host_port;
 }
 
-const rpc::Protocol& TSDescriptor::ProtocolForUnlocked(AddressKind kind) const {
+const rpc::Protocol& TSDescriptor::ProtocolForUnlocked(UsedBroadcastAddress used_broadcast) const {
   auto l = LockForRead();
   return proxy_cache_->GetContext()->ProtocolFor(rpc::Encrypted(
-      UseEncryption(kind, l->pb.registration().cloud_info(), local_master_cloud_info_)));
+      UseEncryption(used_broadcast, l->pb.registration().cloud_info(), local_master_cloud_info_)));
 }
 
 bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const {

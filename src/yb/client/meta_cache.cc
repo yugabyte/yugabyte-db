@@ -249,7 +249,8 @@ Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::O
   proxy_ = std::make_shared<TabletServerServiceProxy>(
       proxy_cache, hostport,
       &proxy_cache->GetContext()->ProtocolFor(
-          rpc::Encrypted(yb::UseEncryption(selected.kind, cloud_info_pb_, connect_from))));
+          rpc::Encrypted(yb::UseEncryption(
+              selected.used_broadcast, cloud_info_pb_, connect_from))));
   proxy_endpoint_ = hostport;
 
   return proxy_;

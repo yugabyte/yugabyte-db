@@ -107,11 +107,10 @@ Result<UsePrivateIpMode> GetNodeToNodeEncryptionScope();
 // registration - node registration information
 const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration);
 
-// Which of a node's advertised address lists a connection to it uses. kConfigured is for a
-// connection whose address came from configuration rather than from a node's registration,
-// which is how a tserver reaches a master: it races every address the master config names,
-// so the surviving connection could be on either list.
-YB_DEFINE_ENUM(AddressKind, (kPrivate)(kBroadcast)(kConfigured));
+// Whether a connection went out on a node's broadcast address rather than its private one.
+// Distinct from a public address merely being permitted, which is the scope's answer: a node
+// that reported no broadcast address is reached privately whatever the scope allows.
+YB_STRONGLY_TYPED_BOOL(UsedBroadcastAddress);
 
 // An address to reach a node at, together with which list it came from. The two travel
 // together because a caller that encrypts has to know which one it got: what a connection
@@ -119,8 +118,16 @@ YB_DEFINE_ENUM(AddressKind, (kPrivate)(kBroadcast)(kConfigured));
 // let the two answers drift apart.
 struct SelectedHostPort {
   const HostPortPB& host_port;
-  AddressKind kind;
+  UsedBroadcastAddress used_broadcast;
 };
+
+// The same answer for an address chosen some other way. A tserver reaches its master over an
+// address the master configuration named, raced against every other, so that connection's
+// provenance is recovered from the registration rather than selected. An address the node
+// reports as private is private even when it also appears among its broadcast addresses; one
+// it reports in neither cannot be shown to be private, so it is treated as broadcast.
+UsedBroadcastAddress UsesBroadcastAddress(
+    const ServerRegistrationPB& registration, const HostPortPB& host_port);
 
 // Pick host and port that should be used to connect node
 // broadcast_addresses - node public host ports
@@ -156,15 +163,16 @@ const HostPortPB& DesiredHostPort(
 // node_to_node_encryption_required_on_broadcast withholds that exemption from any connection
 // that did not stay on the destination's private address.
 //
-// kind comes from the same SelectHostPort call that chose the address, so the transport
-// always describes the connection actually being made.
+// used_broadcast comes from the same SelectHostPort call that chose the address, so the
+// transport always describes the connection actually being made.
 //
 // This answers the policy alone. A messenger built without encryption has no encrypted
 // transport to name, so ProxyContext::ProtocolFor pairs this with the transports the
 // messenger actually holds, the way SelectHostPort pairs the scope with the addresses a node
 // actually reported.
 bool UseEncryption(
-    AddressKind kind, const CloudInfoPB& connect_to, const CloudInfoPB& connect_from);
+    UsedBroadcastAddress used_broadcast, const CloudInfoPB& connect_to,
+    const CloudInfoPB& connect_from);
 
 HAS_MEMBER_FUNCTION(error);
 HAS_MEMBER_FUNCTION(status);

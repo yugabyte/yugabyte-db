@@ -469,8 +469,9 @@ PublicAddressAllowed UsePublicIp(const CloudInfoPB& connect_to, const CloudInfoP
 }
 
 bool UseEncryption(
-    AddressKind kind, const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
-  if (FLAGS_node_to_node_encryption_required_on_broadcast && kind != AddressKind::kPrivate) {
+    UsedBroadcastAddress used_broadcast, const CloudInfoPB& connect_to,
+    const CloudInfoPB& connect_from) {
+  if (FLAGS_node_to_node_encryption_required_on_broadcast && used_broadcast) {
     return true;
   }
   return OutsideScope(
@@ -493,11 +494,22 @@ SelectedHostPort SelectHostPort(
   // ask it what it returned rather than assuming the scope's answer was available.
   const auto& host_port =
       GetHostPort(broadcast_addresses, private_host_ports, public_address_allowed);
-  auto on_broadcast = !broadcast_addresses.empty() && public_address_allowed;
   return SelectedHostPort {
     .host_port = host_port,
-    .kind = on_broadcast ? AddressKind::kBroadcast : AddressKind::kPrivate,
+    .used_broadcast = UsedBroadcastAddress(
+        !broadcast_addresses.empty() && public_address_allowed),
   };
+}
+
+UsedBroadcastAddress UsesBroadcastAddress(
+    const ServerRegistrationPB& registration, const HostPortPB& host_port) {
+  for (const auto& private_address : registration.private_rpc_addresses()) {
+    if (private_address.host() == host_port.host() &&
+        private_address.port() == host_port.port()) {
+      return UsedBroadcastAddress::kFalse;
+    }
+  }
+  return UsedBroadcastAddress::kTrue;
 }
 
 SelectedHostPort SelectHostPort(

@@ -17,6 +17,7 @@
 #include "yb/util/status_fwd.h"
 
 #include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.pb.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
@@ -36,7 +37,7 @@ class MasterLeaderFinder {
   // ProxyContext::ProtocolFor both take the destination's.
   struct MasterLeader {
     HostPort hostport;
-    CloudInfoPB cloud_info;
+    ServerRegistrationPB registration;
   };
 
   MasterLeaderFinder(

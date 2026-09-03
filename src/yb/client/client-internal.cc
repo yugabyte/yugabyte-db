@@ -2788,7 +2788,7 @@ void YBClient::Data::GetTableLocations(
 
 void YBClient::Data::LeaderMasterDetermined(const Status& status,
                                             const HostPort& host_port,
-                                            const CloudInfoPB& cloud_info) {
+                                            const ServerRegistrationPB& registration) {
   VLOG(4) << "YBClient: Leader master determined: status="
           << status.ToString() << ", host port ="
           << host_port.ToString();
@@ -2799,10 +2799,12 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
 
     if (status.ok()) {
       leader_master_hostport_ = host_port;
-      // GetLeaderMasterRpc races every configured master address, so this connection could
-      // be on either of the leader's address lists.
+      // GetLeaderMasterRpc races every configured master address, so this address was not
+      // selected and its provenance has to be recovered from what the leader reported.
       const auto* protocol = &proxy_cache_->GetContext()->ProtocolFor(rpc::Encrypted(
-          UseEncryption(AddressKind::kConfigured, cloud_info, cloud_info_pb_)));
+          UseEncryption(
+              UsesBroadcastAddress(registration, HostPortToPB(host_port)),
+              registration.cloud_info(), cloud_info_pb_)));
       master_admin_proxy_ = std::make_shared<master::MasterAdminProxy>(
           proxy_cache_.get(), host_port, protocol);
       master_backup_proxy_ =
@@ -2860,7 +2862,7 @@ void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
         &Data::DoSetMasterServerProxy, this, deadline, skip_resolution, wait_for_leader_election);
     auto submit_status = threadpool_->SubmitFunc(functor);
     if (!submit_status.ok()) {
-      LeaderMasterDetermined(submit_status, HostPort(), CloudInfoPB());
+      LeaderMasterDetermined(submit_status, HostPort(), ServerRegistrationPB());
     }
   }
 }
@@ -2896,7 +2898,7 @@ void YBClient::Data::DoSetMasterServerProxy(CoarseTimePoint deadline,
   auto master_addrs = ParseMasterAddresses(ReinitializeMasterAddresses());
 
   if (!master_addrs.ok()) {
-    LeaderMasterDetermined(master_addrs.status(), HostPort(), CloudInfoPB());
+    LeaderMasterDetermined(master_addrs.status(), HostPort(), ServerRegistrationPB());
     return;
   }
 
@@ -2910,7 +2912,8 @@ void YBClient::Data::DoSetMasterServerProxy(CoarseTimePoint deadline,
     // Taking the configured address without asking fetches no registration, so the leader's
     // placement stays unset. An unset placement matches no node's, so it falls outside every
     // scope and the master proxies are encrypted when encryption is enabled.
-    LeaderMasterDetermined(Status::OK(), master_addrs->front().front(), CloudInfoPB());
+    LeaderMasterDetermined(
+        Status::OK(), master_addrs->front().front(), ServerRegistrationPB());
     return;
   }
 
@@ -3368,7 +3371,8 @@ void YBClient::Data::Shutdown() {
     // callbacks to be triggered at some point. Since threadpool_->Shutdown() destroys the
     // enqueued (but not currently running) tasks, invoke the callbacks inline.
     LeaderMasterDetermined(
-        STATUS_FORMAT(ShutdownInProgress, "YBClient shutting down"), HostPort(), CloudInfoPB());
+        STATUS_FORMAT(ShutdownInProgress, "YBClient shutting down"), HostPort(),
+        ServerRegistrationPB());
   }
 
   while (running_sync_requests_.load(std::memory_order_acquire)) {
