@@ -11408,11 +11408,12 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
     *tablet_leader_peer_conn_info.mutable_cloud_info() = req.tablet_leader_cloud_info();
   }
 
-  HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(
+  auto bootstrap_source = SelectHostPort(
       req.bootstrap_source_broadcast_addr(),
       req.bootstrap_source_private_addr(),
       req.bootstrap_source_cloud_info(),
-      master_->MakeCloudInfoPB()));
+      master_->MakeCloudInfoPB());
+  HostPort bootstrap_peer_addr = HostPortFromPB(bootstrap_source.host_port);
 
   RETURN_NOT_OK(master_->InitAutoFlagsFromMasterLeader(bootstrap_peer_addr));
 
@@ -11455,6 +11456,9 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
       bootstrap_peer_uuid,
       &master_->proxy_cache(),
       bootstrap_peer_addr,
+      rpc::Encrypted(UseEncryption(
+          bootstrap_source.used_broadcast, req.bootstrap_source_cloud_info(),
+          master_->MakeCloudInfoPB())),
       tablet_leader_peer_conn_info,
       req.has_pending_config_op_id() ? OpId::FromPB(req.pending_config_op_id()) : OpId(),
       &meta));

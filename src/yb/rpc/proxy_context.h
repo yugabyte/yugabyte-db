@@ -51,6 +51,11 @@ class ProxyContext {
   // the connection.
   virtual const Protocol& ProtocolFor(Encrypted encrypted) = 0;
 
+  // The encryption this messenger can actually carry: one built without a secure stream
+  // yields kFalse whatever was asked for. A caller that names both dimensions itself asks
+  // for this first, so that it names a point there is a stream factory for.
+  virtual Encrypted ClampEncryption(Encrypted encrypted) = 0;
+
   virtual ThreadPool& CallbackThreadPool(ServicePriority priority = ServicePriority::kNormal) = 0;
 
   virtual IoService& io_service() = 0;

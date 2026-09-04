@@ -257,14 +257,18 @@ const Protocol& Messenger::ProtocolFor(Compressed compressed, Encrypted encrypte
   return *StreamProtocol(compressed, encrypted);
 }
 
+Encrypted Messenger::ClampEncryption(Encrypted encrypted) {
+  // Read off the protocols this messenger was built with rather than the flags that chose
+  // them. Applying a secure context names the secure stream as the uncompressed protocol.
+  return Encrypted(encrypted && &uncompressed_protocol_ == SecureStreamProtocol());
+}
+
 const Protocol& Messenger::ProtocolFor(Encrypted encrypted) {
-  // Both dimensions are read off the protocols this messenger was built with rather than the
-  // flags that chose them, so it never names a point it has no stream factory for. Applying a
-  // secure context names the secure stream as the uncompressed protocol, and adding
-  // compression on top leaves the listen protocol differing from it.
+  // Both dimensions are read off the protocols this messenger was built with, so it never
+  // names a point it has no stream factory for. Adding compression on top of a secure context
+  // leaves the listen protocol differing from the uncompressed one.
   return ProtocolFor(
-      Compressed(&listen_protocol_ != &uncompressed_protocol_),
-      Encrypted(encrypted && &uncompressed_protocol_ == SecureStreamProtocol()));
+      Compressed(&listen_protocol_ != &uncompressed_protocol_), ClampEncryption(encrypted));
 }
 
 Status Messenger::ListenAddress(

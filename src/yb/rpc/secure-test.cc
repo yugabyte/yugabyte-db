@@ -21,6 +21,7 @@
 #include "yb/rpc/tcp_stream.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -41,6 +42,26 @@ class SecureTest : public YBTest {
     builder.UseDefaultConnectionContextFactory();
     secure_context_ = VERIFY_RESULT(SetupSecureContext(
         /* root_dir= */ "", /* name= */ "test", SecureContextType::kInternal, &builder));
+    return CreateAutoShutdownMessengerHolder(VERIFY_RESULT(builder.Build()));
+  }
+
+  // Builds a messenger holding the secure transport, the way TestRpcSecure does: the keys are
+  // generated in process, so a test that only asks which transports the messenger ended up
+  // with needs no certificate directory.
+  Result<AutoShutdownMessengerHolder> BuildSecureMessenger() {
+    secure_context_ = std::make_unique<SecureContext>(
+        RequireClientCertificate::kFalse, UseClientCertificate::kFalse);
+    RETURN_NOT_OK(secure_context_->TEST_GenerateKeys(
+        2048, "127.0.0.1", MatchingCertKeyPair::kTrue));
+
+    MessengerBuilder builder("test");
+    builder.UseDefaultConnectionContextFactory();
+    builder.SetListenProtocol(SecureStreamProtocol());
+    builder.SetUncompressedProtocol(SecureStreamProtocol());
+    builder.AddStreamFactory(
+        SecureStreamProtocol(),
+        SecureStreamFactory(
+            TcpStream::Factory(), MemTracker::GetRootTracker(), secure_context_.get()));
     return CreateAutoShutdownMessengerHolder(VERIFY_RESULT(builder.Build()));
   }
 
@@ -77,6 +98,56 @@ TEST_F(SecureTest, ProtocolKeepsCompression) {
 
   EXPECT_EQ(
       &messenger->ProtocolFor(Encrypted::kFalse), CompressedStreamProtocol(Encrypted::kFalse));
+}
+
+// A caller that names both dimensions itself cannot go through the clamp ProtocolFor applies,
+// so it asks for the clamp directly. Remote bootstrap does this: it needs one encryption
+// decision at two compressions, since it sends SST files uncompressed.
+TEST_F(SecureTest, ClampEncryptionFollowsTheMessenger) {
+  {
+    google::FlagSaver flag_saver;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = false;
+    auto messenger = ASSERT_RESULT(BuildMessenger());
+
+    // Asked for encryption this messenger has no secure stream for, so it yields none, and
+    // both compressions of that answer are points it can create.
+    EXPECT_FALSE(messenger->ClampEncryption(Encrypted::kTrue));
+    EXPECT_FALSE(messenger->ClampEncryption(Encrypted::kFalse));
+    for (auto compressed : {Compressed::kFalse, Compressed::kTrue}) {
+      SCOPED_TRACE(ToString(compressed));
+      const auto* protocol =
+          &messenger->ProtocolFor(compressed, messenger->ClampEncryption(Encrypted::kTrue));
+      EXPECT_NE(protocol, SecureStreamProtocol());
+      EXPECT_NE(protocol, CompressedStreamProtocol(Encrypted::kTrue));
+    }
+  }
+
+  {
+    auto messenger = ASSERT_RESULT(BuildSecureMessenger());
+
+    // This messenger holds the secure stream, so the answer is the caller's own: a scope that
+    // exempts a peer still reaches it unencrypted, and one that does not still encrypts.
+    EXPECT_TRUE(messenger->ClampEncryption(Encrypted::kTrue));
+    EXPECT_FALSE(messenger->ClampEncryption(Encrypted::kFalse));
+    EXPECT_EQ(
+        &messenger->ProtocolFor(Compressed::kFalse, messenger->ClampEncryption(Encrypted::kTrue)),
+        SecureStreamProtocol());
+  }
+}
+
+// ProtocolFor(Encrypted) is that clamp at whichever compression the messenger was built with,
+// so the two cannot drift apart.
+TEST_F(SecureTest, ProtocolForIsTheClampedPoint) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = false;
+  auto messenger = ASSERT_RESULT(BuildMessenger());
+
+  for (auto encrypted : {Encrypted::kFalse, Encrypted::kTrue}) {
+    SCOPED_TRACE(ToString(encrypted));
+    EXPECT_EQ(
+        &messenger->ProtocolFor(encrypted),
+        &messenger->ProtocolFor(Compressed::kTrue, messenger->ClampEncryption(encrypted)));
+  }
 }
 
 TEST_F(SecureTest, ProtocolWithoutCompression) {
