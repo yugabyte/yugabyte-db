@@ -409,6 +409,11 @@ const HostPortPB& DesiredHostPort(const RaftPeerPB& peer, const CloudInfoPB& fro
   return SelectHostPort(peer, from).host_port;
 }
 
+bool IsRunningOn(const RaftPeerPB& peer, const HostPortPB& host_port) {
+  return yb::IsRunningOn(
+      peer.last_known_broadcast_addr(), peer.last_known_private_addr(), host_port);
+}
+
 void TakeRegistration(ServerRegistrationPB* source, RaftPeerPB* dest) {
   dest->mutable_last_known_private_addr()->Swap(source->mutable_private_rpc_addresses());
   dest->mutable_last_known_broadcast_addr()->Swap(source->mutable_broadcast_addresses());

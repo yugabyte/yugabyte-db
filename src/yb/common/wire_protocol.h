@@ -32,6 +32,7 @@
 // Helpers for dealing with the protobufs defined in wire_protocol.proto.
 #pragma once
 
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -141,6 +142,24 @@ std::vector<SelectedHostPort> CandidateHostPorts(
     const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
     const CloudInfoPB& connect_to,
     const CloudInfoPB& connect_from);
+
+// Whether any of the addresses a node advertised satisfies the predicate. A node is named by
+// both of the lists it advertises, so a question about "this node's addresses" is a question
+// about both of them, private first.
+bool DoesAnyHostPortMatch(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const std::function<bool(const HostPortPB&)>& predicate);
+
+// Whether host_port is one of the addresses a node advertised, which is what it means for an
+// address to name that node. Identity rather than reachability: which of them a caller would
+// dial depends on where it dials from, but every one of them names the same node, so nothing
+// here depends on a placement.
+bool IsRunningOn(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const HostPortPB& host_port);
+bool IsRunningOn(const ServerRegistrationPB& registration, const HostPortPB& host_port);
 
 // The candidate to reach a node at now: the first that has not failed, falling back to the
 // preferred one once every candidate has. A failure record is a preference among reachable

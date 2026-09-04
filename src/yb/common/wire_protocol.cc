@@ -540,6 +540,30 @@ std::vector<SelectedHostPort> CandidateHostPorts(
   return result;
 }
 
+bool DoesAnyHostPortMatch(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const std::function<bool(const HostPortPB&)>& predicate) {
+  return std::any_of(private_host_ports.begin(), private_host_ports.end(), predicate) ||
+         std::any_of(broadcast_addresses.begin(), broadcast_addresses.end(), predicate);
+}
+
+bool IsRunningOn(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const HostPortPB& host_port) {
+  return DoesAnyHostPortMatch(
+      broadcast_addresses, private_host_ports,
+      [&host_port](const HostPortPB& advertised) {
+        return HasSameHostPort(advertised, host_port);
+      });
+}
+
+bool IsRunningOn(const ServerRegistrationPB& registration, const HostPortPB& host_port) {
+  return IsRunningOn(
+      registration.broadcast_addresses(), registration.private_rpc_addresses(), host_port);
+}
+
 SelectedHostPort FirstUsable(
     const std::vector<SelectedHostPort>& candidates, const FailedAddresses& failed) {
   DCHECK(!candidates.empty());
