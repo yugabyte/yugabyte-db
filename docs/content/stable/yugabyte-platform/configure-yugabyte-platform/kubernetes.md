@@ -274,7 +274,9 @@ serviceEndpoints:
 
 ### Run as non-root
 
-Overrides to run YugabyteDB as a non-root user:
+Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and Kubernetes pods run as a non-root user by default.
+
+In versions earlier than v2026.1.2, use the following overrides to run YugabyteDB as a non-root user:
 
 ```yml
 podSecurityContext:
@@ -286,7 +288,18 @@ podSecurityContext:
   runAsGroup: 10001
 ```
 
-Note that you cannot change users during the Helm upgrades.
+This is the default starting in v2026.1.2.
+
+You cannot change the user of a running universe after it has been created. If you upgrade a universe to v2026.1.2 or later and you haven't pinned a user in `podSecurityContext`, the pods migrate to the non-root user from the image. Disabling `podSecurityContext` is not enough to keep running as root, because the image itself no longer defaults to root.
+
+To keep running as root, set the following override before you upgrade:
+
+```yml
+podSecurityContext:
+  enabled: true
+  runAsNonRoot: false
+  runAsUser: 0
+```
 
 ### Tolerations
 
