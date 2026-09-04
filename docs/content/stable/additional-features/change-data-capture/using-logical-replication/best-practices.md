@@ -23,7 +23,7 @@ The recommended approach towards addressing the requirement of consuming changes
 
 Kafka Connect stores the last consumed LSN separately from the replication slot. Deleting a connector does not remove that offset. If you drop the slot, recreate it, and start a connector with the same identity, Kafka Connect may resume from the old LSN. Because LSNs aren't comparable across slots, that can skip changes on the new slot.
 
-A new connector should use a new `topic.prefix`.
+To avoid re-use of kafka topics across slots and prevent CDC from missing data due to incorrect start LSNs coming from a different slot, each connector which uses a different slot should use a different `topic.prefix`.
 
 ## Fan out
 
