@@ -193,6 +193,7 @@ YbRange
 YbReCacheInfo
 YbRegisterOuterMatchFn_t
 YbRelationAttrsProcessingState
+YbRemovedAclKind
 YbResetBatchFn_t
 YbRowBounds
 YbRunWithPrefetcherContext
