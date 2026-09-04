@@ -87,8 +87,9 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
 
 DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "Comma-separated list of log settings for Ysql Connection Manger, which may include "
-    "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
-    "log settings present in this string will be enabled. Omitted settings will remain disabled.");
+    "'log_debug', 'log_session', 'log_query', and 'log_stats'. Only the log settings present "
+    "in this string will be enabled. Omitted settings will remain disabled. 'log_config' is "
+    "accepted for backward compatibility but has no effect, as config logging is always on.");
 
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, true,
     "Enable the use of the auth-backend for authentication of logical connections. "
@@ -172,9 +173,9 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
+  // 'log_config' is accepted but ignored: config logging is unconditionally enabled.
   const std::unordered_set<std::string> valid_settings = {
-    "log_debug", "log_config", "log_session", "log_query", "log_stats"
-  };
+      "log_debug", "log_session", "log_query", "log_stats"};
 
   std::stringstream ss(value);
   std::string setting;
@@ -186,10 +187,17 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
     if (setting.empty()) {
       continue;
     }
+
+    if (setting == "log_config") {
+      LOG(WARNING) << "'log_config' in " << flag_name << " has no effect: config logging is "
+                   << "unconditionally enabled.";
+      continue;
+    }
+
     if (valid_settings.find(setting) == valid_settings.end()) {
       LOG_FLAG_VALIDATION_ERROR(flag_name, value)
           << "Invalid log setting '" << setting << "'. Valid options are: "
-          << "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'.";
+          << "'log_debug', 'log_session', 'log_query', and 'log_stats'.";
       return false;
     }
   }

@@ -22,6 +22,7 @@ import java.sql.*;
 import java.util.concurrent.TimeUnit;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.client.TestUtils;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import com.google.common.net.HostAndPort;
@@ -165,6 +166,17 @@ public class TestYCMConfiguration extends BaseYsqlConnMgr {
     HostAndPort tserver = miniCluster.getTabletServers().keySet().stream()
         .filter(hp -> hp.getHost().equals(targetHost)).findFirst()
         .orElseThrow(() -> new IllegalStateException("No tserver found for host " + targetHost));
+
+    // 2024.2 specific: Wait for ConnMgr to come up before changing the flag
+    TestUtils.waitFor(() -> {
+      try (Connection conn = getConnectionBuilder()
+                                 .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                                 .withTServer(TSERVER_IDX).connect()) {
+        return true;
+      } catch (Exception e) {
+        return false;
+      }
+    }, 60000);
 
     ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, TSERVER_IDX);
     tailer.skipToEnd();
