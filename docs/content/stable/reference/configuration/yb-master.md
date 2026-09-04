@@ -952,10 +952,14 @@ Limits the number of total outstanding tablet splits. Limitation is disabled if 
 
 {{% tags/wrap %}}
 
-Default: `1`
+Default: `-1`
 {{% /tags/wrap %}}
 
-Limits the number of outstanding tablet splits per node. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
+Limits the number of outstanding tablet splits per node. Limit includes tablets that are performing post-split compactions.
+
+- `-1` (default): the limit is derived from the CPU count (`1` for nodes with up to 4 cores, `2` otherwise).
+- `0`: limitation is disabled.
+- A positive value is used as-is.
 
 ##### --enable_tablet_split_of_pitr_tables
 
@@ -1804,10 +1808,12 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `1`
+Default: `-1`
 {{% /tags/wrap %}}
 
 The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+If the value is `-1` (default) or `0`, the thread count is derived from the CPU count (`1` for nodes with up to 4 cores, `2` otherwise). A positive value is used as-is.
 
 ##### --auto_compact_check_interval_sec
 
