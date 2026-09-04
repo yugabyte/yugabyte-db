@@ -52,6 +52,7 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/common_util.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
@@ -1043,7 +1044,13 @@ Status YBClient::Data::IsBackfillIndexInProgress(YBClient* client,
   *backfill_in_progress = true;
   if (!index_info->backfill_error_message().empty()) {
     *backfill_in_progress = false;
-    return STATUS(Aborted, index_info->backfill_error_message());
+    auto status = STATUS(Aborted, index_info->backfill_error_message());
+    // Re-tag so YSQL surfaces a retryable 40001 instead of XX000.
+    if (index_info->backfill_error_message().starts_with("ERROR:  schema version mismatch")) {
+      status = status.CloneAndAddErrorCode(
+          PgsqlRequestStatus(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH));
+    }
+    return status;
   } else if (index_info->index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL) {
     *backfill_in_progress = false;
   }
