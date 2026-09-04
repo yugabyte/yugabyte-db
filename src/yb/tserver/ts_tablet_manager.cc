@@ -1747,6 +1747,17 @@ Status HandleReplacingStaleTablet(
   return Status::OK();
 }
 
+SelectedHostPort TSTabletManager::SelectRemoteSourceAddress(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const CloudInfoPB& source_cloud_info) {
+  auto candidates = CandidateHostPorts(
+      broadcast_addresses, private_host_ports, source_cloud_info, server_->MakeCloudInfoPB());
+
+  std::lock_guard lock(mutex_);
+  return FirstUsable(candidates, failed_remote_sources_);
+}
+
 Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
   const TabletId& tablet_id = req.tablet_id();
   if (FLAGS_reject_rbs_for_deleted_tablet) {
@@ -1788,9 +1799,9 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   RaftGroupMetadataPtr meta = replacing_tablet ? old_tablet_peer->tablet_metadata() : nullptr;
 
-  auto bootstrap_source = SelectHostPort(
+  auto bootstrap_source = SelectRemoteSourceAddress(
       req.bootstrap_source_broadcast_addr(), req.bootstrap_source_private_addr(),
-      req.bootstrap_source_cloud_info(), server_->MakeCloudInfoPB());
+      req.bootstrap_source_cloud_info());
   HostPort bootstrap_peer_addr = HostPortFromPB(bootstrap_source.host_port);
 
   auto rbs_source_role = "LEADER";
@@ -1837,7 +1848,18 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
       req.has_pending_config_op_id() ? OpId::FromPB(req.pending_config_op_id()) : OpId(),
       &meta,
       this);
-  RETURN_NOT_OK(start_status);
+  if (!start_status.ok()) {
+    // A source that registered several addresses is only unreachable once every one of them
+    // has failed. The session ends here either way, so the record is what carries the failure
+    // to the bootstrap the master issues next, which then starts on another address. Only a
+    // network error says anything about the address; every other failure came back over a
+    // connection that worked.
+    if (start_status.IsNetworkError()) {
+      std::lock_guard lock(mutex_);
+      failed_remote_sources_.MarkFailed(bootstrap_peer_addr);
+    }
+    return start_status;
+  }
 
   // From this point onward, the superblock is persisted in TABLET_DATA_COPYING
   // state, and we need to tombstone the tablet if additional steps prior to
@@ -1924,9 +1946,11 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
   const PeerId& source_uuid = req.source_peer_uuid();
   const auto& kLogPrefix = TabletLogPrefix(tablet_id);
   const auto& private_addr = req.source_private_addr()[0].host();
-  const auto& source_addr = HostPortFromPB(DesiredHostPort(
-      req.source_broadcast_addr(), req.source_private_addr(), req.source_cloud_info(),
-      server_->MakeCloudInfoPB()));
+  // The address falls back like every other, but the encryption scope does not reach here: an
+  // xCluster native bootstrap draws its snapshot from a separate universe, whose placement
+  // names mean nothing against this one's, so the transport stays the messenger's default.
+  const auto source_addr = HostPortFromPB(SelectRemoteSourceAddress(
+      req.source_broadcast_addr(), req.source_private_addr(), req.source_cloud_info()).host_port);
 
   LongOperationTracker tracker("StartRemoteSnapshotTransfer", 5s);
 
@@ -1947,9 +1971,17 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
       kLogPrefix, tablet_id, source_uuid, source_addr.ToString(), kDebugSnapshotTransferString,
       [this] { return IsShutdownStarted(); });
 
-  // Download and persist the remote superblock.
-  RETURN_NOT_OK(remote_snapshot_client->Start(
-      &server_->proxy_cache(), source_uuid, source_addr, rocksdb_dir));
+  // Download and persist the remote superblock. As in StartRemoteBootstrap, a network error
+  // records the address so the transfer issued next starts on another one the source reported.
+  auto start_status = remote_snapshot_client->Start(
+      &server_->proxy_cache(), source_uuid, source_addr, rocksdb_dir);
+  if (!start_status.ok()) {
+    if (start_status.IsNetworkError()) {
+      std::lock_guard lock(mutex_);
+      failed_remote_sources_.MarkFailed(source_addr);
+    }
+    return start_status;
+  }
 
   // Download the remote file specified in the request.
   auto snapshot_id = SnapshotIdToString(req.snapshot_id());

@@ -42,6 +42,7 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
 
@@ -77,6 +78,7 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
+#include "yb/util/net/failed_addresses.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/shared_lock.h"
@@ -714,6 +716,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void DecrementRemoteSessionCount(const std::string& private_addr, RemoteClients* remote_clients);
 
+  // The address to start a remote bootstrap or snapshot transfer against: the first of the
+  // source's advertised addresses that has not already failed, falling back to the preferred
+  // one once every address has. Which list it came from travels with it, because a remote
+  // bootstrap within this cluster decides its transport from that.
+  SelectedHostPort SelectRemoteSourceAddress(
+      const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+      const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+      const CloudInfoPB& source_cloud_info) EXCLUDES(mutex_);
+
   // Checks ClosingUnlocked and then returns the result of LookupTabletUnlocked.
   template <class Key>
   Result<tablet::TabletPeerPtr> CheckStateAndLookupTabletUnlocked(
@@ -877,6 +888,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   RemoteClients remote_bootstrap_clients_ GUARDED_BY(mutex_);
   RemoteClients snapshot_transfer_clients_ GUARDED_BY(mutex_);
+
+  // Addresses of remote bootstrap and snapshot transfer sources that could not be connected
+  // to. A session ends at its first failure, so unlike the other dialers this outlives no
+  // proxy of its own; it is kept here, beside the other per-source state, to reach the
+  // session the master issues next.
+  FailedAddresses failed_remote_sources_ GUARDED_BY(mutex_);
 
   // Gauge to monitor applied split operations.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_apply_;
