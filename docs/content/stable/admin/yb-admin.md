@@ -811,6 +811,7 @@ For colocated databases, pass a child table's *table-id* to scope the hash to a 
 ```sh
 yb-admin \
     --master_addresses <master-addresses> \
+    [--max_rows_per_scan <n>] \
     get_table_hash <table-id> \
     [<read-ht>] [<start-key-hex>] [<end-key-hex>]
 ```
@@ -823,7 +824,7 @@ yb-admin \
 
 **Notes**
 
-* A colocation parent table ID reports one `Table <table-id>: rows <n>, XOR hash <hash>` line per colocated table, and no `Total XOR hash`. A row's hash depends on its column IDs and values but not on which table it belongs to, so combining the tables could cancel their hashes out. Compare the per-table lines instead; `Total row count` still covers the whole tablet.
+* When a tablet holds more than one table, as a colocation parent's does, the output reports one `Table <table-id>: rows <n>, XOR hash <hash>` line per table in place of `Total XOR hash`. A row's hash depends on its column IDs and values but not on which table it belongs to, so combining the tables could cancel their hashes out. Compare the per-table lines instead; `Total row count` still covers the whole tablet.
 * Key range arguments (*start-key-hex* / *end-key-hex*) require a concrete child table ID. Using them with a colocation parent table ID returns an error.
 * For hash-partitioned tables, each bound must be either a valid 2-byte hash-partition key, or a `Next key` returned by a prior capped scan (see `--max_rows_per_scan`).
 * When you specify both bounds, *start-key-hex* must be strictly less than *end-key-hex*, or the command returns an error rather than hashing an empty range. An empty bound means unbounded and is always accepted. The two are compared after both have been converted to the same internal key encoding, so a 2-byte hash bound and a longer `Next key` from a capped scan can be used together.
