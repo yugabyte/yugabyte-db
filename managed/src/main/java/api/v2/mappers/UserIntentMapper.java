@@ -774,11 +774,7 @@ public interface UserIntentMapper {
       if (clusterResizeNodeSpec.getTserver().getStorageSpec() != null) {
         DeviceInfo incoming =
             resizeStorageSpecToDeviceInfo(clusterResizeNodeSpec.getTserver().getStorageSpec());
-        if (tserverOverrides.getDeviceInfo() == null) {
-          tserverOverrides.setDeviceInfo(incoming);
-        } else {
-          tserverOverrides.getDeviceInfo().mergeDeviceInfo(incoming);
-        }
+        tserverOverrides.setDeviceInfo(incoming);
         hasChanges = true;
       }
       if (hasChanges) {
@@ -789,6 +785,15 @@ public interface UserIntentMapper {
         }
         PerProcessDetails existingTserverOverrides =
             perProcess.getOrDefault(ServerType.TSERVER, new PerProcessDetails());
+        // mergeWith() replaces deviceInfo wholesale, and the request only carries
+        // volumeSize/diskIops/throughput - merge field-wise first so the existing override keeps
+        // what this request does not mention.
+        if (tserverOverrides.getDeviceInfo() != null
+            && existingTserverOverrides.getDeviceInfo() != null) {
+          DeviceInfo merged = existingTserverOverrides.getDeviceInfo().clone();
+          merged.mergeDeviceInfo(tserverOverrides.getDeviceInfo());
+          tserverOverrides.setDeviceInfo(merged);
+        }
         existingTserverOverrides.mergeWith(tserverOverrides);
         perProcess.put(ServerType.TSERVER, existingTserverOverrides);
       }
