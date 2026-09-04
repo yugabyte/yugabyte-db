@@ -207,6 +207,38 @@ RemoteTabletServer::RemoteTabletServer(const string& uuid,
 
 RemoteTabletServer::~RemoteTabletServer() = default;
 
+std::vector<SelectedHostPort> RemoteTabletServer::CandidatesUnlocked(
+    const CloudInfoPB& connect_from) const {
+  return yb::CandidateHostPorts(
+      public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_, connect_from);
+}
+
+SelectedHostPort RemoteTabletServer::PickCandidateUnlocked(
+    const CloudInfoPB& connect_from) const {
+  return FirstUsable(CandidatesUnlocked(connect_from), failed_addresses_);
+}
+
+bool RemoteTabletServer::FailToNextAddress(const CloudInfoPB& connect_from) {
+  std::lock_guard lock(mutex_);
+  if (proxy_endpoint_.host().empty()) {
+    return false;
+  }
+  failed_addresses_.MarkFailed(proxy_endpoint_);
+
+  // Drop the proxy so the next ObtainProxy picks again, whether that lands on an address that
+  // has not failed or back on the preferred one once every address has. Picking again either
+  // way is what lets a record expire; a proxy left on the address that just failed would
+  // outlive every record that could move it. proxy_endpoint_ keeps naming the address that
+  // was dialed until then, because a Proxy built from a blank HostPort calls the service on
+  // the local messenger rather than on this server.
+  proxy_.reset();
+
+  // PickCandidateUnlocked returns the preferred address once every one of them has failed, so
+  // whether the address it picks now has failed is whether any address is left to try.
+  return !failed_addresses_.Failed(
+      HostPortFromPB(PickCandidateUnlocked(connect_from).host_port));
+}
+
 Status RemoteTabletServer::InitProxy(YBClient* client) {
   return ResultToStatus(ObtainProxy(*client));
 }
@@ -237,11 +269,8 @@ Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::O
     }
   }
 
-  // TODO: if the TS advertises multiple host/ports, pick the right one
-  // based on some kind of policy. For now just use the first always.
   const auto& connect_from = client.data_->cloud_info_pb_;
-  auto selected = yb::SelectHostPort(
-      public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_, connect_from);
+  auto selected = PickCandidateUnlocked(connect_from);
   auto hostport = HostPortFromPB(selected.host_port);
   CHECK(!hostport.host().empty());
   ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
@@ -363,6 +392,16 @@ HostPortPB RemoteTabletServer::DesiredHostPort(const CloudInfoPB& cloud_info) co
 std::string RemoteTabletServer::TEST_PlacementZone() const {
   SharedLock lock(mutex_);
   return cloud_info_pb_.placement_zone();
+}
+
+std::vector<HostPort> RemoteTabletServer::TEST_Candidates(
+    const CloudInfoPB& connect_from) const {
+  SharedLock lock(mutex_);
+  std::vector<HostPort> result;
+  for (const auto& candidate : CandidatesUnlocked(connect_from)) {
+    result.push_back(HostPortFromPB(candidate.host_port));
+  }
+  return result;
 }
 
 std::string ReplicasCount::ToString() {
