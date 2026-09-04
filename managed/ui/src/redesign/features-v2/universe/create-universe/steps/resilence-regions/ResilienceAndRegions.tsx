@@ -432,8 +432,13 @@ export const ResilienceAndRegions = forwardRef<
     }
   }, [formMode]);
 
+  const prevFaultToleranceTypeRef = useRef(faultToleranceType);
+
   useEffect(() => {
-    if (faultToleranceType === FaultToleranceType.NONE && resilienceFactor > 1) {
+    if (prevFaultToleranceTypeRef.current !== faultToleranceType) {
+      prevFaultToleranceTypeRef.current = faultToleranceType;
+      methods.setValue(RESILIENCE_FACTOR, 1, { shouldValidate: true });
+    } else if (faultToleranceType === FaultToleranceType.NONE && resilienceFactor > 1) {
       methods.setValue(RESILIENCE_FACTOR, 1, { shouldValidate: true });
     }
     // NONE / NODE_LEVEL UI is single-region; keep stored regions in sync with the autocomplete.

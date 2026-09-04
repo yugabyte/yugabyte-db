@@ -517,6 +517,26 @@ describe('ResilienceAndRegions', () => {
       });
     });
 
+    it('resets resilienceFactor to 1 when faultToleranceType changes', async () => {
+      const { ref } = renderResilience(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.REGION_LEVEL,
+          resilienceFactor: 3,
+          regions: makeRegions(3)
+        })
+      );
+      mockSaveResilienceAndRegionsSettings.mockClear();
+      ref.current.setValue!(FAULT_TOLERANCE_TYPE, FaultToleranceType.AZ_LEVEL);
+      await waitFor(() => {
+        const lastCall =
+          mockSaveResilienceAndRegionsSettings.mock.calls[
+            mockSaveResilienceAndRegionsSettings.mock.calls.length - 1
+          ]?.[0];
+        expect(lastCall?.[RESILIENCE_FACTOR]).toBe(1);
+        expect(lastCall?.[FAULT_TOLERANCE_TYPE]).toBe(FaultToleranceType.AZ_LEVEL);
+      });
+    });
+
     it('resets nodesAvailabilitySettings when regions change', async () => {
       const { ref } = renderResilience(
         getContextValue({
