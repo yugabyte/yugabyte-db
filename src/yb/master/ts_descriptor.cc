@@ -159,6 +159,7 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
   proxies_.reset();
+  failed_addresses_.Clear();
   // Once a tserver is marked as faulty it remains that way until it reregisters here.
   // If it is still faulty, then it will be marked again as part of UpdateFromHeartbeat afterwards.
   has_faulty_drive_ = false;
@@ -355,7 +356,7 @@ bool TSDescriptor::IsBlacklisted(const BlacklistSet& blacklist) const {
 }
 
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
-  return yb::master::IsRunningOn(LockForRead()->pb.registration(), hp);
+  return yb::IsRunningOn(LockForRead()->pb.registration(), hp);
 }
 
 Result<HostPort> TSDescriptor::GetHostPort() const {
@@ -365,16 +366,37 @@ Result<HostPort> TSDescriptor::GetHostPort() const {
 
 Result<TSDescriptor::SelectedEndpoint> TSDescriptor::SelectEndpointUnlocked() const {
   auto l = LockForRead();
-  auto selected = SelectHostPort(l->pb.registration(), local_master_cloud_info_);
+  const auto& registration = l->pb.registration();
+  auto candidates = CandidateHostPorts(
+      registration.broadcast_addresses(), registration.private_rpc_addresses(),
+      registration.cloud_info(), local_master_cloud_info_);
+
+  auto selected = FirstUsable(candidates, failed_addresses_);
   if (selected.host_port.host().empty()) {
     return STATUS_FORMAT(NetworkError, "Unable to find the TS address for $0: $1",
-                         permanent_uuid(), l->pb.registration().ShortDebugString());
+                         permanent_uuid(), registration.ShortDebugString());
   }
 
   return SelectedEndpoint {
     .host_port = HostPortFromPB(selected.host_port),
     .used_broadcast = selected.used_broadcast,
   };
+}
+
+bool TSDescriptor::FailToNextAddress(const HostPort& host_port) {
+  std::lock_guard l(mutex_);
+  failed_addresses_.MarkFailed(host_port);
+
+  // Drop the cached proxies so the next GetProxy selects again, the same way re-registration
+  // drops them when the addresses may have changed. Selecting again happens whether or not an
+  // address is left, because that is what lets a record expire: proxies left on the address
+  // that just failed would outlive every record that could move them.
+  proxies_.reset();
+
+  // SelectEndpointUnlocked returns the preferred address once every one of them has failed,
+  // so whether the address it selects now has failed is whether any address is left to try.
+  auto selected = SelectEndpointUnlocked();
+  return selected.ok() && !failed_addresses_.Failed(selected->host_port);
 }
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {

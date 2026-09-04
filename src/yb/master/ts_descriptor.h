@@ -57,6 +57,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/failed_addresses.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/result.h"
@@ -366,6 +367,14 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
+  // Moves to another of the addresses this server registered, after host_port could not be
+  // connected to, and reports whether there was one.
+  //
+  // This is the address-level counterpart of RemoteTablet::MarkReplicaFailed, as it is on the
+  // client side. A server that cannot be reached one way may still be reachable another, so
+  // it is only treated as unreachable once every way of reaching it has failed.
+  bool FailToNextAddress(const HostPort& host_port) EXCLUDES(mutex_);
+
   std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(MonoTime time) EXCLUDES(mutex_);
 
  private:
@@ -489,6 +498,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   DbOidToHybridTimeMap ts_ysql_db_oldest_pinned_read_times_ GUARDED_BY(mutex_);
 
   std::string placement_id_ GUARDED_BY(mutex_);
+
+  FailedAddresses failed_addresses_ GUARDED_BY(mutex_);
 
   ProxyTuple proxies_;
 
