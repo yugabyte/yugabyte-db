@@ -36,9 +36,15 @@ public class EditUniverseRollbackComputer implements TaskRollbackComputer {
   }
 
   @Override
+  public boolean isEnabled() {
+    return confGetter.getGlobalConf(GlobalConfKeys.allowEditUniverseRollback);
+  }
+
+  @Override
   public RollbackSubmission compute(RollbackContext context) {
     TaskType taskType = context.getTaskInfo().getTaskType();
-    if (!confGetter.getGlobalConf(GlobalConfKeys.allowEditUniverseRollback)) {
+    // Second gate for direct API calls; listing already uses {@link #isEnabled()}.
+    if (!isEnabled()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(

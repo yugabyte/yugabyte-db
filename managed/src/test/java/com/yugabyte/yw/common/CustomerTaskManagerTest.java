@@ -733,7 +733,8 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
   @Test
   public void testRollbackEditUniverseDisabledByRuntimeFlag() {
-    // With yb.task.allow_edit_universe_rollback off (default), edit-universe rollback is rejected.
+    // With yb.task.allow_edit_universe_rollback off (default), edit-universe rollback is rejected
+    // at the computer (second gate). Listing would already hide the button via isEnabled().
     universe = ModelFactory.createUniverse(customer.getId());
     JsonNode taskParams = editUniverseTaskParams(universe);
     CustomerTask failedTask =
@@ -748,6 +749,26 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
     assertTrue(ex.getMessage().contains("not enabled"));
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testRollbackEditUniverseRejectedWhenCanTaskRollbackDetailedFalse() {
+    // Commissioner already applied feature-flag / universe gates; no computer.compute call.
+    universe = ModelFactory.createUniverse(customer.getId());
+    JsonNode taskParams = editUniverseTaskParams(universe);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.EditUniverse, CustomerTask.TaskType.Update, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(false);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
+    assertTrue(ex.getMessage().contains("cannot be rolled back"));
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
 

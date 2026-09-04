@@ -10,6 +10,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
+import com.google.inject.Provider;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeProgress;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -105,6 +107,9 @@ public class Commissioner {
 
   private final GFlagsValidation gFlagsValidation;
 
+  // Provider breaks Guice cycle: some computers -> handlers -> Commissioner.
+  private final Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers;
+
   @Inject
   public Commissioner(
       ApplicationLifecycle lifecycle,
@@ -113,7 +118,8 @@ public class Commissioner {
       TaskQueue taskQueue,
       ProviderEditRestrictionManager providerEditRestrictionManager,
       RuntimeConfGetter runtimeConfGetter,
-      GFlagsValidation gFlagsValidation) {
+      GFlagsValidation gFlagsValidation,
+      Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
     this.taskExecutor = taskExecutor;
@@ -121,6 +127,7 @@ public class Commissioner {
     this.providerEditRestrictionManager = providerEditRestrictionManager;
     this.runtimeConfGetter = runtimeConfGetter;
     this.gFlagsValidation = gFlagsValidation;
+    this.taskRollbackComputers = taskRollbackComputers;
     this.executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     log.info("Started Commissioner TaskPool");
   }
@@ -498,24 +505,36 @@ public class Commissioner {
    * Whether the failed task may be rolled back, with an optional extra predicate (same pattern as
    * {@link #isTaskRetryable(TaskInfo, Predicate)}).
    *
-   * <p>Checks {@code @CanRollback} + error state, then {@code moreCondition}. Listing passes
+   * <p>Checks {@code @CanRollback} + error state + feature flag ({@link
+   * TaskRollbackComputer#isEnabled()}), then {@code moreCondition}. Listing passes
    * placement/updating ownership without loading the universe. Submit uses {@link
    * #canTaskRollbackDetailed(TaskInfo)}.
    */
   public boolean canTaskRollback(TaskInfo taskInfo, Predicate<TaskInfo> moreCondition) {
     if (canTaskTypeRollback(taskInfo.getTaskType())
-        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
+        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())
+        && isRollbackFeatureEnabled(taskInfo.getTaskType())) {
       return moreCondition.test(taskInfo);
     }
     return false;
   }
 
   /**
-   * Listing-path overload with no extra condition (annotation + error state only). Prefer {@link
-   * #canTaskRollback(TaskInfo, Predicate)} when ownership or universe checks apply.
+   * Listing-path overload with no extra condition (annotation + error state + feature flag). Prefer
+   * {@link #canTaskRollback(TaskInfo, Predicate)} when ownership or universe checks apply.
    */
   public boolean canTaskRollback(TaskInfo taskInfo) {
     return canTaskRollback(taskInfo, t -> true);
+  }
+
+  /**
+   * Whether the matching {@link TaskRollbackComputer} considers rollback feature-enabled. No bound
+   * computer -> true (annotation-only tasks). Flag-gated computers (e.g. EditUniverse) return false
+   * when their runtime config is off so listing does not advertise Rollback.
+   */
+  private boolean isRollbackFeatureEnabled(TaskType taskType) {
+    TaskRollbackComputer computer = taskRollbackComputers.get().get(taskType);
+    return computer == null || computer.isEnabled();
   }
 
   /**
