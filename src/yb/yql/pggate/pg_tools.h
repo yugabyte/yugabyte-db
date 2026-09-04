@@ -210,4 +210,6 @@ class TableLocalityMap {
   std::unordered_map<PgOid, YbcPgTableLocalityInfo> map_;
 };
 
+Status CheckForPgInterrupts();
+
 } // namespace yb::pggate

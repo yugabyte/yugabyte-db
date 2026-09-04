@@ -893,7 +893,7 @@ void YBCClearTimeout();
 
 void YBCSetLockTimeout(int lock_timeout_ms, void* extra);
 
-void YBCCheckForInterrupts();
+bool YBCHasProcessableAbortInterrupt();
 
 //--------------------------------------------------------------------------------------------------
 // Thread-Local variables.

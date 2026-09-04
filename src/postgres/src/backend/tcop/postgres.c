@@ -8239,10 +8239,38 @@ YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag)
 	return redactedStr;
 }
 
-void
-YBCheckForInterrupts()
+/*
+ * YBHasProcessableAbortInterrupt:
+ *
+ * Checks for pending interrupts which might abort execution and there are no blockers
+ * to process them.
+ * See ProcessInterrupts(), INTERRUPTS_CAN_BE_PROCESSED() for details.
+ */
+bool
+YBHasProcessableAbortInterrupt()
 {
-	CHECK_FOR_INTERRUPTS();
+	if (!INTERRUPTS_PENDING_CONDITION())
+		return false;
+
+	if (InterruptHoldoffCount != 0 || CritSectionCount != 0)
+		return false;
+
+	if (ProcDiePending)
+		return true;
+
+	if (ClientConnectionLost)
+		return true;
+
+	if (QueryCancelPending && QueryCancelHoldoffCount == 0)
+		return true;
+
+	if (IdleInTransactionSessionTimeoutPending && IdleInTransactionSessionTimeout > 0)
+		return true;
+
+	if (IdleSessionTimeoutPending && IdleSessionTimeout > 0)
+		return true;
+
+	return false;
 }
 
 long
