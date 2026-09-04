@@ -53,10 +53,14 @@ import {
   toClusterStorageSpec,
   toResizeStorageSpec
 } from './EditHardwareStorageUtils';
-import { DeviceInfo, K8NodeSpec } from '../../../../features/universe/universe-form/utils/dto';
+import {
+  CloudType,
+  DeviceInfo,
+  InstanceType,
+  K8NodeSpec
+} from '../../../../features/universe/universe-form/utils/dto';
 import { useQuery } from 'react-query';
 import { QUERY_KEY, api } from '../../../../features/universe/universe-form/utils/api';
-import { InstanceType } from '../../../../features/universe/universe-form/utils/dto';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { buildRRInstanceSettingsFromCluster } from '../../read-replica/readReplicaUtils';
 import { useYBToast } from '../../create-universe/helpers/ToastUtils';
@@ -1066,6 +1070,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         isLoadingOptions={isLoadingResizeOptions}
         replicationFactor={targetCluster.replication_factor}
         isK8s={isK8s}
+        isAws={providerCode === CloudType.aws}
         onClose={() => setReviewModalOpen(false)}
         onConfirm={confirmResizeNodes}
       />

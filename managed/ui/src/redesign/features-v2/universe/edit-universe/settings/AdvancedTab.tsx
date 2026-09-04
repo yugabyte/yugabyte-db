@@ -297,25 +297,27 @@ export const AdvancedTab = () => {
     return (
       <>
         {networking_spec?.proxy_config?.no_proxy_list?.[0]}
-        <YBTag size="small" variant="light">
-          <YBTooltip
-            title={
-              <Box sx={{ display: 'flex', flexDirection: 'column', color: '#4E5F6D' }}>
-                <ul style={{ listStyleType: 'disc', paddingInlineStart: '20px' }}>
-                  {drop(networking_spec?.proxy_config?.no_proxy_list, 1).map((nl) => (
-                    <li>
-                      <Typography sx={{ lineHeight: '20px' }} variant="subtitle1">
-                        {nl}
-                      </Typography>
-                    </li>
-                  ))}
-                </ul>
-              </Box>
-            }
-          >
-            <span>+{(networking_spec?.proxy_config?.no_proxy_list?.length ?? 1) - 1}</span>
-          </YBTooltip>
-        </YBTag>
+        {networking_spec?.proxy_config?.no_proxy_list?.length > 1 && (
+          <YBTag size="small" variant="light">
+            <YBTooltip
+              title={
+                <Box sx={{ display: 'flex', flexDirection: 'column', color: '#4E5F6D' }}>
+                  <ul style={{ listStyleType: 'disc', paddingInlineStart: '20px' }}>
+                    {drop(networking_spec?.proxy_config?.no_proxy_list, 1).map((nl) => (
+                      <li>
+                        <Typography sx={{ lineHeight: '20px' }} variant="subtitle1">
+                          {nl}
+                        </Typography>
+                      </li>
+                    ))}
+                  </ul>
+                </Box>
+              }
+            >
+              <span>+{(networking_spec?.proxy_config?.no_proxy_list?.length ?? 1) - 1}</span>
+            </YBTooltip>
+          </YBTag>
+        )}
       </>
     );
   };
@@ -372,13 +374,17 @@ export const AdvancedTab = () => {
                     <div style={{ width: '300px' }}>
                       <span className="header">{t('secureWebProxy')}</span>
                       <span className="value ">
-                        {networking_spec?.proxy_config?.https_proxy ?? '-'}
+                        {!isEmpty(networking_spec?.proxy_config?.https_proxy)
+                          ? networking_spec?.proxy_config?.https_proxy
+                          : '-'}
                       </span>
                     </div>
                     <div style={{ width: '300px' }}>
                       <span className="header">{t('webProxy')}</span>
                       <span className="value ">
-                        {networking_spec?.proxy_config?.http_proxy ?? '-'}
+                        {!isEmpty(networking_spec?.proxy_config?.http_proxy)
+                          ? networking_spec?.proxy_config?.http_proxy
+                          : '-'}
                       </span>
                     </div>
                     <div style={{ width: '300px' }}>
