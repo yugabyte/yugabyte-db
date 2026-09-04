@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.util.StdConverter;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
@@ -1903,6 +1904,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       JsonNode original = Json.toJson(deviceInfo);
       JsonNode overriden = Json.toJson(overridenDeviceInfo);
+      // deepMerge only skips nulls, but `storageClass` defaults to "" instead of null. Every other
+      // DeviceInfo helper (mergeDeviceInfo/allNull/unsetFields) reads blank as "not overriden", so
+      // drop it here too - otherwise a partially populated override (e.g. the v2 resize API's
+      // per-process storage_spec, which carries only volume size) erases the storage class.
+      if (StringUtils.isBlank(overridenDeviceInfo.storageClass)) {
+        ((ObjectNode) overriden).remove("storageClass");
+      }
       log.debug("Merging device info {} with {}", original, overriden);
       CommonUtils.deepMerge(original, overriden, true);
       log.debug("Device info after merging {}", original);
