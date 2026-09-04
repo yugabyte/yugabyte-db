@@ -122,6 +122,8 @@ struct PgClientSessionContext {
 #ifdef __linux__
   TServerCgroupManager* cgroup_manager;
 #endif
+  // Set only when FLAGS_TEST_enable_pg_client_mock is on.
+  PgClientServiceMockImpl* TEST_mock_service = nullptr;
 };
 
 using RequestProcessingPreconditionWaiter = LWFunction<Status(size_t, CoarseTimePoint)>;

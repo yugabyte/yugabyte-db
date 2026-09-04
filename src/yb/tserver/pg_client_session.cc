@@ -19,12 +19,14 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <concepts>
 #include <mutex>
 #include <optional>
 #include <set>
 #include <span>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -817,18 +819,24 @@ std::byte* SerializeWithCachedSizesToArray(
   return pointer_cast<std::byte*>(msg.SerializeWithCachedSizesToArray(pointer_cast<uint8_t*>(out)));
 }
 
-template <typename Req, typename Resp>
-struct QueryTraits {
-  using ReqPB = Req;
-  using RespPB = Resp;
+template <class T>
+concept QueryTraitsType = requires {
+  typename T::ReqPB;
+  typename T::RespPB;
+  { T::kMethodName } -> std::convertible_to<const char*>;
 };
 
-template <class T>
-concept QueryTraitsType = std::is_same_v<QueryTraits<typename T::ReqPB, typename T::RespPB>, T>;
+struct PerformQueryTraits {
+  using ReqPB = PgPerformRequestMsg;
+  using RespPB = PgPerformResponseMsg;
+  static constexpr const char* kMethodName = "Perform";
+};
 
-using PerformQueryTraits = QueryTraits<PgPerformRequestMsg, PgPerformResponseMsg>;
-using ObjectLockQueryTraits =
-    QueryTraits<const PgAcquireObjectLockRequestMsg, PgAcquireObjectLockResponseMsg>;
+struct ObjectLockQueryTraits {
+  using ReqPB = const PgAcquireObjectLockRequestMsg;
+  using RespPB = PgAcquireObjectLockResponseMsg;
+  static constexpr const char* kMethodName = "AcquireObjectLock";
+};
 
 using ResponseSender = std::function<void()>;
 
@@ -841,6 +849,17 @@ struct QueryDataBase {
   ReqPB& req;
   RespPB& resp;
   rpc::Sidecars& sidecars;
+
+  // Populated when FLAGS_TEST_enable_pg_client_mock is on.
+  PgClientServiceMockImpl* TEST_mock_service = nullptr;
+
+  void SendResponse() {
+    if (PREDICT_FALSE(TEST_mock_service != nullptr)) {
+      MaybeRunAfterMock();
+    }
+
+    response_sender_();
+  }
 
  protected:
   const uint64_t session_id_;
@@ -864,9 +883,18 @@ struct QueryDataBase {
         : Status::OK();
   }
 
-  void SendResponse() { response_sender_(); }
-
  private:
+  void MaybeRunAfterMock() {
+    // Note that client deadline is not plumbed through for "After" mocks.
+    PgClientMockCallContext mock_ctx{.rpc = nullptr};
+    auto result = TEST_mock_service->DispatchMock(
+        Format("$0After", T::kMethodName), &req, &resp, &mock_ctx);
+    if (!result.ok()) {
+      StatusToPB(result.status(), resp.mutable_status());
+      sidecars.Reset();
+    }
+  }
+
   ResponseSender response_sender_;
 };
 
@@ -1129,7 +1157,11 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   void SendErrorResponse(const Status& s) {
     DCHECK(!s.ok());
     StatusToPB(s, resp_.mutable_status());
-    SendResponse();
+    if (data_) {
+      data_->SendResponse();
+    } else {
+      SendResponse();
+    }
   }
 
   template <class... Args>
@@ -1210,6 +1242,27 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   std::atomic<bool> responded_{false};
   std::optional<QueryData<T>> data_;
 };
+
+// Returns true if a mock fully handled the shared-memory query.
+template <QueryTraitsType T>
+Result<bool> TEST_HandleSharedQueryMocks(PgClientServiceMockImpl* mock_service,
+    QueryData<T>& data, CoarseTimePoint deadline) {
+  RSTATUS_DCHECK(mock_service, IllegalState, "mock_service is not initialized");
+  PgClientMockCallContext mock_ctx{
+      .deadline = deadline,
+      .rpc = nullptr,
+  };
+  const auto* method = T::kMethodName;
+  RETURN_NOT_OK(mock_service->DispatchMock(
+      Format("$0Before", method), &data.req, &data.resp, &mock_ctx));
+  auto result = mock_service->DispatchMock(method, &data.req, &data.resp, &mock_ctx);
+  RETURN_NOT_OK(result);
+  if (*result) {
+    data.SendResponse();
+    return true;
+  }
+  return false;
+}
 
 client::YBSessionPtr CreateSession(
     client::YBClient* client, CoarseTimePoint deadline, const scoped_refptr<ClockBase>& clock,
@@ -1607,7 +1660,7 @@ class RpcQuery : public std::enable_shared_from_this<RpcQuery<T>> {
   void SendErrorResponse(const Status& s) {
     DCHECK(!s.ok());
     StatusToPB(s, data_.resp.mutable_status());
-    SendResponse();
+    data_.SendResponse();
   }
 
   template <class... Args>
@@ -1732,18 +1785,8 @@ bool IsReadPointResetRequested(const OptionsPB& options) {
 
 template <QueryTraitsType T>
 [[nodiscard]] auto TrackSharedMemoryPgMethodExecution(
-    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata);
-
-template <>
-[[nodiscard]] auto TrackSharedMemoryPgMethodExecution<PerformQueryTraits>(
     const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata) {
-  return DoTrackSharedMemoryPgMethodExecution(wait_state, metadata, "Perform");
-}
-
-template <>
-[[nodiscard]] auto TrackSharedMemoryPgMethodExecution<ObjectLockQueryTraits>(
-    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata) {
-  return DoTrackSharedMemoryPgMethodExecution(wait_state, metadata, "AcquireObjectLock");
+  return DoTrackSharedMemoryPgMethodExecution(wait_state, metadata, T::kMethodName);
 }
 
 struct GetOpTablespaceOid {
@@ -2771,6 +2814,11 @@ class PgClientSession::Impl {
     auto track_guard = wait_state
         ? TrackSharedMemoryPgMethodExecution<T>(wait_state, query.ash_metadata())
         : std::nullopt;
+    if (PREDICT_FALSE(context_.TEST_mock_service != nullptr) &&
+        VERIFY_RESULT(TEST_HandleSharedQueryMocks(
+            context_.TEST_mock_service, *data, deadline))) {
+      return Status::OK();
+    }
     return DoHandleSharedExchangeQuery(precondition_waiter, std::move(data), deadline);
   }
 
@@ -2929,6 +2977,7 @@ class PgClientSession::Impl {
   }
 
   Status DoAcquireObjectLock(const ObjectLockQueryDataPtr& data, CoarseTimePoint deadline) {
+    data->TEST_mock_service = context_.TEST_mock_service;
     const auto& options = data->req.options();
     VLOG_WITH_PREFIX(3) << "Object lock for relation " << AsString(data->req.lock_oid())
               << " with lock type " << AsString(static_cast<TableLockType>(data->req.lock_type()));
@@ -3281,6 +3330,7 @@ class PgClientSession::Impl {
   Status DoPerform(
       const PgTablesQueryResult& tables, const PerformQueryDataPtr& data, CoarseTimePoint deadline,
       rpc::RpcContext* context = nullptr) {
+    data->TEST_mock_service = context_.TEST_mock_service;
     auto& options = *data->req.mutable_options();
     if (VLOG_IS_ON(3)) {
       std::stringstream ss;
