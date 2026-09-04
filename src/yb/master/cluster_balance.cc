@@ -950,7 +950,10 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
       //
       // Do the placement check for both the cases.
       // If we have missing placements then this check is a tautology otherwise it matters.
-      bool can_choose_ts = VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid));
+      // There is no source tserver for this add, so pass an empty from_ts: placement maximums
+      // are enforced strictly, with no same-block move exemption.
+      bool can_choose_ts = VERIFY_RESULT(
+          state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, "" /* from_ts */));
       // If we've passed the checks, then we can choose this TS to add the replica to.
       if (can_choose_ts) {
         *out_to_ts = ts_uuid;
@@ -960,6 +963,39 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
             Format("Placement ($0) does not have enough replicas of this tablet",
                     ts_meta.descriptor->GetCloudInfo().ShortDebugString())));
         state_->tablets_missing_replicas_.erase(tablet_id);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+Result<bool> ClusterLoadBalancer::HandleAddIfOverMaxPlacement(
+    TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+  for (const auto& tablet_id : state_->tablets_over_max_placements_) {
+    const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
+    if (tablet_meta.is_over_replicated) {
+      continue;
+    }
+    for (const auto& from_ts : tablet_meta.over_max_placement_tablet_servers) {
+      const auto from_placement = state_->GetValidPlacement(from_ts);
+      for (const auto& to_ts : state_->sorted_load_) {
+        const auto to_placement = state_->GetValidPlacement(to_ts);
+        if (!from_placement || !to_placement ||
+            cloud_equal_to()(*from_placement, *to_placement)) {
+          continue;
+        }
+        if (!VERIFY_RESULT(
+                state_->CanAddTabletToTabletServer(tablet_id, to_ts, from_ts))) {
+          continue;
+        }
+        *out_tablet_id = tablet_id;
+        *out_from_ts = from_ts;
+        *out_to_ts = to_ts;
+        RETURN_NOT_OK(AddOrMoveReplica(
+            tablet_id, from_ts, to_ts,
+            Format("Placement $0 exceeds max_num_replicas",
+                   from_placement->ShortDebugString())));
         return true;
       }
     }
@@ -1044,6 +1080,14 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
   // Handle wrong placements as next priority, as these could be servers we're moving off of, so
   // we can decommission ASAP.
   if (VERIFY_RESULT(HandleAddIfWrongPlacement(out_tablet_id, out_from_ts, out_to_ts))) {
+    return true;
+  }
+
+  // Then handle placement blocks with more replicas than their configured maximum. This is lower
+  // priority than draining blacklisted or wrongly-placed servers, which block node
+  // decommissioning, but takes precedence over normal load balancing.
+  if (VERIFY_RESULT(
+          HandleAddIfOverMaxPlacement(out_tablet_id, out_from_ts, out_to_ts))) {
     return true;
   }
 
@@ -1213,7 +1257,7 @@ Result<std::optional<TabletId>> ClusterLoadBalancer::GetTabletToMove(
         continue;
       }
 
-      if (VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, to_ts))) {
+      if (VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, to_ts, from_ts))) {
         filtered_drive_tablets.insert(tablet_id);
       }
     }

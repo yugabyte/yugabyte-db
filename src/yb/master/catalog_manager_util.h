@@ -112,6 +112,15 @@ class CatalogManagerUtil {
   // Validate placement information if passed.
   static Status IsPlacementInfoValid(const PlacementInfoPB& placement_info);
 
+  // Validates only the constraints introduced by explicit per-block maximums: each explicit
+  // maximum must be positive and at least the block's minimum, and the sum of effective maximums
+  // must cover num_replicas. Additionally, because enforcing a maximum requires unambiguously
+  // attributing each tserver to one block, a placement with any explicit maximum must consist
+  // solely of fully-specified (non-wildcard), non-duplicate placement blocks. Returns OK when no
+  // block specifies an explicit maximum, so it is safe to call on legacy placements that
+  // intentionally skip the stricter IsPlacementInfoValid checks.
+  static Status ValidateMaxNumReplicasFields(const PlacementInfoPB& placement_info);
+
   static Status SetPreferredZones(
       const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info);
 

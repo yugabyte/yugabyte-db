@@ -104,6 +104,11 @@ CREATE TABLE single_zone_table (id INTEGER, field text)
   TABLESPACE us_east_1a_zone_tablespace SPLIT INTO 1 TABLETS;
 ```
 
+Each placement block can specify an optional `max_num_replicas` upper bound. When omitted, the
+upper bound is the placement's `num_replicas`. For example, an RF5 policy across three zones can
+set each block to `"min_num_replicas":1,"max_num_replicas":2` to prevent any one zone from
+hosting a majority.
+
 To view your tablespaces, you can enter the following command:
 
 ```sql

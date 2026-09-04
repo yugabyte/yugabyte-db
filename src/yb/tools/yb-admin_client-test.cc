@@ -408,5 +408,74 @@ TEST(SelectTabletServerAddressTest, ForceUsePrivateIpFallsBackToBroadcastAddress
   EXPECT_EQ("ts.example.com", SelectTabletServerAddress(servers).host());
 }
 
+TEST(CatalogManagerUtilTest, MaxNumReplicasValidation) {
+  auto make_placement = [](int32_t num_replicas, int32_t first_max, int32_t second_max) {
+    PlacementInfoPB placement_info;
+    placement_info.set_num_replicas(num_replicas);
+    for (const auto [zone, max_num_replicas] :
+         {std::pair("z1", first_max), std::pair("z2", second_max)}) {
+      auto* block = placement_info.add_placement_blocks();
+      block->set_min_num_replicas(1);
+      if (max_num_replicas >= 0) {
+        block->set_max_num_replicas(max_num_replicas);
+      }
+      auto* cloud_info = block->mutable_cloud_info();
+      cloud_info->set_placement_cloud("c");
+      cloud_info->set_placement_region("r");
+      cloud_info->set_placement_zone(zone);
+    }
+    return placement_info;
+  };
+
+  ASSERT_NOK_STR_CONTAINS(
+      master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(2, 0, 2)),
+      "max_num_replicas (0) must be greater than or equal to 1");
+  ASSERT_NOK_STR_CONTAINS(
+      master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, 1)),
+      "total maximum replica count (2)");
+  ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, -1)));
+  ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(2, 3, 3)));
+
+  // A placement with any explicit maximum must consist solely of fully-specified (non-wildcard)
+  // placement blocks: a wildcard block on the capped block itself is rejected.
+  {
+    auto placement_info = make_placement(2, 2, -1);
+    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->clear_placement_zone();
+    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->set_placement_region("r2");
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::IsPlacementInfoValid(placement_info),
+        "max_num_replicas is not supported in combination with wildcard placement blocks");
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
+        "max_num_replicas is not supported in combination with wildcard placement blocks");
+  }
+  // ... and so is an uncapped wildcard block alongside a capped fully-qualified block. If such a
+  // wildcard overlapped the capped block, tservers could be attributed to the wildcard block and
+  // bypass the cap.
+  {
+    auto placement_info = make_placement(2, 2, -1);
+    placement_info.mutable_placement_blocks(1)->mutable_cloud_info()->clear_placement_zone();
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
+        "max_num_replicas is not supported in combination with wildcard placement blocks");
+  }
+  // Duplicate blocks are also rejected when an explicit maximum is present, as a tserver could
+  // be attributed to either duplicate.
+  {
+    auto placement_info = make_placement(2, 2, -1);
+    placement_info.mutable_placement_blocks(1)->mutable_cloud_info()->set_placement_zone("z1");
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
+        "max_num_replicas is not supported in combination with duplicate placement blocks");
+  }
+  // Without any explicit maximum, wildcard and duplicate blocks remain acceptable to this
+  // validator (legacy placements are not held to the stricter structural rules).
+  {
+    auto placement_info = make_placement(2, -1, -1);
+    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->clear_placement_zone();
+    ASSERT_OK(master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info));
+  }
+}
+
 }  // namespace tools
 }  // namespace yb
