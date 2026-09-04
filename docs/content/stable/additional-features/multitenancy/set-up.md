@@ -81,9 +81,7 @@ If YB-TServer is running as a systemd service under the system slice, the CPU co
 
 ### Other deployments
 
-For deployments that don't rely on systemd (such as cron-based or container-based deployments) or for deployments on systems that use cgroups v1
-
-, place the YB-TServer process in a cgroup that meets the [requirements](#prepare-cgroups). For cgroups v2 systems, make the CPU controller available by writing `+cpu` to the `cgroup.subtree_control` file of every ancestor cgroup, top down.
+For deployments that don't rely on systemd (such as cron-based or container-based deployments) or for deployments on systems that use cgroups v1, place the YB-TServer process in a cgroup that meets the [requirements](#prepare-cgroups). For cgroups v2 systems, make the CPU controller available by writing `+cpu` to the `cgroup.subtree_control` file of every ancestor cgroup, top down.
 
 Under cgroup v2, even with write permissions to a cgroup, a non-root user can move a process into it only if the user has write access to the `cgroup.procs` file of the common ancestor of the target cgroup and the cgroup the user is currently in. Depending on the cgroup chosen, root may be required to start the YB-TServer.
 
