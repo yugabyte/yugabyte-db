@@ -76,6 +76,10 @@ HostPortPB HostPortToPB(const HostPort& host_port);
 // Returns the HostPort created from the specified protobuf.
 HostPort HostPortFromPB(const HostPortPB& host_port_pb);
 
+// Whether two addresses are the same address. Host and port together are the identity: the
+// same host on another port is a different address.
+bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs);
+
 bool HasHostPortPB(
     const google::protobuf::RepeatedPtrField<HostPortPB>& list, const HostPortPB& hp);
 
@@ -121,11 +125,19 @@ struct SelectedHostPort {
   UsedBroadcastAddress used_broadcast;
 };
 
-// The same answer for an address chosen some other way. A tserver reaches its master over an
-// address the master configuration named, raced against every other, so that connection's
-// provenance is recovered from the registration rather than selected. An address the node
-// reports as private is private even when it also appears among its broadcast addresses; one
-// it reports in neither cannot be shown to be private, so it is treated as broadcast.
+// Whether reaching a node at this address leaves its private address, which is what decides
+// whether the connection is held to node_to_node_encryption_required_on_broadcast. The
+// address decides it, not the list it was read from: a node that reports one address in both
+// lists, as the Kubernetes manifests in cloud/ do, is reached privately at it however it was
+// chosen. An address the node reports in neither list cannot be shown to be private, so it is
+// treated as broadcast.
+//
+// This also answers for an address chosen some other way than by selection. A tserver reaches
+// its master over an address the master configuration named, raced against every other, so
+// that connection's provenance is recovered here rather than selected.
+UsedBroadcastAddress UsesBroadcastAddress(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const HostPortPB& host_port);
 UsedBroadcastAddress UsesBroadcastAddress(
     const ServerRegistrationPB& registration, const HostPortPB& host_port);
 

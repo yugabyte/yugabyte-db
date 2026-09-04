@@ -368,11 +368,20 @@ TEST_F(WireProtocolTest, UsesBroadcastAddressRecoversProvenance) {
   EXPECT_TRUE(UsesBroadcastAddress(registration, other_port));
 
   // A node that reports the same address in both lists is reporting a private address, and
-  // also advertising it. The Kubernetes manifests in cloud/ do exactly this.
+  // also advertising it. The Kubernetes manifests in cloud/ do exactly this, setting
+  // rpc_bind_addresses and server_broadcast_addresses to the same value.
   ServerRegistrationPB both;
   *both.add_private_rpc_addresses() = host_port("node.example.com");
   *both.add_broadcast_addresses() = host_port("node.example.com");
   EXPECT_FALSE(UsesBroadcastAddress(both, host_port("node.example.com")));
+
+  // Selecting that address has to reach the same answer. Deciding from the list it was read
+  // from instead would hold a connection that never left the node's private address to
+  // node_to_node_encryption_required_on_broadcast, so a Kubernetes deployment would ignore
+  // node_to_node_encryption_scope entirely.
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = "never";
+  EXPECT_FALSE(SelectHostPort(both, both.cloud_info()).used_broadcast);
 
   // An empty registration reports no private address, so nothing is exempt.
   EXPECT_TRUE(UsesBroadcastAddress(ServerRegistrationPB(), host_port("anything.example.com")));

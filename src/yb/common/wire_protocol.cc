@@ -88,6 +88,7 @@ DEFINE_UNKNOWN_bool(node_to_node_encryption_required_on_broadcast, true,
               "and is treated as not private. "
               "Turning this off is what allows an unencrypted connection on a broadcast "
               "address, which is only as private as the network carrying it.");
+
 namespace yb {
 
 namespace {
@@ -346,10 +347,14 @@ HostPort HostPortFromPB(const HostPortPB& host_port_pb) {
   return host_port;
 }
 
+bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs) {
+  return lhs.host() == rhs.host() && lhs.port() == rhs.port();
+}
+
 bool HasHostPortPB(
     const google::protobuf::RepeatedPtrField<HostPortPB>& list, const HostPortPB& hp) {
   for (const auto& i : list) {
-    if (i.host() == hp.host() && i.port() == hp.port()) {
+    if (HasSameHostPort(i, hp)) {
       return true;
     }
   }
@@ -496,20 +501,19 @@ SelectedHostPort SelectHostPort(
       GetHostPort(broadcast_addresses, private_host_ports, public_address_allowed);
   return SelectedHostPort {
     .host_port = host_port,
-    .used_broadcast = UsedBroadcastAddress(
-        !broadcast_addresses.empty() && public_address_allowed),
+    .used_broadcast = UsesBroadcastAddress(private_host_ports, host_port),
   };
 }
 
 UsedBroadcastAddress UsesBroadcastAddress(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const HostPortPB& host_port) {
+  return UsedBroadcastAddress(!HasHostPortPB(private_host_ports, host_port));
+}
+
+UsedBroadcastAddress UsesBroadcastAddress(
     const ServerRegistrationPB& registration, const HostPortPB& host_port) {
-  for (const auto& private_address : registration.private_rpc_addresses()) {
-    if (private_address.host() == host_port.host() &&
-        private_address.port() == host_port.port()) {
-      return UsedBroadcastAddress::kFalse;
-    }
-  }
-  return UsedBroadcastAddress::kTrue;
+  return UsesBroadcastAddress(registration.private_rpc_addresses(), host_port);
 }
 
 SelectedHostPort SelectHostPort(
