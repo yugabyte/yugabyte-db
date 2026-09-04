@@ -829,7 +829,7 @@ yb-admin \
 * For hash-partitioned tables, each bound must be either a valid 2-byte hash-partition key, or a `Next key` returned by a prior capped scan (see `--max_rows_per_scan`).
 * When you specify both bounds, *start-key-hex* must be strictly less than *end-key-hex*, or the command returns an error rather than hashing an empty range. An empty bound means unbounded and is always accepted. The two are compared after both have been converted to the same internal key encoding, so a 2-byte hash bound and a longer `Next key` from a capped scan can be used together.
 * `--max_rows_per_scan <n>` (optional, default `0` = unlimited) stops the scan after `n` rows have been hashed, for hash- and range-partitioned tables alike. The output then includes a `Next key: <hex>` line holding the key of the first row that was *not* hashed. The rows covered are those from *start-key-hex* up to but not including `Next key`, so passing `Next key` as *start-key-hex* on the next call, which is an inclusive bound, resumes exactly where the scan stopped without skipping or double-counting a row.
-* When you page through a table this way, pass the `Read HT` printed by the first page as *read-ht* on every subsequent page. Left at `0`, each invocation picks a fresh read time, so the pages are read at different snapshots and, under concurrent writes, neither add up to the table's row count nor XOR together to its hash. Pinning the read time is what makes the pages fold into the result an uncapped scan at that time would have produced.
+* When you page through a table this way, every page must use the same *read-ht*, and you have to supply it yourself on the first one: the `Read HT` line reports a formatted hybrid time (`{ physical: <microseconds> }`), not the 64-bit integer *read-ht* takes, which is those microseconds shifted left 12 bits. Left at `0`, each invocation picks its own read time, so the pages are read at different snapshots and, under concurrent writes, neither add up to the table's row count nor XOR together to its hash.
 * A read time stays readable only as long as the YB-TServer keeps history for it, which is `timestamp_history_retention_interval_sec` (default 15 minutes). Each request pins the cutoff for its own duration, so a single scan is safe however long it runs, but a paged scan holding one *read-ht* across many requests fails with `Snapshot too old` once the pinned time ages out, rather than silently hashing a compacted view. For a table too large to page inside that window, either raise the flag on the YB-TServers for the duration of the scan, or hash sub-ranges independently and accept that each range is read at its own time.
 * For a hash-partitioned table, `Next key` is an encoded row key rather than a 2-byte hash value, because a scan that stops in the middle of a hash band has to resume inside that band. Pass it through unchanged, and don't compare it against the 2-byte tablet boundaries from `list_tablets`.
 * `--max_rows_per_scan` needs a YB-TServer that supports the row cap, which arrived with [verify_xcluster_slice](#verify-xcluster-slice) and is newer than the key-range scoping described in the last note: no release up to and including {{<release "2026.1">}} has it. A YB-TServer without it ignores the cap silently rather than returning an error, hashing the entire requested range and printing no `Next key`, so a caller that pages on `Next key` reads the whole range in a single request. A `Total row count` greater than `n` tells you this has happened.
@@ -878,6 +878,42 @@ Use this to narrow down where data diverged across clusters (bisecting after a w
 ```
 
 This hashes the lower half of the hash-partition space (unbounded start through `0x8000` exclusive).
+
+**Example: Page through a large table**
+
+Cap each scan with `--max_rows_per_scan`, and pass the same *read-ht* to every call so that the pages describe one instant. `7159808000000000000` here is the hybrid time to read at, supplied rather than taken from the output.
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --max_rows_per_scan 1000 \
+    get_table_hash 000033e8000030008000000000004000 7159808000000000000
+```
+
+```output
+Processing 3 tablets for table 000033e8000030008000000000004000
+Read HT: { physical: 1748000000000000 }
+Tablet ID: cea3aaac2f10460a880b0b4a2a4b652a
+    Row count: 1000
+    XOR hash: 3825474321
+    Hash scheme version: 1
+
+Total row count: 1000
+Total XOR hash: 3825474321
+Hash scheme version: 1
+Next key: 4780000000000021
+```
+
+Pass `Next key` back as *start-key-hex*, with the same *read-ht*, to hash the next page:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --max_rows_per_scan 1000 \
+    get_table_hash 000033e8000030008000000000004000 7159808000000000000 4780000000000021
+```
+
+Repeat until a scan prints no `Next key`, meaning it reached the end of the range. The row counts then sum to the table's, and the XOR hashes combine to the value a single uncapped scan at the same *read-ht* would have produced.
 
 **Example: Hash every table in a colocated tablet**
 
