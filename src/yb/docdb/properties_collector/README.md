@@ -67,11 +67,18 @@ Three counters over the chain-tracked entries of a file give the classification 
 
 Recognized at scan time:
 
-- A **dead row** is a row whose chain head is a row-level (or table-level) tombstone. Every entry of
-  it, marker included, is reclaimable by a full compaction.
-- **reclaimable** = shadowed entries of live rows + all entries of dead rows. All the garbage,
-  regardless of whether retention allows removing it yet. The two sets are disjoint, so counting
-  online never double counts.
+- A **covering write** is an entry at the row key itself: a packed row or a row-level (or
+  table-level) tombstone. It overwrites the whole row, so every entry of the row with an older
+  hybrid time is garbage even when it is the newest version of its own record. File order is key
+  order, not time order -- a covering write sits at the front of its row but may be newer or older
+  than any given entry behind it, so each record head is compared against the row's covering
+  writes by hybrid time.
+- A **dead row** is a row whose newest covering write is a tombstone with nothing newer in the
+  row. A row re-inserted after a delete is live again, tombstone notwithstanding.
+- **reclaimable** = shadowed versions + record heads older than a covering write + tombstone
+  markers themselves (a tombstone past the history cutoff drops at a full compaction whether or
+  not the row lives on). All the garbage, regardless of whether retention allows removing it yet,
+  counted once online.
 - **droppable** = the part of reclaimable already past the history cutoff a consumer applies. The
   compaction trigger uses droppable; the metric reports reclaimable.
 - A **stretch** is a maximal run of consecutive reclaimable entries in file order, ignoring key and
@@ -83,16 +90,18 @@ within each key, then dead row r2 with three:
 
 ```
 r1: [packed v3][packed v2][packed v1][col a v2][col a v1][col b v1]
-     live head   shadowed   shadowed   head      shadowed  head
-r2: [row tombstone][col a v1][col b v1]      <- head is a tombstone: the whole row is dead
+     live head   shadowed   shadowed   covered   shadowed  head
+                                       (older than packed v3)
+r2: [row tombstone][col a v1][col b v1]   <- both columns older than the tombstone: row is dead
 
 Ec = 9, K = 6, R = 2
-shadowed    = 3      repackable = 4 (r1.a, r1.b + r2.a, r2.b, the latter two
-                                     also reclaimable via the dead row)         collapsible = 7
+shadowed    = 3      repackable = 4 (r1.a, r1.b + r2.a, r2.b -- an identity over
+                                     heads; three of these four are also garbage)  collapsible = 7
 dead rows   = 1      dead-row entries = 3
-reclaimable = 3 (shadowed in r1) + 3 (all of r2) = 6
-stretches   = [packed v2, packed v1] = 2, [col a v1] = 1, [r2 x 3] = 3
+reclaimable = 3 (shadowed) + 1 (r1.a covered by packed v3) + 3 (all of r2) = 7
+stretches   = [packed v2 .. col a v1] = 4, [r2 x 3] = 3
 ```
+(`col b v1` shares packed v3's hybrid time, so no covering write is newer than it: live.)
 
 Why both distributions: a range of rows that were all deleted has short row chains but one very long
 stretch; every other row deleted has short stretches but half the file reclaimable.
@@ -129,10 +138,11 @@ this layout nor coarsened exactly, and each `Add` walks a `std::map`.
 
 ## Age bands and "droppable"
 
-A reclaimable entry can be removed by a compaction only once the entry that makes it garbage is at
-or below the history cutoff: for a shadowed version, the entry that shadows it (the compaction
-feed's overwrite-stack rule); for an entry of a dead row, the row tombstone. The collector buckets
-every reclaimable entry by the **age of that entry**, relative to a wall-clock anchor taken at
+A reclaimable entry can be removed by a compaction only once the write that makes it garbage is at
+or below the history cutoff (the compaction feed's overwrite-stack rule): the OLDEST such write --
+the entry's own successor version or a covering write, whichever is older -- and for a tombstone
+marker its own hybrid time. The collector buckets every reclaimable entry by the **age of that
+write**, relative to a wall-clock anchor taken at
 collector construction, into eight fixed bands whose edges fall on retention values in use (5 m,
 15 m, 1 h, 6 h, 24 h, 7 d, 30 d; the 15 m edge brackets the 900 s default). A consumer applying
 cutoff `C` sums the bands wholly older than `anchor - C`; the straddling band is excluded, so the
@@ -152,11 +162,12 @@ triggered compaction to `1 / threshold`.
 ## Cost
 
 The build path already walks doc-key components for every entry (the bloom-filter key transform).
-The tracker adds one word-wise shared-prefix compare against the previous key, a few counter
-increments, and, per shadowed or dead-row entry, one hybrid-time decode for the band. Per row: one
-`DocKey::EncodedSize` walk and two histogram increments. No allocation in steady state, no atomics,
-no floating point. The acceptance bar is end-to-end flush and compaction throughput with the flag on
-versus off.
+The tracker adds one word-wise shared-prefix compare against the previous key, one short
+encoded-hybrid-time compare against the row's covering writes (encoded order is time order, so no
+decode), a few counter increments, and, per garbage entry, one hybrid-time decode for the band.
+Per row: one `DocKey::EncodedSize` walk, up to a handful of covering-write decodes, and two
+histogram increments. No allocation in steady state, no atomics, no floating point. The acceptance
+bar is end-to-end flush and compaction throughput with the flag on versus off.
 
 ## Boundaries
 
