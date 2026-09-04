@@ -306,6 +306,7 @@ class ConsensusMetadata {
 };
 
 SelectedHostPort SelectHostPort(const RaftPeerPB& peer, const CloudInfoPB& from);
+std::vector<SelectedHostPort> CandidateHostPorts(const RaftPeerPB& peer, const CloudInfoPB& from);
 const HostPortPB& DesiredHostPort(const RaftPeerPB& peer, const CloudInfoPB& from);
 void TakeRegistration(ServerRegistrationPB* source, RaftPeerPB* dest);
 void CopyRegistration(ServerRegistrationPB source, RaftPeerPB* dest);

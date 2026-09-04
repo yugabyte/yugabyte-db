@@ -387,4 +387,70 @@ TEST_F(WireProtocolTest, UsesBroadcastAddressRecoversProvenance) {
   EXPECT_TRUE(UsesBroadcastAddress(ServerRegistrationPB(), host_port("anything.example.com")));
 }
 
+// Every address a node advertises is a candidate, so one unreachable address does not
+// condemn the node, and the order is the one SelectHostPort already implies.
+TEST_F(WireProtocolTest, CandidateHostPortsCoverEveryAdvertisedAddress) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = "never";
+
+  CloudInfoPB here;
+  here.set_placement_cloud("cloud");
+  here.set_placement_region("region");
+  here.set_placement_zone("zone");
+
+  google::protobuf::RepeatedPtrField<HostPortPB> private_addrs;
+  for (const auto* host : {"private1", "private2"}) {
+    auto* p = private_addrs.Add();
+    p->set_host(host);
+    p->set_port(9100);
+  }
+  google::protobuf::RepeatedPtrField<HostPortPB> broadcast_addrs;
+  for (const auto* host : {"broadcast1", "broadcast2"}) {
+    auto* b = broadcast_addrs.Add();
+    b->set_host(host);
+    b->set_port(9100);
+  }
+
+  auto hosts = [](const std::vector<SelectedHostPort>& candidates) {
+    std::vector<std::string> result;
+    for (const auto& candidate : candidates) {
+      result.push_back(candidate.host_port.host());
+    }
+    return result;
+  };
+
+  // With use_private_ip never the broadcast address is preferred, appears once, and the rest
+  // follow private before broadcast.
+  EXPECT_EQ(
+      (std::vector<std::string>{"broadcast1", "private1", "private2", "broadcast2"}),
+      hosts(CandidateHostPorts(broadcast_addrs, private_addrs, here, here)));
+
+  // Which list each candidate came from travels with it, so a caller that encrypts on the
+  // broadcast address still does after falling back.
+  auto candidates = CandidateHostPorts(broadcast_addrs, private_addrs, here, here);
+  EXPECT_TRUE(candidates[0].used_broadcast);
+  EXPECT_FALSE(candidates[1].used_broadcast);
+  EXPECT_FALSE(candidates[2].used_broadcast);
+  EXPECT_TRUE(candidates[3].used_broadcast);
+
+  // A node that advertised nothing is reached privately, and that address is the only
+  // candidate rather than appearing twice.
+  google::protobuf::RepeatedPtrField<HostPortPB> no_broadcast;
+  EXPECT_EQ(
+      (std::vector<std::string>{"private1", "private2"}),
+      hosts(CandidateHostPorts(no_broadcast, private_addrs, here, here)));
+
+  // A node reporting one address in both lists advertises the address it is also reached at
+  // privately, as the Kubernetes manifests in cloud/ do. It is one candidate, and a private
+  // one, which is the answer UsesBroadcastAddress gives for it as well.
+  google::protobuf::RepeatedPtrField<HostPortPB> shared;
+  auto* s = shared.Add();
+  s->set_host("private2");
+  s->set_port(9100);
+  auto shared_candidates = CandidateHostPorts(shared, private_addrs, here, here);
+  EXPECT_EQ((std::vector<std::string>{"private2", "private1"}), hosts(shared_candidates));
+  EXPECT_FALSE(shared_candidates[0].used_broadcast);
+  EXPECT_FALSE(shared_candidates[1].used_broadcast);
+}
+
 } // namespace yb

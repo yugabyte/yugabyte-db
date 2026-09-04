@@ -400,6 +400,11 @@ SelectedHostPort SelectHostPort(const RaftPeerPB& peer, const CloudInfoPB& from)
       peer.last_known_broadcast_addr(), peer.last_known_private_addr(), peer.cloud_info(), from);
 }
 
+std::vector<SelectedHostPort> CandidateHostPorts(const RaftPeerPB& peer, const CloudInfoPB& from) {
+  return yb::CandidateHostPorts(
+      peer.last_known_broadcast_addr(), peer.last_known_private_addr(), peer.cloud_info(), from);
+}
+
 const HostPortPB& DesiredHostPort(const RaftPeerPB& peer, const CloudInfoPB& from) {
   return SelectHostPort(peer, from).host_port;
 }

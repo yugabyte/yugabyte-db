@@ -56,6 +56,7 @@ using namespace std::literals;
 namespace yb {
 
 class faststring;
+class FailedAddresses;
 class HostPort;
 class Slice;
 
@@ -124,6 +125,32 @@ struct SelectedHostPort {
   const HostPortPB& host_port;
   UsedBroadcastAddress used_broadcast;
 };
+
+// Every address a node can be reached at, in the order to try them, ordered the way
+// FilterAddresses orders a node's own addresses: categories in preference order, each address
+// landing in the first category it belongs to and so appearing exactly once. The categories
+// here are the address SelectHostPort chooses, then the rest of the private ones, then the
+// rest of the broadcast ones. That is the direction GetHostPort already falls back in when no
+// broadcast address was reported, over the two lists TabletServer::UpdateMasterAddresses
+// already composes the same way.
+//
+// A node that never fails a connection is therefore reached exactly as SelectHostPort alone
+// would reach it; the rest exist so that one unreachable address does not condemn the node.
+std::vector<SelectedHostPort> CandidateHostPorts(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const CloudInfoPB& connect_to,
+    const CloudInfoPB& connect_from);
+
+// The candidate to reach a node at now: the first that has not failed, falling back to the
+// preferred one once every candidate has. A failure record is a preference among reachable
+// addresses, not a ban, so a node stays addressable for the attempt that finds it back.
+//
+// Whether that candidate has itself failed is therefore whether any address is left to try,
+// which is what a caller reports when it hands the node back to whatever chooses a different
+// one. Candidates come from CandidateHostPorts, which never returns an empty list.
+SelectedHostPort FirstUsable(
+    const std::vector<SelectedHostPort>& candidates, const FailedAddresses& failed);
 
 // Whether reaching a node at this address leaves its private address, which is what decides
 // whether the connection is held to node_to_node_encryption_required_on_broadcast. The

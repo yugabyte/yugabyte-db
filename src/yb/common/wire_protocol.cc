@@ -31,6 +31,8 @@
 //
 #include "yb/common/wire_protocol.h"
 
+#include <algorithm>
+
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/wire_protocol.messages.h"
@@ -43,6 +45,7 @@
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/logging.h"
+#include "yb/util/net/failed_addresses.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
@@ -503,6 +506,49 @@ SelectedHostPort SelectHostPort(
     .host_port = host_port,
     .used_broadcast = UsesBroadcastAddress(private_host_ports, host_port),
   };
+}
+
+std::vector<SelectedHostPort> CandidateHostPorts(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const CloudInfoPB& connect_to,
+    const CloudInfoPB& connect_from) {
+  std::vector<SelectedHostPort> result;
+  auto already_added = [&result](const HostPortPB& host_port) {
+    return std::any_of(
+        result.begin(), result.end(), [&host_port](const SelectedHostPort& added) {
+          return HasSameHostPort(added.host_port, host_port);
+        });
+  };
+
+  result.push_back(
+      SelectHostPort(broadcast_addresses, private_host_ports, connect_to, connect_from));
+  // Private before broadcast, so a node that reports one address in both lists is reached at
+  // it privately, which is what UsesBroadcastAddress answers for that address too.
+  for (const auto& host_port : private_host_ports) {
+    if (!already_added(host_port)) {
+      result.push_back(SelectedHostPort {
+        .host_port = host_port, .used_broadcast = UsedBroadcastAddress::kFalse});
+    }
+  }
+  for (const auto& host_port : broadcast_addresses) {
+    if (!already_added(host_port)) {
+      result.push_back(SelectedHostPort {
+        .host_port = host_port, .used_broadcast = UsedBroadcastAddress::kTrue});
+    }
+  }
+  return result;
+}
+
+SelectedHostPort FirstUsable(
+    const std::vector<SelectedHostPort>& candidates, const FailedAddresses& failed) {
+  DCHECK(!candidates.empty());
+  for (const auto& candidate : candidates) {
+    if (!failed.Failed(HostPortFromPB(candidate.host_port))) {
+      return candidate;
+    }
+  }
+  return candidates.front();
 }
 
 UsedBroadcastAddress UsesBroadcastAddress(
