@@ -152,6 +152,10 @@ using StreamFactoryPtr = std::shared_ptr<StreamFactory>;
 YB_STRONGLY_TYPED_BOOL(ReadBufferFull);
 YB_STRONGLY_TYPED_BOOL(Queue);
 
+// Select among the protocols a messenger has registered; see ProxyContext::ProtocolFor.
+YB_STRONGLY_TYPED_BOOL(Compressed);
+YB_STRONGLY_TYPED_BOOL(Encrypted);
+
 using ScheduledTaskId = int64_t;
 constexpr ScheduledTaskId kInvalidTaskId = -1;
 

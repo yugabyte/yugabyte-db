@@ -61,6 +61,34 @@ DEFINE_UNKNOWN_string(use_private_ip, "never",
               "zone - would use private IP if destination node is located in the same cloud, "
                   "region and zone."
               "never - would never use private IP if broadcast address is specified.");
+
+DEFINE_UNKNOWN_string(node_to_node_encryption_scope, "never",
+              "When node to node encryption is enabled, which connections to encrypt. "
+              "Scoped like use_private_ip: "
+              "cloud - would not encrypt if destination node is located in the same cloud. "
+              "region - would not encrypt if destination node is located in the same cloud and "
+                  "region. "
+              "zone - would not encrypt if destination node is located in the same cloud, region "
+                  "and zone. "
+              "never - would encrypt every connection. "
+              "The exemption applies only to connections that stay on the destination's "
+              "private address, unless node_to_node_encryption_required_on_broadcast is "
+              "turned off. The nodes receiving these connections must run with "
+              "allow_insecure_connections, which is what lets a listener accept one that "
+              "carries no TLS.");
+
+DEFINE_UNKNOWN_bool(node_to_node_encryption_required_on_broadcast, true,
+              "Whether a connection that does not stay on the destination's private address "
+              "is encrypted whatever node_to_node_encryption_scope says. use_private_ip "
+              "decides which address a connection uses, and it names a boundary of its own "
+              "that need not be the one the scope names; where they disagree this keeps the "
+              "connection that left the private address encrypted. "
+              "A tserver reaching a master races every address that master's configuration "
+              "names, so that connection could be on either of the master's address lists "
+              "and is treated as not private. "
+              "Turning this off is what allows an unencrypted connection on a broadcast "
+              "address, which is only as private as the network carrying it.");
+
 namespace yb {
 
 namespace {
@@ -319,10 +347,14 @@ HostPort HostPortFromPB(const HostPortPB& host_port_pb) {
   return host_port;
 }
 
+bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs) {
+  return lhs.host() == rhs.host() && lhs.port() == rhs.port();
+}
+
 bool HasHostPortPB(
     const google::protobuf::RepeatedPtrField<HostPortPB>& list, const HostPortPB& hp) {
   for (const auto& i : list) {
-    if (i.host() == hp.host() && i.port() == hp.port()) {
+    if (HasSameHostPort(i, hp)) {
       return true;
     }
   }
@@ -381,51 +413,74 @@ Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
   return Status::OK();
 }
 
-Result<UsePrivateIpMode> GetPrivateIpMode() {
+namespace {
+
+Result<UsePrivateIpMode> ParseScope(const char* flag_name, const std::string& value) {
   for (auto i : UsePrivateIpModeList()) {
-    if (FLAGS_use_private_ip == ToCString(i)) {
+    if (value == ToCString(i)) {
       return i;
     }
   }
   return STATUS_FORMAT(
-      IllegalState,
-      "Invalid value of FLAGS_use_private_ip: $0, using private ip everywhere",
-      FLAGS_use_private_ip);
+      IllegalState, "Invalid value of $0: $1, treating every destination as outside the scope",
+      flag_name, value);
 }
 
-UsePrivateIpMode GetMode() {
-  auto result = GetPrivateIpMode();
-  if (result.ok()) {
-    return *result;
+UsePrivateIpMode ScopeOrDefault(Result<UsePrivateIpMode> scope) {
+  if (scope.ok()) {
+    return *scope;
   }
-  YB_LOG_EVERY_N_SECS(WARNING, 300) << result.status();
+  YB_LOG_EVERY_N_SECS(WARNING, 300) << scope.status();
   return UsePrivateIpMode::never;
 }
 
-PublicAddressAllowed UsePublicIp(const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
-  auto mode = GetMode();
+}  // namespace
 
+Result<UsePrivateIpMode> GetPrivateIpMode() {
+  return ParseScope("use_private_ip", FLAGS_use_private_ip);
+}
+
+Result<UsePrivateIpMode> GetNodeToNodeEncryptionScope() {
+  return ParseScope("node_to_node_encryption_scope", FLAGS_node_to_node_encryption_scope);
+}
+
+// Whether connect_to lies outside the scope named by mode, as seen from connect_from.
+bool OutsideScope(
+    UsePrivateIpMode mode, const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
   if (mode == UsePrivateIpMode::never) {
-    return PublicAddressAllowed::kTrue;
+    return true;
   }
   if (connect_to.placement_cloud() != connect_from.placement_cloud()) {
-    return PublicAddressAllowed::kTrue;
+    return true;
   }
   if (mode == UsePrivateIpMode::cloud) {
-    return PublicAddressAllowed::kFalse;
+    return false;
   }
   if (connect_to.placement_region() != connect_from.placement_region()) {
-    return PublicAddressAllowed::kTrue;
+    return true;
   }
   if (mode == UsePrivateIpMode::region) {
-    return PublicAddressAllowed::kFalse;
+    return false;
   }
   if (connect_to.placement_zone() != connect_from.placement_zone()) {
-    return PublicAddressAllowed::kTrue;
+    return true;
   }
-  return mode == UsePrivateIpMode::zone
-      ? PublicAddressAllowed::kFalse
-      : PublicAddressAllowed::kTrue;
+  return mode != UsePrivateIpMode::zone;
+}
+
+PublicAddressAllowed UsePublicIp(const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
+  return PublicAddressAllowed(
+      OutsideScope(ScopeOrDefault(GetPrivateIpMode()), connect_to, connect_from));
+}
+
+bool UseEncryption(
+    UsedBroadcastAddress used_broadcast, const CloudInfoPB& connect_to,
+    const CloudInfoPB& connect_from) {
+  if (FLAGS_node_to_node_encryption_required_on_broadcast && used_broadcast) {
+    return true;
+  }
+  return OutsideScope(
+      ScopeOrDefault(GetNodeToNodeEncryptionScope()), connect_to, connect_from);
 }
 
 const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration) {
@@ -434,21 +489,52 @@ const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration) {
                      PublicAddressAllowed::kTrue);
 }
 
+SelectedHostPort SelectHostPort(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const CloudInfoPB& connect_to,
+    const CloudInfoPB& connect_from) {
+  auto public_address_allowed = UsePublicIp(connect_to, connect_from);
+  // GetHostPort falls back to a private address when no broadcast address was reported, so
+  // ask it what it returned rather than assuming the scope's answer was available.
+  const auto& host_port =
+      GetHostPort(broadcast_addresses, private_host_ports, public_address_allowed);
+  return SelectedHostPort {
+    .host_port = host_port,
+    .used_broadcast = UsesBroadcastAddress(private_host_ports, host_port),
+  };
+}
+
+UsedBroadcastAddress UsesBroadcastAddress(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    const HostPortPB& host_port) {
+  return UsedBroadcastAddress(!HasHostPortPB(private_host_ports, host_port));
+}
+
+UsedBroadcastAddress UsesBroadcastAddress(
+    const ServerRegistrationPB& registration, const HostPortPB& host_port) {
+  return UsesBroadcastAddress(registration.private_rpc_addresses(), host_port);
+}
+
+SelectedHostPort SelectHostPort(
+    const ServerRegistrationPB& registration, const CloudInfoPB& connect_from) {
+  return SelectHostPort(
+      registration.broadcast_addresses(), registration.private_rpc_addresses(),
+      registration.cloud_info(), connect_from);
+}
+
 const HostPortPB& DesiredHostPort(
     const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
     const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
     const CloudInfoPB& connect_to,
     const CloudInfoPB& connect_from) {
-  return GetHostPort(broadcast_addresses,
-                     private_host_ports,
-                     UsePublicIp(connect_to, connect_from));
+  return SelectHostPort(
+      broadcast_addresses, private_host_ports, connect_to, connect_from).host_port;
 }
 
-const HostPortPB& DesiredHostPort(const ServerRegistrationPB& registration,
-                                  const CloudInfoPB& connect_from) {
-  return DesiredHostPort(
-      registration.broadcast_addresses(), registration.private_rpc_addresses(),
-      registration.cloud_info(), connect_from);
+const HostPortPB& DesiredHostPort(
+    const ServerRegistrationPB& registration, const CloudInfoPB& connect_from) {
+  return SelectHostPort(registration, connect_from).host_port;
 }
 
 std::string SplitChildTabletIdsTag::ToMessage(const Value& value) {

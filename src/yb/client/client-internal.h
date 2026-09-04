@@ -42,6 +42,7 @@
 #include "yb/client/client.h"
 
 #include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/qlexpr/index.h"
 #include "yb/common/transaction.h"
@@ -413,7 +414,8 @@ class YBClient::Data {
   //
   // See also: SetMasterServerProxyAsync.
   void LeaderMasterDetermined(const Status& status,
-                              const HostPort& host_port);
+                              const HostPort& host_port,
+                              const ServerRegistrationPB& registration);
 
   // Asynchronously sets 'master_proxy_' to the leader master by
   // cycling through servers listed in 'master_server_addrs_' until

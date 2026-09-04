@@ -1788,9 +1788,10 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   RaftGroupMetadataPtr meta = replacing_tablet ? old_tablet_peer->tablet_metadata() : nullptr;
 
-  HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(
+  auto bootstrap_source = SelectHostPort(
       req.bootstrap_source_broadcast_addr(), req.bootstrap_source_private_addr(),
-      req.bootstrap_source_cloud_info(), server_->MakeCloudInfoPB()));
+      req.bootstrap_source_cloud_info(), server_->MakeCloudInfoPB());
+  HostPort bootstrap_peer_addr = HostPortFromPB(bootstrap_source.host_port);
 
   auto rbs_source_role = "LEADER";
   ServerRegistrationPB tablet_leader_peer_conn_info;
@@ -1825,14 +1826,18 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   TEST_PAUSE_IF_FLAG(TEST_pause_before_remote_bootstrap);
 
   // Download and persist the remote superblock in TABLET_DATA_COPYING state.
-  RETURN_NOT_OK(rb_client->Start(
+  auto start_status = rb_client->Start(
       bootstrap_peer_uuid,
       &server_->proxy_cache(),
       bootstrap_peer_addr,
+      rpc::Encrypted(UseEncryption(
+          bootstrap_source.used_broadcast, req.bootstrap_source_cloud_info(),
+          server_->MakeCloudInfoPB())),
       tablet_leader_peer_conn_info,
       req.has_pending_config_op_id() ? OpId::FromPB(req.pending_config_op_id()) : OpId(),
       &meta,
-      this));
+      this);
+  RETURN_NOT_OK(start_status);
 
   // From this point onward, the superblock is persisted in TABLET_DATA_COPYING
   // state, and we need to tombstone the tablet if additional steps prior to

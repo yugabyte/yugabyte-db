@@ -46,7 +46,11 @@
 using namespace std::literals;
 
 DEFINE_UNKNOWN_bool(allow_insecure_connections, true,
-    "Whether we should allow insecure connections.");
+    "Whether an inbound connection may be unencrypted. Applies to what this server "
+    "accepts, not to what it sends: the first bytes of each incoming connection are "
+    "examined for a TLS handshake, and one without is accepted when this is set and "
+    "rejected when it is not. What a connection this server opens carries is decided "
+    "by node_to_node_encryption_scope.");
 DEFINE_UNKNOWN_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
 DEFINE_UNKNOWN_bool(verify_client_endpoint, false, "Whether client endpoint should be verified.");
 DEFINE_UNKNOWN_bool(verify_server_endpoint, true, "Whether server endpoint should be verified.");
@@ -1199,8 +1203,7 @@ Status SecureRefiner::Verify(bool preverified, X509_STORE_CTX* store_context) {
 }
 
 const Protocol* SecureStreamProtocol() {
-  static Protocol result("tcps");
-  return &result;
+  return StreamProtocol(Compressed::kFalse, Encrypted::kTrue);
 }
 
 StreamFactoryPtr SecureStreamFactory(
