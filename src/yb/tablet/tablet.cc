@@ -68,6 +68,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/docdb_util.h"
+#include "yb/docdb/properties_collector/sst_stats_collector.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
@@ -366,6 +367,7 @@ DEFINE_RUNTIME_AUTO_bool(enable_transaction_metadata_update, kLocalPersisted, fa
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(cdc_enable_time_based_intent_retention);
 DECLARE_bool(consistent_restore);
+DECLARE_bool(docdb_enable_sst_stats_collector);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -1243,6 +1245,11 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
     table_options.use_delta_encoding = UseDeltaEncoding(table_type_);
     docdb::InitRocksDBOptionsTableFactory(
         &regular_rocksdb_options, tablet_options_, std::move(table_options));
+  }
+
+  if (FLAGS_docdb_enable_sst_stats_collector) {
+    regular_rocksdb_options.table_properties_collector_factories.push_back(
+        docdb::MakeSstStatsCollectorFactory());
   }
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
