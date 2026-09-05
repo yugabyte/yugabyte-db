@@ -455,6 +455,21 @@ If you want to use a storage class other than the standard class for your deploy
 helm install yugabyte --version {{<yb-version version="stable" format="short">}} --namespace yb-demo --name yb-demo --set storage.master.storageClass=<desired storage class>,storage.tserver.storageClass=<desired storage class> --wait
 ```
 
+### Run as non-root
+
+Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and Helm deployments run as a non-root user by default (UID 10001).
+
+If you upgrade an existing Helm deployment that does not pin a user in `podSecurityContext`, the pods migrate to the non-root user from the image. Disabling `podSecurityContext` is not enough to keep running as root, because the image itself no longer defaults to root.
+
+To keep running as root, add the following to your values file before you upgrade:
+
+```yaml
+podSecurityContext:
+  enabled: true
+  runAsNonRoot: false
+  runAsUser: 0
+```
+
 ### Configure YB-Master and YB-TServer pods
 
 Flags on the YB-Master and YB-TServer pods can be specified via the command line or by overriding the `values.yaml` file in the charts repository. The following example shows how to set the three geo-distribution-related flags `placement_cloud`, `placement_region`, and `placement_zone` on a Minikube cluster:
@@ -472,6 +487,8 @@ gflags.tserver.placement_cloud=myk8s-cloud,gflags.tserver.placement_region=myk8s
 ## Upgrade the software version of YugabyteDB
 
 You can upgrade the software on the YugabyteDB cluster with the following command. By default, this performs a [rolling update](https://github.com/yugabyte/charts/blob/853d7ac744cf6d637b5877f4681940825beda8f6/stable/yugabyte/values.yaml#L60) of the pods.
+
+Starting in v2026.1.2, the Docker image runs as a non-root user by default. If you haven't pinned a user in `podSecurityContext`, this upgrade migrates the pods to a non-root user. To keep running as root, see [Run as non-root](#run-as-non-root).
 
 ```sh
 helm repo update

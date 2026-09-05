@@ -73,6 +73,14 @@ You can configure YugabyteDB Anywhere to automatically update universes to node 
 
 Transparent hugepages (THP) should be enabled on nodes for optimal performance. If you have on-premises universes with legacy provisioning where THP are not enabled, you can update THP settings by following the [node patching](../../manage-deployments/upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
 
+## Kubernetes universes
+
+Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and run as a non-root user by default.
+
+If a Kubernetes universe does not pin a user in `podSecurityContext`, upgrading the universe to v2026.1.2 or later migrates the database pods to a non-root user.
+
+To keep running as root, set `podSecurityContext.runAsUser` to `0` in your Helm overrides before you upgrade. See [Run as non-root](../../configure-yugabyte-platform/kubernetes/#run-as-non-root).
+
 ## Backups and point-in-time-recovery
 
 - Backups

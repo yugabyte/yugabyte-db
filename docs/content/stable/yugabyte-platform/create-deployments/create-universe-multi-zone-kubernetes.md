@@ -208,6 +208,21 @@ tserver:
     enabled: true
 ```
 
+#### Run as root
+
+Starting in YugabyteDB v2026.1.2, YugabyteDB Docker images are STIG-compliant and hardened, and run as a non-root user by default. If you upgrade a universe that does not pin a user in `podSecurityContext`, the pods migrate to the non-root user from the image.
+
+To keep running as root, add the following overrides before you upgrade:
+
+```yaml
+podSecurityContext:
+  enabled: true
+  runAsNonRoot: false
+  runAsUser: 0
+```
+
+For more information, see [Run as non-root](../../configure-yugabyte-platform/kubernetes/#run-as-non-root).
+
 #### ARM VMs
 
 If you want to use ARM VMs, add the following overrides:

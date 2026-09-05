@@ -35,6 +35,8 @@ If you are upgrading a YugabyteDB Anywhere installation with high availability e
 To install the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) on an existing YugabyteDB Anywhere instance, see [Install Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/#install-kubernetes-operator).
 {{< /tip >}}
 
+Starting in YugabyteDB Anywhere v2026.1.2, Docker images are STIG-compliant and hardened, and run as a non-root user by default. If you haven't pinned a user in `securityContext`, upgrading to v2026.1.2 or later migrates the pods to a non-root user. To keep running as root, see [Run containers as non-root](../../install-yugabyte-platform/install-software/kubernetes/#run-containers-as-non-root).
+
 Before running an upgrade, execute the following command to obtain the latest versions of YugabyteDB Anywhere from Helm charts:
 
 ```sh
