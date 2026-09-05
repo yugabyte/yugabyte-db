@@ -1130,6 +1130,26 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	/* Connect to YugaByte cluster. */
 	YBInitPostgresBackend("postgres", yb_init_info);
 
+	if (!bootstrap && MyProcPort != NULL &&
+		MyProcPort->yb_dist_traceparent != NULL &&
+		MyProcPort->yb_dist_traceparent[0] != '\0')
+	{
+		char		tracecontext[YB_TRACEPARENT_KEY_PREFIX_LEN +
+								 2 * YB_TRACEPARENT_QUOTE_LEN +
+								 YB_TRACEPARENT_VALUE_LEN + 1];
+
+		snprintf(tracecontext, sizeof(tracecontext),
+				 YB_TRACEPARENT_KEY_PREFIX "'%s'",
+				 MyProcPort->yb_dist_traceparent);
+
+		/* Warn instead of failing the connection when the value is rejected. */
+		(void) set_config_option_ext("yb_dist_tracecontext", tracecontext,
+									 PGC_BACKEND, PGC_S_SESSION,
+									 BOOTSTRAP_SUPERUSERID, GUC_ACTION_SET,
+									 true /* changeVal */ , WARNING,
+									 false /* is_reload */ );
+	}
+
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
 		HandleYBStatus(YBCPgTableExists(Template1DbOid,

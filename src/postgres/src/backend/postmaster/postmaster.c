@@ -2490,6 +2490,17 @@ retry1:
 							 errhint("Value must be one of the registered "
 									 "YbInternalConnKind wire names.")));
 			}
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && !YbIsAuthPassthroughInProgress(port)
+					 && strcmp(nameptr, "yb_dist_traceparent") == 0)
+			{
+				/*
+				 * Stash traceparent for InitPostgres, which turns it into the
+				 * corresponding GUC. Skipped under auth passthrough, where this
+				 * allocates in the auth transaction's context.
+				 */
+				port->yb_dist_traceparent = pstrdup(valptr);
+			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{
 				/*
