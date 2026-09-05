@@ -26,7 +26,8 @@ namespace yb::master {
 
 MultiStepMonitoredTask::MultiStepMonitoredTask(
     ThreadPool& async_task_pool, rpc::Messenger& messenger)
-    : messenger_(messenger), async_task_pool_(async_task_pool) {}
+    : messenger_(messenger),
+      async_task_pool_(async_task_pool) {}
 
 void MultiStepMonitoredTask::Start() {
   LOG_WITH_PREFIX(INFO) << "Starting task";
@@ -207,6 +208,7 @@ Status MultiStepMonitoredTask::RunInternal() {
 
   RETURN_NOT_OK(ValidateRunnable());
 
+  dist_trace::ScopedAdoptSpan parent_scope(trace_parent_);
   return step();
 }
 
