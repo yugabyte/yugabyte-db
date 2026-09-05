@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/algorithm/string/replace.hpp>
@@ -337,6 +338,7 @@ DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefau
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_object_locking_infra);
+DECLARE_bool(enable_active_table_metrics_filtering);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
@@ -3579,6 +3581,33 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
   }
   vector<TserverMetricsInfoPB> metrics = result.get();
   *resp->mutable_metrics() = {metrics.begin(), metrics.end()};
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::SetActiveTableIdsForMetrics(
+    const SetActiveTableIdsForMetricsRequestPB* req, SetActiveTableIdsForMetricsResponsePB* resp,
+    rpc::RpcContext context) {
+  // Reported on every response, including rejections, so the caller always learns whether any
+  // scrape can use the list it just sent.
+  resp->set_filtering_enabled(FLAGS_enable_active_table_metrics_filtering);
+
+  std::unordered_set<std::string> table_ids;
+  table_ids.reserve(req->table_ids_size());
+  for (const auto& table_id : req->table_ids()) {
+    if (table_id.empty()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(), STATUS(InvalidArgument, "table_ids must not contain empty IDs"),
+          &context);
+      return;
+    }
+    table_ids.insert(table_id);
+  }
+
+  const auto status = server_->SetActiveTableIdsForMetrics(std::move(table_ids));
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
   context.RespondSuccess();
 }
 

@@ -478,11 +478,16 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
 
 static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                       const Webserver::WebRequest& req,
-                                      Webserver::WebResponse* resp) {
+                                      Webserver::WebResponse* resp,
+                                      const std::function<void(MetricPrometheusOptions*)>&
+                                          configure_prometheus_options) {
   MetricPrometheusOptions opts;
   opts.export_help_and_type = ExportHelpAndType(FLAGS_export_help_and_type_in_prometheus_metrics);
   opts.max_metric_entries = FLAGS_max_prometheus_metric_entries;
   ParseRequestOptions(req, &opts);
+  if (configure_prometheus_options) {
+    configure_prometheus_options(&opts);
+  }
 
   std::stringstream* output = &resp->output;
 
@@ -697,6 +702,11 @@ void ParseRequestOptions(
       }
     }
 
+    // Parsed argument names are lower cased by the webserver, so callers may spell this parameter
+    // with any casing.
+    arg = FindWithDefault(req.parsed_args, "apply_table_ids_filter", "false");
+    prometheus_opts->apply_table_ids_filter = ParseLeadingBoolValue(arg.c_str(), false);
+
     prometheus_opts->version = FindWithDefault(req.parsed_args, "version", kFilterVersionOne);
 
     if (prometheus_opts->version == kFilterVersionTwo) {
@@ -786,10 +796,12 @@ void AddDefaultPathHandlers(Webserver* webserver) {
   AddPprofPathHandlers(webserver);
 }
 
-void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics) {
+void RegisterMetricsJsonHandler(
+    Webserver* webserver, const MetricRegistry* const metrics,
+    std::function<void(MetricPrometheusOptions*)> configure_prometheus_options) {
   Webserver::PathHandlerCallback callback = std::bind(WriteMetricsAsJson, metrics, _1, _2);
   Webserver::PathHandlerCallback prometheus_callback = std::bind(
-      WriteMetricsForPrometheus, metrics, _1, _2);
+      WriteMetricsForPrometheus, metrics, _1, _2, std::move(configure_prometheus_options));
   bool not_styled = false;
   bool not_on_nav_bar = false;
   webserver->RegisterPathHandler("/metrics", "Metrics", callback, not_styled, not_on_nav_bar);

@@ -78,6 +78,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/one_time_bool.h"
@@ -178,6 +179,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<uint32> ValidateAndGetAutoFlagsConfigVersion() const;
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
+
+  Status SetActiveTableIdsForMetrics(std::unordered_set<std::string> table_ids) override;
+
+  void ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const override;
 
   TSTabletManager* tablet_manager() const override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
@@ -665,6 +670,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   };
 
   ClusterConfig cluster_config_;
+
+  mutable std::mutex active_table_metrics_mutex_;
+  std::shared_ptr<const std::unordered_set<std::string>> active_table_ids_
+      GUARDED_BY(active_table_metrics_mutex_);
+  scoped_refptr<AtomicGauge<uint64_t>> active_table_metrics_last_update_time_;
 
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();

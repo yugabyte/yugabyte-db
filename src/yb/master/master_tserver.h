@@ -141,6 +141,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
 
+  Status SetActiveTableIdsForMetrics(std::unordered_set<std::string> /* table_ids */) override {
+    return STATUS(NotSupported, "SetActiveTableIdsForMetrics is not supported on masters");
+  }
+
   bool SkipCatalogVersionChecks() override;
 
   void SetYsqlDBCatalogVersions(

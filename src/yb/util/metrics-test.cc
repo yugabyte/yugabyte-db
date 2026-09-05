@@ -337,6 +337,38 @@ TEST_F(MetricsTest, AggregationTest) {
     CheckPreStoredAndScrapeTimeAttributes(writer, "table_2_id", attributes, attributes);
   }
   {
+    // An active-table list restricts table level aggregation to the listed tables.
+    opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>(
+        std::initializer_list<std::string>{"table_1_id"});
+    std::stringstream filtered_output;
+    PrometheusWriter writer(&filtered_output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+    ASSERT_STR_CONTAINS(filtered_output.str(), R"#(table_id="table_1_id")#");
+    ASSERT_STR_NOT_CONTAINS(filtered_output.str(), R"#(table_id="table_2_id")#");
+
+    opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>();
+    std::stringstream empty_output;
+    PrometheusWriter empty_writer(&empty_output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&empty_writer, opts));
+    ASSERT_STR_NOT_CONTAINS(empty_output.str(), "table_id=");
+
+    // Server level aggregation still covers every table, including the filtered out ones.
+    opts.priority_regex_string = "";
+    std::stringstream server_level_output;
+    PrometheusWriter server_level_writer(&server_level_output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&server_level_writer, opts));
+    CheckPreAggreatedAndScrapeTimeValues(
+        server_level_writer, kSumGaugeName, kServerLevelAggregationId, 34, std::nullopt);
+    CheckPreAggreatedAndScrapeTimeValues(
+        server_level_writer, kMaxGaugeName, kServerLevelAggregationId, std::nullopt, 10);
+    CheckPreAggreatedAndScrapeTimeValues(
+        server_level_writer, kSumCounterName, kServerLevelAggregationId, 34, std::nullopt);
+    ASSERT_STR_NOT_CONTAINS(server_level_output.str(), "table_id=");
+
+    opts.priority_regex_string = ".*";
+    opts.active_table_ids.reset();
+  }
+  {
     // Check server level aggregation
     opts.priority_regex_string = "";
     PrometheusWriter writer(&output, opts);
@@ -725,6 +757,8 @@ METRIC_DEFINE_histogram(server, t_hist, "Test Histogram Label",
     MetricUnit::kMilliseconds, "Test histogram description", 100000000L, 2);
 METRIC_DEFINE_event_stats(xcluster, t_event_stats, "Test EventStats Label",
     MetricUnit::kMilliseconds, "Test event stats description");
+METRIC_DEFINE_counter(xcluster, t_xcluster_counter, "Test xCluster Counter Label",
+    MetricUnit::kMilliseconds, "Test xCluster counter description");
 METRIC_DEFINE_counter(tablet, t_counter, "Test Counter Label", MetricUnit::kMilliseconds,
     "Test counter description");
 METRIC_DEFINE_gauge_int32(tablet, t_gauge, "Test Gauge Label", MetricUnit::kMilliseconds,
@@ -783,6 +817,36 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
   // Check lag output.
   EXPECT_EQ(1, StringOccurence(output_str,
       "# HELP t_lag Test lag description\n# TYPE t_lag gauge"));
+}
+
+// The active-table list restricts table-level series only. xCluster series are aggregated per
+// stream but carry a table id as well, so they must survive the filter.
+TEST_F(MetricsTest, ActiveTableIdsDoNotFilterStreamLevelMetrics) {
+  MetricEntity::AttributeMap entity_attr;
+  entity_attr["tablet_id"] = "tablet_id_60";
+  entity_attr["table_name"] = "test_table";
+  entity_attr["table_id"] = "table_id_61";
+  auto tablet_entity =
+      METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_62", entity_attr);
+  entity_attr["stream_id"] = "stream_id_63";
+  auto xcluster_entity =
+      METRIC_ENTITY_xcluster.Instantiate(&registry_, "xcluster_entity_id_64", entity_attr);
+
+  scoped_refptr<Counter> tablet_counter = METRIC_t_counter.Instantiate(tablet_entity);
+  scoped_refptr<Counter> xcluster_counter = METRIC_t_xcluster_counter.Instantiate(xcluster_entity);
+  tablet_counter->Increment();
+  xcluster_counter->Increment();
+
+  MetricPrometheusOptions opts;
+  opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>();
+  std::stringstream output;
+  PrometheusWriter writer(&output, opts);
+  ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+
+  const auto output_str = output.str();
+  ASSERT_STR_NOT_CONTAINS(output_str, METRIC_t_counter.name());
+  ASSERT_STR_CONTAINS(output_str, METRIC_t_xcluster_counter.name());
+  ASSERT_STR_CONTAINS(output_str, R"#(stream_id="stream_id_63")#");
 }
 
 TEST_F(MetricsTest, SimulateMetricDeletionBeforeFlush) {
