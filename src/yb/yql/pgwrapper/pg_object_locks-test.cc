@@ -376,28 +376,27 @@ TEST_F(PgObjectLocksTestRF1, TestPgLocksBlockedByMultipleTransactions) {
         " (ybdetails->'blocked_by')::text AS blocked_by FROM pg_locks"
         " WHERE relation = 'test'::regclass AND locktype = 'relation' ORDER BY granted, mode"));
     LOG(INFO) << "object locks on test:\n" << dump;
-    blocked_by = VERIFY_RESULT(observer_conn.FetchRow<std::string>(
-        "SELECT COALESCE("
-        "  (SELECT ybdetails->'blocked_by' FROM pg_locks"
-        "     WHERE NOT granted AND relation = 'test'::regclass AND locktype = 'relation'"
-        "       AND mode = 'AccessExclusiveLock'"
-        "       AND ybdetails->'blocked_by' IS NOT NULL"
-        "     LIMIT 1), '[]'::jsonb)::text"));
     // Require at least two blocker txn ids, both matching the granted RowExclusiveLock holders.
-    return VERIFY_RESULT(observer_conn.FetchRow<bool>(
-        "SELECT EXISTS ("
-        "  SELECT 1 FROM pg_locks w"
-        "  WHERE NOT w.granted AND w.relation = 'test'::regclass AND w.locktype = 'relation'"
-        "    AND w.mode = 'AccessExclusiveLock'"
-        "    AND w.ybdetails->'blocked_by' IS NOT NULL"
-        "    AND jsonb_array_length(w.ybdetails->'blocked_by') >= 2"
-        "    AND (SELECT count(DISTINCT g.ybdetails->>'transactionid')"
-        "         FROM pg_locks g"
-        "         WHERE g.granted AND g.relation = 'test'::regclass AND g.locktype = 'relation'"
-        "           AND g.mode = 'RowExclusiveLock'"
-        "           AND g.ybdetails->>'transactionid' IS NOT NULL"
-        "           AND w.ybdetails->'blocked_by' @> to_jsonb(g.ybdetails->>'transactionid')"
-        "        ) >= 2)"));
+    // The check and the blocked_by value must come from one query: separate round trips see
+    // different pg_locks snapshots, so the value could still be empty on the iteration where
+    // the check first passes. MATERIALIZED keeps the correlated subquery on the same snapshot.
+    blocked_by = VERIFY_RESULT(observer_conn.FetchRow<std::string>(
+        "WITH locks AS MATERIALIZED ("
+        "  SELECT granted, mode, ybdetails FROM pg_locks"
+        "  WHERE relation = 'test'::regclass AND locktype = 'relation')"
+        "SELECT COALESCE("
+        "  (SELECT w.ybdetails->'blocked_by' FROM locks w"
+        "   WHERE NOT w.granted AND w.mode = 'AccessExclusiveLock'"
+        "     AND w.ybdetails->'blocked_by' IS NOT NULL"
+        "     AND jsonb_array_length(w.ybdetails->'blocked_by') >= 2"
+        "     AND (SELECT count(DISTINCT g.ybdetails->>'transactionid')"
+        "          FROM locks g"
+        "          WHERE g.granted AND g.mode = 'RowExclusiveLock'"
+        "            AND g.ybdetails->>'transactionid' IS NOT NULL"
+        "            AND w.ybdetails->'blocked_by' @> to_jsonb(g.ybdetails->>'transactionid')"
+        "         ) >= 2"
+        "   LIMIT 1), '[]'::jsonb)::text"));
+    return blocked_by != "[]" && !blocked_by.empty();
   }, 30s * kTimeMultiplier,
      "Timed out waiting for blocked_by to list multiple blocking transactions"));
 
