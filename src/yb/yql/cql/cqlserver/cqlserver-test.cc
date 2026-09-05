@@ -606,6 +606,9 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
   ASSERT_STR_CONTAINS(result, "prepared_statements");
   ASSERT_STR_CONTAINS(result, "dummyquery");
   ASSERT_STR_CONTAINS(result, std::stoull(b2a_hex("dummyqueryid").substr(0, 16), 0, 16));
+  // A 1 ms sample uses the same float resolution as YSQL, so it lands in [0.9,1.0).
+  ASSERT_STR_CONTAINS(result, "yb_latency_histogram");
+  ASSERT_STR_CONTAINS(result, "[0.9,");
 
   // reset the counters and verify
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
@@ -712,6 +715,42 @@ TEST_F(TestCQLService, TestCQLUpdateStmtCounters) {
   }
 }
 
+// Verifies that StmtLatencyHistogram formats its JSON identically to YSQL's yb_latency_histogram
+// (list of {"[low,high)": count} objects, empty array when no samples).
+TEST(TestStmtLatencyHistogram, TestJsonFormat) {
+  StmtLatencyHistogram hist;
+
+  // Empty histogram is an empty JSON array.
+  ASSERT_EQ("[]", hist.ToJsonArrayString());
+
+  // A 0.15 ms sample falls in the [0.1,0.2) bucket (resolution 0.1 ms).
+  hist.Record(0.15);
+  ASSERT_STR_CONTAINS(hist.ToJsonArrayString(), "\"[0.1,0.2)\":1");
+
+  // Executions slower than the tracked maximum land in the open-ended overflow bucket.
+  hist.Record(2'000'000.0);
+  ASSERT_STR_CONTAINS(hist.ToJsonArrayString(), "[1677721.6,)");
+
+  // A copy is independent and preserves the recorded buckets.
+  StmtLatencyHistogram copy = hist;
+  ASSERT_EQ(hist.ToJsonArrayString(), copy.ToJsonArrayString());
+
+  StmtLatencyHistogram assigned;
+  assigned = copy;
+  ASSERT_EQ(copy.ToJsonArrayString(), assigned.ToJsonArrayString());
+
+  // Copies are snapshots: Record/Reset must not dereference a null live buffer, and must not
+  // change the original.
+  const std::string original = hist.ToJsonArrayString();
+  copy.Record(1.0);
+  copy.Reset();
+  ASSERT_EQ("[]", copy.ToJsonArrayString());
+  ASSERT_EQ(original, hist.ToJsonArrayString());
+
+  // Reset clears all recorded samples.
+  hist.Reset();
+  ASSERT_EQ("[]", hist.ToJsonArrayString());
+}
 
 }  // namespace cqlserver
 }  // namespace yb

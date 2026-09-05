@@ -22,7 +22,7 @@ Databases can be resource-intensive, consuming a lot of memory, CPU, IO, and net
 
 This view is accessible only via YSQL and provides YCQL statement metrics (similar to pg_stat_statements) that are also present on `<yb-tserver-ip>:12000/statements`. The view can be joined with YCQL wait events in the [yb_active_session_history](../../active-session-history-monitor/#yb-active-session-history) view on the query ID.
 
-This view is added in a YSQL extension `yb_ycql_utils`, which is not enabled by default.
+This view is added in a YSQL extension `yb_ycql_utils`, which is not enabled by default. `CREATE EXTENSION yb_ycql_utils` on this release installs version 1.2, which includes `yb_latency_histogram`. Clusters that already have the extension from an earlier release keep their current version until you run `ALTER EXTENSION yb_ycql_utils UPDATE`.
 
 The columns of the `ycql_stat_statements` view are described in the following table.
 
@@ -38,6 +38,9 @@ The columns of the `ycql_stat_statements` view are described in the following ta
 | max_time | float8 | Maximum time spent executing the statement, in milliseconds. |
 | mean_time | float8 | Mean time spent executing the statement, in milliseconds. |
 | stddev_time | float8 | Population standard deviation of time spent executing the statement, in milliseconds. |
+| yb_latency_histogram | jsonb | List of latency ranges (buckets) and the number of times the statement was executed in each range. |
+
+The `yb_latency_histogram` column uses the same format and default bucket configuration as the YSQL [pg_stat_statements.yb_latency_histogram](../pg-stat-statements/#yb-latency-histogram-column) column, so the [yb_get_percentile](../pg-stat-statements/#show-latency-percentiles) helper function works with it as well. Refer to the YSQL page for the default [latency range buckets](../pg-stat-statements/#latency-range-buckets). Changing YSQL's `pg_stat_statements.yb_hdr_bucket_factor` setting does not change the YCQL buckets.
 
 ## Examples
 
@@ -60,18 +63,20 @@ Note that as this view is accessible via YSQL, run your examples using [ysqlsh](
     ```
 
     ```output
-                   View "public.ycql_stat_statements"
-       Column    |       Type       | Collation | Nullable | Default
-    -------------+------------------+-----------+----------+---------
-     queryid     | bigint           |           |          |
-     query       | text             |           |          |
-     is_prepared | boolean          |           |          |
-     calls       | bigint           |           |          |
-     total_time  | double precision |           |          |
-     min_time    | double precision |           |          |
-     max_time    | double precision |           |          |
-     mean_time   | double precision |           |          |
-     stddev_time | double precision |           |          |
+                        View "public.ycql_stat_statements"
+            Column        |       Type       | Collation | Nullable | Default
+    ----------------------+------------------+-----------+----------+---------
+     queryid              | bigint           |           |          |
+     query                | text             |           |          |
+     is_prepared          | boolean          |           |          |
+     calls                | bigint           |           |          |
+     total_time           | double precision |           |          |
+     min_time             | double precision |           |          |
+     max_time             | double precision |           |          |
+     mean_time            | double precision |           |          |
+     stddev_time          | double precision |           |          |
+     keyspace             | text             |           |          |
+     yb_latency_histogram | jsonb            |           |          |
     ```
 
 ### Get basic information

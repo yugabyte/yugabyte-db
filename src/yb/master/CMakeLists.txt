@@ -300,6 +300,10 @@ if(YB_LTO_ENABLED)
   # libyb_docdb.so's DT_NEEDED) the flattened LTO link needs yb_pgbackend on the executable link
   # line for lto.py to pull in its objects.
   list(APPEND YB_MASTER_EXE_DEPS yb_pgbackend)
+  # yb-cql links HdrHistogram_c PRIVATE. Dynamic tserver resolves those C symbols inside
+  # libyb-cql.so; the flattened LTO yb-server link does not, so the static lib must appear on
+  # this seed executable's link line.
+  list(APPEND YB_MASTER_EXE_DEPS hdr_histogram)
 endif()
 target_link_libraries(
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
