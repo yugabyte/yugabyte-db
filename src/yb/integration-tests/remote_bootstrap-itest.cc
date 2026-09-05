@@ -2301,7 +2301,9 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
         }
         return leader.get() == ts_idx_to_bootstrap;
       },
-      timeout, "Waiting for ts_idx_to_bootstrap to become leader"));
+      // Leader transfer away from a blacklisted tserver can exceed 10s on a loaded host.
+      MonoDelta::FromSeconds(kTimeMultiplier * 60),
+      "Waiting for ts_idx_to_bootstrap to become leader"));
 
   // Check persistence of previously inserted data.
   auto new_conn = ASSERT_RESULT(ConnectToDB(database));
