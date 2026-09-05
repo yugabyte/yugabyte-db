@@ -183,7 +183,11 @@ yb-admin \
 * *keyspace-type*: Type of the keyspace, ysql or ycql.
 * *keyspace-name*: The namespace, or name of the database or keyspace.
 * *table*: The name of the table.
-* *max-tablets*: The maximum number of tables to be returned. Default is `10`. Set to `0` to return all tablets.
+* *max-tablets*: The maximum number of tablets to be returned. Default is `10`. Set to `0` to return all tablets.
+
+JSON output (`list_tablets ... JSON`) includes `partition_key_start_hex` and `partition_key_end_hex` for each tablet: the tablet's partition key boundaries, hex-encoded. Pass them to [get_table_hash](#get-table-hash) as its *start-key-hex* and *end-key-hex* arguments to hash one tablet's range at a time. The bounds are half-open, with `partition_key_start_hex` inclusive and `partition_key_end_hex` exclusive, so one tablet's end value is the next tablet's start value, and hashing every tablet's range covers the table exactly once. An empty value means unbounded, which is what the first tablet's start and the last tablet's end show.
+
+Passing these through is the only way to hash a range-partitioned table tablet by tablet, because the text output renders range boundaries as a debug string that can't be converted back into keys. For hash-partitioned tables, the hex values also save you the inclusive-to-exclusive conversion that the text output's `hash_split` ranges require.
 
 **Example**
 
@@ -800,28 +804,36 @@ A new backfill job is created for all the `DEFERRED` indexes of the table. The c
 
 Computes an XOR hash and row count over the data in a table, tablet by tablet. Use this to verify data consistency across clusters in an xCluster deployment by comparing hash values at the same hybrid timestamp.
 
-For colocated databases, pass a child table's *table-id* to scope the hash to a single colocated table. To hash all colocated tables sharing a tablet together, pass the colocation parent table ID, which is visible in [list_tables](#list-tables) when system tables are included.
+For colocated databases, pass a child table's *table-id* to scope the hash to a single colocated table. To hash every colocated table sharing a tablet in one command, pass the colocation parent table ID, which is visible in [list_tables](#list-tables) when system tables are included. The parent form reports a separate hash per table rather than one combined value; see the note on colocation parents below.
 
 **Syntax**
 
 ```sh
 yb-admin \
     --master_addresses <master-addresses> \
+    [--max_rows_per_scan <n>] \
     get_table_hash <table-id> \
     [<read-ht>] [<start-key-hex>] [<end-key-hex>]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *table-id*: UUID of the table to hash. Obtain this from [list_tables](#list-tables). For a colocated database, pass the child table UUID to scope the hash to one table, or the colocation parent table UUID to hash all colocated tables in the tablet.
+* *table-id*: UUID of the table to hash. Obtain this from [list_tables](#list-tables). For a colocated database, pass the child table UUID to scope the hash to one table, or the colocation parent table UUID to hash every colocated table in the tablet.
 * *read-ht* (optional): Hybrid timestamp at which to read, as a 64-bit integer. Defaults to the current time. Because the arguments are positional, pass 0 to keep the default when you also need to specify *start-key-hex* / *end-key-hex*. Use the same value on both clusters when comparing hashes for xCluster consistency checks.
-* *start-key-hex* (optional): Inclusive lower bound of the partition-key range to hash, as the hex encoding of a tablet's `partition_key_start` from [list_tablets](#list-tablets). Pass an empty string (`""`) to leave this side unbounded.
-* *end-key-hex* (optional): Exclusive upper bound of the partition-key range, as the hex encoding of `partition_key_end`. `partition_key_end` values from [list_tablets](#list-tablets) are inclusive; add 1 to match this exclusive bound. Pass an empty string (`""`) to leave this side unbounded.
+* *start-key-hex* (optional): Inclusive lower bound of the key range to hash, hex-encoded. Use a tablet's `partition_key_start_hex` from the JSON output of [list_tablets](#list-tablets), or a `Next key` returned by an earlier capped scan (see `--max_rows_per_scan`). Pass an empty string (`""`) for no lower bound.
+* *end-key-hex* (optional): Exclusive upper bound of the key range, hex-encoded. Use a tablet's `partition_key_end_hex` from the JSON output of `list_tablets`; it is already exclusive, so pass it through unchanged. Pass an empty string (`""`) for no upper bound. If you take the boundary from the text output of `list_tablets` instead, add 1 to the 2-byte hash value it prints in a `hash_split` range, because that range ends on an inclusive value.
 
 **Notes**
 
+* When a tablet holds more than one table, as a colocation parent's does, the output reports one `Table <table-id>: rows <n>, XOR hash <hash>` line per table in place of `Total XOR hash`. A row's hash depends on its column IDs and values but not on which table it belongs to, so combining the tables could cancel their hashes out. Compare the per-table lines instead; `Total row count` still covers the whole tablet.
 * Key range arguments (*start-key-hex* / *end-key-hex*) require a concrete child table ID. Using them with a colocation parent table ID returns an error.
-* For hash-partitioned tables, each bound must be a valid 2-byte hash-partition key.
-* *start-key-hex* must be strictly less than *end-key-hex* when both are specified.
+* For hash-partitioned tables, each bound must be either a valid 2-byte hash-partition key, or a `Next key` returned by a prior capped scan (see `--max_rows_per_scan`).
+* When you specify both bounds, *start-key-hex* must be strictly less than *end-key-hex*, or the command returns an error rather than hashing an empty range. An empty bound means unbounded and is always accepted. The two are compared after both have been converted to the same internal key encoding, so a 2-byte hash bound and a longer `Next key` from a capped scan can be used together.
+* `--max_rows_per_scan <n>` (optional, default `0` = unlimited) stops the scan after `n` rows have been hashed, for hash- and range-partitioned tables alike. The output then includes a `Next key: <hex>` line holding the key of the first row that was *not* hashed. The rows covered are those from *start-key-hex* up to but not including `Next key`, so passing `Next key` as *start-key-hex* on the next call, which is an inclusive bound, resumes exactly where the scan stopped without skipping or double-counting a row.
+* When you page through a table this way, every page must use the same *read-ht*, and you have to supply it yourself on the first one: the `Read HT` line reports a formatted hybrid time (`{ physical: <microseconds> }`), not the 64-bit integer *read-ht* takes, which is those microseconds shifted left 12 bits. Left at `0`, each invocation picks its own read time, so the pages are read at different snapshots and, under concurrent writes, neither add up to the table's row count nor XOR together to its hash.
+* A read time stays readable only as long as the YB-TServer keeps history for it, which is `timestamp_history_retention_interval_sec` (default 15 minutes). Each request pins the cutoff for its own duration, so a single scan is safe however long it runs, but a paged scan holding one *read-ht* across many requests fails with `Snapshot too old` once the pinned time ages out, rather than silently hashing a compacted view. For a table too large to page inside that window, either raise the flag on the YB-TServers for the duration of the scan, or hash sub-ranges independently and accept that each range is read at its own time.
+* For a hash-partitioned table, `Next key` is an encoded row key rather than a 2-byte hash value, because a scan that stops in the middle of a hash band has to resume inside that band. Pass it through unchanged, and don't compare it against the 2-byte tablet boundaries from `list_tablets`.
+* `--max_rows_per_scan` needs a YB-TServer that supports the row cap, which arrived with [verify_xcluster_slice](#verify-xcluster-slice) and is newer than the key-range scoping described in the last note: no release up to and including {{<release "2026.1">}} has it. A YB-TServer without it ignores the cap silently rather than returning an error, hashing the entire requested range and printing no `Next key`, so a caller that pages on `Next key` reads the whole range in a single request. A `Total row count` greater than `n` tells you this has happened.
+* `Hash scheme version` identifies the algorithm that produced the hash. **Two hashes are comparable only when their scheme versions are equal.** Under different schemes, identical data hashes to unrelated values, so a comparison across schemes reports a difference that isn't there. Check the version before comparing hashes between clusters or across an upgrade. A YB-TServer too old to report a version shows `0`. If the tablets of one table report different versions, which happens while an upgrade is rolling through a cluster, the command fails instead of combining them into a meaningless total; re-run once every YB-TServer is on the same version.
 * Key-range and per-table colocated scoping require YugabyteDB {{<release "2024.2">}}, {{<release "2025.2">}}, or {{<release "2026.1">}} on both yb-admin and the target YB-TServers. On older YB-TServer versions, the scoping arguments are silently ignored and the full table (or entire colocated tablet) is hashed instead of returning an error, so verify versions before relying on the result in a mixed-version cluster.
 
 **Example: Hash a full table**
@@ -838,22 +850,26 @@ Read HT: { physical: 1748000000000000 }
 Tablet ID: cea3aaac2f10460a880b0b4a2a4b652a
     Row count: 100
     XOR hash: 3825474321
+    Hash scheme version: 1
 
 Tablet ID: e509cf8eedba410ba3b60c7e9138d479
     Row count: 98
     XOR hash: 2910384756
+    Hash scheme version: 1
 
 Tablet ID: f1a234b5c6d7e8f9a0b1c2d3e4f5a6b7
     Row count: 102
     XOR hash: 1029384756
+    Hash scheme version: 1
 
 Total row count: 300
 Total XOR hash: 1948762961
+Hash scheme version: 1
 ```
 
 **Example: Hash a partition-key range**
 
-Use this to narrow down where data diverged across clusters (bisecting after a whole-table mismatch), or to hash only a fraction of a very large table. For example, sampling a random range periodically, or splitting a full scan into non-overlapping ranges run in parallel. *start-key-hex* and *end-key-hex* are the hex encodings of `partition_key_start` and `partition_key_end` which you can obtain from [list_tablets](#list-tablets). For hash-partitioned tables, `list_tablets` prints each tablet's range as `hash_split: [0x..., 0x...]`; use the values without the `0x` prefix. Remember that `list_tablets` shows `partition_key_end` as inclusive, while *end-key-hex* is exclusive, so add 1 to the end value to land on the same boundary. The range is logical and cluster-independent; each cluster resolves it against its own tablet boundaries.
+Use this to narrow down where data diverged across clusters (bisecting after a whole-table mismatch), or to hash only a fraction of a very large table. For example, sampling a random range periodically, or splitting a full scan into non-overlapping ranges run in parallel. *start-key-hex* and *end-key-hex* are the hex encodings of a tablet's partition key boundaries, which you can obtain from [list_tablets](#list-tablets). The simplest source is its JSON output, whose `partition_key_start_hex` and `partition_key_end_hex` fields need no conversion. In the text output, a hash-partitioned tablet's range is printed as `hash_split: [0x..., 0x...]`; use those values without the `0x` prefix, and add 1 to the end value, because the text output ends the range on an inclusive value while *end-key-hex* is exclusive. The range is logical and cluster-independent; each cluster resolves it against its own tablet boundaries.
 
 ```sh
 ./bin/yb-admin \
@@ -862,6 +878,67 @@ Use this to narrow down where data diverged across clusters (bisecting after a w
 ```
 
 This hashes the lower half of the hash-partition space (unbounded start through `0x8000` exclusive).
+
+**Example: Page through a large table**
+
+Cap each scan with `--max_rows_per_scan`, and pass the same *read-ht* to every call so that the pages describe one instant. `7159808000000000000` here is the hybrid time to read at, supplied rather than taken from the output.
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --max_rows_per_scan 1000 \
+    get_table_hash 000033e8000030008000000000004000 7159808000000000000
+```
+
+```output
+Processing 3 tablets for table 000033e8000030008000000000004000
+Read HT: { physical: 1748000000000000 }
+Tablet ID: cea3aaac2f10460a880b0b4a2a4b652a
+    Row count: 1000
+    XOR hash: 3825474321
+    Hash scheme version: 1
+
+Total row count: 1000
+Total XOR hash: 3825474321
+Hash scheme version: 1
+Next key: 4780000000000021
+```
+
+Pass `Next key` back as *start-key-hex*, with the same *read-ht*, to hash the next page:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --max_rows_per_scan 1000 \
+    get_table_hash 000033e8000030008000000000004000 7159808000000000000 4780000000000021
+```
+
+Repeat until a scan prints no `Next key`, meaning it reached the end of the range. The row counts then sum to the table's, and the XOR hashes combine to the value a single uncapped scan at the same *read-ht* would have produced.
+
+**Example: Hash every table in a colocated tablet**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    get_table_hash 000033e8000030008000000000000000
+```
+
+```output
+Processing 1 tablets for table 000033e8000030008000000000000000
+Read HT: { physical: 1748000000000000 }
+Tablet ID: 9b1c0e4f5a2d43c7b8e6f0a1d2c3b4e5
+    Row count: 80
+    Table 000033e8000030008000000000004001: rows 50, XOR hash 3825474321
+    Table 000033e8000030008000000000004002: rows 30, XOR hash 2910384756
+    Hash scheme version: 1
+
+Total row count: 80
+Table 000033e8000030008000000000004001: rows 50, XOR hash 3825474321
+Table 000033e8000030008000000000004002: rows 30, XOR hash 2910384756
+Hash scheme version: 1
+```
+
+Compare each table's line against the same table on the other cluster. Table IDs differ between clusters, so match the lines up by table name using [list_tables](#list-tables).
 
 ---
 
@@ -2671,6 +2748,160 @@ yb-admin \
 
 * *target-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *namespace-id*: The namespace UUID.
+
+#### verify_xcluster_slice
+
+Compares one key range of a source table against the matching table on the target, and reports whether the two hold the same rows. Both sides are hashed at the same hybrid time, so writes still in flight are not reported as divergence.
+
+The catalogs are compared before and after hashing, so a DDL that lands mid-hash is reported as `kSchemaMismatch` rather than `kDiverged`. A mismatch is re-hashed at the same time before `kDiverged` is reported. Replication lag, `SnapshotTooOld`, and timeouts are always `kStarved`, never `kDiverged`.
+
+`--master_addresses` is the **target**. `--source_master_addresses` is required.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <target-master-addresses> \
+    --source_master_addresses <source-master-addresses> \
+    [--verify_recheck_attempts <n>] \
+    [--verify_recheck_backoff_ms <ms>] \
+    [--max_rows_per_scan <n>] \
+    verify_xcluster_slice <source-table-id> <target-table-id> [<read-ht>] \
+    [<start-key-hex>] [<end-key-hex>]
+```
+
+* *source-table-id*, *target-table-id*: UUIDs of the two tables to compare, obtained from [list_tables](#list-tables) on each universe.
+* *read-ht* (optional): Hybrid timestamp to read both sides at. Omit it, or pass `0`, to use the target's xCluster safe time.
+* *start-key-hex*, *end-key-hex* (optional): Key range to compare, in the same form as [get_table_hash](#get-table-hash). Omit both to compare the whole table.
+
+**Read time**
+
+With *read-ht* omitted, both sides are read at the target's xCluster safe time for the table's namespace. That is a source-universe time already applied on the target, so it is immediately readable on both sides. It requires transactional or automatic-mode replication; without it the command reports `kInfra` and you must pass *read-ht* yourself.
+
+Let each slice resolve its own time when working through a large table. One time reused across a long run eventually ages past the source's history retention, after which every remaining slice fails with `SnapshotTooOld` and reports `kStarved`. Pass *read-ht* only to reproduce a slice at exactly the same instant.
+
+A *read-ht* ahead of the target's xCluster safe time is reported `kStarved` without either side being hashed, because the target has not necessarily applied everything the source held at that time, and comparing there would report lag as data loss.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --source_master_addresses ip4:7100,ip5:7100,ip6:7100 \
+    verify_xcluster_slice 000033e8000030008000000000004001 000042c4000030008000000000004001
+```
+
+```output.json
+{"result":"kMatch","attempts":1,"read_ht":6923000000000000000,"source_table_id":"000033e8000030008000000000004001","target_table_id":"000042c4000030008000000000004001","start_key_hex":"","end_key_hex":"","detail":"","source":{"xor_hash":3825474321,"row_count":100,"read_ht":6923000000000000000,"hash_scheme_version":1},"target":{"xor_hash":3825474321,"row_count":100,"read_ht":6923000000000000000,"hash_scheme_version":1}}
+```
+
+* `result`: `kMatch`, `kTransient`, `kDiverged`, `kStarved`, `kInfra`, or `kSchemaMismatch`.
+* `attempts`: how many times the slice was hashed.
+* `read_ht`: the time both sides were read at. Omitted only when no time was ever established, in which case nothing was hashed.
+* `end_key_hex`: the exclusive end actually hashed. Earlier in key order than the requested end when `--max_rows_per_scan` stopped the scan.
+* `source`, `target`: each carries `xor_hash`, `row_count`, `read_ht`, `hash_scheme_version`, and `attempt`. A side appears only if it hashed successfully at least once, which may have been an earlier attempt than `attempts` reports; `attempt` names the one that produced it. Totals surviving from an earlier attempt were read at the same `read_ht`, so they still describe this slice at one instant.
+* `detail`: the reason for a result other than `kMatch`.
+
+The exit status is 0 whenever the command ran, whatever the verdict, so a driver reads `result` rather than `$?`. [verify_xcluster_group](#verify-xcluster-group) deliberately does the opposite.
+
+**Hash scheme versions**
+
+`hash_scheme_version` names the algorithm a side hashed under. Two hashes are comparable only when the versions are equal; under different schemes the same rows hash to unrelated values. Because the two universes are upgraded independently, a pair sits on different schemes for part of an upgrade. The command then reports `kInfra`, never `kDiverged`, and does not spend its rechecks, because the scheme is a property of the binaries and cannot change between attempts. Re-run once both universes are on the same version.
+
+Version `0` is what a YB-TServer too old to report a scheme hashes under, and is reported `kInfra` even when both sides report `0` and their hashes agree: that scheme gives a row's values no column or row identity, so agreement under it is not evidence that the rows match. No release up to and including {{<release "2026.1">}} reports a scheme.
+
+**Retries and lag**
+
+`kStarved` means nothing was compared and the slice should be retried later. The command sets no bound on that, and cannot tell lag that will pass from a cluster that will not answer — an unreachable YB-Master or YB-TServer produces a timed-out RPC, classified `kStarved` exactly as lag is. Impose your own attempt or elapsed-time bound per slice, and check that both universes are reachable before treating repeated `kStarved` results as lag.
+
+If the closing catalog read fails rather than differing — a briefly unreachable YB-Master, say — that failure becomes the result and overrides an otherwise clean `kMatch`, because nothing then rules out a DDL having landed while hashing was in flight. `detail` carries the error, and both sides' totals are still present, which is what distinguishes this from a slice that never hashed.
+
+`kSchemaMismatch` covers the catalog differences that change how DocDB packs or orders a row: column ids, QL types, key and hash-key membership, nullability, and sorting type. It deliberately does not cover the default value a schema-versioned `ADD COLUMN ... DEFAULT` substitutes for rows written before the column existed, because a column with no such rows hashes identically on two sides that disagree there. The cost is that two sides substituting different defaults are reported `kDiverged`, so compare the two catalogs' default values before concluding that rows were lost on such a table.
+
+**Paging a large slice**
+
+`--max_rows_per_scan` stops the source scan after `n` rows and freezes that point as the exclusive end for the target hash and any rechecks, so both sides compare the same window. `end_key_hex` reports that frozen end. To page through a table, pass each slice's `end_key_hex` as the *start-key-hex* of the next call, keep *end-key-hex* at the range you are covering, and stop when `end_key_hex` comes back equal to the requested end. Advance only past slices that reached a verdict: a `kStarved` or `kInfra` slice has to be re-run, not paged past.
+
+The row cap needs YB-TServer support that arrived with this command, later than the key-range scoping described under [get_table_hash](#get-table-hash); no release up to and including {{<release "2026.1">}} has it. An older YB-TServer ignores the cap silently, hashing the whole range in one request and reporting no frozen end, so a driver paging on `end_key_hex` reads everything at once. A row count above `n` is the signal that this happened.
+
+#### verify_xcluster_group
+
+Verifies every table in one inbound xCluster replication group, slice by slice, using [verify_xcluster_slice](#verify-xcluster-slice) for each slice. The table pairs come from the replication group, so you name a group rather than enumerating tables, and each slice resolves its own read time from the target's xCluster safe time.
+
+Use this to sweep a replicated database on a schedule. An invocation always verifies the whole group, and writes no state of its own.
+
+`--master_addresses` is the **target**. `--source_master_addresses` is required, because a replication group records its source masters for display only, not in a form that can be connected to.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <target-master-addresses> \
+    --source_master_addresses <source-master-addresses> \
+    [--max_rows_per_scan <n>] \
+    [--max_concurrent_ranges <n>] \
+    [--verify_skip_tables <source-table-ids>] \
+    [--verify_recheck_attempts <n>] \
+    [--verify_recheck_backoff_ms <ms>] \
+    verify_xcluster_group <replication-group-id>
+```
+
+**How the work is divided**
+
+Each table is split into key ranges taken from the source's tablet boundaries, and each range is verified independently. A range is a range of key values rather than a reference to a tablet, so it means the same thing on both universes even when the target is split into different tablets.
+
+Two flags shape a sweep. Neither reduces what is verified, because a sweep always covers the whole group:
+
+* `--max_rows_per_scan <n>` caps a single scan, so no one request runs unboundedly long and no read time is held open across a whole table. Without it, each range is hashed in one scan.
+* `--max_concurrent_ranges <n>` sets how many ranges are verified at once. Default `1` verifies them one at a time. Raising it shortens a sweep on a table with many tablets, at the cost of more concurrent load on both universes.
+
+Slices within one range are always sequential, because each starts where the last stopped, so concurrency buys nothing on a table with a single tablet. Ranges can also finish in any order, so the slice lines are not in key order when `--max_concurrent_ranges` is greater than 1.
+
+`--verify_skip_tables` takes a comma-separated list of source table ids that are never verified. Use it for tables whose column types you do not want compared by hash. Skips are reported on stderr.
+
+**Which tables are verified**
+
+Every table the replication group names, plus the tables it can only name indirectly.
+
+A colocated database replicates through a single stream on its colocation parent, so the group names that parent and never the tables holding the rows. The parent itself has no rows, so it is expanded into the tables sharing its tablet, matched between the two universes on schema-qualified table name — the same identity xCluster setup matches on.
+
+Indexes are verified. A non-colocated index has its own tablets and its own stream, so the group names it directly; a colocated index has neither, and is reachable only through that expansion.
+
+Two things are deliberately left out, both noted on stderr. Sequence data, which an automatic DDL mode group replicates under a synthetic table ID naming no table in either catalog, is not hashed, so a `kMatch` says nothing about whether sequence values agree. `yb_xcluster_ddl_replication.replicated_ddls` is excluded because xCluster never replicates it: each universe records the DDL it executed locally, so the two sides are expected to differ.
+
+A table found on one universe and not the other is reported in the summary's `unpaired` and makes the result `kSchemaMismatch`. This is the one divergence comparing pairs cannot see, since every pair can hash to `kMatch` while one universe holds a table the other does not. Under automatic DDL replication it is also the normal transient state just after a `CREATE` or `DROP`, so it is reported and weighed rather than treated as a hard error that would leave the rest of the group unverified.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --source_master_addresses ip4:7100,ip5:7100,ip6:7100 \
+    verify_xcluster_group repl_group_1
+```
+
+```output.json
+{"result":"kMatch","attempts":1,"read_ht":6923000000000000000,"source_table_id":"000033e8000030008000000000004001","target_table_id":"000042c4000030008000000000004001","start_key_hex":"","end_key_hex":"","detail":"","source":{"xor_hash":3825474321,"row_count":100,"read_ht":6923000000000000000,"hash_scheme_version":1},"target":{"xor_hash":3825474321,"row_count":100,"read_ht":6923000000000000000,"hash_scheme_version":1}}
+{"result":"kMatch","slices":1,"tables":1,"counts":{"kMatch":1}}
+```
+
+Each slice prints a [verify_xcluster_slice](#verify-xcluster-slice) outcome as it completes, one JSON object per line on stdout, followed by a final summary line. The summary is the line carrying `slices` and `counts`; a slice line carries `source_table_id`. Everything that is not a record, such as skip notices and errors, goes to stderr, so stdout can be fed to a JSON parser unfiltered.
+
+The summary carries:
+
+* `result`: the worst verdict any slice reported. `kDiverged` outranks `kInfra`, which outranks `kSchemaMismatch`, which outranks `kStarved`, which outranks `kMatch` — ordered by what you have to do about it, from data that is gone through data that simply has not been verified yet. `kTransient` counts as `kMatch`; the slice's own line still says which it was.
+* `slices` and `tables`: how many slices ran, and how many tables they covered.
+* `counts`: slices per verdict.
+* `unfinished`: source table ids the sweep did not cover completely, present only when there are any.
+* `unpaired`: tables found on one universe and not the other, present only when there are any. These are never verifiable, so re-running does not help; reconcile the two catalogs instead.
+
+Unlike `verify_xcluster_slice`, the exit status is meaningful: 0 when every slice matched, non-zero otherwise, so a scheduled sweep can alert on the exit status alone. Here 0 means the group was verified, not merely that nothing went wrong: a sweep always runs to completion, and any range it could not cover carries a verdict other than `kMatch`, which forces a non-zero exit.
+
+**Ranges that reach no verdict**
+
+A slice reported `kStarved`, `kInfra`, or `kSchemaMismatch` says nothing about its data, and leaves no position to continue from, since its end key is the range it was asked about rather than one it hashed. The sweep abandons that range, which keeps one lagging tablet from stopping the run. The table's other ranges are independent and are still verified, and the table is listed in the summary's `unfinished` so you can re-run the group once the cause has cleared. Nothing narrower is offered: a partly covered table is re-verified in full.
+
+A sweep that ends `kStarved` has therefore verified less than one that ends `kMatch`, even though both reached the end of the group. `counts` says how many slices reached no verdict, and `unfinished` says which tables they cost you.
 
 ---
 
