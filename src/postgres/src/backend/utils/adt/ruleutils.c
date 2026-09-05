@@ -1672,30 +1672,41 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 
 		/*
 		 * YB: Emit split clause based on the current configuration.
-		 * - Hash indexes: SPLIT INTO N TABLETS (current tablet count).
+		 * - Follow-table indexes: SPLIT FOLLOWING TABLE, recovered from the
+		 *   yb_presplit reloption.  This is a declarative property rather than
+		 *   a tablet count, so it is emitted whatever the index's current
+		 *   tablet count is; emitting SPLIT INTO N TABLETS here instead would
+		 *   silently downgrade the index to an ordinary hash index on restore.
+		 * - Other hash indexes: SPLIT INTO N TABLETS (current tablet count).
 		 * - Range indexes: SPLIT AT VALUES (...) from yb_presplit, since
 		 *   SPLIT INTO N TABLETS is not valid for range-partitioned indexes.
 		 */
-		if (includeYbMetadata && indexrel->yb_table_properties &&
-			indexrel->yb_table_properties->num_tablets > 1)
+		if (includeYbMetadata && indexrel->yb_table_properties)
 		{
-			if (indexrel->yb_table_properties->num_hash_key_columns > 0)
-			{
-				appendStringInfo(&buf, " SPLIT INTO %" PRIu64 " TABLETS",
-								 indexrel->yb_table_properties->num_tablets);
-			}
-			else if (!amroutine->yb_amiscopartitioned)
-			{
-				/* Skip range SPLIT for copartitioned AMs (e.g. ybhnsw); not valid on vector index. */
-				char	   *presplit = yb_extract_reloption_value(indexrelid,
-																  "yb_presplit");
+			char	   *presplit = yb_extract_reloption_value(indexrelid,
+															  "yb_presplit");
 
-				if (presplit && presplit[0] == '(')
+			if (presplit && pg_strcasecmp(presplit, "FOLLOWING TABLE") == 0)
+			{
+				appendStringInfoString(&buf, " SPLIT FOLLOWING TABLE");
+			}
+			else if (indexrel->yb_table_properties->num_tablets > 1)
+			{
+				if (indexrel->yb_table_properties->num_hash_key_columns > 0)
+				{
+					appendStringInfo(&buf, " SPLIT INTO %" PRIu64 " TABLETS",
+									 indexrel->yb_table_properties->num_tablets);
+				}
+				/* Skip range SPLIT for copartitioned AMs (e.g. ybhnsw); not valid on vector index. */
+				else if (!amroutine->yb_amiscopartitioned &&
+						 presplit && presplit[0] == '(')
 				{
 					appendStringInfo(&buf, " SPLIT AT VALUES %s", presplit);
-					pfree(presplit);
 				}
 			}
+
+			if (presplit)
+				pfree(presplit);
 		}
 
 		/*

@@ -910,6 +910,12 @@ YbDdlRollbackEnabled()
 extern bool yb_use_hash_splitting_by_default;
 
 /*
+ * Prototype: when true, allows 'CREATE INDEX ... SPLIT FOLLOWING TABLE' for a
+ * hash-partitioned secondary index whose hash key matches its base table.
+ */
+extern bool yb_enable_follow_table_index;
+
+/*
  * If set to true, non-key columns of secondary indexes are updated in-place
  * when no key columns are modified.
  */

@@ -2334,6 +2334,12 @@ bool		yb_enable_replication_origin_shared = true;
 
 bool		yb_use_hash_splitting_by_default = true;
 
+/*
+ * Prototype: gates the 'SPLIT FOLLOWING TABLE' CREATE INDEX syntax. Mirrors the gflag
+ * --ysql_yb_enable_follow_table_index in common_flags.cc.
+ */
+bool		yb_enable_follow_table_index = false;
+
 bool		yb_xcluster_automatic_mode_target_ddl = false;
 
 bool		yb_enable_extended_sql_codes = false;
@@ -7686,6 +7692,25 @@ YbGetSplitOptions(Relation rel)
 	YbOptSplit *split_options = makeNode(YbOptSplit);
 
 	/*
+	 * YB: A follow-table index's split is a declarative property, not a tablet
+	 * count or a set of split points, so it cannot be recovered from the
+	 * relation's live tablet layout.  Recover it from the persisted
+	 * yb_presplit reloption instead.  Without this, operations that rebuild
+	 * the DocDB relation while preserving split options -- REINDEX, ALTER
+	 * TABLE rewrites, TRUNCATE -- would silently recreate the index as an
+	 * ordinary hash index with whatever tablet count it happened to have.
+	 */
+	{
+		const char *presplit = YbRelationGetPresplit(rel);
+
+		if (presplit && pg_strcasecmp(presplit, "FOLLOWING TABLE") == 0)
+		{
+			split_options->split_type = FOLLOW_TABLE;
+			return split_options;
+		}
+	}
+
+	/*
 	 * The split type is NUM_TABLETS when the relation has hash key columns
 	 * OR if the relation's range key is currently being dropped. Otherwise,
 	 * the split type is SPLIT_POINTS.
@@ -8016,6 +8041,7 @@ YbRelationIsHashPartitioned(Relation rel)
  *
  * - SPLIT INTO N TABLETS  requires a hash-partitioned relation
  * - SPLIT AT VALUES (...) requires a range-partitioned relation
+ * - SPLIT FOLLOWING TABLE requires a hash-partitioned index (YB)
  */
 void
 YbValidatePresplitForRelation(Relation rel, const char *presplit_str)
@@ -8036,14 +8062,29 @@ YbValidatePresplitForRelation(Relation rel, const char *presplit_str)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("yb_presplit with split points is not yet supported for hash partitioned tables")));
+
+	if (split->split_type == FOLLOW_TABLE)
+	{
+		if (rel->rd_rel->relkind != RELKIND_INDEX &&
+			rel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("SPLIT FOLLOWING TABLE is only valid for a secondary index")));
+
+		if (!is_hash)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("HASH columns must be present to follow the base table's split")));
+	}
 }
 
 /*
  * Parse a yb_presplit reloption value into a YbOptSplit node.
  *
- * The persisted value comes in three flavors, all of which are accepted:
+ * The persisted value comes in four flavors, all of which are accepted:
  *   - A bare positive integer: "5"               (SPLIT INTO N TABLETS)
  *   - A bare split-point list: "((100),(200))"   (SPLIT AT VALUES (...))
+ *   - A bare follow clause:    "FOLLOWING TABLE" (SPLIT FOLLOWING TABLE)
  *   - A full clause:           "SPLIT INTO 5 TABLETS" or
  *                              "SPLIT AT VALUES ((100),(200))"
  *
@@ -8072,7 +8113,8 @@ YbParsePresplitString(const char *presplit_str)
 		query = prefixed = psprintf("AT VALUES %s", presplit_str);
 	else if (pg_strncasecmp(presplit_str, "SPLIT", 5) == 0 ||
 			 pg_strncasecmp(presplit_str, "INTO", 4) == 0 ||
-			 pg_strncasecmp(presplit_str, "AT", 2) == 0)
+			 pg_strncasecmp(presplit_str, "AT", 2) == 0 ||
+			 pg_strncasecmp(presplit_str, "FOLLOWING", 9) == 0)
 		query = presplit_str;
 	else
 		/* Treat anything else as the operand of SPLIT INTO N TABLETS. */
@@ -8104,6 +8146,17 @@ YbSplitOptionsToPresplitString(YbOptSplit *split_options)
 	{
 		/* Format: ((val1), (val2), ...) */
 		return YbSplitPointsToString(split_options->split_points);
+	}
+	else if (split_options->split_type == FOLLOW_TABLE)
+	{
+		/*
+		 * YB: SPLIT FOLLOWING TABLE carries no operand.  Persisting it as a
+		 * yb_presplit reloption is what makes the property survive
+		 * dump/restore and REINDEX: without it, pg_get_indexdef would fall
+		 * back to emitting the index's current tablet count and the index
+		 * would silently be recreated as an ordinary hash index.
+		 */
+		return pstrdup("FOLLOWING TABLE");
 	}
 
 	return NULL;

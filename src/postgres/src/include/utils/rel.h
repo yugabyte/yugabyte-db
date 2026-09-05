@@ -773,8 +773,9 @@ typedef struct YbParitionedTableOptions
 /*
  * YbRelationGetPresplit
  *		Returns the relation's yb_presplit reloption setting, or NULL if
- *		unset.  The string is either a number (for SPLIT INTO N TABLETS)
- *		or a split-point list (for SPLIT AT VALUES ((...),...)).
+ *		unset.  The string is either a number (for SPLIT INTO N TABLETS),
+ *		a split-point list (for SPLIT AT VALUES ((...),...)), or the literal
+ *		"FOLLOWING TABLE" (for SPLIT FOLLOWING TABLE).
  *
  *		For RELKIND_PARTITIONED_TABLE, rd_options is a YbParitionedTableOptions;
  *		for everything else (heap, matview, index, partitioned index) it is a

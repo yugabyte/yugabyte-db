@@ -285,6 +285,11 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
   }
   master_->tablet_split_manager().MaybeDoSplitting(tables, tablet_info_map, epoch);
 
+  // Prototype (follow-table index): reconcile follow-table index tablet boundaries to match
+  // their base tables. No-op unless the follow-table feature flag is enabled.
+  WARN_NOT_OK(catalog_manager_->ReconcileFollowTableIndexSplits(tables, epoch),
+              "Failed to reconcile follow-table index splits");
+
   WARN_NOT_OK(master_->clone_state_manager().Run(), "Failed to run CloneStateManager: ");
 
   if (!to_delete.empty() || catalog_manager_->AreTablesDeletingOrHiding()) {

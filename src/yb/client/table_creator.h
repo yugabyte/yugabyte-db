@@ -148,6 +148,10 @@ class YBTableCreator {
   // For index table: sets whether to do online schema migration when creating index.
   YBTableCreator& skip_index_backfill(const bool skip_index_backfill);
 
+  // Prototype: for index table, sets whether the index follows its base table's
+  // tablet split mapping and placement (SPLIT FOLLOWING TABLE).
+  YBTableCreator& follow_table_mode(master::YbFollowTableMode mode);
+
   // For vector index table: adds vector index-specific options.
   YBTableCreator& add_vector_options(const PgVectorIdxOptionsPB& vec_options);
 
@@ -224,6 +228,9 @@ class YBTableCreator {
   std::unique_ptr<IndexInfoPB> index_info_;
 
   bool skip_index_backfill_ = false;
+
+  // Prototype: follow-table mode for a secondary index (SPLIT FOLLOWING TABLE).
+  master::YbFollowTableMode follow_table_mode_ = master::FOLLOW_TABLE_NONE;
 
   bool TEST_use_old_style_create_request_ = false;
 

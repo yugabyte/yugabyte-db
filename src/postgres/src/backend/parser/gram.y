@@ -4882,6 +4882,14 @@ SplitClause:
       	  $$->num_tablets = -1;
       	  $$->split_points = $4;
         }
+      | FOLLOWING TABLE
+        {
+      	  /* YB: index follows its base table's split mapping (SPLIT FOLLOWING TABLE). */
+      	  $$ = makeNode(YbOptSplit);
+      	  $$->split_type = FOLLOW_TABLE;
+      	  $$->num_tablets = -1;
+      	  $$->split_points = NULL;
+        }
       ;
 
 yb_split_points:
