@@ -64,8 +64,6 @@ class Status;
 
 namespace rpc {
 
-class TraceContextPB;
-
 Result<std::pair<RefCntBuffer, size_t>> SerializeResponse(
     size_t body_size, size_t additional_size, const google::protobuf::Message& header,
     AnyMessageConstPtr body);
@@ -109,15 +107,30 @@ struct ParsedRemoteMethod {
   Slice method;
 };
 
-// Builds a SpanContext from a TraceContextPB (shared-memory path). Fails if any field is missing or
-// the trace/span ids are zero.
-Result<opentelemetry::trace::SpanContext> ToSpanContext(const TraceContextPB& trace_context);
-
 Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
 
 // Parses a RequestHeader.trace_context wire slice into a SpanContext (RPC path). Fails if any field
 // is missing or the trace/span ids are zero.
 Result<opentelemetry::trace::SpanContext> ParseTraceContext(Slice buf);
+
+class TraceContextPB;
+
+// Serializes a SpanContext as a length-prefixed TraceContextPB blob for the shared-memory
+// exchange; ParseTraceContext reads it back. Always emits the length prefix (zero when unset).
+class TraceContextSerializer {
+ public:
+  TraceContextSerializer();
+  ~TraceContextSerializer();
+
+  void SetTraceContext(const opentelemetry::trace::SpanContext& span_context);
+  size_t SerializedSize() const;
+  uint8_t* SerializeToArray(uint8_t* out) const;
+
+ private:
+  std::unique_ptr<TraceContextPB> trace_context_;
+  size_t serialized_size_ = 0;
+};
+
 Status ParseMetadata(Slice buf, AnyMessagePtr out);
 Status ParseMetadataFromSharedMemory(uint8_t** input, size_t length, AnyMessagePtr out);
 

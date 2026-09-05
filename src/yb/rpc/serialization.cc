@@ -454,14 +454,39 @@ Result<opentelemetry::trace::SpanContext> ParseTraceContext(Slice buf) {
   return BuildSpanContext(trace_id_hi, trace_id_lo, span_id, version_and_flags);
 }
 
-Result<opentelemetry::trace::SpanContext> ToSpanContext(const TraceContextPB& trace_context) {
-  if (!trace_context.has_trace_id_hi() || !trace_context.has_trace_id_lo() ||
-      !trace_context.has_span_id() || !trace_context.has_version_and_flags()) {
-    return STATUS(Corruption, "Incomplete trace context: missing field");
+TraceContextSerializer::TraceContextSerializer() = default;
+TraceContextSerializer::~TraceContextSerializer() = default;
+
+void TraceContextSerializer::SetTraceContext(
+    const opentelemetry::trace::SpanContext& span_context) {
+  if (!span_context.IsValid()) {
+    return;
   }
-  return BuildSpanContext(
-      trace_context.trace_id_hi(), trace_context.trace_id_lo(), trace_context.span_id(),
-      trace_context.version_and_flags());
+  const auto trace_id = span_context.trace_id();
+  const auto span_id = span_context.span_id();
+  trace_context_ = std::make_unique<TraceContextPB>();
+  // Split the 16-byte trace id into two big-endian 64-bit halves; the span id is one big-endian
+  // 64-bit value -- the layout ParseTraceContext reads back on the tserver.
+  trace_context_->set_trace_id_hi(BigEndian::Load64(trace_id.Id().data()));
+  trace_context_->set_trace_id_lo(BigEndian::Load64(trace_id.Id().data() + 8));
+  trace_context_->set_span_id(BigEndian::Load64(span_id.Id().data()));
+  // Low byte: flags; high byte: the (currently unused) version.
+  constexpr uint32_t kVersion = 0;
+  trace_context_->set_version_and_flags((kVersion << 8) | span_context.trace_flags().flags());
+  serialized_size_ = trace_context_->ByteSizeLong();
+}
+
+size_t TraceContextSerializer::SerializedSize() const {
+  return CodedOutputStream::VarintSize32(static_cast<uint32_t>(serialized_size_)) +
+         serialized_size_;
+}
+
+uint8_t* TraceContextSerializer::SerializeToArray(uint8_t* out) const {
+  out = CodedOutputStream::WriteVarint32ToArray(static_cast<uint32_t>(serialized_size_), out);
+  if (serialized_size_ == 0) {
+    return out;
+  }
+  return trace_context_->SerializeWithCachedSizesToArray(out);
 }
 
 std::string ParsedRequestHeader::RemoteMethodAsString() const {
