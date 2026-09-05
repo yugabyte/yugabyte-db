@@ -25,6 +25,15 @@ enableGitInfo = true
 [markup.goldmark.parser.attribute]
   block = true
 
+[outputFormats.Markdown]
+  mediaType = "text/markdown"
+  isPlainText = true
+
+[outputs]
+  home = ["HTML", "Markdown"]
+  page = ["HTML", "Markdown"]
+  section = ["HTML", "Markdown"]
+
 [security]
   [security.funcs]
     getenv = [
