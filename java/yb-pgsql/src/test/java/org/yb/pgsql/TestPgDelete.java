@@ -238,4 +238,28 @@ public class TestPgDelete extends BasePgSQLTest {
       assertEquals(expectedRows, getSortedRowList(returning));
     }
   }
+
+  @Test
+  public void testBasicDelete3() throws SQLException {
+    String tableName = "test_basic_del3";
+    createSimpleTable(tableName);
+
+    // Fill in the table:
+    List<Row> expectedRows = new ArrayList<>();
+    try (Statement insert_stmt = connection.createStatement()) {
+      String insert_format = "INSERT INTO %s(h, r, vi) VALUES(%d, %d, %d)";
+      for (long h = 0; h < 3; h++) {
+        String insert_text = String.format(insert_format, tableName, 1, h, h);
+        insert_stmt.execute(insert_text);
+      }
+    }
+
+    // Verify RETURNING clause.
+    try (Statement statement = connection.createStatement()) {
+      int deletedRowCount  = statement.executeUpdate("DELETE FROM test_basic_del3 f1 "
+          + "USING test_basic_del3 f2 WHERE f1.r < f2.r and f1.h = f2.h;");
+
+      assertEquals(2, deletedRowCount);
+    }
+  }
 }
