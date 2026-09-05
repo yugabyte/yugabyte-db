@@ -3259,18 +3259,6 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
         operation->new_table_name().ToBuffer(),
         operation->op_id(),
         current_table_info->table_id);
-    // We shouldn't update the attributes of the colocation parent table's metrics when we alter
-    // a colocated table.
-    if (!metadata_->colocated()) {
-      if (table_metrics_entity_) {
-        table_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
-        table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
-      }
-      if (tablet_metrics_entity_) {
-        tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
-        tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
-      }
-    }
   } else {
     metadata_->SetSchema(
         *operation->schema(), operation->index_map(), deleted_cols,
@@ -3278,6 +3266,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
         operation->op_id(),
         current_table_info->table_id);
   }
+  RefreshMetricsAttributes();
 
   // The alter could bring back a vector column that was missing when its vector index table was
   // added to the tablet (see TabletVectorIndexes::DoCreateIndex), instantiate such indexes now.
@@ -3310,6 +3299,22 @@ void Tablet::ArmColocatedTombstoneCaches() {
   auto safe_time = SafeTime(RequireLease::kFalse);
   if (safe_time.ok() && safe_time->is_valid()) {
     metadata_->ArmColocatedTombstoneCaches(*safe_time);
+  }
+}
+
+void Tablet::RefreshMetricsAttributes() {
+  // We shouldn't update the attributes of the colocation parent table's metrics when we alter
+  // a colocated table.
+  if (metadata_->colocated()) {
+    return;
+  }
+
+  const auto attrs = metadata_->primary_table_info()->CreateMetricAttributeMap();
+  if (table_metrics_entity_) {
+    table_metrics_entity_->SetAttributes(attrs);
+  }
+  if (tablet_metrics_entity_) {
+    tablet_metrics_entity_->SetAttributes(attrs);
   }
 }
 
