@@ -117,6 +117,10 @@ DEFINE_test_flag(int32, slowdown_backfill_alter_table_rpcs_ms, 0,
 DEFINE_test_flag(int32, slowdown_backfill_job_deletion_ms, 0,
     "Slows down backfill job deletion so that backfill job can be read by test.");
 
+DEFINE_test_flag(bool, block_index_backfill_ordering_generation_release, false,
+    "Skip releasing index-backfill ordering generations in the terminal funnel, keeping them "
+    "active so tests can run the verification scan against a completed build.");
+
 DEFINE_test_flag(bool, skip_index_backfill, false,
     "Skips backfilling the data on tservers and leaves the index in inconsistent state.");
 
@@ -1449,7 +1453,8 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
   RETURN_NOT_OK(ClearCheckpointStateInTablets());
   indexed_table_->ClearIsBackfilling();
   master_->tablet_split_manager().ReenableSplittingForBackfillingTable(indexed_table_->id());
-  if (unique_index_backfill_mode() == UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL) {
+  if (unique_index_backfill_mode() == UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL &&
+      !FLAGS_TEST_block_index_backfill_ordering_generation_release) {
     // Terminal funnel: every success/failure/abort path of a SKIP_ALL job passes through here,
     // so the ordering generations are released (and index-table splitting re-enabled) on all of
     // them. At-least-once; backstops converge anything this misses (e.g. master death here).
