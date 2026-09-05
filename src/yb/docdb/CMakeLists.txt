@@ -102,6 +102,7 @@ set(DOCDB_SRCS
         shared_lock_manager.cc
         transaction_dump.cc
         transaction_status_cache.cc
+        unique_index_verifier.cc
         wait_queue.cc
         )
 
@@ -172,6 +173,7 @@ ADD_YB_TEST(non_transactional_batch_writer-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(scan_choices-test)
 ADD_YB_TEST(shared_lock_manager-test)
+ADD_YB_TEST(unique_index_verifier-test)
 ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)
 ADD_YB_TEST(usearch_vector_index-test)
