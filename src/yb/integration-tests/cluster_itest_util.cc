@@ -1299,7 +1299,7 @@ Status GetTabletLocations(ExternalMiniCluster* cluster,
   *req.add_tablet_ids() = tablet_id;
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
-  RETURN_NOT_OK(cluster->GetMasterProxy<master::MasterClientProxy>().GetTabletLocations(
+  RETURN_NOT_OK(cluster->GetLeaderMasterProxy<master::MasterClientProxy>().GetTabletLocations(
       req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
