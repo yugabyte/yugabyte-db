@@ -69,6 +69,12 @@ DEFINE_NON_RUNTIME_int32(snapshot_cleanup_pool_size, 4,
     "Maximum number of concurrent tablet snapshot directory cleanup tasks per process.");
 TAG_FLAG(snapshot_cleanup_pool_size, advanced);
 
+DEFINE_RUNTIME_bool(snapshot_create_flush_on_prepare, true,
+    "Start a non-blocking flush of the tablet when a snapshot create operation is prepared, "
+    "so that most memtable data is already on disk by the time the operation is applied. "
+    "The synchronous flush during apply remains as the correctness backstop.");
+TAG_FLAG(snapshot_create_flush_on_prepare, advanced);
+
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
     "How much time in secs to delay restoring tablet split metadata after restoring "
     "checkpoint.");
@@ -223,7 +229,8 @@ TabletSnapshots::~TabletSnapshots() {
   CompleteShutdown();
 }
 
-void TabletSnapshots::SetCleanupPool(ThreadPool* thread_pool, rpc::Scheduler* scheduler) {
+void TabletSnapshots::SetCleanupPool(
+    ThreadPool* thread_pool, rpc::Scheduler* scheduler, ThreadPool* preflush_pool) {
   {
     std::lock_guard lock(cleanup_mutex_);
     if (shutting_down_) {
@@ -231,6 +238,9 @@ void TabletSnapshots::SetCleanupPool(ThreadPool* thread_pool, rpc::Scheduler* sc
     }
     DCHECK(!cleanup_token_);
     cleanup_token_ = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+    if (preflush_pool) {
+      preflush_token_ = preflush_pool->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
+    }
     retry_task_tracker_.Bind(scheduler);
   }
 
@@ -249,6 +259,7 @@ void TabletSnapshots::StartShutdown() {
 
 void TabletSnapshots::CompleteShutdown() {
   std::unique_ptr<ThreadPoolToken> cleanup_token;
+  std::unique_ptr<ThreadPoolToken> preflush_token;
   {
     std::lock_guard lock(cleanup_mutex_);
     if (!shutting_down_) {
@@ -260,9 +271,13 @@ void TabletSnapshots::CompleteShutdown() {
   {
     std::lock_guard lock(cleanup_mutex_);
     cleanup_token = std::move(cleanup_token_);
+    preflush_token = std::move(preflush_token_);
   }
   if (cleanup_token) {
     cleanup_token->Shutdown();
+  }
+  if (preflush_token) {
+    preflush_token->Shutdown();
   }
   {
     std::lock_guard lock(cleanup_mutex_);
@@ -368,7 +383,50 @@ bool TabletSnapshots::IsLastSnapshotTimeFilePath(const std::string& dir) {
 }
 
 Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
+  if (FLAGS_snapshot_create_flush_on_prepare &&
+      operation->operation() == tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET) {
+    SubmitPreflush();
+  }
   return Status::OK();
+}
+
+void TabletSnapshots::SubmitPreflush() {
+  // Kick off a flush of all DBs now, overlapping it with Raft replication of this operation.
+  // Create() runs on the Raft apply path, where its synchronous flush blocks every subsequent
+  // operation on this tablet; warming the flush here shrinks that window to the delta written
+  // between prepare and apply. Correctness does not depend on this flush happening or completing:
+  // Create() still flushes synchronously before creating the checkpoint.
+  //
+  // On the leader, Prepare runs on the preparer thread, but on followers it runs inline in
+  // UpdateConsensus while the ReplicaState lock is held (see PreparerImpl::Submit). Even a
+  // non-waiting Tablet::Flush call synchronously enters the RocksDB write queue to switch the
+  // memtable, so dispatch it to the preflush pool instead of running it here. The token is
+  // shut down in CompleteShutdown, so the task cannot outlive this object.
+  {
+    std::lock_guard lock(cleanup_mutex_);
+    if (shutting_down_) {
+      return;
+    }
+    if (preflush_token_) {
+      // A submission failure means the token or pool is shutting down; drop the best-effort
+      // preflush rather than flushing inline, which would reintroduce the consensus-path work.
+      WARN_NOT_OK(
+          preflush_token_->SubmitFunc([this] {
+            WARN_NOT_OK(
+                Flush(
+                    FlushMode::kAsync, FlushFlags::kAllDbs,
+                    rocksdb::FlushReason::kSnapshotCreation),
+                LogPrefix() + "Failed to schedule flush while preparing snapshot creation");
+          }),
+          LogPrefix() + "Cannot submit snapshot preflush task");
+      return;
+    }
+  }
+  // No preflush pool installed: flush inline. This only happens before SetCleanupPool is called,
+  // i.e. before the tablet serves consensus traffic, and in tests.
+  WARN_NOT_OK(
+      Flush(FlushMode::kAsync, FlushFlags::kAllDbs, rocksdb::FlushReason::kSnapshotCreation),
+      LogPrefix() + "Failed to schedule flush while preparing snapshot creation");
 }
 
 Status TabletSnapshots::Create(SnapshotOperation* operation) {
@@ -395,7 +453,11 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   Status s;
   {
     SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
-    s = regular_db().Flush(rocksdb::FlushOptions(rocksdb::FlushReason::kSnapshotCreation));
+    // Flush all DBs, not just the regular DB, so the flushes triggered internally by checkpoint
+    // creation below become no-ops; the intents flush would otherwise run while additionally
+    // holding create_checkpoint_lock(). When the prepare-time flush (see Prepare()) already ran,
+    // this only waits for the delta written since then.
+    s = Flush(FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kSnapshotCreation);
   }
 
   if (PREDICT_FALSE(!s.ok())) {

@@ -1424,7 +1424,10 @@ void Tablet::RegularDbFilesChanged() {
 
 void Tablet::SetCleanupPool(
     ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
-  snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
+  // intent_cleanup_pool is the unbounded raft pool; it doubles as the snapshot preflush pool
+  // because the bounded snapshot cleanup pool can be fully occupied by recursive deletions,
+  // which would starve the preflush until after the snapshot operation has already applied.
+  snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler, intent_cleanup_pool);
 
   if (!transaction_participant_) {
     return;

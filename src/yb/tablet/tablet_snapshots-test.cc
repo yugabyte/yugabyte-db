@@ -19,10 +19,12 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/rpc/messenger.h"
 
+#include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet-test-harness.h"
 #include "yb/tablet/tablet-test-util.h"
@@ -32,6 +34,7 @@
 #include "yb/tserver/backup.pb.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/env.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
@@ -42,6 +45,7 @@
 #include "yb/util/threadpool.h"
 
 DECLARE_bool(enable_async_snapshot_directory_cleanup);
+DECLARE_bool(snapshot_create_flush_on_prepare);
 DECLARE_int32(TEST_snapshot_cleanup_retry_delay_ms);
 
 METRIC_DECLARE_counter(snapshot_cleanup_failures);
@@ -189,6 +193,8 @@ class TabletSnapshotsTest : public YBTest {
     YBTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_snapshot_cleanup_retry_delay_ms) = 10;
+    // Tests below toggle this flag; restore the default for each test in this process.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_on_prepare) = true;
 
     schema_ = GetSimpleTestSchema();
     schema_.InitColumnIdsByDefault();
@@ -204,6 +210,11 @@ class TabletSnapshotsTest : public YBTest {
     ASSERT_OK(ThreadPoolBuilder("snapshot-cleanup-test")
                   .set_max_threads(kCleanupThreadPoolSize)
                   .Build(&cleanup_pool_));
+    // Mirrors production, where the preflush runs on the unbounded raft pool rather than the
+    // bounded cleanup pool.
+    ASSERT_OK(ThreadPoolBuilder("snapshot-preflush-test")
+                  .unlimited_threads()
+                  .Build(&preflush_pool_));
   }
 
   void TearDown() override {
@@ -214,6 +225,7 @@ class TabletSnapshotsTest : public YBTest {
       harness_.reset();
     }
     cleanup_pool_->Shutdown();
+    preflush_pool_->Shutdown();
     messenger_->Shutdown();
     YBTest::TearDown();
   }
@@ -225,7 +237,8 @@ class TabletSnapshotsTest : public YBTest {
   };
 
   void InstallCleanupPool() {
-    harness_->tablet()->snapshots().SetCleanupPool(cleanup_pool_.get(), &messenger_->scheduler());
+    harness_->tablet()->snapshots().SetCleanupPool(
+        cleanup_pool_.get(), &messenger_->scheduler(), preflush_pool_.get());
   }
 
   SnapshotPaths CreateSnapshotDirectory(const std::string& snapshot_id, int64_t op_index) {
@@ -249,6 +262,27 @@ class TabletSnapshotsTest : public YBTest {
     return harness_->tablet()->snapshots().Delete(operation);
   }
 
+  Status WriteRow(int32_t key) {
+    LocalTabletWriter writer(harness_->tablet());
+    QLWriteRequestPB req;
+    QLAddInt32HashValue(&req, key);
+    QLAddInt32ColumnValue(&req, kFirstColumnId + 1, key);
+    QLAddStringColumnValue(&req, kFirstColumnId + 2, "value");
+    return writer.Write(&req);
+  }
+
+  Status PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::Operation op_type) {
+    tserver::TabletSnapshotOpRequestPB request;
+    request.set_operation(op_type);
+    SnapshotOperation operation(harness_->tablet());
+    operation.AllocateRequest()->CopyFrom(request);
+    return harness_->tablet()->snapshots().Prepare(&operation);
+  }
+
+  uint64_t NumRegularDbSSTFiles() {
+    return harness_->tablet()->GetCurrentVersionNumSSTFiles();
+  }
+
   template <class Metric, class Prototype>
   uint64_t MetricValue(const Prototype& prototype) {
     return harness_->tablet()->GetTabletMetricsEntity()->FindOrNull<Metric>(prototype)->value();
@@ -265,12 +299,17 @@ class TabletSnapshotsTest : public YBTest {
   Schema schema_;
   std::unique_ptr<SnapshotCleanupTestEnv> test_env_;
   std::unique_ptr<ThreadPool> cleanup_pool_;
+  std::unique_ptr<ThreadPool> preflush_pool_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<TabletTestHarness> harness_;
 };
 
 TEST(TabletSnapshotPathTest, AsyncCleanupDisabledByDefault) {
   ASSERT_FALSE(FLAGS_enable_async_snapshot_directory_cleanup);
+}
+
+TEST(TabletSnapshotPathTest, FlushOnPrepareEnabledByDefault) {
+  ASSERT_TRUE(FLAGS_snapshot_create_flush_on_prepare);
 }
 
 TEST(TabletSnapshotPathTest, DeletedSnapshotDirectoryName) {
@@ -464,7 +503,7 @@ TEST_F(TabletSnapshotsTest, SharedPoolBoundsCleanupConcurrency) {
     ASSERT_OK(tablet_harness->Create(/* first_time = */ true));
     ASSERT_OK(tablet_harness->Open());
     tablet_harness->tablet()->snapshots().SetCleanupPool(
-        cleanup_pool_.get(), &messenger_->scheduler());
+        cleanup_pool_.get(), &messenger_->scheduler(), preflush_pool_.get());
 
     const auto snapshot_id = Format("snapshot-$0", i);
     const auto active =
@@ -566,6 +605,82 @@ TEST_F(TabletSnapshotsTest, ShutdownWaitsForRunningCleanup) {
   shutdown_thread.JoinAll();
   ASSERT_TRUE(shutdown_complete.load(std::memory_order_acquire));
   ASSERT_FALSE(test_env_->FileExists(paths.tombstone));
+}
+
+TEST_F(TabletSnapshotsTest, PrepareFlushesTabletForSnapshotCreation) {
+  // Exercise the dispatch path used once pools are installed. Note this calls
+  // TabletSnapshots::Prepare directly rather than going through the operation lifecycle.
+  InstallCleanupPool();
+
+  ASSERT_OK(WriteRow(1));
+  ASSERT_EQ(NumRegularDbSSTFiles(), 0);
+
+  ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET));
+
+  // The prepare-time flush is asynchronous; it must eventually push the memtable into an SST
+  // without any further nudge.
+  ASSERT_OK(WaitFor(
+      [this] { return NumRegularDbSSTFiles() > 0; }, 10s, "Wait for prepare-triggered flush"));
+}
+
+TEST_F(TabletSnapshotsTest, PrepareFlushesTabletWithoutCleanupPool) {
+  // Without an installed pool (before InitTabletPeer, or in tests) the preflush falls back to
+  // scheduling the flush inline.
+  ASSERT_OK(WriteRow(1));
+  ASSERT_EQ(NumRegularDbSSTFiles(), 0);
+
+  ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET));
+
+  ASSERT_OK(WaitFor(
+      [this] { return NumRegularDbSSTFiles() > 0; }, 10s, "Wait for prepare-triggered flush"));
+}
+
+TEST_F(TabletSnapshotsTest, PreflushNotStarvedByCleanupPool) {
+  InstallCleanupPool();
+
+  // Occupy every cleanup pool worker: one with a blocked recursive snapshot deletion, the rest
+  // with tasks parked on a latch. The preflush must still run because it lives on its own pool.
+  test_env_->BlockDeletes();
+  CreateSnapshotDirectory("snapshot.starve", 1);
+  ASSERT_OK(DeleteSnapshot("snapshot.starve", 1));
+  ASSERT_OK(WaitFor(
+      [this] { return test_env_->active_deletes() == 1; }, 10s,
+      "Wait for blocked snapshot cleanup"));
+
+  CountDownLatch latch(1);
+  auto release = ScopeExit([this, &latch] {
+    latch.CountDown();
+    test_env_->ReleaseDeletes();
+  });
+  for (int i = 0; i < kCleanupThreadPoolSize - 1; ++i) {
+    ASSERT_OK(cleanup_pool_->SubmitFunc([&latch] { latch.Wait(); }));
+  }
+
+  ASSERT_OK(WriteRow(1));
+  ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET));
+
+  ASSERT_OK(WaitFor(
+      [this] { return NumRegularDbSSTFiles() > 0; }, 10s, "Wait for prepare-triggered flush"));
+}
+
+TEST_F(TabletSnapshotsTest, PrepareDoesNotFlushWhenDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_on_prepare) = false;
+
+  ASSERT_OK(WriteRow(1));
+  ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET));
+
+  // A wrongly scheduled async flush of a single row would complete well within this window.
+  SleepFor(200ms);
+  ASSERT_EQ(NumRegularDbSSTFiles(), 0);
+}
+
+TEST_F(TabletSnapshotsTest, PrepareDoesNotFlushForNonCreateOperations) {
+  ASSERT_OK(WriteRow(1));
+  ASSERT_OK(PrepareSnapshotOperation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET));
+
+  // A wrongly scheduled async flush of a single row would complete well within this window.
+  SleepFor(200ms);
+  ASSERT_EQ(NumRegularDbSSTFiles(), 0);
 }
 
 }  // namespace
