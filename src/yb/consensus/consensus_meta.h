@@ -139,6 +139,13 @@ class ConsensusMetadata {
                                const RaftConfigPB& config,
                                int64_t current_term);
 
+  // Same as Create, but does not touch disk and leaves the tablet id unset. The caller must
+  // set_tablet_id() before calling Flush().
+  static std::unique_ptr<ConsensusMetadata> CreateUnflushed(FsManager* fs_manager,
+                               const std::string& peer_uuid,
+                               const RaftConfigPB& config,
+                               int64_t current_term);
+
   // Load a ConsensusMetadata object from disk.
   // Returns Status::NotFound if the file could not be found. May return other
   // Status codes if unable to read the file.
@@ -257,6 +264,12 @@ class ConsensusMetadata {
  private:
   ConsensusMetadata(FsManager* fs_manager, std::string tablet_id,
                     std::string peer_uuid);
+
+  static std::unique_ptr<ConsensusMetadata> CreateUnflushedInternal(FsManager* fs_manager,
+                               const std::string& tablet_id,
+                               const std::string& peer_uuid,
+                               const RaftConfigPB& config,
+                               int64_t current_term);
 
   std::string LogPrefix() const;
 

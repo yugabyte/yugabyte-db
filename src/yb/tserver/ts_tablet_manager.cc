@@ -1382,9 +1382,9 @@ Status TSTabletManager::ApplyTabletSplit(
       }
   }};
 
-  std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
-      fs_manager_, tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
-      split_op_id.term));
+  // Children's cmeta template. The child tablet id is set and flushed later, in the loop below.
+  std::unique_ptr<ConsensusMetadata> cmeta = ConsensusMetadata::CreateUnflushed(
+      fs_manager_, fs_manager_->uuid(), committed_raft_config.value(), split_op_id.term);
   if (request->has_split_parent_leader_uuid()) {
     cmeta->set_leader_uuid(request->split_parent_leader_uuid().ToBuffer());
     LOG_WITH_PREFIX(INFO) << "Using Raft config: " << committed_raft_config->ShortDebugString();
