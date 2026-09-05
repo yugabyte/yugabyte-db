@@ -10,7 +10,7 @@ menu:
   stable_develop:
     identifier: tutorials-google-vertex-ai
     parent: tutorials-ai-rag
-    weight: 40
+    weight: 43
 type: docs
 ---
 
