@@ -49,6 +49,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/periodic.h"
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet_error.h"
@@ -388,6 +389,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   // spent on computing state, context switching (sending/receiving RPC's)
   // and serializing/deserializing protobufs.
   if (req_is_heartbeat && multi_raft_batcher_
+      && !batcher_address_stale_.load(std::memory_order_acquire)
       && FLAGS_enable_multi_raft_heartbeat_batcher) {
     auto performing_heartbeat_lock = LockPerformingHeartbeat(std::try_to_lock);
     if (!performing_heartbeat_lock.owns_lock()) {
@@ -627,6 +629,19 @@ void Peer::ProcessRemoteBootstrapResponse() {
 void Peer::ProcessResponseError(const Status& status) {
   DCHECK(performing_update_mutex_.is_locked() || performing_heartbeat_mutex_.is_locked());
   failed_attempts_++;
+  // A peer that registered several addresses is only unreachable once every one of them has
+  // failed, so the next heartbeat period goes to the next address. Only a network error says
+  // anything about the address; every other failure came back over a connection that worked.
+  if (status.IsNetworkError() && proxy_->FailToNextAddress()) {
+    // The batcher this peer shares was built for the address just left behind, and
+    // MultiRaftManager keys them by that address, so it cannot follow. Send heartbeats
+    // through the proxy that did move; batching them again is worth less than sending them
+    // where the peer now answers. Recorded rather than cleared because multi_raft_batcher_ is
+    // read under a different lock than this runs under.
+    batcher_address_stale_.store(true, std::memory_order_release);
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 5)
+        << "Retrying on another address this peer registered after " << status;
+  }
   YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 5) << "Couldn't send request. "
       << " Status: " << status.ToString() << ". Retrying in the next heartbeat period."
       << " Already tried " << failed_attempts_ << " times. State: " << state_;
@@ -677,8 +692,36 @@ Peer::~Peer() {
   CHECK_EQ(state_, kPeerClosed) << "Peer cannot be implicitly closed";
 }
 
-RpcPeerProxy::RpcPeerProxy(HostPort hostport, ConsensusServiceProxyPtr consensus_proxy)
-    : hostport_(std::move(hostport)), consensus_proxy_(std::move(consensus_proxy)) {
+RpcPeerProxy::RpcPeerProxy(rpc::ProxyCache* proxy_cache, RaftPeerPB peer_pb, CloudInfoPB from)
+    : proxy_cache_(proxy_cache), peer_pb_(std::move(peer_pb)), from_(std::move(from)) {
+  std::lock_guard lock(mutex_);
+  BuildProxyUnlocked();
+}
+
+bool RpcPeerProxy::BuildProxyUnlocked() {
+  auto selected = FirstUsable(CandidateHostPorts(peer_pb_, from_), failed_addresses_);
+  hostport_ = HostPortFromPB(selected.host_port);
+  consensus_proxy_ = std::make_shared<ConsensusServiceProxy>(
+      proxy_cache_, hostport_,
+      &proxy_cache_->GetContext()->ProtocolFor(
+          rpc::Encrypted(UseEncryption(selected.used_broadcast, peer_pb_.cloud_info(), from_))));
+  return !failed_addresses_.Failed(hostport_);
+}
+
+std::shared_ptr<ConsensusServiceProxy> RpcPeerProxy::proxy() const {
+  SharedLock lock(mutex_);
+  return consensus_proxy_;
+}
+
+HostPort RpcPeerProxy::TEST_HostPort() const {
+  SharedLock lock(mutex_);
+  return hostport_;
+}
+
+bool RpcPeerProxy::FailToNextAddress() {
+  std::lock_guard lock(mutex_);
+  failed_addresses_.MarkFailed(hostport_);
+  return BuildProxyUnlocked();
 }
 
 void RpcPeerProxy::UpdateAsync(const LWConsensusRequestPB* request,
@@ -687,13 +730,13 @@ void RpcPeerProxy::UpdateAsync(const LWConsensusRequestPB* request,
                                rpc::RpcController* controller,
                                const rpc::ResponseCallback& callback) {
   controller->set_timeout(MonoDelta::FromMilliseconds(FLAGS_consensus_rpc_timeout_ms));
-  consensus_proxy_->UpdateConsensusAsync(*request, response, controller, callback);
+  proxy()->UpdateConsensusAsync(*request, response, controller, callback);
 }
 
 void RpcPeerProxy::RequestConsensusVoteAsync(
     const VoteRequestPB* request, VoteResponsePB* response, rpc::RpcController* controller,
     const rpc::ResponseCallback& callback) {
-  consensus_proxy_->RequestConsensusVoteAsync(*request, response, controller, callback);
+  proxy()->RequestConsensusVoteAsync(*request, response, controller, callback);
 }
 
 void RpcPeerProxy::RunLeaderElectionAsync(const RunLeaderElectionRequestPB* request,
@@ -701,19 +744,19 @@ void RpcPeerProxy::RunLeaderElectionAsync(const RunLeaderElectionRequestPB* requ
                                           rpc::RpcController* controller,
                                           const rpc::ResponseCallback& callback) {
   controller->set_timeout(MonoDelta::FromMilliseconds(FLAGS_consensus_rpc_timeout_ms));
-  consensus_proxy_->RunLeaderElectionAsync(*request, response, controller, callback);
+  proxy()->RunLeaderElectionAsync(*request, response, controller, callback);
 }
 
 void RpcPeerProxy::LeaderElectionLostAsync(
     const LeaderElectionLostRequestPB* request, LeaderElectionLostResponsePB* response,
     rpc::RpcController* controller, const rpc::ResponseCallback& callback) {
-  consensus_proxy_->LeaderElectionLostAsync(*request, response, controller, callback);
+  proxy()->LeaderElectionLostAsync(*request, response, controller, callback);
 }
 
 void RpcPeerProxy::StartRemoteBootstrap(
     const StartRemoteBootstrapRequestPB* request, StartRemoteBootstrapResponsePB* response,
     rpc::RpcController* controller, const rpc::ResponseCallback& callback) {
-  consensus_proxy_->StartRemoteBootstrapAsync(*request, response, controller, callback);
+  proxy()->StartRemoteBootstrapAsync(*request, response, controller, callback);
 }
 
 RpcPeerProxy::~RpcPeerProxy() {}
@@ -723,9 +766,7 @@ RpcPeerProxyFactory::RpcPeerProxyFactory(
     : messenger_(messenger), proxy_cache_(proxy_cache), from_(std::move(from)) {}
 
 PeerProxyPtr RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb) {
-  auto hostport = HostPortFromPB(DesiredHostPort(peer_pb, from_));
-  auto proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_, hostport);
-  return std::make_unique<RpcPeerProxy>(std::move(hostport), std::move(proxy));
+  return std::make_unique<RpcPeerProxy>(proxy_cache_, peer_pb, from_);
 }
 
 RpcPeerProxyFactory::~RpcPeerProxyFactory() {}

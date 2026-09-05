@@ -112,6 +112,43 @@ TEST(TestTSDescriptor, TestReplicaCreationsDecay) {
   }
 }
 
+TEST(TestTSDescriptor, TestAddressFallback) {
+  NodeInstancePB node;
+  node.set_permanent_uuid("ts-with-several-addresses");
+
+  TSRegistrationPB reg;
+  auto* common = reg.mutable_common();
+  common->add_private_rpc_addresses()->set_host("private1");
+  common->add_private_rpc_addresses()->set_host("private2");
+  common->add_broadcast_addresses()->set_host("broadcast1");
+
+  auto ts = ASSERT_RESULT(TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), nullptr, RegisteredThroughHeartbeat::kTrue));
+
+  // The broadcast address is preferred, then the private ones in the order registered.
+  const vector<string> kExpectedOrder = {"broadcast1", "private1", "private2"};
+  for (const auto& expected : kExpectedOrder) {
+    auto host_port = ASSERT_RESULT(ts->GetHostPort());
+    ASSERT_EQ(expected, host_port.host());
+    // The last address leaves nothing to fall back to, which is what tells the caller the
+    // server itself is unreachable.
+    ASSERT_EQ(expected != kExpectedOrder.back(), ts->FailToNextAddress(host_port));
+  }
+
+  // With every address failed the preferred one comes back, so the server becomes reachable
+  // again as soon as it is, rather than being unaddressable until it re-registers.
+  ASSERT_EQ(kExpectedOrder.front(), ASSERT_RESULT(ts->GetHostPort()).host());
+
+  // Re-registering clears the record outright: a server that just came back is worth trying
+  // at every address it now reports.
+  auto write_lock = ASSERT_RESULT(
+      ts->UpdateRegistration(node, reg, RegisteredThroughHeartbeat::kTrue));
+  write_lock.Commit();
+  auto host_port = ASSERT_RESULT(ts->GetHostPort());
+  ASSERT_EQ(kExpectedOrder.front(), host_port.host());
+  ASSERT_TRUE(ts->FailToNextAddress(host_port));
+}
+
 TEST(TestCatalogManager, TestLoadCountMultiAZ) {
   std::shared_ptr<TSDescriptor> ts0 = SetupTS("0000", "a");
   std::shared_ptr<TSDescriptor> ts1 = SetupTS("1111", "b");

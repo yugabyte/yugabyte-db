@@ -39,6 +39,23 @@ class ProxyContext {
   virtual const Protocol& DefaultProtocol() = 0;
   virtual const Protocol& UncompressedProtocol() = 0;
 
+  // The protocol at a point in the (compression, encryption) space. Naming a point this
+  // messenger was not built for fails the connection with NotFound, since there is no stream
+  // factory to create it from.
+  virtual const Protocol& ProtocolFor(Compressed compressed, Encrypted encrypted) = 0;
+
+  // The protocol carrying the requested encryption at whatever compression this messenger
+  // was built with, clamped to the transports it actually holds: one built without encryption
+  // yields a protocol it can still create rather than failing the connection. Callers get
+  // the encryption half from UseEncryption, which decides it from the address selected for
+  // the connection.
+  virtual const Protocol& ProtocolFor(Encrypted encrypted) = 0;
+
+  // The encryption this messenger can actually carry: one built without a secure stream
+  // yields kFalse whatever was asked for. A caller that names both dimensions itself asks
+  // for this first, so that it names a point there is a stream factory for.
+  virtual Encrypted ClampEncryption(Encrypted encrypted) = 0;
+
   virtual ThreadPool& CallbackThreadPool(ServicePriority priority = ServicePriority::kNormal) = 0;
 
   virtual IoService& io_service() = 0;

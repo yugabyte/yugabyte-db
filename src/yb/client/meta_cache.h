@@ -47,6 +47,7 @@
 
 #include "yb/dockv/partition.h"
 #include "yb/common/tablespace_parser.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
@@ -73,6 +74,7 @@
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/memory/arena.h"
+#include "yb/util/net/failed_addresses.h"
 #include "yb/util/net/net_util.h"
 
 namespace yb {
@@ -158,6 +160,15 @@ class RemoteTabletServer {
 
   HostPortPB DesiredHostPort(const CloudInfoPB& cloud_info) const;
 
+  // Moves to another of the addresses this server advertised, after the one the current proxy
+  // uses could not be connected to, and reports whether there was one.
+  //
+  // This is the address-level counterpart of RemoteTablet::MarkReplicaFailed, and TabletInvoker
+  // fails to a new replica only once this has run out of addresses. A server that cannot be
+  // reached one way may still be reachable another, so the replica is only demoted once every
+  // way of reaching it has failed.
+  bool FailToNextAddress(const CloudInfoPB& connect_from);
+
   yb::CloudInfoPB cloud_info_pb() const {
     SharedLock<rw_spinlock> lock(mutex_);
     return cloud_info_pb_;
@@ -165,7 +176,15 @@ class RemoteTabletServer {
 
   std::string TEST_PlacementZone() const;
 
+  // The addresses this server would be tried at, in order, ignoring any that have failed.
+  std::vector<HostPort> TEST_Candidates(const CloudInfoPB& connect_from) const;
+
  private:
+  std::vector<SelectedHostPort> CandidatesUnlocked(const CloudInfoPB& connect_from) const
+      REQUIRES_SHARED(mutex_);
+  SelectedHostPort PickCandidateUnlocked(const CloudInfoPB& connect_from) const
+      REQUIRES_SHARED(mutex_);
+
   mutable rw_spinlock mutex_;
   const std::string uuid_;
 
@@ -174,6 +193,7 @@ class RemoteTabletServer {
   yb::CloudInfoPB cloud_info_pb_ GUARDED_BY(mutex_);
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
   ::yb::HostPort proxy_endpoint_;
+  FailedAddresses failed_addresses_ GUARDED_BY(mutex_);
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
   scoped_refptr<EventStats> dns_resolve_stats_;
 

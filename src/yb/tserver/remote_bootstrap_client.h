@@ -81,6 +81,7 @@ class RemoteBootstrapClient : public RemoteClientBase {
   Status Start(const std::string& bootstrap_peer_uuid,
                rpc::ProxyCache* proxy_cache,
                const HostPort& bootstrap_peer_addr,
+               rpc::Encrypted encrypted,
                const ServerRegistrationPB& tablet_leader_conn_info,
                const OpId& pending_config_op_id_from_rbs,
                scoped_refptr<tablet::RaftGroupMetadata>* metadata,

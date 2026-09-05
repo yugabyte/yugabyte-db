@@ -61,7 +61,8 @@ class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapA
       const std::string& rbs_client_uuid,
       const std::string& owner_info,
       rpc::ProxyCache* proxy_cache,
-      const HostPort& tablet_leader_peer_addr);
+      const HostPort& tablet_leader_peer_addr,
+      rpc::Encrypted encrypted);
 
   Status RegisterLogAnchor(
       const std::string& tablet_id, const int64_t& log_index, bool session_succeeded);

@@ -57,6 +57,7 @@
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/rpc_service.h"
 #include "yb/rpc/rpc_util.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
 
@@ -254,6 +255,24 @@ void Messenger::Shutdown() {
   // Safe to clear only after reactors have been shutdown as there may be CleanupHooks which access
   // data owned by the services.
   rpc_services_.clear();
+}
+
+const Protocol& Messenger::ProtocolFor(Compressed compressed, Encrypted encrypted) {
+  return *StreamProtocol(compressed, encrypted);
+}
+
+Encrypted Messenger::ClampEncryption(Encrypted encrypted) {
+  // Read off the protocols this messenger was built with rather than the flags that chose
+  // them. Applying a secure context names the secure stream as the uncompressed protocol.
+  return Encrypted(encrypted && &uncompressed_protocol_ == SecureStreamProtocol());
+}
+
+const Protocol& Messenger::ProtocolFor(Encrypted encrypted) {
+  // Both dimensions are read off the protocols this messenger was built with, so it never
+  // names a point it has no stream factory for. Adding compression on top of a secure context
+  // leaves the listen protocol differing from the uncompressed one.
+  return ProtocolFor(
+      Compressed(&listen_protocol_ != &uncompressed_protocol_), ClampEncryption(encrypted));
 }
 
 Status Messenger::ListenAddress(

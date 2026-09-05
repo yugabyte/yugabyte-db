@@ -45,6 +45,7 @@ using HeartbeatResponseCallback = std::function<void(const Status&)>;
 class MultiRaftHeartbeatBatcher : public std::enable_shared_from_this<MultiRaftHeartbeatBatcher> {
  public:
   MultiRaftHeartbeatBatcher(const HostPort& hostport,
+                            const rpc::Protocol* protocol,
                             rpc::ProxyCache* proxy_cache,
                             rpc::Messenger* messenger,
                             std::atomic<int>* running_calls);

@@ -41,6 +41,7 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/gutil/thread_annotations.h"
@@ -50,10 +51,13 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
 
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/failed_addresses.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/result.h"
@@ -363,6 +367,14 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
+  // Moves to another of the addresses this server registered, after host_port could not be
+  // connected to, and reports whether there was one.
+  //
+  // This is the address-level counterpart of RemoteTablet::MarkReplicaFailed, as it is on the
+  // client side. A server that cannot be reached one way may still be reachable another, so
+  // it is only treated as unreachable once every way of reaching it has failed.
+  bool FailToNextAddress(const HostPort& host_port) EXCLUDES(mutex_);
+
   std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(MonoTime time) EXCLUDES(mutex_);
 
  private:
@@ -373,8 +385,21 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   friend class LoadBalancerMockedBase;
 
+  // An address to reach this server at and which of its lists it came from, so a proxy can
+  // take both from one selection.
+  struct SelectedEndpoint {
+    HostPort host_port;
+    UsedBroadcastAddress used_broadcast;
+  };
+
   // Uses DNS to resolve registered hosts to a single endpoint.
+  Result<SelectedEndpoint> SelectEndpointUnlocked() const REQUIRES_SHARED(mutex_);
   Result<HostPort> GetHostPortUnlocked() const REQUIRES_SHARED(mutex_);
+
+  // The transport for a connection to this server on the address that was selected for it,
+  // from the master's own placement.
+  const rpc::Protocol& ProtocolForUnlocked(
+      UsedBroadcastAddress used_broadcast) const REQUIRES_SHARED(mutex_);
 
   void DecayRecentReplicaCreationsUnlocked() REQUIRES(mutex_);
 
@@ -474,6 +499,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   std::string placement_id_ GUARDED_BY(mutex_);
 
+  FailedAddresses failed_addresses_ GUARDED_BY(mutex_);
+
   ProxyTuple proxies_;
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
@@ -491,9 +518,10 @@ Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
       *result = *result_cache;
       return Status::OK();
     }
-    auto hostport = VERIFY_RESULT(GetHostPortUnlocked());
+    auto selected = VERIFY_RESULT(SelectEndpointUnlocked());
     if (!(*result_cache)) {
-      *result_cache = std::make_shared<TProxy>(proxy_cache_, hostport);
+      *result_cache = std::make_shared<TProxy>(
+          proxy_cache_, selected.host_port, &ProtocolForUnlocked(selected.used_broadcast));
     }
     *result = *result_cache;
   }

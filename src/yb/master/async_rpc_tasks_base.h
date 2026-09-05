@@ -27,6 +27,7 @@
 #include "yb/util/async_task_util.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics_fwd.h"
+#include "yb/util/net/failed_addresses.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -265,6 +266,11 @@ class RetryingMasterRpcTask : public RetryingRpcTask {
   void DoRpcCallback() override;
 
   consensus::RaftPeerPB peer_;
+
+  // Addresses of this master that could not be connected to. Attempts of one task run in
+  // sequence, and ResetProxies reads this on each of them, so a task works through the
+  // addresses the peer registered before giving up on the master itself.
+  FailedAddresses failed_addresses_;
   std::shared_ptr<master::MasterTestProxy> master_test_proxy_;
   std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy_;
 };

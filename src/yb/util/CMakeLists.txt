@@ -179,6 +179,7 @@ set(UTIL_SRCS
   monotime.cc
   mutex.cc
   net/dns_resolver.cc
+  net/failed_addresses.cc
   net/inetaddress.cc
   net/net_util.cc
   net/sockaddr.cc
@@ -423,6 +424,7 @@ ADD_YB_TEST(mt-hdr_histogram-test RUN_SERIAL true)
 ADD_YB_TEST(mt-metrics-test RUN_SERIAL true)
 ADD_YB_TEST(mt-threadlocal-test RUN_SERIAL true)
 ADD_YB_TEST(net/dns_resolver-test)
+ADD_YB_TEST(net/failed_addresses-test)
 ADD_YB_TEST(net/inetaddress-test)
 ADD_YB_TEST(net/net_util-test)
 ADD_YB_TEST(net/rate_limiter-test)
