@@ -1489,8 +1489,11 @@ TEST_F(PgObjectLocksTest, TestPgLocksBlockedByForObjectLocksMultiNode) {
     return waiter_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
   });
 
-  // Poll pg_locks from the observer (ts2) until the waiting object lock reports a blocker.
+  // Poll pg_locks from the observer (ts2) until the waiting object lock reports a blocker that is
+  // also visible as a granted holder. Both facts come from independent nodes, so the waiter can
+  // show up first.
   std::string blocked_by;
+  bool references_blocker = false;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     const auto dump = VERIFY_RESULT(observer_conn.FetchAllAsString(
         "SELECT granted, mode, ybdetails->>'transactionid' AS txn,"
@@ -1503,18 +1506,19 @@ TEST_F(PgObjectLocksTest, TestPgLocksBlockedByForObjectLocksMultiNode) {
         "     WHERE NOT granted AND relation = 'test'::regclass AND locktype = 'relation'"
         "       AND ybdetails->'blocked_by' IS NOT NULL"
         "     LIMIT 1), '[]'::jsonb)::text"));
-    return blocked_by != "[]" && !blocked_by.empty();
-  }, 60s * kTimeMultiplier, "Timed out waiting for blocked_by to be populated across nodes"));
+    if (blocked_by == "[]" || blocked_by.empty()) {
+      return false;
+    }
+    references_blocker = VERIFY_RESULT(observer_conn.FetchRow<bool>(
+        "SELECT EXISTS ("
+        "  SELECT 1 FROM pg_locks w JOIN pg_locks g"
+        "    ON g.granted AND g.relation = 'test'::regclass AND g.locktype = 'relation'"
+        "       AND g.ybdetails->>'transactionid' IS NOT NULL"
+        "  WHERE NOT w.granted AND w.relation = 'test'::regclass AND w.locktype = 'relation'"
+        "    AND w.ybdetails->'blocked_by' @> to_jsonb(g.ybdetails->>'transactionid'))"));
+    return references_blocker;
+  }, 60s * kTimeMultiplier, "Timed out waiting for blocked_by to reference the granted holder"));
 
-  // The blocked_by list should reference the blocker's transaction, which also shows up as a
-  // granted object lock holder on the same table.
-  const auto references_blocker = ASSERT_RESULT(observer_conn.FetchRow<bool>(
-      "SELECT EXISTS ("
-      "  SELECT 1 FROM pg_locks w JOIN pg_locks g"
-      "    ON g.granted AND g.relation = 'test'::regclass AND g.locktype = 'relation'"
-      "       AND g.ybdetails->>'transactionid' IS NOT NULL"
-      "  WHERE NOT w.granted AND w.relation = 'test'::regclass AND w.locktype = 'relation'"
-      "    AND w.ybdetails->'blocked_by' @> to_jsonb(g.ybdetails->>'transactionid'))"));
   EXPECT_TRUE(references_blocker)
       << "blocked_by did not reference the granted holder; blocked_by=" << blocked_by;
 
