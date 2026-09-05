@@ -95,6 +95,9 @@ class TableBuilder {
   // REQUIRES: Either Finish() or Abandon() has been called.
   virtual ~TableBuilder() {}
 
+  // Get the block cache prefix as a series of bytes in hexadecimal
+  virtual std::string GetBlockCachePrefixHex() const = 0;
+
   // Add key,value to the table being constructed.
   // REQUIRES: key is after any previously added key according to comparator.
   // REQUIRES: Finish(), Abandon() have not been called
@@ -103,9 +106,14 @@ class TableBuilder {
   // Return non-ok iff some error has been detected.
   virtual Status status() const = 0;
 
-  // Finish building the table.
-  // REQUIRES: Finish(), Abandon() have not been called
-  virtual Status Finish() = 0;
+  virtual Status Finish() {
+    // ... (existing code) ...
+
+    // Log the block cache prefix
+    std::string prefix_hex = GetBlockCachePrefixHex();
+    ROCKS_LOG_INFO(ioptions_.info_log, "SST file created with block cache prefix: %s", 
+                   prefix_hex.c_str());
+  }
 
   // Indicate that the contents of this builder should be abandoned.
   // If the caller is not going to call Finish(), it must call Abandon()
@@ -124,6 +132,12 @@ class TableBuilder {
   // the size of the final generated base file. SST is either stored in single base file, or
   // metadata is stored in base file while data is split among data files (S-Blocks).
   virtual uint64_t BaseFileSize() const = 0;
+
+  // Get the size of the file's metadata
+  virtual uint64_t MetadataSize() const = 0;
+
+  // Get the size of the file's data
+  virtual uint64_t DataSize() const = 0;
 
   // If the user defined table properties collector suggest the file to
   // be further compacted.
