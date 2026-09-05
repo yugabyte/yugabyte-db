@@ -12,23 +12,18 @@
 //
 
 #include "yb/vector_index/vector_lsm.h"
+#include "yb/vector_index/vector_lsm_merger.h"
+#include "yb/vector_index/vector_lsm_registry.h"
 
 #include <functional>
-#include <queue>
 #include <thread>
-
-#include <boost/function.hpp>
-#include <boost/intrusive/list.hpp>
 
 #include "yb/ash/wait_state.h"
 
 #include "yb/gutil/strings/human_readable.h"
 
-#include "yb/rpc/thread_pool.h"
-
 #include "yb/storage/frontier.h"
 
-#include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/priority_thread_pool.h"
@@ -139,8 +134,6 @@ DECLARE_int32(compaction_priority_start_bound);
 DECLARE_int32(compaction_priority_step_size);
 
 namespace yb::vector_index {
-
-namespace bi = boost::intrusive;
 
 namespace {
 
@@ -303,304 +296,6 @@ class VectorLSMFileMetaData final {
   const uint64_t serial_no_;
   const uint64_t size_on_disk_;
   std::atomic<bool> obsolete_ = { false };
-};
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSMInsertRegistryBase;
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSMInsertTask :
-    public rpc::ThreadPoolTask,
-    public bi::list_base_hook<bi::link_mode<bi::normal_link>> {
- public:
-  using InsertRegistry = VectorLSMInsertRegistryBase<Vector, DistanceResult>;
-  using InsertCallback = boost::function<void(const Status&)>;
-  using VectorIndexPtr = typename VectorLSM<Vector, DistanceResult>::VectorIndexPtr;
-  using VectorWithDistance = typename VectorLSM<Vector, DistanceResult>::VectorWithDistance;
-  using SearchHeap = std::priority_queue<VectorWithDistance>;
-
-  void Bind(const VectorIndexPtr& index, std::shared_ptr<InsertRegistry> registry,
-            InsertCallback insert_callback) {
-    DCHECK(index);
-    DCHECK(insert_callback);
-    DCHECK(!index_);
-    DCHECK(!insert_callback_);
-    DCHECK(vectors_.empty());
-
-    index_ = index;
-    registry_ = std::move(registry);
-    insert_callback_ = std::move(insert_callback);
-  }
-
-  void Add(VectorId vector_id, Vector&& vector) {
-    vectors_.emplace_back(vector_id, std::move(vector));
-  }
-
-  void Run() override {
-    insert_callback_(DoInsert());
-    insert_callback_ = {};
-  }
-
-  void Done(const Status&) override {
-    std::shared_ptr<InsertRegistry> registry;
-    {
-      std::lock_guard lock(mutex_);
-      index_ = nullptr;
-      registry = std::move(registry_);
-      vectors_.clear();
-    }
-
-    // We are not really interested in the status as it could indicate shutting down
-    // or abortion due to shutting down only. Make sure to unset done_callback_ before calling it.
-    DCHECK(registry);
-    registry->TaskDone(this);
-  }
-
-  void Search(SearchHeap& heap, const Vector& query_vector, const SearchOptions& options) const {
-    SharedLock lock(mutex_);
-    for (const auto& [id, vector] : vectors_) {
-      if (!options.filter(id)) {
-        continue;
-      }
-      auto distance = index_->Distance(query_vector, vector);
-      VectorWithDistance vertex(id, distance);
-      if (heap.size() < options.max_num_results) {
-        heap.push(vertex);
-      } else if (heap.top() > vertex) {
-        heap.pop();
-        heap.push(vertex);
-      }
-    }
-  }
-
- protected:
-  Status DoInsert() {
-    DCHECK(index_);
-    for (const auto& [vector_id, vector] : vectors_) {
-      RETURN_NOT_OK(index_->Insert(vector_id, vector));
-    }
-    return Status::OK();
-  }
-
-  mutable rw_spinlock mutex_;
-  std::shared_ptr<InsertRegistry> registry_;
-  VectorIndexPtr index_;
-  InsertCallback insert_callback_;
-  std::vector<std::pair<VectorId, Vector>> vectors_;
-};
-
-// Registry for all active Vector LSM insert subtasks.
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSMInsertRegistryBase
-    : public std::enable_shared_from_this<VectorLSMInsertRegistryBase<Vector, DistanceResult>> {
- public:
-  using InsertTask = VectorLSMInsertTask<Vector, DistanceResult>;
-  using InsertTaskList = boost::intrusive::list<InsertTask>;
-  using InsertTaskPtr = std::unique_ptr<InsertTask>;
-
-  virtual ~VectorLSMInsertRegistryBase() = default;
-
-  void Shutdown() {
-    for (;;) {
-      {
-        std::lock_guard lock(mutex_);
-        stopping_ = true;
-        if (allocated_tasks_ == 0) {
-          break;
-        }
-      }
-      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1) << "Waiting for vector insertion tasks to finish";
-      std::this_thread::sleep_for(100ms);
-    }
-  }
-
-  void ExecuteTasks(InsertTaskList& list) EXCLUDES(mutex_) {
-    DCHECK(!list.empty());
-    auto last = --list.end();
-    auto it = list.begin();
-    {
-      std::lock_guard lock(mutex_);
-      // splice does not invalidate iterators, so `it` and `last` stay usable below.
-      active_tasks_.splice(active_tasks_.end(), list);
-    }
-    // ++it reads the visited task's successor link without the mutex. This is safe up to `last`:
-    // the link is only rewritten when the successor is unlinked, which cannot happen before the
-    // successor is enqueued, i.e. after the read. The link of `last` could be rewritten by a
-    // concurrent splice at any moment, so iteration stops at `last` and never reads it.
-    while (it != last) {
-      auto& task = *it++;
-      thread_pool_.Enqueue(&task);
-    }
-    thread_pool_.Enqueue(&*last);
-    TEST_SYNC_POINT("VectorLSMInsertRegistryBase::ExecuteTasks:Enqueued");
-  }
-
-  void TaskDone(InsertTask* raw_task) EXCLUDES(mutex_) {
-    DCHECK_ONLY_NOTNULL(raw_task);
-
-    InsertTaskPtr task(raw_task);
-    {
-      std::lock_guard lock(mutex_);
-      --allocated_tasks_;
-      // Catches a task that completed before ExecuteTasks moved it to active_tasks_.
-      DCHECK(!active_tasks_.empty());
-      active_tasks_.erase(active_tasks_.iterator_to(*raw_task));
-      if (task_pool_.size() < FLAGS_vector_index_task_pool_size) {
-        task_pool_.push_back(std::move(task));
-      }
-      DoTaskDoneUnlocked();
-    }
-  }
-
-  bool HasRunningTasks() {
-    SharedLock lock(mutex_);
-    return !active_tasks_.empty();
-  }
-
- protected:
-  using VectorIndexPtr = typename InsertTask::VectorIndexPtr;
-  using InsertCallback = typename InsertTask::InsertCallback;
-
-  VectorLSMInsertRegistryBase(std::string log_prefix, rpc::ThreadPool& thread_pool)
-      : log_prefix_(std::move(log_prefix)), thread_pool_(thread_pool) {}
-
-  const std::string& LogPrefix() const {
-    return log_prefix_;
-  }
-
-  Result<InsertTaskList> DoAllocateTasks(
-      size_t num_tasks, const VectorIndexPtr& index,
-      InsertCallback&& insert_callback) REQUIRES(mutex_) {
-    if (stopping_) {
-      return STATUS_FORMAT(ShutdownInProgress, "VectorLSM registry is shutting down");
-    }
-    InsertTaskList result;
-    allocated_tasks_ += num_tasks;
-    for (size_t left = num_tasks; left-- > 0;) {
-      InsertTaskPtr task;
-      if (task_pool_.empty()) {
-        task = std::make_unique<InsertTask>();
-      } else {
-        task = std::move(task_pool_.back());
-        task_pool_.pop_back();
-      }
-
-      // Make sure insert_callback is not moved but copied as it is used in several tasks.
-      task->Bind(index, this->shared_from_this(), insert_callback);
-
-      result.push_back(*task.release());
-    }
-    return result;
-  }
-
-  virtual void DoTaskDoneUnlocked() REQUIRES(mutex_) {
-    // Nothing to do, could be used in derived classes.
-  }
-
-  const std::string log_prefix_;
-  rpc::ThreadPool& thread_pool_;
-  std::shared_mutex mutex_;
-  bool stopping_ GUARDED_BY(mutex_) = false;
-  size_t allocated_tasks_ GUARDED_BY(mutex_) = 0;
-  InsertTaskList active_tasks_ GUARDED_BY(mutex_);
-  std::vector<InsertTaskPtr> task_pool_ GUARDED_BY(mutex_);
-};
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, DistanceResult> {
- public:
-  using Base = VectorLSMInsertRegistryBase<Vector, DistanceResult>;
-  using InsertTask = typename Base::InsertTask;
-  using InsertTaskList = typename Base::InsertTaskList;
-  using SearchResults  = typename VectorLSM<Vector, DistanceResult>::SearchResults;
-
-  VectorLSMInsertRegistry(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
-      : Base(Format("$0[I] ", log_prefix), thread_pool) {}
-
-  template <typename... Args>
-  Result<InsertTaskList> AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
-    UniqueLock lock(mutex_);
-    while (allocated_tasks_ &&
-            allocated_tasks_ + num_tasks >= FLAGS_vector_index_max_insert_tasks) {
-      // TODO(vector_index) Pass timeout here.
-      if (allocated_tasks_cond_.wait_for(GetLockForCondition(lock), 1s) ==
-              std::cv_status::timeout) {
-        auto allocated_tasks = allocated_tasks_;
-        lock.unlock();
-        LOG_WITH_FUNC(WARNING)
-            << "Long wait to allocate " << num_tasks << " tasks, allocated: " << allocated_tasks
-            << ", allowed: " << FLAGS_vector_index_max_insert_tasks;
-        lock.lock();
-      }
-    }
-
-    return DoAllocateTasks(num_tasks, std::forward<Args>(args)...);
-  }
-
-  void DoTaskDoneUnlocked() override REQUIRES(mutex_) {
-    allocated_tasks_cond_.notify_all();
-  }
-
-  SearchResults Search(const Vector& query_vector, const SearchOptions& options) {
-    typename InsertTask::SearchHeap heap;
-    {
-      SharedLock lock(mutex_);
-      for (const auto& task : active_tasks_) {
-        task.Search(heap, query_vector, options);
-      }
-    }
-    return ReverseHeapToVector(heap);
-  }
-
- private:
-  using Base::LogPrefix;
-  using Base::DoAllocateTasks;
-  using Base::mutex_;
-  using Base::active_tasks_;
-  using Base::allocated_tasks_;
-
-  std::condition_variable_any allocated_tasks_cond_;
-};
-
-// Registry for all active Vector LSM insert subtasks.
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSMMergeRegistry : public VectorLSMInsertRegistryBase<Vector, DistanceResult> {
- public:
-  using Base = VectorLSMInsertRegistryBase<Vector, DistanceResult>;
-  using InsertTaskList = typename Base::InsertTaskList;
-
-  VectorLSMMergeRegistry(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
-      : Base(Format("$0[M] ", log_prefix), thread_pool) {}
-
-  template <typename... Args>
-  Result<InsertTaskList> AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
-    // Sanity check for the case the flag has been set to 0 right before calling this method.
-    size_t max_tasks = MaxCapacity();
-    if (max_tasks == 0) {
-      max_tasks = 1;
-      LOG_WITH_PREFIX(INFO) << "Max merge tasks flag is 0, using 1 instead";
-    }
-
-    {
-      UniqueLock lock(mutex_);
-      if (allocated_tasks_ >= max_tasks) {
-        return InsertTaskList{};
-      }
-
-      num_tasks = std::min(num_tasks, max_tasks - allocated_tasks_);
-      return DoAllocateTasks(num_tasks, std::forward<Args>(args)...);
-    }
-  }
-
-  size_t MaxCapacity() const {
-    return FLAGS_vector_index_max_merge_tasks;
-  }
-
- protected:
-  using Base::LogPrefix;
-  using Base::DoAllocateTasks;
-  using Base::mutex_;
-  using Base::allocated_tasks_;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -795,6 +490,34 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
         order_no, serial_no(), file_size());
   }
 };
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+typename VectorLSM<Vector, DistanceResult>::VectorIndexPtr
+VectorLSM<Vector, DistanceResult>::GetImmutableChunkIndex(const ImmutableChunkPtr& chunk) const {
+  return chunk->index;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+const storage::UserFrontiersPtr&
+VectorLSM<Vector, DistanceResult>::GetImmutableChunkFrontiers(const ImmutableChunkPtr& chunk) const {
+  return chunk->user_frontiers;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+size_t VectorLSM<Vector, DistanceResult>::GetImmutableChunkOrderNo(
+    const ImmutableChunkPtr& chunk) const {
+  return chunk->order_no;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+typename VectorLSM<Vector, DistanceResult>::ImmutableChunkPtr
+VectorLSM<Vector, DistanceResult>::MakeCompactedChunk(
+    size_t order_no, VectorLSMFileMetaDataPtr file, VectorIndexPtr index,
+    storage::UserFrontiersPtr frontiers) {
+  return std::make_shared<ImmutableChunk>(
+      order_no, std::move(file), std::move(index), std::move(frontiers),
+      ImmutableChunkState::kOnDisk);
+}
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorLSM<Vector, DistanceResult>::CompactionScope {
@@ -2396,360 +2119,6 @@ VectorLSM<Vector, DistanceResult>::PickChunksForCompaction(CompactionType type) 
   return {};
 }
 
-namespace {
-
-void PopulateMergeTasks(
-    auto& tasks, size_t num_vectors_per_task, size_t& num_remaining, auto& source_iterator) {
-  DCHECK(source_iterator.Valid());
-  for (auto tasks_it = tasks.begin(); tasks_it != tasks.end(); ++tasks_it) {
-    size_t num_vectors_added_in_task = 0;
-    while (num_vectors_added_in_task < num_vectors_per_task) {
-      if ((num_remaining == 0) || !source_iterator.Next()) {
-        return;
-      }
-      tasks_it->Add(source_iterator->first, std::move(source_iterator->second));
-      ++num_vectors_added_in_task;
-      --num_remaining;
-    }
-  }
-}
-
-} // namespace
-
-// An iterator that merges multiple vector index iterators and filters out entries.
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSM<Vector, DistanceResult>::MergingIterator {
- public:
-  using LSM = VectorLSM<Vector, DistanceResult>;
-  using VectorIndex = typename LSM::VectorIndex;
-  using VectorIndexPtr = typename LSM::VectorIndexPtr;
-  using InnerIterator = typename VectorIndex::Iterator;
-  using Iterator = typename ImmutableChunkPtrs::const_iterator;
-  using ValueType = typename VectorIndex::IteratorValue;
-
-  MergingIterator(const ImmutableChunkPtrs& chunks, VectorLSMMergeFilter& filter)
-      : chunks_(chunks), filter_(filter), outer_it_(chunks_.begin()) {
-    // Seed frontiers from the first chunk so the first Merger::ResetFrontiers() call
-    // returns them as part of the first output chunk's frontiers.
-    ResetFrontiers();
-  }
-
-  // Returns true if Next() can be called.
-  bool Valid() const {
-    return outer_it_ != chunks_.end();
-  }
-
-  ValueType& operator*() {
-    DCHECK(value_.has_value());
-    return *value_;
-  }
-
-  ValueType* operator->() {
-    DCHECK(value_.has_value());
-    return &(*value_);
-  }
-
-  bool Next() {
-    bool reset_inner_iterator = !inner_it_.Valid();
-    while (Valid()) {
-      if (InnerNext(reset_inner_iterator)) {
-        return true;
-      }
-
-      ++outer_it_;
-      if (!Valid()) {
-        break;
-      }
-      UpdateFrontiers();
-      reset_inner_iterator = true;
-    }
-
-    value_.reset();
-    return false;
-  }
-
-  bool FrontiersUpdated() const {
-    return frontiers_updated_;
-  }
-
-  // Returns current frontiers merged by iterating over chunks and resets frontiers to
-  // the current chunk frontiers.
-  storage::UserFrontiersPtr ResetFrontiers() {
-    storage::UserFrontiersPtr result;
-    std::swap(result, frontiers_);
-    if (Valid()) {
-      UpdateFrontiers();
-
-      // Resetting because we need to track the frontiers update state after this call.
-      frontiers_updated_ = false;
-    }
-    return result;
-  }
-
-  size_t GetOrderNo() const {
-    return Valid() ? (*outer_it_)->order_no : chunks_.size() ? chunks_.back()->order_no : 0;
-  }
-
-  size_t GetNumVectors() const {
-    if (!cached_num_vectors_.has_value()) {
-      size_t num_vectors = 0;
-      for (const auto& chunk : chunks_) {
-        num_vectors += chunk->index ? chunk->index->Size() : 0;
-      }
-      cached_num_vectors_ = num_vectors;
-    }
-    return *cached_num_vectors_;
-  }
-
- private:
-  bool InnerValid() const {
-    return inner_it_ != inner_end_;
-  }
-
-  // Outer iterator must be valid and advanced to the next chunk if necessary. To prevent
-  // the infinite loop of the inner iterator, the method accepts a flag to explicitly indicate
-  // if the inner iterator should be reset (it is expected to be true on the outer iterator move).
-  // Returns true if the inner iterator advanced to the next vector which passes the filter.
-  bool InnerNext(bool reset_inner_iterator) {
-    // 1. Setup/advance inner iterator.
-    if (reset_inner_iterator) {
-      // Sanity check.
-      DCHECK(Valid());
-
-      // Outer iterator may have no index (for example, for frontiers only update).
-      if (!(*outer_it_)->index) {
-        return false;
-      }
-      inner_it_  = (*outer_it_)->index->begin();
-      inner_end_ = (*outer_it_)->index->end();
-    } else if (InnerValid()) {
-      ++inner_it_;
-    } else {
-      return false;
-    }
-
-    // 2. Find a vector which passes the filter and update the value_ only in case of success.
-    ValueType current_value;
-    while (inner_it_ != inner_end_) {
-      current_value = *inner_it_;
-      if (filter_.Filter(current_value.first) == storage::FilterDecision::kKeep) {
-        value_ = std::move(current_value);
-        return true;
-      }
-      ++inner_it_;
-    }
-
-    return false;
-  }
-
-  // The caller must guarantee that the current outer iterator is valid.
-  void UpdateFrontiers() {
-    DCHECK(Valid());
-
-    // Sanity check for the invariant that user_frontiers are non-null: only manifested chunks
-    // are compaction inputs, and flush and manifest load always attach user frontiers to the
-    // immutable chunks (refer to `ImmutableChunk::AddToUpdate`).
-    DCHECK((*outer_it_)->user_frontiers);
-
-    storage::UpdateFrontiers(frontiers_, *(*outer_it_)->user_frontiers);
-    frontiers_updated_ = true;
-  }
-
-  const ImmutableChunkPtrs& chunks_;
-  VectorLSMMergeFilter& filter_;
-  Iterator outer_it_;
-  InnerIterator inner_it_ { nullptr };
-  InnerIterator inner_end_ { nullptr };
-  std::optional<ValueType> value_ { std::nullopt };
-  storage::UserFrontiersPtr frontiers_;
-  bool frontiers_updated_ = false;
-  mutable std::optional<size_t> cached_num_vectors_ { std::nullopt };
-};
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSM<Vector, DistanceResult>::Merger {
- public:
-  using LSM = VectorLSM<Vector, DistanceResult>;
-  using VectorIndexPtr = typename LSM::VectorIndexPtr;
-  using Iterator = typename LSM::MergingIterator;
-  using MergeRegistry = VectorLSMMergeRegistry<Vector, DistanceResult>;
-
-  Merger(LSM& lsm, MergeRegistry& merge_registry, PriorityThreadPoolSuspender* suspender)
-      : lsm_(lsm), merge_registry_(merge_registry), suspender_(suspender) {
-  }
-
-  Result<ImmutableChunkPtrs> Merge(Iterator& input_it, size_t max_vectors_per_output_chunk) {
-    ImmutableChunkPtrs merged_chunks;
-
-    // Calculate number of vectors per chunk.
-    const auto input_size = input_it.GetNumVectors();
-    const auto num_vectors_per_chunk = max_vectors_per_output_chunk == 0 ?
-        input_size : std::min(input_size, max_vectors_per_output_chunk);
-
-    auto do_merge = merge_registry_.MaxCapacity() == 0
-        ? &Merger::DoMerge : &Merger::DoMergeWithThreadPool;
-
-    // While there's something to read. All the underlying calls must hold the invariant that
-    // input iterator is already positioned to the next vector.
-    while (input_it.Valid()) {
-      VectorIndexPtr merged_index;
-      if (num_vectors_per_chunk == 0) {
-        // Frontiers-only input: walk all chunks to accumulate frontiers, no index to merge.
-        while (input_it.Next()) {}
-      } else {
-        merged_index = VERIFY_RESULT(lsm_.CreateVectorIndex(
-            num_vectors_per_chunk, rocksdb::Cache::ReservationMode::kAlways));
-        RETURN_NOT_OK(std::invoke(do_merge, this, input_it, num_vectors_per_chunk, merged_index));
-
-        if (TEST_sleep_on_merged_chunk_populated) {
-          SleepFor(TEST_sleep_on_merged_chunk_populated);
-        }
-      }
-
-      const auto num_vectors_merged = merged_index ? merged_index->Size() : 0;
-      LOG_WITH_PREFIX(INFO) << "Chunks merge done [vectors: " << num_vectors_merged << "]";
-
-      // If nothing got merged into the index, probably all vectors are read or are outdated.
-      // But the chunk may still be required to not lose the merged frontiers.
-      VectorLSMFileMetaDataPtr merged_index_file;
-      if (!merged_index || merged_index->Size() == 0) {
-        // The expectation here is that input iterator is already at the end.
-        RSTATUS_DCHECK(!input_it.Valid(), IllegalState, "Input iterator must be at the end");
-      } else {
-        // Check shutting down in progress before saving new vector index on disk.
-        RETURN_NOT_OK(lsm_.RUNNING_STATUS());
-
-        // Save index to disk, the index may be updated to a different structure.
-        VectorIndexPtr new_index;
-        std::tie(merged_index_file, new_index) = VERIFY_RESULT(
-            lsm_.SaveIndexToFile(*merged_index, lsm_.NextSerialNo()));
-        if (new_index) {
-          merged_index = new_index;
-        }
-      }
-
-      if (merged_index_file || merged_chunks.empty() || input_it.FrontiersUpdated()) {
-        // Get current merged frontiers and make sure they are not empty.
-        auto merged_frontiers = input_it.ResetFrontiers();
-        DCHECK_ONLY_NOTNULL(merged_frontiers.get());
-
-        // Create new immutable chunk and add it to the list of new chunks.
-        merged_chunks.push_back(std::make_shared<ImmutableChunk>(
-            input_it.GetOrderNo(), std::move(merged_index_file), std::move(merged_index),
-            std::move(merged_frontiers), ImmutableChunkState::kOnDisk));
-      }
-    }
-
-    return merged_chunks;
-  }
-
- private:
-  const std::string& LogPrefix() const {
-    return lsm_.LogPrefix();
-  }
-
-  Status DoMerge(
-      Iterator& source_iterator, size_t num_vectors_to_merge, VectorIndexPtr target_index) {
-    // Let's be more conservative and don't check shutdown status on every inserted vector.
-    const size_t min_iterations_to_check_shutdown =
-        std::min<size_t>(2, 200000 / target_index->Dimensions());
-    size_t num_iterations_to_check_shutdown = min_iterations_to_check_shutdown;
-
-    // Adding all input vectors to the target index, filtering outdated vectors out.
-    size_t num_vectors_added = 0;
-    while ((num_vectors_added < num_vectors_to_merge) && source_iterator.Next()) {
-      RETURN_NOT_OK(target_index->Insert(source_iterator->first, source_iterator->second));
-      ++num_vectors_added;
-
-      if (--num_iterations_to_check_shutdown == 0) {
-        RETURN_NOT_OK(lsm_.RUNNING_STATUS());
-        MaybeYield();
-        TEST_SYNC_POINT("VectorLSM::DoMerge:Checkpoint");
-        num_iterations_to_check_shutdown = min_iterations_to_check_shutdown;
-      }
-    }
-
-    return Status::OK();
-  }
-
-  Status DoMergeWithThreadPool(
-      Iterator& source_iterator, size_t num_vectors_to_merge, VectorIndexPtr target_index) {
-    size_t num_total_tasks = ceil_div<size_t>(num_vectors_to_merge, FLAGS_vector_index_task_size);
-    const size_t num_vectors_per_task = ceil_div(num_vectors_to_merge, num_total_tasks);
-
-    size_t num_scheduled_tasks = 0;
-    std::atomic<size_t> num_completed_tasks = 0;
-
-    size_t num_remaining_vectors = num_vectors_to_merge;
-    while (num_remaining_vectors > 0 && source_iterator.Valid()) {
-      // The actual vector inserts run on a separate (insert) thread pool; this loop only schedules
-      // them and otherwise sleeps waiting for registry capacity, so yield the priority pool worker
-      // to higher priority tasks (e.g. flushes) instead of holding it for the whole merge.
-      MaybeYield();
-
-      // On shutdown stop scheduling, but fall through to the wait loop below so all already
-      // scheduled tasks are drained before this frame (and `num_completed_tasks`) goes away.
-      if (lsm_.IsShuttingDown()) {
-        break;
-      }
-
-      auto tasks = VERIFY_RESULT(merge_registry_.AllocateTasks(
-          num_total_tasks, target_index,
-          [&num_completed_tasks](const Status&) {
-            // TODO: Handle failure
-            num_completed_tasks.fetch_add(1, std::memory_order::relaxed);
-          }));
-
-      VLOG_WITH_PREFIX(3) << "Allocated " << tasks.size() << " merge tasks";
-
-      if (tasks.empty()) {
-        std::this_thread::sleep_for(200ms);
-        continue;
-      }
-      num_total_tasks -= tasks.size();
-
-      PopulateMergeTasks(tasks, num_vectors_per_task, num_remaining_vectors, source_iterator);
-
-      // `tasks` is now counted in the merge registry. Once allocated they must always be executed:
-      // the registry only tracks executed tasks via active_tasks_, so dropping an allocated batch
-      // before executing it would leak its reserved capacity and hang the registry's Shutdown(). A
-      // shutdown check here would be racy (shutdown could start right after it), so we do not bail
-      // mid-batch -- the loop checks IsShuttingDown() at the top before allocating the next batch.
-      TEST_SYNC_POINT("VectorLSM::DoMergeWithThreadPool:AfterAllocate");
-
-      num_scheduled_tasks += tasks.size();
-      merge_registry_.ExecuteTasks(tasks);
-    }
-
-    // Wait for everything got merged.
-    while (num_scheduled_tasks != num_completed_tasks.load(std::memory_order::relaxed)) {
-      MaybeYield();
-      std::this_thread::sleep_for(200ms);
-    }
-
-    // All scheduled tasks have completed, so it is now safe to propagate a shutdown that may have
-    // broken the loop above.
-    RETURN_NOT_OK(lsm_.RUNNING_STATUS());
-
-    LOG_WITH_PREFIX(INFO) << "Chunks merge done via " << num_scheduled_tasks << " tasks";
-    return Status::OK();
-  }
-
-  // Yields the priority thread pool worker to higher priority tasks if any are waiting. Called at
-  // the existing per-step checkpoints of both merge paths so a long compaction does not hold its
-  // worker (and starve flushes) for the whole merge. No-op when there is no suspender (the task is
-  // not running on a priority pool worker).
-  void MaybeYield() {
-    if (suspender_) {
-      suspender_->PauseIfNecessary();
-    }
-  }
-
-  LSM& lsm_;
-  MergeRegistry& merge_registry_;
-  PriorityThreadPoolSuspender* suspender_;
-};
-
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<typename VectorLSM<Vector, DistanceResult>::ImmutableChunkPtrs>
 VectorLSM<Vector, DistanceResult>::DoCompactChunks(
@@ -2778,7 +2147,7 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(
       IllegalState, "Vector merge filter factory must be specified");
   auto merge_filter = VERIFY_RESULT(options_.vector_merge_filter_factory());
 
-  MergingIterator merge_iterator(input_chunks, *merge_filter);
+  MergingIterator merge_iterator(*this, input_chunks, *merge_filter);
 
   Merger merger(*this, *this->merge_registry_, suspender);
   auto merged_chunks = VERIFY_RESULT(merger.Merge(merge_iterator, max_vectors_per_output_chunk));

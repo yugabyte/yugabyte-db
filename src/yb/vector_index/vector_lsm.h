@@ -224,6 +224,14 @@ class VectorLSM {
 
   Result<SaveIndexToFileResult> SaveIndexToFile(VectorIndex& index, uint64_t serial_no);
 
+  VectorIndexPtr GetImmutableChunkIndex(const ImmutableChunkPtr& chunk) const;
+  const storage::UserFrontiersPtr& GetImmutableChunkFrontiers(
+      const ImmutableChunkPtr& chunk) const;
+  size_t GetImmutableChunkOrderNo(const ImmutableChunkPtr& chunk) const;
+  ImmutableChunkPtr MakeCompactedChunk(
+      size_t order_no, VectorLSMFileMetaDataPtr file, VectorIndexPtr index,
+      storage::UserFrontiersPtr frontiers);
+
   // The argument `chunk` must be the very first chunk from `updates_queue_`.
   Status UpdateManifest(
       WritableFile& manifest_file, ImmutableChunkPtr chunk, bool schedule_compaction)
