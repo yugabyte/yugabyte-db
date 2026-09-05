@@ -28,3 +28,9 @@ Consider the requirement where there are multiple applications, all of them requ
 An application can connect to any of the YB-TServer nodes to consume from a replication slot. Furthermore, even in case of an interruption, a fresh connection can be made to a different node (different from the node from which consumption was previously happening) to continue consumption from the same replication slot.
 
 When there are multiple consuming applications each consuming from a different replication slot, it is best that the applications connect to different YB-TServer nodes in the cluster. This ensures better load balancing. The [YugabyteDB smart driver](/stable/develop/drivers-orms/smart-drivers/) does this automatically, so it is recommended that applications use this smart driver.
+
+## Avoid reusing Kafka topics across slots
+
+Kafka stores the last consumed LSN separately from the replication slot. Deleting a connector does not remove that offset. If you drop the slot, recreate it, and start a connector that writes to the same Kafka topics, Kafka may resume from the old LSN. Because LSNs aren't comparable across slots, that can skip changes on the new slot.
+
+To avoid re-use of Kafka topics across slots and prevent CDC from missing data due to incorrect start LSNs coming from a different slot, each connector which uses a different slot should use a different [`topic.prefix`](./yugabytedb-connector-properties/#topic-prefix).
