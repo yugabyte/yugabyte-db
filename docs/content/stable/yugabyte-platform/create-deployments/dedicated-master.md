@@ -43,7 +43,7 @@ When creating a universe, you have the following two options for YB-Master proce
 
 For an existing universe, assigning new YB-Masters will start the new YB-Master nodes and stop any existing ones.
 
-Dedicated master placement can be used when creating universes using AWS, GCP, Azure, and On-Premises [provider configurations](../../configure-yugabyte-platform/); Kubernetes is not supported.
+Dedicated master placement can be used when creating universes using AWS, GCP, Azure, OCI, and On-Premises [provider configurations](../../configure-yugabyte-platform/); Kubernetes is not supported.
 
 Dedicated master placement does not apply to read replicas, which have only YB-TServers.
 

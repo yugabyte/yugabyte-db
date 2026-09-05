@@ -45,6 +45,13 @@ When backing up to an NFS storage target, only database nodes need access to the
       Azure
     </a>
   </li>
+  <li>
+    <a href="#oci" class="nav-link" id="oci-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="oci" aria-selected="false">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -133,6 +140,32 @@ This requires configuring the VMs for YugabyteDB Anywhere and universe nodes wit
 | Save for later | To configure |
 | :--- | :--- |
 | Azure storage Connection string and SAS token | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#azure-storage) for Azure |
+
+  </div>
+
+  <div id="oci" class="tab-pane fade" role="tabpanel" aria-labelledby="oci-tab">
+
+When backing up to and/or restoring from OCI Object Storage, YBA and DB nodes must be able to write to and read from the storage bucket.
+
+You can grant access in either of the following ways:
+
+- **S3-compatible credentials.** Create a Customer Secret Key for an OCI user that can manage objects in the bucket. Provide the Access Key, Secret Key, and S3-compatible host base (`<namespace>.compat.objectstorage.<region>.oraclecloud.com`) when creating the backup [storage configuration](../../../back-up-restore-universes/configure-backup-storage/#oracle-cloud-infrastructure).
+- **OCI IAM (instance principal).** Attach a policy to the dynamic group of the YBA host (and database nodes, if they also authenticate natively) that grants object-storage access.
+
+The following permissions are required:
+
+```properties
+Allow group yba-admins to manage object-family in compartment <compartment>
+Allow group yba-admins to inspect buckets in compartment <compartment>
+```
+
+When using instance principal, replace `group yba-admins` with `dynamic-group <dynamic-group-name>`.
+
+| Save for later | To configure |
+| :--- | :--- |
+| Access Key and Secret Key (S3-compatible) or instance principal | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#oracle-cloud-infrastructure) for OCI |
+| Object Storage namespace and region | |
+| Bucket name | |
 
   </div>
 

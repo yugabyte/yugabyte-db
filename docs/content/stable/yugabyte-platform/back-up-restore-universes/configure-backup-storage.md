@@ -341,6 +341,52 @@ For multi-region backup configurations with IAM enabled, you do not need to prov
 
 1. Click **Save**. -->
 
+## Oracle Cloud Infrastructure
+
+You can configure OCI Object Storage as your backup target. YugabyteDB Anywhere supports two authentication modes:
+
+- **S3-compatible credentials**, using a Customer Secret Key and the S3-compatible Object Storage endpoint.
+- **OCI IAM**, using instance principal on the YugabyteDB Anywhere host.
+
+### Prerequisites
+
+- An Object Storage bucket in the compartment you will use for backups.
+- For S3-compatible mode, a Customer Secret Key (Access Key and Secret) for a user that can manage objects in the bucket. See [Customer Secret Keys](https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/managingcredentials.htm#create-secret-key) in the OCI documentation.
+- For IAM mode, instance principal configured on the YugabyteDB Anywhere host (and on database nodes if they also authenticate natively). Refer to [Permissions to back up and restore](../../prepare/cloud-permissions/cloud-permissions-storage/).
+
+The Object Storage namespace is required for IAM mode. When you use a native HTTPS backup location, the namespace must match the `/n/<namespace>/` segment in the URL.
+
+### Create an OCI backup configuration
+
+To configure OCI Object Storage, do the following:
+
+1. Navigate to **Integrations > Backup > Oracle Cloud**.
+
+1. Click **Create OCI Backup**.
+
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+
+1. In the **Backup Location** field, enter the bucket in one of the following forms:
+
+    - S3-compatible: `s3://<bucket>[/<path>]`
+    - Native HTTPS: `https://objectstorage.<region>.oraclecloud.com/n/<namespace>/b/<bucket>[/<path>]`
+
+    Do not use `/o/<object>` paths.
+
+1. In the **OCI Region** field, enter the region of the bucket (for example, `us-sanjose-1`). For S3-compatible credentials this is also used as the signing region.
+
+1. Enable **Use OCI IAM** to authenticate with instance principal instead of a Customer Secret Key.
+
+1. If **Use OCI IAM** is enabled, enter the **OCI Namespace**.
+
+1. If **Use OCI IAM** is disabled, enter values for the **Access Key**, **Access Secret**, and **S3 Host Base** fields.
+
+    The S3 Host Base is the S3-compatible endpoint, in the form `<namespace>.compat.objectstorage.<region>.oraclecloud.com`. Path-style access is required and is applied automatically for OCI.
+
+1. Click **Save**.
+
+For more information on the S3-compatible API, see [Amazon S3 Compatibility API](https://docs.oracle.com/en-us/iaas/Content/Object/Tasks/s3compatibleapi.htm) in the OCI documentation.
+
 ## Network File System
 
 You can configure Network File System (NFS) as your backup target, as follows:

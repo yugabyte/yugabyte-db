@@ -6,7 +6,7 @@ description: Prepare your cloud for deploying universe nodes using a Kubernetes 
 headContent: Prepare your cloud for deploying YugabyteDB universe nodes
 menu:
   stable_yugabyte-platform:
-    identifier: cloud-permissions-nodes-5-k8s
+    identifier: cloud-permissions-nodes-6-k8s
     parent: cloud-permissions
     weight: 20
 type: docs
@@ -36,6 +36,12 @@ type: docs
     <a href="../cloud-permissions-nodes-azure" class="nav-link">
       <i class="fa-brands fa-microsoft"></i>
       Azure
+    </a>
+  </li>
+  <li>
+    <a href="../cloud-permissions-nodes-oci/" class="nav-link">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
     </a>
   </li>
   <li>
