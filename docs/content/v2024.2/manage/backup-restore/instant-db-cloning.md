@@ -69,7 +69,7 @@ CREATE DATABASE clone_db TEMPLATE original_db AS OF 1723146703674480;
 
 ### Clone a YCQL keyspace
 
-YCQL keyspace cloning is {{<tags/feature/tp>}}. You can create a clone in YCQL using the yb-admin `clone_namespace` command as follows:
+YCQL keyspace cloning is {{<tags/feature/tp>}}. You can create a clone in YCQL using the yb-admin [`clone_namespace`](../../../admin/yb-admin/#clone-namespace) command as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS clone_namespace ycql.originaldb1 clonedb2 1715275616599020
@@ -79,7 +79,7 @@ In this example, `clonedb2` is created as a clone of `originaldb1` as of 1715275
 
 ### Check the clone status
 
-To check the status of clone operations performed on a database, use the yb-admin `list_clones` command and provide the `source_database_id` (YSQL) or `source_namespace_id` (YCQL), as follows:
+To check the status of clone operations performed on a database, use the yb-admin [`list_clones`](../../../admin/yb-admin/#list-clones) command and provide the `source_database_id` (YSQL) or `source_namespace_id` (YCQL), as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS list_clones 00004000000030008000000000000000

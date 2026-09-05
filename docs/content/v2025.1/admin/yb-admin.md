@@ -777,6 +777,8 @@ The following backup and snapshot commands are available:
 * [**edit_snapshot_schedule**](#edit-snapshot-schedule) modifies the schedule for snapshot creation
 * [**restore_snapshot_schedule**](#restore-snapshot-schedule) restores all objects in a scheduled snapshot
 * [**delete_snapshot_schedule**](#delete-snapshot-schedule) deletes the specified snapshot schedule
+* [**clone_namespace**](#clone-namespace) clones a YSQL database or YCQL keyspace as of a point in time
+* [**list_clones**](#list-clones) lists clone operations for a source database or keyspace
 
 {{< note title="YugabyteDB Anywhere" >}}
 
@@ -1418,6 +1420,107 @@ The output should show the schedule ID we just deleted.
     "schedule_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
 }
 ```
+
+#### clone_namespace
+
+Creates a clone of a YSQL database or YCQL keyspace as of a point in time. The clone is a new database or keyspace on the same cluster. The source must have a [snapshot schedule](#create-snapshot-schedule) that covers the clone time.
+
+For YSQL, you can also clone using `CREATE DATABASE ... TEMPLATE ... AS OF`. See [Instant database cloning](../../manage/backup-restore/instant-db-cloning/).
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    clone_namespace <source-namespace> <target-namespace-name> [<timestamp> | minus <interval>]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *source-namespace*: The source YSQL database (`ysql.<database-name>`) or YCQL keyspace (`ycql.<keyspace-name>`). If you omit the prefix, the name is treated as a YCQL keyspace.
+* *target-namespace-name*: The name of the new clone.
+* *timestamp*: Unix timestamp in microseconds, or a [YSQL](../../api/ysql/datatypes/type_datetime/) or [YCQL](../../api/ycql/type_datetime/#timestamp) timestamp. Optional; omit to clone as of the current time.
+* `minus <interval>`: Clone as of a relative time, using the same formats as [restore_snapshot_schedule](#restore-snapshot-schedule).
+
+**Examples**
+
+Clone a YCQL keyspace as of an absolute time:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    clone_namespace ycql.originaldb1 clonedb2 1715275616599020
+```
+
+Clone a YSQL database as of five minutes ago:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    clone_namespace ysql.yugabyte cloned_db minus 5m
+```
+
+Clone a YSQL database as of the current time:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    clone_namespace ysql.yugabyte cloned_db
+```
+
+When the clone starts, the command returns the source namespace ID and a sequence number you can pass to [list_clones](#list-clones):
+
+```output.json
+{
+    "source_namespace_id": "00004000000030008000000000000000",
+    "seq_no": "1"
+}
+```
+
+#### list_clones
+
+Lists clone operations for a source YSQL database or YCQL keyspace.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    list_clones <source-namespace-id> [<seq-no>]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *source-namespace-id*: The identifier of the source database or keyspace. Find this ID on the YB-Master leader UI `/namespaces` endpoint, or in the output of [clone_namespace](#clone-namespace).
+* *seq-no*: Optional sequence number of a specific clone. Omit to list all clones of the source.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    list_clones 00004000000030008000000000000000
+```
+
+```output.json
+[
+    {
+        "aggregate_state": "COMPLETE",
+        "source_namespace_id": "00004000000030008000000000000000",
+        "seq_no": "1",
+        "target_namespace_name": "testing_clone_db",
+        "restore_time": "2024-08-09 21:42:16.451974"
+    }
+]
+```
+
+To check a specific clone, pass the sequence number:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    list_clones 00004000000030008000000000000000 1
+```
+
+If a clone was aborted, the entry includes an `abort_message`.
 
 ---
 

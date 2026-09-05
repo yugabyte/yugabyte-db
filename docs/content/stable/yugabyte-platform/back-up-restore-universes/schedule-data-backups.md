@@ -17,11 +17,13 @@ menu:
 type: docs
 ---
 
-You can use YugabyteDB Anywhere to perform regularly scheduled backups of YugabyteDB universe data for all tables in a database (YSQL) or keyspace (YCQL) or only the specified tables (YCQL only).
+YugabyteDB Anywhere can perform regularly scheduled backups of YugabyteDB universe data for all tables in a database (YSQL) or keyspace (YCQL) or only the specified tables (YCQL only).
+
+To perform scheduled backups, as well as enable [Restore to a point in time](../restore-universe-data/#restore-from-backup) for backups, you first create a scheduled backup policy.
 
 To back up your universe data immediately, see [Back up universe data](../back-up-universe-data/).
 
-To schedule backups, backups must be enabled for the universe. On the universe **Tables** tab, click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
+Note: To schedule backups, backups must be [enabled for the universe](../back-up-universe-data/#disable-backups-for-a-universe) (the default).
 
 ## Create a scheduled backup policy
 
@@ -35,7 +37,7 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 
 1. Select the Keyspaces/Databases you want to back up, either YSQL or YCQL.
 
-    For YSQL, you have a additional **Advanced Configuration** option to include **Backup tablespace information** (enabled by default). If you don't choose to back up tablespaces, the tablespaces are not preserved and their data is backed up to the primary region.
+    For YSQL, you have an additional **Advanced Configuration** option to include **Backup tablespace information** (enabled by default). If you don't choose to back up tablespaces, the tablespaces are not preserved and their data is backed up to the primary region.
 
     For YCQL, you can choose to back up all tables or a selection of tables. Click **Select a subset of tables** to display the **Select Tables** dialog, where you can select one or more tables to back up, and click **Confirm**.
 
@@ -79,14 +81,14 @@ You can change the backup frequency of a scheduled backup policy as follows:
 1. Change the interval between backups or select **Use cron expression (UTC)**.
 1. Click **Save**.
 
-## Disable backups
+## Disable scheduled backups
 
-You can disable backups, including scheduled ones, as follows:
+You can disable scheduled backups as follows:
 
 1. Navigate to your universe and select **Backups > Scheduled Backup Policies**.
 1. Disable the policy managing the backup you want to disable.
 
-## Delete a scheduled backup and policy
+## Delete backups and policies
 
 You can permanently remove a scheduled backup, as follows:
 
