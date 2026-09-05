@@ -177,6 +177,9 @@ Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
   return vector_index::VectorLSMInsertEntry<Vector> {
     .vector_id = VERIFY_RESULT(encoded.DecodeId()),
     .vector = VERIFY_RESULT(VectorFromYSQL<Vector>(encoded.data)),
+    // TODO(vector_index): attach ybctid of the row that contains the vector in a follow up
+    // to #33353.
+    .payload = ValueBuffer(),
   };
 }
 
@@ -200,7 +203,7 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
     return log_prefix_;
   }
 
-  rocksdb::FilterDecision Filter(vector_index::VectorId vector_id) override {
+  rocksdb::FilterDecision Filter(vector_index::VectorId vector_id, Slice payload) override {
     if (FLAGS_vector_index_skip_filter_check) {
       return rocksdb::FilterDecision::kKeep;
     }
@@ -307,6 +310,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .file_extension = GetVectorIndexChunkFileExtension(options_),
       .metric_entity = metric_entity_,
       .block_cache_capacity = block_cache_ ? block_cache_->capacity() : 0,
+      // TODO(vector_index): store ybctid as the vector payload in a follow up to #33353.
+      .store_vector_payload = vector_index::StoreVectorPayload::kFalse,
     };
     return lsm_.Open(std::move(lsm_options));
   }

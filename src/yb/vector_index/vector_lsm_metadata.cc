@@ -13,6 +13,8 @@
 
 #include "yb/vector_index/vector_lsm_metadata.h"
 
+#include "yb/vector_index/vector_payload_map.h"
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
@@ -200,6 +202,33 @@ Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB
 
 std::string VectorLSMMetadataLoadResult::ToString() const {
   return YB_STRUCT_TO_STRING(next_free_file_no, chunks);
+}
+
+Result<VectorLSMFiles> ListVectorLSMFiles(Env* env, const std::string& dir) {
+  auto files = VERIFY_RESULT(env->GetChildren(dir));
+  std::erase_if(files, [](const auto& file) {
+    return !file.ends_with(".meta") && !file.contains("vectorindex");
+  });
+  VectorLSMFiles result;
+  const auto payload_file_suffix = VectorIndexPayloadFilePath(std::string());
+  for (const auto& file : files) {
+    if (!file.ends_with(payload_file_suffix)) {
+      continue;
+    }
+    result.has_payload_files = true;
+    auto chunk_file = file.substr(0, file.size() - payload_file_suffix.size());
+    SCHECK(std::find(files.begin(), files.end(), chunk_file) != files.end(), IllegalState,
+           "Payload file without the chunk file: $0", file);
+  }
+  std::erase_if(files, [&payload_file_suffix](const auto& file) {
+    return file.ends_with(payload_file_suffix);
+  });
+  std::sort(files.begin(), files.end(), [](auto&& lhs, auto&& rhs) {
+    // Refer to VectorLSMMetadataLoad().
+    return lhs.size() < rhs.size() || (lhs.size() == rhs.size() && lhs < rhs);
+  });
+  result.manifest_and_chunk_files = std::move(files);
+  return result;
 }
 
 }  // namespace yb::vector_index

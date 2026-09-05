@@ -28,6 +28,7 @@
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/vector_index_if.h"
+#include "yb/vector_index/vector_payload_map.h"
 
 using namespace std::chrono_literals;
 using namespace yb::size_literals;
@@ -48,7 +49,7 @@ unum::usearch::index_dense_config_t CreateIndexDenseConfig() {
 }
 
 struct AcceptAllVectors {
-  bool operator()(const vector_index::VectorId& id) const {
+  bool operator()(const vector_index::VectorId& id, Slice payload) const {
     return true;
   }
 };
@@ -57,9 +58,16 @@ class YbHnswTest : public VectorIndexTestBase {
  protected:
   YbHnswTest() {}
 
+  static std::string PayloadForVector(const vector_index::VectorId& vector_id) {
+    return "value_" + vector_id.ToString();
+  }
+
   void InsertRandomVector(Vector& holder) {
     RandomVector(holder);
-    ASSERT_TRUE(index_.add(vector_index::VectorId::GenerateRandom(), holder.data()));
+    auto vector_id = vector_index::VectorId::GenerateRandom();
+    auto add_result = index_.add(vector_id, holder.data());
+    ASSERT_TRUE(add_result);
+    payloads_.Insert(add_result.slot, PayloadForVector(vector_id));
   }
 
   void InsertRandomVectors(size_t count) {
@@ -70,6 +78,7 @@ class YbHnswTest : public VectorIndexTestBase {
     index_ = IndexImpl::make(metric_, CreateIndexDenseConfig());
     auto rounded_num_vectors = unum::usearch::ceil2(max_vectors_);
     index_.reserve(unum::usearch::index_limits_t(rounded_num_vectors * 2 / 3, 16));
+    payloads_.Reserve(index_.limits().members);
 
     Vector holder;
     for (size_t i = 0; i != count; ++i) {
@@ -83,13 +92,20 @@ class YbHnswTest : public VectorIndexTestBase {
       context = &context_;
     }
     auto options = MakeSearchOptions(max_results);
-    auto usearch_results = index_.filtered_search(query_vector.data(), max_results, options.filter);
+    // Usearch invokes the predicate with the vector id and slot.
+    auto usearch_filter = [&options](const vector_index::VectorId& id, size_t slot) {
+      return options.filter(id, Slice());
+    };
+    auto usearch_results = index_.filtered_search(
+        query_vector.data(), max_results, usearch_filter);
     auto yb_hnsw_results = yb_hnsw_->Search(query_vector.data(), options, *context);
     ASSERT_EQ(usearch_results.count, yb_hnsw_results.size());
     for (size_t j = 0; j != usearch_results.count; ++j) {
       std::decay_t<decltype(yb_hnsw_results.front())> expected(
           usearch_results[j].member.key, usearch_results[j].distance);
       ASSERT_EQ(AsString(expected), AsString(yb_hnsw_results[j]));
+      ASSERT_EQ(yb_hnsw_results[j].payload.ToStringBuffer(),
+                PayloadForVector(yb_hnsw_results[j].vector_id));
     }
   }
 
@@ -109,6 +125,7 @@ class YbHnswTest : public VectorIndexTestBase {
 
   unum::usearch::metric_punned_t metric_;
   IndexImpl index_;
+  vector_index::VectorPayloadMap payloads_;
   std::optional<YbHnsw> yb_hnsw_;
   YbHnswSearchContext context_;
 };
@@ -118,11 +135,11 @@ Status YbHnswTest::InitYbHnsw(bool load) {
   if (load) {
     {
       YbHnsw temp(metric_, block_cache_);
-      RETURN_NOT_OK(temp.Import(index_, path));
+      RETURN_NOT_OK(temp.Import(index_, path, &payloads_));
     }
     RETURN_NOT_OK(yb_hnsw_->Init(path));
   } else {
-    RETURN_NOT_OK(yb_hnsw_->Import(index_, path));
+    RETURN_NOT_OK(yb_hnsw_->Import(index_, path, &payloads_));
   }
   return Status::OK();
 }

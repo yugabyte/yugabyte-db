@@ -374,7 +374,8 @@ class BenchmarkTool {
       };
     }
 
-    vector_index_ = index_pre_factory_(hnsw_options())->Create(FactoryMode::kCreate);
+    vector_index_ = index_pre_factory_(hnsw_options())->Create(
+        FactoryMode::kCreate, StoreVectorPayload::kFalse);
 
     RETURN_NOT_OK(vector_index_->Reserve(
         num_points_to_insert(),
@@ -659,7 +660,7 @@ class BenchmarkTool {
 
   Status InsertOneVector(VectorId vertex_id, MonoTime load_start_time) {
     const auto& v = GetVectorByVertexId(vertex_id);
-    Status s = vector_index_->Insert(vertex_id, vector_cast<IndexedVector>(v));
+    Status s = vector_index_->Insert(vertex_id, vector_cast<IndexedVector>(v), Slice());
     if (s.ok()) {
       auto new_num_inserted = num_vectors_inserted_.fetch_add(1, std::memory_order_acq_rel) + 1;
       ReportIndexingProgress(load_start_time, new_num_inserted);

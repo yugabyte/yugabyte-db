@@ -1062,7 +1062,9 @@ class PgsqlVectorFilter {
     return true;
   }
 
-  bool operator()(const vector_index::VectorId& vector_id) {
+  // TODO(vector_index): payload stores the ybctid attached to the vector, use it to filter
+  // without reading the reverse mapping in a follow up to #33353.
+  bool operator()(const vector_index::VectorId& vector_id, Slice payload) {
     if (!row_) {
       return true;
     }

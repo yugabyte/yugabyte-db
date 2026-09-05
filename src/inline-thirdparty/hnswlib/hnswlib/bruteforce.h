@@ -61,7 +61,7 @@ class BruteforceSearch : public AlgorithmInterface<dist_t, label_t> {
     }
 
 
-    void addPoint(const void *datapoint, label_t label, bool replace_deleted = false) {
+    size_t addPoint(const void *datapoint, label_t label, bool replace_deleted = false) {
         int idx;
         {
             std::unique_lock<std::mutex> lock(index_lock);
@@ -80,6 +80,7 @@ class BruteforceSearch : public AlgorithmInterface<dist_t, label_t> {
         }
         memcpy(data_ + size_per_element_ * idx + data_size_, &label, sizeof(label_t));
         memcpy(data_ + size_per_element_ * idx, datapoint, data_size_);
+        return idx;
     }
 
 
@@ -104,33 +105,33 @@ class BruteforceSearch : public AlgorithmInterface<dist_t, label_t> {
     }
 
 
-    std::priority_queue<std::pair<dist_t, label_t>>
+    std::priority_queue<std::tuple<dist_t, label_t, tableint>>
     searchKnn(const void *query_data, size_t k, BaseFilterFunctor<label_t>* isIdAllowed = nullptr, size_t ef = 0) const {
         assert(k <= cur_element_count);
-        std::priority_queue<std::pair<dist_t, label_t >> topResults;
+        std::priority_queue<std::tuple<dist_t, label_t, tableint>> topResults;
         if (cur_element_count == 0) return topResults;
         for (size_t i = 0; i < k; i++) {
             dist_t dist = fstdistfunc_(query_data, data_ + size_per_element_ * i, dist_func_param_);
             label_t label;
             memcpy(&label, data_ + size_per_element_ * i + data_size_, sizeof(label_t));
-            if ((!isIdAllowed) || (*isIdAllowed)(label)) {
-                topResults.emplace(dist, label);
+            if ((!isIdAllowed) || (*isIdAllowed)(label, i)) {
+                topResults.emplace(dist, label, static_cast<tableint>(i));
             }
         }
-        dist_t lastdist = topResults.empty() ? std::numeric_limits<dist_t>::max() : topResults.top().first;
+        dist_t lastdist = topResults.empty() ? std::numeric_limits<dist_t>::max() : std::get<0>(topResults.top());
         for (int i = k; i < cur_element_count; i++) {
             dist_t dist = fstdistfunc_(query_data, data_ + size_per_element_ * i, dist_func_param_);
             if (dist <= lastdist) {
                 label_t label;
                 memcpy(&label, data_ + size_per_element_ * i + data_size_, sizeof(label_t));
-                if ((!isIdAllowed) || (*isIdAllowed)(label)) {
-                    topResults.emplace(dist, label);
+                if ((!isIdAllowed) || (*isIdAllowed)(label, i)) {
+                    topResults.emplace(dist, label, static_cast<tableint>(i));
                 }
                 if (topResults.size() > k)
                     topResults.pop();
 
                 if (!topResults.empty()) {
-                    lastdist = topResults.top().first;
+                    lastdist = std::get<0>(topResults.top());
                 }
             }
         }
