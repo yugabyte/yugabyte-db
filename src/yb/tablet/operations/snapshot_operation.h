@@ -73,6 +73,17 @@ class SnapshotOperation :
       const OpId& id, consensus::OperationType op_type) const override;
 
   Status DoCheckOperationRequirements();
+
+  // Whether AddedAsPending registered this operation as the tablet's operation filter. The abort
+  // path can run without the operation ever having been added as pending (see
+  // RemovedFromPending).
+  //
+  // Plain bool: the accesses are never concurrent. A pre-replication abort runs on the
+  // submitting thread after Operation::AddedToLeader returns (the failure propagates up the
+  // same call stack to OperationDriver::HandleFailure), and post-replication completion
+  // happens-after the append that ran AddedAsPending, ordered by the ReplicaState lock and
+  // the driver's lock_; replication_state_ makes Replicated/Aborted mutually exclusive.
+  bool filter_registered_ = false;
 };
 
 }  // namespace tablet
