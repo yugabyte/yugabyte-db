@@ -1132,11 +1132,7 @@ class YBClient {
 
   const CloudInfoPB& cloud_info() const;
 
-  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
-
   void AddMetaCacheInfo(JsonWriter* writer) const;
-
-  void RequestsFinished(const RetryableRequestIdRange& request_id_range);
 
   void Shutdown();
 
