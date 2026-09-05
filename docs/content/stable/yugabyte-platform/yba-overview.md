@@ -117,3 +117,77 @@ This approach allows for maximum automation. Also, you do have the option to spe
 ### Kubernetes
 
 If you are deploying a universe to Kubernetes, use a Kubernetes provider.
+
+## New experience
+
+{{<tags/feature/ea idea="285">}}Starting in v2026.1.2.0, YugabyteDB Anywhere features a new and improved experience, with many usability enhancements.
+
+Throughout the documentation, steps that differ between the two UIs are marked as follows:
+
+- {{<tags/ui/new>}} Steps for the new experience
+- {{<tags/ui/classic>}} Steps for the classic UI
+
+### Enable the new experience
+
+While in Early Access, the new experience is not available by default.
+
+To enable the new experience, set the **Enable new Universe experience** Global Runtime Configuration option (config key `yb.ui.enable_new_universe_experience`) to true. Refer to [Manage runtime configuration settings](../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
+
+### New and improved
+
+- Enhanced Universe Configuration
+
+    Set up and manage universes using a wizard in Guided or Expert mode to help you build the right topology. In Guided mode, choose Region, Zone, Node, or None resilience; Expert mode gives you full control over replication factor and per-zone node counts. [Learn more](../create-deployments/create-universes-overview/#placement).
+
+- Centralized universe settings
+
+    Access all your universe configuration settings from a single **Settings** tab.
+
+    See [Where did features move](#where-did-features-move).
+
+- Preferred availability zone ranking
+
+    Rank preferred regions and availability zones to optimize connection latency. [Learn more](../create-deployments/create-universes-overview/#preferred-region).
+
+- Add Read Replica wizard
+
+    Add a read replica to your universe using a wizard, then edit placement, hardware, and flags independently. [Learn more](../create-deployments/read-replicas/).
+
+- Review before you apply
+
+    Placement and hardware changes show a summary of current and new values before you confirm. For vertical scaling, choose whether to resize existing nodes (smart resize) or migrate to a new set of nodes. [Learn more](../scale-deployments/edit-universe/).
+
+### Where did features move?
+
+Universes have a new **Settings** tab for all universe configuration settings, organized as follows:
+
+- General: Cluster information
+- Placement: Resilience or replication factor, regions, availability zones, and ranked preferred regions
+- Hardware: Instance types and disk
+- Security: Network access, encryption in transit, and encryption at rest
+- Database: API endpoints and authentication (YSQL/YCQL), additional features, and configuration flags
+- Advanced: Proxy settings, ports, node access, and Kubernetes overrides
+- Logs: Database query and audit log settings
+- Telemetry Export: Log and metrics export
+
+See where features have moved:
+
+| {{<tags/ui/classic>}} | {{<tags/ui/new>}} |
+| :--- | :--- |
+| Edit Universe (Region, AZ, and node placement) | Settings > Placement |
+| Edit Universe (Instance Configuration) | Settings > Hardware |
+| Edit Universe (Place Masters on dedicated nodes) | Settings > Placement > Advanced Placement Options |
+| Edit Universe (User Tags) | Settings > Advanced > User Tags |
+| Add Read Replica / Edit Read Replica | Settings > Placement |
+| Create Universe > Configure Read Replica | Add after creating the universe (Settings > Placement) |
+| Edit Flags | Settings > Database > Advanced Config Flags |
+| Edit Postgres Compatibility | Settings > Database > Features |
+| Connection Pooling | Settings > Database > Features |
+| Edit YSQL / YCQL Configuration | Settings > Database > Interface |
+| Edit Security > Encryption in-Transit | Settings > Security > Encryption in Transit |
+| Edit Security > Encryption at Rest | Settings > Security > Encryption at Rest |
+| Edit Kubernetes Overrides | Settings > Advanced > Helm Overrides |
+| Logs / Enable Database Audit Logging | Settings > Logs |
+| Logs & Metrics Export | Settings > Telemetry Export |
+| Metrics > Export Metrics | Settings > Telemetry Export |

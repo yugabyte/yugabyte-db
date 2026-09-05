@@ -8,7 +8,7 @@ menu:
   stable_yugabyte-platform:
     identifier: connect-to-universe
     parent: create-deployments
-    weight: 80
+    weight: 60
 type: docs
 ---
 
@@ -105,6 +105,20 @@ To run a shell from a universe node, do the following:
     ./ycqlsh <node_ip_address>
     ```
 
+### Connect to a Kubernetes node
+
+For Kubernetes universes, use the Connect dialog to obtain endpoints and `kubectl` commands:
+
+1. In YugabyteDB Anywhere, navigate to your universe and select the **Nodes** tab.
+
+1. Click **Connect** to view the universe endpoints you can use to connect from clients.
+
+1. On a specific node, click **Actions > Connect** to view the `kubectl` commands to copy and run to connect to that pod.
+
+For connecting from inside the Kubernetes cluster or remotely over TLS, also see [Connect YugabyteDB clusters](../../../deploy/kubernetes/clients/#connect-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).
+
+If you configured a [common YB-TServer service](../../scale-deployments/edit-helm-overrides/#create-common-yb-tserver-service-for-zones) or [common load balancer](../../scale-deployments/edit-helm-overrides/#create-a-common-load-balancer-service-for-yb-masters-yb-tservers) via Helm overrides, use the service DNS name or load balancer address as the host endpoint when connecting.
+
 ### Enable Tectia SSH
 
 By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB Anywhere also supports the use of Tectia SSH that is based on the latest SSH G3 protocol.
@@ -140,7 +154,7 @@ curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runt
 
 ### Connect using a client shell
 
-Use the ysqlsh, ycqlsh, and psql shells to connect to and interact with YugabyteDB using the YSQL and YCQL APIs.
+Use the ysqlsh, ycqlsh, and psql shells to connect to universes using the YSQL and YCQL APIs.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

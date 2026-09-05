@@ -4,6 +4,8 @@ headerTitle: Bidirectional replication
 linkTitle: Bidirectional replication
 description: Bidirectional replication using xCluster
 headContent: Replicate data in both directions
+aliases:
+  - /stable/yugabyte-platform/manage-deployments/xcluster-replication/bidirectional-replication/
 menu:
   stable_yugabyte-platform:
     parent: xcluster-replication

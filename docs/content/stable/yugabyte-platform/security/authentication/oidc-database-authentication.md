@@ -244,7 +244,7 @@ To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
 You enable OIDC for universes by setting authentication flags for YSQL or YCQL database access. For YSQL, the database uses PostgreSQL `yb_hba.conf` and `yb_ident.conf` files to translate authentication rules into database roles. For YCQL, you set YB-TServer flags such as `ycql_jwt_conf` and optional `ycql_ident_conf_csv` identity mapping rules.
 
-For information on configuring flags in YugabyteDB Anywhere, refer to [Edit configuration flags](../../../manage-deployments/edit-config-flags/).
+For information on configuring flags in YugabyteDB Anywhere, refer to [Edit configuration flags](../../../scale-deployments/edit-config-flags/).
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
@@ -342,17 +342,15 @@ To access a universe via OIDC for YCQL, set OIDC-related YB-TServer flags on the
 
 #### Prerequisites
 
-OIDC for YCQL requires YCQL authentication to be enabled on the universe. When you turn on YCQL authorization in YugabyteDB Anywhere, YugabyteDB Anywhere sets the [use_cassandra_authentication](../../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag automatically; do not set this flag manually via **Edit Flags**.
+OIDC for YCQL requires YCQL authentication to be enabled on the universe. When you turn on YCQL authorization in YugabyteDB Anywhere, YugabyteDB Anywhere sets the [use_cassandra_authentication](../../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag automatically; do not set this flag manually.
 
 To enable YCQL authorization when creating or modifying a universe, refer to [Enable database endpoints and authorization](../../authorization-platform/#enable-database-endpoints-and-authorization) and [Modify endpoint configuration](../../authorization-platform/#modify-endpoint-configuration).
 
 #### Set OIDC YB-TServer flags
 
-Add all OIDC-related flags to YB-TServer in a single **Actions > Edit Flags** session. For more information, refer to [Edit configuration flags](../../../manage-deployments/edit-config-flags/).
+Add all OIDC-related flags using [Edit configuration flags](../../../scale-deployments/edit-config-flags/).
 
-1. Navigate to your universe and click **Actions > Edit Flags**.
-1. Add the following flags to YB-TServer (and `ycql_ident_conf_csv` if you are using identity mapping).
-1. Apply the changes.
+Add the following flags to YB-TServer (and `ycql_ident_conf_csv` if you are using identity mapping). Be sure to add the flags in a single session.
 
 Use the following flags to configure OIDC for YCQL.
 
@@ -373,7 +371,7 @@ Valid keys for `ycql_jwt_conf` are described in the following table:
 
 After these options are configured, the JWT from the IdP is supplied as the password when connecting to YCQL.
 
-The following shows an example OIDC flag configuration for Azure AD (without identity mapping). Set these flags in **Edit Flags**; `use_cassandra_authentication` is included for reference only and is set automatically when [YCQL authentication is enabled](../../authorization-platform/#modify-endpoint-configuration).
+The following shows an example OIDC flag configuration for Azure AD (without identity mapping). Set these flags [using YugabyteDB Anywhere](../../scale-deployments/edit-config-flags/); `use_cassandra_authentication` is included for reference only and is set automatically when [YCQL authentication is enabled](../../authorization-platform/#modify-endpoint-configuration).
 
 ```sh
 use_cassandra_authentication=true
@@ -382,7 +380,7 @@ ycql_jwt_conf={jwt_jwks_url=https://login.microsoftonline.com/<tenant_id>/discov
 ycql_jwt_users_to_skip_csv=cassandra
 ```
 
-The following shows an example OIDC flag configuration for JumpCloud (without identity mapping). Set these flags in **Edit Flags**; `use_cassandra_authentication` is included for reference only and is set automatically when [YCQL authentication is enabled](../../authorization-platform/#modify-endpoint-configuration).
+The following shows an example OIDC flag configuration for JumpCloud (without identity mapping). Set these flags [using YugabyteDB Anywhere](../../scale-deployments/edit-config-flags/); `use_cassandra_authentication` is included for reference only and is set automatically when [YCQL authentication is enabled](../../authorization-platform/#modify-endpoint-configuration).
 
 ```sh
 use_cassandra_authentication=true

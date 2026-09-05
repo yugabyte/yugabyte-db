@@ -22,31 +22,27 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
 
 A universe includes one primary cluster and, optionally, one read replica cluster. All instances belonging to a cluster run on the same type of cloud provider instance.
 
-For information on modifying or scaling an existing universe, refer to [Modify universe](../manage-deployments/edit-universe/).
+Before you deploy, review [Plan your universe](create-universes-overview/).
+
+For information on modifying or scaling an existing universe, refer to [Scale and edit universes](../scale-deployments/).
 
 {{<index/block>}}
 
   {{<index/item
-    title="Create a multi-zone universe"
-    body="Deploy a multi-zone universe."
-    href="create-universe-multi-zone/"
+    title="Plan your universe"
+    body="Review topology, placement, hardware, and security before you deploy."
+    href="create-universes-overview/"
+    icon="fa-thin fa-map">}}
+
+  {{<index/item
+    title="Create a universe"
+    body="Deploy a universe across multiple zones or regions."
+    href="create-universes-wizard/"
     icon="fa-thin fa-city">}}
 
   {{<index/item
-    title="Create a multi-region universe"
-    body="Deploy a multi-region universe."
-    href="create-universe-multi-region/"
-    icon="fa-thin fa-planet-moon">}}
-
-  {{<index/item
-    title="Create a multi-cloud universe"
-    body="Deploy a multi-cloud universe."
-    href="create-universe-multi-cloud/"
-    icon="fa-thin fa-clouds">}}
-
-  {{<index/item
-    title="Create a read-replica cluster"
-    body="Create a read-replica cluster for a universe."
+    title="Add read replica"
+    body="Add a read replica cluster to a universe."
     href="read-replicas/"
     icon="fa-thin fa-clone">}}
 
@@ -55,6 +51,18 @@ For information on modifying or scaling an existing universe, refer to [Modify u
     body="Create a universe with YB-Master and YB-TServer processes on dedicated nodes."
     href="dedicated-master/"
     icon="fa-thin fa-eye-evil">}}
+
+  {{<index/item
+    title="xCluster Replication"
+    body="Replicate data between independent YugabyteDB universes."
+    href="xcluster-replication/"
+    icon="fa-thin fa-arrows-left-right">}}
+
+  {{<index/item
+    title="Create a multi-cloud universe"
+    body="Deploy a multi-cloud universe."
+    href="create-universe-multi-cloud/"
+    icon="fa-thin fa-clouds">}}
 
   {{<index/item
     title="Connect to a universe"
