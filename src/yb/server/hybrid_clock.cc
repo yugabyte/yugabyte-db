@@ -113,6 +113,14 @@ PhysicalClockPtr GetClock(const std::string& options) {
   return it->second(arg);
 }
 
+void TryRunClockDiagnosticsOnce() {
+  static std::once_flag collected;
+  std::call_once(collected, [] {
+    TryRunChronycTracking();
+    TryRunChronycSourcestats();
+  });
+}
+
 } // namespace
 
 void HybridClock::RegisterProvider(std::string name, PhysicalClockProvider provider) {
@@ -154,6 +162,7 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
 
   auto now = clock_->Now();
   if (PREDICT_FALSE(!now.ok())) {
+    TryRunClockDiagnosticsOnce();
     LOG(FATAL) << Substitute("Couldn't get the current time: Clock unsynchronized. "
         "Status: $0", now.status().ToString());
   }
@@ -176,8 +185,7 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
            (ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec) > 0 &&
             delta_us > ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec))) &&
           clock_skew_control_enabled.load(std::memory_order_acquire)) {
-        TryRunChronycTracking();
-        TryRunChronycSourcestats();
+        TryRunClockDiagnosticsOnce();
         LOG(FATAL) << "Too big clock skew is detected: " << delta << ", while max allowed is: "
                    << max_allowed << "; clock_skew_force_crash_bound_usec="
                    << ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec);
