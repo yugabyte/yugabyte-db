@@ -197,8 +197,10 @@ ybVectorTupleWrite(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 	Assert(RelationGetNumberOfAttributes(index) == 1);
 
 	if (isinsert)
+		/* Vector indexes are never unique, so the check mode is inert. */
 		YBCExecuteInsertIndex(index, &vector, &isNull, ybctid,
 							  backfilltime /* backfill_write_time */,
+							  YB_UNIQUE_INDEX_BACKFILL_CHECK_ALL,
 							  doBindsForIdxWrite, (void *) vectorstate);
 	else
 	{

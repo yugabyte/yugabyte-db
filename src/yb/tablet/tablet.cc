@@ -3360,7 +3360,9 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
 
 namespace {
 
-string GenerateSerializedBackfillSpec(uint64_t batch_size, const string& next_row_to_backfill) {
+string GenerateSerializedBackfillSpec(
+    uint64_t batch_size, const string& next_row_to_backfill,
+    UniqueIndexBackfillMode unique_index_backfill_mode) {
   PgsqlBackfillSpecPB backfill_spec;
   std::string serialized_backfill_spec;
   // Note that although we set the desired batch_size as the limit, postgres
@@ -3369,6 +3371,7 @@ string GenerateSerializedBackfillSpec(uint64_t batch_size, const string& next_ro
   // to be a multiple of FLAGS_ysql_prefetch_limit
   backfill_spec.set_limit(batch_size);
   backfill_spec.set_next_row_key(next_row_to_backfill);
+  backfill_spec.set_unique_index_backfill_mode(unique_index_backfill_mode);
   backfill_spec.SerializeToString(&serialized_backfill_spec);
   VLOG(2) << "Generating backfill_spec { " << yb::ToString(backfill_spec)
           << (VLOG_IS_ON(3) ? Format(" } encoded as $0",
@@ -3519,6 +3522,7 @@ Status Tablet::BackfillIndexesForYsql(
     const std::string& database_name,
     const uint64_t postgres_auth_key,
     bool is_xcluster_target,
+    UniqueIndexBackfillMode unique_index_backfill_mode,
     uint64_t* number_of_rows_processed,
     double* num_rows_backfilled_in_index,
     std::string* backfilled_until) {
@@ -3556,8 +3560,8 @@ Status Tablet::BackfillIndexesForYsql(
 
   SCOPED_WAIT_STATUS(BackfillIndex_WaitToBackfillTablet);
   do {
-    std::string serialized_backfill_spec =
-        GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
+    std::string serialized_backfill_spec = GenerateSerializedBackfillSpec(
+        backfill_params.batch_size, *backfilled_until, unique_index_backfill_mode);
 
     // This should be safe from injection attacks because the parameters only consist of characters
     // [-,0-9a-f].

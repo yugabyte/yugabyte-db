@@ -31,6 +31,7 @@
 
 #include "yb/tserver/tserver_admin.proxy.h"
 
+#include "yb/common/common_util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -138,6 +139,8 @@ DEFINE_test_flag(bool, simulate_cannot_enable_compactions, false,
 DEFINE_test_flag(int32, delay_clearing_fully_applied_ms, 0,
     "Amount of time to delay clearing the fully applied schema.");
 
+DECLARE_bool(ysql_enable_deferred_unique_index_verification);
+
 namespace yb {
 namespace master {
 
@@ -148,6 +151,25 @@ using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
 namespace {
+
+// Selects the uniqueness-check mode persisted for a new backfill job. The mode is chosen
+// exactly once per job and is immutable afterwards: reloads (master failover, retries) must
+// read the persisted value instead of re-selecting, so later runtime flag changes cannot
+// reinterpret an active job.
+UniqueIndexBackfillMode SelectUniqueIndexBackfillMode() {
+  // Unknown override values select CHECK_ALL (fail closed for the job).
+  if (const auto test_mode = GetUniqueIndexBackfillModeTestOverride()) {
+    return *test_mode;
+  }
+  if (!FLAGS_ysql_enable_deferred_unique_index_verification) {
+    return UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_CHECK_ALL;
+  }
+  // Deferred verification is not yet selectable in production: SKIP_ALL requires the
+  // marked-write ordering and verification machinery from later parts of #33444. Until the
+  // activation work lands, every job runs the fully checked path even with the capability
+  // promoted.
+  return UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_CHECK_ALL;
+}
 
 // Before advancing index permissions, we need to make sure Postgres side has advanced sufficiently
 // - that the state tracked in pg_index haven't fallen behind from the desired permission
@@ -678,6 +700,14 @@ BackfillTable::BackfillTable(
   schema_version_ = indexed_table_->metadata().state().pb.version();
 
   const auto& pb = indexed_table_->metadata().state().pb;
+  // The uniqueness-check mode is immutable per job: reuse the persisted value when resuming
+  // an existing job (missing means CHECK_ALL); select it only for a brand-new job. Launch()
+  // persists the selection together with the job.
+  if (pb.backfill_jobs_size() > 0) {
+    unique_index_backfill_mode_ = pb.backfill_jobs(0).unique_index_backfill_mode();
+  } else {
+    unique_index_backfill_mode_ = SelectUniqueIndexBackfillMode();
+  }
   if (pb.backfill_jobs_size() > 0 && pb.backfill_jobs(0).has_backfilling_timestamp() &&
       read_time_for_backfill_.FromUint64(pb.backfill_jobs(0).backfilling_timestamp()).ok()) {
     DCHECK(pb.backfill_jobs_size() == 1) << "Expect only 1 outstanding backfill job";
@@ -745,6 +775,10 @@ Status BackfillTable::Launch() {
         backfill_job->mutable_backfill_state()->insert(
             {idx_info.table_id(), BackfillJobPB::IN_PROGRESS});
       }
+      backfill_job->set_unique_index_backfill_mode(unique_index_backfill_mode_);
+      LOG_WITH_PREFIX(INFO) << "Selected unique-index backfill mode "
+                            << UniqueIndexBackfillMode_Name(unique_index_backfill_mode_)
+                            << " for backfill job";
       RETURN_NOT_OK_PREPEND(
           master_->catalog_manager_impl()->sys_catalog_->Upsert(
               epoch_, indexed_table_),
@@ -1713,6 +1747,7 @@ bool BackfillChunk::SendRequest(int attempt) {
   req.set_indexed_table_id(backfill_tablet_->indexed_table_id());
   if (GetTableType() == TableType::PGSQL_TABLE_TYPE) {
     req.set_namespace_name(backfill_tablet_->GetNamespaceName());
+    req.set_unique_index_backfill_mode(backfill_tablet_->unique_index_backfill_mode());
   }
   std::unordered_set<TableId> found_idxs;
   for (const IndexInfoPB& idx_info : backfill_tablet_->index_infos()) {

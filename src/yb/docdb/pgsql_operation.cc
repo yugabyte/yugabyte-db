@@ -26,6 +26,7 @@
 #include <boost/logic/tribool.hpp>
 
 #include "yb/common/common.pb.h"
+#include "yb/common/common_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
@@ -111,6 +112,13 @@ DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
 
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
     "If set > 0, slows down the response to pgsql aggregate read by this amount.");
+
+DEFINE_test_flag(string, ysql_index_backfill_unique_check_mode, "",
+    "Test-only override of the uniqueness-check behavior for unique-index backfill writes, "
+    "layered over the mode carried on the write request. Values: check_all (run forward and "
+    "backward checks), skip_all (run no checks). Empty (default) uses the request's mode. "
+    "Has no effect on foreground writes. When set on the master, it also overrides the mode "
+    "selected and persisted for new jobs.");
 
 // Disable packed row by default in debug builds.
 constexpr bool kYsqlEnablePackedRowTargetVal = !yb::kIsDebug;
@@ -1282,8 +1290,30 @@ void PgsqlWriteOperation::ClearResponse() {
   }
 }
 
+namespace {
+
+// Whether a unique-index backfill write skips its uniqueness checks. The effective behavior
+// is the mode carried on the request (selected once per job by the master and immutable),
+// unless the test-only flag overrides it. Unknown or missing modes fail closed to the fully
+// checked path. Only reached for backfill writes: foreground uniqueness enforcement never
+// consults this.
+bool ShouldSkipBackfillUniquenessChecks(const LWPgsqlWriteRequestPB& request) {
+  // Unknown override values fall back to the request's mode (fail closed for this tablet).
+  if (const auto test_mode = GetUniqueIndexBackfillModeTestOverride()) {
+    return *test_mode == UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL;
+  }
+  return request.unique_index_backfill_mode() ==
+         UniqueIndexBackfillMode::UNIQUE_INDEX_BACKFILL_SKIP_ALL;
+}
+
+}  // namespace
+
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
+  if (ShouldSkipBackfillUniquenessChecks(request_)) {
+    VLOG(3) << "Skipping uniqueness checks for backfill write per job mode, doc_key: " << doc_key_;
+    return false;
+  }
   VLOG(3) << "Looking for collisions in\n" << DocDBDebugDumpToStr(data);
   // We need to check backwards only for backfilled entries.
   bool ret =

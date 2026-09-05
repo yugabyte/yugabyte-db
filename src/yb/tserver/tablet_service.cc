@@ -1027,6 +1027,7 @@ void TabletServiceAdminImpl::BackfillIndex(
         req->namespace_name(),
         server_->GetSharedMemoryPostgresAuthKey(),
         is_xcluster_automatic_mode_target,
+        req->unique_index_backfill_mode(),
         &num_rows_read_from_table_for_backfill,
         &num_rows_backfilled_in_index,
         &backfilled_until);
