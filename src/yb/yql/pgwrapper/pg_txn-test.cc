@@ -15,6 +15,8 @@
 
 #include <boost/algorithm/string/join.hpp>
 
+#include "yb/common/doc_hybrid_time.h"
+
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/rocksdb/db.h"
 
@@ -58,6 +60,7 @@ DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(db_filter_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_string(time_source);
+DECLARE_uint32(TEST_initial_intra_txn_write_id);
 DECLARE_uint64(rocksdb_universal_compaction_always_include_size_threshold);
 
 METRIC_DECLARE_counter(docdb_column_tombstones_dropped_unmerged);
@@ -133,6 +136,43 @@ class PgTxnTest : public PgMiniTestBase {
     ASSERT_EQ(value_from_deprecated_guc, expected);
   }
 };
+
+// The always-on intra-transaction write-ID cap (kIntraTxnWriteIdLimit): a transaction whose
+// per-tablet counter is near the limit gets a clean, non-retryable error from the pre-Raft
+// check in WriteQuery::DoCompleteExecute -- no crash, and the transaction rolls back
+// normally. Seeds the counter via TEST_initial_intra_txn_write_id because writing ~2^31
+// real intents is infeasible in a test.
+TEST_F(PgTxnTest, IntraTxnWriteIdCapRejectsOversizedTransaction) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Single tablet: the counter (and the seeded TEST value) is per-transaction-per-tablet, so
+  // both inserts must land on the same tablet's participant.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+
+  // Every transaction added to the participant from here starts just below the limit. The
+  // first small batch applies (the participant does not know the transaction until its first
+  // batch applies, and the batch stays far below the limit itself); the second statement is
+  // then rejected by the pre-Raft margin check. Keep the flag window tight: it applies to
+  // every new transaction on the (shared-process) cluster.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_initial_intra_txn_write_id) = kIntraTxnWriteIdLimit - 1000;
+  auto flag_resetter = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_initial_intra_txn_write_id) = 0;
+  });
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
+  auto status = conn.Execute("INSERT INTO test VALUES (2, 2)");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "exceeds the maximum number of writes");
+  ASSERT_OK(conn.RollbackTransaction());
+
+  // With the seed removed, new transactions are unaffected.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_initial_intra_txn_write_id) = 0;
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (3, 3)"));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM test")), 1);
+}
 
 TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(EmptyUpdate)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_in_apply_if_no_metadata) = true;

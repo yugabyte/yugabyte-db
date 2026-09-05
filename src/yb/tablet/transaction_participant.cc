@@ -129,6 +129,10 @@ DEFINE_test_flag(int32, stopactivetxns_sleep_in_abort_cb_ms, 0,
 DEFINE_test_flag(bool, no_schedule_remove_intents, false,
                  "Don't schedule remove intents when transaction is cleaned from memory.");
 
+DEFINE_test_flag(uint32, initial_intra_txn_write_id, 0,
+    "Initial intra-transaction write ID for newly added transactions. Lets tests exercise the "
+    "kIntraTxnWriteIdLimit cap without writing billions of intents.");
+
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
 DECLARE_uint64(transaction_heartbeat_usec);
@@ -446,8 +450,12 @@ class TransactionParticipant::Impl
                         << " with begin_time: " << metadata.start_time.ToUint64()
                         << " (" << metadata.start_time << ")";
 
+    TransactionalBatchData initial_batch_data;
+    if (PREDICT_FALSE(FLAGS_TEST_initial_intra_txn_write_id != 0)) {
+      initial_batch_data.next_write_id = FLAGS_TEST_initial_intra_txn_write_id;
+    }
     auto txn = std::make_shared<RunningTransaction>(
-        metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, batch_write_ht,
+        metadata, initial_batch_data, OneWayBitmap(), metadata.start_time, batch_write_ht,
         this, metric_aborted_transactions_pending_cleanup_);
 
     {
@@ -464,6 +472,16 @@ class TransactionParticipant::Impl
     mem_tracker_->Consume(kRunningTransactionSize);
     TransactionsModifiedUnlocked(&min_running_notifier);
     return true;
+  }
+
+  Result<IntraTxnWriteId> NextIntraTxnWriteIdHint(const TransactionId& id) {
+    RETURN_NOT_OK(loader_.WaitLoaded(id));
+    std::lock_guard lock(mutex_);
+    auto it = transactions_.find(id);
+    if (it == transactions_.end()) {
+      return kMinWriteId;
+    }
+    return (**it).last_batch_data().next_write_id;
   }
 
   HybridTime LocalCommitTime(const TransactionId& id) {
@@ -3101,6 +3119,10 @@ TransactionParticipant::PrepareBatchData(
 void TransactionParticipant::BatchReplicated(
     const TransactionId& id, const TransactionalBatchData& data) {
   return impl_->BatchReplicated(id, data);
+}
+
+Result<IntraTxnWriteId> TransactionParticipant::NextIntraTxnWriteIdHint(const TransactionId& id) {
+  return impl_->NextIntraTxnWriteIdHint(id);
 }
 
 HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
