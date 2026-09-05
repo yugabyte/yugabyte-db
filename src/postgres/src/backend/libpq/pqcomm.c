@@ -536,6 +536,10 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 #endif
 
 #ifdef IPV6_V6ONLY
+		/*
+		 * YB Change: We want to allow dual-stack binding when the OS supports it.
+		 */
+#if 0
 		if (addr->ai_family == AF_INET6)
 		{
 			if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY,
@@ -551,6 +555,7 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 				continue;
 			}
 		}
+#endif
 #endif
 
 		/*
