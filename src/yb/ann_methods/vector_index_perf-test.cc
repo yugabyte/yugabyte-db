@@ -17,6 +17,7 @@
 #include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
 
+#include "yb/util/env.h"
 #include "yb/util/size_literals.h"
 
 namespace yb::ann_methods {
@@ -44,6 +45,14 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
     vector_index::HNSWOptions options = {
       .dimensions = dimensions_,
     };
+    // Same options apart from the on-disk encoding, so the graph built in RAM is identical and
+    // the set isolates what narrowing the served records costs.
+    auto float16_options = options;
+    float16_options.storage_kind = vector_index::VectorStorageKind::kFloat16;
+    auto int8_options = options;
+    int8_options.storage_kind = vector_index::VectorStorageKind::kInt8;
+    int8_options.rerank_kind = vector_index::RerankStorageKind::kFloat16;
+
     indexes_.emplace_back(
         "usearch",
         ASSERT_RESULT((CreateUsearchIndexTraits<Vector, DistanceResult>(
@@ -53,6 +62,16 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
         "hnswlib",
         ASSERT_RESULT((CreateHnswlibIndexTraits<Vector, DistanceResult>(
             block_cache_, options, HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_)))
+            ->Create(vector_index::FactoryMode::kCreate));
+    indexes_.emplace_back(
+        "hnswlib_f16_source",
+        ASSERT_RESULT((CreateHnswlibIndexTraits<Vector, DistanceResult>(
+            block_cache_, float16_options, HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_)))
+            ->Create(vector_index::FactoryMode::kCreate));
+    indexes_.emplace_back(
+        "hnswlib_i8_source",
+        ASSERT_RESULT((CreateHnswlibIndexTraits<Vector, DistanceResult>(
+            block_cache_, int8_options, HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_)))
             ->Create(vector_index::FactoryMode::kCreate));
     for (const auto& [_, index] : indexes_) {
       ASSERT_OK(index->Reserve(
@@ -66,11 +85,24 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
 
     indexes_.emplace_back(
         "yb_hnsw",
-        ASSERT_RESULT(indexes_.front().second->SaveToFile(GetTestPath("0.yb_hnsw"))));
+        ASSERT_RESULT(indexes_[0].second->SaveToFile(GetTestPath("0.yb_hnsw"))));
 
     indexes_.emplace_back(
         "yb_hnsw_hnswlib",
         ASSERT_RESULT(indexes_[1].second->SaveToFile(GetTestPath("1.yb_hnsw"))));
+
+    indexes_.emplace_back(
+        "yb_hnsw_hnswlib_f16",
+        ASSERT_RESULT(indexes_[2].second->SaveToFile(GetTestPath("2.yb_hnsw"))));
+
+    indexes_.emplace_back(
+        "yb_hnsw_hnswlib_i8",
+        ASSERT_RESULT(indexes_[3].second->SaveToFile(GetTestPath("3.yb_hnsw"))));
+
+    for (const auto& name : {"1.yb_hnsw", "2.yb_hnsw", "3.yb_hnsw"}) {
+      LOG(INFO) << name << " size: "
+                << ASSERT_RESULT(Env::Default()->GetFileSize(GetTestPath(name)));
+    }
   }
 
   void InsertRandomVector(Vector& holder) {

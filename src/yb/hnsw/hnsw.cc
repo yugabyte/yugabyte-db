@@ -13,6 +13,10 @@
 
 #include "yb/hnsw/hnsw.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 #include "usearch/index.hpp"
 
 #include "yb/hnsw/block_writer.h"
@@ -20,11 +24,14 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+#include "yb/vector_index/coordinate_codec.h"
 #include "yb/vector_index/vector_index_if.h"
 
 using namespace yb::size_literals;
@@ -34,6 +41,18 @@ DEFINE_RUNTIME_uint64(yb_hnsw_max_block_size, 64_KB,
 
 DEFINE_RUNTIME_bool(yb_hnsw_keep_new_blocks_in_cache, false,
     "Whether to keep new generated blocks in cache after YbHnsw index is built.");
+
+DEFINE_RUNTIME_uint32(vector_index_rerank_overfetch_factor, 2,
+    "Multiplier applied to the requested result count to size the candidate set a vector index "
+    "chunk with a rerank tier rescores at full precision before returning. 1 retains exactly the "
+    "requested count, which makes reranking a no-op. Only affects chunks whose coordinates are "
+    "stored in a lossy encoding.");
+
+// Bounded because the value multiplies the candidates a search explores once it exceeds ef, so a
+// mistyped large value turns every query into a scan. 2 is sufficient in measurement; 3 adds
+// nothing.
+DEFINE_validator(vector_index_rerank_overfetch_factor,
+    FLAG_COND_VALIDATOR(_value >= 1 && _value <= 64, "Must be between 1 and 64"));
 
 #define YB_MISALIGNED_STORE(ptr, type, field, value) \
   MisalignedAssign<decltype(type::field)>(ptr, offsetof(type, field), value)
@@ -64,14 +83,46 @@ class YbHnswIndexAdapter {
 
   virtual int16_t NodeLevel(size_t index) = 0;
   virtual vector_index::VectorId NodeKey(size_t index) = 0;
+  // Writes this node's coordinates into `out` in the encodings MakeHeader() declared -- traversal
+  // first, then the rerank copy if any. Must fill exactly
+  // vector_data_size - sizeof(VectorData) bytes.
   virtual void NodeCoordinates(size_t index, void* out) = 0;
   virtual NeighborsType Neighbors(size_t index, size_t level) = 0;
   virtual NeighborsType NeighborsBase(size_t index) = 0;
+
+  // Coordinates NodeCoordinates() had to clamp. Zero for adapters that do not narrow.
+  virtual size_t NumClampedCoordinates() const { return 0; }
 
   virtual ~YbHnswIndexAdapter() = default;
 };
 
 namespace {
+
+// Coordinate bytes a record holds, across both tiers.
+size_t RecordCoordinateBytes(const Header& header) {
+  return vector_index::CoordinateBytes(header.storage_kind, header.dimensions) +
+         (header.rerank_kind == vector_index::RerankStorageKind::kNone
+              ? 0
+              : vector_index::CoordinateBytes(
+                    vector_index::StorageKindForRerank(header.rerank_kind), header.dimensions));
+}
+
+// Checks a header parsed from a file against itself, before anything reads a record through it.
+// Both failures are otherwise silent: a vector_data_size disagreeing with the encodings reads
+// past every record into the next, and an unusable scale decodes coordinates to zero or infinity
+// -- and an infinite coordinate makes every distance NaN, corrupting the heaps' ordering.
+Status ValidateHeader(const Header& header) {
+  SCHECK_EQ(
+      header.vector_data_size, sizeof(YbHnswVectorData) + RecordCoordinateBytes(header),
+      Corruption, Format("YbHnsw record size disagrees with its encodings: $0", header));
+
+  if (header.storage_kind == vector_index::VectorStorageKind::kInt8) {
+    SCHECK(
+        header.quantization_scale > 0 && std::isfinite(header.quantization_scale), Corruption,
+        Format("YbHnsw int8 chunk has an unusable quantization scale: $0", header));
+  }
+  return Status::OK();
+}
 
 using VectorData = YbHnswVectorData;
 
@@ -117,6 +168,9 @@ class YbHnswBuilder {
 
   Result<std::pair<FileBlockCachePtr, Header>> Build() {
     header_ = inspector_.MakeHeader();
+    // ValidateHeader()'s invariant, on write: a mismatch means the adapter's MakeHeader and
+    // NodeCoordinates disagree about the record layout, producing an unreadable file.
+    DCHECK_EQ(header_.vector_data_size, sizeof(VectorData) + RecordCoordinateBytes(header_));
     PrepareVectors();
     VLOG_WITH_FUNC(4) << "Size: " << inspector_.Size() << ", header: " << header_.ToString();
 
@@ -131,6 +185,11 @@ class YbHnswBuilder {
     RETURN_NOT_OK(out_->Close());
     out_.reset();
     RETURN_NOT_OK(block_cache_.env().RenameFile(tmp_path, path_));
+    LOG_IF(WARNING, inspector_.NumClampedCoordinates() != 0)
+        << "YbHnsw " << path_ << ": clamped " << inspector_.NumClampedCoordinates()
+        << " coordinate(s) that this chunk's encoding cannot represent (storage_kind: "
+        << header_.storage_kind << ", rerank_kind: " << header_.rerank_kind
+        << "); searches involving those vectors will be less accurate";
     std::unique_ptr<RandomAccessFile> file;
     RETURN_NOT_OK(block_cache_.env().NewRandomAccessFile(path_, &file));
     auto file_block_cache = std::make_unique<FileBlockCache>(
@@ -449,25 +508,61 @@ SearchCacheScope::SearchCacheScope(SearchCache& cache, const YbHnsw& hnsw) : cac
   cache.Bind(hnsw.header_, *hnsw.file_block_cache_);
 }
 
-YbHnsw::YbHnsw(MetricPtr&& metric, BlockCachePtr block_cache)
-    : metric_(std::move(metric)), block_cache_(std::move(block_cache)) {
+YbHnsw::YbHnsw(const UsearchMetric::Impl& metric, BlockCachePtr block_cache)
+    : YbHnsw(
+          [metric](size_t, vector_index::VectorStorageKind storage_kind) -> MetricPtr {
+            LOG_IF(DFATAL, storage_kind != vector_index::VectorStorageKind::kFloat32)
+                << "Fixed float32 metric cannot decode " << storage_kind << " records";
+            return std::make_unique<UsearchMetric>(metric);
+          },
+          std::move(block_cache)) {
+}
+
+YbHnsw::YbHnsw(MetricFactory metric_factory, BlockCachePtr block_cache)
+    : metric_factory_(std::move(metric_factory)), block_cache_(std::move(block_cache)) {
 }
 
 YbHnsw::~YbHnsw() = default;
+
+void YbHnsw::InitMetrics() {
+  metric_ = metric_factory_(header_.dimensions, header_.storage_kind);
+  rerank_metric_ = header_.rerank_kind == vector_index::RerankStorageKind::kNone
+      ? nullptr
+      : metric_factory_(
+            header_.dimensions, vector_index::StorageKindForRerank(header_.rerank_kind));
+}
+
+size_t YbHnsw::RerankCandidateCount(size_t max_num_results) const {
+  if (!rerank_metric_) {
+    return max_num_results;
+  }
+  const size_t factor = FLAGS_vector_index_rerank_overfetch_factor;
+  // Saturate rather than wrap: a wrap would silently return the wrong rows, where giving up the
+  // over-fetch only gives up the recall reranking would have recovered.
+  if (max_num_results > std::numeric_limits<size_t>::max() / factor) {
+    return max_num_results;
+  }
+  return max_num_results * factor;
+}
 
 Status YbHnsw::Import(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path) {
   YbHnswUsearchIndexAdapter inspector(index);
   YbHnswBuilder builder(inspector, *block_cache_, path);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
+  InitMetrics();
   return Status::OK();
 }
 
 class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
  public:
-  explicit YbHnswHnswlibIndexAdapter(
-      std::reference_wrapper<const HnswlibIndex<YbHnsw::DistanceType>> index)
-      : index_(index) {}
+  YbHnswHnswlibIndexAdapter(
+      std::reference_wrapper<const HnswlibIndex<YbHnsw::DistanceType>> index,
+      vector_index::VectorStorageKind storage_kind,
+      vector_index::RerankStorageKind rerank_kind)
+      : index_(index), storage_kind_(storage_kind), rerank_kind_(rerank_kind),
+        dimensions_(index.get().data_size_ / sizeof(YbHnswBuilder::CoordinateType)),
+        quantization_scale_(CalcQuantizationScale()) {}
 
   size_t Size() override {
     return index_.getCurrentElementCount();
@@ -480,8 +575,13 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
   Header MakeHeader() override {
     Header result;
     result.max_block_size = FLAGS_yb_hnsw_max_block_size;
-    result.dimensions = index_.data_size_ / sizeof(YbHnswBuilder::CoordinateType);
-    result.vector_data_size = index_.data_size_ + sizeof(VectorData);
+    result.dimensions = dimensions_;
+    result.storage_kind = storage_kind_;
+    result.rerank_kind = rerank_kind_;
+    result.quantization_scale = quantization_scale_;
+    result.vector_data_size =
+        vector_index::CoordinateBytes(storage_kind_, dimensions_) + RerankBytes() +
+        sizeof(VectorData);
     InitVectorDataAmountPerBlock(result, index_.getCurrentElementCount());
     result.max_level = index_.getMaxLevel();
     result.config.connectivity_base = index_.maxM_;
@@ -502,7 +602,28 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
   }
 
   void NodeCoordinates(size_t index, void* out) override {
-    memcpy(out, index_.getDataByInternalId(CastIndex(index)), index_.data_size_);
+    const auto* coordinates =
+        pointer_cast<const YbHnswBuilder::CoordinateType*>(
+            index_.getDataByInternalId(CastIndex(index)));
+    if (storage_kind_ == vector_index::VectorStorageKind::kFloat32) {
+      memcpy(out, coordinates, index_.data_size_);
+    } else {
+      vector_index::NarrowCoordinates(
+          storage_kind_, quantization_scale_, coordinates, dimensions_, out, &num_clamped_);
+    }
+    if (rerank_kind_ == vector_index::RerankStorageKind::kNone) {
+      return;
+    }
+    // Both copies narrow the same full-precision source, so the rerank copy does not inherit the
+    // traversal copy's error.
+    vector_index::NarrowCoordinates(
+        vector_index::StorageKindForRerank(rerank_kind_), coordinates, dimensions_,
+        static_cast<std::byte*>(out) + vector_index::CoordinateBytes(storage_kind_, dimensions_),
+        &num_clamped_);
+  }
+
+  size_t NumClampedCoordinates() const override {
+    return num_clamped_;
   }
 
   NeighborsType Neighbors(size_t index, size_t level) override {
@@ -525,15 +646,58 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
     return NeighborsType(VectorNoPtr(start), VectorNoPtr(start + size * sizeof(VectorNo)));
   }
 
+  size_t RerankBytes() const {
+    return rerank_kind_ == vector_index::RerankStorageKind::kNone
+        ? 0
+        : vector_index::CoordinateBytes(
+              vector_index::StorageKindForRerank(rerank_kind_), dimensions_);
+  }
+
+  // Symmetric quantization step for the whole chunk, from the largest magnitude it contains.
+  // Scoped to the chunk so it stays a pure function of data already in hand -- no sampling, no
+  // configuration, nothing to recalibrate as the index grows. The extra linear pass is affordable
+  // against a graph build that is not linear.
+  float CalcQuantizationScale() const {
+    if (storage_kind_ != vector_index::VectorStorageKind::kInt8) {
+      return 0;
+    }
+    float max_abs = 0;
+    const auto size = index_.getCurrentElementCount();
+    for (size_t index = 0; index != size; ++index) {
+      const auto* coordinates = pointer_cast<const YbHnswBuilder::CoordinateType*>(
+          index_.getDataByInternalId(CastIndex(index)));
+      for (size_t i = 0; i != dimensions_; ++i) {
+        // Only finite coordinates set the scale: one infinity would make the scale infinite and
+        // quantize the whole chunk, well-behaved coordinates included, to zero. NarrowCoordinates
+        // clamps infinities and maps NaN to zero anyway. NaN fails the comparison for free.
+        const auto magnitude = std::fabs(coordinates[i]);
+        if (std::isfinite(magnitude) && magnitude > max_abs) {
+          max_abs = magnitude;
+        }
+      }
+    }
+    // A zero scale would make every coordinate infinite; any positive scale encodes zeros
+    // exactly, so the fallback value is arbitrary.
+    return max_abs == 0 ? 1.0f : max_abs / vector_index::kMaxInt8;
+  }
+
   const HnswlibIndex<YbHnsw::DistanceType>& index_;
+  const vector_index::VectorStorageKind storage_kind_;
+  const vector_index::RerankStorageKind rerank_kind_;
+  const size_t dimensions_;
+  const float quantization_scale_;
+  size_t num_clamped_ = 0;
 };
 
 Status YbHnsw::Import(
     const HnswlibIndex<DistanceType>& index,
-    const std::string& path) {
-  YbHnswHnswlibIndexAdapter inspector(index);
+    const std::string& path,
+    vector_index::VectorStorageKind storage_kind,
+    vector_index::RerankStorageKind rerank_kind) {
+  YbHnswHnswlibIndexAdapter inspector(index, storage_kind, rerank_kind);
   YbHnswBuilder builder(inspector, *block_cache_, path);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
+  InitMetrics();
   return Status::OK();
 }
 
@@ -542,6 +706,8 @@ Status YbHnsw::Init(const std::string& path) {
   RETURN_NOT_OK(block_cache_->env().NewRandomAccessFile(path, &file));
   file_block_cache_ = std::make_unique<FileBlockCache>(*block_cache_, std::move(file));
   header_ = VERIFY_RESULT(file_block_cache_->Load());
+  RETURN_NOT_OK(ValidateHeader(header_));
+  InitMetrics();
   return Status::OK();
 }
 
@@ -557,7 +723,48 @@ YbHnsw::SearchResult YbHnsw::Search(
   return MakeResult(options.max_num_results, context);
 }
 
+YbHnsw::SearchResult YbHnsw::Search(
+    const CoordinateType* query_vector, const vector_index::SearchOptions& options,
+    YbHnswSearchContext& context) const {
+  if (header_.rerank_kind != vector_index::RerankStorageKind::kNone) {
+    auto rerank_kind = vector_index::StorageKindForRerank(header_.rerank_kind);
+    auto& buffer = context.rerank_query;
+    buffer.resize(vector_index::CoordinateBytes(rerank_kind, header_.dimensions));
+    vector_index::NarrowCoordinates(
+        rerank_kind, query_vector, header_.dimensions, buffer.data());
+  }
+  if (header_.storage_kind == vector_index::VectorStorageKind::kFloat32) {
+    return Search(pointer_cast<const std::byte*>(query_vector), options, context);
+  }
+  auto& buffer = context.narrowed_query;
+  buffer.resize(vector_index::CoordinateBytes(header_.storage_kind, header_.dimensions));
+  // Clamped against this chunk's own scale, so a query coordinate outside the range the chunk
+  // contains is clipped. Not counted: that is a property of the query, not of the stored data.
+  vector_index::NarrowCoordinates(
+      header_.storage_kind, header_.quantization_scale, query_vector, header_.dimensions,
+      buffer.data());
+  return Search(buffer.data(), options, context);
+}
+
 YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext& context) const {
+  if (rerank_metric_) {
+    // Distances leave the chunk here, so this is where they must start meaning something outside
+    // it: the traversal ranked in its encoding's units, and rescoring puts them into the metric's
+    // own so VectorLSM can merge across chunks. This breaks context.top's heap invariant, which
+    // is safe only because MakeResult is its last use and SearchInBaseLayer clears it on entry.
+    //
+    // A wrong rerank_query size means the byte-pointer Search overload was called directly on a
+    // file with a rerank tier, which would read past the buffer.
+    DCHECK_EQ(
+        context.rerank_query.size(),
+        vector_index::CoordinateBytes(
+            vector_index::StorageKindForRerank(header_.rerank_kind), header_.dimensions));
+    const auto* query = context.rerank_query.data();
+    for (auto& entry : context.top.data()) {
+      entry.first = rerank_metric_->Distance(
+          query, context.search_cache.RerankCoordinatesPtr(entry.second));
+    }
+  }
   return vector_index::MakeResult<DistanceType>(
       max_results, context.top.data(),
       [&](const auto& entry) {
@@ -611,9 +818,16 @@ void YbHnsw::SearchInBaseLayer(
   // So could use the following as initial capacity for visited.
   visited.reserve(header_.config.connectivity_base + 1u);
 
-  auto top_limit = options.max_num_results;
-  auto extra_top_limit = std::max<size_t>(
-      options.ef, options.max_num_results) - options.max_num_results;
+  // With a rerank tier the search must retain more than the caller asked for, or MakeResult
+  // reranks exactly the entries it would have returned anyway.
+  //
+  // budget takes the max so it never caps top_limit. Capping at max(ef, max_num_results) instead
+  // looks harmless but silently defeats reranking whenever ef <= max_num_results: top_limit
+  // collapses to max_num_results with no extra candidates. Without a rerank tier top_limit is
+  // max_num_results and these reduce to what they were before.
+  auto top_limit = RerankCandidateCount(options.max_num_results);
+  auto budget = std::max({options.ef, options.max_num_results, top_limit});
+  auto extra_top_limit = budget - top_limit;
   next.push({best_dist, best_vector});
   if (!options.filter || options.filter(cache.GetVectorData(best_vector))) {
     top.push({best_dist, best_vector});
@@ -663,23 +877,18 @@ void YbHnsw::SearchInBaseLayer(
 }
 
 YbHnsw::DistanceType YbHnsw::Distance(const std::byte* lhs, const std::byte* rhs) const {
+  DCHECK(metric_) << "Distance requested before Init/Import";
   return metric_->Distance(lhs, rhs);
+}
+
+YbHnsw::DistanceType YbHnsw::RerankDistance(const std::byte* lhs, const std::byte* rhs) const {
+  DCHECK(rerank_metric_) << "RerankDistance requested on a file without a rerank tier";
+  return rerank_metric_->Distance(lhs, rhs);
 }
 
 YbHnsw::DistanceType YbHnsw::Distance(
     const std::byte* lhs, size_t vector, SearchCache& cache) const {
   return Distance(lhs, cache.CoordinatesPtr(vector));
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::MakeCoordinates(
-    const std::byte* ptr) const {
-  auto start = MisalignedPtr<const CoordinateType>(ptr);
-  return boost::make_iterator_range(start, start + header_.dimensions);
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::Coordinates(
-    size_t vector, SearchCache& cache) const {
-  return MakeCoordinates(cache.CoordinatesPtr(vector));
 }
 
 const Header& YbHnsw::header() const {
@@ -775,6 +984,11 @@ vector_index::VectorId SearchCache::GetVectorData(size_t vector) {
 
 const std::byte* SearchCache::CoordinatesPtr(size_t vector) {
   return VectorHeader(vector).raw() + offsetof(VectorData, coordinates);
+}
+
+const std::byte* SearchCache::RerankCoordinatesPtr(size_t vector) {
+  DCHECK(header_->rerank_kind != vector_index::RerankStorageKind::kNone);
+  return CoordinatesPtr(vector) + header_->coordinates_size();
 }
 
 HnswDistanceType UsearchMetric::Distance(

@@ -100,6 +100,31 @@ vector_index::DistanceKind ConvertDistanceKind(PgVectorDistanceType dist_type) {
   FATAL_INVALID_ENUM_VALUE(PgVectorDistanceType, dist_type);
 }
 
+vector_index::VectorStorageKind ConvertStorageKind(VectorStorageType storage_type) {
+  switch (storage_type) {
+    case VectorStorageType::STORAGE_FLOAT32:
+      return vector_index::VectorStorageKind::kFloat32;
+    case VectorStorageType::STORAGE_FLOAT16:
+      return vector_index::VectorStorageKind::kFloat16;
+    case VectorStorageType::STORAGE_INT8:
+      return vector_index::VectorStorageKind::kInt8;
+  }
+  FATAL_INVALID_ENUM_VALUE(VectorStorageType, storage_type);
+}
+
+// The rerank tier is implied by the storage type rather than separately configurable: a quantizing
+// traversal encoding is not usable without one.
+vector_index::RerankStorageKind ConvertRerankKind(VectorStorageType storage_type) {
+  switch (storage_type) {
+    case VectorStorageType::STORAGE_FLOAT32: [[fallthrough]];
+    case VectorStorageType::STORAGE_FLOAT16:
+      return vector_index::RerankStorageKind::kNone;
+    case VectorStorageType::STORAGE_INT8:
+      return vector_index::RerankStorageKind::kFloat16;
+  }
+  FATAL_INVALID_ENUM_VALUE(VectorStorageType, storage_type);
+}
+
 vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& options) {
   return {
     .dimensions = options.dimensions(),
@@ -107,6 +132,8 @@ vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& optio
     .num_neighbors_per_vertex_base = options.hnsw().m0(),
     .ef_construction = options.hnsw().ef_construction(),
     .distance_kind = ConvertDistanceKind(options.dist_type()),
+    .storage_kind = ConvertStorageKind(options.hnsw().storage_type()),
+    .rerank_kind = ConvertRerankKind(options.hnsw().storage_type()),
   };
 }
 

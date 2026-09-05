@@ -18,6 +18,7 @@
 #include <string>
 
 #include "yb/vector_index/distance.h"
+#include "yb/vector_index/vector_storage_kind.h"
 
 namespace unum::usearch {
 class metric_punned_t;
@@ -61,9 +62,24 @@ struct HNSWOptions {
 
   DistanceKind distance_kind = DistanceKind::kL2Squared;
 
+  // Encoding for coordinates written into immutable, file-backed chunks. Graph construction is
+  // unaffected: it always runs at the index's in-memory coordinate type.
+  VectorStorageKind storage_kind = VectorStorageKind::kFloat32;
+
+  // Encoding of the rerank copy stored alongside them. Only meaningful with a lossy
+  // storage_kind, which in turn requires it.
+  RerankStorageKind rerank_kind = RerankStorageKind::kNone;
+
   std::string ToString() const;
+
+  // Metric over Vector::value_type, the in-memory type the graph is built at.
   template <class Vector>
-  unum::usearch::metric_punned_t CreateMetric() const;
+  unum::usearch::metric_punned_t CreateBuildMetric() const;
+
+  // Metric over stored records. Takes the encoding explicitly rather than reading storage_kind,
+  // because YbHnsw::Init must use what the file it just opened records, not what this says now.
+  unum::usearch::metric_punned_t CreateStoredMetric(
+      size_t dimensions, VectorStorageKind storage_kind) const;
 };
 
 }  // namespace yb::vector_index
