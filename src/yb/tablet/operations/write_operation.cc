@@ -32,6 +32,7 @@
 
 #include "yb/tablet/operations/write_operation.h"
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 
@@ -45,6 +46,13 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 
+DEFINE_test_flag(uint32, fixed_hybrid_time_write_id_max, yb::kBackfillWriteIdIndexMax,
+                 "Maximum Raft index accepted for deriving a fixed-hybrid-time write ID. The "
+                 "default is the production ceiling: the derived write ID is "
+                 "kBackfillWriteIdFloor | index, which must stay below the reserved "
+                 "kMaxWriteId.");
+DEFINE_test_flag(bool, log_fixed_hybrid_time_write_id_validation, false,
+                 "Log when a marked fixed-hybrid-time write reaches Raft OpId validation.");
 DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,
                  "How much latency to inject when a write operation is applied.");
 DEFINE_test_flag(bool, tablet_pause_apply_write_ops, false,
@@ -65,6 +73,28 @@ LWWritePB* RequestTraits<LWWritePB>::MutableRequest(consensus::LWReplicateMsg* r
 
 Status WriteOperation::Prepare(IsLeaderSide is_leader_side) {
   TRACE_EVENT0("txn", "WriteOperation::Prepare");
+  return Status::OK();
+}
+
+Status WriteOperation::ValidateLeaderOpId(const OpId& op_id) const {
+  if (!request()->write_batch().use_raft_index_for_write_id()) {
+    return Status::OK();
+  }
+
+  if (FLAGS_TEST_log_fixed_hybrid_time_write_id_validation) {
+    LOG(INFO) << "TEST: validating fixed-hybrid-time write with Raft OpId " << op_id;
+  }
+
+  SCHECK_GT(op_id.index, 0, IllegalState, "Fixed-hybrid-time write has an invalid Raft index");
+  // The stored write ID is kBackfillWriteIdFloor | index; indexes above kBackfillWriteIdIndexMax
+  // would collide with the reserved kMaxWriteId sentinel. Rejecting here, before WAL append,
+  // fails the write cleanly instead of wrapping or reusing a committed index.
+  SCHECK_LE(
+      op_id.index, static_cast<int64_t>(kBackfillWriteIdIndexMax), IllegalState,
+      "Raft operation index exhausted the fixed-hybrid-time write ID space");
+  SCHECK_LE(
+      op_id.index, static_cast<int64_t>(FLAGS_TEST_fixed_hybrid_time_write_id_max), IllegalState,
+      "TEST: Raft operation index exceeded the injected fixed-hybrid-time write ID ceiling");
   return Status::OK();
 }
 

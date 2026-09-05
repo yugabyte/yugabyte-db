@@ -13,6 +13,8 @@
 
 #include "yb/docdb/rocksdb_writer.h"
 
+#include <unordered_set>
+
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
 #include <boost/logic/tribool.hpp>
 
@@ -1167,7 +1169,8 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
     SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers& frontiers,
     const DocVectorIndexesPtr& vector_indexes, const StorageSet& apply_to_storages,
-    TableType table_type, std::atomic<bool>* can_advance_intents_flush_op_id)
+    TableType table_type, std::atomic<bool>* can_advance_intents_flush_op_id,
+    std::optional<IntraTxnWriteId> write_id_override)
     : FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       put_batch_(put_batch),
       write_hybrid_time_(write_hybrid_time),
@@ -1176,7 +1179,8 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
       vector_indexes_(vector_indexes),
       apply_to_storages_(apply_to_storages),
       table_type_(table_type),
-      can_advance_intents_flush_op_id_(can_advance_intents_flush_op_id) {
+      can_advance_intents_flush_op_id_(can_advance_intents_flush_op_id),
+      write_id_override_(write_id_override) {
   if (put_batch_.apply_external_transactions().size() > 0) {
     intents_db_iter_ = CreateRocksDBIterator(
         intents_db, &docdb::KeyBounds::kNoBounds, BloomFilterOptions::Inactive(),
@@ -1412,6 +1416,22 @@ Result<bool> NonTransactionalBatchWriter::AddEntryToWriteBatch(
 }
 
 Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) {
+  if (write_id_override_) {
+    // Every regular record in a fixed-hybrid-time batch is written at the same
+    // (hybrid time, write id), so duplicate unversioned keys would silently collapse two
+    // distinct candidates into one physical version -- the exact evidence loss deferred
+    // verification exists to prevent. The write path rejects them before Raft submission
+    // (ValidateRaftIndexWriteIdBatch), so a duplicate here means corrupt or incompatible
+    // replicated data: fail the apply loudly rather than proceed (Corruption surfaces as a
+    // fail-stop through WriteToRocksDB, matching the commit-apply write-ID guards).
+    std::unordered_set<std::string> keys;
+    for (const auto& write_pair : put_batch_.write_pairs()) {
+      RSTATUS_DCHECK(
+          keys.insert(write_pair.key().ToBuffer()).second, Corruption,
+          "Replicated fixed-hybrid-time write batch contains duplicate unversioned keys");
+    }
+  }
+
   auto apply_external_transactions = VERIFY_RESULT(ExternalTxnApplyStateData::FromPB(put_batch_));
   if (!apply_external_transactions.empty()) {
     DCHECK(intents_db_iter_.Initialized());
@@ -1434,7 +1454,13 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
         RETURN_NOT_OK(vector_indexes_updater->Feed(
             handler, write_pair.key(), write_pair.value()));
       }
-      HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
+      if (write_id_override_) {
+        auto overridden_write_id = *write_id_override_;
+        HandleRegularRecord(
+            write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &overridden_write_id);
+      } else {
+        HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
+      }
 
       // Non-transactional regular-DB write_pairs (direct PutBatch without a transaction). Local
       // colocated TRUNCATE is always transactional, so this hook is not the YSQL truncate path;

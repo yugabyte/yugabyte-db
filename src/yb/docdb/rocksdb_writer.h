@@ -14,6 +14,7 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
 #include <span>
 
 #include <boost/logic/tribool.hpp>
@@ -409,7 +410,8 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider& schema_packing_provider,
       ConsensusFrontiers& frontiers, const DocVectorIndexesPtr& vector_indexes,
       const StorageSet& apply_to_storages, TableType table_type,
-      std::atomic<bool>* can_advance_intents_flush_op_id);
+      std::atomic<bool>* can_advance_intents_flush_op_id,
+      std::optional<IntraTxnWriteId> write_id_override = std::nullopt);
 
   bool Empty() const;
 
@@ -462,6 +464,11 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
     HybridTime write_ht;
   };
   std::vector<PendingTableTombstoneNotify> pending_table_tombstone_notifies_;
+
+  // When set (replicated fixed-hybrid-time batches), every regular record in the batch is
+  // written with this exact write ID instead of the positional per-batch counter. See
+  // KeyValueWriteBatchPB.use_raft_index_for_write_id.
+  std::optional<IntraTxnWriteId> write_id_override_;
 };
 
 // Context class for dumping intents records for a transaction.

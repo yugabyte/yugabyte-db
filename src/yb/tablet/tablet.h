@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <optional>
 #include <span>
 
 #include <boost/intrusive/list.hpp>
@@ -400,7 +401,8 @@ class Tablet : public AbstractTablet,
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers& frontiers,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time,
-      const docdb::StorageSet& apply_to_storages);
+      const docdb::StorageSet& apply_to_storages,
+      std::optional<IntraTxnWriteId> write_id_override = std::nullopt);
 
   void WriteToRocksDB(
       const storage::UserFrontiers& frontiers,
