@@ -12361,4 +12361,10 @@
   proargmodes => '{i,i,i,o,o,o}',
   proargnames => '{hba_path,guc_path,ident_path,hba_error,guc_error,ident_error}',
   prosrc => 'yb_pg_validate_conf_file'},
+
+{ oid => '8116',
+  descr => 'Disk size in bytes of a tablegroup colocation parent tablet (leader SST+WAL)',
+  proname => 'yb_tablegroup_size', provolatile => 'v',
+  prorettype => 'int8', proargtypes => 'oid',
+  prosrc => 'yb_tablegroup_size' },
 ]

@@ -14890,6 +14890,20 @@ void PopulateTabletMetadata(
     tablet_metadata->mutable_partition()->set_partition_key_end(
         partition.partition_key_end());
   }
+
+  // Leader SST/WAL sizes from heartbeat-cached drive info (same source as GetTableDiskSize).
+  // Missing leader drive info leaves size fields unset so YSQL can omit tablet_attrs keys.
+  auto drive_info_result = tablet->GetLeaderReplicaDriveInfo();
+  if (drive_info_result.ok()) {
+    const auto& drive_info = *drive_info_result;
+    tablet_metadata->set_sst_files_disk_size(drive_info.sst_files_size);
+    tablet_metadata->set_wal_files_disk_size(drive_info.wal_files_size);
+    tablet_metadata->set_uncompressed_sst_files_disk_size(drive_info.uncompressed_sst_file_size);
+    tablet_metadata->set_total_on_disk_size(drive_info.total_size);
+    if (drive_info.vector_index_size > 0) {
+      tablet_metadata->set_vector_index_disk_size(drive_info.vector_index_size);
+    }
+  }
 }
 
 }  // namespace

@@ -87,6 +87,7 @@
 #include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
 #include "catalog/yb_type.h"
@@ -6102,6 +6103,45 @@ yb_is_database_colocated(PG_FUNCTION_ARGS)
 }
 
 /*
+ * Return leader SST+WAL disk size in bytes for a tablegroup's colocation
+ * parent tablet. Matches GetTableDiskSize / pg_table_size semantics (RF=1
+ * leader footprint). Errors if the oid is not a pg_yb_tablegroup entry.
+ */
+Datum
+yb_tablegroup_size(PG_FUNCTION_ARGS)
+{
+	Oid			tablegroup_oid = PG_GETARG_OID(0);
+	int64_t		size = 0;
+	int32_t		num_missing_tablets = 0;
+	HeapTuple	tuple;
+
+	tuple = SearchSysCache1(YBTABLEGROUPOID, ObjectIdGetDatum(tablegroup_oid));
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("tablegroup with OID %u does not exist", tablegroup_oid)));
+
+	HandleYBStatus(YBCPgGetTablegroupDiskSize(tablegroup_oid,
+											  MyDatabaseId,
+											  MyDatabaseColocated,
+											  &size,
+											  &num_missing_tablets));
+	if (num_missing_tablets > 0)
+	{
+		Form_pg_yb_tablegroup form = (Form_pg_yb_tablegroup) GETSTRUCT(tuple);
+
+		elog(NOTICE,
+			 "%d tablets of tablegroup %s did not provide disk size "
+			 "estimates, and were not added to the displayed totals.",
+			 num_missing_tablets,
+			 NameStr(form->grpname));
+	}
+	ReleaseSysCache(tuple);
+
+	PG_RETURN_INT64(size);
+}
+
+/*
  * This function serves mostly as a helper for YSQL migration to introduce
  * pg_yb_catalog_version table without breaking version continuity.
  */
@@ -9317,7 +9357,10 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * NULL, and start_range/end_range contain the decoded range partition key
  * boundaries.
  * Leader is provided as a separate column for simpler querying.
- * tablet_attrs is reserved for future use and is currently always NULL.
+ * tablet_attrs is a json object with leader-replica disk size fields when
+ * available: sst_bytes, wal_bytes, uncompressed_sst_bytes, total_bytes
+ * (sst+wal), and optionally vector_index_bytes. NULL when sizes are
+ * unavailable or the row is privilege-masked.
  */
 Datum
 yb_get_tablet_metadata(PG_FUNCTION_ARGS)
@@ -9538,8 +9581,42 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			nulls[9] = true;
 		}
 
-		/* TODO(#30180): Populate tablet_attrs. */
-		nulls[12] = true;
+		/*
+		 * tablet_attrs: leader SST/WAL sizes. Omit when privilege-masked or
+		 * when master did not report drive info for the leader.
+		 */
+		if (show_real && tablet->has_disk_size)
+		{
+			char		attrs_buf[256];
+			int64		total_bytes =
+				tablet->sst_files_disk_size + tablet->wal_files_disk_size;
+
+			if (tablet->vector_index_disk_size > 0)
+			{
+				snprintf(attrs_buf, sizeof(attrs_buf),
+						 "{\"sst_bytes\":%lld,\"wal_bytes\":%lld,"
+						 "\"uncompressed_sst_bytes\":%lld,\"total_bytes\":%lld,"
+						 "\"vector_index_bytes\":%lld}",
+						 (long long) tablet->sst_files_disk_size,
+						 (long long) tablet->wal_files_disk_size,
+						 (long long) tablet->uncompressed_sst_files_disk_size,
+						 (long long) total_bytes,
+						 (long long) tablet->vector_index_disk_size);
+			}
+			else
+			{
+				snprintf(attrs_buf, sizeof(attrs_buf),
+						 "{\"sst_bytes\":%lld,\"wal_bytes\":%lld,"
+						 "\"uncompressed_sst_bytes\":%lld,\"total_bytes\":%lld}",
+						 (long long) tablet->sst_files_disk_size,
+						 (long long) tablet->wal_files_disk_size,
+						 (long long) tablet->uncompressed_sst_files_disk_size,
+						 (long long) total_bytes);
+			}
+			values[12] = DirectFunctionCall1(json_in, CStringGetDatum(attrs_buf));
+		}
+		else
+			nulls[12] = true;
 
 		if (tablet->tablet_state)
 			values[13] = CStringGetTextDatum(tablet->tablet_state);
