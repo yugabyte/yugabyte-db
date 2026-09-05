@@ -947,11 +947,14 @@ IndexStatusPB::BackfillStatus GetBackfillStatus(IndexPermissions permissions) {
     case INDEX_PERM_DELETE_ONLY:                     [[fallthrough]];
     case INDEX_PERM_WRITE_AND_DELETE:                [[fallthrough]];
     case INDEX_PERM_DO_BACKFILL:                     [[fallthrough]];
-    case INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING: [[fallthrough]];
-    case INDEX_PERM_DELETE_ONLY_WHILE_REMOVING:      [[fallthrough]];
-    case INDEX_PERM_INDEX_UNUSED:                    [[fallthrough]];
     case INDEX_PERM_NOT_USED:
       return IndexStatusPB::BACKFILL_UNKNOWN;
+    // Removal-path permissions: a failed or dropped index can never reach
+    // READ_WRITE_AND_DELETE, so report the backfill as terminally failed.
+    case INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING: [[fallthrough]];
+    case INDEX_PERM_DELETE_ONLY_WHILE_REMOVING:      [[fallthrough]];
+    case INDEX_PERM_INDEX_UNUSED:
+      return IndexStatusPB::BACKFILL_FAILED;
   }
   FATAL_INVALID_ENUM_VALUE(IndexPermissions, permissions);
 }
@@ -3733,8 +3736,14 @@ Status CatalogManager::ValidateSplitCandidateUnlocked(
     const TabletInfoPtr& tablet, const ManualSplit is_manual_split) {
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
   const IgnoreVectorIndexesValidation ignore_vector_indexes_validation { is_manual_split.get() };
+  // The split manager's table validation must not take catalog locks (this path already holds
+  // mutex_); resolve the indexed table for its backfill fence here, under the held lock.
+  TableInfoPtr indexed_table;
+  if (tablet->table()->is_index()) {
+    indexed_table = GetTableInfoUnlocked(tablet->table()->indexed_table_id());
+  }
   RETURN_NOT_OK(master_->tablet_split_manager().ValidateSplitCandidateTable(
-      tablet->table(), ignore_disabled_list, ignore_vector_indexes_validation));
+      tablet->table(), indexed_table, ignore_disabled_list, ignore_vector_indexes_validation));
   RETURN_NOT_OK(XReplValidateSplitCandidateTableUnlocked(tablet->table()->id()));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };

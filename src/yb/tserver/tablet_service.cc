@@ -209,6 +209,10 @@ DEFINE_test_flag(bool, block_backfill_before_index_map, false,
     "If true, BackfillIndex will block right before looking up the index_map. "
     "Used to test the race between table drop and backfill to repro GH#29830.");
 
+DEFINE_test_flag(bool, fail_index_backfill_ordering_generation_update, false,
+    "Fail UpdateIndexBackfillOrderingGeneration RPCs, to exercise activation-failure handling "
+    "of SKIP_ALL unique-index backfill jobs.");
+
 DEFINE_RUNTIME_int32(index_backfill_wait_for_old_txns_ms, 0,
     "Index backfill needs to wait for transactions that started before the "
     "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
@@ -718,6 +722,46 @@ void TabletServiceAdminImpl::BackfillDone(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
+  tablet.peer->Submit(std::move(operation), tablet.leader_term);
+}
+
+void TabletServiceAdminImpl::UpdateIndexBackfillOrderingGeneration(
+    const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "UpdateIndexBackfillOrderingGeneration", req, resp,
+          &context)) {
+    return;
+  }
+  DVLOG(3) << "Received UpdateIndexBackfillOrderingGeneration RPC: " << req->DebugString();
+
+  if (PREDICT_FALSE(FLAGS_TEST_fail_index_backfill_ordering_generation_update)) {
+    // OPERATION_NOT_SUPPORTED is in the task's no-retry set, so the failure reaches the
+    // backfill job immediately instead of after the retry budget.
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(NotSupported, "TEST: failing ordering-generation update"),
+        TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
+    return;
+  }
+
+  server::UpdateClock(*req, server_->Clock());
+
+  // Leader-only, like BackfillDone: the operation must be Raft-replicated so every replica
+  // persists the generation.
+  auto tablet =
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!tablet) {
+    return;
+  }
+
+  auto operation = std::make_unique<ChangeMetadataOperation>(
+      tablet.tablet, tablet.peer->log());
+  operation->AllocateRequest()->CopyFrom(*req);
+
+  operation->set_completion_callback(
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+
   tablet.peer->Submit(std::move(operation), tablet.leader_term);
 }
 

@@ -140,12 +140,27 @@ bool IsBackfillDone(const master::IndexStatusPB& index_status) {
          index_status.backfill_status() == master::IndexStatusPB::BACKFILL_SUCCESS;
 }
 
+// The backfill can never succeed: the index is failed, being removed, or gone. Local backfill
+// state (the ordering generation) must be released even though retain_delete_markers stays
+// with the removal path.
+bool IsBackfillTerminallyFailed(const master::IndexStatusPB& index_status) {
+  if (index_status.has_backfill_status() &&
+      index_status.backfill_status() == master::IndexStatusPB::BACKFILL_FAILED) {
+    return true;
+  }
+  return index_status.has_error() && StatusFromPB(index_status.error()).IsNotFound();
+}
+
 struct IndexUpdateInfo {
   TableId index_table_id;
   uint64_t birth_time = 0;
+  // True: backfill reached BACKFILL_SUCCESS (heal retain_delete_markers and release any
+  // ordering generation). False: terminally failed or index gone (release the ordering
+  // generation only -- retain_delete_markers stays owned by the removal path).
+  bool backfill_succeeded = true;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(index_table_id, birth_time);
+    return YB_STRUCT_TO_STRING(index_table_id, birth_time, backfill_succeeded);
   }
 };
 
@@ -295,19 +310,23 @@ bool TabletMetadataValidator::Impl::HandleMasterResponse(
     }
     cached_tables.insert({now, index_status});
 
-    // Second step, check table error and handle backfill status in case of success.
-    if (index_status.has_error()) {
+    // Second step, check table error and handle terminal backfill states. Success heals
+    // retain_delete_markers (and releases any ordering generation); terminal failure -- the
+    // index is failed, being removed, or not found -- releases the ordering generation only.
+    const bool backfill_done = !index_status.has_error() && IsBackfillDone(index_status);
+    const bool backfill_failed = IsBackfillTerminallyFailed(index_status);
+    if (index_status.has_error() && !backfill_failed) {
       LOG(INFO) << "Failed to get index status for table " << index_table_id << ", "
                 << "error: [" << StatusFromPB(index_status.error()) << "]. "
                 << "It is expected to get some errors from time to time.";
-    } else if (IsBackfillDone(index_status)) {
+    } else if (backfill_done || backfill_failed) {
       const uint64_t birth_time = index_status.has_birth_time()
           ? index_status.birth_time() : 0;
       auto [index_tablets_begin, index_tablets_end] =
           index_tablets_to_sync_.get<IndexTableIdTag>().equal_range(index_table_id);
       for (auto it = index_tablets_begin; it != index_tablets_end; ++it) {
         indexes_for_update[it->index_tablet_id].push_back(
-            IndexUpdateInfo{index_table_id, birth_time});
+            IndexUpdateInfo{index_table_id, birth_time, backfill_done});
       }
     }
 
@@ -436,12 +455,33 @@ bool TabletMetadataValidator::Impl::ScheduleTabletPropertiesValidation(
           meta.raft_group_id(), info.table_id, std::move(group_id) });
     }
   });
+  // Also pick up a straggler index-backfill ordering generation: its Raft-replicated release
+  // was lost (e.g. the master died mid-funnel after clearing the job), so nothing will release
+  // it but this validator. Group by the indexed table like the retain-delete-markers
+  // candidates, so one GetBackfillStatus RPC covers both properties.
+  const auto generation = meta.index_backfill_ordering_generation();
+  if (generation.active && !generation.table_id.empty()) {
+    const bool already_scheduled = std::any_of(
+        candidates.begin(), candidates.end(),
+        [&generation](const auto& candidate) {
+          return candidate.index_table_id == generation.table_id;
+        });
+    if (!already_scheduled) {
+      const auto primary = meta.primary_table_info();
+      auto group_id = primary->index_info ? primary->index_info->indexed_table_id()
+                                          : generation.table_id;
+      candidates.emplace_back(IndexTableInfo{
+          meta.raft_group_id(), generation.table_id, std::move(group_id)});
+    }
+  }
+
   if (candidates.empty()) {
     return false;
   }
 
   LOG_WITH_PREFIX(INFO) << "Tablet " << meta.raft_group_id() << ": found index table(s) with "
-                        << "retain delete markers set: " << yb::ToString(candidates);
+                        << "retain delete markers or an ordering generation set: "
+                        << yb::ToString(candidates);
   {
     std::lock_guard lock(scheduled_index_tablets_mutex_);
     scheduled_index_tablets_.insert(
@@ -540,6 +580,9 @@ void TabletMetadataValidator::Impl::TriggerMetadataUpdate(
 
     // Iterate through all tables of the current tablet and trigger backfill done.
     for (const auto& index_update : index_tables) {
+      if (!index_update.backfill_succeeded) {
+        continue;  // Terminal failure: only the ordering-generation release below applies.
+      }
       LOG_WITH_PREFIX(INFO) << "Tablet " << index_tablet_id << " index table "
                             << index_update.index_table_id << ": resetting backfill as done"
                             << " (birth_time=" << index_update.birth_time << ")";
@@ -551,6 +594,27 @@ void TabletMetadataValidator::Impl::TriggerMetadataUpdate(
         LOG_WITH_PREFIX(DFATAL) << "Tablet " << index_tablet_id << " table "
                                 << index_update.index_table_id
                                 << " backfill done failed, status: " << status;
+      }
+    }
+
+    // Release a straggler ordering generation once the master confirms the covering backfill
+    // reached a terminal state (success, terminal failure, or index gone) -- an unreleased
+    // generation would fence splits forever and pin retention. Local, non-Raft mutation like
+    // OnBackfillDone above: each replica heals itself (the setter normalizes and flushes).
+    const auto generation = tablet_meta->index_backfill_ordering_generation();
+    if (generation.active) {
+      for (const auto& index_update : index_tables) {
+        if (index_update.index_table_id != generation.table_id) {
+          continue;
+        }
+        LOG_WITH_PREFIX(INFO) << "Tablet " << index_tablet_id
+                              << ": releasing index-backfill ordering generation for "
+                              << generation.table_id << " (backfill confirmed complete)";
+        auto release_status = tablet_meta->set_index_backfill_ordering_generation({});
+        LOG_IF_WITH_PREFIX(WARNING, !release_status.ok())
+            << "Tablet " << index_tablet_id << " ordering-generation release failed: "
+            << release_status;
+        break;
       }
     }
 

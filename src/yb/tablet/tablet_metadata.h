@@ -511,11 +511,20 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   HybridTime cdc_sdk_safe_time() const;
 
   // Persists the fixed-hybrid-time write-ID ordering generation for unique-index backfill
-  // (durable in the superblock, inherited by split children). While active, marked
-  // backfill writes must carry Raft indexes strictly above base_op_index and tablet splitting
-  // and cloning are fenced.
+  // (durable in the superblock, inherited by split children). While active, marked backfill
+  // writes must carry Raft indexes strictly above base_op_index and tablet splitting and
+  // cloning are fenced. This setter is for non-Raft-driven mutation (tests, the tserver
+  // metadata validator's local heal); the replicated path is
+  // ApplyIndexBackfillOrderingGenerationOp.
   Status set_index_backfill_ordering_generation(
       const IndexBackfillOrderingGeneration& generation);
+
+  // Applies the ChangeMetadataOperation variant: activates a generation with
+  // base_op_index = op_id.index, or releases any active one. Advances the change-metadata
+  // replay marker; the caller flushes (mirrors OnBackfillDone).
+  Status ApplyIndexBackfillOrderingGenerationOp(
+      const OpId& op_id, const TableId& table_id, ActivateGeneration activate,
+      HybridTime retention_barrier_ht, uint32_t write_id_floor_version);
 
   IndexBackfillOrderingGeneration index_backfill_ordering_generation() const;
 

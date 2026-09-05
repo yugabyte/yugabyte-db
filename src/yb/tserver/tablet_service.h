@@ -350,6 +350,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Activates or releases the index-backfill write-ID ordering generation on an index tablet.
+  void UpdateIndexBackfillOrderingGeneration(
+      const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+      rpc::RpcContext context) override;
+
   // Starts tablet splitting by adding split tablet Raft operation into Raft log of the source
   // tablet.
   void SplitTablet(

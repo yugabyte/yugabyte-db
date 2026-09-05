@@ -97,19 +97,23 @@ Status WriteOperation::ValidateLeaderOpId(const OpId& op_id) const {
       op_id.index, static_cast<int64_t>(FLAGS_TEST_fixed_hybrid_time_write_id_max), IllegalState,
       "TEST: Raft operation index exceeded the injected fixed-hybrid-time write ID ceiling");
 
-  // When an ordering generation is active, marked writes must carry Raft indexes strictly above
-  // the generation base: the base is the activation operation's own index, so an index at or
-  // below it cannot belong to this generation -- it would indicate misrouting or replay of a
-  // foreign sequence. (Rejecting marked writes when *no* generation is active arrives with the
-  // master activation flow; until then marked writes remain test-only.)
+  // Marked writes are only legal under an active ordering generation: the generation is what
+  // records the backfill's ordering state (base, retention barrier, floor version) for
+  // verification, so a marked write with no generation would store versions nothing tracks or
+  // releases. The master activates the generation on every index tablet before launching
+  // SKIP_ALL backfill chunks, so this rejection is only reachable by misrouted or stale
+  // requests (e.g. a chunk retry arriving after the job released).
   const auto generation =
       VERIFY_RESULT(tablet_safe())->metadata()->index_backfill_ordering_generation();
-  if (generation.active) {
-    SCHECK_GT(
-        op_id.index, generation.base_op_index, IllegalState,
-        "Marked fixed-hybrid-time write carries a Raft index at or below the active ordering "
-        "generation base");
-  }
+  SCHECK(
+      generation.active, IllegalState,
+      "Marked fixed-hybrid-time write without an active ordering generation");
+  // The base is the activation operation's own Raft index, so an index at or below it cannot
+  // belong to this generation -- it would indicate misrouting or replay of a foreign sequence.
+  SCHECK_GT(
+      op_id.index, generation.base_op_index, IllegalState,
+      "Marked fixed-hybrid-time write carries a Raft index at or below the active ordering "
+      "generation base");
   return Status::OK();
 }
 

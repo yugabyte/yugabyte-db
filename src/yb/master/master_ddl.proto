@@ -366,8 +366,12 @@ message GetBackfillStatusRequestPB {
 
 message IndexStatusPB {
   enum BackfillStatus {
-    BACKFILL_UNKNOWN = 0; // Unspecified state.
+    BACKFILL_UNKNOWN = 0; // Unspecified state (including backfill still in progress).
     BACKFILL_SUCCESS = 1; // Backfill succeeded.
+    // Backfill can no longer succeed: the index is failed or being removed. Lets tservers
+    // release local backfill state (e.g. the index-backfill ordering generation) for indexes
+    // that will never reach BACKFILL_SUCCESS.
+    BACKFILL_FAILED = 2;
   }
 
   optional TableIdentifierPB index_table = 1;

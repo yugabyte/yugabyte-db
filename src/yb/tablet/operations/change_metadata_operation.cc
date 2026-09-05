@@ -161,6 +161,7 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
     REMOVE_TABLE,
     BACKFILL_DONE,
     ADD_MULTIPLE_TABLES,
+    INDEX_BACKFILL_ORDERING_GENERATION,
   };
 
   MetadataChange metadata_change = MetadataChange::NONE;
@@ -222,6 +223,13 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
     }
   }
 
+  if (request()->has_index_backfill_ordering_generation()) {
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::INDEX_BACKFILL_ORDERING_GENERATION;
+    }
+  }
+
   // Get the op id corresponding to this raft op.
   const OpId id = op_id();
 
@@ -264,6 +272,17 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
                                    << num_operations;
       RETURN_NOT_OK(tablet->AddMultipleTables(request()->add_multiple_tables(), id, hybrid_time()));
       break;
+    case MetadataChange::INDEX_BACKFILL_ORDERING_GENERATION: {
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
+      const auto& generation_op = request()->index_backfill_ordering_generation();
+      RETURN_NOT_OK(tablet->UpdateIndexBackfillOrderingGeneration(
+          id, generation_op.table_id().ToBuffer(),
+          ActivateGeneration(generation_op.activate()),
+          HybridTime::FromPB(generation_op.retention_barrier_ht()),
+          generation_op.write_id_floor_version()));
+      break;
+    }
   }
 
   // Now that all of the changes have been applied and the commit is durable
