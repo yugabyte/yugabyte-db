@@ -114,6 +114,15 @@ DEFINE_test_flag(int32, new_txn_status_initial_heartbeat_delay_ms, 0,
 DEFINE_test_flag(uint64, override_transaction_priority, 0,
                  "Override priority of transactions if nonzero.");
 
+DEFINE_test_flag(bool, simulate_failing_heartbeats_to_old_status_tablet, false,
+                 "Behave as if heartbeats to the old transaction status tablet are failing: skip "
+                 "the early abort of the old status tablet after promotion, and fail sub-txn "
+                 "rollback heartbeats to it with TimedOut without sending an rpc.");
+
+DEFINE_test_flag(int32, delay_rollback_heartbeat_response_ms, 0,
+                 "Inject delay before delivering a sub-txn rollback heartbeat response, keeping "
+                 "the rpc registered for that long.");
+
 DEFINE_RUNTIME_bool(disable_heartbeat_send_involved_tablets, false,
                     "If disabled, do not send involved tablets on heartbeats for pending "
                     "transactions. This behavior is needed to support fetching old transactions "
@@ -314,7 +323,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   ~Impl() {
     std::vector<rpc::Rpcs::Handle *> handles{
         &heartbeat_handle_, &new_heartbeat_handle_, &commit_handle_, &abort_handle_,
-        &old_abort_handle_};
+        &old_abort_handle_, &rollback_heartbeat_handle_, &old_rollback_heartbeat_handle_};
     handles.reserve(handles.size() + transaction_status_move_handles_.size());
     for (auto& entry : transaction_status_move_handles_) {
       handles.push_back(&entry.second);
@@ -1092,14 +1101,29 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   std::future<Status> SendHeartBeatOnRollback(
       const CoarseTimePoint& deadline, const internal::RemoteTabletPtr& status_tablet,
       rpc::Rpcs::Handle* handle,
-      const SubtxnSet& aborted_sub_txn_set) {
+      const SubtxnSet& aborted_sub_txn_set,
+      SendHeartbeatToNewTablet send_to_new_tablet) {
     DCHECK(status_tablet);
 
-    return MakeFuture<Status>([&, handle](auto callback) {
+    if (PREDICT_FALSE(FLAGS_TEST_simulate_failing_heartbeats_to_old_status_tablet) &&
+        !send_to_new_tablet) {
+      return MakeFuture<Status>([](auto callback) {
+        callback(STATUS(TimedOut, "TEST: heartbeats to old status tablet are failing"));
+      });
+    }
+
+    // The response outlives this call, so it keeps the transaction alive until it arrives.
+    auto transaction = transaction_->shared_from_this();
+    return MakeFuture<Status>([&, handle, transaction](auto callback) {
       manager_->rpcs().RegisterAndStart(
           PrepareHeartbeatRPC(
               deadline, status_tablet, TransactionStatus::PENDING,
-              [&, callback, handle](const auto& status, const auto& req, const auto& resp) {
+              [this, callback, handle, transaction](
+                  const auto& status, const auto& req, const auto& resp) {
+                if (PREDICT_FALSE(FLAGS_TEST_delay_rollback_heartbeat_response_ms > 0)) {
+                  std::this_thread::sleep_for(
+                      FLAGS_TEST_delay_rollback_heartbeat_response_ms * 1ms);
+                }
                 UpdateClock(resp, manager_);
                 manager_->rpcs().Unregister(handle);
                 callback(status);
@@ -1179,7 +1203,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         VLOG_WITH_PREFIX(2) << "Sending heartbeat to old status tablet for sub-txn rollback.";
         heartbeat_futures.push_back(SendHeartBeatOnRollback(
             deadline, old_status_tablet_, &old_rollback_heartbeat_handle_,
-            subtransaction_copy.get().aborted));
+            subtransaction_copy.get().aborted, SendHeartbeatToNewTablet::kFalse));
       }
 
       auto state = state_.load(std::memory_order_acquire);
@@ -1193,24 +1217,27 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         VLOG_WITH_PREFIX(2) << "Sending heartbeat to status tablet for sub-txn rollback.";
         heartbeat_futures.push_back(SendHeartBeatOnRollback(
             deadline, status_tablet_, &rollback_heartbeat_handle_,
-            subtransaction_copy.get().aborted));
+            subtransaction_copy.get().aborted, SendHeartbeatToNewTablet::kTrue));
       }
     }
 
-    // Wait for the heartbeat response
+    // Wait for all heartbeats, even after one fails, so that no heartbeat is in flight once this
+    // returns.
     bool heartbeat_aborted_or_expired = false;
+    Status first_error;
     for (auto& future : heartbeat_futures) {
       auto status = future.get();
-      if (status.IsAborted() || status.IsExpired()) {
-        heartbeat_aborted_or_expired = true;
-      }
 
       // If the transaction has been aborted or no longer exists, we don't have to do anything
       // further. The rollback heartbeat which tries to update the list of aborted sub-txns is as
       // good as successful.
-      if (!(status.IsAborted() || status.IsExpired()))
-        RETURN_NOT_OK(status);
+      if (status.IsAborted() || status.IsExpired()) {
+        heartbeat_aborted_or_expired = true;
+      } else if (!status.ok() && first_error.ok()) {
+        first_error = status;
+      }
     }
+    RETURN_NOT_OK(first_error);
 
     #ifndef NDEBUG
     DCHECK(subtransaction_copy_for_dcheck == subtransaction_);
@@ -2549,7 +2576,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // the transaction prematurely, and we defer to the logic at commit time instead.
         if (!old_status_tablet) {
           VLOG_WITH_PREFIX(1) << "Initial status tablet lookup hasn't finished, not aborting yet";
-        } else if (last_old_heartbeat_failed_.load(std::memory_order_acquire)) {
+        } else if (last_old_heartbeat_failed_.load(std::memory_order_acquire) ||
+                   PREDICT_FALSE(FLAGS_TEST_simulate_failing_heartbeats_to_old_status_tablet)) {
           VLOG_WITH_PREFIX(1) << "Heartbeats to old status tablet are failing, not aborting early";
         } else {
           auto transaction_ptr = transaction_->shared_from_this();
