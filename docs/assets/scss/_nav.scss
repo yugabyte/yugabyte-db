@@ -432,6 +432,26 @@ body {
               border-bottom: 3px solid $yb-font-dark;
             }
 
+            &.product-item > a {
+              border-radius: 8px 8px 0 0;
+            }
+
+            &.product-ybdb > a {
+              background: #f7fafc;
+            }
+
+            &.product-anywhere > a {
+              background: #eef2fb;
+            }
+
+            &.product-aeon > a {
+              background: #e9f4f8;
+            }
+
+            &.product-voyager > a {
+              background: #e6f5f0;
+            }
+
             &:focus,
             &:hover {
               a {
@@ -468,6 +488,16 @@ body {
                 padding: 12px 16px 16px;
                 width: auto;
                 border-bottom: 3px solid transparent;
+
+                .header-menu-home {
+                  display: block;
+                  width: 18px;
+                  height: 18px;
+                  background-image: url('/icons/home.svg');
+                  background-repeat: no-repeat;
+                  background-position: center;
+                  background-size: contain;
+                }
               }
 
               .header-submenu {
@@ -569,6 +599,38 @@ body {
                         &.desc {
                           color: $yb-font-gray;
                         }
+                      }
+                    }
+
+                    &.product-ybdb {
+                      background: #f7fafc;
+
+                      &:not(.label):hover {
+                        background: #eef2f6;
+                      }
+                    }
+
+                    &.product-anywhere {
+                      background: #eef2fb;
+
+                      &:not(.label):hover {
+                        background: #e2eafb;
+                      }
+                    }
+
+                    &.product-aeon {
+                      background: #e9f4f8;
+
+                      &:not(.label):hover {
+                        background: #d8ecf3;
+                      }
+                    }
+
+                    &.product-voyager {
+                      background: #e6f5f0;
+
+                      &:not(.label):hover {
+                        background: #d5efe6;
                       }
                     }
                   }

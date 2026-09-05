@@ -15,7 +15,7 @@ type: indexpage
 {{<index/block>}}
 
   {{<index/item
-    title="Overview"
+    title="Role-based access overview"
     body="Understanding role-based access control (RBAC)."
     href="rbac-model/"
     icon="fa-thin fa-user-group-crown">}}
