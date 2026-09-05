@@ -186,6 +186,18 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
         "Wait for IndexScan");
   }
 
+  Result<bool> IsBackfilling(const TableId& table_id) {
+    master::GetTableSchemaRequestPB req;
+    req.mutable_table()->set_table_id(table_id);
+    master::GetTableSchemaResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(30s * kTimeMultiplier);
+    RETURN_NOT_OK(
+        cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>().GetTableSchema(req, &resp, &rpc));
+    SCHECK(!resp.has_error(), IllegalState, resp.error().status().message());
+    return resp.is_backfilling();
+  }
+
   bool HasClientTimedOut(const Status& s);
   void TestSimpleBackfill(const std::string& table_create_suffix = "");
   void TestLargeBackfill(const int num_rows);
@@ -4297,6 +4309,28 @@ TEST_P(PgIndexBackfillCancellationWithoutFixTest, BackfillContinuesAfterBackendK
   thread_holder_.JoinAll();
   EXPECT_FALSE(create_index_completed_ok_.load())
       << "CREATE INDEX completed before pg_terminate_backend interrupted it";
+}
+
+// Fails the last completion write and checks the error reaches the requester and the latch clears.
+TEST_P(PgIndexBackfillTest, ReportsTransientSysCatalogWriteFailure) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, 100))", kTableName));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, kTableName));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_fail_backfill_job_deletion_once", "true"));
+
+  const auto status = conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Failed to complete backfill");
+  ASSERT_STR_CONTAINS(status.ToString(), "TEST: could not clear backfilling timestamp");
+
+  // The latch clears after the client sees the error.
+  ASSERT_OK(WaitFor(
+      [this, &table_id]() -> Result<bool> { return !VERIFY_RESULT(IsBackfilling(table_id)); },
+      60s * kTimeMultiplier, "the backfill latch to be released"));
 }
 
 } // namespace yb::pgwrapper
