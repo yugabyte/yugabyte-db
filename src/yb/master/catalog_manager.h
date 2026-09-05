@@ -1569,6 +1569,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB* req,
       ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
 
+  Status CleanupStaleCDCStreams(
+      const CleanupStaleCDCStreamsRequestPB* req,
+      CleanupStaleCDCStreamsResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   Status RemoveTablesFromCDCSDKStream(
       const RemoveTablesFromCDCSDKStreamRequestPB* req,
       RemoveTablesFromCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
