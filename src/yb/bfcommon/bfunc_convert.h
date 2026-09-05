@@ -904,6 +904,14 @@ inline Result<BFRetValue> ConvertToDecimal(BFParam source, BFFactory factory) {
                                QLType::ToCQLString(DataType::DECIMAL));
   }
 
+  // YCQL DECIMAL remains finite-only on write/cast paths. Specials may exist in DocDB when
+  // written via YSQL; those are already InternalType::kDecimalValue and pass through above.
+  if (convert != ConvertDecimalVia::kDecimal && d.IsSpecial()) {
+    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
+                             QLType::ToCQLString(source_datatype),
+                             QLType::ToCQLString(DataType::DECIMAL));
+  }
+
   result.set_decimal_value(d.EncodeToComparable());
   return result;
 }
