@@ -119,6 +119,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -958,6 +959,12 @@ void TabletServer::Shutdown() {
   }
   LOG(INFO) << "TabletServer shutting down...";
 
+  // Stop the periodic lagging-catalog-versions check from re-scheduling itself. An
+  // already-running check aborts quickly, because shutting_down_ is set: the callback checks it
+  // before connecting, and the libpq connect retry loop observes it through the should_stop
+  // predicate of CreateInternalPGConn.
+  check_lagging_catalog_versions_task_.StartShutdown();
+
   // Best effort to give up our ysql lease.
   // todo(zdrudi): there's lifetime issues trying to access the pg_supervisor here through
   // callbacks. Probably due to the way the MiniCluster sets up the PgSupervisor.
@@ -1017,6 +1024,11 @@ void TabletServer::Shutdown() {
   // Unblock PG backends still waiting on a relcache-init connection before we join reactors below;
   // otherwise their orphaned RPCs keep their connections open and wedge reactor shutdown.
   AbortInFlightRelcacheInitConnections();
+
+  // Wait out any in-flight lagging-catalog-versions check and abort the pending one. This must
+  // happen while the messenger io_threads that run the check are still alive; the base class
+  // shutdowns below join them.
+  check_lagging_catalog_versions_task_.CompleteShutdown();
 
   DbServerBase::Shutdown();
   RpcAndWebServerBase::Shutdown();
@@ -2159,7 +2171,13 @@ void TabletServer::DoGarbageCollectionOfInvalidationMessages(
 }
 
 Status TabletServer::CheckYsqlLaggingCatalogVersions() {
-  auto deadline = CoarseMonoClock::Now() + default_client_timeout();
+  // This is a periodic best-effort check against the local postmaster: use a short connect
+  // budget instead of the general client timeout. When the postmaster is unreachable (e.g. it
+  // is already stopped while the process shuts down), the full 60s budget would pin a
+  // messenger io_thread in the connect retry loop for the whole minute per invocation
+  // (#31805). A missed cycle merely delays invalidation message garbage collection until the
+  // next interval.
+  auto deadline = CoarseMonoClock::Now() + 2s * kTimeMultiplier;
   auto pg_conn = VERIFY_RESULT(
       CreateInternalPGConn("template1", kDefaultInternalPgUser, false, deadline));
   const std::string query = "SELECT datid, local_catalog_version FROM "
@@ -2594,10 +2612,15 @@ TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
 
 void TabletServer::ScheduleCheckLaggingCatalogVersions() {
   LOG(INFO) << __func__;
-  messenger()->scheduler().Schedule(
+  check_lagging_catalog_versions_task_.Bind(&messenger()->scheduler());
+  check_lagging_catalog_versions_task_.Schedule(
     [this](const Status& status) {
       if (!status.ok()) {
         LOG(INFO) << status;
+        return;
+      }
+      if (shutting_down_) {
+        LOG(INFO) << "Skipping the lagging catalog versions check: shutting down";
         return;
       }
       auto s = CheckYsqlLaggingCatalogVersions();
