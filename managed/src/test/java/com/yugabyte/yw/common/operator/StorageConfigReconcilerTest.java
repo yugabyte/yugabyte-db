@@ -11,6 +11,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -108,6 +109,20 @@ public class StorageConfigReconcilerTest extends FakeDBApplication {
     spec.setAzureStorageSasTokenSecret(secretRef);
     sc.setSpec(spec);
     return sc;
+  }
+
+  @Test
+  public void testGetConfigPayloadIncludesImmutableStorage() {
+    StorageConfig sc = createStorageConfigCr("immutable-storage-config");
+    Data data = new Data();
+    data.setBACKUP_LOCATION("s3://test-bucket/backups");
+    data.setIMMUTABLE_STORAGE(true);
+    sc.getSpec().setData(data);
+
+    JsonNode payload = storageConfigReconciler.getConfigPayloadFromCRD(sc, UUID.randomUUID());
+
+    assertTrue(payload.get("IMMUTABLE_STORAGE").asBoolean());
+    assertEquals("s3://test-bucket/backups", payload.get("BACKUP_LOCATION").asText());
   }
 
   @Test
