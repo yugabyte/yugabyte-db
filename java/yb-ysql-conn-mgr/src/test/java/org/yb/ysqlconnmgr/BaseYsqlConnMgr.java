@@ -186,7 +186,11 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected JsonObject getConnectionStats() throws IOException {
-    String host_name = getPgHost(TSERVER_IDX);
+    return getConnectionStats(TSERVER_IDX);
+  }
+
+  protected JsonObject getConnectionStats(int tserverIndex) throws IOException {
+    String host_name = getPgHost(tserverIndex);
     MiniYBDaemon[] ts_list = miniCluster.getTabletServers()
                                         .values()
                                         .toArray(new MiniYBDaemon[0]);
@@ -216,8 +220,13 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected JsonObject getPool(String db_name, String user_name) throws Exception {
+    return getPool(db_name, user_name, TSERVER_IDX);
+  }
+
+  protected JsonObject getPool(String db_name, String user_name, int tserverIndex)
+      throws Exception {
     // Specifically fetches a non logical replication pool. Use `getRepPool()` for replication pool.
-    JsonObject obj = getConnectionStats();
+    JsonObject obj = getConnectionStats(tserverIndex);
     assertNotNull("Got a null response from the connections endpoint", obj);
     JsonArray pools = obj.getAsJsonArray("pools");
     assertNotNull("Got empty pool", pools);

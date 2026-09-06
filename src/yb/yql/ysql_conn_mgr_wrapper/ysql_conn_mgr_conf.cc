@@ -49,6 +49,7 @@ DECLARE_uint32(ysql_conn_mgr_server_lifetime);
 DECLARE_uint64(ysql_conn_mgr_log_max_size);
 DECLARE_uint64(ysql_conn_mgr_log_rotate_interval);
 DECLARE_uint32(ysql_conn_mgr_readahead_buffer_size);
+DECLARE_uint32(ysql_conn_mgr_cache_coroutine);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_probes);
@@ -231,6 +232,7 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_use_auth_backend%}", BoolToString(FLAGS_ysql_conn_mgr_use_auth_backend)},
     {"{%yb_client_login_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_auth_msg_timeout)},
     {"{%readahead_buffer_size%}", std::to_string(FLAGS_ysql_conn_mgr_readahead_buffer_size)},
+    {"{%cache_coroutine%}", std::to_string(FLAGS_ysql_conn_mgr_cache_coroutine)},
     {"{%tcp_keepalive%}", std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive)},
     {"{%tcp_keepalive_keep_interval%}",
      std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_keep_interval)},

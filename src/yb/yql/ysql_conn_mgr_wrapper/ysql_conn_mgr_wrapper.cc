@@ -113,6 +113,14 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_readahead_buffer_size, 8192,
     "Set size of per-connection buffer used for io readahead operations in "
     "Ysql Connection Manager");
 
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, cache_coroutine, 256,
+    "Per-worker limit on the number of finished coroutines Ysql Connection Manager keeps for "
+    "reuse. Each client connection runs on a coroutine whose stack is mmap'ed, mprotect'ed and "
+    "munmap'ed, and all three take the process-wide address space lock, so at a high connection "
+    "rate a limit of 0 (no reuse) serializes the workers against each other. The cache does not "
+    "shrink, so a non-zero limit reserves up to ysql_conn_mgr_num_workers * limit stacks for the "
+    "life of the process.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive, 15,
     "TCP keepalive time in Ysql Connection Manager. Set to zero, to disable keepalive");
 
