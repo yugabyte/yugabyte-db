@@ -62,6 +62,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/to_stream.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -542,13 +543,21 @@ Result<std::string> WriteDocumentDBGatewayConfig(const PgProcessConf& conf) {
 }
 
 Status WriteConfigFile(const string& path, const vector<string>& lines) {
+  // Runtime flag callbacks reach this from a reactor thread, which disallows IO.
+  ThreadRestrictions::ScopedAllowIO allow_io;
+
+  // Build in a temporary file and publish with an atomic rename. A runtime PG flag change rewrites
+  // these files while the postmaster may be concurrently parsing them (at startup or on SIGHUP);
+  // an in-place truncate+rewrite lets it observe a partial file and silently drop settings such as
+  // shared_preload_libraries.
+  const string tmp_path = path + ".tmp";
   std::ofstream conf_file;
-  conf_file.open(path, std::ios_base::out | std::ios_base::trunc);
+  conf_file.open(tmp_path, std::ios_base::out | std::ios_base::trunc);
   if (!conf_file) {
     return STATUS_FORMAT(
         IOError,
-        "Failed to write ysql config file '%s': errno=$0: $1",
-        path,
+        "Failed to write ysql config file '$0': errno=$1: $2",
+        tmp_path,
         errno,
         ErrnoToString(errno));
   }
@@ -560,7 +569,7 @@ Status WriteConfigFile(const string& path, const vector<string>& lines) {
 
   conf_file.close();
 
-  return Status::OK();
+  return Env::Default()->RenameFile(tmp_path, path);
 }
 
 void ReadCommaSeparatedValues(const string& src, vector<string>* lines) {
