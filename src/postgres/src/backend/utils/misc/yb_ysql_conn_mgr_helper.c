@@ -860,7 +860,7 @@ YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user,
 }
 
 int
-YbCreateClientId(void)
+YbCreateClientId(Oid *database_oid)
 {
 	bool		is_superuser;
 	Oid			user;
@@ -874,6 +874,7 @@ YbCreateClientId(void)
 		return -1;
 
 	database = get_database_oid(MyProcPort->database_name, true);
+	*database_oid = database;
 
 	YbCheckMyDatabase(MyProcPort->database_name, is_superuser, false, database);
 
