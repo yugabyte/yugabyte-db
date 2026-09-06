@@ -2232,8 +2232,26 @@ TEST_F(PgMiniTest, TruncateColocatedInvalidatesTombstoneCacheOnFollower) {
       ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", kTableName))), 3);
 
   auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
-  auto peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
-  ASSERT_EQ(peers.size(), NumTabletServers());
+  // CREATE TABLE returns once the leader has applied the colocated ADD_TABLE op; followers apply
+  // it asynchronously and only report the table afterwards, so poll instead of sampling once.
+  std::vector<tablet::TabletPeerPtr> peers;
+  ASSERT_OK(WaitFor(
+      [&] {
+        peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
+        if (peers.size() != NumTabletServers()) {
+          return false;
+        }
+        // Arming happens later in the same apply, so wait for it too.
+        for (const auto& peer : peers) {
+          auto table_info = peer->tablet_metadata()->GetTableInfo(kColocationId);
+          if (!table_info.ok() || !(*table_info)->doc_read_context ||
+              (*table_info)->doc_read_context->tombstone_cache_watermark() == HybridTime::kMax) {
+            return false;
+          }
+        }
+        return true;
+      },
+      30s * kTimeMultiplier, "Every replica of the colocated tablet armed the table"));
   const auto tablet_id = peers.front()->tablet_id();
 
   auto doc_read_context = [&](const tablet::TabletPeerPtr& peer) {
