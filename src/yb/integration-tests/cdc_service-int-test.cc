@@ -832,7 +832,7 @@ TEST_F(CDCServiceTest, TestGetChangesFromGCedCheckpointWithNewerWal) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
   ASSERT_OK(peer->log()->WaitUntilAllFlushed());
   log::SegmentSequence segs;
-  auto* log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
+  auto log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segs));
   ASSERT_EQ(segs.size(), 3u);
   const auto& oldest = ASSERT_RESULT(segs.front()).get();
