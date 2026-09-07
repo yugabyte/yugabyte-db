@@ -377,7 +377,10 @@ class YbHnswStorageTest : public VectorIndexTestBase {
       RerankStorageKind rerank_kind = RerankStorageKind::kNone) {
     auto path = GetTestPath(name);
     auto result = std::make_unique<YbHnsw>(MakeMetricFactory(), block_cache_);
-    RETURN_NOT_OK(result->Import(*hnswlib_index_, path, storage_kind, rerank_kind));
+    // No payloads: these tests are about the coordinate encodings, and a chunk without payloads
+    // keeps the 16-byte aux entry per vector that this fixture's expectations assume.
+    RETURN_NOT_OK(result->Import(
+        *hnswlib_index_, path, /* payloads= */ nullptr, storage_kind, rerank_kind));
     if (reload) {
       result = std::make_unique<YbHnsw>(MakeMetricFactory(), block_cache_);
       RETURN_NOT_OK(result->Init(path));

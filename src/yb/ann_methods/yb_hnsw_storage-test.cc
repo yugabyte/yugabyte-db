@@ -37,6 +37,7 @@ namespace yb::ann_methods {
 using vector_index::FactoryMode;
 using vector_index::HNSWOptions;
 using vector_index::RerankStorageKind;
+using vector_index::StoreVectorPayload;
 using vector_index::VectorId;
 using vector_index::VectorIndexIfPtr;
 using vector_index::VectorStorageKind;
@@ -72,11 +73,12 @@ class YbHnswStorageWrapperTest : public hnsw::VectorIndexTestBase {
     auto traits = CHECK_RESULT((CreateHnswlibIndexTraits<FloatVector, DistanceResult>(
         block_cache_, options, HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_)));
 
-    auto mutable_index = traits->Create(FactoryMode::kCreate);
+    // These tests cover the coordinate encodings, not payloads.
+    auto mutable_index = traits->Create(FactoryMode::kCreate, StoreVectorPayload::kFalse);
     CHECK_OK(mutable_index->Reserve(
         vectors_.size(), 1, 1, rocksdb::Cache::ReservationMode::kAlways));
     for (size_t i = 0; i != vectors_.size(); ++i) {
-      CHECK_OK(mutable_index->Insert(ids_[i], vectors_[i]));
+      CHECK_OK(mutable_index->Insert(ids_[i], vectors_[i], Slice()));
     }
 
     const auto path = GetTestPath(name);
@@ -84,7 +86,7 @@ class YbHnswStorageWrapperTest : public hnsw::VectorIndexTestBase {
     // factory instead, so this covers the restart path rather than the flush path.
     CHECK_RESULT(mutable_index->SaveToFile(path));
 
-    auto loaded = traits->Create(FactoryMode::kLoad);
+    auto loaded = traits->Create(FactoryMode::kLoad, StoreVectorPayload::kFalse);
     CHECK_OK(loaded->LoadFromFile(path, 1));
     return loaded;
   }
@@ -129,10 +131,10 @@ TEST_F(YbHnswStorageWrapperTest, IterationDecodesNarrowedRecords) {
     ASSERT_EQ(index->Size(), kNumVectors) << storage_kind;
 
     std::map<VectorId, hnsw::Vector> seen;
-    for (const auto& [vector_id, vector] : *index) {
-      ASSERT_EQ(vector.size(), dimensions_) << storage_kind;
-      ASSERT_TRUE(seen.emplace(vector_id, vector).second)
-          << "duplicate id from iteration: " << vector_id << ", " << storage_kind;
+    for (const auto& entry : *index) {
+      ASSERT_EQ(entry.vector.size(), dimensions_) << storage_kind;
+      ASSERT_TRUE(seen.emplace(entry.vector_id, entry.vector).second)
+          << "duplicate id from iteration: " << entry.vector_id << ", " << storage_kind;
     }
     ASSERT_EQ(seen.size(), kNumVectors) << storage_kind;
 
@@ -171,13 +173,13 @@ TEST_F(YbHnswStorageWrapperTest, CompactionRoundTripIsStable) {
     return out;
   };
 
-  for (const auto& [vector_id, vector] : *index) {
-    // vector came out of a float16 record, so narrowing it again must be a no-op.
-    std::vector<std::byte> widened_then_narrowed = narrow(vector);
+  for (const auto& entry : *index) {
+    // entry.vector came out of a float16 record, so narrowing it again must be a no-op.
+    std::vector<std::byte> widened_then_narrowed = narrow(entry.vector);
     hnsw::Vector again(dimensions_);
     vector_index::WidenCoordinates(
         VectorStorageKind::kFloat16, widened_then_narrowed.data(), dimensions_, again.data());
-    ASSERT_EQ(vector, again) << vector_id;
+    ASSERT_EQ(entry.vector, again) << entry.vector_id;
   }
 }
 
@@ -259,10 +261,10 @@ TEST_F(YbHnswStorageWrapperTest, IterationReadsTheRerankCopy) {
 
   size_t count = 0;
   double worst_error = 0;
-  for (const auto& [vector_id, vector] : *index) {
-    ASSERT_EQ(vector.size(), dimensions_);
-    auto it = std::find(ids_.begin(), ids_.end(), vector_id);
-    ASSERT_NE(it, ids_.end()) << "unknown id from iteration: " << vector_id;
+  for (const auto& entry : *index) {
+    ASSERT_EQ(entry.vector.size(), dimensions_);
+    auto it = std::find(ids_.begin(), ids_.end(), entry.vector_id);
+    ASSERT_NE(it, ids_.end()) << "unknown id from iteration: " << entry.vector_id;
     const auto& original = vectors_[it - ids_.begin()];
 
     // Must be the float16 round trip of the original, not the int8 one. Exact equality against
@@ -275,10 +277,10 @@ TEST_F(YbHnswStorageWrapperTest, IterationReadsTheRerankCopy) {
     hnsw::Vector expected(dimensions_);
     vector_index::WidenCoordinates(
         VectorStorageKind::kFloat16, narrowed.data(), dimensions_, expected.data());
-    ASSERT_EQ(expected, vector) << "id " << vector_id;
+    ASSERT_EQ(expected, entry.vector) << "id " << entry.vector_id;
 
     for (size_t i = 0; i != dimensions_; ++i) {
-      worst_error = std::max<double>(worst_error, std::fabs(vector[i] - original[i]));
+      worst_error = std::max<double>(worst_error, std::fabs(entry.vector[i] - original[i]));
     }
     ++count;
   }
@@ -299,8 +301,8 @@ TEST_F(YbHnswStorageWrapperTest, Int8SurvivesRepeatedCompaction) {
     auto index = BuildAndReloadInt8(Format("gen_$0.yb_hnsw", generation));
 
     std::map<VectorId, hnsw::Vector> current;
-    for (const auto& [vector_id, vector] : *index) {
-      ASSERT_TRUE(current.emplace(vector_id, vector).second) << vector_id;
+    for (const auto& entry : *index) {
+      ASSERT_TRUE(current.emplace(entry.vector_id, entry.vector).second) << entry.vector_id;
     }
     ASSERT_EQ(current.size(), kNumVectors);
 
