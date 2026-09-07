@@ -235,7 +235,11 @@ TEST_F(CoordinateCodecTest, Int8SameInputNarrowsToSameBytes) {
 // subnormals, and it is why the two encodings suit different jobs.
 TEST_F(CoordinateCodecTest, Int8ErrorIsWithinHalfAStep) {
   constexpr size_t kDims = 512;
-  constexpr float kScale = 0.002f;
+  // The scale has to cover RandomVector's [-1, 1]: int8 represents +-127 steps, so anything
+  // beyond 127 * kScale clamps and its error is the distance to the range edge, not a rounding
+  // error. Picking a scale narrower than the inputs tests clamping, which
+  // Int8ClampsOutOfRangeCoordinates already covers, and says nothing about the bound below.
+  constexpr float kScale = 1.0f / 127;
 
   auto in = RandomVector(kDims);
   // Include the exact boundaries and a value far below the step size.
