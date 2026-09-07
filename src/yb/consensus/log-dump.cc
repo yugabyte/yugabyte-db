@@ -352,15 +352,10 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
   FsManager fs_manager(env.get(), fs_opts);
 
   RETURN_NOT_OK(fs_manager.CheckAndOpenFileSystemRoots());
-  std::unique_ptr<LogReader> reader;
-  RETURN_NOT_OK(LogReader::Open(env.get(),
-                                scoped_refptr<LogIndex>(),
-                                "Log reader: ",
-                                tablet_wal_path,
-                                scoped_refptr<MetricEntity>(),
-                                scoped_refptr<MetricEntity>(),
-                                /*read_wal_mem_tracker=*/nullptr,
-                                &reader));
+  auto reader = VERIFY_RESULT(LogReader::Open(
+      env.get(), scoped_refptr<LogIndex>(), "Log reader: ", tablet_wal_path,
+      scoped_refptr<MetricEntity>(), scoped_refptr<MetricEntity>(),
+      /*read_wal_mem_tracker=*/nullptr));
 
   SegmentSequence segments;
   RETURN_NOT_OK(reader->GetSegmentsSnapshot(&segments));

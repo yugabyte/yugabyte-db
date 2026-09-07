@@ -599,11 +599,10 @@ Status ChangeTimeInWalDir(
     const std::string& dir) {
   auto env = Env::Default();
   auto log_index = VERIFY_RESULT(log::LogIndex::NewLogIndex(dir));
-  std::unique_ptr<log::LogReader> log_reader;
-  RETURN_NOT_OK(log::LogReader::Open(
+  auto log_reader = VERIFY_RESULT(log::LogReader::Open(
       env, log_index, kLogPrefix, dir, /*table_metric_entity=*/nullptr,
       /*tablet_metric_entity=*/nullptr,
-      /*read_wal_mem_tracker=*/nullptr, &log_reader));
+      /*read_wal_mem_tracker=*/nullptr));
   log::SegmentSequence segments;
   RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
   auto patched_dir = dir + kPatchedExtension;

@@ -1035,7 +1035,7 @@ TEST_F(TabletSplitITest, TestLogCopySetsCloseTimestampInFooter) {
       cluster_.get(), ListPeersFilter::kAll, IncludeTransactionStatusTablets::kFalse);
   for (const auto& peer : peers) {
     log::SegmentSequence segments;
-    auto* log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
+    auto log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
     ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
     for (const auto& segment : segments) {
       if (segment->HasFooter()) {

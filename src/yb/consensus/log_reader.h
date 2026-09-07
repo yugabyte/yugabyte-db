@@ -63,18 +63,26 @@ namespace log {
 // are read and parsed, but entries are not.
 // This class is thread safe.
 class LogReader {
+ private:
+  class PrivateTag {};
+
  public:
   ~LogReader();
 
-  // Opens a LogReader on a specific log directory, and sets 'reader' to the newly created
-  // LogReader.
+  LogReader(
+      Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
+      const scoped_refptr<MetricEntity>& table_metric_entity,
+      const scoped_refptr<MetricEntity>& tablet_metric_entity,
+      std::shared_ptr<MemTracker> read_wal_mem_tracker, PrivateTag);
+
+  // Opens a LogReader on a specific log directory.
   //
   // 'index' may be nullptr, but if it is, ReadReplicatesInRange() may not be used.
-  static Status Open(
+  static Result<LogReaderPtr> Open(
       Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
       const std::string& tablet_wal_path, const scoped_refptr<MetricEntity>& table_metric_entity,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
-      std::shared_ptr<MemTracker> read_wal_mem_tracker, std::unique_ptr<LogReader>* reader);
+      std::shared_ptr<MemTracker> read_wal_mem_tracker);
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
   // not to include any replicate messages with indexes >= 'index'.
@@ -208,12 +216,6 @@ class LogReader {
   // batch.
   Result<std::shared_ptr<LWLogEntryBatchPB>> ReadBatchUsingIndexEntry(
       const LogIndexEntry& index_entry, ObeyMemoryLimit obey_memory_limit) const;
-
-  LogReader(
-      Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
-      const scoped_refptr<MetricEntity>& table_metric_entity,
-      const scoped_refptr<MetricEntity>& tablet_metric_entity,
-      std::shared_ptr<MemTracker> read_wal_mem_tracker);
 
   // Reads the headers of all segments in 'path_'.
   Status Init(const std::string& path);
