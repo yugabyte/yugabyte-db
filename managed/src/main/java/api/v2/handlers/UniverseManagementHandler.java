@@ -318,7 +318,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     boolean isNewUI = isNewUI();
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
-    JsonNode dbUniverseJson = Json.toJson(dbUniverse);
+    JsonNode dbUniverseDetailsJson = Json.toJson(dbUniverse.getUniverseDetails());
     // Must be captured here, before the edit spec is mapped below: that mapping uses
     // dbUniverse.getUniverseDetails() as its @MappingTarget, i.e. it overwrites the in-memory
     // persisted placement with the requested one. Anything read from dbUniverse after that point
@@ -429,7 +429,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             Audit.ActionType.Update,
             Json.toJson(v1Params),
             taskUUID,
-            dbUniverseJson);
+            dbUniverseDetailsJson);
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 
