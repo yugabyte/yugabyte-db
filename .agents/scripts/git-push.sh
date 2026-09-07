@@ -6,7 +6,7 @@
 # backport-commit.sh -- both have to lint and both have to refuse to push
 # to upstream. Run standalone to push any branch you have queued up.
 #
-# usage: git-push [-b <base>] [-r <fork-remote>]
+# usage: git-push [-b <base>] [-r <fork-remote>] [-n]
 #
 # Optional inputs:
 #   -b base   Base branch on the upstream repo to lint against
@@ -14,6 +14,12 @@
 #             `./build-support/lint.sh --rev <upstream-remote>/<base>`.
 #   -r remote Override fork-remote auto-detection. Useful for unusual
 #             remote layouts; otherwise leave unset.
+#   -n        Do not rebase onto the fork branch. Use after deliberately
+#             rewriting the branch (e.g. rebasing it onto a newer base):
+#             the fork branch is then the pre-rewrite lineage, and rebasing
+#             onto it replays the new base's commits on top of the old tip,
+#             duplicating history. DISCARDS any fork-only commits, so do not
+#             use it to skip a genuine conflict with someone else's push.
 #
 # Env overrides:
 #   GH_REPO          default: yugabyte/yugabyte-db
@@ -30,11 +36,12 @@ set -euo pipefail
 
 base_branch="master"
 fork_remote_arg=""
+skip_fork_rebase=false
 GH_REPO="${GH_REPO:-yugabyte/yugabyte-db}"
 
 usage() {
   cat <<EOF >&2
-usage: $(basename "$0") [-b <base>] [-r <fork-remote>]
+usage: $(basename "$0") [-b <base>] [-r <fork-remote>] [-n]
 
 Lint the current branch, verify the push target is a fork (not upstream),
 and push HEAD to that fork.
@@ -42,16 +49,19 @@ and push HEAD to that fork.
 Options:
   -b base    Upstream base branch to lint against (default: master).
   -r remote  Override fork-remote auto-detection.
+  -n         Skip the rebase onto the fork branch (after a deliberate
+             history rewrite). Discards fork-only commits.
 
 Env overrides: GH_REPO, UPSTREAM_REMOTE, FORK_REMOTE.
 EOF
   exit 1
 }
 
-while getopts ":b:r:h" opt; do
+while getopts ":b:r:nh" opt; do
   case "$opt" in
     b) base_branch="$OPTARG" ;;
     r) fork_remote_arg="$OPTARG" ;;
+    n) skip_fork_rebase=true ;;
     h) usage ;;
     \?) echo "error: unknown option -$OPTARG" >&2; usage ;;
     :)  echo "error: -$OPTARG requires an argument" >&2; usage ;;
@@ -139,13 +149,20 @@ if git rev-parse --verify --quiet "refs/remotes/${FORK_REMOTE}/${current_branch}
   remote_branch_exists=true
   echo ">>> fetching ${FORK_REMOTE}/${current_branch}"
   git fetch "$FORK_REMOTE" "$current_branch"
-  echo ">>> rebasing onto ${FORK_REMOTE}/${current_branch}"
-  if ! git rebase "${FORK_REMOTE}/${current_branch}"; then
-    echo "" >&2
-    echo "error: rebase onto ${FORK_REMOTE}/${current_branch} failed." >&2
-    echo "       Resolve the conflicts, 'git add' the resolved files," >&2
-    echo "       run 'git rebase --continue', then re-run this script." >&2
-    exit 2
+  if $skip_fork_rebase; then
+    echo ">>> skipping rebase onto ${FORK_REMOTE}/${current_branch} (-n);" \
+         "fork-only commits will be discarded"
+  else
+    echo ">>> rebasing onto ${FORK_REMOTE}/${current_branch}"
+    if ! git rebase "${FORK_REMOTE}/${current_branch}"; then
+      echo "" >&2
+      echo "error: rebase onto ${FORK_REMOTE}/${current_branch} failed." >&2
+      echo "       Resolve the conflicts, 'git add' the resolved files," >&2
+      echo "       run 'git rebase --continue', then re-run this script." >&2
+      echo "       If the branch was deliberately rewritten onto a newer base," >&2
+      echo "       the fork branch is the stale lineage: re-run with -n." >&2
+      exit 2
+    fi
   fi
 fi
 
