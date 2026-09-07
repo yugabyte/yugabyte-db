@@ -1662,6 +1662,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(master_->ts_manager()->RunLoader(
       master_->MakeCloudInfoPB(), &master_->proxy_cache(), *state));
   RETURN_NOT_OK(Load<ObjectLockLoader>("Object locks", state));
+  RETURN_NOT_OK(RefreshYsqlHistoryRetentionPin());
 
   if (!transaction_tables_config_) {
     RETURN_NOT_OK(InitializeTransactionTablesConfig(state->epoch.leader_term));
@@ -6167,6 +6168,7 @@ std::string CatalogManager::GenerateIdUnlocked(std::optional<const SysRowEntryTy
       case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;

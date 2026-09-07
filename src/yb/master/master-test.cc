@@ -48,6 +48,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
 
+#include "yb/docdb/docdb_compaction_context.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -76,6 +78,9 @@
 #include "yb/server/call_home-test-util.h"
 #include "yb/server/call_home.h"
 #include "yb/server/server_base.proxy.h"
+
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver_admin.service.h"
 
@@ -110,8 +115,11 @@ DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_qos);
+DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_int32(qos_max_db_count);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_uint32(initial_tserver_registration_duration_secs);
 
 METRIC_DECLARE_counter(block_cache_misses);
@@ -148,6 +156,13 @@ class MasterTest : public MasterTestBase {
   Result<TSHeartbeatResponsePB> SendYsqlDbOldestPinnedReadTimesHeartbeat(
       const std::string& uuid, int64_t instance_seqno,
       const std::map<PgOid, HybridTime>& pins);
+
+  // The history cutoff this master allows for its own sys catalog tablet.
+  docdb::HistoryCutoff SysCatalogAllowedHistoryCutoff();
+
+  // Runs the leader's publish step now, skipping the wait for tserver heartbeats it observes after
+  // an election.
+  Status PublishYsqlHistoryRetentionPin();
 
  private:
   // Used by SendNewTSRegistrationHeartbeat to avoid host port collisions.
@@ -3179,6 +3194,22 @@ Result<TSHeartbeatResponsePB> MasterTest::SendYsqlDbOldestPinnedReadTimesHeartbe
   return resp;
 }
 
+docdb::HistoryCutoff MasterTest::SysCatalogAllowedHistoryCutoff() {
+  return mini_master_->catalog_manager_impl().AllowedHistoryCutoffProvider(
+      mini_master_->tablet_peer()->tablet_metadata().get());
+}
+
+Status MasterTest::PublishYsqlHistoryRetentionPin() {
+  const auto initial_delay_secs = FLAGS_initial_tserver_registration_duration_secs;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) = 0;
+  auto& catalog_manager = mini_master_->catalog_manager_impl();
+  auto status =
+      catalog_manager.PersistYsqlHistoryRetentionPin(catalog_manager.GetLeaderEpochInternal());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) =
+      initial_delay_secs;
+  return status;
+}
+
 // Pins reported by a single ts are echoed back in the response as the cluster-wide pins.
 TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesHeartbeatRoundTrip) {
   const std::string kTsUUID = "ts-pins-1";
@@ -3288,6 +3319,101 @@ TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesGlobalMin) {
   resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs2, 1, {}));
   ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
             HybridTime(100).ToPB());
+}
+
+// The pg catalog tables live in the sys catalog tablet's cotables, so they are the part of the
+// tablet held back by a pin. The docdb metadata rows, governed by the primary cutoff, are not.
+TEST_F(MasterTest, SysCatalogHistoryCutoffRespectsPin) {
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  // Older than the static retention window, so the pin is what binds.
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+
+  const auto cutoff = SysCatalogAllowedHistoryCutoff();
+
+  EXPECT_EQ(cutoff.cotables_cutoff_ht, pin);
+  EXPECT_GT(cutoff.primary_cutoff_ht, pin);
+}
+
+// A pin older than db_history_retention_pin_max_txn_age_sec is clamped up to the hard cap, so one
+// stuck transaction cannot retain catalog history indefinitely.
+TEST_F(MasterTest, SysCatalogHistoryCutoffCapsPinAge) {
+  constexpr int32_t kRetentionSec = 60;
+  constexpr int32_t kHardCapSec = 600;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_history_retention_pin_max_txn_age_sec) = kHardCapSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-100 * kHardCapSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+
+  const auto cutoff = SysCatalogAllowedHistoryCutoff();
+  EXPECT_EQ(
+      cutoff.cotables_cutoff_ht,
+      cutoff.primary_cutoff_ht.AddSeconds(kRetentionSec - kHardCapSec));
+}
+
+// Only the leader sees the pins tservers report, so every master honors the pin the leader
+// published to the sys catalog. This is what a follower compacts against.
+TEST_F(MasterTest, SysCatalogHistoryCutoffRespectsPublishedPin) {
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+  ASSERT_OK(PublishYsqlHistoryRetentionPin());
+
+  // No live ts reports the pin anymore, so only the published row is holding the catalog back.
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {}));
+  EXPECT_EQ(SysCatalogAllowedHistoryCutoff().cotables_cutoff_ht, pin);
+
+  // Publishing the now empty aggregate releases the catalog again.
+  ASSERT_OK(PublishYsqlHistoryRetentionPin());
+  auto cutoff = SysCatalogAllowedHistoryCutoff();
+  EXPECT_EQ(cutoff.cotables_cutoff_ht, cutoff.primary_cutoff_ht);
+}
+
+// A master must honor the published pin from the moment it can compact, so it is loaded during
+// startup rather than waited for from a heartbeat.
+TEST_F(MasterTest, SysCatalogHistoryCutoffLoadsPublishedPinOnStartup) {
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+  ASSERT_OK(PublishYsqlHistoryRetentionPin());
+
+  ASSERT_OK(mini_master_->Restart(true));
+
+  EXPECT_EQ(SysCatalogAllowedHistoryCutoff().cotables_cutoff_ht, pin);
+}
+
+TEST_F(MasterTest, SysCatalogHistoryCutoffIgnoresPinsWhenFeatureDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_history_retention_pins) = false;
+  constexpr int32_t kRetentionSec = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kRetentionSec;
+  const std::string kTsUUID = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
+
+  const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
+  ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
+
+  const auto cutoff = SysCatalogAllowedHistoryCutoff();
+  EXPECT_EQ(cutoff.cotables_cutoff_ht, cutoff.primary_cutoff_ht);
 }
 
 // A ts that has been marked unresponsive no longer contributes to the cluster min.

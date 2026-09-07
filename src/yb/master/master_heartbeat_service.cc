@@ -412,7 +412,7 @@ void MasterHeartbeatServiceImpl::PopulateYsqlDbOldestPinnedReadTimes(TSHeartbeat
   if (!FLAGS_enable_db_history_retention_pins) {
     return;
   }
-  auto cluster_pins = server_->ts_manager()->GetClusterYsqlDbOldestPinnedReadTimes(
+  auto cluster_pins = server_->ts_manager()->GetClusterYsqlDbPinsForPublishing(
       catalog_manager_->TimeSinceElectedLeader());
   resp.set_cluster_ysql_db_pins_ready(cluster_pins.ready);
   for (const auto& [db_oid, pin] : cluster_pins.pins) {

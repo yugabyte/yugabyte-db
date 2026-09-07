@@ -1836,6 +1836,21 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   docdb::HistoryCutoff AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
 
+  // Publishes the cluster-wide ysql catalog history retention pin, aggregated by this leader from
+  // tserver heartbeats, to the sys catalog. Master followers get no heartbeats, so this row is how
+  // they learn which catalog history a live transaction can still read. Expected to be called
+  // periodically; writes only when the pin has changed.
+  Status PersistYsqlHistoryRetentionPin(const LeaderEpoch& epoch);
+
+  // Reloads the pin published by the master leader. Needed on masters that are not the leader,
+  // since they never run the catalog loaders.
+  Status RefreshYsqlHistoryRetentionPin();
+
+  // The pin published by the master leader, or an invalid HybridTime if nothing is pinned. This is
+  // the raw pin: callers apply db_history_retention_pin_max_txn_age_sec themselves, so that a pin
+  // whose publisher is gone still ages out.
+  HybridTime GetPublishedYsqlHistoryRetentionPin() const;
+
   Result<std::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
 
@@ -2576,6 +2591,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Transaction tables information.
   scoped_refptr<SysConfigInfo> transaction_tables_config_ =
       nullptr; // No GUARD, only write on Load.
+
+  // The ysql catalog history retention pin published by the master leader
+  HistoryRetentionPinInfo ysql_history_retention_pin_;
 
   Master* const master_;
   Atomic32 closing_;

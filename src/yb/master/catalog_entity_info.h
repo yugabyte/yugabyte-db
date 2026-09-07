@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <vector>
 
@@ -1242,6 +1243,34 @@ struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB> 
 // This is the in memory representation of the cluster config information serialized proto data,
 // using metadata() for CowObject access.
 class ClusterConfigInfo : public SingletonMetadataCowWrapper<PersistentClusterConfigInfo> {};
+
+// This wraps around the proto holding the cluster-wide ysql catalog history retention pin. The
+// master leader publishes it from the pins tservers report to it; every master reads it back so
+// that a follower does not compact catalog history out from under a pinned read time it cannot
+// see.
+struct PersistentHistoryRetentionPinInfo : public Persistent<SysHistoryRetentionPinEntryPB> {};
+
+class HistoryRetentionPinInfo
+    : public SingletonMetadataCowWrapper<PersistentHistoryRetentionPinInfo> {
+ public:
+  HybridTime ysql_pin() const { return HybridTime(ysql_pin_.load(std::memory_order_acquire)); }
+
+  void Load(const SysHistoryRetentionPinEntryPB& metadata) override {
+    SingletonMetadataCowWrapper::Load(metadata);
+    RefreshCachedYsqlPin();
+  }
+
+  void RefreshCachedYsqlPin() {
+    auto l = LockForRead();
+    ysql_pin_.store(
+        l->pb.has_ysql_oldest_pinned_read_time() ? l->pb.ysql_oldest_pinned_read_time()
+                                                 : HybridTime::kInvalid.value(),
+        std::memory_order_release);
+  }
+
+ private:
+  std::atomic<HybridTimeRepr> ysql_pin_{HybridTime::kInvalid.value()};
+};
 
 struct PersistentRedisConfigInfo : public Persistent<SysRedisConfigEntryPB> {};
 

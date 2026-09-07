@@ -477,6 +477,19 @@ message SysXClusterConfigEntryPB {
   map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 3;
 }
 
+// The cluster-wide history retention pin for the ysql catalog tables, which live in the sys catalog
+// tablet as cotables. Only the master leader learns the pins, from tserver heartbeats; it publishes
+// them here so that master followers, which never see a heartbeat, do not compact away catalog
+// history that a live transaction can still read at its own read time.
+//
+// It also serves as persisted data for master failover.
+message SysHistoryRetentionPinEntryPB {
+  // Oldest read time pinned by any live ysql transaction in any database. Unset when nothing is
+  // pinned. This is the raw pin, not a retention cutoff (sys catalog's retention window is not
+  // applied).
+  optional fixed64 ysql_oldest_pinned_read_time = 1;
+}
+
 // The data part of a SysRowEntry in the sys.catalog table for Redis Config.
 message SysRedisConfigEntryPB {
   optional string key = 1;

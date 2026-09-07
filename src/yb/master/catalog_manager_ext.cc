@@ -50,6 +50,7 @@
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
@@ -147,8 +148,10 @@ DEFINE_RUNTIME_AUTO_bool(enable_export_snapshot_using_relfilenode, kExternal, fa
 
 DECLARE_bool(enable_ysql);
 DECLARE_string(initial_sys_catalog_snapshot_path);
-DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
+DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 
 namespace yb {
@@ -1079,6 +1082,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -3819,24 +3823,103 @@ Status CatalogManager::GetYsqlYbSystemTableInfo(
   return Status::OK();
 }
 
+namespace {
+
+// The oldest read time pinned by a live ysql transaction anywhere in the cluster, as reported by
+// tserver heartbeats, or an invalid HybridTime when nothing is pinned. Only populated on the master
+// leader, which is the only master tservers heartbeat to.
+HybridTime ClusterYsqlOldestPinnedReadTime(const DbOidToHybridTimeMap& pins) {
+  HybridTime pin = HybridTime::kInvalid;
+  // The sys catalog tablet applies a single cutoff to all of its cotables, so the catalog of every
+  // database is retained back to the oldest pin in the cluster.
+  for (const auto& [db_oid, db_pin] : pins) {
+    pin.MakeAtMost(db_pin);
+  }
+  return pin;
+}
+
+}  // namespace
+
 docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
     tablet::RaftGroupMetadata* metadata) {
   auto cutoff = master_->snapshot_coordinator().AllowedHistoryCutoffProvider(metadata);
 
   DCHECK_EQ(metadata->table_id(), kSysCatalogTableId);
 
+  const auto now = Clock()->Now();
   auto syscatalog_history_retention_interval_sec =
       ANNOTATE_UNPROTECTED_READ(FLAGS_timestamp_syscatalog_history_retention_interval_sec);
   if (syscatalog_history_retention_interval_sec) {
     HybridTime allowed_from_syscatalog_flag =
-        Clock()->Now().AddSeconds(-syscatalog_history_retention_interval_sec);
+        now.AddSeconds(-syscatalog_history_retention_interval_sec);
     cutoff.MakeAtMost({allowed_from_syscatalog_flag, allowed_from_syscatalog_flag});
   }
   cutoff.MakeAtMost({metadata->cdc_sdk_safe_time(), metadata->cdc_sdk_safe_time()});
   VLOG(2) << "CDC SDK history cutoff: " << cutoff.ToString()
           << " for tablet: " << metadata->raft_group_id();
 
+  // Hold back the pg catalog tables (this tablet's cotables) for transactions that may still read
+  // them at their own read time. The leader has the live picture from heartbeats; every master,
+  // leader or follower, additionally honors the pin published to the sys catalog, which is all a
+  // follower has to go on.
+  if (FLAGS_enable_db_history_retention_pins) {
+    auto pin = ClusterYsqlOldestPinnedReadTime(
+        master_->ts_manager()->GetClusterYsqlDbOldestPinnedReadTimes());
+    pin.MakeAtMost(GetPublishedYsqlHistoryRetentionPin());
+    if (pin.is_valid()) {
+      // A transaction that outlives the hard cap keeps publishing its pin until it fails with
+      // snapshot too old and aborts, and a published pin is not refreshed at all while there is no
+      // leader. Applying the cap here, against the local clock, ages both out.
+      pin.MakeAtLeast(now.AddSeconds(-FLAGS_db_history_retention_pin_max_txn_age_sec));
+      cutoff.cotables_cutoff_ht.MakeAtMost(pin);
+    }
+  }
+
   return cutoff;
+}
+
+HybridTime CatalogManager::GetPublishedYsqlHistoryRetentionPin() const {
+  return ysql_history_retention_pin_.ysql_pin();
+}
+
+Status CatalogManager::PersistYsqlHistoryRetentionPin(const LeaderEpoch& epoch) {
+  if (!FLAGS_enable_db_history_retention_pins) {
+    return Status::OK();
+  }
+  const auto cluster_pins =
+      master_->ts_manager()->GetClusterYsqlDbPinsForPublishing(TimeSinceElectedLeader());
+  // Publishing an incomplete map after failover would drop a pin a transaction still needs.
+  if (!cluster_pins.ready) {
+    return Status::OK();
+  }
+  const auto pin = ClusterYsqlOldestPinnedReadTime(cluster_pins.pins);
+  if (pin == GetPublishedYsqlHistoryRetentionPin()) {
+    return Status::OK();
+  }
+
+  auto l = ysql_history_retention_pin_.LockForWrite();
+  auto& pb = l.mutable_data()->pb;
+  if (pin.is_valid()) {
+    pb.set_ysql_oldest_pinned_read_time(pin.value());
+  } else {
+    pb.clear_ysql_oldest_pinned_read_time();
+  }
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Upsert(epoch, &ysql_history_retention_pin_),
+      "Publishing the ysql catalog history retention pin");
+  l.Commit();
+  ysql_history_retention_pin_.RefreshCachedYsqlPin();
+
+  LOG_WITH_PREFIX(INFO) << "Published ysql catalog history retention pin: " << pin;
+  return Status::OK();
+}
+
+Status CatalogManager::RefreshYsqlHistoryRetentionPin() {
+  if (!FLAGS_enable_db_history_retention_pins) {
+    return Status::OK();
+  }
+  return sys_catalog_->Load<HistoryRetentionPinLoader>(
+      "ysql history retention pin", ysql_history_retention_pin_);
 }
 
 namespace {

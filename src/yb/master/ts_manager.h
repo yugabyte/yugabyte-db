@@ -168,8 +168,8 @@ class TSManager {
   size_t NumLiveDescriptors() const;
 
   // Iterates over all live TSDescriptors and returns the oldest read HybridTime pin for each
-  // database with at least one live transaction on any live tserver, along with whether every
-  // live tserver has reported to this master leader (see ClusterYsqlDbPins::ready).
+  // database with at least one live transaction on any live tserver. Tservers heartbeat only the
+  // leader, so this is empty on a master follower.
   //
   // Each database's pin will only increase monotonically once master has received at least one
   // heartbeat from every live tserver. It is possible for a database's pin to decrease if a new
@@ -178,18 +178,23 @@ class TSManager {
   // (timestamp_history_retention_interval_sec), we assume that by the time compaction is
   // triggered, each tserver would have either heartbeated the master once with its local pins,
   // or have been dropped from the cluster.
+  DbOidToHybridTimeMap GetClusterYsqlDbOldestPinnedReadTimes() const;
+
+  // The same map, plus whether it is complete enough to hand to a consumer that will hold on to
+  // it: tservers cache it, and the pin published to the sys catalog outlives this leader.
+  // Publishing an incomplete map to either drops a pin a live transaction still needs.
   //
-  // In the event of a master re-election, if persist_tserver_registry is enabled, the new
-  // master can load the list of live TSDescriptors from the previous master. Until every
-  // live tserver has heartbeated this leader at least once, cluster_ysql_db_pins_ready is
-  // false and tservers keep their last applied cluster pin map rather than installing a
-  // possibly incomplete one. Tservers dropped during the re-election will be marked as
-  // unresponsive after not heartbeating master for 1 minute and cannot delay applying the
-  // new map indefinitely.
-  // If persist_tserver_registry is disabled, wait for initial_tserver_registration_duration_secs
-  // similar to the load balancer's initial delay before applying the new master's map.
-  ClusterYsqlDbPins GetClusterYsqlDbOldestPinnedReadTimes(
-      MonoDelta time_since_elected_leader) const;
+  // Leader only -- time_since_elected_leader is meaningless on a master that was never elected.
+  // A caller that just reads the pins for its own immediate use wants the overload above.
+  //
+  // After a re-election, if persist_tserver_registry is enabled, the new master loads the previous
+  // master's live TSDescriptors, so it knows which tservers it has not heard from yet and holds
+  // ready false until each has heartbeated. Tservers dropped during the re-election are marked
+  // unresponsive after a minute of silence and so cannot hold ready false indefinitely. If
+  // persist_tserver_registry is disabled the new leader cannot tell that an absent tserver exists
+  // at all, so it waits out initial_tserver_registration_duration_secs instead, similar to the
+  // load balancer's initial delay.
+  ClusterYsqlDbPins GetClusterYsqlDbPinsForPublishing(MonoDelta time_since_elected_leader) const;
 
   // Find TServers that are currently in the state LIVE but have not heartbeated for a long time.
   // Transition all such TServers into the UNRESPONSIVE state.
