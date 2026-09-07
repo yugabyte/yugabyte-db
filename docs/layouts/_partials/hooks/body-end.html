@@ -90,46 +90,5 @@ if (typeof detectExternalLink === 'function') {
   data-mcp-enabled="true"
   data-mcp-server-url="https://yugabyte.mcp.kapa.ai"
 ></script>
-<script>
-  (function() {
-    window.addEventListener('load', function () {
-      const activeGroups = window.OnetrustActiveGroups || '';
-      if (activeGroups.indexOf('C0002') > -1) {
-        const askAiTopSpan = document.querySelector('.ask-ai-top > span');
-        if (askAiTopSpan) {
-          askAiTopSpan.addEventListener('click', function () {
-            if (window.Kapa) {
-              window.Kapa.open({
-                mode: 'ai',
-              });
-            }
-          });
-        }
-      } else {
-        const askAiTop = document.querySelector('.ask-ai-top');
-        if (askAiTop) {
-          askAiTop.style.display = 'none';
-        }
-      }
-
-      let clearbitAnonymousId = window.browserCookieUtils.getCookie('cb_anonymous_id');
-      if (clearbitAnonymousId && clearbitAnonymousId !== 'null') {
-        clearbitAnonymousId = clearbitAnonymousId.replace(/%22/g, '').replace(/"/g, '');
-        const kapaUser = {
-          uniqueClientId: clearbitAnonymousId,
-        };
-
-        let clearbitUserId = window.browserCookieUtils.getCookie('cb_user_id');
-        if (clearbitUserId && clearbitUserId !== 'null') {
-          clearbitUserId = clearbitUserId.replace(/%22/g, '').replace(/"/g, '');
-          kapaUser.email = clearbitUserId;
-        }
-
-        window.kapaSettings = {
-          user: kapaUser,
-        };
-      }
-    });
-  })();
-</script>
+<script src="/js/kapaAi.js"></script>
 {{- end -}}
