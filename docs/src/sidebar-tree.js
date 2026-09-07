@@ -5,6 +5,8 @@
  * end in the sidebar-tree.html file under `/layouts/partials/`.
  */
 (() => {
+  const activeGroups = window.OnetrustActiveGroups || '';
+
   /**
    * Check anchor multilines.
    */
@@ -134,17 +136,21 @@
     navSidebar.classList.toggle('stick-bar');
     navSidebar.classList.add('toggled-sidebar');
     if (navSidebar.classList.contains('stick-bar')) {
-      browserCookieUtils.setCookie('leftMenuShowHide', 'hide', {
-        timeToLive: 3,
-        unit: 'month'
-      });
+      if (activeGroups.indexOf('C0003') > -1) {
+        browserCookieUtils.setCookie('leftMenuShowHide', 'hide', {
+          timeToLive: 3,
+          unit: 'month'
+        });
+      }
       ybSideNavVisibility('hide');
       sidenavExpand.classList.add('click-to-expand');
     } else {
-      browserCookieUtils.setCookie('leftMenuShowHide', 'show', {
-        timeToLive: 3,
-        unit: 'month'
-      });
+      if (activeGroups.indexOf('C0003') > -1) {
+        browserCookieUtils.setCookie('leftMenuShowHide', 'show', {
+          timeToLive: 3,
+          unit: 'month'
+        });
+      }
       ybSideNavVisibility('show');
       sidenavExpand.classList.remove('click-to-expand');
     }

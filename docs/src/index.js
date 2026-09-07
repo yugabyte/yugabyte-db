@@ -2,6 +2,7 @@ import Clipboard from 'clipboard';
 import { setCookie } from 'browser-cookie-utils';
 
 const $ = window.jQuery;
+const activeGroups = window.OnetrustActiveGroups || '';
 let yugabytePageFinderList = [];
 
 /**
@@ -391,7 +392,7 @@ $(document).ready(() => {
       }
 
       $(document).unbind('mousemove');
-      if ($('body').hasClass('dragging')) {
+      if ($('body').hasClass('dragging') && activeGroups.indexOf('C0003') > -1) {
         setCookie('leftMenuWidth', mouseMoveX, {
           timeToLive: 3,
           unit: 'month'
@@ -859,11 +860,13 @@ $(window).resize(() => {
   $('.td-main .td-sidebar').attr('style', '');
   $('.td-main #dragbar').attr('style', '');
   $('.td-main').attr('style', '');
-  setTimeout(() => {
-    setCookie('leftMenuWidth', 300, {
-      timeToLive: 3,
-      unit: 'month'
-    });
-  }, 1000);
+  if (activeGroups.indexOf('C0003') > -1) {
+    setTimeout(() => {
+      setCookie('leftMenuWidth', 300, {
+        timeToLive: 3,
+        unit: 'month'
+      });
+    }, 1000);
+  }
   yugabytePageFinderWidth();
 });

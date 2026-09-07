@@ -17,6 +17,7 @@
   HUGO_VERSION = "0.154.5"
   NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
+  ONETRUST_API_KEY = "f9a9d3d1-e74a-4e32-8cc4-4f5c343d758b-test"
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
@@ -24,6 +25,7 @@
   HUGO_VERSION = "0.154.5"
   NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
+  ONETRUST_API_KEY = "f9a9d3d1-e74a-4e32-8cc4-4f5c343d758b-test"
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
@@ -31,6 +33,7 @@
   HUGO_VERSION = "0.154.5"
   NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
+  ONETRUST_API_KEY = "f9a9d3d1-e74a-4e32-8cc4-4f5c343d758b"
   RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
 
 ################ REDIRECTS ################
