@@ -1172,6 +1172,7 @@
         ;
 
         connect-src 'self'
+            https://cdn.cookielaw.org
             https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
             https://api.rudderstack.com/
             https://app.clearbit.com/
@@ -1191,6 +1192,8 @@
             https://www.google-analytics.com/
             https://www.yugabyte.com
             https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
+            https://cdnjs.cloudflare.com/
+            https://cdn.jsdelivr.net/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
