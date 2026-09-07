@@ -3085,7 +3085,8 @@ class PgClientSession::Impl {
         history_retention_pin_read_time_.load(std::memory_order_acquire));
     return PgClientSessionDbHistoryRetentionPin{
         .db_oid = database_oid_.load(std::memory_order_acquire),
-        .read_time = read_time};
+        .read_time = read_time,
+        .pid = pid_};
   }
 
   bool ClearNonPublishedOldestReadPointSerial() {

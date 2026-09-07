@@ -166,6 +166,10 @@ DEFINE_NON_RUNTIME_int64(shmem_exchange_idle_timeout_ms, 2000 * yb::kTimeMultipl
 DEFINE_test_flag(bool, pause_get_lock_status, false,
     "Whether tservers should pause before sending GetLockStatus requests.");
 
+DEFINE_RUNTIME_int32(db_history_retention_pin_log_interval_sec, 60,
+    "How often a tserver logs the per-database history retention pins held by its "
+    "own PG sessions. 0 disables the logging.");
+
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
@@ -3067,7 +3071,12 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
         static_cast<uint64_t>(FLAGS_db_history_retention_pin_min_txn_age_sec) * 1000000;
     const auto now_micros = static_cast<uint64_t>(GetCurrentTimeMicros());
 
-    std::unordered_map<PgOid, HybridTime> result;
+    struct DbPin {
+      HybridTime read_time;
+      pid_t pid;
+    };
+    std::unordered_map<PgOid, DbPin> db_pins;
+
     // Per-session pin HT is an atomic; we best-effort refresh it from the PG-published SHMEM
     // serial under a session try_lock. The snapshot may be slightly stale if a session is busy.
     for (const auto& session_info : session_registry_.Snapshot()) {
@@ -3079,10 +3088,28 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       if (now_micros <= pin_micros || now_micros - pin_micros < min_txn_age_micros) {
         continue;
       }
-      auto [it, inserted] = result.emplace(pin.db_oid, pin.read_time);
-      if (!inserted) {
-        it->second.MakeAtMost(pin.read_time);
+      auto [it, inserted] = db_pins.emplace(pin.db_oid, DbPin{pin.read_time, pin.pid});
+      // Compare explicitly rather than via MakeAtMost so that pid tracks the winning read time.
+      if (!inserted && pin.read_time < it->second.read_time) {
+        it->second = DbPin{pin.read_time, pin.pid};
       }
+    }
+
+    if (!db_pins.empty() && ShouldLogDatabasePins()) {
+      for (const auto& [db_oid, db_pin] : db_pins) {
+        LOG(INFO) << "DB: " << db_oid << " retaining for: "
+                  << MonoDelta::FromMicroseconds(
+                         yb::make_signed(
+                             now_micros - db_pin.read_time.GetPhysicalValueMicros()))
+                         .ToPrettyString()
+                  << " due to pid: " << db_pin.pid;
+      }
+    }
+
+    std::unordered_map<PgOid, HybridTime> result;
+    result.reserve(db_pins.size());
+    for (const auto& [db_oid, db_pin] : db_pins) {
+      result.emplace(db_oid, db_pin.read_time);
     }
     return result;
   }
@@ -3097,6 +3124,17 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
 
  private:
   client::YBClient& client() { return *client_future_.get(); }
+
+  bool ShouldLogDatabasePins() {
+    const auto interval_sec = FLAGS_db_history_retention_pin_log_interval_sec;
+    if (interval_sec <= 0) {
+      return false;
+    }
+    const auto now = CoarseMonoClock::now();
+    auto next = next_pin_log_time_.load(std::memory_order_acquire);
+    return now >= next && next_pin_log_time_.compare_exchange_strong(
+        next, now + interval_sec * 1s, std::memory_order_acq_rel);
+  }
 
   template <class Req>
   Result<PgClientSessionLocker> GetSession(const Req& req) {
@@ -3249,6 +3287,8 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
 
   std::optional<cdc::CDCStateTable> cdc_state_table_;
   PgTxnSnapshotManager txn_snapshot_manager_;
+
+  std::atomic<CoarseTimePoint> next_pin_log_time_{CoarseTimePoint::min()};
 };
 
 PgClientServiceImpl::PgClientServiceImpl(

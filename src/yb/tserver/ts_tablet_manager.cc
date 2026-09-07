@@ -3808,7 +3808,19 @@ HybridTime TSTabletManager::ComputeDbHistoryRetentionPinCutoff(
   // Minimum safety window (retain at least timestamp_history_retention_interval_sec).
   db_cutoff.MakeAtMost(safety_window_cutoff);
   // Hard cap (retain at most db_history_retention_pin_max_txn_age_sec).
+  const auto uncapped_cutoff = db_cutoff;
   db_cutoff.MakeAtLeast(hard_cap_cutoff);
+
+  if (db_cutoff != uncapped_cutoff) {
+    LOG(WARNING) << "Compacting past the history retention pin of database "
+                 << metadata->namespace_name() << " (oid " << db_oid << "): pin " << pin
+                 << ", held for " << now.PhysicalDiff(pin).ToPrettyString()
+                 << ", is older than db_history_retention_pin_max_txn_age_sec ("
+                 << FLAGS_db_history_retention_pin_max_txn_age_sec
+                 << "s). Transactions reading at this time will fail with snapshot too old on "
+                    "their next read. Tablet: "
+                 << metadata->raft_group_id();
+  }
 
   VLOG(1) << "DB history retention pin cutoff: " << db_cutoff << " (pin: " << pin
           << ", safety window: " << safety_window_cutoff
