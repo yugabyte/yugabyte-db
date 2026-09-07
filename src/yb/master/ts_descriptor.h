@@ -269,6 +269,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   DbOidToHybridTimeMap GetYsqlDbOldestPinnedReadTimes() const;
 
+  bool has_ysql_db_pins() const;
+  void ResetYsqlDbPins();
+
   MonoDelta heartbeat_rtt() const {
     SharedLock<decltype(mutex_)> l(mutex_);
     return heartbeat_rtt_;
@@ -429,6 +432,11 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // The last time a heartbeat was received for this node.
   MonoTime last_heartbeat_ GUARDED_BY(mutex_);
   const bool registered_through_heartbeat_;
+
+  // True after the first heartbeat from this tserver is received by this master leader.
+  // Until every live tserver has this set, the master advertises cluster pins as not ready
+  // so tservers do not replace their last applied cluster pin map.
+  bool has_ysql_db_pins_ GUARDED_BY(mutex_) = false;
 
   // The physical and hybrid times on the tserver represented by this object at the time it sent the
   // last heartbeat received by this master.

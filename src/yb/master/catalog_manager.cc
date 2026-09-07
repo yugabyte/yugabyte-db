@@ -1637,6 +1637,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   auto descs = master_->ts_manager()->GetAllDescriptors();
   for (const auto& ts_desc : descs) {
     ts_desc->set_has_tablet_report(false);
+    ts_desc->ResetYsqlDbPins();
   }
 
   {

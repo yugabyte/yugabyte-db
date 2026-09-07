@@ -112,6 +112,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_qos);
 DECLARE_int32(qos_max_db_count);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_uint32(initial_tserver_registration_duration_secs);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -3226,6 +3227,47 @@ TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesIgnoresInvalidHybridTime) {
   ASSERT_EQ(pins.size(), 1);
   ASSERT_EQ(pins.at(1001).db_level_oldest_read_time(), HybridTime(100).ToPB());
   ASSERT_EQ(pins.count(1002), 0);
+}
+
+// After a master restart with persist_tserver_registry, cluster pins are not ready until every
+// live tserver has heartbeated at least once.
+TEST_F(MasterTest, YsqlDbPinsWaitForAllLiveTserversAfterRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+  const std::string kTs1 = "ts-pins-1", kTs2 = "ts-pins-2";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs1, 1));
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs2, 1));
+
+  // Reload the persisted tserver registry into fresh descriptors. Their per-leader-term pin
+  // heartbeat markers are intentionally not persisted.
+  ASSERT_OK(mini_master_->Restart(true));
+
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs1, 1, {{1001, HybridTime(100)}}));
+  EXPECT_FALSE(resp.cluster_ysql_db_pins_ready());
+
+  resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs2, 1, {{1001, HybridTime(50)}}));
+  EXPECT_TRUE(resp.cluster_ysql_db_pins_ready());
+  ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
+            HybridTime(50).ToPB());
+}
+
+// Without persist_tserver_registry the leader has no list of live tservers to wait for, so cluster
+// pins are not ready until initial_tserver_registration_duration_secs has elapsed since election.
+TEST_F(MasterTest, YsqlDbPinsWaitForRegistrationWindowWithoutPersistence) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) = 3600;
+  const std::string kTs1 = "ts-pins-1";
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTs1, 1));
+
+  auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs1, 1, {{1001, HybridTime(100)}}));
+  EXPECT_FALSE(resp.cluster_ysql_db_pins_ready());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) = 0;
+  resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
+      kTs1, 1, {{1001, HybridTime(100)}}));
+  EXPECT_TRUE(resp.cluster_ysql_db_pins_ready());
 }
 
 // The response carries the global min per db across all live tservers.

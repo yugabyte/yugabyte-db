@@ -2787,6 +2787,11 @@ master::DbOidToHybridTimeMap TabletServer::GetYsqlDbOldestPinnedReadTimes() {
 
 void TabletServer::UpdateClusterYsqlDbOldestPinnedReadTimes(
   const master::TSHeartbeatResponsePB& resp) {
+  // The master's aggregated map may be incomplete (e.g. after failover, before every live tserver
+  // has heartbeated). Keep the last complete map until it is ready again.
+  if (!resp.cluster_ysql_db_pins_ready()) {
+    return;
+  }
   master::DbOidToHybridTimeMap pins;
   pins.reserve(resp.cluster_ysql_db_oldest_pinned_read_times().size());
   for (const auto& [db_oid, db_pins] : resp.cluster_ysql_db_oldest_pinned_read_times()) {

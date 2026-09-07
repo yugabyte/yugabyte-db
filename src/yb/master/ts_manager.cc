@@ -71,6 +71,8 @@ DEFINE_RUNTIME_AUTO_bool(persist_tserver_registry, kLocalPersisted, false, true,
 
 DEFINE_RUNTIME_bool(skip_tserver_version_checks, false, "Skip all tserver version checks");
 
+DECLARE_uint32(initial_tserver_registration_duration_secs);
+
 namespace yb::master {
 namespace {
 
@@ -411,19 +413,30 @@ size_t TSManager::NumLiveDescriptors() const {
       [](const auto& entry) -> bool { return entry.second->IsLive(); });
 }
 
-DbOidToHybridTimeMap TSManager::GetClusterYsqlDbOldestPinnedReadTimes() const {
-  DbOidToHybridTimeMap cluster_pins;
+ClusterYsqlDbPins TSManager::GetClusterYsqlDbOldestPinnedReadTimes(
+    MonoDelta time_since_elected_leader) const {
+  ClusterYsqlDbPins result;
   TSDescriptorVector descs;
   GetAllLiveDescriptors(&descs);
+  bool all_pins_ready = true;
   for (const auto& desc : descs) {
+    all_pins_ready = all_pins_ready && desc->has_ysql_db_pins();
     for (const auto& [db_oid, pin] : desc->GetYsqlDbOldestPinnedReadTimes()) {
-      auto [it, inserted] = cluster_pins.emplace(db_oid, pin);
+      auto [it, inserted] = result.pins.emplace(db_oid, pin);
       if (!inserted && pin < it->second) {
         it->second = pin;
       }
     }
   }
-  return cluster_pins;
+  // If persist_tserver_registry is disabled the new leader cannot load the previous leader's live
+  // TSDescriptors, so a tserver that has not heartbeated this leader yet is completely unknown
+  // and missing its pins. all_pins_ready is therefore not accurate, so wait out the post-failover
+  // registration window to best-effort register all live tservers.
+  result.ready = all_pins_ready &&
+                 (FLAGS_persist_tserver_registry ||
+                  time_since_elected_leader >=
+                      MonoDelta::FromSeconds(FLAGS_initial_tserver_registration_duration_secs));
+  return result;
 }
 
 Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {

@@ -408,15 +408,14 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     << tserver::CatalogInvalMessagesDataDebugString(resp);
 }
 
-// TODO: On master failover, the new master can temporarily return incomplete pins until every
-// tserver heartbeats master once. Need to add guard against master failover in follow-up.
 void MasterHeartbeatServiceImpl::PopulateYsqlDbOldestPinnedReadTimes(TSHeartbeatResponsePB& resp) {
   if (!FLAGS_enable_db_history_retention_pins) {
     return;
   }
-  DbOidToHybridTimeMap cluster_pins =
-    server_->ts_manager()->GetClusterYsqlDbOldestPinnedReadTimes();
-  for (const auto& [db_oid, pin] : cluster_pins) {
+  auto cluster_pins = server_->ts_manager()->GetClusterYsqlDbOldestPinnedReadTimes(
+      catalog_manager_->TimeSinceElectedLeader());
+  resp.set_cluster_ysql_db_pins_ready(cluster_pins.ready);
+  for (const auto& [db_oid, pin] : cluster_pins.pins) {
     (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
       .set_db_level_oldest_read_time(pin.ToPB());
   }

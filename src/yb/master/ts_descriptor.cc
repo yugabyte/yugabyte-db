@@ -209,6 +209,7 @@ Status TSDescriptor::UpdateFromHeartbeat(const TSHeartbeatRequestPB& req,
         ts_ysql_db_oldest_pinned_read_times_.emplace(static_cast<PgOid>(db_oid), pin_ht);
       }
     }
+    has_ysql_db_pins_ = true;
   }
   if (lock->pb.state() == SysTabletServerEntryPB::REMOVED) {
     return STATUS_FORMAT(
@@ -233,6 +234,17 @@ MonoTime TSDescriptor::LastHeartbeatTime() const {
 DbOidToHybridTimeMap TSDescriptor::GetYsqlDbOldestPinnedReadTimes() const {
   SharedLock<decltype(mutex_)> l(mutex_);
   return ts_ysql_db_oldest_pinned_read_times_;
+}
+
+bool TSDescriptor::has_ysql_db_pins() const {
+  SharedLock<decltype(mutex_)> l(mutex_);
+  return has_ysql_db_pins_;
+}
+
+void TSDescriptor::ResetYsqlDbPins() {
+  std::lock_guard l(mutex_);
+  ts_ysql_db_oldest_pinned_read_times_.clear();
+  has_ysql_db_pins_ = false;
 }
 
 int64_t TSDescriptor::latest_seqno() const {

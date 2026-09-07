@@ -359,6 +359,15 @@ message TSHeartbeatResponsePB {
   // Cluster-wide oldest read HybridTime pinned by live PG transactions, aggregated across
   // all live tservers. map[db_oid] -> earliest live transaction registered for that db.
   map<uint32, YsqlDbOldestPinnedReadTime> cluster_ysql_db_oldest_pinned_read_times = 33;
+
+  // Always true once the master has received database pins from every live tserver, false
+  // otherwise. Tservers must apply cluster_ysql_db_oldest_pinned_read_times only when
+  // this is true, and keep their last applied cluster pin map otherwise. If false, the map
+  // may be incomplete and needs no special handling since it is not applied.
+  //
+  // Defaults to true so that an outdated master keeps the previous behavior of
+  // applying every map it sends.
+  optional bool cluster_ysql_db_pins_ready = 34 [default = true];
 }
 
 service MasterHeartbeat {

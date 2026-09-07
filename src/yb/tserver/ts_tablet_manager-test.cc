@@ -1334,14 +1334,25 @@ class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
 
   void SetClusterPin(HybridTime pin, PgOid db_oid = kDbOid) {
     master::TSHeartbeatResponsePB resp;
+    resp.set_cluster_ysql_db_pins_ready(true);
     (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
         .set_db_level_oldest_read_time(pin.ToPB());
     mini_server_->server()->UpdateClusterYsqlDbOldestPinnedReadTimes(resp);
   }
 
   void ClearClusterPins() {
-    mini_server_->server()->UpdateClusterYsqlDbOldestPinnedReadTimes(
-        master::TSHeartbeatResponsePB());
+    master::TSHeartbeatResponsePB resp;
+    resp.set_cluster_ysql_db_pins_ready(true);
+    mini_server_->server()->UpdateClusterYsqlDbOldestPinnedReadTimes(resp);
+  }
+
+  // Sends a cluster pin map that must not be applied (e.g. incomplete after master failover).
+  void SetClusterPinsNotReady(HybridTime pin, PgOid db_oid = kDbOid) {
+    master::TSHeartbeatResponsePB resp;
+    resp.set_cluster_ysql_db_pins_ready(false);
+    (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
+        .set_db_level_oldest_read_time(pin.ToPB());
+    mini_server_->server()->UpdateClusterYsqlDbOldestPinnedReadTimes(resp);
   }
 
   // Creates a running PGSQL tablet whose namespace_id encodes kDbOid.
@@ -1387,6 +1398,19 @@ TEST_F(ComputeDbHistoryRetentionPinCutoffTest, NoPinComputesSafetyWindow) {
   const auto now = Now();
 
   EXPECT_EQ(DbPinCutoff(now, peer->tablet_metadata()), SafetyWindowCutoff(now));
+}
+
+// A not-ready heartbeat must not replace the last applied cluster pin map, even if it carries
+// a different pin. Compaction continues to use the previous complete map.
+TEST_F(ComputeDbHistoryRetentionPinCutoffTest, PinsNotReadyKeepsPreviousClusterPins) {
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-pins-not-ready"));
+  const auto pin = MidwayPin();
+  SetClusterPin(pin);
+
+  SetClusterPinsNotReady(pin.AddSeconds(100));
+
+  EXPECT_EQ(DbPinCutoff(Now(), peer->tablet_metadata()), pin);
+  EXPECT_EQ(AllowedPrimaryCutoff(peer->tablet_metadata()), pin);
 }
 
 // A pin registered for a different database is not observed
