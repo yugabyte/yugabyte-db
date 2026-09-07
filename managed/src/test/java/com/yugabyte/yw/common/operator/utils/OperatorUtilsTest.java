@@ -45,6 +45,7 @@ import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -258,6 +259,56 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals(scheduleParams.keyspaceTableList.size(), 1);
     assertEquals(scheduleParams.keyspaceTableList.get(0).keyspace, "testdb");
     assertEquals(scheduleParams.backupType, TableType.PGSQL_TABLE_TYPE);
+  }
+
+  @Test
+  public void testGenerateBackupParamsOmitsKeyspaceIsFullBackup() throws Exception {
+    doReturn(testStorageConfig.getConfigUUID())
+        .when(operatorUtils)
+        .getStorageConfigUUIDFromName(anyString(), nullable(SharedIndexInformer.class));
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    ObjectNode spec = getScheduleBackupParamsJson();
+    spec.remove("keyspace");
+    BackupRequestParams scheduleParams = operatorUtils.getBackupRequestFromCr(spec, null, null);
+    assertTrue(scheduleParams.keyspaceTableList.isEmpty());
+    assertTrue(new BackupTableParams(scheduleParams).isFullBackup());
+  }
+
+  @Test
+  public void testGenerateBackupParamsNullKeyspaceIsFullBackup() throws Exception {
+    doReturn(testStorageConfig.getConfigUUID())
+        .when(operatorUtils)
+        .getStorageConfigUUIDFromName(anyString(), nullable(SharedIndexInformer.class));
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    // Fabric8 valueToTree of an omitted CR field emits "keyspace": null, not a missing field.
+    ObjectNode spec = getScheduleBackupParamsJson();
+    spec.putNull("keyspace");
+    BackupRequestParams scheduleParams = operatorUtils.getBackupRequestFromCr(spec, null, null);
+    assertTrue(scheduleParams.keyspaceTableList.isEmpty());
+    assertTrue(new BackupTableParams(scheduleParams).isFullBackup());
+  }
+
+  @Test
+  public void testGenerateBackupParamsNamedKeyspaceIsSingleEntry() throws Exception {
+    doReturn(testStorageConfig.getConfigUUID())
+        .when(operatorUtils)
+        .getStorageConfigUUIDFromName(anyString(), nullable(SharedIndexInformer.class));
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    ObjectNode spec = getScheduleBackupParamsJson();
+    spec.put("keyspace", "foo");
+    BackupRequestParams scheduleParams = operatorUtils.getBackupRequestFromCr(spec, null, null);
+    assertEquals(1, scheduleParams.keyspaceTableList.size());
+    assertEquals("foo", scheduleParams.keyspaceTableList.get(0).keyspace);
+    assertFalse(new BackupTableParams(scheduleParams).isFullBackup());
   }
 
   @Test
@@ -836,6 +887,34 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals(
         3600L * 60 * 1000,
         spec.getSchedulingFrequency().longValue()); // From ModelFactory.createScheduleBackup
+  }
+
+  @Test
+  public void testCreateBackupScheduleCrOmitsKeyspaceForFullBackup() throws Exception {
+    Schedule backupSchedule =
+        ModelFactory.createScheduleBackupRequestParams(
+            testCustomer.getUuid(),
+            testUniverse.getUniverseUUID(),
+            testStorageConfig.getConfigUUID(),
+            TaskType.BackupUniverse);
+
+    BackupRequestParams params =
+        Json.fromJson(backupSchedule.getTaskParams(), BackupRequestParams.class);
+    params.keyspaceTableList = new ArrayList<>();
+    backupSchedule.setTaskParams(Json.toJson(params));
+    backupSchedule.save();
+
+    operatorUtils.createBackupScheduleCr(
+        backupSchedule, "test-full-schedule", "test-storage-config", "test-namespace");
+
+    resetMockKubernetesClientForChecking();
+    KubernetesResourceList<io.yugabyte.operator.v1alpha1.BackupSchedule> backupSchedules =
+        kubernetesClient
+            .resources(io.yugabyte.operator.v1alpha1.BackupSchedule.class)
+            .inNamespace("test-namespace")
+            .list();
+    assertEquals(1, backupSchedules.getItems().size());
+    assertNull(backupSchedules.getItems().get(0).getSpec().getKeyspace());
   }
 
   @Test

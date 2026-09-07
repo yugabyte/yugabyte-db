@@ -1747,12 +1747,18 @@ public class OperatorUtils {
       throw new Exception("No storage config found with name " + crStorageConfig);
     }
 
-    KeyspaceTable kT = new KeyspaceTable();
-    if (((ObjectNode) crParams).has("keyspace")) {
-      kT.keyspace = ((ObjectNode) crParams).get("keyspace").asText();
-      ((ObjectNode) crParams).remove("keyspace");
+    // Omit / blank spec.keyspace means all databases (YSQL) or keyspaces (YCQL)
+    // of backupType. Empty list is a full backup; never emit [{keyspace: null}]
+    // (PLAT-20706 NPE). A named keyspace stays a one-element list.
+    JsonNode keyspaceNode = ((ObjectNode) crParams).remove("keyspace");
+    String keyspace = keyspaceNode == null || keyspaceNode.isNull() ? null : keyspaceNode.asText();
+    if (StringUtils.isNotBlank(keyspace)) {
+      KeyspaceTable kT = new KeyspaceTable();
+      kT.keyspace = keyspace;
+      ((ObjectNode) crParams).set("keyspaceTableList", Json.toJson(kT));
+    } else {
+      ((ObjectNode) crParams).set("keyspaceTableList", Json.newArray());
     }
-    ((ObjectNode) crParams).set("keyspaceTableList", Json.toJson(kT));
 
     ((ObjectNode) crParams).put("universeUUID", universeUUID.toString());
     ((ObjectNode) crParams).put("storageConfigUUID", storageConfigUUID.toString());
@@ -3044,7 +3050,12 @@ public class OperatorUtils {
       spec.setUniverse(universeResourceDetails.name);
       spec.setBackupType(BackupScheduleSpec.BackupType.valueOf(params.backupType.toString()));
       spec.setTableByTableBackup(params.tableByTableBackup);
-      spec.setKeyspace(params.keyspaceTableList.get(0).keyspace);
+      // Full backups (empty keyspaceTableList) omit spec.keyspace so the CR means
+      // all databases/keyspaces of backupType. Do not NPE on get(0).
+      if (CollectionUtils.isNotEmpty(params.keyspaceTableList)
+          && StringUtils.isNotBlank(params.keyspaceTableList.get(0).keyspace)) {
+        spec.setKeyspace(params.keyspaceTableList.get(0).keyspace);
+      }
       spec.setTimeBeforeDelete(params.timeBeforeDelete);
       if (params.cronExpression != null) {
         spec.setCronExpression(params.cronExpression);

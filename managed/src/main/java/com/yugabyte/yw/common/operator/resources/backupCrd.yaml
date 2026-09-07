@@ -65,7 +65,10 @@ spec:
                   description: Boolean indicating if backup is to be taken table by table.
                   type: boolean
                 keyspace:
-                  description: Name of keyspace to be backed up.
+                  description: >
+                    Name of the YSQL database or YCQL keyspace to back up.
+                    Omit to back up all databases (YSQL) or all keyspaces (YCQL)
+                    of backupType. A named value backs up that one database/keyspace only.
                   type: string
                 timeBeforeDelete:
                   description: Time before backup is deleted from storage in milliseconds.
@@ -77,7 +80,6 @@ spec:
                     to the existing chain of backups at the last.
                   type: string
               required:
-              - keyspace
               - backupType
               - storageConfig
               - universe
