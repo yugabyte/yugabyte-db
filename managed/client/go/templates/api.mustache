@@ -34,12 +34,12 @@ type {{classname}} interface {
 	*/
 	{{{nickname}}}(ctx context.Context{{#pathParams}}, {{paramName}} {{{dataType}}}{{/pathParams}}) {{#structPrefix}}{{&classname}}{{/structPrefix}}{{^structPrefix}}Api{{/structPrefix}}{{operationId}}Request
 
-	// {{nickname}}Execute executes the request{{#returnType}}
-	//  @return {{{.}}}{{/returnType}}
+	// {{nickname}}Execute executes the request{{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}
+	//  @return {{{.}}}{{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}
 	{{#isDeprecated}}
 	// Deprecated
 	{{/isDeprecated}}
-	{{nickname}}Execute(r {{#structPrefix}}{{&classname}}{{/structPrefix}}{{^structPrefix}}Api{{/structPrefix}}{{operationId}}Request) ({{#returnType}}{{^isArray}}{{^returnTypeIsPrimitive}}{{^isResponseFile}}*{{/isResponseFile}}{{/returnTypeIsPrimitive}}{{/isArray}}{{{.}}}, {{/returnType}}*http.Response, error)
+	{{nickname}}Execute(r {{#structPrefix}}{{&classname}}{{/structPrefix}}{{^structPrefix}}Api{{/structPrefix}}{{operationId}}Request) ({{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}{{^isArray}}{{^returnTypeIsPrimitive}}{{^isResponseFile}}*{{/isResponseFile}}{{/returnTypeIsPrimitive}}{{/isArray}}{{{.}}}, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}*http.Response, error)
 	{{/operation}}
 }
 {{/generateInterfaces}}
@@ -74,7 +74,7 @@ func (r {{#structPrefix}}{{&classname}}{{/structPrefix}}{{^structPrefix}}Api{{/s
 
 {{/isPathParam}}
 {{/allParams}}
-func (r {{#structPrefix}}{{&classname}}{{/structPrefix}}{{^structPrefix}}Api{{/structPrefix}}{{operationId}}Request) Execute() ({{#returnType}}{{^isArray}}{{^returnTypeIsPrimitive}}{{^isResponseFile}}*{{/isResponseFile}}{{/returnTypeIsPrimitive}}{{/isArray}}{{{.}}}, {{/returnType}}*http.Response, error) {
+func (r {{#structPrefix}}{{&classname}}{{/structPrefix}}{{^structPrefix}}Api{{/structPrefix}}{{operationId}}Request) Execute() ({{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}{{^isArray}}{{^returnTypeIsPrimitive}}{{^isResponseFile}}*{{/isResponseFile}}{{/returnTypeIsPrimitive}}{{/isArray}}{{{.}}}, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}*http.Response, error) {
 	return r.ApiService.{{nickname}}Execute(r)
 }
 
@@ -103,24 +103,34 @@ func (a *{{{classname}}}Service) {{{nickname}}}(ctx context.Context{{#pathParams
 	}
 }
 
-// Execute executes the request{{#returnType}}
-//  @return {{{.}}}{{/returnType}}
+{{! Yugabyte modification: operations marked x-yba-api-stream-response return no decoded
+    value, only (*http.Response, error), because the caller streams the body itself. The
+    generator still reports a returnType for them, so every returnType rendering in this
+    operation is wrapped in an inverted x-yba-api-stream-response section: the signatures
+    and @return docs here and above, the localVarReturnValue declaration below, and each
+    return statement in the function. Guarding the signature alone would leave the
+    declaration and the returns disagreeing with it, and the generated Go would not
+    compile. }}
+// Execute executes the request{{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}
+//  @return {{{.}}}{{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}
 {{#isDeprecated}}
 // Deprecated
 {{/isDeprecated}}
-func (a *{{{classname}}}Service) {{nickname}}Execute(r {{#structPrefix}}{{&classname}}{{/structPrefix}}{{^structPrefix}}Api{{/structPrefix}}{{operationId}}Request) ({{#returnType}}{{^isArray}}{{^returnTypeIsPrimitive}}{{^isResponseFile}}*{{/isResponseFile}}{{/returnTypeIsPrimitive}}{{/isArray}}{{{.}}}, {{/returnType}}*http.Response, error) {
+func (a *{{{classname}}}Service) {{nickname}}Execute(r {{#structPrefix}}{{&classname}}{{/structPrefix}}{{^structPrefix}}Api{{/structPrefix}}{{operationId}}Request) ({{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}{{^isArray}}{{^returnTypeIsPrimitive}}{{^isResponseFile}}*{{/isResponseFile}}{{/returnTypeIsPrimitive}}{{/isArray}}{{{.}}}, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}*http.Response, error) {
 	var (
 		localVarHTTPMethod   = http.Method{{httpMethod}}
 		localVarPostBody     interface{}
 		formFiles            []formFile
+		{{^vendorExtensions.x-yba-api-stream-response}}
 		{{#returnType}}
 		localVarReturnValue  {{^isArray}}{{^returnTypeIsPrimitive}}{{^isResponseFile}}*{{/isResponseFile}}{{/returnTypeIsPrimitive}}{{/isArray}}{{{.}}}
 		{{/returnType}}
+		{{/vendorExtensions.x-yba-api-stream-response}}
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "{{{classname}}}Service.{{{nickname}}}")
 	if err != nil {
-		return {{#returnType}}localVarReturnValue, {{/returnType}}nil, &GenericOpenAPIError{error: err.Error()}
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}nil, &GenericOpenAPIError{error: err.Error()}
 	}
 
 	localVarPath := localBasePath + "{{{path}}}"{{#pathParams}}
@@ -133,27 +143,27 @@ func (a *{{{classname}}}Service) {{nickname}}Execute(r {{#structPrefix}}{{&class
 	{{#required}}
 	{{^isPathParam}}
 	if r.{{paramName}} == nil {
-		return {{#returnType}}localVarReturnValue, {{/returnType}}nil, reportError("{{paramName}} is required and must be specified")
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}nil, reportError("{{paramName}} is required and must be specified")
 	}
 	{{/isPathParam}}
 	{{#minItems}}
 	if len({{^isPathParam}}*{{/isPathParam}}r.{{paramName}}) < {{minItems}} {
-		return {{#returnType}}localVarReturnValue, {{/returnType}}nil, reportError("{{paramName}} must have at least {{minItems}} elements")
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}nil, reportError("{{paramName}} must have at least {{minItems}} elements")
 	}
 	{{/minItems}}
 	{{#maxItems}}
 	if len({{^isPathParam}}*{{/isPathParam}}r.{{paramName}}) > {{maxItems}} {
-		return {{#returnType}}localVarReturnValue, {{/returnType}}nil, reportError("{{paramName}} must have less than {{maxItems}} elements")
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}nil, reportError("{{paramName}} must have less than {{maxItems}} elements")
 	}
 	{{/maxItems}}
 	{{#minLength}}
 	if strlen({{^isPathParam}}*{{/isPathParam}}r.{{paramName}}) < {{minLength}} {
-		return {{#returnType}}localVarReturnValue, {{/returnType}}nil, reportError("{{paramName}} must have at least {{minLength}} elements")
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}nil, reportError("{{paramName}} must have at least {{minLength}} elements")
 	}
 	{{/minLength}}
 	{{#maxLength}}
 	if strlen({{^isPathParam}}*{{/isPathParam}}r.{{paramName}}) > {{maxLength}} {
-		return {{#returnType}}localVarReturnValue, {{/returnType}}nil, reportError("{{paramName}} must have less than {{maxLength}} elements")
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}nil, reportError("{{paramName}} must have less than {{maxLength}} elements")
 	}
 	{{/maxLength}}
 	{{#minimum}}
@@ -164,7 +174,7 @@ func (a *{{{classname}}}Service) {{nickname}}Execute(r {{#structPrefix}}{{&class
 	{{^isString}}
 	if {{^isPathParam}}*{{/isPathParam}}r.{{paramName}} < {{minimum}} {
 	{{/isString}}
-		return {{#returnType}}localVarReturnValue, {{/returnType}}nil, reportError("{{paramName}} must be greater than {{minimum}}")
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}nil, reportError("{{paramName}} must be greater than {{minimum}}")
 	}
 	{{/minimum}}
 	{{#maximum}}
@@ -175,7 +185,7 @@ func (a *{{{classname}}}Service) {{nickname}}Execute(r {{#structPrefix}}{{&class
 	{{^isString}}
 	if {{^isPathParam}}*{{/isPathParam}}r.{{paramName}} > {{maximum}} {
 	{{/isString}}
-		return {{#returnType}}localVarReturnValue, {{/returnType}}nil, reportError("{{paramName}} must be less than {{maximum}}")
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}nil, reportError("{{paramName}} must be less than {{maximum}}")
 	}
 	{{/maximum}}
 	{{/required}}
@@ -324,7 +334,7 @@ func (a *{{{classname}}}Service) {{nickname}}Execute(r {{#structPrefix}}{{&class
 	if r.{{paramName}} != nil {
 		paramJson, err := parameterToJson(*r.{{paramName}})
 		if err != nil {
-			return {{#returnType}}localVarReturnValue, {{/returnType}}nil, err
+			return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}nil, err
 		}
 		localVarFormParams.Add("{{{baseName}}}", paramJson)
 	}
@@ -379,29 +389,48 @@ func (a *{{{classname}}}Service) {{nickname}}Execute(r {{#structPrefix}}{{&class
 {{/authMethods}}
 	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
 	if err != nil {
-		return {{#returnType}}localVarReturnValue, {{/returnType}}nil, err
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}nil, err
 	}
 
 	localVarHTTPResponse, err := a.client.callAPI(req)
 	if err != nil || localVarHTTPResponse == nil {
-		return {{#returnType}}localVarReturnValue, {{/returnType}}localVarHTTPResponse, err
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}localVarHTTPResponse, err
 	}
 
+{{! Yugabyte modification: operations marked x-yba-api-stream-response hand the response
+    body back to the caller unread, so large payloads are never buffered. }}
+{{#vendorExtensions.x-yba-api-stream-response}}
+	// The success body is deliberately left unread so the caller can stream it. Only error
+	// responses are buffered here, to populate GenericOpenAPIError below.
+	var localVarBody []byte
+	if localVarHTTPResponse.StatusCode >= 300 {
+		localVarBody, err = io.ReadAll(localVarHTTPResponse.Body)
+		localVarHTTPResponse.Body.Close()
+		localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+		if err != nil {
+			return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}localVarHTTPResponse, err
+		}
+	}
+{{/vendorExtensions.x-yba-api-stream-response}}
+{{^vendorExtensions.x-yba-api-stream-response}}
 	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
 	localVarHTTPResponse.Body.Close()
 	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
 	if err != nil {
-		return {{#returnType}}localVarReturnValue, {{/returnType}}localVarHTTPResponse, err
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}localVarHTTPResponse, err
 	}
+{{/vendorExtensions.x-yba-api-stream-response}}
 
 {{#withCustomMiddlewareFunction}}
+{{^vendorExtensions.x-yba-api-stream-response}}
 	if a.client.cfg.ResponseMiddleware != nil {
 		err = a.client.cfg.ResponseMiddleware(localVarHTTPResponse, localVarBody)
 		if err != nil {
-			return {{#returnType}}localVarReturnValue, {{/returnType}}localVarHTTPResponse, err
+			return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}localVarHTTPResponse, err
 		}
 	}
 
+{{/vendorExtensions.x-yba-api-stream-response}}
 {{/withCustomMiddlewareFunction}}
 	if localVarHTTPResponse.StatusCode >= 300 {
 		newErr := &GenericOpenAPIError{
@@ -432,12 +461,12 @@ func (a *{{{classname}}}Service) {{nickname}}Execute(r {{#structPrefix}}{{&class
 			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
 			if err != nil {
 				newErr.error = err.Error()
-				return {{#returnType}}localVarReturnValue, {{/returnType}}localVarHTTPResponse, newErr
+				return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}localVarHTTPResponse, newErr
 			}
 					newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
 					newErr.model = v
 			{{^-last}}
-			return {{#returnType}}localVarReturnValue, {{/returnType}}localVarHTTPResponse, newErr
+			return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}localVarHTTPResponse, newErr
 			{{/-last}}
 		{{^wildcard}}
 		}
@@ -446,9 +475,10 @@ func (a *{{{classname}}}Service) {{nickname}}Execute(r {{#structPrefix}}{{&class
 		{{/is1xx}}
 		{{/dataType}}
 		{{/responses}}
-		return {{#returnType}}localVarReturnValue, {{/returnType}}localVarHTTPResponse, newErr
+		return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}localVarHTTPResponse, newErr
 	}
 
+	{{^vendorExtensions.x-yba-api-stream-response}}
 	{{#returnType}}
 	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
 	if err != nil {
@@ -456,11 +486,12 @@ func (a *{{{classname}}}Service) {{nickname}}Execute(r {{#structPrefix}}{{&class
 			body:  localVarBody,
 			error: err.Error(),
 		}
-		return {{#returnType}}localVarReturnValue, {{/returnType}}localVarHTTPResponse, newErr
+		return localVarReturnValue, localVarHTTPResponse, newErr
 	}
 
 	{{/returnType}}
-	return {{#returnType}}localVarReturnValue, {{/returnType}}localVarHTTPResponse, nil
+	{{/vendorExtensions.x-yba-api-stream-response}}
+	return {{^vendorExtensions.x-yba-api-stream-response}}{{#returnType}}localVarReturnValue, {{/returnType}}{{/vendorExtensions.x-yba-api-stream-response}}localVarHTTPResponse, nil
 }
 {{/operation}}
 {{/operations}}

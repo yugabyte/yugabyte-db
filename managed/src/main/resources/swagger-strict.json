@@ -33228,9 +33228,12 @@
           },
           "type" : "array"
         },
-        "ybAdminCommand" : {
-          "description" : "yb-admin subcommand (e.g. list_tables).",
-          "type" : "string"
+        "ybAdminCommands" : {
+          "description" : "yb-admin subcommands to run (each executed separately in one batch).",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
         }
       },
       "type" : "object"

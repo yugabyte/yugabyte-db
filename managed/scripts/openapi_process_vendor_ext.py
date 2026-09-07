@@ -4,7 +4,11 @@ import logging
 
 '''
 This script handles the x-yba-api-* vendor extensions.
-See yugabyte-db/managed/src/main/resources/openapi_templates/README.txt for more details.
+See yugabyte-db/managed/src/main/resources/openapi_templates/server/README.txt for more details.
+
+Every x-yba-api-* key in the spec is validated against X_YBA_API_EXTENSIONS below. Nothing
+downstream rejects an unknown extension: the templates that consume these simply do not match on
+the name and fall back to their default behaviour, so without this check a typo is silent.
 
 For parts of the API marked with "x-yba-api-visibility: internal" this script filters out those
 parts and generates a public version openapi_public.yaml spec that is used for Stoplight
@@ -20,6 +24,10 @@ For parts of the API marked with "x-yba-api-visibility: deprecated" this script 
    the description
 3. generates "deprecated : true" if this marker is on a path
 
+For operations marked with "x-yba-api-stream-response: true" this script ensures the operation has
+a binary success response, since the extension makes the generated client hand back the raw HTTP
+response instead of a decoded model.
+
 TODO: Also handle validation of date-time type is of RFC3339 format.
 '''
 
@@ -33,6 +41,19 @@ X_YBA_API_VISIBILITY_PREVIEW = "preview"
 X_YBA_API_SINCE = "x-yba-api-since"
 X_YBA_API_AUDIT = "x-yba-api-audit"
 X_YBA_API_AUTHZ = "x-yba-api-authz"
+X_YBA_API_MULTIPART = "x-yba-api-multipart"
+X_YBA_API_STREAM_RESPONSE = "x-yba-api-stream-response"
+X_YBA_API_PREFIX = "x-yba-api-"
+# Every vendor extension understood by the openapi server and client templates. A new extension
+# must be added here, otherwise validate_vendor_ext_names() rejects the spec that uses it.
+X_YBA_API_EXTENSIONS = frozenset([
+    X_YBA_API_VISIBILITY,
+    X_YBA_API_SINCE,
+    X_YBA_API_AUDIT,
+    X_YBA_API_AUTHZ,
+    X_YBA_API_MULTIPART,
+    X_YBA_API_STREAM_RESPONSE,
+])
 DEPRECATED_MSG_FMT = "<b style=\"color:#ff0000\">Deprecated since YBA version {}.</b></p>"
 PREVIEW_MSG_FMT = ("<b style=\"color:#FFA500\">WARNING: This is a preview API in YBA version {}"
                    " that could change.</b></p>")
@@ -268,6 +289,65 @@ def process_audit_authz_in_paths():
         raise Exception(", ".join(errMsgs))
 
 
+# Rejects any x-yba-api-* key that is not a registered extension. Walks the whole document and
+# not just the paths, since these extensions are also valid on schemas, properties, responses and
+# request bodies.
+def validate_vendor_ext_names():
+    unknown_keys = set()
+
+    def collect_unknown(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if (isinstance(key, str) and key.startswith(X_YBA_API_PREFIX)
+                        and key not in X_YBA_API_EXTENSIONS):
+                    unknown_keys.add(key)
+                collect_unknown(value)
+        elif isinstance(node, list):
+            for entry in node:
+                collect_unknown(entry)
+
+    collect_unknown(global_openapi_dict)
+    if unknown_keys:
+        raise Exception("Unrecognised vendor extension(s) " + ", ".join(sorted(unknown_keys)) +
+                        ": correct the spelling, or register the extension in "
+                        "X_YBA_API_EXTENSIONS if it is new")
+
+
+# Validates x-yba-api-stream-response, which makes the generated client return the raw HTTP
+# response and leave the body for the caller to read and close. That removes the response model
+# from the generated signature, so an operation carrying it must actually serve a binary payload.
+# The check is one-directional on purpose: a binary operation may keep the default buffering
+# behaviour, and some do.
+def process_stream_response_in_paths():
+    errMsgs = []
+    for path, path_details in global_path_list.items():
+        for method, method_details in path_details.items():
+            if method not in http_methods:
+                continue
+            if X_YBA_API_STREAM_RESPONSE not in method_details:
+                continue
+            stream_response = method_details[X_YBA_API_STREAM_RESPONSE]
+            if not isinstance(stream_response, bool):
+                errMsgs.append(X_YBA_API_STREAM_RESPONSE + " must be a boolean in " + method +
+                               " method of path " + path)
+            elif stream_response and not has_binary_success_response(method_details):
+                errMsgs.append(X_YBA_API_STREAM_RESPONSE + " is set in " + method + " method of"
+                               " path " + path + " which has no binary success response")
+    if errMsgs:
+        raise Exception(", ".join(errMsgs))
+
+
+# checks if any success response of this operation returns a binary payload
+def has_binary_success_response(method_details):
+    for status_code, response in method_details.get("responses", {}).items():
+        if not str(status_code).startswith("2"):
+            continue
+        for content in response.get("content", {}).values():
+            if content.get("schema", {}).get("format") == "binary":
+                return True
+    return False
+
+
 def generate_openapi_public_file():
     global global_openapi_dict
 
@@ -317,6 +397,11 @@ logging.basicConfig(format='%(asctime)s [%(filename)s:%(lineno)d] %(message)s',
                     level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 load_global_file()
+# Validate before removing internal components, so that internal parts of the API are checked too
+logger.info("Validating " + X_YBA_API_PREFIX + "* vendor extension names")
+validate_vendor_ext_names()
+logger.info("Validating " + X_YBA_API_STREAM_RESPONSE + " in paths")
+process_stream_response_in_paths()
 remove_internal_components()
 logger.info("Processing paths that are marked 'x-yba-api-visibility: deprecated' or 'preview'")
 process_visibility_in_paths()

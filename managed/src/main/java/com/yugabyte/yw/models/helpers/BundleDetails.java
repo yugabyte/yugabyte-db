@@ -292,8 +292,9 @@ public class BundleDetails {
     @ApiModelProperty(value = "Logical component name; used as output file label.")
     private String componentName;
 
-    @ApiModelProperty(value = "yb-admin subcommand (e.g. list_tables).")
-    private String ybAdminCommand;
+    @ApiModelProperty(
+        value = "yb-admin subcommands to run (each executed separately in one batch).")
+    private List<String> ybAdminCommands;
 
     @ApiModelProperty(value = "Additional arguments after the subcommand.")
     private List<String> ybAdminArgs;

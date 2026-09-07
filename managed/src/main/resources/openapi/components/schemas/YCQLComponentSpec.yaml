@@ -19,6 +19,7 @@ properties:
     type: array
     items:
       type: string
+    minItems: 1
   output_file_name:
     description: |
       Output file name written under the per-node bundle directory.

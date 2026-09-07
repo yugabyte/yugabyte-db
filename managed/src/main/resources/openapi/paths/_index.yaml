@@ -1870,7 +1870,12 @@
   get:
     operationId: downloadSupportBundle
     summary: Download support bundle
-    description: Download a completed support bundle archive.
+    description: |
+      Download a completed support bundle archive.
+
+      The archive can be large, so generated clients hand back the raw HTTP response
+      instead of buffering it. Callers read the archive from the response body and are
+      responsible for closing it once done.
     tags:
       - Support Bundle
     responses:
@@ -1905,6 +1910,7 @@
           sourceType: endpoint
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
+    x-yba-api-stream-response: true
     x-yba-api-visibility: preview
 '/customers/{cUUID}/support-bundles/yba':
   parameters:
@@ -2141,7 +2147,12 @@
   get:
     operationId: downloadYbaSupportBundle
     summary: Download YBA-only support bundle
-    description: Download a completed YBA-only support bundle archive.
+    description: |
+      Download a completed YBA-only support bundle archive.
+
+      The archive can be large, so generated clients hand back the raw HTTP response
+      instead of buffering it. Callers read the archive from the response body and are
+      responsible for closing it once done.
     tags:
       - Support Bundle
     responses:
@@ -2169,6 +2180,7 @@
           sourceType: endpoint
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
+    x-yba-api-stream-response: true
     x-yba-api-visibility: preview
 '/customers/{cUUID}/tasks/page':
   parameters:
