@@ -43,6 +43,7 @@
 using namespace std::chrono_literals;
 using namespace yb::size_literals;
 
+DECLARE_bool(yb_hnsw_prefetch_neighbors);
 DECLARE_uint32(vector_index_rerank_overfetch_factor);
 
 METRIC_DEFINE_entity(table);
@@ -230,6 +231,49 @@ TEST_F(YbHnswTest, ConcurrentCache) {
   TestRandom(true, 4);
 }
 
+// Batching neighbour resolution must be an optimisation only: it has to return exactly what the
+// serial loop returns, and it must not take a block the serial loop would not have taken.
+//
+// The second half is the regression this shape is exposed to. Resolving a record address before
+// the visited filter would Take() blocks the search does not need, which shows up here as a
+// higher vector_index_cache_query delta. The same deltas also pin down the batched counter
+// update in SearchCache::Release: it still charges exactly one query, and on a resident index
+// one hit, per block taken.
+TEST_F(YbHnswTest, PrefetchMatchesSerialResolution) {
+  constexpr size_t kNumVectors = 4096;
+  constexpr size_t kNumSearches = 32;
+  constexpr size_t kMaxResults = 20;
+
+  google::FlagSaver flag_saver;
+
+  auto query_vectors = PrepareRandom(/* load= */ true, kNumVectors, kNumSearches);
+  auto options = MakeSearchOptions(kMaxResults);
+  const auto& query_counter = *block_cache_->metrics().query;
+  const auto& hit_counter = *block_cache_->metrics().hit;
+
+  for (const auto& query_vector : query_vectors) {
+    // Warm up, so that both measured searches find every block they need already resident and
+    // their query deltas are comparable.
+    yb_hnsw_->Search(query_vector.data(), options, context_);
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_hnsw_prefetch_neighbors) = false;
+    auto queries_before = query_counter.value();
+    auto hits_before = hit_counter.value();
+    auto expected = yb_hnsw_->Search(query_vector.data(), options, context_);
+    auto serial_takes = query_counter.value() - queries_before;
+    ASSERT_GT(serial_takes, 0);
+    ASSERT_EQ(hit_counter.value() - hits_before, serial_takes);
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_hnsw_prefetch_neighbors) = true;
+    queries_before = query_counter.value();
+    hits_before = hit_counter.value();
+    auto actual = yb_hnsw_->Search(query_vector.data(), options, context_);
+    ASSERT_EQ(query_counter.value() - queries_before, serial_takes);
+    ASSERT_EQ(hit_counter.value() - hits_before, serial_takes);
+    ASSERT_EQ(AsString(expected), AsString(actual));
+  }
+}
+
 // ------------------------------------------------------------------------------------------------
 // Narrowed coordinate storage
 // ------------------------------------------------------------------------------------------------
@@ -379,7 +423,11 @@ TEST_F(YbHnswStorageTest, Float32KeepsFooterVersionOne) {
 }
 
 TEST_F(YbHnswStorageTest, HeaderReflectsStorageKind) {
-  BuildHnswlibIndex(200);
+  // Enough vectors that neither encoding fits in a single block. InitVectorDataAmountPerBlock
+  // derives records-per-block from the vector count and only then clamps it to max_block_size,
+  // so on an index small enough to fit in one block both encodings report the whole count and
+  // the records-per-block assertion below is vacuous.
+  BuildHnswlibIndex(5000);
 
   auto f32 = ASSERT_RESULT(Import(VectorStorageKind::kFloat32, "f32.yb_hnsw"));
   auto f16 = ASSERT_RESULT(Import(VectorStorageKind::kFloat16, "f16.yb_hnsw"));
@@ -393,9 +441,19 @@ TEST_F(YbHnswStorageTest, HeaderReflectsStorageKind) {
   const auto record_overhead = f32->header().vector_data_size - dimensions_ * sizeof(float);
   ASSERT_EQ(f16->header().vector_data_size, record_overhead + dimensions_ * sizeof(uint16_t));
 
-  // Half-size records mean roughly twice as many fit in a block of the same size.
+  // Smaller records mean more of them fit in a block of the same size. Not twice as many at
+  // these dimensions: only the coordinates halve, and the record header is a large share of a
+  // 8-dimension record.
   ASSERT_GT(f16->header().vector_data_amount_per_block,
             f32->header().vector_data_amount_per_block);
+
+  // Both must still be clamped to a block, which is what makes the comparison above meaningful.
+  ASSERT_LE(
+      f32->header().vector_data_amount_per_block * f32->header().vector_data_size,
+      f32->header().max_block_size);
+  ASSERT_LE(
+      f16->header().vector_data_amount_per_block * f16->header().vector_data_size,
+      f16->header().max_block_size);
 }
 
 // The encoding has to come from the file, not from whatever the caller currently thinks. A stale

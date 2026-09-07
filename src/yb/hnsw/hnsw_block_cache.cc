@@ -300,13 +300,16 @@ struct CachedBlock {
     }
   }
 
-  Result<const std::byte*> Take(RandomAccessFile& file) {
-    cache->metrics().query->Increment();
-
+  // The cache_query/cache_hit counters are not touched here: they are reported through was_hit
+  // and accumulated by the caller, because at thousands of Take() calls per search the
+  // increments themselves showed up on the hot path.
+  Result<const std::byte*> Take(RandomAccessFile& file, bool* was_hit) {
     UniqueLock lock(mutex);
     ++use_count;
     if (content.data) {
-      cache->metrics().hit->Increment();
+      if (was_hit) {
+        *was_hit = true;
+      }
       auto result = content.data.get();
       auto need_handle = !handle && use_count == 1;
       lock.unlock();
@@ -491,8 +494,12 @@ Result<Header> FileBlockCache::Load() {
   return header;
 }
 
-Result<const std::byte*> FileBlockCache::Take(size_t index) {
-  return blocks_[index].Take(*file_);
+Result<const std::byte*> FileBlockCache::Take(size_t index, bool* was_hit) {
+  return blocks_[index].Take(*file_, was_hit);
+}
+
+BlockCacheMetrics& FileBlockCache::metrics() const {
+  return block_cache_.metrics();
 }
 
 void FileBlockCache::Release(size_t index) {

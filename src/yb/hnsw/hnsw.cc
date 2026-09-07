@@ -26,6 +26,7 @@
 #include "yb/util/env.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
@@ -42,6 +43,13 @@ DEFINE_RUNTIME_uint64(yb_hnsw_max_block_size, 64_KB,
 
 DEFINE_RUNTIME_bool(yb_hnsw_keep_new_blocks_in_cache, false,
     "Whether to keep new generated blocks in cache after YbHnsw index is built.");
+
+DEFINE_RUNTIME_bool(yb_hnsw_prefetch_neighbors, true,
+    "Whether a base layer search resolves and prefetches the record addresses of a node's "
+    "unvisited neighbours as a batch before computing any of their distances. Both settings "
+    "visit the same vectors and return the same results; batching only overlaps the cache "
+    "misses. Turn it off on an index small enough to sit in cache, where the prefetches are "
+    "pure overhead.");
 
 DEFINE_RUNTIME_uint32(vector_index_rerank_overfetch_factor, 2,
     "Multiplier applied to the requested result count to size the candidate set a vector index "
@@ -874,11 +882,10 @@ void YbHnsw::SearchInBaseLayer(
     auto neighbors = cache.GetNeighborsInBaseLayer(vector);
     visited.reserve(visited.size() + std::ranges::size(neighbors));
 
-    for (auto neighbor : neighbors) {
-      if (visited.set(neighbor)) {
-        continue;
-      }
-      auto neighbor_dist = Distance(query_vector, neighbor, cache);
+    // Distance and heap update for one unvisited neighbour. Both loop shapes below invoke this
+    // in neighbour order, so best_dist evolves identically and the two produce the same results.
+    auto visit = [&](VectorNo neighbor, const std::byte* coordinates) {
+      auto neighbor_dist = Distance(query_vector, coordinates);
 
       if (top.size() < top_limit || extra_top.size() < extra_top_limit ||
           neighbor_dist < best_dist) {
@@ -902,6 +909,46 @@ void YbHnsw::SearchInBaseLayer(
           best_dist = extra_top.empty() ? top.top().first : extra_top.top();
         }
       }
+    };
+
+    if (!FLAGS_yb_hnsw_prefetch_neighbors) {
+      for (auto neighbor : neighbors) {
+        if (visited.set(neighbor)) {
+          continue;
+        }
+        visit(neighbor, cache.CoordinatesPtr(neighbor));
+      }
+      continue;
+    }
+
+    // A record's address is pure arithmetic on the neighbour id, but the CPU cannot speculate
+    // through blocks_[index] and then through the record itself, so both loads stall. Filtering
+    // and resolving the whole neighbour batch before computing any distance lets those misses
+    // overlap each other, and gives the prefetches the length of the batch's distance
+    // computations to land -- more slack than a one-ahead cursor, which matters for the short
+    // int8 kernel.
+    //
+    // The visited filter must stay first: resolving addresses for already-visited neighbours
+    // would Take() blocks the search does not need, inflating used_blocks_ and Release().
+    auto& unvisited = context.unvisited;
+    unvisited.clear();
+    for (auto it = neighbors.begin(), end = neighbors.end(); it != end; ++it) {
+      auto neighbor = *it;
+      if (visited.set(neighbor)) {
+        continue;
+      }
+      if (auto next_it = it + 1; next_it != end) {
+        cache.PrefetchVectorHeaderBlock(*next_it);
+      }
+      auto* coordinates = cache.CoordinatesPtr(neighbor);
+      __builtin_prefetch(coordinates);
+      unvisited.emplace_back(neighbor, coordinates);
+    }
+
+    // Resolved addresses stay valid across visit(): the search holds a reference on every block
+    // it took, which keeps CachedBlock::Unload from freeing the contents until Release().
+    for (auto [neighbor, coordinates] : unvisited) {
+      visit(neighbor, coordinates);
     }
   }
 }
@@ -930,7 +977,10 @@ const std::byte* SearchCache::Data(size_t index) {
   if (block) {
     return block;
   }
-  auto data = CHECK_RESULT(file_block_cache_->Take(index));
+  bool was_hit = false;
+  auto data = CHECK_RESULT(file_block_cache_->Take(index, &was_hit));
+  ++takes_;
+  hits_ += was_hit;
   used_blocks_.push_back(index);
   return block = data;
 }
@@ -943,6 +993,16 @@ void SearchCache::Bind(std::reference_wrapper<const Header> header, FileBlockCac
 }
 
 void SearchCache::Release() {
+  // One metrics update per search rather than one per block taken: a query touches roughly as
+  // many blocks as it visits vectors, and Take() is the only site that feeds these counters, so
+  // the totals are unchanged and only the update granularity is coarser.
+  if (takes_) {
+    auto& metrics = file_block_cache_->metrics();
+    metrics.query->IncrementBy(takes_);
+    metrics.hit->IncrementBy(hits_);
+    takes_ = 0;
+    hits_ = 0;
+  }
   for (auto block : used_blocks_) {
     blocks_[block] = nullptr;
     file_block_cache_->Release(block);
@@ -1017,6 +1077,11 @@ std::pair<vector_index::VectorId, Slice> SearchCache::GetVectorIdAndPayload(size
 
 const std::byte* SearchCache::CoordinatesPtr(size_t vector) {
   return VectorHeader(vector).raw() + offsetof(VectorData, coordinates);
+}
+
+void SearchCache::PrefetchVectorHeaderBlock(size_t vector) {
+  __builtin_prefetch(&blocks_[
+      header_->vector_data_block + vector / header_->vector_data_amount_per_block]);
 }
 
 const std::byte* SearchCache::RerankCoordinatesPtr(size_t vector) {

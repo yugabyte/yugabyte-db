@@ -64,6 +64,11 @@ class SearchCache {
   // when the bound header has a rerank tier.
   const std::byte* RerankCoordinatesPtr(size_t vector);
 
+  // Prefetches the blocks_ slot that VectorHeader(vector) will load. The slot index is pure
+  // arithmetic on the vector id, so it can be issued ahead of time, while the data-dependent
+  // load of the slot itself is something the CPU cannot speculate through.
+  void PrefetchVectorHeaderBlock(size_t vector);
+
  private:
   Slice GetVectorDataSlice(size_t vector);
   const std::byte* BlockPtr(
@@ -73,6 +78,10 @@ class SearchCache {
   FileBlockCache* file_block_cache_ = nullptr;
   std::vector<const std::byte*> blocks_;
   std::vector<size_t> used_blocks_;
+
+  // Block cache query/hit counts for the current search, flushed to the metrics in Release().
+  size_t takes_ = 0;
+  size_t hits_ = 0;
 };
 
 class SearchCacheScope {
@@ -118,6 +127,11 @@ struct YbHnswSearchContext {
   // cannot share storage; neither is used when the file stores float32.
   std::vector<std::byte> narrowed_query;
   std::vector<std::byte> rerank_query;
+
+  // Neighbours of the current node that passed the visited filter, with their record addresses
+  // already resolved. Reused across calls; bounded by the neighbour count, i.e. by
+  // config.connectivity_base.
+  std::vector<std::pair<VectorNo, const std::byte*>> unvisited;
 };
 
 class YbHnswMetric {
