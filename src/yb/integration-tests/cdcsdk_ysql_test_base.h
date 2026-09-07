@@ -147,6 +147,7 @@ DECLARE_bool(TEST_cdc_fail_before_setting_barrier);
 DECLARE_string(ysql_yb_default_replica_identity);
 DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
+DECLARE_bool(cdc_skip_unqualified_tables_for_polling);
 
 namespace yb {
 
@@ -580,7 +581,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t& session_id = kVWALSessionId1);
+      const uint64_t& session_id = kVWALSessionId1, int timeout = kRpcTimeout);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,

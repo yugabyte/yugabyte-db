@@ -1571,7 +1571,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Status CDCSDKYsqlTest::UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t& session_id) {
+      const uint64_t& session_id, int timeout) {
     UpdatePublicationTableListRequestPB req;
     UpdatePublicationTableListResponsePB resp;
 
@@ -1599,7 +1599,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
           return false;
         },
-        MonoDelta::FromSeconds(kRpcTimeout),
+        MonoDelta::FromSeconds(timeout),
         "UpdatePublicationTableList failed due to RPC timeout"));
 
     return Status::OK();
