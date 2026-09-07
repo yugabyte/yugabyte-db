@@ -5,6 +5,7 @@ import { YBThemeProvider, coreTheme } from '@yugabyte-ui-library/core';
 import { ResizeUpdateOption } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
   ReviewHardwareChangesModal,
+  getChangedStorageKeys,
   type HardwareReviewSection
 } from './ReviewHardwareChangesModal';
 
@@ -22,13 +23,7 @@ vi.mock('@yugabyte-ui-library/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@yugabyte-ui-library/core')>();
   return {
     ...actual,
-    YBAlert: ({
-      text,
-      variant
-    }: {
-      text: React.ReactNode;
-      variant?: string;
-    }) => (
+    YBAlert: ({ text, variant }: { text: React.ReactNode; variant?: string }) => (
       <div data-testid="hardware-alert" data-variant={variant}>
         {text}
       </div>
@@ -38,22 +33,27 @@ vi.mock('@yugabyte-ui-library/core', async (importOriginal) => {
       disabled,
       onChange,
       dataTestId,
-      value
+      value,
+      label
     }: {
       checked?: boolean;
       disabled?: boolean;
       onChange?: () => void;
       dataTestId: string;
       value: string;
+      label?: React.ReactNode;
     }) => (
-      <input
-        type="radio"
-        data-testid={dataTestId}
-        value={value}
-        checked={!!checked}
-        disabled={!!disabled}
-        onChange={() => onChange?.()}
-      />
+      <label>
+        <input
+          type="radio"
+          data-testid={dataTestId}
+          value={value}
+          checked={!!checked}
+          disabled={!!disabled}
+          onChange={() => onChange?.()}
+        />
+        {label}
+      </label>
     ),
     YBInput: ({
       value,
@@ -240,5 +240,80 @@ describe('ReviewHardwareChangesModal', () => {
     fireEvent.click(screen.getByTestId('edit-hardware-confirm-and-apply'));
 
     expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ strategy: 'migrate' }));
+  });
+});
+
+describe('getChangedStorageKeys', () => {
+  const base = {
+    storageType: 'GP3',
+    diskIops: 3000,
+    throughput: 125,
+    volumeSize: 100,
+    numVolumes: 1
+  };
+
+  it('puts volume layout above the combined storage spec card', () => {
+    expect(getChangedStorageKeys(base, { ...base, storageType: 'IO1', volumeSize: 200 })).toEqual([
+      'volumeLayout',
+      'storageSpec'
+    ]);
+    expect(getChangedStorageKeys(base, { ...base, diskIops: 4000 })).toEqual(['storageSpec']);
+    expect(getChangedStorageKeys(base, { ...base, throughput: 250 })).toEqual(['storageSpec']);
+  });
+
+  it('omits storage spec when type, iops, and throughput are unchanged', () => {
+    expect(getChangedStorageKeys(base, { ...base, volumeSize: 200 })).toEqual(['volumeLayout']);
+  });
+});
+
+describe('ReviewHardwareChangesModal storage spec', () => {
+  const storageSections: HardwareReviewSection[] = [
+    {
+      current: {
+        storageType: 'GP3',
+        diskIops: 3000,
+        throughput: 125,
+        volumeSize: 100,
+        numVolumes: 1
+      },
+      next: {
+        storageType: 'IO1',
+        diskIops: 4000,
+        throughput: 250,
+        volumeSize: 200,
+        numVolumes: 1
+      }
+    }
+  ];
+
+  it('combines storage type, iops, and throughput below volume / node', () => {
+    renderReview({ sections: storageSections, isAws: true });
+
+    expect(screen.getAllByText('ebsType').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('iops').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('throughput').length).toBeGreaterThan(0);
+    expect(screen.queryByText('storageType')).not.toBeInTheDocument();
+
+    const volumeLabel = screen.getAllByText('volumeAndNode')[0];
+    const ebsLabel = screen.getAllByText('ebsType')[0];
+    const iopsLabel = screen.getAllByText('iops')[0];
+    const throughputLabel = screen.getAllByText('throughput')[0];
+
+    expect(
+      volumeLabel.compareDocumentPosition(ebsLabel) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      ebsLabel.compareDocumentPosition(iopsLabel) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      iopsLabel.compareDocumentPosition(throughputLabel) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it('uses storage type label for non-AWS providers', () => {
+    renderReview({ sections: storageSections, isAws: false });
+
+    expect(screen.getAllByText('storageType').length).toBeGreaterThan(0);
+    expect(screen.queryByText('ebsType')).not.toBeInTheDocument();
   });
 });

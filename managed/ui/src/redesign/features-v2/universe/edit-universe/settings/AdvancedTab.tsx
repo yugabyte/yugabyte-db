@@ -190,7 +190,13 @@ const EditK8sHelmOverrides = () => {
       <StyledHeader sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {t('k8sOverrides')}
         {overrideExists && (
-          <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)} isControl>
+          <RbacValidator
+            accessRequiredOn={withUniverseResource(
+              ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+              universeData?.info?.universe_uuid
+            )}
+            isControl
+          >
             <YBButton
               dataTestId="edit-kubernetes-overrides-button"
               variant="ghost"
@@ -209,7 +215,13 @@ const EditK8sHelmOverrides = () => {
             <Typography variant="body2" sx={{ color: '#4E5F6D' }}>
               {t('overrideInfo')}
             </Typography>
-            <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)} isControl>
+            <RbacValidator
+              accessRequiredOn={withUniverseResource(
+                ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                universeData?.info?.universe_uuid
+              )}
+              isControl
+            >
               <YBButton
                 variant="secondary"
                 dataTestId="add-gflags-button"
@@ -285,25 +297,27 @@ export const AdvancedTab = () => {
     return (
       <>
         {networking_spec?.proxy_config?.no_proxy_list?.[0]}
-        <YBTag size="small" variant="light">
-          <YBTooltip
-            title={
-              <Box sx={{ display: 'flex', flexDirection: 'column', color: '#4E5F6D' }}>
-                <ul style={{ listStyleType: 'disc', paddingInlineStart: '20px' }}>
-                  {drop(networking_spec?.proxy_config?.no_proxy_list, 1).map((nl) => (
-                    <li>
-                      <Typography sx={{ lineHeight: '20px' }} variant="subtitle1">
-                        {nl}
-                      </Typography>
-                    </li>
-                  ))}
-                </ul>
-              </Box>
-            }
-          >
-            <span>+{(networking_spec?.proxy_config?.no_proxy_list?.length ?? 1) - 1}</span>
-          </YBTooltip>
-        </YBTag>
+        {networking_spec?.proxy_config?.no_proxy_list?.length > 1 && (
+          <YBTag size="small" variant="light">
+            <YBTooltip
+              title={
+                <Box sx={{ display: 'flex', flexDirection: 'column', color: '#4E5F6D' }}>
+                  <ul style={{ listStyleType: 'disc', paddingInlineStart: '20px' }}>
+                    {drop(networking_spec?.proxy_config?.no_proxy_list, 1).map((nl) => (
+                      <li>
+                        <Typography sx={{ lineHeight: '20px' }} variant="subtitle1">
+                          {nl}
+                        </Typography>
+                      </li>
+                    ))}
+                  </ul>
+                </Box>
+              }
+            >
+              <span>+{(networking_spec?.proxy_config?.no_proxy_list?.length ?? 1) - 1}</span>
+            </YBTooltip>
+          </YBTag>
+        )}
       </>
     );
   };
@@ -320,7 +334,13 @@ export const AdvancedTab = () => {
           >
             {t('proxyConfiguration')}
             {isProxyEnabled && (
-              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)} isControl>
+              <RbacValidator
+                accessRequiredOn={withUniverseResource(
+                  ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                  universeData?.info?.universe_uuid
+                )}
+                isControl
+              >
                 <YBButton
                   dataTestId="edit-security-transit-button"
                   variant="ghost"
@@ -354,13 +374,17 @@ export const AdvancedTab = () => {
                     <div style={{ width: '300px' }}>
                       <span className="header">{t('secureWebProxy')}</span>
                       <span className="value ">
-                        {networking_spec?.proxy_config?.https_proxy ?? '-'}
+                        {!isEmpty(networking_spec?.proxy_config?.https_proxy)
+                          ? networking_spec?.proxy_config?.https_proxy
+                          : '-'}
                       </span>
                     </div>
                     <div style={{ width: '300px' }}>
                       <span className="header">{t('webProxy')}</span>
                       <span className="value ">
-                        {networking_spec?.proxy_config?.http_proxy ?? '-'}
+                        {!isEmpty(networking_spec?.proxy_config?.http_proxy)
+                          ? networking_spec?.proxy_config?.http_proxy
+                          : '-'}
                       </span>
                     </div>
                     <div style={{ width: '300px' }}>
@@ -375,7 +399,10 @@ export const AdvancedTab = () => {
                     <Trans t={t} i18nKey={'proxyHelper'} components={{ a: <StyledLink /> }} />
                   </Typography>
                   <RbacValidator
-                    accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)}
+                    accessRequiredOn={withUniverseResource(
+                      ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                      universeData?.info?.universe_uuid
+                    )}
                     isControl
                   >
                     <YBButton
@@ -410,7 +437,10 @@ export const AdvancedTab = () => {
                 {t('nodeAccess')}
                 {providerCode === CloudType.aws && (
                   <RbacValidator
-                    accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)}
+                    accessRequiredOn={withUniverseResource(
+                      ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                      universeData?.info?.universe_uuid
+                    )}
                     isControl
                   >
                     <YBButton
@@ -444,7 +474,10 @@ export const AdvancedTab = () => {
               >
                 {t('networkPorts')}
                 <RbacValidator
-                  accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)}
+                  accessRequiredOn={withUniverseResource(
+                    ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                    universeData?.info?.universe_uuid
+                  )}
                   isControl
                 >
                   <YBButton
@@ -472,7 +505,10 @@ export const AdvancedTab = () => {
                 {t('userTagsTitle')}
                 {userTags.length > 0 && (
                   <RbacValidator
-                    accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)}
+                    accessRequiredOn={withUniverseResource(
+                      ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                      universeData?.info?.universe_uuid
+                    )}
                     isControl
                   >
                     <YBButton
@@ -482,7 +518,7 @@ export const AdvancedTab = () => {
                       onClick={() => {
                         setUserTagsModalOpen(true);
                       }}
-                      disabled={!isUniverseReady}
+                      disabled={!isUniverseReady || providerCode === CloudType.azu}
                     >
                       {t('edit', { keyPrefix: 'common' })}
                     </YBButton>
@@ -496,7 +532,10 @@ export const AdvancedTab = () => {
                       <Trans t={t} i18nKey={'userTagTooltip'} components={{ a: <StyledLink /> }} />
                     </Typography>
                     <RbacValidator
-                      accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeData?.info?.universe_uuid)}
+                      accessRequiredOn={withUniverseResource(
+                        ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER,
+                        universeData?.info?.universe_uuid
+                      )}
                       isControl
                     >
                       <YBButton
@@ -504,7 +543,7 @@ export const AdvancedTab = () => {
                         dataTestId="add-gflags-button"
                         startIcon={<AddCircleIcon />}
                         sx={{ mt: 2 }}
-                        disabled={!isUniverseReady}
+                        disabled={!isUniverseReady || providerCode === CloudType.azu}
                         onClick={() => {
                           setUserTagsModalOpen(true);
                         }}
