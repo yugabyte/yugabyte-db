@@ -261,7 +261,7 @@ BlockCacheMetrics::BlockCacheMetrics(const MetricEntityPtr& entity)
       evict(METRIC_vector_index_cache_evict.Instantiate(entity)),
       remove(METRIC_vector_index_cache_remove.Instantiate(entity)),
       read_us(METRIC_vector_index_cache_read_us.Instantiate(entity)),
-      take_wait_us(METRIC_vector_index_cache_read_us.Instantiate(entity)) {
+      take_wait_us(METRIC_vector_index_cache_take_wait_us.Instantiate(entity)) {
 }
 
 struct CachedBlock {
