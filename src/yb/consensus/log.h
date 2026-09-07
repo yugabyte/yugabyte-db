@@ -218,7 +218,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Returns a reader that is able to read through the previous segments.
   // Returns IllegalState if the log has been closed and the reader is no longer available.
-  Result<LogReader*> GetLogReader() const;
+  Result<LogReaderPtr> GetLogReader() const;
 
   Status GetSegmentsSnapshot(SegmentSequence* segments) const;
 
@@ -639,7 +639,9 @@ class Log : public RefCountedThreadSafe<Log> {
   LogState log_state_;
 
   // A reader for the previous segments that were not yet GC'd.
-  std::unique_ptr<LogReader> reader_;
+  // Shared so that a reference handed out by GetLogReader() outlives a concurrent Close()
+  // resetting reader_ mid-read.
+  LogReaderPtr reader_;
 
   // Index which translates between operation indexes and the position of the operation in the log.
   scoped_refptr<LogIndex> log_index_;

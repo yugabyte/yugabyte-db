@@ -130,7 +130,7 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
       tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
   ASSERT_OK(tablet_server->WaitStarted());
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(tablet_peer->log()->GetLogReader());
+  auto log_reader = ASSERT_RESULT(tablet_peer->log()->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(2, segments.size());

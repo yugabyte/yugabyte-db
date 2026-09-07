@@ -416,16 +416,11 @@ class RaftConsensusQuorumTest : public YBTest {
   log::LogEntries GatherLogEntries(int idx, const scoped_refptr<Log>& log) {
     EXPECT_OK(log->WaitUntilAllFlushed());
     EXPECT_OK(log->Close());
-    std::unique_ptr<LogReader> log_reader;
-    EXPECT_OK(log::LogReader::Open(fs_managers_[idx]->env(),
-                                   scoped_refptr<log::LogIndex>(),
-                                   "Log reader: ",
-                                   fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTable,
-                                                                                kTestTablet),
-                                   table_metric_entity_.get(),
-                                   tablet_metric_entity_.get(),
-                                   /*read_wal_mem_tracker=*/nullptr,
-                                   &log_reader));
+    auto log_reader = EXPECT_RESULT(log::LogReader::Open(
+        fs_managers_[idx]->env(), scoped_refptr<log::LogIndex>(), "Log reader: ",
+        fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
+        table_metric_entity_.get(), tablet_metric_entity_.get(),
+        /*read_wal_mem_tracker=*/nullptr));
     log::LogEntries ret;
     log::SegmentSequence segments;
     EXPECT_OK(log_reader->GetSegmentsSnapshot(&segments));

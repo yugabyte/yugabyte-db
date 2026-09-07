@@ -775,14 +775,9 @@ Status Log::Init() {
   // Init the index
   log_index_ = VERIFY_RESULT(LogIndex::NewLogIndex(wal_dir_));
   // Reader for previous segments.
-  RETURN_NOT_OK(LogReader::Open(get_env(),
-                                log_index_,
-                                log_prefix_,
-                                wal_dir_,
-                                table_metric_entity_.get(),
-                                tablet_metric_entity_.get(),
-                                read_wal_mem_tracker_,
-                                &reader_));
+  reader_ = VERIFY_RESULT(LogReader::Open(
+      get_env(), log_index_, log_prefix_, wal_dir_, table_metric_entity_.get(),
+      tablet_metric_entity_.get(), read_wal_mem_tracker_));
 
   // The case where we are continuing an existing log.  We must pick up where the previous WAL left
   // off in terms of sequence numbers.
@@ -1755,11 +1750,12 @@ Status Log::GetGCableDataSize(
   return Status::OK();
 }
 
-Result<LogReader*> Log::GetLogReader() const {
+Result<LogReaderPtr> Log::GetLogReader() const {
+  PerCpuRwSharedLock read_lock(state_lock_);
   if (!reader_) {
     return STATUS(IllegalState, "LogReader is not initialized");
   }
-  return reader_.get();
+  return reader_;
 }
 
 Status Log::GetSegmentsSnapshot(SegmentSequence* segments) const {
