@@ -148,6 +148,7 @@ namespace {
 const char kRaftGroupMetadataDirName[] = "tablet-meta";
 const char kInstanceMetadataFileName[] = "instance";
 const char kAutoFlagsConfigFileName[] = "auto_flags_config";
+const char kYsqlDbHistoryRetentionPinsFileName[] = "ysql_db_history_retention_pins";
 const char kFsLockFileName[] = "fs-lock";
 const char kConsensusMetadataDirName[] = "consensus-meta";
 const char kLogsDirName[] = "logs";
@@ -586,6 +587,11 @@ Status FsManager::DeleteFileSystemLayout(ShouldDeleteLogs also_delete_logs) {
     const auto auto_flags_config_path = GetAutoFlagsConfigPath();
     if (!auto_flags_config_path.empty()) {
       removal_list.push_back(auto_flags_config_path);
+    }
+
+    const auto pins_path = GetYsqlDbHistoryRetentionPinsPath();
+    if (env_->FileExists(pins_path)) {
+      removal_list.push_back(pins_path);
     }
 
     removal_set.insert(removal_list.begin(), removal_list.end());
@@ -1225,6 +1231,19 @@ std::string FsManager::GetFsLockFilePath(const string& root) const {
 std::string FsManager::GetDefaultRootDir() const {
   DCHECK(initted_);
   return GetServerTypeDataPath(canonicalized_default_fs_root_, server_type_);
+}
+
+std::string FsManager::GetYsqlDbHistoryRetentionPinsPath() const {
+  return JoinPathSegments(GetDefaultRootDir(), kYsqlDbHistoryRetentionPinsFileName);
+}
+
+Status FsManager::ReadYsqlDbHistoryRetentionPins(Message* msg) const {
+  return pb_util::ReadPBContainerFromPath(env_, GetYsqlDbHistoryRetentionPinsPath(), msg);
+}
+
+Status FsManager::WriteYsqlDbHistoryRetentionPins(const Message* msg) const {
+  return pb_util::WritePBContainerToPath(
+      env_, GetYsqlDbHistoryRetentionPinsPath(), *msg, pb_util::OVERWRITE, pb_util::SYNC);
 }
 
 std::vector<std::string> FsManager::GetConsensusMetadataDirs() const {

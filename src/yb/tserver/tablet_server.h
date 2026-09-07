@@ -536,6 +536,16 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
 
+  // Loads cluster_ysql_db_oldest_pinned_read_times_ in memory from the persisted pins file
+  // on disk. Called on tserver startup to prevent accidental compaction before heartbeat.
+  // Returns OK immediately if the pins file does not exist.
+  Status LoadClusterYsqlDbOldestPinnedReadTimes()
+      EXCLUDES(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+
+  // Writes pins to disk if at least history_retention_pins_persist_interval_sec has
+  // passed since the last write.
+  void PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded(const master::DbOidToHybridTimeMap& pins);
+
   std::atomic<bool> initted_{false};
 
   // If true, all heartbeats will be seen as failed.
@@ -608,6 +618,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   mutable rw_spinlock cluster_ysql_db_oldest_pinned_read_times_mutex_;
   master::DbOidToHybridTimeMap cluster_ysql_db_oldest_pinned_read_times_
       GUARDED_BY(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+
+  // Unsynchronized: only touched by PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded, which runs
+  // on the single heartbeat poller thread.
+  CoarseTimePoint last_ysql_db_pins_persist_time_ = CoarseTimePoint::min();
 
   // This map represents an extended history of pg_yb_invalidation_messages except message_time
   // (i.e., db_oid, current_version, inval messages). For each db_oid, it stores a queue of

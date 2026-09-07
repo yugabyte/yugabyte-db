@@ -119,6 +119,8 @@ struct FsManagerOpts {
 // The current top-level dir layout is <yb.root.dir>/yb-data/<server>/. Subdirs under it are:
 //     logs/
 //     instance
+//     auto_flags_config
+//     ysql_db_history_retention_pins
 //     wals/<table>/<tablet>
 //     tablet-meta/<tablet>
 //     data/rocksdb/<table>/<tablet>/
@@ -153,6 +155,11 @@ class FsManager {
 
   Status ReadAutoFlagsConfig(google::protobuf::Message* msg) EXCLUDES(auto_flag_mutex_);
   Status WriteAutoFlagsConfig(const google::protobuf::Message* msg) EXCLUDES(auto_flag_mutex_);
+
+  // Read/write the persisted cluster-wide per-database history retention pins.
+  // Read returns NotFound when no pins have been persisted yet.
+  Status ReadYsqlDbHistoryRetentionPins(google::protobuf::Message* msg) const;
+  Status WriteYsqlDbHistoryRetentionPins(const google::protobuf::Message* msg) const;
 
   // Initialize and load the basic filesystem metadata.
   // If the file system has not been initialized, returns NotFound.
@@ -355,6 +362,8 @@ class FsManager {
 
   // Checks write to temporary file on root.
   Status CheckWrite(const std::string& path);
+
+  std::string GetYsqlDbHistoryRetentionPinsPath() const;
 
   void CreateAndSetFaultDriveMetric(const std::string& path);
 

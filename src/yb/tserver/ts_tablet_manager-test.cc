@@ -68,6 +68,7 @@
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
@@ -96,6 +97,7 @@ DECLARE_int32(num_cpus);
 DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
+DECLARE_int32(history_retention_pins_persist_interval_sec);
 
 namespace yb::tserver {
 
@@ -1333,10 +1335,16 @@ class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
   }
 
   void SetClusterPin(HybridTime pin, PgOid db_oid = kDbOid) {
+    SetClusterPins({{db_oid, pin}});
+  }
+
+  void SetClusterPins(const std::unordered_map<PgOid, HybridTime>& pins) {
     master::TSHeartbeatResponsePB resp;
     resp.set_cluster_ysql_db_pins_ready(true);
-    (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
-        .set_db_level_oldest_read_time(pin.ToPB());
+    for (const auto& [db_oid, pin] : pins) {
+      (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
+          .set_db_level_oldest_read_time(pin.ToPB());
+    }
     mini_server_->server()->UpdateClusterYsqlDbOldestPinnedReadTimes(resp);
   }
 
@@ -1388,6 +1396,24 @@ class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
   // (not clamped to the safety window) yet young enough not to hit the hard cap
   HybridTime MidwayPin() const {
     return Now().AddSeconds(-(kSafetyWindowSec + kHardCapSec) / 2);
+  }
+
+  // Restarts the tserver over the same data dirs. The in-memory cluster pin map is lost, so
+  // whatever the tserver applies afterwards came from the persisted pins file.
+  void RestartServer() {
+    ASSERT_NO_FATAL_FAILURE(Reload());
+    config_ = mini_server_->CreateLocalConfig();
+    ASSERT_OK(mini_server_->server()->XClusterHandleMasterHeartbeatResponse(
+        master::TSHeartbeatResponsePB()));
+  }
+
+  HybridTime ClusterPin(PgOid db_oid = kDbOid) const {
+    return mini_server_->server()->GetClusterYsqlDbOldestPinnedReadTime(db_oid);
+  }
+
+  bool PinsFileExists() const {
+    YsqlDbHistoryRetentionPinsPB pb;
+    return !mini_server_->server()->fs_manager()->ReadYsqlDbHistoryRetentionPins(&pb).IsNotFound();
   }
 };
 
@@ -1491,6 +1517,85 @@ TEST_F(ComputeDbHistoryRetentionPinCutoffTest, DisabledFeatureIgnoresPin) {
   SetClusterPin(MidwayPin());
 
   EXPECT_EQ(AllowedPrimaryCutoff(peer->tablet_metadata()), HybridTime::kMax);
+}
+
+class PersistedDbHistoryRetentionPinsTest : public ComputeDbHistoryRetentionPinCutoffTest {
+ protected:
+  void SetUp() override {
+    ComputeDbHistoryRetentionPinCutoffTest::SetUp();
+
+    // Long enough that only the first update of a test is ever persisted, which keeps what
+    // lands on disk explicit.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_retention_pins_persist_interval_sec) = 3600;
+  }
+};
+
+// A tserver applies the pins its previous run persisted, before any heartbeat response arrives.
+TEST_F(PersistedDbHistoryRetentionPinsTest, RestartAppliesPersistedPins) {
+  const auto pin = MidwayPin();
+  SetClusterPin(pin);
+  ASSERT_TRUE(PinsFileExists());
+
+  ASSERT_NO_FATAL_FAILURE(RestartServer());
+
+  EXPECT_EQ(ClusterPin(), pin);
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-restart-pin"));
+  EXPECT_EQ(DbPinCutoff(Now(), peer->tablet_metadata()), pin);
+}
+
+// Every database in the map survives the restart, and databases absent from it stay unpinned.
+TEST_F(PersistedDbHistoryRetentionPinsTest, RestartAppliesPersistedPinsForAllDatabases) {
+  const auto pin = MidwayPin();
+  const auto other_pin = pin.AddSeconds(50);
+  SetClusterPins({{kDbOid, pin}, {kDbOid + 7, other_pin}});
+
+  ASSERT_NO_FATAL_FAILURE(RestartServer());
+
+  EXPECT_EQ(ClusterPin(kDbOid), pin);
+  EXPECT_EQ(ClusterPin(kDbOid + 7), other_pin);
+  EXPECT_FALSE(ClusterPin(kDbOid + 99).is_valid());
+}
+
+// With nothing persisted, a restarted tserver falls back to the safety window rather than
+// blocking compaction.
+TEST_F(PersistedDbHistoryRetentionPinsTest, NoPersistedFileDoesNotBlockCompaction) {
+  ASSERT_FALSE(PinsFileExists());
+
+  ASSERT_NO_FATAL_FAILURE(RestartServer());
+
+  ASSERT_FALSE(PinsFileExists());
+  EXPECT_FALSE(ClusterPin().is_valid());
+
+  auto peer = ASSERT_RESULT(CreatePgsqlTablet("pgsql-tablet-no-pins-file"));
+  const auto now = Now();
+  EXPECT_EQ(DbPinCutoff(now, peer->tablet_metadata()), SafetyWindowCutoff(now));
+}
+
+// Pins are written at most once per history_retention_pins_persist_interval_sec, so a
+// restart can come back with a map older than the one the tserver last had in memory.
+TEST_F(PersistedDbHistoryRetentionPinsTest, PersistIsRateLimited) {
+  const auto persisted = MidwayPin();
+  SetClusterPin(persisted);
+  const auto newer = persisted.AddSeconds(50);
+  SetClusterPin(newer);
+  ASSERT_EQ(ClusterPin(), newer);
+
+  ASSERT_NO_FATAL_FAILURE(RestartServer());
+
+  EXPECT_EQ(ClusterPin(), persisted);
+}
+
+// The persisted map only seeds startup: the first ready heartbeat after the restart replaces it.
+TEST_F(PersistedDbHistoryRetentionPinsTest, HeartbeatAfterRestartReplacesPersistedPins) {
+  const auto persisted = MidwayPin();
+  SetClusterPin(persisted);
+
+  ASSERT_NO_FATAL_FAILURE(RestartServer());
+  ASSERT_EQ(ClusterPin(), persisted);
+
+  const auto fresh = persisted.AddSeconds(50);
+  SetClusterPin(fresh);
+  EXPECT_EQ(ClusterPin(), fresh);
 }
 
 } // namespace yb::tserver

@@ -100,10 +100,12 @@
 #include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/tserver_types.pb.h"
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 
 #include "yb/util/cgroups.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -273,6 +275,14 @@ DEFINE_RUNTIME_int32(min_invalidation_message_retention_time_secs, 60,
     "Minimal time at which a catalog version with invalidation message is retained.");
 TAG_FLAG(min_invalidation_message_retention_time_secs, advanced);
 
+DEFINE_RUNTIME_int32(history_retention_pins_persist_interval_sec, 60,
+    "Interval at which the cluster-wide per-database history retention pins received in the "
+    "heartbeat response are persisted to local disk, so that they can be applied on startup "
+    "before the first heartbeat response arrives.");
+TAG_FLAG(history_retention_pins_persist_interval_sec, advanced);
+DEFINE_validator(history_retention_pins_persist_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
+
+DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_qos);
@@ -619,6 +629,14 @@ Status TabletServer::Init() {
 
   if (!FLAGS_enable_ysql) {
     RETURN_NOT_OK(SkipSharedMemoryNegotiation());
+  }
+
+  // Must happen before tablet_manager_->Init(), which opens tablets and thereby makes their
+  // compactions (and the history cutoff those pick) eligible to run.
+  if (FLAGS_enable_db_history_retention_pins) {
+    WARN_NOT_OK(
+        LoadClusterYsqlDbOldestPinnedReadTimes(),
+        "Could not load persisted YSQL DB history retention pins");
   }
 
   RETURN_NOT_OK_PREPEND(tablet_manager_->Init(),
@@ -2800,8 +2818,62 @@ void TabletServer::UpdateClusterYsqlDbOldestPinnedReadTimes(
       pins.emplace(static_cast<PgOid>(db_oid), pin);
     }
   }
+  PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded(pins);
   std::lock_guard lock(cluster_ysql_db_oldest_pinned_read_times_mutex_);
   cluster_ysql_db_oldest_pinned_read_times_ = std::move(pins);
+}
+
+Status TabletServer::LoadClusterYsqlDbOldestPinnedReadTimes() {
+  YsqlDbHistoryRetentionPinsPB pb;
+  auto status = fs_manager()->ReadYsqlDbHistoryRetentionPins(&pb);
+  if (!status.ok()) {
+    // No pins persisted yet: a fresh node, or the feature was enabled since the last write.
+    if (status.IsNotFound()) {
+      return Status::OK();
+    }
+    return status;
+  }
+
+  master::DbOidToHybridTimeMap pins;
+  pins.reserve(pb.db_oldest_pinned_read_times().size());
+  for (const auto& [db_oid, pin_value] : pb.db_oldest_pinned_read_times()) {
+    auto pin = HybridTime::FromPB(pin_value);
+    if (pin.is_valid()) {
+      pins.emplace(static_cast<PgOid>(db_oid), pin);
+    }
+  }
+
+  LOG(INFO) << "Loaded " << pins.size() << " YSQL DB history retention pins";
+  std::lock_guard lock(cluster_ysql_db_oldest_pinned_read_times_mutex_);
+  cluster_ysql_db_oldest_pinned_read_times_ = std::move(pins);
+  return Status::OK();
+}
+
+void TabletServer::PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded(
+    const master::DbOidToHybridTimeMap& pins) {
+  if (!FLAGS_enable_db_history_retention_pins) {
+    return;
+  }
+  const auto interval_sec = FLAGS_history_retention_pins_persist_interval_sec;
+  const auto now = CoarseMonoClock::Now();
+  if (now < last_ysql_db_pins_persist_time_ + interval_sec * 1s) {
+    return;
+  }
+  last_ysql_db_pins_persist_time_ = now;
+
+  // Transactions that started since the last write are missing from the persisted map. They are
+  // covered by the timestamp_history_retention_interval_sec safety window that
+  // TSTabletManager::ComputeDbHistoryRetentionPinCutoff applies on top of the pins, which is well
+  // above this interval plus db_history_retention_pin_min_txn_age_sec (the age at which a
+  // transaction first becomes eligible to be reported as a pin), so they need no special handling.
+  YsqlDbHistoryRetentionPinsPB pb;
+  auto& pb_pins = *pb.mutable_db_oldest_pinned_read_times();
+  for (const auto& [db_oid, pin] : pins) {
+    pb_pins[db_oid] = pin.ToPB();
+  }
+  WARN_NOT_OK(
+      fs_manager()->WriteYsqlDbHistoryRetentionPins(&pb),
+      "Could not persist YSQL DB history retention pins");
 }
 
 HybridTime TabletServer::GetClusterYsqlDbOldestPinnedReadTime(PgOid db_oid) const {
