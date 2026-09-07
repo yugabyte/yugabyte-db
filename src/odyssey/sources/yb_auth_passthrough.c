@@ -573,12 +573,14 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 	rc_auth = rc;
 
 	/*
-	 * Wait till the `READY_FOR_QUERY` packet is received.
-	 * TODO (vikram.damle) (#29176): Need a `reset phase` for control backends in
-	 * authentication. The backend may send extra information that is no longer
-	 * needed if auth fails as part of its internal state reset (eg. GUC reset
-	 * ParameterStatus packets). Need to clear the "buffer" of incoming messages
-	 * before returning the control backend to the pool.
+	 * Drain the control backend's post-auth packets until the
+	 * `READY_FOR_QUERY` packet is received. On a successful auth the backend
+	 * emits a burst of GUC ParameterStatus packets followed by ReadyForQuery.
+	 * If the client disconnects mid-relay we cannot forward the remaining
+	 * ParameterStatus/ReadyForQuery packets, but we must still read them off
+	 * `server->io` so the control backend is left synchronized before it is
+	 * returned to the pool; otherwise the next auth on this backend would read
+	 * the stale packets and desync the physical connection.
 	 */
 	while (true) {
 		msg = od_read(&server->io, UINT32_MAX);
@@ -589,6 +591,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 					 server->client, server,
 					 "read error from server: %s",
 					 od_io_error(&server->io));
+				server->offline = 1;
 				return -1;
 			}
 		}
@@ -646,6 +649,11 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				NULL, server,
 				"Did not expect ParameterStatus 'S' packet from Postgres, refusing to parse");
 			machine_msg_free(msg);
+			/*
+			 * Backend is in an unexpected state and may never send an RFQ.
+			 * Mark it to be discarded.
+			 */
+			server->offline = 1;
 			return -1;
 		case YB_CONN_MGR_PARAMETER_STATUS: {
 			char *name;
@@ -663,7 +671,8 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 					&instance->logger,
 					CONTEXT_AUTH_PASSTHROUGH, NULL, server,
 					"failed to parse ParameterStatus message");
-				return -1;
+				rc_auth = -1;
+				continue;
 			}
 
 			od_debug(
@@ -684,7 +693,8 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 						"failed to parse yb_logical_client_version: %.*s",
 						value_len, value);
 					machine_msg_free(msg);
-					return -1;
+					rc_auth = -1;
+					continue;
 				}
 
 				client->yb_logical_client_version = parsed_lcv;
@@ -704,36 +714,45 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				break;
 			}
 
-			if (flags & YB_PARAM_STATUS_REPORT_ENABLED) {
-				/*
-				 * We only care about reported variables when
-				 * auth backend starts
-				 */
-				int rc =
-					yb_send_parameter_status_auth_passthrough(
-						&client->io, name, name_len,
-						value, value_len);
-				if (rc != 0 && rc_auth == 0) {
-					od_error(
-						&instance->logger, "auth", NULL,
-						server,
-						"Unable to send ParameterStatus for GUC %.*s to client",
-						name_len, name);
-					machine_msg_free(msg);
-					return rc;
+			if (rc_auth == 0) {
+				if (flags & YB_PARAM_STATUS_REPORT_ENABLED) {
+					/* We only care about forwarding report enabled variables */
+					int rc =
+						yb_send_parameter_status_auth_passthrough(
+							&client->io, name,
+							name_len, value,
+							value_len);
+					if (rc != 0) {
+						od_error(
+							&instance->logger,
+							"auth", NULL, server,
+							"Unable to send ParameterStatus for GUC %.*s to client, will drain remaining control backend packets",
+							name_len, name);
+						/*
+						 * The client socket is broken. Do not abort
+						 * here: continue receiving msgs to drain the remaining
+						 * ParameterStatus/ReadyForQuery packets from the
+						 * control backend so it stays synchronized for the
+						 * next auth. Stop forwarding PS packets to the dead client.
+						 */
+						rc_auth = -1;
+						machine_msg_free(msg);
+						continue;
+					}
 				}
-			}
 
-			if (flags & YB_PARAM_STATUS_SOURCE_STARTUP) {
-				/*
-				 * The parameters here are the ones set by the startup packet in
-				 * the auth backend (here, passthrough). These are the parameters
-				 * that have to be replayed in a transactional backend to get the
-				 * same impact as the client's startup packet.
-				 * See od_frontend_setup_params() for more details.
-				 */
-				kiwi_vars_update(&client->yb_vars_startup, name,
-						 name_len, value, value_len);
+				if (flags & YB_PARAM_STATUS_SOURCE_STARTUP) {
+					/*
+					 * The parameters here are the ones set by the startup packet in
+					 * the auth backend (here, passthrough). These are the parameters
+					 * that have to be replayed in a transactional backend to get the
+					 * same impact as the client's startup packet.
+					 * See od_frontend_setup_params() for more details.
+					 */
+					kiwi_vars_update(
+						&client->yb_vars_startup, name,
+						name_len, value, value_len);
+				}
 			}
 
 			machine_msg_free(msg);
@@ -744,7 +763,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			/* Physical connection is broken, no need to wait for readyForQuery pkt */
 			machine_msg_free(msg);
 			server->offline = 1;
-			break;
+			return -1;
 		default:
 			od_error(
 				&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
@@ -752,6 +771,11 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				"got unhandled packet type %s (0x%x) during auth passthrough",
 				kiwi_be_type_to_string(type), type);
 			machine_msg_free(msg);
+			/*
+			 * Server is in an unknown state. Mark as offline and close auth as
+			 * it may never send an RFQ.
+			 */
+			server->offline = 1;
 			return -1;
 		}
 	}
