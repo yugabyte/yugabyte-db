@@ -27,6 +27,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.nodeagent.AbortTaskRequest;
+import com.yugabyte.yw.nodeagent.CheckYugabyteDbStatusRequest;
+import com.yugabyte.yw.nodeagent.CheckYugabyteDbStatusResponse;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.ConfigureServerOutput;
 import com.yugabyte.yw.nodeagent.ConfigureServiceInput;
@@ -870,6 +872,19 @@ public class NodeAgentClient {
     ManagedChannel channel = getManagedChannel(nodeAgent, enableTls);
     NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
     return stub.ping(PingRequest.newBuilder().build());
+  }
+
+  /**
+   * Detects the running YugabyteDB related processes on the node, the ports they listen on and the
+   * configuration they were started with. This is a synchronous, read-only call.
+   *
+   * @param nodeAgent the node agent to query.
+   * @return the detected status of each known role.
+   */
+  public CheckYugabyteDbStatusResponse checkYugabyteDbStatus(NodeAgent nodeAgent) {
+    ManagedChannel channel = getManagedChannel(nodeAgent, true);
+    NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
+    return stub.checkYugabyteDbStatus(CheckYugabyteDbStatusRequest.newBuilder().build());
   }
 
   public PingResponse waitForServerReady(NodeAgent nodeAgent, Duration timeout) {
