@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Customer;
@@ -20,7 +21,6 @@ import io.yugabyte.operator.v1alpha1.RestoreJob;
 import io.yugabyte.operator.v1alpha1.RestoreJobStatus;
 import java.util.*;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -135,25 +135,50 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
             ? restoreJob.getSpec().getUsePrivileges()
             : true;
 
-    List<BackupStorageInfo> bSIList =
-        backup.getBackupInfo().backupList.stream()
-            .map(
-                bTP -> {
-                  BackupStorageInfo bSI = new BackupStorageInfo();
-                  bSI.keyspace = restoreJob.getSpec().getKeyspace();
-                  bSI.storageLocation = bTP.storageLocation;
-                  bSI.backupType = backup.getBackupInfo().backupType;
-                  bSI.setUseTablespaces(useTablespaces);
-                  bSI.setUseRoles(useRoles);
-                  bSI.setUsePrivileges(usePrivileges);
-                  return bSI;
-                })
-            .collect(Collectors.toList());
-    if (CollectionUtils.isNotEmpty(bSIList)) {
-      restoreBackupParams.backupStorageInfoList = bSIList;
-    } else {
+    List<BackupTableParams> backupList = backup.getBackupInfo().backupList;
+    if (CollectionUtils.isEmpty(backupList)) {
       throw new Exception("Nothing to restore!");
     }
+
+    String specKeyspace = restoreJob.getSpec().getKeyspace();
+    boolean rename = StringUtils.isNotBlank(specKeyspace);
+    if (rename) {
+      Set<String> distinctKeyspaces = new HashSet<>();
+      for (BackupTableParams bTP : backupList) {
+        if (StringUtils.isNotBlank(bTP.getKeyspace())) {
+          distinctKeyspaces.add(bTP.getKeyspace());
+        }
+      }
+      if (distinctKeyspaces.size() > 1) {
+        throw new Exception(
+            "RestoreJob spec.keyspace is a destination rename and is only valid for"
+                + " backups with a single keyspace; this backup has "
+                + distinctKeyspaces.size()
+                + " keyspaces. Omit spec.keyspace to restore each to its original name.");
+      }
+    }
+
+    List<BackupStorageInfo> bSIList = new ArrayList<>();
+    for (BackupTableParams bTP : backupList) {
+      BackupStorageInfo bSI = new BackupStorageInfo();
+      if (rename) {
+        bSI.keyspace = specKeyspace;
+      } else {
+        if (StringUtils.isBlank(bTP.getKeyspace())) {
+          throw new Exception(
+              "Backup piece is missing an original keyspace name; cannot restore with"
+                  + " omitted spec.keyspace");
+        }
+        bSI.keyspace = bTP.getKeyspace();
+      }
+      bSI.storageLocation = bTP.storageLocation;
+      bSI.backupType = backup.getBackupInfo().backupType;
+      bSI.setUseTablespaces(useTablespaces);
+      bSI.setUseRoles(useRoles);
+      bSI.setUsePrivileges(usePrivileges);
+      bSIList.add(bSI);
+    }
+    restoreBackupParams.backupStorageInfoList = bSIList;
 
     return restoreBackupParams;
   }
