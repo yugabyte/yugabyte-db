@@ -390,7 +390,7 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
   int32_t num_gced;
 
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
@@ -434,7 +434,7 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   int32_t num_gced;
 
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
@@ -518,7 +518,7 @@ TEST_F(TabletPeerTest, TestActiveOperationPreventsLogGC) {
   Log* log = tablet_peer_->log_.get();
 
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
@@ -590,7 +590,7 @@ TEST_F(TabletPeerTest, TestMinStartTimeRunningTxnsOnLogSegmentRollover) {
   Log* log = tablet_peer_->log();
 
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
@@ -603,11 +603,10 @@ TEST_F(TabletPeerTest, TestMinStartTimeRunningTxnsOnLogSegmentRollover) {
 
   auto metadata = tablet()->metadata();
 
-  std::unique_ptr<log::LogReader> reader;
-  ASSERT_OK(log::LogReader::Open(
+  auto reader = ASSERT_RESULT(log::LogReader::Open(
       metadata->fs_manager()->env(), /*index=*/nullptr, "Log reader: ", metadata->wal_dir(),
       /*table_metric_entity=*/nullptr,
-      /*tablet_metric_entity=*/nullptr, /*read_wal_mem_tracker=*/nullptr, &reader));
+      /*tablet_metric_entity=*/nullptr, /*read_wal_mem_tracker=*/nullptr));
 
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
   VerifyNonDecreasingTxnStartTimeInClosedSegments(segments);
@@ -675,7 +674,7 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
   auto* log = tablet_peer_->log();
 
   log::SegmentSequence segments;
-  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  auto log_reader = ASSERT_RESULT(log->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   for (auto& segment : segments) {

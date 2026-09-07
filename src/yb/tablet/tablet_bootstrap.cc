@@ -785,7 +785,7 @@ class TabletBootstrap {
     VLOG_WITH_PREFIX(1) << "Opening log reader in log recovery dir " << wal_path;
     // Open the reader.
     scoped_refptr<LogIndex> index(nullptr);
-    RETURN_NOT_OK_PREPEND(
+    log_reader_ = VERIFY_RESULT_PREPEND(
         LogReader::Open(
             GetEnv(),
             index,
@@ -793,8 +793,7 @@ class TabletBootstrap {
             wal_path,
             tablet_->GetTableMetricsEntity().get(),
             tablet_->GetTabletMetricsEntity().get(),
-            data_.tablet_init_data.read_wal_mem_tracker,
-            &log_reader_),
+            data_.tablet_init_data.read_wal_mem_tracker),
         "Could not open LogReader. Reason");
     return Status::OK();
   }
@@ -2027,7 +2026,7 @@ class TabletBootstrap {
   TabletStatusListener* listener_;
   TabletPtr tablet_;
   scoped_refptr<log::Log> log_;
-  std::unique_ptr<log::LogReader> log_reader_;
+  log::LogReaderPtr log_reader_;
   std::unique_ptr<ReplayState> replay_state_;
 
   consensus::ConsensusMetadata* cmeta_;
