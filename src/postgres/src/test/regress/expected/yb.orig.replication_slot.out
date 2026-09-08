@@ -6,55 +6,55 @@ CREATE ROLE regress_replicationslot_replication_user WITH REPLICATION;
 CREATE ROLE regress_replicationslot_dummy;
 SET SESSION AUTHORIZATION 'regress_replicationslot_user';
 SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
- slot_name | lsn 
------------+-----
- testslot1 | 0/2
+ slot_name |    lsn     
+-----------+------------
+ testslot1 | 0/00000002
 (1 row)
 
 SELECT * FROM pg_create_logical_replication_slot('testslot2', 'pgoutput', false);
- slot_name | lsn 
------------+-----
- testslot2 | 0/2
+ slot_name |    lsn     
+-----------+------------
+ testslot2 | 0/00000002
 (1 row)
 
 SELECT * FROM pg_create_logical_replication_slot('testslot_test_decoding', 'test_decoding', false);
-       slot_name        | lsn 
-------------------------+-----
- testslot_test_decoding | 0/2
+       slot_name        |    lsn     
+------------------------+------------
+ testslot_test_decoding | 0/00000002
 (1 row)
 
-SELECT * FROM pg_create_logical_replication_slot('testslot_hybrid_time', 'yboutput', false, false, 'HYBRID_TIME');
-      slot_name       | lsn 
-----------------------+-----
- testslot_hybrid_time | 0/2
+SELECT * FROM pg_create_logical_replication_slot('testslot_hybrid_time', 'yboutput', false, false, false, 'HYBRID_TIME');
+      slot_name       |    lsn     
+----------------------+------------
+ testslot_hybrid_time | 0/00000002
 (1 row)
 
 -- explicit SEQUENCE lsn_type (default)
-SELECT * FROM pg_create_logical_replication_slot('testslot_sequence', 'pgoutput', false, false, 'SEQUENCE');
-     slot_name     | lsn 
--------------------+-----
- testslot_sequence | 0/2
+SELECT * FROM pg_create_logical_replication_slot('testslot_sequence', 'pgoutput', false, false, false, 'SEQUENCE');
+     slot_name     |    lsn     
+-------------------+------------
+ testslot_sequence | 0/00000002
 (1 row)
 
 -- explicit TRANSACTION ordering_mode (default)
-SELECT * FROM pg_create_logical_replication_slot('testslot_ordering_txn', 'pgoutput', false, false, 'SEQUENCE', 'TRANSACTION');
-       slot_name       | lsn 
------------------------+-----
- testslot_ordering_txn | 0/2
+SELECT * FROM pg_create_logical_replication_slot('testslot_ordering_txn', 'pgoutput', false, false, false, 'SEQUENCE', 'TRANSACTION');
+       slot_name       |    lsn     
+-----------------------+------------
+ testslot_ordering_txn | 0/00000002
 (1 row)
 
 -- ROW ordering_mode
-SELECT * FROM pg_create_logical_replication_slot('testslot_ordering_row', 'pgoutput', false, false, 'SEQUENCE', 'ROW');
-       slot_name       | lsn 
------------------------+-----
- testslot_ordering_row | 0/2
+SELECT * FROM pg_create_logical_replication_slot('testslot_ordering_row', 'pgoutput', false, false, false, 'SEQUENCE', 'ROW');
+       slot_name       |    lsn     
+-----------------------+------------
+ testslot_ordering_row | 0/00000002
 (1 row)
 
 -- HYBRID_TIME lsn_type with ROW ordering_mode
-SELECT * FROM pg_create_logical_replication_slot('testslot_ht_row', 'pgoutput', false, false, 'HYBRID_TIME', 'ROW');
-    slot_name    | lsn 
------------------+-----
- testslot_ht_row | 0/2
+SELECT * FROM pg_create_logical_replication_slot('testslot_ht_row', 'pgoutput', false, false, false, 'HYBRID_TIME', 'ROW');
+    slot_name    |    lsn     
+-----------------+------------
+ testslot_ht_row | 0/00000002
 (1 row)
 
 -- Cannot do SELECT * since yb_stream_id, yb_restart_commit_ht changes across runs.
@@ -64,14 +64,14 @@ FROM pg_replication_slots
 ORDER BY slot_name;
        slot_name        |    plugin     | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn | yb_lsn_type 
 ------------------------+---------------+-----------+----------+-----------+--------+------------+------+--------------+-------------+---------------------+-------------
- testslot1              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | SEQUENCE
- testslot2              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | SEQUENCE
- testslot_ht_row        | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | HYBRID_TIME
- testslot_hybrid_time   | yboutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | HYBRID_TIME
- testslot_ordering_row  | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | SEQUENCE
- testslot_ordering_txn  | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | SEQUENCE
- testslot_sequence      | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | SEQUENCE
- testslot_test_decoding | test_decoding | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2                 | SEQUENCE
+ testslot1              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/00000001  | 0/00000002          | SEQUENCE
+ testslot2              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/00000001  | 0/00000002          | SEQUENCE
+ testslot_ht_row        | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/00000001  | 0/00000002          | HYBRID_TIME
+ testslot_hybrid_time   | yboutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/00000001  | 0/00000002          | HYBRID_TIME
+ testslot_ordering_row  | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/00000001  | 0/00000002          | SEQUENCE
+ testslot_ordering_txn  | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/00000001  | 0/00000002          | SEQUENCE
+ testslot_sequence      | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/00000001  | 0/00000002          | SEQUENCE
+ testslot_test_decoding | test_decoding | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/00000001  | 0/00000002          | SEQUENCE
 (8 rows)
 
 -- drop the replication slot and create with same name again.
@@ -83,9 +83,9 @@ SELECT * FROM pg_drop_replication_slot('testslot1');
 
 -- TODO(#19263): Change the slot to temporary once supported.
 SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
- slot_name | lsn 
------------+-----
- testslot1 | 0/2
+ slot_name |    lsn     
+-----------+------------
+ testslot1 | 0/00000002
 (1 row)
 
 -- unsupported cases
@@ -97,9 +97,9 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19263. React with thum
 SELECT * FROM pg_create_physical_replication_slot('testslot_unsupported_physical', true, false);
 ERROR:  YSQL only supports logical replication slots
 -- invalid lsn_type and ordering_mode values.
-SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_lsn_type', 'pgoutput', false, false, 'INVALID');
+SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_lsn_type', 'pgoutput', false, false, false, 'INVALID');
 ERROR:  lsn type can only be SEQUENCE or HYBRID_TIME
-SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_ordering_mode', 'pgoutput', false, false, 'SEQUENCE', 'INVALID');
+SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_ordering_mode', 'pgoutput', false, false, false, 'SEQUENCE', 'INVALID');
 ERROR:  ordering mode can only be ROW or TRANSACTION
 -- creating replication slot with same name fails.
 SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
@@ -107,16 +107,17 @@ ERROR:  replication slot "testslot1" already exists
 -- success since user has 'replication' role
 SET ROLE regress_replicationslot_replication_user;
 SELECT * FROM pg_create_logical_replication_slot('testslot3', 'pgoutput', false);
- slot_name | lsn 
------------+-----
- testslot3 | 0/2
+ slot_name |    lsn     
+-----------+------------
+ testslot3 | 0/00000002
 (1 row)
 
 RESET ROLE;
 -- fail - must have replication or superuser role
 SET ROLE regress_replicationslot_dummy;
 SELECT * FROM pg_create_logical_replication_slot('testslot4', 'pgoutput', false);
-ERROR:  must be superuser or replication role to use replication slots
+ERROR:  permission denied to use replication slots
+DETAIL:  Only roles with the REPLICATION attribute may use replication slots.
 RESET ROLE;
 -- drop replication slots
 SELECT * FROM pg_drop_replication_slot('testslot1');

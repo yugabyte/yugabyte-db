@@ -10,15 +10,15 @@ SET SESSION AUTHORIZATION 'regress_replicationslot_user';
 SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
 SELECT * FROM pg_create_logical_replication_slot('testslot2', 'pgoutput', false);
 SELECT * FROM pg_create_logical_replication_slot('testslot_test_decoding', 'test_decoding', false);
-SELECT * FROM pg_create_logical_replication_slot('testslot_hybrid_time', 'yboutput', false, false, 'HYBRID_TIME');
+SELECT * FROM pg_create_logical_replication_slot('testslot_hybrid_time', 'yboutput', false, false, false, 'HYBRID_TIME');
 -- explicit SEQUENCE lsn_type (default)
-SELECT * FROM pg_create_logical_replication_slot('testslot_sequence', 'pgoutput', false, false, 'SEQUENCE');
+SELECT * FROM pg_create_logical_replication_slot('testslot_sequence', 'pgoutput', false, false, false, 'SEQUENCE');
 -- explicit TRANSACTION ordering_mode (default)
-SELECT * FROM pg_create_logical_replication_slot('testslot_ordering_txn', 'pgoutput', false, false, 'SEQUENCE', 'TRANSACTION');
+SELECT * FROM pg_create_logical_replication_slot('testslot_ordering_txn', 'pgoutput', false, false, false, 'SEQUENCE', 'TRANSACTION');
 -- ROW ordering_mode
-SELECT * FROM pg_create_logical_replication_slot('testslot_ordering_row', 'pgoutput', false, false, 'SEQUENCE', 'ROW');
+SELECT * FROM pg_create_logical_replication_slot('testslot_ordering_row', 'pgoutput', false, false, false, 'SEQUENCE', 'ROW');
 -- HYBRID_TIME lsn_type with ROW ordering_mode
-SELECT * FROM pg_create_logical_replication_slot('testslot_ht_row', 'pgoutput', false, false, 'HYBRID_TIME', 'ROW');
+SELECT * FROM pg_create_logical_replication_slot('testslot_ht_row', 'pgoutput', false, false, false, 'HYBRID_TIME', 'ROW');
 
 -- Cannot do SELECT * since yb_stream_id, yb_restart_commit_ht changes across runs.
 SELECT slot_name, plugin, slot_type, database, temporary, active,
@@ -36,8 +36,8 @@ SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_plugin', 
 SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_temporary', 'pgoutput', true);
 SELECT * FROM pg_create_physical_replication_slot('testslot_unsupported_physical', true, false);
 -- invalid lsn_type and ordering_mode values.
-SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_lsn_type', 'pgoutput', false, false, 'INVALID');
-SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_ordering_mode', 'pgoutput', false, false, 'SEQUENCE', 'INVALID');
+SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_lsn_type', 'pgoutput', false, false, false, 'INVALID');
+SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_ordering_mode', 'pgoutput', false, false, false, 'SEQUENCE', 'INVALID');
 
 -- creating replication slot with same name fails.
 SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
