@@ -2218,6 +2218,7 @@ YbWholeRowAttrRequired(Relation relation, Relation root_relation,
 bool		yb_enable_create_with_table_oid = false;
 int			yb_index_state_flags_update_delay = 1000;
 bool		yb_enable_expression_pushdown = true;
+bool		yb_enable_ioc_do_nothing_pushdown = false;
 bool		yb_enable_distinct_pushdown = true;
 bool		yb_enable_index_aggregate_pushdown = true;
 bool		yb_enable_primary_key_decode_from_index = false;
@@ -9047,6 +9048,24 @@ YbIsUpdateOptimizationEnabled()
 			yb_update_optimization_options.is_enabled &&
 			yb_update_optimization_options.num_cols_to_compare > 0 &&
 			yb_update_optimization_options.max_cols_size_to_compare > 0);
+}
+
+/*
+ * DO NOTHING and DO UPDATE use separate settings so that each pushdown path
+ * can be enabled independently.
+ */
+bool
+YbIsIocPushdownEnabled(OnConflictAction action)
+{
+	switch (action)
+	{
+		case ONCONFLICT_NOTHING:
+			return yb_enable_ioc_do_nothing_pushdown;
+		case ONCONFLICT_UPDATE:
+			return false;
+		default:
+			return false;
+	}
 }
 
 /*

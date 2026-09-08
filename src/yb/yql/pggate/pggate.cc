@@ -1641,6 +1641,13 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
   return Status::OK();
 }
 
+Status PgApiImpl::DmlGetOnConflictOutcome(
+    PgStatement *handle, PgsqlResponsePB::PgsqlOnConflictOutcome *on_conflict_outcome) {
+  *on_conflict_outcome =
+      VERIFY_RESULT_REF(GetStatementAs<PgDmlWrite>(handle)).GetOnConflictOutcome();
+  return Status::OK();
+}
+
 // Insert ------------------------------------------------------------------------------------------
 
 Result<PgStatement*> PgApiImpl::NewInsertBlock(
@@ -1680,6 +1687,12 @@ Status PgApiImpl::ExecInsert(PgStatement* handle) {
 
 Status PgApiImpl::InsertStmtSetUpsertMode(PgStatement* handle) {
   VERIFY_RESULT_REF(GetStatementAs<PgInsert>(handle)).SetUpsertMode();
+  return Status::OK();
+}
+
+Status PgApiImpl::InsertStmtSetOnConflictAction(
+    PgStatement* handle, PgsqlWriteRequestPB::PgsqlOnConflictAction action) {
+  VERIFY_RESULT_REF(GetStatementAs<PgInsert>(handle)).SetOnConflictAction(action);
   return Status::OK();
 }
 

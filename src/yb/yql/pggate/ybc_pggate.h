@@ -632,6 +632,11 @@ YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, 
 // Utility method that checks stmt type and calls either exec insert, update, or delete internally.
 YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_count);
 
+// Return the outcome reported by DocDB for an executed INSERT ... ON CONFLICT operation.
+// The outcome is UNKNOWN when DocDB did not report conflict resolution.
+YbcStatus YBCPgDmlGetOnConflictOutcome(
+    YbcPgStatement handle, YbcPgOnConflictOutcome *on_conflict_outcome);
+
 // This function returns the tuple id (ybctid) of a Postgres tuple.
 YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor* data, uint64_t *ybctid);
 
@@ -700,6 +705,9 @@ YbcStatus YBCPgNewInsert(YbcPgOid database_oid,
 YbcStatus YBCPgExecInsert(YbcPgStatement handle);
 
 YbcStatus YBCPgInsertStmtSetUpsertMode(YbcPgStatement handle);
+
+YbcStatus YBCPgInsertStmtSetOnConflictAction(YbcPgStatement handle,
+                                             YbcPgOnConflictAction action);
 
 YbcStatus YBCPgInsertStmtSetWriteTime(YbcPgStatement handle, const uint64_t write_time);
 

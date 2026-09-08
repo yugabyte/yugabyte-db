@@ -283,6 +283,9 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_optimizer_statistics, false,
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ioc_do_nothing_pushdown, false,
+    "Push INSERT ... ON CONFLICT DO NOTHING conflict resolution down to DocDB.");
+
 DEFINE_RUNTIME_PG_FLAG(string, yb_enable_cbo, "legacy_mode",
     "YSQL cost-based optimizer mode. Allowed values are 'legacy_mode', 'legacy_stats_mode', "
     "'legacy_bnl_mode', 'legacy_stats_bnl_mode', 'legacy_ignore_stats_bnl_mode', "

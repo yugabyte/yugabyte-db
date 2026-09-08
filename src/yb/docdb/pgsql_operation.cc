@@ -1585,16 +1585,32 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
         return Status::OK();
       }
     } else {
+      SCHECK(request_.on_conflict_action() == PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_NONE ||
+              request_.packed_rows().empty(),
+              InvalidArgument,
+              "ON CONFLICT arbitration is not supported for packed inserts");
       dockv::PgTableRow table_row(projection());
       // Non-backfill requests shouldn't use HasDuplicateUniqueIndexValue because
       // - they should error even if the conflicting row matches
       // - retrieving and calculating whether the conflicting row matches is a waste
       if (VERIFY_RESULT(ReadRow(data, &table_row))) {
         VLOG(4) << "Duplicate row: " << table_row.ToString();
-        // Primary key or unique index value found.
-        response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
-        response_->ref_error_message("Duplicate key found in primary key or unique index");
-        return Status::OK();
+        switch (request_.on_conflict_action()) {
+          case PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_NONE:
+            // Primary key or unique index value found.
+            response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
+            response_->ref_error_message("Duplicate key found in primary key or unique index");
+            return Status::OK();
+          case PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_NOTHING:
+            response_->set_on_conflict_outcome(PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_SKIPPED);
+            response_->set_skipped(true);
+            return Status::OK();
+          case PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_UPDATE:
+            return STATUS(NotSupported,
+              "INSERT ON CONFLICT DO UPDATE pushdown is not yet supported");
+        }
+        FATAL_INVALID_PB_ENUM_VALUE(
+          PgsqlWriteRequestPB::PgsqlOnConflictAction, request_.on_conflict_action());
       }
     }
   }
@@ -1688,6 +1704,11 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
   }
 
   RETURN_NOT_OK(PopulateResultSet(nullptr));
+
+  if (request_.on_conflict_action() != PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_NONE) {
+    response_->set_on_conflict_outcome(PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_INSERTED);
+    response_->set_rows_affected_count(1);
+  }
 
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();

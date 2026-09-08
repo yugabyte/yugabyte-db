@@ -1606,6 +1606,13 @@ YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_coun
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
 }
 
+YbcStatus YBCPgDmlGetOnConflictOutcome(YbcPgStatement handle, YbcPgOnConflictOutcome *outcome) {
+  auto pb_outcome = PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN;
+  auto* status = ToYBCStatus(pgapi->DmlGetOnConflictOutcome(handle, &pb_outcome));
+  *outcome = static_cast<YbcPgOnConflictOutcome>(pb_outcome);
+  return status;
+}
+
 YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor *source, uint64_t *ybctid) {
   return ProcessYbctid(*source, [ybctid](const auto&, const auto& yid) {
     *ybctid = pgapi->pg_types().GetYbctid().yb_to_datum(
@@ -1691,6 +1698,22 @@ YbcStatus YBCPgExecInsert(YbcPgStatement handle) {
 
 YbcStatus YBCPgInsertStmtSetUpsertMode(YbcPgStatement handle) {
   return ToYBCStatus(pgapi->InsertStmtSetUpsertMode(handle));
+}
+
+static_assert(static_cast<int>(YB_PG_ON_CONFLICT_NONE) ==
+              static_cast<int>(PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_NONE),
+              "YB_PG_ON_CONFLICT_NONE does not match PGSQL_ON_CONFLICT_NONE");
+static_assert(static_cast<int>(YB_PG_ON_CONFLICT_NOTHING) ==
+              static_cast<int>(PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_NOTHING),
+              "YB_PG_ON_CONFLICT_NOTHING does not match PGSQL_ON_CONFLICT_NOTHING");
+static_assert(static_cast<int>(YB_PG_ON_CONFLICT_UPDATE) ==
+              static_cast<int>(PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_UPDATE),
+              "YB_PG_ON_CONFLICT_UPDATE does not match PGSQL_ON_CONFLICT_UPDATE");
+
+YbcStatus YBCPgInsertStmtSetOnConflictAction(
+    YbcPgStatement handle, YbcPgOnConflictAction action) {
+  return ToYBCStatus(pgapi->InsertStmtSetOnConflictAction(handle,
+      static_cast<PgsqlWriteRequestPB::PgsqlOnConflictAction>(action)));
 }
 
 YbcStatus YBCPgInsertStmtSetWriteTime(YbcPgStatement handle, const uint64_t write_time) {

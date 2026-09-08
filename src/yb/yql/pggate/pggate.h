@@ -538,6 +538,9 @@ class PgApiImpl {
   // Utility method that checks stmt type and calls exec insert, update, or delete internally.
   Status DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count);
 
+  Status DmlGetOnConflictOutcome(
+      PgStatement *handle, PgsqlResponsePB::PgsqlOnConflictOutcome *on_conflict_outcome);
+
   // This function adds a key column to be used in the construction of the tuple id (ybctid).
   Status DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
                                bool is_null, const YbcPgTypeEntity *type_entity);
@@ -583,6 +586,9 @@ class PgApiImpl {
   Status ExecInsert(PgStatement *handle);
 
   Status InsertStmtSetUpsertMode(PgStatement *handle);
+
+  Status InsertStmtSetOnConflictAction(PgStatement *handle,
+                                       PgsqlWriteRequestPB::PgsqlOnConflictAction action);
 
   Status InsertStmtSetWriteTime(PgStatement *handle, const HybridTime write_time);
 

@@ -660,6 +660,19 @@ typedef enum {
   YB_TRANSACTIONAL
 } YbcPgTransactionSetting;
 
+typedef enum {
+  YB_PG_ON_CONFLICT_NONE = 0,
+  YB_PG_ON_CONFLICT_NOTHING = 1,
+  YB_PG_ON_CONFLICT_UPDATE = 2,
+} YbcPgOnConflictAction;
+
+typedef enum {
+  YB_PG_ON_CONFLICT_OUTCOME_UNKNOWN = 0,
+  YB_PG_ON_CONFLICT_OUTCOME_INSERTED = 1,
+  YB_PG_ON_CONFLICT_OUTCOME_UPDATED = 2,
+  YB_PG_ON_CONFLICT_OUTCOME_SKIPPED = 3,
+} YbcPgOnConflictOutcome;
+
 // Postgres WAL record pointer defined in Postgres' xlogdefs.h
 typedef uint64_t YbcPgXLogRecPtr;
 

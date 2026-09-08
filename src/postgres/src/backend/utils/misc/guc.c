@@ -3193,6 +3193,22 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
+
+	{
+		{"yb_enable_ioc_do_nothing_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Push INSERT ... ON CONFLICT DO NOTHING conflict resolution down to DocDB."),
+			NULL,
+		},
+		&yb_enable_ioc_do_nothing_pushdown,
+		/*
+		 * Gated by the yb_enable_ioc_do_nothing_pushdown preview flag in
+		 * pg_wrapper.cc. TODO: before enabling by default, add an infra
+		 * AutoFlag that pushdown also requires.
+		 */
+		false,
+		NULL, NULL, NULL
+	},
+
 	{
 		{"yb_enable_distinct_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Push supported DISTINCT operations to DocDB."),

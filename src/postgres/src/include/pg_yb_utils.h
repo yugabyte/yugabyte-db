@@ -536,6 +536,9 @@ extern int	yb_index_state_flags_update_delay;
  */
 extern bool yb_enable_expression_pushdown;
 
+/* Enables pushing INSERT ON CONFLICT DO NOTHING resolution to DocDB. */
+extern bool yb_enable_ioc_do_nothing_pushdown;
+
 /*
  * Enables distinct pushdown.
  * If true, send supported DISTINCT operations to DocDB
@@ -1667,6 +1670,8 @@ extern const char *YbGetRedactedQueryString(const char *query, int *redacted_que
 
 /* Check if optimizations for UPDATE queries have been enabled. */
 extern bool YbIsUpdateOptimizationEnabled();
+
+extern bool YbIsIocPushdownEnabled(OnConflictAction action);
 
 extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
 										bool yb_copy_split_options,
