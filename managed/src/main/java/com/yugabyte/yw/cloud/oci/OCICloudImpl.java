@@ -15,6 +15,9 @@ import com.oracle.bmc.core.model.Subnet;
 import com.oracle.bmc.core.model.Vcn;
 import com.oracle.bmc.core.requests.GetSubnetRequest;
 import com.oracle.bmc.core.requests.GetVcnRequest;
+import com.oracle.bmc.dns.DnsClient;
+import com.oracle.bmc.dns.model.Zone;
+import com.oracle.bmc.dns.requests.GetZoneRequest;
 import com.oracle.bmc.identity.IdentityClient;
 import com.oracle.bmc.identity.requests.ListAvailabilityDomainsRequest;
 import com.oracle.bmc.identity.requests.ListRegionsRequest;
@@ -157,6 +160,41 @@ public class OCICloudImpl implements CloudAPI {
       throw new PlatformServiceException(
           BAD_REQUEST, "Subnet details extraction failed: " + e.getMessage());
     }
+  }
+
+  /**
+   * Looks up a DNS zone by OCID in the provider's region. OCI answers both "no such zone" and "not
+   * authorized" with a 404, so the not-found message names both possibilities.
+   */
+  public Zone getDnsZoneOrBadRequest(Provider provider, String zoneId) {
+    OCICloudInfo ociCloudInfo = requireOciCloudInfo(provider);
+    try (DnsClient dnsClient = getDnsClient(provider, ociCloudInfo.ociRegion)) {
+      return dnsClient.getZone(GetZoneRequest.builder().zoneNameOrId(zoneId).build()).getZone();
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (BmcException e) {
+      log.error("OCI DNS zone lookup failed for {}: ", zoneId, e);
+      if (e.getStatusCode() == NOT_FOUND) {
+        throw new PlatformServiceException(
+            NOT_FOUND,
+            "DNS zone not found, or the provider credentials are not authorized to read it: "
+                + zoneId);
+      }
+      throw new PlatformServiceException(
+          BAD_REQUEST, "DNS zone details extraction failed: " + e.getMessage());
+    } catch (Exception e) {
+      log.error("Unexpected error looking up OCI DNS zone {}: ", zoneId, e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "DNS zone details extraction failed: " + e.getMessage());
+    }
+  }
+
+  /** Builds a DnsClient authenticated with the provider credentials. Package-visible for tests. */
+  DnsClient getDnsClient(Provider provider, String regionCode) {
+    OCICloudInfo ociCloudInfo = requireOciCloudInfo(provider);
+    AbstractAuthenticationDetailsProvider authProvider = buildAuthProvider(ociCloudInfo);
+    com.oracle.bmc.Region region = resolveRegion(regionCode, provider.getName());
+    return DnsClient.builder().region(region).build(authProvider);
   }
 
   private static PlatformServiceException wrapLookupFailure(
