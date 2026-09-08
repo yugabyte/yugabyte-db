@@ -23,6 +23,7 @@
 
 #include "yb/rocksdb/db/version_set.h"
 #include <memory>
+#include <optional>
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -79,6 +80,13 @@
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_kill.h"
+
+DEFINE_RUNTIME_double(find_target_key_max_deviation_ratio, 0.3,
+    "How far Version::FindTargetKey's result may sit from the requested target, as a fraction of "
+    "the data the next child should receive (target_size minus the lower bound's Cross). 0.3 "
+    "admits a 2-way split as lopsided as 65:35. Must stay below 1.0: at or above the child's whole "
+    "share, a key at the end of the DB becomes an acceptable answer and yields an empty child.");
+TAG_FLAG(find_target_key_max_deviation_ratio, advanced);
 
 DEFINE_RUNTIME_bool(log_version_edits, false,
     "Log RocksDB version edits as they are being written");
@@ -2187,12 +2195,7 @@ Result<uint64_t> Version::Cross(const Slice& key) {
   constexpr size_t kLevel = 0;
   uint64_t result = 0;
 
-  SCHECK_EQ(
-      storage_info_.num_levels_, 1, NotSupported, "Cross is not supported for multi-level storage");
-
-  if (storage_info_.files_[kLevel].empty()) {
-    return STATUS(Incomplete, "No SST file");
-  }
+  DCHECK_EQ(storage_info_.num_levels_, 1) << "Cross is not supported for multi-level storage";
 
   for (const auto* file : storage_info_.files_[kLevel]) {
     // SeekOffsetOf never consults the bloom filter so is_file_last_in_level is a don't-care
@@ -2203,6 +2206,24 @@ Result<uint64_t> Version::Cross(const Slice& key) {
         IsFilterSkipped(kLevel, /* is_file_last_in_level = */ true)));
 
     result += VERIFY_RESULT(reader_holder.table_reader->SeekOffsetOf(key));
+  }
+  return result;
+}
+
+Result<uint64_t> Version::TotalDataSize() {
+  constexpr size_t kLevel = 0;
+  uint64_t result = 0;
+
+  CHECK_EQ(storage_info_.num_levels_, 1)
+      << "TotalDataSize is not supported for multi-level storage";
+
+  for (const auto* file : storage_info_.files_[kLevel]) {
+    auto reader_holder = VERIFY_RESULT(table_cache_->GetTableReader(
+        vset_->env_options_, cfd_->internal_comparator(), file->fd, kDefaultQueryId,
+        /* no_io = */ false, cfd_->internal_stats()->GetFileReadHist(kLevel),
+        IsFilterSkipped(kLevel, /* is_file_last_in_level = */ true)));
+
+    result += reader_holder.table_reader->ApproximateOffsetOfDataEnd();
   }
   return result;
 }
@@ -2319,6 +2340,144 @@ Result<std::string> Version::GetMiddleKey(Slice lower_bound) {
       Slice{ it->second }.ToDebugHexString().c_str());
 
   return std::move(it->second);
+}
+
+Result<std::string> Version::FindTargetKey(
+    Slice lower_bound_internal_key, Slice upper_bound_internal_key, uint64_t target_size) {
+  // All SSTs live at the lowest level; we don't expect any level but 0.
+  const auto level = storage_info_.num_levels_ - 1;
+  DCHECK_EQ(level, 0) << "Multi-level storage is not supported";
+
+  if (storage_info_.files_[level].size() == 0) {
+    return STATUS_FORMAT(Incomplete, "No SST file at level $0", level);
+  }
+
+  std::vector<TableCache::TableReaderWithHandle> table_readers;
+  // SSTs at L0 are not sorted; find the largest key by scanning.
+  const InternalKeyComparator& icmp = *cfd_->internal_comparator();
+  std::string high_buf = storage_info_.files_[level][0]->largest.key.Encode().ToBuffer();
+  for (const auto* file : storage_info_.files_[level]) {
+    if (icmp.Compare(file->largest.key.Encode(), high_buf) > 0) {
+      high_buf = file->largest.key.Encode().ToBuffer();
+    }
+    table_readers.push_back(VERIFY_RESULT(table_cache_->GetTableReader(
+      vset_->env_options_, cfd_->internal_comparator(), file->fd, kDefaultQueryId,
+      /* no_io = */ false, cfd_->internal_stats()->GetFileReadHist(level),
+      IsFilterSkipped(level, /* is_file_last_in_level = */ true))));
+  }
+
+  std::string low_buf = lower_bound_internal_key.ToBuffer();
+  // The exclusive upper bound needs no resolving to a real key: Cross() of it measures the data
+  // below it, and the loop below discards any candidate whose Cross() equals the window's.
+  if (!upper_bound_internal_key.empty() &&
+      icmp.Compare(upper_bound_internal_key, high_buf) < 0) {
+    high_buf = upper_bound_internal_key.ToBuffer();
+  }
+
+  SCHECK(
+      low_buf.empty() || icmp.Compare(low_buf, high_buf) <= 0, InvalidArgument,
+      "Empty search window: lower bound is above the upper bound");
+
+  uint64_t low_cross = VERIFY_RESULT(Cross(low_buf));
+  uint64_t high_cross = VERIFY_RESULT(Cross(high_buf));
+
+  if (target_size < low_cross || target_size > high_cross) {
+    return STATUS_FORMAT(
+        Incomplete, "Target Cross $0 is outside the search window [$1, $2]",
+        target_size, low_cross, high_cross);
+  }
+
+  // The data the next child should receive: the caller spaces its targets one child apart starting
+  // at the lower bound, so this is one child's share without needing to know the split factor, and
+  // it self-corrects when an earlier cut landed off target.
+  const uint64_t max_deviation = static_cast<uint64_t>(
+      (target_size - low_cross) * FLAGS_find_target_key_max_deviation_ratio);
+
+  // Walk the files once, draining each of its useful candidates before moving on, and stop when the
+  // list runs out. A later file's candidate can in principle make an earlier one useful again, but
+  // chasing that means restarting the sweep every time a bound moves; the deviation check below is
+  // what decides whether the single pass got close enough.
+  for (const auto& reader : table_readers) {
+    for (;;) {
+      auto candidate = reader.table_reader->GetMiddleKeyWithinBounds(low_buf, high_buf);
+      if (!candidate.ok()) {
+        // Incomplete: this file has no key inside the window.
+        // NotSupported: this file's index cannot search within bounds (non block-based table).
+        // Neither is fatal for the search as a whole -- another file may still be able to help.
+        if (candidate.status().IsIncomplete() || candidate.status().IsNotSupported()) {
+          break;
+        }
+        return candidate.status();
+      }
+
+      const uint64_t candidate_cross = VERIFY_RESULT(Cross(*candidate));
+      // Only a Cross strictly inside the window subdivides it. Anything else means this file is
+      // spent: the window would not move, so the next call returns the same key. Breaking here
+      // carries termination for the inner loop, not just accuracy -- keep it in any refactor.
+      if (candidate_cross <= low_cross || candidate_cross >= high_cross) {
+        break;
+      }
+
+      if (candidate_cross < target_size) {
+        low_buf = std::move(*candidate);
+        low_cross = candidate_cross;
+      } else {
+        high_buf = std::move(*candidate);
+        high_cross = candidate_cross;
+      }
+      // TODO: VLOG the search progress
+    }
+  }
+
+  const auto cross_dist = [](uint64_t cross, uint64_t target) {
+    return cross > target ? cross - target : target - cross;
+  };
+
+  // At the fixed point both bounds are candidates; take whichever measures closer to the target.
+  const uint64_t low_dist = cross_dist(low_cross, target_size);
+  const uint64_t high_dist = cross_dist(high_cross, target_size);
+  const bool prefer_low = low_dist <= high_dist;
+  const Slice chosen = prefer_low ? Slice(low_buf) : Slice(high_buf);
+  const uint64_t chosen_dist = prefer_low ? low_dist : high_dist;
+
+  // Refuse a cut too far off target to be worth making. This is also what rules out the bounds the
+  // search never improved on: an unmoved high_buf is the scan-derived maximum key, an unmoved
+  // low_buf is the caller's own lower bound, and both sit a whole child's share or more from the
+  // target -- so a ratio below 1.0 rejects them on arithmetic alone, with no need to track where
+  // either bound came from.
+  if (chosen_dist > max_deviation) {
+    return STATUS_FORMAT(
+        Incomplete,
+        "Closest Cross to target $0 is $1, off by $2 which exceeds the allowed deviation $3",
+        target_size, prefer_low ? low_cross : high_cross, chosen_dist, max_deviation);
+  }
+
+  // Accepted candidates are already existing data keys, so this remap only does work when `chosen`
+  // is still one of the initial bounds: the caller's keys, or an SST's largest key, or a shortened
+  // index separator. Map it to the lowest existing key at or above it across all SSTs.
+  std::optional<std::string> resolved;
+  for (const auto& reader : table_readers) {
+    std::unique_ptr<InternalIterator> iter(reader.table_reader->NewIterator(
+        ReadOptions::kDefault, nullptr, /* skip_filters = */ true));
+    iter->Seek(chosen);
+    if (!VERIFY_RESULT(iter->CheckedValid())) {
+      continue;
+    }
+    // Honour the documented contract against the *caller's* upper bound, which is exclusive.
+    // Clamping to high_buf instead would be wrong: high_buf is just wherever the search stopped,
+    // and a legitimate key can sit above it while still being within the requested range.
+    if (!upper_bound_internal_key.empty() &&
+        icmp.Compare(iter->key(), upper_bound_internal_key) >= 0) {
+      continue;
+    }
+    if (!resolved || icmp.Compare(iter->key(), *resolved) < 0) {
+      resolved = iter->key().ToBuffer();
+    }
+  }
+  if (!resolved) {
+    return STATUS(Incomplete, "Failed to locate a data key near the target Cross key");
+  }
+  return std::move(*resolved);
 }
 
 Result<TableCache::TableReaderWithHandle> Version::GetLargestSstTableReader() {
@@ -3709,8 +3868,7 @@ uint64_t VersionSet::ApproximateSize(Version* v, const Slice& start,
     // scan all files from the starting position until the ending position
     // inferred from the sorted order
     for (uint64_t i = idx_start; i < files_brief.num_files; i++) {
-      uint64_t val;
-      val = ApproximateSize(v, files_brief.files[i], end);
+      uint64_t val = ApproximateSize(v, files_brief.files[i], end);
       if (!val) {
         // the files after this will not have the range
         break;
@@ -3751,27 +3909,26 @@ uint64_t VersionSet::ApproximateSize(Version* v, const FdWithBoundaries& f, cons
   // pre-condition
   assert(v);
 
-  uint64_t result = 0;
   if (v->cfd_->internal_comparator()->Compare(f.largest.key, key) <= 0) {
     // Entire file is before "key", so just add the file size
-    result = f.fd.GetTotalFileSize();
-  } else if (v->cfd_->internal_comparator()->Compare(f.smallest.key, key) > 0) {
-    // Entire file is after "key", so ignore
-    result = 0;
-  } else {
-    // "key" falls in the range for this table.  Add the
-    // approximate offset of "key" within the table.
-    TableReader* table_reader_ptr;
-    InternalIterator* iter = v->cfd_->table_cache()->NewIterator(
-        ReadOptions(), env_options_, v->cfd_->internal_comparator(), f.fd,
-        Slice() /* filter */,
-        &table_reader_ptr);
-    if (table_reader_ptr != nullptr) {
-      result = table_reader_ptr->ApproximateOffsetOf(key);
-    }
-    delete iter;
+    return f.fd.GetTotalFileSize();
   }
-  return result;
+  if (v->cfd_->internal_comparator()->Compare(f.smallest.key, key) > 0) {
+    // Entire file is after "key", so ignore
+    return 0;
+  }
+
+  // "key" falls in the range for this table.  Add the
+  // approximate offset of "key" within the table.
+  TableReader* table_reader_ptr;
+  std::unique_ptr<InternalIterator> iter(v->cfd_->table_cache()->NewIterator(
+      ReadOptions(), env_options_, v->cfd_->internal_comparator(), f.fd,
+      Slice() /* filter */,
+      &table_reader_ptr));
+  if (table_reader_ptr == nullptr) {
+    return 0;
+  }
+  return table_reader_ptr->ApproximateOffsetOf(key);
 }
 
 void VersionSet::AddLiveFiles(std::vector<FileDescriptor>* live_list) {

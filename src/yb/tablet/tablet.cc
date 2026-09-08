@@ -32,6 +32,7 @@
 
 #include "yb/tablet/tablet.h"
 
+#include <algorithm>
 #include <tuple>
 #include <utility>
 
@@ -281,6 +282,12 @@ DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
 
 DEFINE_RUNTIME_bool(tablet_split_use_middle_user_key, true,
     "Consider only user keys while determining middle key for tablet split");
+
+DEFINE_RUNTIME_bool(use_cross_split_key_detection_algorithm, false,
+    "If true, detect split keys so each child tablet holds roughly the same amount of SST data. "
+    "If false, 2-way splits use an approximate middle key, and N-way splits evenly divide hash "
+    "space (hash-partitioned tables only).");
+TAG_FLAG(use_cross_split_key_detection_algorithm, advanced);
 
 DEFINE_RUNTIME_uint32(cdcsdk_retention_barrier_no_revision_interval_secs, 120,
     "Duration for which CDCSDK retention barriers cannot be revised from the "
@@ -5138,13 +5145,6 @@ const std::string& Tablet::tablet_id() const {
 // TODO(tsplit): move `partition_split_key` outside the method,
 // covered by https://github.com/yugabyte/yugabyte-db/issues/30092.
 Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_split_key) const {
-  auto error_prefix = [this]() {
-    return Format(
-        "Failed to detect middle key, key_bounds [\"$1\" - \"$2\")",
-        Slice(key_bounds_.lower).ToDebugHexString(),
-        Slice(key_bounds_.upper).ToDebugHexString());
-  };
-
   // TODO(tsplit): should take key_bounds_ into account.
   Slice lower_bound_key;
   if (FLAGS_tablet_split_use_middle_user_key) {
@@ -5152,37 +5152,51 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
     LOG_WITH_PREFIX(INFO) << "Middle split key lower bound: " << lower_bound_key.ToDebugHexString();
   }
   auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey(lower_bound_key));
+  return ValidateAndEncodeSplitKey(std::move(middle_key), partition_split_key);
+}
 
-  // In some rare cases middle key can point to a special internal record which is not visible
+Result<std::string> Tablet::ValidateAndEncodeSplitKey(
+    std::string split_key, std::string* partition_split_key) const {
+  auto error_prefix = [this]() {
+    return Format(
+        "Failed to detect split key, key_bounds [\"$1\" - \"$2\")",
+        Slice(key_bounds_.lower).ToDebugHexString(),
+        Slice(key_bounds_.upper).ToDebugHexString());
+  };
+
+  // In some rare cases the candidate can point to a special internal record which is not visible
   // for a user, but tablet splitting routines expect the specific structure for partition keys
   // that does not match the struct of the internally used records. Moreover, it is expected
-  // to have two child tablets with alive user records after the splitting, but the split
+  // to have child tablets with alive user records after the splitting, but the split
   // by the internal record will lead to a case when one tablet will consist of internal records
   // only and these records will be compacted out at some point making an empty tablet.
-  if (PREDICT_FALSE(dockv::IsMetaKeyType(dockv::DecodeKeyEntryType(middle_key[0])))) {
+  if (PREDICT_FALSE(split_key.empty())) {
+    return STATUS_FORMAT(IllegalState, "$0: got empty key", error_prefix());
+  }
+  if (PREDICT_FALSE(dockv::IsMetaKeyType(dockv::DecodeKeyEntryType(split_key[0])))) {
     return STATUS_FORMAT(
         IllegalState, "$0: got internal record \"$1\"",
-        error_prefix(), Slice(middle_key).ToDebugHexString());
+        error_prefix(), Slice(split_key).ToDebugHexString());
   }
 
   const auto key_part = metadata()->partition_schema()->IsHashPartitioning()
                             ? dockv::DocKeyPart::kUpToHashCode
                             : dockv::DocKeyPart::kWholeDocKey;
-  const auto split_key_size = VERIFY_RESULT(dockv::DocKey::EncodedSize(middle_key, key_part));
+  const auto split_key_size = VERIFY_RESULT(dockv::DocKey::EncodedSize(split_key, key_part));
   if (PREDICT_FALSE(split_key_size == 0)) {
     // Using this verification just to have a more sensible message. The below verification will
     // not pass with split_key_size == 0 also, but its message is not accurate enough. This failure
     // may happen when a key cannot be decoded with key_part inside DocKey::EncodedSize and the key
-    // still valid for any reason (e.g. gettining non-hash key for hash partitioning).
+    // still valid for any reason (e.g. getting non-hash key for hash partitioning).
     return STATUS_FORMAT(
         IllegalState, "$0: got unexpected key \"$1\"",
-        error_prefix(), Slice(middle_key).ToDebugHexString());
+        error_prefix(), Slice(split_key).ToDebugHexString());
   }
 
-  middle_key.resize(split_key_size);
-  const Slice middle_key_slice(middle_key);
-  if (middle_key_slice.compare(key_bounds_.lower) <= 0 ||
-      (!key_bounds_.upper.empty() && middle_key_slice.compare(key_bounds_.upper) >= 0)) {
+  split_key.resize(split_key_size);
+  const Slice key_slice(split_key);
+  if (key_slice.compare(key_bounds_.lower) <= 0 ||
+      (!key_bounds_.upper.empty() && key_slice.compare(key_bounds_.upper) >= 0)) {
     // This error occurs if there is no key strictly between the tablet lower and upper bound. It
     // causes the tablet split manager to temporarily delay splitting for this tablet.
     // The error can occur if:
@@ -5193,23 +5207,23 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
     //    an uncompacted tablet anyways.
     return STATUS_EC_FORMAT(IllegalState,
         tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
-        "$0: got \"$1\"", error_prefix(), middle_key_slice.ToDebugHexString());
+        "$0: got \"$1\"", error_prefix(), key_slice.ToDebugHexString());
   }
 
-  // Check middle_key is strictly between tablet's partition bounds.
+  // Check key is strictly between tablet's partition bounds.
   const auto& partition_start = metadata()->partition()->partition_key_start();
   const auto& partition_end   = metadata()->partition()->partition_key_end();
   if (metadata()->partition_schema()->IsRangePartitioning()) {
     // No extra conversion is required for the range partitioning.
-    if (partition_start < middle_key && (partition_end.empty() || middle_key < partition_end)) {
-      return middle_key;
+    if (partition_start < split_key && (partition_end.empty() || split_key < partition_end)) {
+      return split_key;
     }
   } else {
     // Sanity check.
     CHECK(metadata()->partition_schema()->IsHashPartitioning());
 
-    // It is required to compare hash codes for the hash paritioning.
-    const auto key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(middle_key));
+    // It is required to compare hash codes for the hash partitioning.
+    const auto key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(split_key));
     if (key_hash.has_value()) {
       const auto key_hash_code = *key_hash;
       const auto hash_bounds = VERIFY_RESULT_PREPEND_FUNC(
@@ -5219,28 +5233,32 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
         if (partition_split_key) {
           *partition_split_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(key_hash_code);
         }
-        return middle_key;
+        return split_key;
       }
     }
   }
 
-  // This error occurs when middle key is not strictly between partition bounds.
+  // This error occurs when key is not strictly between partition bounds.
   return STATUS_EC_FORMAT(IllegalState,
       tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
       "$0 partition bounds [\"$1\" - \"$2\"): got \"$3\"",
       error_prefix(), Slice{partition_start}.ToDebugHexString(),
-      Slice{partition_end}.ToDebugHexString(), middle_key_slice.ToDebugHexString());
+      Slice{partition_end}.ToDebugHexString(), key_slice.ToDebugHexString());
 }
 
 Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeys(const int split_factor) const {
   SCHECK_GE(
       split_factor, kDefaultNumSplitParts, InvalidArgument, "Split factor must be at least 2");
 
+  if (FLAGS_use_cross_split_key_detection_algorithm) {
+    return DoGetSplitKeysCross(split_factor);
+  }
+
   if (split_factor > kDefaultNumSplitParts) {
     // Use a naive transitional N-way partitioning algorithm for hash-partitioned tables.
     if (metadata()->partition_schema()->IsHashPartitioning()) {
-      const auto hash_bounds = VERIFY_RESULT_PREPEND_FUNC(
-          metadata()->partition()->GetKeysAsHashBoundsInclusive());
+      const auto hash_bounds =
+          VERIFY_RESULT_PREPEND_FUNC(metadata()->partition()->GetKeysAsHashBoundsInclusive());
       const auto split_keys_result = dockv::PartitionSchema::CreateHashSplitKeys(
           split_factor, hash_bounds.first, hash_bounds.second);
       if (!split_keys_result.ok()) {
@@ -5249,8 +5267,9 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeys(const int split_factor) con
             tserver::TabletServerError(
                 tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
             "Failed to detect split keys for using split factor $1: "
-            "partition [\"$2\" - \"$3\"] is too small", split_factor,
-            Uint16ToHexString(hash_bounds.first), Uint16ToHexString(hash_bounds.second));
+            "partition [\"$2\" - \"$3\"] is too small",
+            split_factor, Uint16ToHexString(hash_bounds.first),
+            Uint16ToHexString(hash_bounds.second));
       }
 
       const auto num_keys = split_factor - 1;
@@ -5258,16 +5277,15 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeys(const int split_factor) con
       split_keys.partition_keys = std::move(*split_keys_result);
       split_keys.encoded_keys.reserve(num_keys);
       for (const auto& partition_key : split_keys.partition_keys) {
-        split_keys.encoded_keys.push_back(VERIFY_RESULT(
-            metadata()->partition_schema()->GetEncodedPartitionKey(partition_key)));
+        split_keys.encoded_keys.push_back(
+            VERIFY_RESULT(metadata()->partition_schema()->GetEncodedPartitionKey(partition_key)));
       }
 
       return split_keys;
     }
 
     return STATUS_FORMAT(
-        NotSupported,
-        "Split factor $0 (tablet $1) is not supported for the range partitioning",
+        NotSupported, "Split factor $0 (tablet $1) is not supported for the range partitioning",
         split_factor, tablet_id());
   }
 
@@ -5277,13 +5295,88 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeys(const int split_factor) con
     partition_key = encoded_key;
   }
 
-  return SplitKeysData {
-    .encoded_keys = {encoded_key},
-    .partition_keys = {partition_key}
-  };
+  return SplitKeysData{{encoded_key}, {partition_key}};
+}
+
+Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor) const {
+  SCHECK_GE(
+      split_factor, kDefaultNumSplitParts, InvalidArgument, "Split factor must be at least 2");
+
+  const int num_keys = split_factor - 1;
+
+  // Puts lower bound to data key so metadata can't be used as split key
+  Slice lower_bound_key = key_bounds_.lower;
+  if (FLAGS_tablet_split_use_middle_user_key) {
+    lower_bound_key =
+        std::max(lower_bound_key, Slice(&dockv::kMinRegularDbTableRowFirstByte, 1));
+  }
+  const Slice upper_bound_key = key_bounds_.upper;
+
+  const uint64_t total_data_size = VERIFY_RESULT(regular_db_->TotalDataSize());
+  SCHECK_GT(total_data_size, 0U, IllegalState, "No SST data available for size-based split");
+
+  SplitKeysData split_keys;
+  split_keys.encoded_keys.reserve(num_keys);
+  split_keys.partition_keys.reserve(num_keys);
+
+  const uint64_t lower_cross = VERIFY_RESULT(regular_db_->Cross(lower_bound_key));
+  const uint64_t upper_cross = upper_bound_key.empty()
+    ? total_data_size : VERIFY_RESULT(regular_db_->Cross(upper_bound_key));
+
+  DCHECK_GE(upper_cross, lower_cross);
+  auto chunk_size = (upper_cross - lower_cross) / split_factor;
+
+  std::string last_key_buf = lower_bound_key.ToBuffer();
+  for (int i = 0; i < num_keys; ++i) {
+    auto target_size = lower_cross + chunk_size * (i + 1);
+    auto split_data_key =
+        regular_db_->FindTargetKey(last_key_buf, upper_bound_key, target_size);
+    if (PREDICT_FALSE(!split_data_key.ok())) {
+      // The Cross search found nothing to measure. For a 2-way split the approximate middle key is
+      // a fine answer, so fall back rather than fail; call GetEncodedMiddleSplitKey directly, since
+      // going through DoGetSplitKeys would re-check the flag and recurse. Not extended to wider
+      // splits: the only non-Cross N-way algorithm divides hash space evenly rather than data,
+      // which is what Cross exists to replace, so falling back would quietly return a bad split.
+      if (split_data_key.status().IsIncomplete() && split_factor == kDefaultNumSplitParts) {
+        LOG_WITH_PREFIX_AND_FUNC(WARNING)
+            << "Cross split key detection did not converge, falling back to the middle key: "
+            << split_data_key.status();
+        std::string partition_key;
+        auto encoded_key = VERIFY_RESULT(GetEncodedMiddleSplitKey(&partition_key));
+        if (partition_key.empty()) {
+          partition_key = encoded_key;
+        }
+        return SplitKeysData{{encoded_key}, {partition_key}};
+      }
+      return split_data_key.status();
+    }
+    std::string split_partition_key;
+    auto split_encoded_key = VERIFY_RESULT(
+        ValidateAndEncodeSplitKey(std::move(*split_data_key), &split_partition_key));
+    if (split_partition_key.empty()) {
+      split_partition_key = split_encoded_key;
+    }
+    if (!split_keys.encoded_keys.empty() && split_encoded_key <= split_keys.encoded_keys.back()) {
+      return STATUS_EC_FORMAT(
+          IllegalState,
+          tserver::TabletServerError(
+              tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
+          "Failed to detect strictly increasing split keys for split factor $0: "
+          "got \"$1\" after \"$2\"",
+          split_factor, Slice(split_encoded_key).ToDebugHexString(),
+          Slice(split_keys.encoded_keys.back()).ToDebugHexString());
+    }
+    last_key_buf = split_encoded_key;
+    split_keys.encoded_keys.push_back(std::move(split_encoded_key));
+    split_keys.partition_keys.push_back(std::move(split_partition_key));
+  }
+
+  return split_keys;
 }
 
 Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const {
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_operation);
   auto result = DoGetSplitKeys(split_factor);
   if (!result.ok()) {
     LOG_WITH_PREFIX_AND_FUNC(INFO) << result.status();

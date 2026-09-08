@@ -505,6 +505,13 @@ class DBImpl : public DB {
 
   Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
 
+  Result<std::string> FindTargetKey(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) override;
+
+  Result<uint64_t> Cross(Slice key) override;
+
+  Result<uint64_t> TotalDataSize() override;
+
   void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override;
 
   // Returns a table reader for the largest SST file.
@@ -512,8 +519,6 @@ class DBImpl : public DB {
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
-
-  Result<uint64_t> TEST_Cross(Slice key) override;
 
   // Used in testing to replace current exclude_from_compaction functor. Returns current functor.
   CompactionFileExcluderPtr TEST_SetExcludeFromCompaction(

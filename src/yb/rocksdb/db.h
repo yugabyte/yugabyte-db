@@ -40,6 +40,8 @@
 
 #include "yb/storage/storage_types.h"
 
+#include "yb/util/status_format.h"
+
 #ifdef _WIN32
 // Windows API macro interference
 #undef DeleteFile
@@ -967,6 +969,24 @@ class DB {
   // Returns approximate middle key (see Version::GetMiddleKey).
   virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) = 0;
 
+  // Returns an existing user key inside [lower_bound_key; upper_bound_key) whose Cross() value is
+  // close to `target_size` -- an absolute Cross value, not one relative to the lower bound.
+  // "Close" is bounded by FLAGS_find_target_key_max_deviation_ratio.
+  // An empty bound means no corresponding bound. The lower bound also happens to be exclusive,
+  // but callers needing strictly increasing results must still check for themselves.
+  // Returns Status(Incomplete) when no suitable key exists; callers that can tolerate a worse cut
+  // should fall back to GetMiddleKey() on it. Any other status is a real failure.
+  virtual yb::Result<std::string> FindTargetKey(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) = 0;
+
+  // Returns the sum of SeekOffsetOf(key) across all SSTs in the current version.
+  // `key` is a user key; empty means the start of the keyspace.
+  virtual yb::Result<uint64_t> Cross(Slice key) = 0;
+
+  // Returns the total size of the data (excluding metadata/index/filter blocks) across all
+  // SSTs in the current version.
+  virtual yb::Result<uint64_t> TotalDataSize() = 0;
+
   // If true, will allow compactions to fail without setting bg_error and not causing writes to
   // fail. Should only be used with extra care for troubleshooting when/while there are no other
   // options available.
@@ -980,11 +1000,6 @@ class DB {
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}
-
-  // Returns the sum of SeekOffsetOf(key) across all SSTs in the current version.
-  virtual yb::Result<uint64_t> TEST_Cross(Slice key) {
-    return STATUS(NotSupported, "");
-  }
 
  private:
   // No copying allowed

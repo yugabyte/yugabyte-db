@@ -4764,6 +4764,19 @@ class ModelDB: public DB {
     return NotSupported();
   }
 
+  Result<std::string> FindTargetKey(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) override {
+    return NotSupported();
+  }
+
+  Result<uint64_t> Cross(Slice key) override {
+    return NotSupported();
+  }
+
+  Result<uint64_t> TotalDataSize() override {
+    return NotSupported();
+  }
+
   void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override {
     LOG(FATAL) << "SetAllowCompactionFailures is not supported.";
   }

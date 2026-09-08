@@ -3541,25 +3541,220 @@ TEST_F(TableTest, Cross) {
   ASSERT_OK(db->Flush(FlushOptions()));
 
   // Before all keys: every SST contributes 0.
-  const uint64_t cross_before = ASSERT_RESULT(db->TEST_Cross(""));
+  const uint64_t cross_before = ASSERT_RESULT(db->Cross(""));
   ASSERT_EQ(cross_before, 0u);
 
   // Past all keys: sum of all SST data sizes (the maximum).
-  const uint64_t total = ASSERT_RESULT(db->TEST_Cross("\xff"));
+  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
   ASSERT_GT(total, 6000u);
 
   // Monotonically non-decreasing across the key space.
   uint64_t prev = 0;
   for (int k = 0; k < kNumKeys; k += kStep) {
-    const uint64_t c = ASSERT_RESULT(db->TEST_Cross(padded(k)));
+    const uint64_t c = ASSERT_RESULT(db->Cross(padded(k)));
     ASSERT_GE(c, prev) << "non-monotonic at key " << k;
     ASSERT_LE(c, total) << "exceeds total at key " << k;
     prev = c;
   }
 
   // A key in the middle should produce an intermediate value.
-  const uint64_t mid = ASSERT_RESULT(db->TEST_Cross(padded(kMidpointKey)));
+  const uint64_t mid = ASSERT_RESULT(db->Cross(padded(kMidpointKey)));
   ASSERT_BETWEEN(mid, total / 2 - kLeeway, total / 2 + kLeeway);
+
+  delete db;
+}
+
+// Drives DB::FindTargetKey the way an N-way split does: every cut uses the previous cut as its
+// lower bound and aims at an absolute Cross target of total * (i + 1) / split_factor. Unlike
+// Tablet::DoGetSplitKeysCross, there are no tablet key bounds and no split key validation.
+yb::Result<std::vector<std::string>> GetSplitKeysCrossForTest(DB* db, int split_factor) {
+  const int num_keys = split_factor - 1;
+  const uint64_t total_size = VERIFY_RESULT(db->TotalDataSize());
+  std::vector<std::string> keys;
+  keys.reserve(num_keys);
+  std::string last_key_buf;
+  const Slice upper_bound_key;
+  for (int i = 0; i < num_keys; ++i) {
+    auto key = VERIFY_RESULT(db->FindTargetKey(
+        last_key_buf, upper_bound_key, total_size * (i + 1) / split_factor));
+    last_key_buf = key;
+    keys.push_back(std::move(key));
+  }
+  return keys;
+}
+
+// Scenario (relative sizes 200:300:500, target = total/2 = 500):
+//   SST_1 size 200  keys: c=0, h=50, m=100, p=150
+//   SST_2 size 300  keys: e=0, k=60, q=120, v=180, y=240
+//   SST_3 size 500  keys: a..z with ~31-unit spacing; n sits at ~250 (half of SST_3)
+// 2-way GetSplitKeysCross cut settles on user key "n".
+TEST_F(TableTest, GetSplitKeysCrossHalfOfUnevenSsts) {
+  rocksdb::Options options;
+  options.compaction_style = rocksdb::kCompactionStyleNone;
+  options.num_levels = 1;
+  options.create_if_missing = true;
+  options.compression = kNoCompression;
+  // One key per block so index midpoints land on real keys (letters).
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 64;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+
+  const std::string kDBPath = test::TmpDir() + "/find_target_uneven_ssts";
+  ASSERT_OK(DestroyDB(kDBPath, options));
+  rocksdb::DB* db;
+  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+  // Scale unit so on-disk Cross offsets track the scenario's 50/60/31 spacing.
+  constexpr size_t kScale = 256;
+  auto put_keys = [&](std::initializer_list<char> keys, size_t chunk) {
+    const std::string val(chunk * kScale, 'v');
+    for (char c : keys) {
+      ASSERT_OK(db->Put(rocksdb::WriteOptions(), std::string(1, c), val));
+    }
+    ASSERT_OK(db->Flush(FlushOptions()));
+  };
+
+  // SST_1: 4 keys x 50 = 200
+  put_keys({'c', 'h', 'm', 'p'}, 50);
+  // SST_2: 5 keys x 60 = 300
+  put_keys({'e', 'k', 'q', 'v', 'y'}, 60);
+  // SST_3: 16 keys x approx 31 = approx 496 ~= 500; "n" is the 9th key (middle of this file).
+  put_keys({'a', 'b', 'd', 'f', 'g', 'i', 'k', 'l', 'n', 'p', 'r', 't', 'v', 'w', 'y', 'z'}, 31);
+
+  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
+  ASSERT_GT(total, 0u);
+
+  // split_factor=2 -> one cut at total/2; must be "n".
+  const auto keys = ASSERT_RESULT(GetSplitKeysCrossForTest(db, /*split_factor=*/2));
+  ASSERT_EQ(keys.size(), 1u);
+
+  // FindTargetKey returns a user key.
+  const std::string& mid_user = keys[0];
+  const uint64_t mid_cross = ASSERT_RESULT(db->Cross(mid_user));
+  ASSERT_EQ(mid_user, "n")
+      << "half-target key=" << mid_user << " Cross=" << mid_cross << " total/2=" << (total / 2);
+
+  delete db;
+}
+
+// Scenario (relative sizes 400:600, target = total/2 = 500):
+//   SST_1 size 400  keys: a=0, b=200
+//   SST_2 size 600  keys: y=0, z=300
+// Cross values are a=0, b=200, y=400, z=700. FindTargetKey returns the key whose Cross is
+// nearest the target, which is "y": cutting there leaves 400 below and 600 above, against
+// |400 - 500| = 100, where "z" would leave 700/300 at |700 - 500| = 200. Note every key here
+// occupies its own data block, so no block has a middle record and the only candidates the search
+// can see are the single-record fallbacks (see BlockBasedTable::GetFirstDataBlockMiddleKey).
+TEST_F(TableTest, GetSplitKeysCrossHalfOfDisjointUnevenSsts) {
+  rocksdb::Options options;
+  options.compaction_style = rocksdb::kCompactionStyleNone;
+  options.num_levels = 1;
+  options.create_if_missing = true;
+  options.compression = kNoCompression;
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 64;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+
+  const std::string kDBPath = test::TmpDir() + "/find_target_disjoint_uneven_ssts";
+  ASSERT_OK(DestroyDB(kDBPath, options));
+  rocksdb::DB* db;
+  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+  constexpr size_t kScale = 256;
+  auto put_keys = [&](std::initializer_list<char> keys, size_t chunk) {
+    const std::string val(chunk * kScale, 'v');
+    for (char c : keys) {
+      ASSERT_OK(db->Put(rocksdb::WriteOptions(), std::string(1, c), val));
+    }
+    ASSERT_OK(db->Flush(FlushOptions()));
+  };
+
+  // SST_1: 2 keys x 200 = 400
+  put_keys({'a', 'b'}, 200);
+  // SST_2: 2 keys x 300 = 600
+  put_keys({'y', 'z'}, 300);
+
+  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
+  ASSERT_GT(total, 0u);
+
+  // split_factor=2 -> one cut at total/2; must be "z".
+  const auto keys = ASSERT_RESULT(GetSplitKeysCrossForTest(db, /*split_factor=*/2));
+  ASSERT_EQ(keys.size(), 1u);
+
+  // FindTargetKey returns a user key.
+  const std::string& mid_user = keys[0];
+  const uint64_t mid_cross = ASSERT_RESULT(db->Cross(mid_user));
+  ASSERT_EQ(mid_user, "y")
+      << "half-target key=" << mid_user << " Cross=" << mid_cross << " total/2=" << (total / 2);
+  // The cut must beat the max key, which an unconverged search would otherwise fall out to.
+  ASSERT_LT(mid_cross, ASSERT_RESULT(db->Cross("z")));
+
+  delete db;
+}
+
+// Scenario (relative sizes 200:300:500 - same layout as GetSplitKeysCrossHalfOfUnevenSsts):
+//   SST_1 size 200  keys: c, h, m, p
+//   SST_2 size 300  keys: e, k, q, v, y
+//   SST_3 size 500  keys: a..z (~31-unit spacing); max key "z"
+// 3-way cuts at total/3 and 2*total/3. Max key "z" has Cross ~= total, so the 2/3 cut
+// must be a strictly smaller key - catches end-biased regressions.
+TEST_F(TableTest, GetSplitKeysCrossThreeWayUnevenSsts) {
+  rocksdb::Options options;
+  options.compaction_style = rocksdb::kCompactionStyleNone;
+  options.num_levels = 1;
+  options.create_if_missing = true;
+  options.compression = kNoCompression;
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 64;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+
+  const std::string kDBPath = test::TmpDir() + "/find_target_three_way_uneven_ssts";
+  ASSERT_OK(DestroyDB(kDBPath, options));
+  rocksdb::DB* db;
+  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+  constexpr size_t kScale = 256;
+  auto put_keys = [&](std::initializer_list<char> keys, size_t chunk) {
+    const std::string val(chunk * kScale, 'v');
+    for (char c : keys) {
+      ASSERT_OK(db->Put(rocksdb::WriteOptions(), std::string(1, c), val));
+    }
+    ASSERT_OK(db->Flush(FlushOptions()));
+  };
+
+  put_keys({'c', 'h', 'm', 'p'}, 50);
+  put_keys({'e', 'k', 'q', 'v', 'y'}, 60);
+  put_keys({'a', 'b', 'd', 'f', 'g', 'i', 'k', 'l', 'n', 'p', 'r', 't', 'v', 'w', 'y', 'z'}, 31);
+
+  const uint64_t total = ASSERT_RESULT(db->TotalDataSize());
+  ASSERT_GT(total, 0u);
+  const uint64_t cross_z = ASSERT_RESULT(db->Cross("z"));
+  // Max key should sit at the end of Cross-space (~= total).
+  ASSERT_GE(cross_z, total - total / 20);
+
+  const auto keys = ASSERT_RESULT(GetSplitKeysCrossForTest(db, /*split_factor=*/3));
+  ASSERT_EQ(keys.size(), 2u);
+
+  const std::string& k0 = keys[0];
+  const std::string& k1 = keys[1];
+  const uint64_t c0 = ASSERT_RESULT(db->Cross(k0));
+  const uint64_t c1 = ASSERT_RESULT(db->Cross(k1));
+  const uint64_t leeway = total / 5;
+
+  ASSERT_LT(k0, k1) << "cuts must be strictly increasing";
+  // 2/3 cut must not be the max key (end-biased FindTargetKey would return "z").
+  ASSERT_NE(k1, "z");
+  ASSERT_LT(k1, "z");
+  ASSERT_NE(c1, cross_z) << "2/3 cut Cross must differ from max-key Cross";
+
+  ASSERT_GE(c0 + leeway, total / 3)
+      << "k0=" << k0 << " Cross=" << c0 << " total/3=" << (total / 3);
+  ASSERT_LE(c0, total / 3 + leeway)
+      << "k0=" << k0 << " Cross=" << c0 << " total/3=" << (total / 3);
+  ASSERT_GE(c1 + leeway, 2 * total / 3)
+      << "k1=" << k1 << " Cross=" << c1 << " 2*total/3=" << (2 * total / 3);
+  ASSERT_LE(c1, 2 * total / 3 + leeway)
+      << "k1=" << k1 << " Cross=" << c1 << " 2*total/3=" << (2 * total / 3);
 
   delete db;
 }

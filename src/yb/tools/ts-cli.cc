@@ -74,6 +74,7 @@
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 
 using yb::cdc::CDCServiceProxy;
 using yb::cdc::UpdateCdcReplicatedIndexRequestPB;
@@ -101,6 +102,8 @@ using yb::tserver::DeleteTabletRequestPB;
 using yb::tserver::DeleteTabletResponsePB;
 using yb::tserver::FlushTabletsRequestPB;
 using yb::tserver::FlushTabletsResponsePB;
+using yb::tserver::GetSplitKeyRequestPB;
+using yb::tserver::GetSplitKeyResponsePB;
 using yb::tserver::IsTabletServerReadyRequestPB;
 using yb::tserver::IsTabletServerReadyResponsePB;
 using yb::tserver::ListMasterServersRequestPB;
@@ -126,6 +129,7 @@ const char* const kCurrentHybridTime = "current_hybrid_time";
 const char* const kStatus = "status";
 const char* const kCountIntents = "count_intents";
 const char* const kFlushTabletOp = "flush_tablet";
+const char* const kGetSplitKeyOp = "get_split_key";
 const char* const kFlushAllTabletsOp = "flush_all_tablets";
 const char* const kFlushVectorIndexOp = "flush_vector_index";
 const char* const kCompactTabletOp = "compact_tablet";
@@ -270,6 +274,9 @@ class TsAdminClient {
   // Flush or compact a given tablet on a given tablet server.
   // If 'tablet_id' is empty string, flush or compact all tablets.
   Status FlushOrCompactTablets(bool is_compaction, const TabletId& tablet_id);
+
+  // Prints the split keys that would divide the given tablet into 'split_factor' pieces.
+  Status GetSplitKey(const TabletId& tablet_id, int split_factor);
 
   // For a given tablet, flush or compact vector index chunks for the provided vector indexes.
   // If vector indexes are empty, do the operation for all vector indexes for the given tablet.
@@ -726,6 +733,29 @@ Status TsAdminClient::FlushOrCompactVectorIndex(
       is_compaction, tablet_id, vector_index_ids, tablet::FLUSH_COMPACT_VECTOR_INDEX_ONLY);
 }
 
+Status TsAdminClient::GetSplitKey(const TabletId& tablet_id, int split_factor) {
+  GetSplitKeyRequestPB req;
+  GetSplitKeyResponsePB resp;
+  RpcController rpc;
+
+  req.set_tablet_id(tablet_id);
+  req.set_split_factor(split_factor);
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK_PREPEND(ts_proxy_->GetSplitKey(req, &resp, &rpc), "GetSplitKey() failed");
+
+  if (resp.has_error()) {
+    return STATUS(IOError, "Failed to get split key: ", resp.error().ShortDebugString());
+  }
+
+  for (const auto& partition_key : resp.split_partition_keys()) {
+    std::cout << "Partition split key: " << strings::b2a_hex(partition_key) << std::endl;
+  }
+  for (const auto& encoded_key : resp.split_encoded_keys()) {
+    std::cout << "Encoded split key: " << strings::b2a_hex(encoded_key) << std::endl;
+  }
+  return Status::OK();
+}
+
 Status TsAdminClient::ReloadCertificates() {
   CHECK(initted_);
 
@@ -949,6 +979,7 @@ void SetUsage(const char* argv0) {
       << "  " << kStatus << "\n"
       << "  " << kCountIntents << "\n"
       << "  " << kFlushTabletOp << " <tablet_id>\n"
+      << "  " << kGetSplitKeyOp << " <tablet_id> [<split_factor>]\n"
       << "  " << kFlushAllTabletsOp << "\n"
       << "  " << kFlushVectorIndexOp << " <tablet_id> [<vector_index_id1> <vector_index_id2> ...]\n"
       << "  " << kCompactTabletOp << " <tablet_id> [-exclude-vector-indexes]\n"
@@ -1161,6 +1192,21 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.FlushOrCompactTablets(op == kCompactTabletOp, tablet_id),
         "Unable to flush or compact tablet");
+  } else if (op == kGetSplitKeyOp) {
+    if (argc < 3) {
+      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
+    }
+
+    std::string tablet_id = argv[2];
+    int split_factor = 2;
+    if (argc > 3) {
+      auto parsed_split_factor = CheckedStoi(argv[3]);
+      RETURN_NOT_OK_PREPEND_FROM_MAIN(
+          ResultToStatus(parsed_split_factor), "Invalid split_factor");
+      split_factor = *parsed_split_factor;
+    }
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.GetSplitKey(tablet_id, split_factor), "Unable to get split key for tablet");
   } else if (op == kCompactAllTabletsOp || op == kFlushAllTabletsOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 

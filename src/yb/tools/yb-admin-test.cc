@@ -2725,6 +2725,9 @@ TEST_F_EX(AdminCliTest, TestSplitTabletMultiWay, AdminCliListTabletsTest) {
   workload.StopAndJoin();
   LOG(INFO) << "Number of rows inserted: " << workload.rows_inserted();
 
+  // Flush to SST. Size-based split (FLAGS_use_cross_split_key_detection_algorithm) needs SST data.
+  ASSERT_OK(CallAdmin("flush_table", keyspace, table_name));
+
   // Verify multi-way split is disallowed when gFlag is disabled.
   constexpr int kSplitFactor = 5;
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_enable_multi_way_tablet_split", "false"));

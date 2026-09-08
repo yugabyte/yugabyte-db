@@ -6131,6 +6131,39 @@ Result<std::string> DBImpl::GetMiddleKey(Slice lower_bound_key) {
   return default_cf_handle_->cfd()->current()->GetMiddleKey(kEmptyInternalKey);
 }
 
+yb::Result<std::string> DBImpl::FindTargetKey(
+    Slice lower_bound_key, Slice upper_bound_key, uint64_t target_size) {
+  // TODO: lock is held over the entirety of FindTargetKey.
+  // Future optimization is to release lock in between reads
+  InstrumentedMutexLock lock(&mutex_);
+  auto* current_version = default_cf_handle_->cfd()->current();
+
+  const auto lower_internal = InternalKey::MinPossibleForUserKey(lower_bound_key);
+
+  // Exclusive bound: MaxPossibleForUserKey sorts *below* every entry for this user key, despite
+  // its name and its comment in dbformat.h -- internal keys order by decreasing sequence number.
+  std::string upper_internal_buf;
+  if (!upper_bound_key.empty()) {
+    upper_internal_buf =
+        InternalKey::MaxPossibleForUserKey(upper_bound_key).Encode().ToBuffer();
+  }
+
+  auto internal_key = VERIFY_RESULT(current_version->FindTargetKey(
+      lower_internal.Encode(), upper_internal_buf, target_size));
+  return ExtractUserKey(internal_key).ToBuffer();
+}
+
+yb::Result<uint64_t> DBImpl::Cross(Slice key) {
+  InstrumentedMutexLock lock(&mutex_);
+  auto internal_key = InternalKey::MinPossibleForUserKey(key);
+  return default_cf_handle_->cfd()->current()->Cross(internal_key.Encode());
+}
+
+yb::Result<uint64_t> DBImpl::TotalDataSize() {
+  InstrumentedMutexLock lock(&mutex_);
+  return default_cf_handle_->cfd()->current()->TotalDataSize();
+}
+
 void DBImpl::TEST_SwitchMemtable() {
   std::lock_guard lock(mutex_);
   WriteContext context;

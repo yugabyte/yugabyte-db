@@ -710,9 +710,12 @@ class Tablet : public AbstractTablet,
 
   // Returns a set of split keys that split the tablet data into split_factor number of
   // approximately even partitions.
-  // - When the split_factor is 2, an approximate middle key is determined.
-  // - When the split_factor is greater than 2 and with hash-partitioning, a placeholder
-  //   logic returns a set of split keys.
+  // - If FLAGS_use_cross_split_key_detection_algorithm is set, DoGetSplitKeysCross is used for
+  //   any split_factor and both hash and range partitioning.
+  // - Otherwise:
+  //   - split_factor == 2: an approximate middle key is determined.
+  //   - split_factor > 2 and hash-partitioning: hash-space arithmetic returns a set of split keys.
+  //   - split_factor > 2 and range-partitioning: not supported.
   Result<SplitKeysData> GetSplitKeys(int split_factor) const;
 
   std::string TEST_DocDBDumpStr(
@@ -1216,6 +1219,19 @@ class Tablet : public AbstractTablet,
   // hash-based partitions only (to prevent additional memory copying), as partition middle key for
   // range-based partitions always matches the returned middle key.
   Result<std::string> GetEncodedMiddleSplitKey(std::string* partition_split_key = nullptr) const;
+
+  // Validates a RocksDB-produced candidate split key: rejects meta/internal records, trims to the
+  // DocKey prefix used as a partition boundary, and checks tablet/partition bounds.
+  // On success returns the encoded split key. For hash partitioning, optionally fills
+  // partition_split_key with the hash-code partition key.
+  Result<std::string> ValidateAndEncodeSplitKey(
+      std::string split_key, std::string* partition_split_key = nullptr) const;
+
+  // Returns split_factor - 1 split keys chosen so that each resulting range holds roughly the same
+  // amount of SST data, using RocksDB's Cross()/FindTargetKey() size estimates rather than key
+  // counts. Works for both partitioning schemes and any split_factor. Gated by
+  // FLAGS_use_cross_split_key_detection_algorithm.
+  Result<SplitKeysData> DoGetSplitKeysCross(const int split_factor) const;
 
   // Refer to Tablet::GetSplitKeys(...) for the description.
   Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;

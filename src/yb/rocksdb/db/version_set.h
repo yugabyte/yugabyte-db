@@ -520,13 +520,34 @@ class Version {
 
   size_t GetMemoryUsageByTableReaders();
 
-  // Returns the sum of SeekOffsetOf(key) for all SST files
+  // Returns the sum of SeekOffsetOf(key) for all SST files: an estimate of how much SST data
+  // sorts below `key`. Non-decreasing, but distinct keys can share a value.
+  // Takes an *internal* key, unlike DB::Cross().
   Result<uint64_t> Cross(const Slice& key);
+
+  // Returns the sum of ApproximateOffsetOfDataEnd() for all SST files, or 0 if there are none.
+  // Strictly greater than Cross() of the largest key, so don't use it as a target Cross() is
+  // expected to reach.
+  Result<uint64_t> TotalDataSize();
 
   // Returns weighted middle key of the approximate middle keys of the SST files
   // (see TableReader::GetMiddleKey).
   // Returns Status(Incomplete) if there are no SST files for this version.
   Result<std::string> GetMiddleKey(Slice lower_bound_internal_key);
+
+  // Returns an existing internal key whose Cross() is near target_size -- an absolute Cross
+  // value, not one relative to the lower bound -- always inside
+  // [lower_bound_internal_key, upper_bound_internal_key): the result can equal the lower bound but
+  // never the upper. An empty upper bound means none; exclusive matches KeyBounds. "Near" is
+  // bounded by FLAGS_find_target_key_max_deviation_ratio.
+  // Returns Status(Incomplete) when no suitable key exists: there are no SST files, target_size
+  // lies outside the bounds' own Cross range, the closest key the search can reach is further off
+  // than that ratio allows, or no data key could be located near the one chosen. Callers that can
+  // tolerate a worse cut should fall back to GetMiddleKey on Incomplete; any other status is a
+  // real failure (NotSupported for multi-level storage, InvalidArgument for inverted bounds, or a
+  // propagated read error).
+  Result<std::string> FindTargetKey(
+      Slice lower_bound_internal_key, Slice upper_bound_internal_key, uint64_t target_size);
 
   // Returns a table reader for the largest SST file.
   Result<TableReader*> TEST_GetLargestSstTableReader();
