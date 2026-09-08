@@ -31,6 +31,6 @@ When there are multiple consuming applications each consuming from a different r
 
 ## Avoid reusing Kafka topics across slots
 
-Kafka stores the last consumed LSN separately from the replication slot. Deleting a connector does not remove that offset. If you drop the slot, recreate it, and start a connector that writes to the same Kafka topics, Kafka may resume from the old LSN. Because LSNs aren't comparable across slots, that can skip changes on the new slot.
+Kafka stores the last received LSN for each replication slot. Deleting a connector does not clear these offsets. If a replication slot is dropped and recreated with the same slot name and  a connector is deployed to stream change events using this replication slot to the previously created Kafka topics, the connector would try to start streaming from the LSN stored as per the previous replication slot.
 
-To avoid re-use of Kafka topics across slots and prevent CDC from missing data due to incorrect start LSNs coming from a different slot, each connector which uses a different slot should use a different [`topic.prefix`](./yugabytedb-connector-properties/#topic-prefix).
+In YB CDC, with `SEQUENCE` LSN type, the LSNs are not comparable across slots. Hence such a deployment can cause the new slot to miss sending some records. To prevent this from happening, always ensure that changes from each slot are streamed to its own set of topics. Do not re-use kafka topics across slots. This can be ensured by using a different [`topic.prefix`](./yugabytedb-connector-properties/#topic-prefix) for every connector which polls using a new replication slot.
