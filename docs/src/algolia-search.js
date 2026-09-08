@@ -3,12 +3,13 @@ import { getCookie } from 'browser-cookie-utils';
 
 /* eslint no-underscore-dangle: 0 */
 (function () {
-  const activeGroups = window.OnetrustActiveGroups || '';
   const algoliaAppId = 'UMBCUJCBE8';
   const algoliaApiKey = '7cd0659fb88c5d3f1abce809ad5f96f2';
   const algoliaIndexName = 'yugabytedb_docs';
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
+
+  let activeGroups = window.OnetrustActiveGroups || '';
 
   /**
    * Kapa modal Styling and add shadow on root.
