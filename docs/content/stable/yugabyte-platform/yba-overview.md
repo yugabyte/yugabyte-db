@@ -131,7 +131,12 @@ Throughout the documentation, steps that differ between the two UIs are marked a
 
 While in Early Access, the new experience is not available by default.
 
-To enable the new experience, set the **Enable new Universe experience** Global Runtime Configuration option (config key `yb.ui.enable_new_universe_experience`) to true. Refer to [Manage runtime configuration settings](../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+To enable the new experience, do the following:
+
+- To enable the experience for Super Admin, set the **Enable new Universe experience** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_new_universe_experience`) to true.
+- To enable the experience for all users, set the **Enable new Universe experience for all users** Global Runtime Configuration option (config key `yb.ui.enable_new_universe_experience_for_all_users`) to true.
+
+Refer to [Manage runtime configuration settings](../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 
 ### New and improved
