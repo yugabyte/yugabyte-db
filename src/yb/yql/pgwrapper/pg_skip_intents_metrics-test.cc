@@ -1426,10 +1426,14 @@ class SkipIntentsNoDdlTxnBlockTest : public SkipIntentsMetricTest {
     SkipIntentsMetricTest::UpdateMiniClusterOptions(options);
     for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
       flags->emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-      // DDL savepoints and object locking both require transactional DDL, so keep the flags
-      // consistent.
+      // DDL savepoints and object locking both require transactional DDL, and concurrent DDL
+      // requires object locking, so keep the flags consistent. ysql_enable_concurrent_ddl
+      // defaults to on in release builds, so leaving it out kills every daemon on flag
+      // validation there.
       flags->emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
       flags->emplace_back("--enable_object_locking_for_table_locks=false");
+      flags->emplace_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
     }
     // ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks also requires transactional DDL;
     // leaving the base class value of true would fail flag validation at startup.
