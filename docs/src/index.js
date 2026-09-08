@@ -260,16 +260,10 @@ function observeDocsHeaderHeight() {
   }
 }
 
-window.addEventListener('OneTrustGroupsUpdated', () => {
-  activeGroups = window.OnetrustActiveGroups;
-});
-
-$(document).ready(() => {
-  const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
-  if (isSafari) {
-    $('body').addClass('is-safari');
-  }
-
+/**
+ * Delete internal cookies on updating consent.
+ */
+function deleteInternalCookies() {
   if (activeGroups.indexOf('C0003') === -1) {
     deleteCookie('leftMenuWidth');
     deleteCookie('leftMenuShowHide');
@@ -280,6 +274,23 @@ $(document).ready(() => {
     deleteCookie('utm_medium');
     deleteCookie('utm_source');
     deleteCookie('utm_term');
+  }
+}
+
+window.addEventListener('OneTrustGroupsUpdated', () => {
+  activeGroups = window.OnetrustActiveGroups;
+
+  deleteInternalCookies();
+});
+
+$(document).ready(() => {
+  const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
+  if (isSafari) {
+    $('body').addClass('is-safari');
+  }
+
+  if (activeGroups.indexOf('C0003') === -1) {
+    deleteInternalCookies();
   }
 
   const pageFinderContainer = document.querySelectorAll('.page-finder .finder-panel .inner-container');
