@@ -113,14 +113,14 @@ func (h *ConfigureServerHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 	}
 
 	// 3) Execute the shell commands.
-	err = h.execShellCommands(ctx, h.param.GetYbHomeDir())
+	err = h.execShellCommands(ctx)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
 		return nil, err
 	}
 
 	// 4) Setup the server scripts.
-	err = h.setupServerScript(ctx, h.param.GetYbHomeDir(), yb_metrics_dir)
+	err = h.setupServerScript(ctx, yb_metrics_dir)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
 		return nil, err
@@ -135,7 +135,7 @@ func (h *ConfigureServerHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 
 	for _, process := range h.param.GetProcesses() {
 		// 6) Configure the individual specified process.
-		err = h.configureProcess(ctx, h.param.GetYbHomeDir(), process)
+		err = h.configureProcess(ctx, process)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
 			return nil, err
@@ -145,11 +145,12 @@ func (h *ConfigureServerHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 	return nil, nil
 }
 
-func (h *ConfigureServerHandler) configureProcess(ctx context.Context, home, process string) error {
+func (h *ConfigureServerHandler) configureProcess(ctx context.Context, process string) error {
 	mountPoints := h.param.GetMountPoints()
 	if len(mountPoints) == 0 {
 		return errors.New("mountPoints is required")
 	}
+	home := h.param.GetYbHomeDir()
 	mountPoint := mountPoints[0]
 	steps := []struct {
 		Desc string
@@ -233,18 +234,20 @@ func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context) erro
 }
 
 func (h *ConfigureServerHandler) setupServerScript(
-	ctx context.Context,
-	home, yb_metrics_dir string,
+	ctx context.Context, yb_metrics_dir string,
 ) error {
+	home := h.param.GetYbHomeDir()
+	mountPoints := h.param.GetMountPoints()
 	serverScriptContext := map[string]any{
-		"mount_paths":       strings.Join(h.param.GetMountPoints(), " "),
-		"user_name":         h.username,
-		"yb_cores_dir":      filepath.Join(home, "cores"),
-		"systemd_option":    true,
-		"yb_home_dir":       home,
-		"num_cores_to_keep": h.param.GetNumCoresToKeep(),
-		"yb_metrics_dir":    yb_metrics_dir,
-		"configure_cgroup":  h.param.GetConfigureCgroup(),
+		"mount_paths":        strings.Join(mountPoints, " "),
+		"user_name":          h.username,
+		"yb_cores_dir":       filepath.Join(home, "cores"),
+		"systemd_option":     true,
+		"yb_home_dir":        home,
+		"num_cores_to_keep":  h.param.GetNumCoresToKeep(),
+		"yb_metrics_dir":     yb_metrics_dir,
+		"configure_cgroup":   h.param.GetConfigureCgroup(),
+		"check_data_volumes": h.param.GetCheckDataVolumes(),
 	}
 	if h.param.AcceptableClockSkewWaitEnabled != nil {
 		serverScriptContext["is_acceptable_clock_skew_wait_enabled"] =
@@ -302,13 +305,12 @@ func (h *ConfigureServerHandler) setupServerScript(
 }
 
 func (h *ConfigureServerHandler) execShellCommands(
-	ctx context.Context,
-	home string,
-) error {
+	ctx context.Context) error {
 	mountPoints := h.param.GetMountPoints()
 	if len(mountPoints) == 0 {
 		return errors.New("mountPoints is required")
 	}
+	home := h.param.GetYbHomeDir()
 	mountPoint := mountPoints[0]
 	steps := []struct {
 		Desc string
