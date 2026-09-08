@@ -9,17 +9,23 @@ import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { Typography, makeStyles } from '@material-ui/core';
-import { YBButton } from '@yugabyte-ui-library/core';
+import {
+  OperationBannerVariant,
+  YBButton,
+  YBOperationBanner
+} from '@yugabyte-ui-library/core';
 
 import { showTaskInDrawer } from '@app/actions/tasks';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { YBProgressBarState } from '@app/redesign/components/YBProgress/YBLinearProgress';
 import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
 import { useTaskActionMutations } from '../../hooks/useTaskActionMutations';
 import { getIsEditUniverseTask } from '../../TaskUtils';
 import { Task, TaskState } from '../../dtos';
 import { RetryConfirmModal, RollbackConfirmModal } from '../drawerComp/TaskDetailActions';
-import { ClusterOperationBanner, ClusterOperationBannerType } from './ClusterOperationBanner';
+import { OperationBannerProgressContent } from './OperationBannerProgressContent';
+import { OperationBannerLoadingIcon } from './operationBannerIcons';
 
 import InfoIcon from '@app/redesign/assets/info.svg';
 
@@ -117,32 +123,39 @@ export const EditUniverseTaskBanner = ({
     case TaskState.PAUSED:
     case TaskState.ABORT:
       bannerComponent = (
-        <ClusterOperationBanner
-          type={ClusterOperationBannerType.IN_PROGRESS}
+        <YBOperationBanner
+          variant={OperationBannerVariant.Info}
+          dense
+          minHeight={46}
+          iconCircle={false}
+          icon={<OperationBannerLoadingIcon />}
           title={t('inProgress.title')}
-          description={t('inProgress.description')}
-          progressPercent={task.percentComplete ?? 0}
-          dataTestId={BANNER_TEST_ID}
-          actions={
-            <div className={classes.actions}>
-              <div className={classes.divider} />
-              {viewDetailsButton}
-            </div>
+          message={t('inProgress.description')}
+          content={
+            <OperationBannerProgressContent progressPercent={task.percentComplete ?? 0} />
           }
+          dataTestId={BANNER_TEST_ID}
+          action={viewDetailsButton}
         />
       );
       break;
     case TaskState.FAILURE:
     case TaskState.ABORTED:
       bannerComponent = (
-        <ClusterOperationBanner
-          type={ClusterOperationBannerType.ERROR}
+        <YBOperationBanner
+          variant={OperationBannerVariant.Error}
+          dense
+          minHeight={46}
           title={t('failed.title')}
-          progressPercent={task.percentComplete ?? 0}
+          content={
+            <OperationBannerProgressContent
+              progressPercent={task.percentComplete ?? 0}
+              state={YBProgressBarState.Error}
+            />
+          }
           dataTestId={BANNER_TEST_ID}
-          actions={
+          action={
             <div className={classes.actions}>
-              <div className={classes.divider} />
               {viewDetailsButton}
               {task.retryable && (
                 <RbacValidator

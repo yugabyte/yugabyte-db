@@ -15,6 +15,7 @@ import { useLocalStorage } from 'react-use';
 import { noop, values } from 'lodash';
 import { makeStyles } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
+import { OperationBannerVariant, YBOperationBanner } from '@yugabyte-ui-library/core';
 
 import { TASK_SHORT_TIMEOUT } from '@app/components/tasks/constants';
 import { DbUpgradeManagementSidePanel } from '@app/redesign/features/universe/universe-actions/software-upgrade/upgrade-management/DbUpgradeManagementSidePanel';
@@ -50,10 +51,7 @@ import { DbUpgradePrecheckTaskBanner } from './clusterBanner/DbUpgradePrecheckTa
 import { DbUpgradeRollbackTaskBanner } from './clusterBanner/DbUpgradeRollbackTaskBanner';
 import { DbUpgradeTaskBanner } from './clusterBanner/DbUpgradeTaskBanner';
 import { EditUniverseTaskBanner } from './clusterBanner/EditUniverseTaskBanner';
-import {
-  ClusterOperationBanner,
-  ClusterOperationBannerType
-} from './clusterBanner/ClusterOperationBanner';
+import { OperationBannerWaveIcon } from './clusterBanner/operationBannerIcons';
 import { YBButton } from '@app/redesign/components';
 import {
   getUniverseStatus,
@@ -247,6 +245,9 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
 
   if (isCanaryUpgradeEnabled) {
     if (getIsDbUpgradePrecheckTask(task)) {
+      if (universeUUID && acknowlegedTasks?.[universeUUID] === taskUUID) {
+        return null;
+      }
       return (
         <div className={classes.bannerContainer}>
           <DbUpgradePrecheckTaskBanner
@@ -303,10 +304,15 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
           {universeStatus.state === UniverseState.GOOD && (
             <>
               <div className={classes.bannerContainer}>
-                <ClusterOperationBanner
-                  type={ClusterOperationBannerType.PENDING_ACTION_YELLOW}
+                <YBOperationBanner
+                  variant={OperationBannerVariant.Warning}
+                  dense
+                  minHeight={46}
+                  showDivider={false}
+                  iconCircle={false}
+                  icon={<OperationBannerWaveIcon />}
                   title={t('universeActions.dbUpgrade.clusterBanner.finalizeOrRollBack.title')}
-                  actions={
+                  action={
                     <YBButton
                       variant="secondary"
                       size="medium"
@@ -320,7 +326,7 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
                       )}
                     </YBButton>
                   }
-                  description={t(
+                  message={t(
                     'universeActions.dbUpgrade.clusterBanner.finalizeOrRollBack.description'
                   )}
                 />
