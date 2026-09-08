@@ -28,5 +28,6 @@ enableGitInfo = true
 [security]
   [security.funcs]
     getenv = [
+      'ONETRUST_API_KEY',
       'RUDDERSTACK_API_KEY'
     ]
